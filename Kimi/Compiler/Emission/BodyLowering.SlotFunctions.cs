@@ -96,6 +96,11 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
+            if (call.Place == -1 && !body.IsReachable(id) && call.Source is InvocationKoto invocation && this.CannotCompleteCall(invocation))
+            {
+                continue; // No acquired argument set, so no result storage was initialized.
+            }
+
             if (call.Source is not InvocationKoto || (uint)call.Place >= (uint)body.Places.Count || id + 1 >= body.Operations.Count ||
                 body.Operations[id + 1] is not { Kind: OwnershipOperationKind.Produce } produce || produce.Place != call.Place ||
                 !ReferenceEquals(produce.Source, call.Source) || this.slotFunctionPlaces[call.Place] != 0)

@@ -34,11 +34,17 @@ internal sealed partial class BodyLowering
                 return Fail("Invalid call result Loan contract.", out failure);
             }
 
-            if (ReferenceEquals(call.ReturnType, BoundType.Never))
+            var noReturn = ReferenceEquals(call.ReturnType, BoundType.Never);
+            if (!body.IsReachable(plan.Call))
+            {
+                noReturn |= this.CannotCompleteCall((InvocationKoto)body.Operations[plan.Call].Source);
+            }
+
+            if (noReturn)
             {
                 if (plan.Result != -1 || plan.End != -1)
                 {
-                    return Fail("A Never call cannot deliver a borrowed result or release Loans on normal return.", out failure);
+                    return Fail("A noncompleting call cannot deliver a borrowed result or release Loans on normal return.", out failure);
                 }
             }
             else if ((uint)plan.Result >= (uint)body.Operations.Count || body.Operations[plan.Result].Kind != OwnershipOperationKind.Produce ||

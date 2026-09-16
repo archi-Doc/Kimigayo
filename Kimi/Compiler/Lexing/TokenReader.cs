@@ -619,6 +619,12 @@ public ref struct TokenReader
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
 
+    internal readonly Token PeekToken(int offset)
+    {
+        var index = this.Position + offset;
+        return (uint)index < (uint)this.tokens.Length ? this.tokens[index] : this.endToken;
+    }
+
     // Split compound operators only in type context; shift/comparison expressions keep
     // their original tokens. The shared token buffer remains immutable.
     internal bool TryConsumeTypeClose(out SourceSpan range)

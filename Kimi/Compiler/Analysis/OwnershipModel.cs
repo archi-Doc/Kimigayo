@@ -123,6 +123,7 @@ public enum OwnershipFailure : byte
     Unsupported,
     ExpansionLimit,
     ComparisonLoanConflict,
+    DefaultArgumentMove,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
@@ -200,6 +201,7 @@ public sealed partial class OwnershipBody
     internal readonly List<int> LoanStates = new();
     internal readonly List<int> OperationRegions = new();
     internal readonly List<OwnershipCheckingRegion> CheckingRegions = new();
+    internal readonly List<int> CheckingSeeds = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
     internal bool[] Reachable = [];
     internal bool[] BlockReachable = [];
@@ -286,6 +288,7 @@ public sealed partial class OwnershipBody
         this.reportedIssues.Clear();
         this.OperationRegions.Clear();
         this.CheckingRegions.Clear();
+        this.CheckingSeeds.Clear();
         this.CheckingRegions.Add(new(-1, -1)); // Region zero is ordinary source flow.
         this.checkingSolved = false;
         this.ResetCompletion();
@@ -303,7 +306,7 @@ public sealed partial class OwnershipBody
 
 // A checking-only seed edge. Its source is replayed after its containing region
 // converges; it never enters EdgeStorage or contributes a runtime predecessor.
-internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry);
+internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry, int SeedStart = 0, int SeedCount = 0);
 
 // Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.
 internal enum OwnershipValueKind : byte

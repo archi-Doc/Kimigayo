@@ -11,6 +11,72 @@ namespace XunitTest;
 public class FrontEndSyntaxTest
 {
     [Theory]
+    [InlineData("abstract open struct S\n    let value: i32", "abstract")]
+    [InlineData("virtual group G\n    func f() => ()", "virtual")]
+    [InlineData("override rootgroup G\n    let value: i32", "override")]
+    [InlineData("abstract enum E\n    A", "abstract")]
+    [InlineData("abstract contract C\n    func f()", "abstract")]
+    [InlineData("virtual func f() => ()", "virtual")]
+    [InlineData("virtual func f()", "virtual")]
+    [InlineData("public abstract open struct S", "abstract")]
+    [InlineData("virtual override abstract public unsafe func f() => ()", "virtual")]
+    [InlineData("virtual open func f() => ()", "virtual")]
+    [InlineData("abstract specialize func f<i32>() => ()", "abstract")]
+    [InlineData("struct S\n    virtual init() => ()", "virtual")]
+    [InlineData("struct S\n    override public deinit => ()", "override")]
+    [InlineData("struct S\n    virtual public let value: i32", "virtual")]
+    [InlineData("struct S\n    override var value: i32", "override")]
+    [InlineData("struct S\n    abstract computed value: i32\n        get(self: ref/Self) -> i32 => 1", "abstract")]
+    [InlineData("struct S\n    var value: i32\n        abstract get\n        set", "abstract")]
+    [InlineData("struct S\n    var value: i32\n        get\n        override open set", "override")]
+    [InlineData("struct S\n    computed value: i32\n        virtual get(self: ref/Self) -> i32\n            return 1", "virtual")]
+    [InlineData("contract C\n    virtual public func f()", "virtual")]
+    [InlineData("contract C\n    abstract property value: i32 has get", "abstract")]
+    [InlineData("contract C\n    override associate Element", "override")]
+    [InlineData("contract C\n    property value: i32 has abstract open get, set", "abstract")]
+    [InlineData("contract C\n    property value: i32 has get, virtual set", "virtual")]
+    [InlineData("contract C\n    property value: i32\n        abstract get(self: ref/Self) -> i32", "abstract")]
+    [InlineData("func outer()\n    virtual func inner() => ()", "virtual")]
+    [InlineData("#if true\nabstract struct S", "abstract")]
+    [InlineData("#switch\n    #case true\n        virtual func f() => ()", "virtual")]
+    public void UnavailableModifiersReportOneCauseAndRecover(string source, string modifier)
+    {
+        var tree = Parse(source + "\nstruct Following\n");
+        var diagnostic = Assert.Single(tree.DiagnosticCollection.GetArray());
+        Assert.Equal("UnavailableFeature_Kd", diagnostic.Entry.Name);
+        Assert.Equal(source.IndexOf(modifier, StringComparison.Ordinal), diagnostic.Span.Start);
+        Assert.Equal(modifier.Length, diagnostic.Span.Length);
+        Assert.Contains(modifier, diagnostic.Message);
+        Assert.Contains(tree.RootKoto.NestedContainers, x => x.Name == "Following");
+        VerifyParents(tree.RootKoto);
+    }
+
+    [Theory]
+    [InlineData("struct abstract\n    let override: i32\n    func virtual(self: ref/Self) -> i32 => self.override")]
+    [InlineData("func virtual(x: i32) -> i32 => x\nlet override: i32 = virtual(1)")]
+    [InlineData("let value = x.abstract()\nvirtual(value)")]
+    [InlineData("abstract\nlet next: i32 = 2")]
+    [InlineData("func f()\n    abstract\n    let next: i32 = 2")]
+    [InlineData("func f()\n    abstract\nstruct Next")]
+    [InlineData("abstract /* comment */\nstruct Next")]
+    [InlineData("abstract\r\nfunc next() => ()")]
+    [InlineData("let abstract = func() => ()\nabstract()")]
+    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
+    [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
+    public void UnavailableModifierSpellingsRemainOrdinaryNames(string source)
+        => AssertValid(Parse(source));
+
+    [Fact]
+    public void UnavailableDeclarationRecoveryRetainsIndependentSiblings()
+    {
+        var tree = Parse("struct S\n    virtual func removed()\n        func nested() => ()\n    func retained() => ()\nstruct Following");
+        Assert.Equal("UnavailableFeature_Kd", Assert.Single(tree.DiagnosticCollection.GetArray()).Entry.Name);
+        var structure = tree.RootKoto.NestedContainers.Single(x => x.Name == "S");
+        Assert.Equal("retained", Assert.IsType<FunctionKoto>(Assert.Single(structure.Members)).Name);
+        Assert.Contains(tree.RootKoto.NestedContainers, x => x.Name == "Following");
+    }
+
+    [Theory]
     [InlineData("let a: [4 of i32] = [1, 2, 3, 4]")]
     [InlineData("let a: [(N * 2 + 1) of ref/T from source] = values")]
     [InlineData("let a: [Sizes.width of [2 of _]] = values")]

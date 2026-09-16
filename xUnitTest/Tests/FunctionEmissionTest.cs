@@ -63,14 +63,14 @@ public class FunctionEmissionTest
     [InlineData("let x = 1\nfunc capture() -> i32 => x\ncapture()")]
     [InlineData("public func main()\n    let x = 1\n    func capture() -> i32 => x\n    capture()")]
     [InlineData("group G\n    func f() => ()\n()")]
-    [InlineData("func f(x?: i32 = 1) => ()\n()")]
+    [InlineData("func f(x?: i32 = 1) => ()\n()", true)]
     [InlineData("func f<T>() => ()\n()")]
     [InlineData("func f(x: uniq/string) => ()\n()")]
     [InlineData("func unused() -> ()\n    " + MinimalEmissionTest.FloatExpression + "\n()", true)]
     [InlineData("public func main() -> i32 => 0")]
     [InlineData("public func main() => ()\n()")]
-    [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nvar x = 1\nf(spin(), x++)")]
-    [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = outer: do\n    f((inner: do => exit to outer: 7), x++)")]
+    [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nvar x = 1\nf(spin(), x++)", true)]
+    [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = outer: do\n    f((inner: do => exit to outer: 7), x++)", true)]
     public void SelectedBodiesAndStartupRespectSupportedFeatures(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);

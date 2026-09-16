@@ -462,6 +462,13 @@ internal sealed partial class BodyLowering
                     return value.Kind == OwnershipValueKind.Alias || Fail("Parameter read has no incoming SSA value.", out failure);
                 }
 
+                if (body.Places[operation.Place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
+                {
+                    return value.Kind == OwnershipValueKind.Alias && value.Count == 1 &&
+                        ValuePlace(body.Operations[Input(body, id, 0)]) == operation.Place
+                        ? true : Fail("An acquired scalar read requires its own prepared SSA value.", out failure);
+                }
+
                 if (body.Places[operation.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
                 {
                     return Fail("Scalar load requires local storage.", out failure);

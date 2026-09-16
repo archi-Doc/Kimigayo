@@ -674,6 +674,7 @@ Exit:
             property.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         }
 
+        var unavailableAccessor = false;
         if (hasInlineAccessors)
         {
             if (!property.IsContractRequirement)
@@ -681,7 +682,7 @@ Exit:
                 property.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "has is only permitted on property requirements");
             }
 
-            ParseInlinePropertyAccessors(ref reader, property);
+            unavailableAccessor = ParseInlinePropertyAccessors(ref reader, property);
         }
 
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
@@ -693,12 +694,17 @@ Exit:
             }
             else
             {
-                ParsePropertyAccessorBlock(ref reader, property);
+                unavailableAccessor = ParsePropertyAccessorBlock(ref reader, property);
             }
         }
         else if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
         {
             reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        }
+
+        if (unavailableAccessor)
+        {
+            return null;
         }
 
         if (property.DeclarationKind is PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement &&
@@ -710,11 +716,25 @@ Exit:
         return property;
     }
 
-    private static void ParseInlinePropertyAccessors(ref TokenReader reader, PropertyKoto property)
+    private static bool ParseInlinePropertyAccessors(ref TokenReader reader, PropertyKoto property)
     {
         var parsedAny = false;
+        var unavailableAccessor = false;
         while (reader.CanRead)
         {
+            if (TryConsumeUnavailableModifiers(ref reader, accessor: true))
+            {
+                unavailableAccessor = true;
+                parsedAny = true;
+                reader.SkipUntil(TokenKind.Comma, TokenKind.Separator, TokenKind.EndBlock);
+                if (reader.TryConsume(TokenKind.Comma))
+                {
+                    continue;
+                }
+
+                break;
+            }
+
             var start = reader.CurrentTokenRange.Start;
             var modifier = ParseAccessorAccessibility(ref reader);
             var accessorToken = reader.CurrentToken;
@@ -756,10 +776,13 @@ Exit:
         {
             reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         }
+
+        return unavailableAccessor;
     }
 
-    private static void ParsePropertyAccessorBlock(ref TokenReader reader, PropertyKoto property)
+    private static bool ParsePropertyAccessorBlock(ref TokenReader reader, PropertyKoto property)
     {
+        var unavailableAccessor = false;
         var blockStart = reader.CurrentTokenRange;
         reader.Advance();
         while (reader.CanRead)
@@ -771,7 +794,14 @@ Exit:
                 var blockEnd = reader.CurrentTokenRange.End;
                 reader.Advance();
                 property.CompleteSpan(blockEnd);
-                return;
+                return unavailableAccessor;
+            }
+
+            if (TryConsumeUnavailableModifiers(ref reader, accessor: true))
+            {
+                unavailableAccessor = true;
+                SkipExcludedSyntaxCore(ref reader);
+                continue;
             }
 
             var start = reader.CurrentTokenRange.Start;
@@ -852,6 +882,7 @@ Exit:
 
         property.CompleteSpan(Math.Max(property.Span.End, blockStart.End));
         reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        return unavailableAccessor;
     }
 
     private static void ParseAccessorParameters(
@@ -1067,15 +1098,24 @@ CloseParameters:
     /// <param name="reader">The token reader.</param>
     /// <param name="isEnd">Whether the declaration sequence has ended.</param>
     /// <param name="allowCompileTimeDirectives">Whether lowercase compile-time directives are accepted.</param>
-    public static void ConsumeAttributeAndModifier(
+    /// <returns>Whether an unavailable declaration header was recognized and needs recovery.</returns>
+    public static bool ConsumeAttributeAndModifier(
         ref TokenReader reader,
         out bool isEnd,
         bool allowCompileTimeDirectives = false)
     {
         reader.ClearContext();
 
+        var inspectHeader = true;
         while (reader.CanRead)
         {
+            if (inspectHeader && allowCompileTimeDirectives && !reader.IsExcluded && TryConsumeUnavailableModifiers(ref reader))
+            {
+                isEnd = false;
+                return true;
+            }
+
+            inspectHeader = false;
             var tokenKind = reader.CurrentTokenKind;
             if (tokenKind == TokenKind.Identifier && reader.PeekKind(1) == TokenKind.Func && reader.IsCurrentIdentifier(Constants.UnsafeKeyword))
             {
@@ -1087,6 +1127,7 @@ CloseParameters:
             {
                 case TokenKind.Separator:
                     reader.Advance();
+                    inspectHeader = true;
                     continue;
 
                 case TokenKind.Static:
@@ -1111,6 +1152,7 @@ CloseParameters:
                     continue;
 
                 case TokenKind.Sharp:
+                    inspectHeader = true;
                     if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
                     {
                         ParseCompileTimeIfPrefix(ref reader);
@@ -1121,7 +1163,7 @@ CloseParameters:
                     if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.Switch)
                     {
                         isEnd = false;
-                        return;
+                        return false;
                     }
 
                     if (reader.PeekKind(1) == TokenKind.Case)
@@ -1143,7 +1185,7 @@ CloseParameters:
                     }
 
                     isEnd = false;
-                    return;
+                    return false;
             }
         }
 
@@ -1158,6 +1200,7 @@ CloseParameters:
         }
 
         isEnd = true;
+        return false;
 
         static void ReadFlag(ref TokenReader reader, ModifierKind flag)
         {
@@ -1193,6 +1236,75 @@ CloseParameters:
 
             reader.Advance();
         }
+    }
+
+    // Look only through a same-header modifier sequence. These spellings remain
+    // ordinary identifiers everywhere else, including calls and declaration names.
+    private static bool TryConsumeUnavailableModifiers(ref TokenReader reader, bool accessor = false)
+    {
+        var unavailable = default(Token);
+        var previousEnd = reader.CurrentTokenRange.Start;
+        for (var offset = 0; offset < reader.Remaining; offset++)
+        {
+            var token = reader.PeekToken(offset);
+            if (!reader.SameLine(previousEnd, token.Span.Start))
+            {
+                return false;
+            }
+
+            previousEnd = token.Span.End;
+            if (token.Kind == TokenKind.Identifier)
+            {
+                var text = reader.GetSpan(token);
+                if (text is "virtual" or "override" or "abstract")
+                {
+                    if (unavailable.Kind == TokenKind.Invalid)
+                    {
+                        unavailable = token;
+                    }
+
+                    continue;
+                }
+
+                if (text is "unsafe")
+                {
+                    continue;
+                }
+
+                if (!accessor && text is "specialize" && reader.PeekKind(offset + 1) == TokenKind.Func)
+                {
+                    continue;
+                }
+            }
+
+            if (token.Kind is TokenKind.Public or TokenKind.Internal or TokenKind.Private or
+                TokenKind.Protected or TokenKind.Open or TokenKind.Static)
+            {
+                continue;
+            }
+
+            var introducer = accessor
+                ? token.Kind is TokenKind.Get or TokenKind.Set
+                : token.Kind is TokenKind.RootGroup or TokenKind.Group or TokenKind.Struct or TokenKind.Enum or
+                    TokenKind.Contract or TokenKind.Extension or TokenKind.Func or TokenKind.Init or TokenKind.Deinit or
+                    TokenKind.Let or TokenKind.Var or TokenKind.Computed or TokenKind.Property or TokenKind.Associate;
+            if (!introducer || unavailable.Kind == TokenKind.Invalid)
+            {
+                return false;
+            }
+
+            reader.Diagnostic.Add(unavailable.Span, DiagnosticCode.UnavailableFeature_Kd, reader.GetSpan(unavailable).ToString());
+            reader.Advance(offset);
+            return true;
+        }
+
+        return false;
+    }
+
+    internal static void SkipUnavailableDeclaration(ref TokenReader reader)
+    {
+        SkipExcludedSyntaxCore(ref reader);
+        reader.ClearContext();
     }
 
     /// <summary>Parses a type expression.</summary>
@@ -2223,7 +2335,14 @@ CloseParameters:
                     items.ToArray());
             }
 
-            ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
+            var unavailableDeclaration = ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
+            if (unavailableDeclaration)
+            {
+                hasSourceItem = true;
+                SkipUnavailableDeclaration(ref reader);
+                continue;
+            }
+
             if (isEnd)
             {
                 break;

@@ -318,11 +318,11 @@ public sealed partial class Binding
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
     }
 
-    private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode)
+    private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode, Koto? diagnosticCause = null)
     {
         if (proof == ConstraintProof.Error)
         {
-            Fail(use, BindingFailure.InvalidConstraint);
+            this.FailConstraint(use, diagnosticCause);
         }
         else if (proof == ConstraintProof.Refuted)
         {

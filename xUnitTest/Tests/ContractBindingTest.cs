@@ -10,6 +10,29 @@ namespace XunitTest;
 public class ContractBindingTest
 {
     [Fact]
+    public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
+    {
+        var c = Parse("contract C\n    property item: i32 has get\nstruct S\n    Self is C\n    public let item: i32");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var type = Container(c, "S");
+        var contract = Container(c, "C").BoundSymbol!;
+        var conformance = Assert.IsType<BoundConformance>(c.Binding.GetConformance(type.BoundType!, contract));
+        var property = Assert.IsType<PropertyKoto>(Assert.Single(type.Members)).BoundSymbol!.Property!;
+        Assert.True(conformance.IsVerified);
+        Assert.True(property.IsVerified);
+
+        c.Kotonoha.AddSource(new SourceDocument("Added.kimi", "func added() => ()"));
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(conformance.IsVerified);
+        Assert.False(property.IsVerified);
+        Assert.Null(c.Binding.GetConformance(type.BoundType!, contract));
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Same(conformance, c.Binding.GetConformance(type.BoundType!, contract));
+        Assert.True(conformance.IsVerified);
+        Assert.True(property.IsVerified);
+    }
+
+    [Fact]
     public void VerifiedMappingUsesDeclarationIdentities()
     {
         var c = Parse("contract C\n    func read(self: ref/Self) -> i32\nstruct S\n    Self is C\n    public func read(self: ref/Self) -> i32 => 1");

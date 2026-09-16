@@ -73,7 +73,7 @@ public sealed partial class Binding
             {
                 var declaration = declarations[i];
                 var proof = this.RequestCapability(this.SelfType(declaration.Container.BoundSymbol!), this.Core.Copy, declaration.Scope, derivation: true);
-                this.RequireConstraint(declaration.Clause, proof, mode);
+                this.RequireConstraint(declaration.Clause, proof, mode, proof == ConstraintProof.Error ? this.ConformanceDiagnosticCause(declaration.Container) : null);
             }
         }
     }

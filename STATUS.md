@@ -1,5 +1,237 @@
 # Kimigayo Implementation Status
 
+Ownership checking continuations (2026-09-17): noncompleting do scopes,
+if conditions and terminal branches preserve source initialization, Move history
+and Borrow state without adding runtime successors or fabricated results. Separate
+checking joins intersect initialization guarantees and union possible histories;
+all predecessor states must be available and active comparison-Loan stacks must
+agree. Ordinary completing branches may feed a later scope termination when they
+contain no hidden terminal path.
+
+Noncompleting loops with only scalar/Unit loop-local effects preserve enclosing
+facts. A noncompleting while condition preserves the state after its argument
+acquisitions when the body has only local scalar effects. These paths work in
+supported scalar defaults and through do wrappers. Every default declaration still
+requires independent checking, including when its argument is supplied.
+
+Current limits include scopes that combine partial early termination with later
+termination, outer-mutating or owned/effectful loop bodies, deferred-cleanup joins,
+unequal active Loan joins, recursive-default completion proofs and general
+owned/borrowed defaults. They remain guarded; M2/M3 are incomplete. PLAN.md units
+21–28 record the verified slices and the exact partial-scope resumption case.
+
+Final Debug/Release builds are clean and full suites pass 7,426 each. All 91 default
+and 63 noncompletion fixtures per configuration pass ordinary native O0/O2
+(616 executions total). Milestone 1 passes 25 checks per configuration. Rebind/reload and warmed analysis/emission checks pass
+with zero measured allocation. No NativeAOT testing was performed.
+
+Scalar operand arrival (2026-09-17): unary/binary operations produce no result
+when an operand supplies none. Later source operands still receive ordinary
+checking, including assignment effects. This applies to typed nested calls and
+admitted scalar default expressions. Full Debug/Release suites pass 7,294 each,
+two fixtures/configuration pass O0/O2, and warmed result-state/reload checks pass.
+Direct Never operand fitting still has earlier Binding limitations.
+
+Omitted-default completion (2026-09-17): selected defaults now contribute their
+completion to caller flow without changing the declared result Type or callee-body
+completion. Cached declaration checks work before or after the declaration and
+include cleanup that prevents delivery. Structural completion includes omitted
+defaults; recursive expansion remains pending and bounded. Full Debug/Release
+suites pass 7,282 each with clean builds, five fixtures/configuration pass O0/O2,
+and warmed flow reanalysis measures zero allocation.
+
+Incomplete call acquisitions (2026-09-17): a Never explicit/default argument
+prevents caller result initialization, including nested scalar, string and aggregate
+calls. Checking-only argument effects and Borrow release remain available. Stored
+and borrowed result validators require proof before accepting absent normal results.
+Full Debug/Release suites pass 7,267 each; four new fixtures/configuration and five
+existing stored-result/nonreturning fixtures pass O0/O2. Nested-result rebind,
+reload and zero-allocation warm checks pass.
+
+Default initialization checking (2026-09-17): every supported scalar/Unit default
+is checked independently from initialized preceding prepared parameters, including
+unused, fully supplied and bodyless requirement declarations. Scalar/Unit locals
+may omit an initializer or use a Never initializer; ordinary ownership checks reject
+reads without a supplied value. A reusable scratch CFG shares the ordinary solver
+without adding executable callee bodies or destroying prepared arguments. Full
+Debug/Release suites pass 7,253 each, all 86 default fixtures per configuration pass
+O0/O2, and warmed valid/invalid declaration checks allocate zero measured bytes.
+General owned/effectful defaults and divergent continuation joins remain unfinished.
+
+State-neutral loop continuations (2026-09-17): source after `loop => ()` or a
+loop containing only a bare continue to itself uses the unchanged loop-entry
+ownership facts. A Never initializer supplies no initialized value. Twelve new
+cases pass; full Debug/Release suites pass 7,235 each and four fixtures per
+configuration pass bounded O0/O2 execution. Result-state, reload and zero-allocation
+warm checks pass. Effectful/branching divergent loops remain unsupported where a
+checking continuation is needed.
+
+Nonreturning-call continuations (2026-09-17): ordinary Never calls now preserve
+acquired-argument initialization and Move facts for later source checking. Their
+temporary argument Loans end in the checking graph; runtime execution gains no
+successor, result initialization or cleanup. Sixteen new tests pass, full
+Debug/Release suites pass 7,223 each, eight native fixtures per configuration pass
+O0/O2, and warmed analysis/emission measures zero allocation. General divergent
+loop/selection continuations and declaration-side default initialization checking
+remain unfinished.
+
+Final continuation verification (2026-09-17): seven completed default-expression
+units add 91 tests. Debug/Release builds are clean, all 7,207 tests pass in each
+configuration, all 79 default fixtures pass O0/O2 per configuration, and Milestone 1
+passes 25 checks each. The detailed limits and next action are recorded in PLAN.md;
+this is a verified subset, not completion of the compiler plan.
+
+Prepared scalar subplace defaults (2026-09-17): defaults can Copy scalar/Unit
+values from owned fields, tuples and fixed arrays in preceding prepared arguments.
+Reads retain the selected call's argument identity, finish their inspection Loan
+before callee entry, and retain declaration bounds-Abort locations. Eleven new
+cases pass; clean Debug/Release suites pass 7,207 each, native O0/O2 checks cover
+all nine new fixtures, and warm element reads measure zero allocation. This run
+adds 91 tests across seven units. Generic Copy proofs, escaping borrows/captures,
+noncompleting local-initializer checking and general owned/effectful defaults remain
+unfinished; the mixed nested tuple/array Binding case remains an earlier limit.
+
+Mutable scalar locals in defaults (2026-09-17): initialized default-local var
+bindings support assignment, numeric/bit updates, increments and finite while/loop
+computation. Writes are restricted to locals inside the same default; prepared
+parameters remain immutable. Twelve new cases pass; clean Debug/Release full
+suites pass 7,196 each, nine fixtures pass O0/O2 per configuration, and warmed
+analysis/emission still allocates zero measured bytes. Uninitialized/noncompleting
+local-initializer checking, general effects and owned/borrowed defaults remain open.
+
+Unit defaults (2026-09-17): Unit literals, preceding Unit copies, local Unit
+bindings and supported control-flow results now use the established zero-sized
+argument path. No physical value is added for Unit. Eleven new tests pass; full
+Debug/Release suites pass 7,184 each, ten fixtures pass O0/O2 per configuration,
+and warmed Unit default analysis/emission measures zero allocation.
+
+Immutable scalar locals in defaults (2026-09-17): sequential default bodies may
+initialize scalar let bindings and read them through ordinary local storage.
+Prepared arguments retain independent snapshots across local scopes and repeated
+calls. Thirteen new cases pass; full Debug/Release suites pass 7,173 each and eight
+fixtures pass O0/O2 per configuration. Warm analysis/emission with local bindings
+allocates zero measured bytes. Mutable/uninitialized locals, noncompleting local
+initializer checking continuations and effectful/owned defaults remain unsupported.
+
+Contained scalar default transfers (2026-09-17): single-expression default bodies
+can use loop, internal exit/continue and selection yield with existing scalar
+operations. Transfers stay inside the default. A noncompleting default skips later
+defaults and the callee; checked arithmetic retains declaration Abort locations.
+Eleven new cases pass; clean Debug/Release builds and full suites pass 7,160 each.
+All eleven fixtures pass O0/O2 in both configurations. Warm compound default
+ownership/emission remains allocation-free. General local/effectful/owned defaults
+and their cleanup remain unfinished.
+
+Default Move diagnostics (2026-09-17): definite non-Copy acquisition of a
+preceding prepared argument now reports `DefaultArgumentMove_Kd` at declaration
+time, including unused, required-initializer, fully supplied and bodyless
+requirement defaults. Checks use committed call acquisitions and lexical Copy
+proofs; legal Copy/shared inspection is preserved. Eighteen new tests and full
+Debug/Release suites pass (7,134 each), and both CLI builds report the source error.
+Owned field/tuple/array subplaces and aggregate/enum payload acquisitions are also
+checked (15 more cases; full suites pass 7,149 each). Borrowed referents remain
+outside the owned-path check. Mutation, escaping borrows and general default execution
+remain unfinished; this diagnostic pass is not an execution certificate.
+
+Scalar do defaults and final verification (2026-09-17): a single-expression do
+default can use the supported scalar operations, selections and conversions.
+Nested/chained do results retain prepared argument snapshots. Jumps, loops,
+effectful calls, generic and owned/borrowed defaults remain unsupported.
+Rebind and source reload invalidate execution until analysis rebuilds the plans,
+then reproduce identical IR. This continuation adds 66 tests in total; final
+Debug/Release builds are clean and full suites pass 7,116 each without skips.
+All 32 default fixtures pass native O0/O2 in each configuration; Milestone 1
+passes 25 checks each. Warm ownership/emission with do, selection and conversion
+defaults measures zero allocation. General default ownership/cleanup is unfinished.
+
+Scalar selections in defaults (2026-09-17): value-producing if/else defaults
+support scalar conditions and single-expression arms, including nested selections
+and reads of earlier default results. All arms require supported operations even
+when unreachable or supplied. Six new cases and full Debug/Release suites pass
+(7,110 each); five new fixtures pass native O0/O2 in both configurations.
+
+Scalar conversions in defaults (2026-09-17): defaults now reuse established
+identity, literal and numeric conversion plans. Each conversion preserves its
+range check, rounding and source location, including chained conversions.
+Nine new cases pass; full Debug/Release suites pass 7,104 cases each and all
+nine new fixtures pass native O0/O2 in both configurations. The warmed default
+ownership/emission test includes conversion chains and still allocates zero bytes.
+
+Scalar default execution (2026-09-17): nongeneric calls acquire explicit arguments
+first, then omitted scalar defaults in declaration order. Defaults can read
+prepared preceding scalar values and use literals, arithmetic, bit operations,
+comparisons, unary operators and short-circuit boolean expressions. Reads retain
+argument snapshots across branches. Supplied defaults and required initializers
+do not execute; noncompleting arguments skip defaults and the callee. Checked
+arithmetic retains the declaration expression's Abort location. Other default
+forms, generic defaults and default ownership/borrow effects remain unsupported.
+Twenty-one new cases and full Debug/Release suites pass (7,095 each). Thirteen
+default fixtures pass O0/O2 per configuration, 28 existing function fixtures
+pass O0/O2 from Release, and Milestone 1 passes 25 checks per configuration.
+Warmed default ownership/IR generation measures zero allocation.
+
+Default-expression control flow (2026-09-17): defaults are checked as independent
+value expressions even on unused/bodyless declarations or fully supplied calls.
+Their transfers may target constructs inside the default but cannot escape into
+enclosing function or loop bodies. A noncompleting default does not change the
+callee body's completion. Twelve new cases and full Debug/Release suites pass
+(7,074 each), including allocation-free warmed control-flow reanalysis.
+
+Omitted-default call plans (2026-09-17): selected calls now retain omitted
+defaults in parameter declaration order after explicit arguments. Each entry
+keeps its declaration expression and parameter Symbol together with the
+substituted parameter Type/Origins. Named argument and receiver mappings remain
+in source order; defaults supply no inference or overload-selection evidence.
+Rebind clears or reuses plan storage, and reload rebuilds source identities.
+Twelve new cases and full Debug/Release suites pass (7,062 each), including
+zero allocation in warmed repeated Binding. The metadata itself does not certify
+ownership, cleanup or execution; the scalar execution slice is recorded above.
+
+Projected-call diagnostic boundary (2026-09-17): inherited borrowed-receiver
+method calls whose effect verification is still unimplemented now report
+`UnsupportedBinding_Kd`. Their receiver plans keep internal Unknown proof,
+and emission remains rejected without overload reselection. This does not
+implement public ObjectCompatible summaries. The three existing adaptation
+cases were corrected and strengthened; 204 focused cases and full Debug/Release
+suites (7,050 each) pass.
+
+Source validity and diagnostic lifetime (2026-09-17): both source parsing entry
+points now retain newly reported syntax/lexing errors independently of the
+diagnostic destination and later display clearing. Duplicate-location reports
+still invalidate source; pre-existing Binding errors and warnings alone do not.
+Seven new boundary tests and full Debug/Release suites pass (7,050 cases each).
+Milestone 1 passes 25 LLVM/native/CLI checks in each configuration.
+
+Source-change invalidation (2026-09-17): appending source through `AddSource` or
+`CodeContext.Parse`, and reloading a source snapshot (including an empty one),
+now revokes prior Binding/startup/ownership results and retained conformance and
+Property certificates. Emission writes nothing until the complete current
+pipeline runs again. This closes stale-IR acceptance of newly invalid declarations
+and empty replacement trees. Seven new tests and full Debug/Release suites pass
+(7,043 cases each); the existing native Milestone 1 smoke test also passes in
+both configurations. This covers in-memory source changes; persistent semantic
+artifact reuse remains a separate implementation item.
+
+Unresolved-conformance diagnostics (2026-09-17): an isolated unresolved
+`Self is Missing` clause now reports its missing Name without repeating derived
+errors on the owning Type, a sibling Copy clause, or its Properties. Binding
+failures and unverified certificates remain intact. Other constraint inputs,
+independent errors, separate missing Names, and invalid uses remain diagnosed;
+recorded causes are rebuilt on rebind. Nine new tests cover these boundaries,
+fragments, reload and zero allocation in warmed repeated Binding. Full Debug
+and Release suites pass 7,036 tests each with no failures or skips.
+
+Unavailable declaration modifiers (2026-09-17): `virtual`, `override`, and
+`abstract` now produce `UnavailableFeature_Kd` at the first unavailable modifier
+in a declaration header, including container/function/Property declarations,
+constructors, deinit, Contract requirements, and inline or block accessors.
+Recovery skips the invalid declaration or accessor and preserves following
+independent items. Recognition stops at item boundaries; the same spellings
+remain ordinary Names in declarations, calls, and member access. The 40 new
+parser cases and full Debug/Release suites pass (7,027 tests each, zero failures
+or skips). This implements the existing rule in SPEC §2.5.1; it introduces no
+new valid modifier or reserved word.
+
 Merged-container diagnostic locations (2026-09-17): a declaration container
 created while parsing a source document now retains that first declaring
 fragment's CodeContext instead of the parent's source-less root context, so a
@@ -10,8 +242,9 @@ own contexts as before. Verified by the new
 `SourceDocumentAndDiagnosticTest.MergedContainerRetainsFirstFragmentSourceDocument`
 and the full Debug/Release suites (6,987 tests each, zero failures); the
 regenerated scalar fixtures are byte-identical to the pre-change set. The
-remaining sibling-clause and field cascade after one unresolved conformance name
-is a recorded diagnostics-quality item in PLAN.md, not a language limitation.
+former sibling-clause and field cascade after one unresolved conformance name
+is resolved as described above. The location regression now uses contradictory
+input premises to retain an independently required container-header diagnostic.
 
 Program Milestone 6 complete (2026-09-17): the unchanged
 `milestones/Milestone6.kimi` passes Binding, ownership, LLVM verification, native
@@ -326,7 +559,7 @@ Evidence: [Binding](Kimi/Compiler/Binding), [CoreIntrinsics](Kimi/Compiler/Bindi
 
 - Analyzes `if`, short-circuiting, `while`, `do`, `loop`, labels, `require`, `match`, return/yield/exit/continue, and defer. Distinguishes structural completion from execution reachability. Results are secured before cleanup and delivered only after normal completion. Abort performs no cleanup.
 - Destruction follows reverse logical order. If normal transfer interrupts construction or argument acquisition, already-acquired responsibilities are handled. No result delivery or subsequent destruction is generated after nonterminating cleanup.
-- Source checking after an explicit transfer or explicit Abort uses a continuation separate from the execution CFG, including Never Subjects and nonterminating guards. Unsupported remains for unreachable operations whose checking entry state cannot be constructed, such as those after general Never calls, exitless loops, or cleanup that prevents continuation.
+- Source checking after an explicit transfer or Never-returning call uses a continuation separate from the execution CFG, including Never Subjects and nonterminating guards. Unsupported remains for unreachable operations whose checking entry state cannot be constructed, such as those after general exitless loops or cleanup that prevents continuation.
 - Whole-Subject guards have conservative validation paths in source order; effects on false paths also pass to later arms. Covered arms omitted at runtime are still diagnosed.
 - Loans currently cover string comparisons, shared arguments, temporary strings, string guard candidates, parent-storage protection for Tuples/fixed arrays, and exclusive protection for element writes. Statically disjoint element paths are allowed within §4.6's scope. Owners remain protected through later arguments, guards, and cleanup; Loans end after securing a normal result or during normal transfer. Simple element assignment also holds an exclusive Loan from final location resolution through old-value destruction and placement (§4.7). General reference storage/return, uniq/reborrow, effect summaries, and borrowed Subjects remain incomplete.
 

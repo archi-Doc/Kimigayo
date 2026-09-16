@@ -189,11 +189,12 @@ public sealed class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) || parameter.IsOptional || parameter.DefaultValue is not null ||
+                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
+                    ((parameter.IsOptional || parameter.DefaultValue is not null) && !ScalarDefaults.Supports(function, i)) ||
                     (ReferenceTypes.IsString(parameter.Type.BoundType) && (parameter.Type.BoundType!.Origin is not { Kind: OriginKind.Input } origin ||
                         !ReferenceEquals(origin.Binder, function) || origin.Slot != i)))
                 {
-                    return "Only required parameters with verified value, owned-slot or shared-string representations are implemented.";
+                    return "Parameters require verified value, owned-slot or shared-string representations and supported scalar defaults.";
                 }
             }
         }

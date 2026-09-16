@@ -40,6 +40,9 @@
   + Name="UnsupportedBinding_Kd"
     Message="The semantic obligations of this syntax are not yet implemented and cannot pass final Binding"
 
+  + Name="UnavailableFeature_Kd"
+    Message="The declaration modifier {0} is unavailable in this language revision"
+
   + Name="InvalidOriginBinding_Kd"
     Message="The Origin name, mapping, or annotation is invalid in this type position"
 
@@ -315,6 +318,9 @@
 
   + Name="UnsupportedOwnership_Kd"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
+
+  + Name="DefaultArgumentMove_Kd"
+    Message="A default expression cannot move a preceding prepared argument or its owned contents"
 
   + Name="ComparisonLoanConflict_Kd"
     Message="This operation conflicts with an active inspection, argument, or element access loan"

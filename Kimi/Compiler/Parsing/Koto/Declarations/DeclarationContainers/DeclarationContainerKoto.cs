@@ -711,7 +711,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected static bool TryBeginDeclaration(ref TokenReader reader)
     {
-        Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
+        bool isEnd;
+        while (Parser.ConsumeAttributeAndModifier(ref reader, out isEnd, allowCompileTimeDirectives: true))
+        {
+            Parser.SkipUnavailableDeclaration(ref reader);
+        }
+
         if (isEnd)
         {
             return false;

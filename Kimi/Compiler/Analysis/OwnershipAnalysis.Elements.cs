@@ -208,6 +208,14 @@ public sealed partial class OwnershipAnalysis
         }
 
         var index = source is IndexKoto ? this.Value(this.Expression(source.Right, PlaceUseKind.Read)) : -1;
+        if (this.defaultFunction is not null && source is IndexKoto &&
+            this.body.Operations[^1] is { Kind: OwnershipOperationKind.Read } read && ReferenceEquals(read.Source, ElementAccess.ValueSource(source.Right)))
+        {
+            // Prepared scalar reads retain their acquired value for subsequent uses.
+            // The index plan also needs this declaration-side read's source identity.
+            index = this.body.Operations.Count - 1;
+        }
+
         if (root < 0 || (source is IndexKoto && index < 0) || !this.flow!.Nodes[source].CanCompleteNormally)
         {
             return -1;

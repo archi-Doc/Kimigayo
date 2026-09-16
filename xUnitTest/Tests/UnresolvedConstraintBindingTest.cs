@@ -9,6 +9,134 @@ namespace XunitTest;
 public class UnresolvedConstraintBindingTest
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingConformanceReportsItsNameWithoutDerivedDeclarationErrors(bool missingFirst)
+    {
+        var clauses = missingFirst ? "    Self is Missing\n    Self is Copy\n" : "    Self is Copy\n    Self is Missing\n";
+        var c = Parse("public struct Reading\n" + clauses + "    public let value: i32");
+        Assert.False(c.Bind().IsComplete);
+        var reading = Container(c, "Reading");
+        Assert.Equal(BindingState.Invalid, reading.BindingState);
+        Assert.False(Assert.IsType<PropertyKoto>(Assert.Single(reading.Members)).BoundSymbol!.Property!.IsVerified);
+        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(reading.ConstraintNodes.Single(x => x.Right.ToString() == "Copy").BoundConstraint!, reading));
+        c.Binding.ReportDiagnostics();
+        var diagnostic = Assert.Single(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Equal("UnresolvedBinding_Kd", diagnostic.Entry.Name);
+        Assert.Equal("Missing", diagnostic.SourceDocument!.SourceText.Substring(diagnostic.Span.Start, diagnostic.Span.Length));
+        Assert.False(c.Binding.CheckBound().IsComplete);
+        c.Binding.ReportDiagnostics();
+        Assert.Single(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+    }
+
+    [Fact]
+    public void MissingConformanceDoesNotHideIndependentErrorsOrCertifyAUse()
+    {
+        var c = Parse("""
+            public contract Marker
+            public struct Reading
+                Self is Copy
+                Self is Missing
+                Self is Marker
+                public let value: i32
+                public let other: MissingField
+                public func wrong() -> i32 => true
+            func take<T>(value: ref/T) -> i32
+                T is Marker
+                return 1
+            func use(value: ref/Reading) -> i32 => take(value)
+            struct Contradiction<T>
+                T is i32
+                T is not i32
+            """);
+        Assert.False(c.Bind().IsComplete);
+        var reading = Container(c, "Reading");
+        var marker = Container(c, "Marker");
+        Assert.False(c.Binding.GetConformanceDefinition(reading.BoundType!, marker.BoundSymbol!)!.IsVerified);
+        var use = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "use");
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, use) || ReferenceEquals(x.Node, use.ExpressionBody));
+        c.Binding.ReportDiagnostics();
+        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray();
+        Assert.Contains(diagnostics, x => x.Entry.Name == "UnresolvedBinding_Kd" && x.SourceDocument!.SourceText.Substring(x.Span.Start, x.Span.Length) == "Missing");
+        Assert.Contains(diagnostics, x => x.Entry.Name == "UnresolvedBinding_Kd" && x.SourceDocument!.SourceText.Substring(x.Span.Start, x.Span.Length) == "MissingField");
+        Assert.Contains(diagnostics, x => x.Entry.Name == "TypeMismatch_Kd");
+        Assert.Contains(diagnostics, x => x.Entry.Name == "InvalidConstraint_Kd" && x.Span.Start == Container(c, "Contradiction").Span.Start);
+        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == "InvalidConstraint_Kd" && x.Span.Start == reading.Span.Start);
+    }
+
+    [Fact]
+    public void ConformanceDiagnosticCausesAreRebuiltAfterSourceChanges()
+    {
+        var c = Parse("public struct Reading\n    Self is Copy\n    Self is Missing\n    public let value: i32");
+        Assert.False(c.Bind().IsComplete);
+        c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract Missing"));
+        Assert.True(c.Bind().IsComplete);
+        Assert.Empty(c.Binding.Issues);
+        c.Binding.ReportDiagnostics();
+        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.True(Reload(c).Bind().IsComplete);
+    }
+
+    [Fact]
+    public void MissingConformanceInAnotherFragmentKeepsItsOwnLocation()
+    {
+        var c = Parse("public struct Reading\n    public let value: i32");
+        c.Kotonoha.AddSource(new SourceDocument("Other.kimi", "public struct Reading\n    Self is Copy\n    Self is Missing\n    public let other: i32"));
+        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Other.kimi").GetArray());
+        Assert.False(c.Bind().IsComplete);
+        c.Binding.ReportDiagnostics();
+        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        var diagnostic = Assert.Single(c.Kimigayo.GetOrAddDiagnosticCollection("Other.kimi").GetArray());
+        Assert.Equal("UnresolvedBinding_Kd", diagnostic.Entry.Name);
+        Assert.Equal("Other.kimi", diagnostic.SourceDocument!.Path);
+    }
+
+    [Fact]
+    public void MultipleMissingConformanceNamesRemainSeparateCauses()
+    {
+        var c = Parse("public struct Reading\n    Self is Copy\n    Self is Missing and Other\n    public let value: i32");
+        Assert.False(c.Bind().IsComplete);
+        c.Binding.ReportDiagnostics();
+        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray();
+        Assert.Equal(2, diagnostics.Length);
+        Assert.All(diagnostics, x => Assert.Equal("UnresolvedBinding_Kd", x.Entry.Name));
+        Assert.Equal(new[] { "Missing", "Other" }, diagnostics.OrderBy(x => x.Span.Start).Select(x => x.SourceDocument!.SourceText.Substring(x.Span.Start, x.Span.Length)));
+    }
+
+    [Fact]
+    public void WarmMissingConformanceBindingReusesDiagnosticCauseStorage()
+    {
+        var c = Parse("public struct Reading\n    Self is Copy\n    Self is Missing\n    public let value: i32");
+        for (var i = 0; i < 100; i++)
+        {
+            Assert.False(c.Bind().IsComplete);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("Missing conformance became valid.");
+            }
+        }));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingConformanceDoesNotHideContradictoryInputsOfTheSameType(bool missingFirst)
+    {
+        const string Missing = "    Self is Missing\n";
+        const string Inputs = "    T is i32\n    T is not i32\n";
+        var c = Parse("public struct Reading<T>\n" + (missingFirst ? Missing + Inputs : Inputs + Missing));
+        Assert.False(c.Bind().IsComplete);
+        c.Binding.ReportDiagnostics();
+        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray();
+        Assert.Contains(diagnostics, x => x.Entry.Name == "UnresolvedBinding_Kd");
+        Assert.Contains(diagnostics, x => x.Entry.Name == "InvalidConstraint_Kd" && x.Span.Start == Container(c, "Reading").Span.Start);
+    }
+
+    [Theory]
     [InlineData("public struct Target\n    Future is Copy", "public struct Future\n    Self is Copy", true)]
     [InlineData("public contract Target\n    Future is Copy", "public struct Future\n    Self is Copy", true)]
     [InlineData("public enum Target\n    Future is Copy\n    A", "public struct Future\n    Self is Copy", true)]

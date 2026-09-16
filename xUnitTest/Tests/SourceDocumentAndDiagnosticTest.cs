@@ -189,8 +189,8 @@ public class SourceDocumentAndDiagnosticTest
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
-        var first = new SourceDocument("first.kimi", "struct Reading\n    Self is Copy\n    Self is Missing\n    public let value: i32\n");
-        var second = new SourceDocument("second.kimi", "struct Reading\n    public let other: i32\n");
+        var first = new SourceDocument("first.kimi", "struct Reading<T>\n    T is i32\n    T is not i32\n    public let value: i32\n");
+        var second = new SourceDocument("second.kimi", "struct Reading<T>\n    public let other: i32\n");
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, first);
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, second);
@@ -202,7 +202,7 @@ public class SourceDocumentAndDiagnosticTest
         Assert.Same(first, container.Members[0].CodeContext.SourceDocument);
         Assert.Same(second, container.Members[1].CodeContext.SourceDocument);
 
-        // A container-level Binding failure is reported in the first fragment's document at its header.
+        // Contradictory premises require a container-level diagnostic, independently of member errors.
         Assert.False(compilation.Bind().IsComplete);
         Assert.Contains(compilation.Binding.Issues, x => ReferenceEquals(x.Node, container) && x.Code == DiagnosticCode.InvalidConstraint_Kd);
         compilation.Binding.ReportDiagnostics();

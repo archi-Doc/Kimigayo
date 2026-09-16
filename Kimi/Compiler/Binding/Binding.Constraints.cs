@@ -344,7 +344,9 @@ public sealed partial class Binding
                     var previous = scope.Owner.BindingState;
                     changed |= !environment.Invalid;
                     environment.Invalid = true;
-                    Fail(scope.Owner, BindingFailure.InvalidConstraint);
+                    // Other input facts can have independent contradictions. Record a
+                    // sole missing-name cause only when this is the entire environment.
+                    this.FailConstraint(scope.Owner, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
                     changed |= previous != scope.Owner.BindingState;
                     break;
                 }

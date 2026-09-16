@@ -6,6 +6,12 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402 // The call plan accompanies its binder.
 
+/// <summary>An omitted default evaluated after explicit arguments, in parameter order.
+/// Expression and Parameter retain the declaration environment; references to preceding
+/// parameters address prepared call slots, never the caller's original variables.
+/// This plan is not a certificate of default ownership or cleanup verification.</summary>
+public readonly record struct BoundDefaultArgument(Koto Expression, BindingSymbol Parameter, BoundType ParameterType);
+
 /// <summary>The committed target and argument mapping; storage is reused when the same call is rebound.</summary>
 public sealed class BoundCall
 {
@@ -14,10 +20,14 @@ public sealed class BoundCall
     private BoundOrigin[] origins = [];
     private BoundOrigin[] inputOrigins = [];
     private BoundArgumentOperation[] argumentOperations = [];
+    private BoundDefaultArgument[] defaultArguments = [];
 
     public BoundArgumentOperation ReceiverOperation { get; private set; }
 
     public ReadOnlySpan<BoundArgumentOperation> ArgumentOperations => this.argumentOperations;
+
+    /// <summary>Gets omitted defaults in parameter declaration order, after explicit acquisitions.</summary>
+    public ReadOnlySpan<BoundDefaultArgument> DefaultArguments => this.defaultArguments;
 
     /// <summary>Gets the selected function Symbol.</summary>
     public BindingSymbol Target { get; private set; } = null!;
@@ -49,7 +59,7 @@ public sealed class BoundCall
     /// <summary>Gets the selected complete type arguments.</summary>
     public ReadOnlySpan<BoundType> TypeArguments => this.typeArguments;
 
-    internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null)
+    internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default)
     {
         this.Target = target;
         this.ReturnType = result;
@@ -64,6 +74,12 @@ public sealed class BoundCall
         }
 
         operations.CopyTo(this.argumentOperations);
+        if (this.defaultArguments.Length != defaults.Length)
+        {
+            this.defaultArguments = defaults.IsEmpty ? [] : new BoundDefaultArgument[defaults.Length];
+        }
+
+        defaults.CopyTo(this.defaultArguments);
         if (this.origins.Length != origins.Length)
         {
             this.origins = new BoundOrigin[origins.Length];
@@ -96,6 +112,8 @@ public sealed class BoundCall
 
 public sealed partial class Binding
 {
+    private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
+
     private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
     {
         if (member.Right.Akind == KotoKind.ConstructorReference)
@@ -347,6 +365,7 @@ public sealed partial class Binding
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
+        BoundDefaultArgument[]? defaults = null;
         try
         {
             var count = 0;
@@ -452,7 +471,10 @@ public sealed partial class Binding
                 this.receiverOperations[call] = receiverOperation;
                 if (receiverOperation.ObjectCompatibility != ConstraintProof.Proven)
                 {
-                    return Fail(call, BindingFailure.UnprovenConstraint, receiverOperation.ObjectCompatibility == ConstraintProof.Unknown);
+                    // Pending effect verification is an implementation boundary, not a
+                    // completed public NotProven guarantee (SPEC 12.4.4.1).
+                    var pendingEffects = receiverOperation.ObjectCompatibility == ConstraintProof.Unknown;
+                    return Fail(call, pendingEffects ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, pendingEffects);
                 }
             }
 
@@ -467,6 +489,40 @@ public sealed partial class Binding
                     }
 
                     selectedOperations[i] = selectedOperations[i] with { SourceType = call.ArgumentNodes[i].BoundType };
+                }
+            }
+
+            var defaultCount = evaluated[winnerIndex].DefaultsUsed;
+            if (defaultCount != 0)
+            {
+                // Candidate evaluation reuses used[]; reconstruct only the winner's
+                // slots from its retained mapping, without repeating selection.
+                used.AsSpan(0, selected.Parameters.Count).Clear();
+                for (var i = 0; i < argumentCount; i++)
+                {
+                    used[mapping[i]] = true;
+                }
+
+                if (receiverOperation.Source is not null)
+                {
+                    used[receiverOperation.ParameterIndex] = true;
+                }
+
+                defaults = this.defaultArgumentScratch.Rent(defaultCount);
+                var defaultIndex = 0;
+                for (var i = 0; i < selected.Parameters.Count; i++)
+                {
+                    if (!used[i])
+                    {
+                        var parameter = selected.Parameters[i];
+                        if (parameter.DefaultValue is not { } expression || parameter.Type.BoundType is not { } pattern ||
+                            this.CallType(pattern, selected, scratch, scope, self, origins, inputs, selectedType) is not { } parameterType)
+                        {
+                            return Fail(call, BindingFailure.MissingType, true);
+                        }
+
+                        defaults[defaultIndex++] = new(expression, this.ParameterSymbol(selected, i), parameterType);
+                    }
                 }
             }
 
@@ -490,11 +546,16 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(winner, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? selected.Parameters.Count : 0), selectedOperations[..argumentCount], receiverOperation, basePath);
+            (call.CallStorage ??= new()).Set(winner, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? selected.Parameters.Count : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount));
             return Complete(call, result);
         }
         finally
         {
+            if (defaults is not null)
+            {
+                this.defaultArgumentScratch.Return(defaults, clearArray: true);
+            }
+
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);

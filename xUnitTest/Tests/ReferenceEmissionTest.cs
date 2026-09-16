@@ -206,6 +206,7 @@ public class ReferenceEmissionTest
     [InlineData("exclusive")]
     [InlineData("source")]
     [InlineData("no_result_contract")]
+    [InlineData("missing_result")]
     [InlineData("dependent_result")]
     [InlineData("end_position")]
     [InlineData("reference_value")]
@@ -224,6 +225,7 @@ public class ReferenceEmissionTest
             case "exclusive": body.OperationStorage[loan.Read] = body.Operations[loan.Read] with { LoanMode = LoanRequirement.Uniq }; break;
             case "source": body.OperationStorage[loan.Read] = body.Operations[loan.Read] with { Place = body.Operations[loan.Read].Input }; break;
             case "no_result_contract": body.CallLoans.Clear(); break;
+            case "missing_result": body.CallLoans[0] = call with { Result = -1, End = -1 }; break;
             case "dependent_result": body.CallLoans[0] = call with { ResultRequirement = LoanRequirement.Ref }; break;
             case "end_position": body.CallLoans[0] = call with { End = call.Result }; break;
             case "reference_value": body.ValueOperands[body.Values[entry].Start] = -1; break;

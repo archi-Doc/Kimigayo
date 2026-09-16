@@ -111,6 +111,7 @@ public enum DiagnosticCode
     MovedPlace_Kd,
     ReassignedLet_Kd,
     UnsupportedOwnership_Kd,
+    DefaultArgumentMove_Kd,
 
     InvalidPattern_Kd,
     NonExhaustiveMatch_Kd,
@@ -129,6 +130,8 @@ public enum DiagnosticCode
     InvalidLayoutAttribute_Kd,
     ConflictingLayout_Kd,
     SplitCLayoutStorage_Kd,
+
+    UnavailableFeature_Kd,
 
     Count, // Last sentinel
 }

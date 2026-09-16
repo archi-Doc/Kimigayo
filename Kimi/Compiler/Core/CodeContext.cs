@@ -108,6 +108,7 @@ public sealed class CodeContext
         }
 
         this.Compilation.BeginSourceParsing();
+        var errorVersion = this.DiagnosticCollection.ErrorVersion;
         var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument);
         try
         {
@@ -116,6 +117,7 @@ public sealed class CodeContext
             var sourceContext = new CodeContext(this.Kotonoha, this.DiagnosticCollection, sourceDocument);
             var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
+            this.Kotonoha.RecordSourceErrors(this.DiagnosticCollection, errorVersion);
         }
         finally
         {

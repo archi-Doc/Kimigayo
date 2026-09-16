@@ -150,19 +150,39 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
-            Debug.Assert(this.OperationRegions[region.Seed] < i);
-            var runtime = this.Reachable[region.Seed];
-            if (!runtime && !this.HasCheckingState(region.Seed))
+            Debug.Assert(!this.Reachable[region.Entry]);
+            var block = this.checkingBlockOf[region.Entry];
+            Debug.Assert(block >= 0 && !this.checkingReached[block]);
+            var ready = true;
+            for (var s = 0; s < Math.Max(1, region.SeedCount); s++)
+            {
+                var seed = region.SeedCount == 0 ? region.Seed : this.CheckingSeeds[region.SeedStart + s];
+                Debug.Assert(this.OperationRegions[seed] < i);
+                var runtime = this.Reachable[seed];
+                if (!runtime && !this.HasCheckingState(seed))
+                {
+                    ready = false; // Never discard an unavailable path from a checking join.
+                    break;
+                }
+
+                this.LoadInput(seed, !runtime);
+                this.Transfer(seed);
+                var destination = this.checkingStates.AsSpan(block * width, width);
+                if (s == 0)
+                {
+                    this.Scratch.AsSpan(0, width).CopyTo(destination);
+                }
+                else
+                {
+                    Join(destination, this.Scratch.AsSpan(0, width), this.words);
+                }
+            }
+
+            if (!ready)
             {
                 continue;
             }
 
-            Debug.Assert(!this.Reachable[region.Entry]);
-            this.LoadInput(region.Seed, !runtime);
-            this.Transfer(region.Seed);
-            var block = this.checkingBlockOf[region.Entry];
-            Debug.Assert(block >= 0 && !this.checkingReached[block]);
-            this.Scratch.AsSpan(0, width).CopyTo(this.checkingStates.AsSpan(block * width, width));
             this.checkingReached[block] = true;
             this.Converge(block, true);
         }

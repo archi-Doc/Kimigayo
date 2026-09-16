@@ -6,6 +6,8 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    private int[] elementNextCalls = [];
+
     private int[] elementOperations = [];
     private int[] elementOutputs = [];
     private bool hasElements;
@@ -64,10 +66,67 @@ internal sealed partial class BodyLowering
         var place = body.Places[operation.Place];
         return ReferenceEquals(operation.Source.BoundType, place.Type) &&
             (operation.Source is IdentifierNameKoto identifier
-                ? identifier.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id
+                ? identifier.BoundSymbol is { } symbol && ((body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id) || this.IsPreparedElementReceiver(body, id, symbol, place.Id))
                 : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
             this.IsElementOwnerStorage(place) &&
             (!body.IsReachable(id) || (body.GetStorageState(id, place.Id) & PlaceState.MustInit) != 0);
+    }
+
+    private bool IsPreparedElementReceiver(OwnershipBody body, int read, BindingSymbol symbol, int place)
+    {
+        var next = this.elementNextCalls[read];
+        if (symbol.Kind != BindingSymbolKind.Parameter || next < 0 ||
+            body.Operations[next].Source is not InvocationKoto { BoundCall: { } plan } call ||
+            plan.Target.Declaration is not FunctionKoto target || !ReferenceEquals(symbol.Scope.Owner, target))
+        {
+            return false;
+        }
+
+        var omitted = false;
+        foreach (var argument in plan.DefaultArguments)
+        {
+            if (symbol.Slot >= argument.Parameter.Slot)
+            {
+                continue;
+            }
+
+            for (var source = body.Operations[read].Source; source is not null && source != target; source = source.Parent)
+            {
+                if (ReferenceEquals(source, argument.Expression))
+                {
+                    omitted = true;
+                    break;
+                }
+            }
+        }
+
+        if (!omitted)
+        {
+            return false;
+        }
+
+        var position = plan.Receiver is not null && plan.ReceiverOperation.ParameterIndex == symbol.Slot ? 0 : -1;
+        for (var i = 0; i < plan.ArgumentToParameter.Length; i++)
+        {
+            if (plan.ArgumentToParameter[i] == symbol.Slot)
+            {
+                position = i + (plan.Receiver is null ? 0 : 1);
+            }
+        }
+
+        if (position < 0)
+        {
+            return false;
+        }
+
+        var first = next;
+        while (first > read && body.Operations[first - 1].Kind == OwnershipOperationKind.CallEntry)
+        {
+            first--;
+        }
+
+        var entry = first + position;
+        return entry > read && entry < next && ReferenceEquals(body.Operations[entry].Source, call) && body.Operations[entry].Place == place;
     }
 
     private bool IsElementOwnerStorage(OwnershipPlace place) => place.Kind switch
@@ -96,6 +155,19 @@ internal sealed partial class BodyLowering
         if (!this.hasElements)
         {
             return body.ElementUpdates.Count == 0 || Fail("Element updates require projection plans.", out failure);
+        }
+
+        // Defaults in this subset contain no calls. Cache the following call once;
+        // receiver checks then validate against its explicit acquired argument slots.
+        Grow(ref this.elementNextCalls, body.Operations.Count);
+        var nextCall = -1;
+        for (var i = body.Operations.Count - 1; i >= 0; i--)
+        {
+            this.elementNextCalls[i] = nextCall;
+            if (body.Operations[i].Kind == OwnershipOperationKind.Call)
+            {
+                nextCall = i;
+            }
         }
 
         Grow(ref this.elementOperations, body.Operations.Count);

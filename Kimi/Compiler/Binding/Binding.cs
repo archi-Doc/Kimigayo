@@ -80,6 +80,7 @@ public sealed partial class Binding
         try
         {
             this.issues.Clear();
+            this.constraintDiagnosticCauses?.Clear();
             this.ResetMatches();
             this.resultContexts.Clear();
             this.resultCursor = 0;
@@ -214,6 +215,13 @@ public sealed partial class Binding
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
+            if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
+                this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
+                cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
+            {
+                continue;
+            }
+
             if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
             {
                 issue.Node.AddDiagnostic(issue.Code, plan.Coverage.Describe());
@@ -235,6 +243,30 @@ public sealed partial class Binding
     }
 
     internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => this.symbols[function.Parameters[index]];
+
+    internal void Invalidate()
+    {
+        if (this.Result == default)
+        {
+            return;
+        }
+
+        this.Result = default;
+        this.issues.Clear();
+        this.constraintDiagnosticCauses?.Clear();
+        this.obligations.Clear();
+        this.obligationSet.Clear();
+        this.ResetStartup();
+        this.ResetCapabilities(BindingMode.Provisional);
+        this.ResetContracts();
+        foreach (var symbol in this.symbols.Values)
+        {
+            if (symbol.Property is { } property)
+            {
+                property.IsVerified = false;
+            }
+        }
+    }
 
     private static bool InvalidDeclarationContext(Koto declaration)
     {

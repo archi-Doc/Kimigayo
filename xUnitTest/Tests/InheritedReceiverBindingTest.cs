@@ -110,7 +110,9 @@ public class InheritedReceiverBindingTest
         Assert.Equal("i32", plan.BasePath.Type.Components[0].Name);
         Assert.Same(((MemberAccessKoto)call.Method).Left, plan.Source);
         Assert.Same(plan.SourceType!.Origin, plan.ParameterType!.Origin);
-        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        Assert.False(c.Emission.Validate(out _));
     }
 
     [Fact]

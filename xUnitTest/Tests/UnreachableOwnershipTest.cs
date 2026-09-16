@@ -12,6 +12,9 @@ namespace XunitTest;
 public class UnreachableOwnershipTest
 {
     [Theory]
+    [InlineData("func f(x: i32)\n    loop => ()\n    let y = x")]
+    [InlineData("func f(x: i32)\n    return\n    loop => ()\n    let y = x")]
+    [InlineData("func stop() -> Never => stop()\nfunc f(x: i32)\n    stop()\n    let y = x")]
     [InlineData("func f() -> i32\n    let x = 3\n    return 0\n    return x")]
     [InlineData("func f() -> i32\n    let x: i32\n    return 0\n    x = 3\n    return x")]
     [InlineData("func f() -> i32\n    return 0\n    let x = 3\n    return x")]
@@ -88,11 +91,8 @@ public class UnreachableOwnershipTest
     }
 
     [Theory]
-    [InlineData("func stop() -> Never => stop()\nfunc f(x: i32)\n    stop()\n    let y = x")]
-    [InlineData("func f(x: i32)\n    loop => ()\n    let y = x")]
-    [InlineData("func f(x: i32)\n    return\n    loop => ()\n    let y = x")]
+    [InlineData("func f(x: string)\n    loop\n        writeLine(x)\n        $abort(\"stop\")\n    writeLine(x)")]
     [InlineData("func f(x: i32)\n    work: do\n        defer => loop => ()\n        exit to work\n    let y = x")]
-    [InlineData("func f(x: i32, c: bool)\n    if c => return else => return\n    let y = x")]
     public void UnseededRegionsRetainTheSafetyGate(string source)
     {
         var c = Parse(source);

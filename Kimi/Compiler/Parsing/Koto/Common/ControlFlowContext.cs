@@ -25,6 +25,11 @@ public static partial class KotoHelper
                 return jump is ReturnKoto && parent is not FunctionKoto { IsGenerated: true } ? parent : null;
             }
 
+            if (parent is FunctionKoto function && IsParameterDefault(function, child))
+            {
+                return null; // Defaults cannot transfer into the declaration's enclosing execution.
+            }
+
             if (parent is LabeledKoto labeled && child == labeled.Target && jump.Label == labeled.Label && IsInsideLabeledBody(jump, labeled))
             {
                 return jump switch
@@ -106,7 +111,7 @@ public static partial class KotoHelper
             case CodeBlockKoto block:
                 return block.TrailingExpression == expression && IsValueContext(block);
             case FunctionKoto function:
-                return function.ExpressionBody == expression && !DiscardsFunctionBody(function);
+                return (function.ExpressionBody == expression && !DiscardsFunctionBody(function)) || IsParameterDefault(function, expression);
             case PropertyAccessorKoto accessor:
                 return accessor.Body == expression && expression is not CodeBlockKoto && !DiscardsFunctionBody(accessor);
             case LabeledKoto labeled:
@@ -159,6 +164,19 @@ public static partial class KotoHelper
     }
 
     internal static bool IsBodyExpression(Koto body) => body is ExpressionKoto and not CodeBlockKoto or FunctionKoto { IsAnonymous: true };
+
+    private static bool IsParameterDefault(FunctionKoto function, Koto expression)
+    {
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (ReferenceEquals(function.Parameters[i].DefaultValue, expression))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsUnitType(Koto? type)
         => type is TupleTypeKoto { ElementNodes.Count: 0 } || ReferenceEquals(type?.BoundType, BoundType.Unit) ||

@@ -199,6 +199,14 @@ public sealed partial class OwnershipBody
             {
                 return false;
             }
+
+            for (var i = 0; region.Entry >= 0 && i < region.SeedCount; i++)
+            {
+                if (this.LoanStates[this.CheckingSeeds[region.SeedStart + i]] != this.LoanInputs[region.Entry])
+                {
+                    return false;
+                }
+            }
         }
 
         return true;

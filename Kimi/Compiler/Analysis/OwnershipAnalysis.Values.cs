@@ -68,6 +68,15 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(id, OwnershipValueKind.Alias, [parameter]);
         }
 
+        var preparedDefaultPlace = this.defaultFunction is not null && place >= 0 && this.body.Places[place].Kind != OwnershipPlaceKind.Local;
+        if (preparedDefaultPlace && kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume &&
+            place >= 0 && ScalarTypes.Supports(this.body.Places[place].Type))
+        {
+            // Prepared arguments are immutable acquired SSA values, including literal
+            // temporaries and earlier defaults. They are not loadable caller locals.
+            this.SetValue(id, OwnershipValueKind.Alias, [this.Value(place)]);
+        }
+
         if (kind is OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement && input >= 0)
         {
             this.SetValue(id, OwnershipValueKind.Alias, [this.Value(input)]);
@@ -81,7 +90,7 @@ public sealed partial class OwnershipAnalysis
         if (kind is OwnershipOperationKind.Read or OwnershipOperationKind.Produce or OwnershipOperationKind.Consume)
         {
             var destination = kind == OwnershipOperationKind.Consume ? input : place;
-            if (destination >= 0)
+            if (destination >= 0 && !(preparedDefaultPlace && kind == OwnershipOperationKind.Read))
             {
                 this.placeValues[destination] = id;
             }
@@ -153,6 +162,11 @@ public sealed partial class OwnershipAnalysis
         }
 
         var input = this.Value(this.Expression(unary.Operand, PlaceUseKind.Read));
+        if (input < 0)
+        {
+            return -1;
+        }
+
         if (unary.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement)
         {
             var updated = this.ComputeUpdate(unary, unary.BoundType, input, this.IncrementOne(unary), ElementAccess.UpdateOperator(unary.Akind));

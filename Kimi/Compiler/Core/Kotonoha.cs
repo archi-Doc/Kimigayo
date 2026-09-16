@@ -114,6 +114,8 @@ public sealed partial class Kotonoha
     {
         this.HasSourceErrors = false;
         ArgumentNullException.ThrowIfNull(compilation);
+        // Even an empty snapshot replaces the tree that earlier analyses certified.
+        compilation.InvalidateSourceAnalysis();
 
         this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
         this.Compilation = compilation;
@@ -165,6 +167,9 @@ public sealed partial class Kotonoha
     internal void RecordSource(SourceDocument sourceDocument)
         => this.sourceDocuments.Add(sourceDocument);
 
+    internal void RecordSourceErrors(DiagnosticCollection diagnostics, long previousErrorVersion)
+        => this.HasSourceErrors |= diagnostics.ErrorVersion != previousErrorVersion;
+
     /// <summary>Adds executable top-level syntax to the generated function.</summary>
     /// <param name="codeContext">The parsing context that produced the syntax.</param>
     /// <param name="item">The syntax node to add.</param>
@@ -196,6 +201,7 @@ public sealed partial class Kotonoha
 
         var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
         diagnosticCollection.ClearDiagnostic();
+        var errorVersion = diagnosticCollection.ErrorVersion;
         var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
         var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 
@@ -205,7 +211,7 @@ public sealed partial class Kotonoha
             tokenizer.ReadAll();
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
-            this.HasSourceErrors |= diagnosticCollection.HasErrors;
+            this.RecordSourceErrors(diagnosticCollection, errorVersion);
         }
         finally
         {

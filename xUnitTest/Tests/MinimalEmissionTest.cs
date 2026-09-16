@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -64,6 +65,122 @@ public class MinimalEmissionTest
         Assert.False(c.Emission.Validate(out _));
         c.Ownership.Analyze();
         Assert.True(c.Emission.Validate(out error), Describe(c, error));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void AppendingSourceInvalidatesFinalAnalysisBeforeEmission(bool directContext, bool valid)
+    {
+        var c = Analyze("writeLine(\"original\")");
+        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+        var source = new SourceDocument("Added.kimi", valid ? "func added() -> i32 => 7" : "func added() -> i32 => missing");
+        if (directContext)
+        {
+            c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        }
+        else
+        {
+            c.Kotonoha.AddSource(source);
+        }
+
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Equal(string.Empty, writer.ToString());
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Startup.IsComplete);
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Throws<InvalidOperationException>(() => c.Binding.CheckBound());
+        Assert.Throws<InvalidOperationException>(() => c.Ownership.Analyze());
+        Assert.Equal(valid, c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        Assert.Equal(valid, c.Emission.Validate(out error));
+        if (valid)
+        {
+            Assert.Contains(c.Ownership.Bodies, x => x.Function.Name == "added");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReloadingSourceInvalidatesFinalAnalysisEvenForAnEmptySnapshot(bool empty)
+    {
+        var c = Analyze("writeLine(\"original\")");
+        Assert.True(c.Emission.Validate(out _));
+        var snapshot = empty ? Compilation.CreateForTest().Kotonoha : c.Kotonoha;
+        var restored = c.Kotonoha;
+        TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(snapshot), ref restored);
+        Assert.NotNull(restored);
+        Assert.Same(c.Kotonoha, restored);
+        restored.OnDeserialized(c);
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Equal(string.Empty, writer.ToString());
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        Assert.Equal(!empty, c.Emission.Validate(out _));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void DirectParseErrorsRemainFatalAfterDiagnosticClearing(bool customDestination, bool existingDiagnostic)
+    {
+        var c = Analyze("writeLine(\"original\")");
+        var diagnostics = customDestination ? c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi") : c.Kotonoha.DiagnosticCollection;
+        if (existingDiagnostic)
+        {
+            // The parser error will have the same offset as an already displayed error.
+            diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd);
+        }
+
+        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "virtual func unavailable() => ()"));
+        Assert.True(diagnostics.HasErrors);
+        diagnostics.ClearDiagnostic();
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Equal(string.Empty, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DirectValidParseDoesNotLatchPreexistingDiagnosticsAsSourceErrors(bool customDestination)
+    {
+        var c = Analyze("writeLine(\"original\")");
+        var diagnostics = customDestination ? c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi") : c.Kotonoha.DiagnosticCollection;
+        diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd);
+        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "func added() => ()"));
+        diagnostics.ClearDiagnostic();
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+    }
+
+    [Fact]
+    public void DirectParseWarningsDoNotPreventEmission()
+    {
+        var c = Analyze("writeLine(\"original\")");
+        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi");
+        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "struct S\n    public func read(self: ref/Self) -> i32 => self.value\n    public let value: i32"));
+        Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(diagnostics.GetArray()).Entry.Severity);
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
     }
 
     [Fact]

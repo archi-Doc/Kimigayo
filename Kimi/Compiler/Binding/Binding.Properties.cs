@@ -253,7 +253,7 @@ public sealed partial class Binding
             property.IsVerified = proof == ConstraintProof.Proven && !InvalidDeclarationContext(syntax);
             if (proof != ConstraintProof.Proven)
             {
-                this.RequireConstraint(syntax, proof, mode);
+                this.RequireConstraint(syntax, proof, mode, this.ConformanceDiagnosticCause(property.Symbol.Scope.Owner));
             }
         }
     }

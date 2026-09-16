@@ -81,9 +81,10 @@ public partial class Compilation
     private readonly IdentifierTable identifiers = new();
 
     private bool hasParsedSource;
+    private Binding? binding;
 
     /// <summary>Gets reusable semantic analysis storage for this compilation.</summary>
-    public Binding Binding => field ??= new(this);
+    public Binding Binding => this.binding ??= new(this);
 
     /// <summary>Gets this compilation's compiler-owned Core requirement identities.</summary>
     public CoreIntrinsics Core => this.Binding.Core;
@@ -280,7 +281,17 @@ public partial class Compilation
     internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
         => this.identifiers.TryGetIdentifier(text, out identifier);
 
-    internal void BeginSourceParsing() => this.hasParsedSource = true;
+    internal void InvalidateSourceAnalysis()
+    {
+        this.binding?.Invalidate();
+        this.InvalidateOwnership();
+    }
+
+    internal void BeginSourceParsing()
+    {
+        this.hasParsedSource = true;
+        this.InvalidateSourceAnalysis();
+    }
 
     internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {

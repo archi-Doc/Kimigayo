@@ -57,6 +57,7 @@ public sealed class ControlFlowAnalysis
     private readonly HashSet<(Koto Node, string Message)> reported = new();
     private readonly Dictionary<IdentifierNameKoto, ControlFlowType?> names = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<DeferredBlockKoto, Flow> cleanups = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, DefaultCompletion> defaultCompletions = new(ReferenceEqualityComparer.Instance);
 
     // Direct children are collected into one shared stack-like buffer instead of iterator objects.
     // A traversal appends its children, visits them by index, and truncates the buffer afterwards.
@@ -122,6 +123,7 @@ public sealed class ControlFlowAnalysis
         this.reported.Clear();
         this.names.Clear();
         this.cleanups.Clear();
+        this.defaultCompletions.Clear();
         this.childBuffer.Clear();
         this.arrivedTransfers.Clear();
         this.infoCursor = this.boundaryCursor = this.transferCursor = this.registrationCursor = 0;
@@ -374,6 +376,18 @@ public sealed class ControlFlowAnalysis
                 flow = new(true, this.types.GetExpressionType(node));
                 break;
             case FunctionKoto function:
+                // Every default is a separate declaration-time expression, even for
+                // unused requirements or calls supplying all arguments. Its completion
+                // does not enter the callee body or its enclosing declaration's flow.
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    var parameter = function.Parameters[i];
+                    if (parameter.DefaultValue is { } value && !this.HasInvalidDirective(value))
+                    {
+                        this.VisitDefault(function, i);
+                    }
+                }
+
                 this.VisitFunction(
                     function,
                     function.Body ?? function.ExpressionBody,
@@ -462,12 +476,28 @@ public sealed class ControlFlowAnalysis
                 var receiverFlow = receiver is null ? new Flow(true, ControlFlowType.Unit) : this.Visit(receiver, reachable);
                 var argumentsFlow = this.VisitSequence(call.ArgumentNodes, 0, call.ArgumentNodes.Count, reachable && receiverFlow.Normal);
                 var callType = this.types.GetExpressionType(call);
+                var acquired = receiverFlow.Normal && argumentsFlow.Normal;
+                var defaultPending = false;
+                if (acquired && call.BoundCall is { Target.Declaration: FunctionKoto target } plan)
+                {
+                    foreach (var omitted in plan.DefaultArguments)
+                    {
+                        var completion = this.VisitDefault(target, omitted.Parameter.Slot);
+                        defaultPending |= completion.Pending;
+                        acquired &= completion.Normal;
+                        if (!acquired)
+                        {
+                            break;
+                        }
+                    }
+                }
+
                 flow = new(
-                    receiverFlow.Normal && argumentsFlow.Normal && callType != ControlFlowType.Never,
+                    acquired && callType != ControlFlowType.Never,
                     callType,
                     Union(receiverFlow.Transfers, receiverFlow.Normal ? argumentsFlow.Transfers : null),
-                    receiverFlow.Pending || (receiverFlow.Normal && argumentsFlow.Pending) || callType is null);
-                if (callType is null)
+                    receiverFlow.Pending || (receiverFlow.Normal && argumentsFlow.Pending) || defaultPending || callType is null);
+                if (callType is null || defaultPending)
                 {
                     this.pending.Add(call);
                 }
@@ -597,6 +627,36 @@ public sealed class ControlFlowAnalysis
         }
 
         return flow;
+    }
+
+    private DefaultCompletion VisitDefault(FunctionKoto function, int parameterIndex)
+    {
+        var parameter = function.Parameters[parameterIndex];
+        var value = parameter.DefaultValue!;
+        if (this.defaultCompletions.TryGetValue(value, out var cached))
+        {
+            return cached;
+        }
+
+        // Defaults can refer to later declarations or recursively select another
+        // omitted default. A cycle stays pending instead of expanding without bound.
+        this.defaultCompletions[value] = new(true, true);
+        if (this.HasInvalidDirective(value))
+        {
+            return new(true, true);
+        }
+
+        var parameterType = this.types.GetDeclaredType(parameter.Type);
+        var flow = this.Visit(value, true, parameterType);
+        if (parameterType is not null)
+        {
+            this.CheckCompatibility(new(value, flow.Type, true), parameterType);
+        }
+
+        // Transfers belong to the declaration's internal targets, never the caller.
+        var completion = new DefaultCompletion(flow.Normal, flow.Pending);
+        this.defaultCompletions[value] = completion;
+        return completion;
     }
 
     private void CheckUnsafePermission(Koto node)
@@ -1403,6 +1463,8 @@ public sealed class ControlFlowAnalysis
     {
         public override void Visit(Koto node) => children.Add(node);
     }
+
+    private readonly record struct DefaultCompletion(bool Normal, bool Pending);
 
     private readonly record struct Flow(bool Normal, ControlFlowType? Type, HashSet<JumpKoto>? Transfers = null, bool Pending = false);
 }

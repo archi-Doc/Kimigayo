@@ -14,6 +14,7 @@ public record class DiagnosticCollection
 
     private SourceDocument? sourceDocument;
     private int errorCount;
+    private long errorVersion;
 
     /// <summary>Gets a value indicating whether this collection contains errors without allocating a diagnostic snapshot.</summary>
     public bool HasErrors => Volatile.Read(ref this.errorCount) != 0;
@@ -21,6 +22,10 @@ public record class DiagnosticCollection
     public SourceDocument? SourceDocument => Volatile.Read(ref this.sourceDocument);
 
     public bool IsGlobal => this.Name == string.Empty || this.Name == Kimigayo.GlobalName;
+
+    // Counts attempted error reports, even when location deduplication hides the
+    // message. Clearing displayed diagnostics does not erase source failure history.
+    internal long ErrorVersion => Volatile.Read(ref this.errorVersion);
 
     internal DiagnosticCollection(Kimigayo kimigayo, string name)
     {
@@ -37,6 +42,11 @@ public record class DiagnosticCollection
 
         using (this.diagnostics.LockObject.EnterScope())
         {
+            if (entry.Severity == DiagnosticSeverity.Error)
+            {
+                this.errorVersion++;
+            }
+
             if (this.diagnostics.StartPositionChain.ContainsKey(range.Start))
             {
                 return;
