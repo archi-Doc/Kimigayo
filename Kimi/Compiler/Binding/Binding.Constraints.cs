@@ -259,7 +259,9 @@ public sealed partial class Binding
             root = root.Components[0];
         }
 
-        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && (root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection || scope.Owner is ContractKoto));
+        // A Contract body clause is a premise for its implementations, so its projection must be
+        // rooted in the conforming Type. A root outside the declaration is a closed proposition.
+        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && (root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection || (scope.Owner is ContractKoto && root?.Symbol?.Declaration is ContractKoto)));
         var validSubject = subject is not null && (scope.Owner is FunctionKoto ? input && ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) : input || (clause.Left is IdentifierNameKoto { IdentifierName: "Self" } && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
         if (!validSubject || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
         {
