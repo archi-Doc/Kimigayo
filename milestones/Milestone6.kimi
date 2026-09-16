@@ -1,0 +1,23 @@
+// Milestone 6: value-producing loops, guarded match, yield, and named exit.
+public func main()
+    var candidate: i32 = 0
+    let found: i32 = search: loop
+        candidate = candidate + 1
+        if candidate % 2 == 0
+            continue
+        match candidate
+            3 => continue
+            let value if value >= 7 => exit to search: value
+            _ => ()
+
+    let score: i32 = if found == 7
+        ::Core.writeLine("Selected 7.")
+        yield found * 10
+    else => 0
+
+    let accepted: bool = validate: do
+        require score > 0 else => exit to validate: false
+        exit to validate: score == 70
+
+    require accepted else => $abort("Control-flow check failed")
+    ::Core.writeLine("Control flow passed.")

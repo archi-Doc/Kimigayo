@@ -408,6 +408,15 @@ public sealed class ControlFlowAnalysis
                 this.names[field.NameKoto] = declared ?? flow.Type;
                 flow = flow with { Type = ControlFlowType.Unit };
                 break;
+            case PropertyKoto storedProperty:
+                // Stored declaration annotations (including Origin names) are not evaluations.
+                flow = storedProperty.InitializerKoto is { } fieldInitializer ? this.Visit(fieldInitializer, reachable, this.types.GetDeclaredType(storedProperty.TypeKoto)) : new(true, ControlFlowType.Unit);
+                for (var i = 0; i < storedProperty.Accessors.Count; i++)
+                {
+                    this.Visit(storedProperty.Accessors[i], reachable);
+                }
+
+                break;
             case LabeledKoto labeled:
                 this.CheckLabel(labeled);
                 flow = this.Visit(labeled.Target, reachable, expected);

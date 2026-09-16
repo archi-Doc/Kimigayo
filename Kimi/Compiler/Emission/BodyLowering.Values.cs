@@ -41,8 +41,9 @@ internal sealed partial class BodyLowering
             var expected = value.Kind switch
             {
                 OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element => 0,
-                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert => 1,
-                OwnershipValueKind.Binary => 2,
+                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField => 1,
+                OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite => 2,
+                OwnershipValueKind.Address => value.Count is 0 or 1 ? value.Count : -1,
                 OwnershipValueKind.Phi => value.Count,
                 _ => -1,
             };
@@ -91,7 +92,7 @@ internal sealed partial class BodyLowering
                 }
 
                 var producer = body.Operations[input].Kind;
-                if (producer is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Call or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.AcquirePattern) && body.Values[input].Kind != OwnershipValueKind.Phi)
+                if (producer is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Call or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.Borrow) && body.Values[input].Kind != OwnershipValueKind.Phi)
                 {
                     return false;
                 }

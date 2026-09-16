@@ -1,0 +1,46 @@
+// Milestone 9: length/type generics, callbacks, enum results, and borrowed storage.
+group Demo
+    public group Storage
+        public struct Batch<T>
+            let value: T
+
+            public init(value: T)
+                self.value = value
+
+            public func view(self: ref/Self) -> ref/T from self
+                return self.value@ref/T
+
+            deinit => ::Core.writeLine("Batch destroyed.")
+
+    public group Search
+        public enum Hit<T>
+            Found(isize, T)
+            Missing
+
+        public func find<length N, T>(values: ref/[N of T], accepts: (T) -> bool) -> Hit<T>
+            T is Copy
+            for index in values.indices
+                let value: T = values[index]
+                if accepts(value)
+                    return .Found(index, value)
+            return .Missing
+
+public func main()
+    let batch = Demo.Storage.Batch<[5 of i32]>.init([2, 4, 5, 6, 8])
+    defer => ::Core.writeLine("Search finished.")
+    let target: i32 = 6
+    let result = Demo.Search.find<5, i32>(
+        batch.view(), func [target] (value: i32) => value == target)
+
+    match result
+        .Found(let index, let value) if index == 3 and value == 6
+            ::Core.writeLine("Found 6 at index 3.")
+        .Found(_, _) => $abort("Unexpected search result")
+        .Missing => $abort("Expected a match")
+
+    // A second instantiation also exercises the empty-array exhaustion path.
+    let empty: [0 of i32] = []
+    match Demo.Search.find<0, i32>(empty@ref, func (value: i32) => value == 99)
+        .Found(_, _) => $abort("Empty array produced a match")
+        .Missing => ::Core.writeLine("Missing value handled.")
+    // These i32 results retain no Batch borrow.

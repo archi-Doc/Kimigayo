@@ -198,6 +198,11 @@ public sealed partial class Binding
                     this.BindNode(generated, scope);
                 }
 
+                if (container is StructKoto { ImplicitConstructor: { } constructor })
+                {
+                    this.BindNode(constructor, scope);
+                }
+
                 if (container is not (ContractKoto or StructKoto) && container.Bases.Count != 0)
                 {
                     return Fail(node, BindingFailure.Unsupported, true);

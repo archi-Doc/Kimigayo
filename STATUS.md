@@ -1,5 +1,40 @@
 # Kimigayo Implementation Status
 
+Program Milestone 5 complete (2026-09-17): the unchanged
+`milestones/Milestone5.kimi` passes Binding, ownership, LLVM verification, native
+linking and execution at O0/O2. Eligible structs receive synthesized construction;
+explicit struct borrows, returned input Origins, constructor Origin inference,
+borrowed method receivers and field reads/writes now reach native code. Borrow
+dependencies survive calls, storage and Move. Deinit keeps the view's shared Loan
+active until destruction; mutation and ownership transfer resume afterward.
+Reborrow conflicts, temporary-owner escapes and unreachable-code violations are
+rejected. Existing projection-aware string Loan checks remain in effect.
+
+Expected stdout is exactly
+`Borrowed sum is 55.\nView destroyed; counter is still 55.\nFinal value is 56.\nCounter destroyed.\nDone.\n`,
+stderr is empty, exit 0. Debug/Release solution builds have zero warnings/errors;
+both full managed suites pass 6,986 tests without skips, including 31 new tests.
+Ten new fixtures pass 20 O0/O2 native checks; existing reference, string-guard and
+element-borrow fixtures pass 100, 52 and 208 checks respectively. The milestone
+script passes 47 checks per configuration, including renamed inputs, changed
+counts, immediate temporary borrows, two Abort variants and fourteen rejected
+inputs. Abort output confirms that defer/deinit are not run during termination.
+Reports under `bin/milestone5/<configuration>/<run-id>/` retain exact output and
+source/compiler/build identities. Final run IDs are Debug
+`711f7e5100bb4995b356f84739f3efda` and Release
+`2eaa26fcd8bf4c6dae5e390a9403549c`.
+Milestones 1–4 also pass their 25, 21, 37 and 33 checks, respectively, against both
+final compiler configurations. No required check remains unverified and no blocker remains.
+
+General borrowed aggregate operations, accessors and generic/inherited structs
+remain separate work. This checkpoint concerns program 5, independently of
+PLAN.md's broader stages; earlier checkpoint entries below are historical.
+No specification change was required. Concurrent specification programs 6–9 and
+their documentation were preserved without implementing them. Drafts and NativeAOT
+were untouched.
+
+Specification programs 6–9 (2026-09-16): Added [Milestone6–9](milestones/README.md#milestone-6-value-producing-control-flow) covering value-producing loop/if/do and guarded match, nested fixed-array iteration and cross-loop cleanup, nested groups with generic ownership transfer, and length/type-generic search with Copy constraints, callbacks, enum results, and borrowed storage. README records expected outputs and optional rejection/Abort exercises. These are specification targets; no compiler capability checks, builds, execution, or tests (including NativeAOT) were performed for these additions. Language rules are unchanged; SPEC.md links to the program series.
+
 Program Milestone 4 complete (2026-09-16): the unchanged
 `milestones/Milestone4.kimi` now passes Binding, ownership, LLVM verification,
 native linking and execution. The first failure was outdated rejection of a

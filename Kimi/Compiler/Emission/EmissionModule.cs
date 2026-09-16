@@ -15,6 +15,7 @@ internal enum EmissionOpcode : byte
     LoadScalar,
     LoadElement,
     ElementAddress,
+    BorrowAddress,
     StoreScalar,
     StoreElement,
     Scalar,

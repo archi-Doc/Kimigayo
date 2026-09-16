@@ -72,7 +72,7 @@ public sealed partial class OwnershipAnalysis
             this.flow.Append(this.compilation.SourceModules[i].RootKoto);
         }
 
-        if (!binding.Result.IsComplete || binding.Obligations.Count != 0)
+        if (!binding.Result.IsComplete || !this.SupportsOriginObligations())
         {
             return this.Result;
         }
@@ -247,6 +247,7 @@ public sealed partial class OwnershipAnalysis
         this.body.Solve();
         this.FinalizeResults();
         this.body.CheckUnreachable();
+        this.body.VerifyBorrows();
 
         for (var i = 0; i < this.body.IssueStorage.Count; i++)
         {
@@ -480,7 +481,14 @@ public sealed partial class OwnershipAnalysis
                 this.Unsupported(test);
                 return this.Temporary(test);
             case ConversionKoto conversion:
+                if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsStruct(conversion.BoundType))
+                {
+                    return this.BorrowStruct(conversion.Left, conversion.BoundType!);
+                }
+
                 return this.ConversionValue(conversion);
+            case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType):
+                return this.ReadBorrowedField(member);
             case BinaryKoto element when ElementAccess.IsSyntax(element):
                 return this.ElementValue(element, use);
             case BinaryKoto binary:
@@ -542,6 +550,11 @@ public sealed partial class OwnershipAnalysis
         if (assignment)
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
+            if (target is MemberAccessKoto borrowedField && ReferenceTypes.IsStruct(borrowedField.Left.BoundType))
+            {
+                return this.WriteBorrowedField(binary, borrowedField);
+            }
+
             if (target is BinaryKoto element && ElementAccess.IsSyntax(element) && !this.SpecialField(target))
             {
                 return binary.Akind == KotoKind.Equals ? this.AssignElement(binary, element) : this.UpdateElement(binary, element);
@@ -695,14 +708,16 @@ public sealed partial class OwnershipAnalysis
         var borrows = false;
         if (plan.Receiver is { } receiver)
         {
-            this.arguments.Add(this.Argument(receiver, plan.ReceiverOperation.Kind));
+            this.arguments.Add(ReferenceTypes.IsStruct(plan.ReceiverOperation.ParameterType) && plan.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
+                ? this.BorrowStruct(receiver, plan.ReceiverOperation.ParameterType!) : this.Argument(receiver, plan.ReceiverOperation.Kind));
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = plan.ArgumentOperations[i];
             borrows |= argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType);
-            this.arguments.Add(argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType)
+            this.arguments.Add(ReferenceTypes.IsStruct(argument.ParameterType) && argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
+                ? this.BorrowStruct(call.ArgumentNodes[i], argument.ParameterType!) : argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType)
                 ? this.BorrowArgument(call, argument) : this.Argument(call.ArgumentNodes[i], argument.Kind));
         }
 

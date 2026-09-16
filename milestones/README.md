@@ -1,9 +1,10 @@
 # Language milestones
 
-Five short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestones 1–4 are verified through
-native execution (2026-09-16); Milestone 5 remains a future target, and its output
-below is a specification expectation rather than an execution claim.
+Nine short, independent programs based on the current [SPEC](../SPEC.md).
+They are staged compiler implementation targets. Milestones 1–5 are verified through
+native execution (2026-09-17); Milestones 6–9 are specification targets, and their
+outputs below are specification expectations rather than execution claims.
+Milestones 6–9 were added without compiler capability checks, builds, or execution.
 
 | Program | Added concepts |
 | --- | --- |
@@ -12,6 +13,10 @@ below is a specification expectation rather than an execution claim.
 | [Milestone3](Milestone3.kimi) | Explicit `main`, function calls, arguments/results, `return`, `defer` |
 | [Milestone4](Milestone4.kimi) | `struct`, `init`, fields, whole-value Move, owned parameters, `deinit` |
 | [Milestone5](Milestone5.kimi) | `uniq`/`ref`, returned borrow, `origin`/`from`, scope and destruction lifetimes |
+| [Milestone6](Milestone6.kimi) | Value-producing `loop`, guarded `match`, `continue`, named `exit`, `yield`, `require` |
+| [Milestone7](Milestone7.kimi) | Two-dimensional fixed arrays, nested `for`, cross-loop transfers, Slice reads |
+| [Milestone8](Milestone8.kimi) | Nested `group` containers, generic struct/function, generic Copy/Move acquisition |
+| [Milestone9](Milestone9.kimi) | Length/type parameters, Copy constraint, callbacks/capture, generic enum, borrowed storage |
 
 Each file is a separate Application; do not combine them into one project.
 Under [single-source input rules](../spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
@@ -206,6 +211,140 @@ Try each of these independently as a compile-time rejection exercise:
 Focus: [Origins](../spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins),
 [Loans and lifetimes](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing),
 and [destruction lifetime checking](../spec/15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking).
+
+Milestone 5 is verified through native execution. Reproduce with the pinned
+Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone5.ps1 -Configuration Release
+```
+
+The script verifies LLVM IR and native linking, then checks native execution and
+both forms of CLI `run`. Its 47 checks per Debug/Release compiler cover the
+unchanged input, byte-identical renamed O0/O2 copies, alternate numeric values,
+immediate temporary borrows, two Abort paths and fourteen rejected inputs.
+Normal output is exactly the five lines above, with empty stderr and exit 0.
+The Abort variants exit 1 with the expected diagnostic and no termination cleanup.
+Invalid cases include mutation/Move/replacement while deinit needs the borrow,
+temporary escape, shared writes, exclusive aliasing and parent access during a
+required reborrow. Reports and source/compiler/build identities are retained under
+`bin/milestone5/<configuration>/<run-id>/`. The script does not run NativeAOT.
+
+## Milestone 6: value-producing control flow
+
+Search the positive integers with a `loop`, skip even values and 3 using
+`continue`, and leave the loop with 7 through a guarded `match` arm. The label
+on the loop makes the result destination explicit. An indented `if` supplies
+its result with `yield`; a labeled `do` supplies its result with named `exit`.
+The `require` failure body exits that `do`, while the final require Aborts.
+
+```text
+Selected 7.
+Control flow passed.
+```
+
+Change `yield found * 10` to `yield 0` to take the do's early false exit and
+the final Abort. An unlabeled `exit` would skip the `do` rather than return its
+result. `require` is an ordinary statement, distinct from test-only `$require`.
+
+Focus: [loop results](../spec/14-control-flow.md#1463-loop),
+[transfer targets](../spec/14-control-flow.md#1452-target-lookup),
+and [require](../spec/14-control-flow.md#1411-require-statement).
+
+## Milestone 7: arrays and nested iteration
+
+Traverse a fully initialized 3-by-4 fixed array using its `indices` snapshots.
+These are iterable ResolvedRange values with isize indices; an unresolved
+`0..length` Range is not directly iterable. Double each visited cell, skip the
+row beginning with 0, and stop both loops before changing the cell holding 7.
+The accumulated total is `2 + 4 + 6 + 8 + 10 + 12 = 42`.
+
+```text
+Row finished.
+Row finished.
+Row finished.
+Matrix total is 42.
+Borrowed row total is 20.
+```
+
+Normal row completion, `continue to rows`, and `exit to rows` each run the row's
+defer exactly once. The final Slice borrows the first row instead of acquiring
+its elements by ownership. Iteration over the Slice's indices and indexed reads
+Copy its i32 elements for arithmetic. Direct Slice iteration would instead yield
+`ref/i32`; safe references cannot be converted to owned integers with `@i32`.
+Fixed-array storage and Slice creation need no extra heap allocation for element
+storage.
+
+As separate rejection exercises, change the outer length to 2 without removing
+a row, or attempt to write an element through the Slice. To exercise runtime
+bounds failure, change the final `matrix[2][2]` check to `matrix[3][2]`.
+
+Focus: [arrays](../spec/04-arrays-indexing-and-slices.md),
+[iteration acquisition](../spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
+and [transfer cleanup](../spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
+
+## Milestone 8: nested containers and generic ownership
+
+`Toolkit.Storage` contains `Box<T>`, while its sibling `Toolkit.Selection`
+contains `choose<T>`. These are declaration scopes, not runtime objects;
+structs are placed inside groups because this specification does not permit
+nested declaration containers inside struct bodies.
+
+```text
+Chosen item.
+Boxed array total is 12.
+Generic scope finished.
+```
+
+`choose` acquires both arguments, returns one, and cleans up the other. Neither
+it nor `Box` requires Copy: the generic definitions must handle both Copy and
+Move acquisition. `take` consumes the Box; a string field Moves out, while the
+fixed i32 array field Copies out. The examples exercise both cases. Explicit
+public members make the paths accessible from outside their declaring groups.
+
+As separate rejection exercises, reuse `selected` after `selected.take()`, or
+add a `deinit` to Box while retaining its generic extracting `take`: the latter
+cannot permit a Non-Copy field Move that makes a destructor-bearing Box incomplete.
+
+Focus: [nested containers](../spec/06-declarations-and-containers.md#611-root-and-nested-containers),
+[generic checking](../spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
+and [partial Move](../spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move).
+
+## Milestone 9: a generic search pipeline
+
+`Batch<T>` owns initialized storage and lends an explicitly typed `ref/T` tied
+to its receiver. `find<length N, T>` borrows a fixed array, calls a predicate,
+and returns a generic enum containing either an index/value pair or no match.
+The Copy constraint permits reading a T from shared storage, supplying it to
+the callback, and using it again in the successful result.
+
+```text
+Found 6 at index 3.
+Missing value handled.
+Search finished.
+Batch destroyed.
+```
+
+The first call uses an anonymous function explicitly capturing the Copy target.
+The second instantiates N as zero, demonstrating safe exhaustion without any
+element access. The result match uses payload binding and a guard, followed by
+an unguarded Found arm and Missing arm so that it remains exhaustive. The defer
+runs before Batch destruction. For the i32 instantiations shown, returned values
+retain no borrow of Batch; in general, a Copy T can itself carry Origin dependencies.
+
+The callback avoids assuming an undeclared comparison capability on arbitrary T.
+`@ref/T` in `view` explicitly borrows the stored slot, preserving its layer even
+if another instantiation supplies a reference Type as T.
+
+As separate rejection exercises, remove `T is Copy`, use a mismatched explicit
+length in the first call, or remove the unguarded Found fallback. The guarded
+Found arm alone does not prove coverage of every Found value.
+
+Focus: [function length parameters](../spec/04-arrays-indexing-and-slices.md#44-function-length-parameters),
+[function expressions](../spec/07-functions-and-callable-values.md#76-function-expressions),
+[enum results](../spec/06-declarations-and-containers.md#63-enums), and
+[Origins](../spec/15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining

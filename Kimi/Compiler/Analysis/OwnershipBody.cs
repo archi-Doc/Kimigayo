@@ -240,6 +240,10 @@ public sealed partial class OwnershipBody
         var state = this.State(operation.Place);
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.WriteBorrowedField:
+                this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
+                this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
+                break;
             case OwnershipOperationKind.PayloadPlacement:
             case OwnershipOperationKind.InitializeSubject:
                 if (operation.Input >= 0)

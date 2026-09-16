@@ -7,6 +7,61 @@ namespace Kimi.Compiler;
 /// <summary>The explicitly implemented reference representation, independent of Origin identity.</summary>
 internal static class ReferenceTypes
 {
+    internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+        && StructStorage.IsStruct(type.Components[0]);
+
+    internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsStruct(type);
+
+    internal static bool CallTypeMatches(BoundType? formal, BoundType? actual, BoundCall call)
+    {
+        if (formal is null || actual is null || formal.Kind != actual.Kind || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
+            formal.Length != actual.Length || !ReferenceEquals(formal.LengthExpression, actual.LengthExpression) ||
+            formal.Components.Count != actual.Components.Count || formal.OriginArguments.Count != actual.OriginArguments.Count ||
+            !OriginMatches(formal.Origin, actual.Origin))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < formal.OriginArguments.Count; i++)
+        {
+            if (!OriginMatches(formal.OriginArguments[i], actual.OriginArguments[i]))
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < formal.Components.Count; i++)
+        {
+            if (!CallTypeMatches(formal.Components[i], actual.Components[i], call))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        bool OriginMatches(BoundOrigin? pattern, BoundOrigin? value)
+        {
+            if (ReferenceEquals(pattern, value))
+            {
+                return true;
+            }
+
+            if (pattern is null)
+            {
+                return false;
+            }
+
+            if (pattern.Kind == OriginKind.Input && ReferenceEquals(pattern.Binder, call.Target.Declaration) && (uint)pattern.Slot < (uint)call.InputOrigins.Length)
+            {
+                return ReferenceEquals(call.InputOrigins[pattern.Slot], value);
+            }
+
+            return pattern.Kind == OriginKind.Parameter && call.DeclaringType is { } declaring && ReferenceEquals(pattern.Binder, declaring.Symbol?.Declaration) &&
+                (uint)pattern.Slot < (uint)declaring.OriginArguments.Count && ReferenceEquals(declaring.OriginArguments[pattern.Slot], value);
+        }
+    }
+
     internal static bool IsString(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 }
         && ReferenceEquals(type.Components[0], BoundType.String);
 

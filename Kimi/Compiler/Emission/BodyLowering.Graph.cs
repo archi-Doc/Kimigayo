@@ -17,7 +17,7 @@ internal sealed partial class BodyLowering
     private ArithmeticCheckKind[] checks = [];
     private int[] continuations = [];
 
-    private static bool IsScalar(BoundType? type) => ScalarTypes.Supports(type);
+    private static bool IsScalar(BoundType? type) => ReferenceTypes.IsValue(type);
 
     private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind == OwnershipValueKind.Convert
         ? conversion.Checked ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None

@@ -45,7 +45,7 @@ public sealed partial class OwnershipAnalysis
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
-        if (ReferenceTypes.IsString(type))
+        if (ReferenceTypes.IsString(type) || ReferenceTypes.IsStruct(type))
         {
             return true;
         }
@@ -65,7 +65,7 @@ public sealed partial class OwnershipAnalysis
             // Reserve the key before following fields to reject recursive inline storage.
             this.supportedTypes[type] = false;
             supported = structure.Bases.Count == 0 && structure.GenericArguments.Count == 0 &&
-                type.OriginArguments.Count == 0 && structure.Origins.Count == 0;
+                type.OriginArguments.Count <= structure.OriginNames.Count;
             for (var i = 0; i < StructStorage.Count(type) && supported; i++)
             {
                 supported = StructStorage.Field(type, i).BoundType is { } field && this.SupportsType(field);

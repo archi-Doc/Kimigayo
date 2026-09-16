@@ -368,6 +368,11 @@ public sealed partial class Binding
                 if (this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
                 {
                     this.BindHeader(candidate);
+                    if (function.IsConstructor)
+                    {
+                        declaringType = this.ConstructorType(call, function, scope);
+                    }
+
                     state = this.TryCandidate(call, function, generic, scope, scratch, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed);
                 }
 
@@ -481,7 +486,7 @@ public sealed partial class Binding
             call.BoundSymbol = winner;
             if (selected.IsConstructor)
             {
-                result = ((MemberAccessKoto)callee).Left.BoundType!;
+                result = selectedType!;
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
@@ -567,6 +572,11 @@ public sealed partial class Binding
     {
         defaultsUsed = 0;
         operations.Clear();
+        if (function.IsConstructor && declaringType is null)
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
         if (InvalidDeclarationContext(function))
         {
             return CandidateApplicability.Error;
@@ -799,7 +809,7 @@ public sealed partial class Binding
 
         if (function.IsConstructor)
         {
-            result = ((MemberAccessKoto)call.Method).Left.BoundType!;
+            result = declaringType!;
         }
 
         if (expected is not null && !FitsType(result, this.ContractType(expected, scope)))

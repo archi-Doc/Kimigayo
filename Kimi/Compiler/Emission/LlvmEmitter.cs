@@ -140,7 +140,7 @@ public sealed class LlvmEmitter
             return "Emission requires the verified windows-x64-v1 target and DataLayout.";
         }
 
-        if (!c.Binding.Result.IsComplete || c.Binding.Obligations.Count != 0 || !c.Core.IsValid ||
+        if (!c.Binding.Result.IsComplete || !c.Ownership.SupportsOriginObligations() || !c.Core.IsValid ||
             c.Kotonoha.HasSourceErrors || c.Kotonoha.DiagnosticCollection.HasErrors || !startup.IsComplete || !c.Ownership.Result.IsVerified)
         {
             return "Emission requires current final Binding, startup, control-flow and ownership verification without errors.";
@@ -171,7 +171,8 @@ public sealed class LlvmEmitter
             }
 
             var function = body.Function;
-            if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor)
+            if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor &&
+                (function.BoundSymbol.ReceiverIndex < 0 || !ReferenceTypes.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType)))
             {
                 return "Ordinary structure methods need receiver/call lowering outside this subset.";
             }

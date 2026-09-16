@@ -44,7 +44,7 @@ internal sealed class AggregateLayoutPool
 
         var structure = StructStorage.IsStruct(type);
         if (depth == 64 || (!structure && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray)) ||
-            type.Semantics != SemanticsKind.Owner || type.Origin is not null || type.OriginArguments.Count != 0 ||
+            type.Semantics != SemanticsKind.Owner || type.Origin is not null || (!structure && type.OriginArguments.Count != 0) ||
             (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Length > int.MaxValue || type.Components.Count != 1)))
         {
             return null;
@@ -61,7 +61,7 @@ internal sealed class AggregateLayoutPool
             {
                 var component = structure ? StructStorage.Field(type, i).BoundType! : type.Components[i];
                 var child = this.Get(component, depth + 1);
-                var value = child?.Value ?? (ScalarTypes.Supports(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
+                var value = child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
                 if (value is null)
                 {
                     this.resolved[type] = null;

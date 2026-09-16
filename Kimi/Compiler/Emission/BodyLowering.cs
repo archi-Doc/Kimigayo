@@ -225,6 +225,11 @@ internal sealed partial class BodyLowering
             return Fail("Call entries must be consecutive and immediately precede their call.", out failure);
         }
 
+        if (body.Values[index].Kind is OwnershipValueKind.Address or OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite)
+        {
+            return this.LowerStructBorrow(body, function, index, out failure);
+        }
+
         if (operation.Kind == OwnershipOperationKind.EndComparisonLoans)
         {
             failure = null;

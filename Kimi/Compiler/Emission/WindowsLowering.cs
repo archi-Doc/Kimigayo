@@ -59,7 +59,7 @@ internal static partial class WindowsLowering
     /// <param name="type">The complete Type.</param>
     /// <returns>The value lowering.</returns>
     internal static ValueLowering? GetValue(BoundType type)
-        => ReferenceTypes.IsString(type) ? StringReference : Values.GetValueOrDefault(type);
+        => ReferenceTypes.IsString(type) || ReferenceTypes.IsStruct(type) ? StringReference : Values.GetValueOrDefault(type);
 
     /// <summary>Gets the physical implementation of a compiler-provided Core function.</summary>
     /// <param name="kind">The compiler function identity.</param>

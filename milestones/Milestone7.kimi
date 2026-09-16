@@ -1,0 +1,31 @@
+// Milestone 7: fixed arrays, nested for loops, and cross-loop transfers.
+public func main()
+    var matrix: [3 of [4 of i32]] = [
+        [1, 2, 3, 4],
+        [0, 10, 20, 30],
+        [5, 6, 7, 8],
+    ]
+    var total: i32 = 0
+    rows: for row in matrix.indices
+        defer => ::Core.writeLine("Row finished.")
+        for column in matrix[row].indices
+            let value = matrix[row][column]
+            if value == 0
+                continue to rows // Skip the remaining cells in this row.
+            if value == 7
+                exit to rows // Leave both loops, running the row's defer.
+            matrix[row][column] = value * 2
+            total = total + matrix[row][column]
+
+    require total == 42 else => $abort("Unexpected matrix total")
+    require matrix[1][1] == 10 else => $abort("Skipped row was changed")
+    require matrix[2][2] == 7 else => $abort("Stop cell was changed")
+    ::Core.writeLine("Matrix total is 42.")
+
+    // The Slice borrows the first row; indexed reads Copy its i32 elements.
+    let rowView = matrix[0][..]
+    var rowTotal: i32 = 0
+    for index in rowView.indices
+        rowTotal = rowTotal + rowView[index]
+    require rowTotal == 20 else => $abort("Unexpected slice total")
+    ::Core.writeLine("Borrowed row total is 20.")

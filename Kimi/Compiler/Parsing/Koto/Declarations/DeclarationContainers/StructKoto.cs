@@ -10,6 +10,40 @@ namespace Kimi.Compiler.Parsing;
 /// </summary>
 public sealed class StructKoto : DeclarationContainerKoto
 {
+    private FunctionKoto? implicitConstructor;
+
+    internal FunctionKoto? ImplicitConstructor { get; private set; }
+
+    internal void PrepareImplicitConstructor()
+    {
+        this.ImplicitConstructor = null;
+        // Base construction requires its own verified invocation plan.
+        if (this.Bases.Count != 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < this.Members.Count; i++)
+        {
+            if (this.Members[i] is FunctionKoto { IsConstructor: true } ||
+                this.Members[i] is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var, InitializerKoto: null })
+            {
+                return;
+            }
+        }
+
+        this.ImplicitConstructor = this.implicitConstructor ??= new(this);
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        base.VisitChildrenCore(visitor);
+        if (this.ImplicitConstructor is { } constructor)
+        {
+            visitor.Visit(constructor);
+        }
+    }
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Struct;
 

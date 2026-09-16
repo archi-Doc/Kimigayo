@@ -158,6 +158,21 @@ internal static partial class LlvmModuleWriter
                 case EmissionOpcode.ElementAddress:
                     WriteElementAddress(output, constants, function, instruction);
                     break;
+                case EmissionOpcode.BorrowAddress:
+                    Name(output, "  %v", instruction.Operation);
+                    output.Write(" = getelementptr i8, ptr ");
+                    var address = function.GetOperands(instruction)[0];
+                    if (address.Kind == EmissionOperandKind.SlotAddress)
+                    {
+                        WriteSlot(output, function, (int)address.Value);
+                    }
+                    else
+                    {
+                        WriteOperand(output, address);
+                    }
+
+                    output.Write(", i64 0\n");
+                    break;
                 case EmissionOpcode.StringEquals:
                 case EmissionOpcode.StringCompare:
                     WriteStringComparison(output, function, instruction);

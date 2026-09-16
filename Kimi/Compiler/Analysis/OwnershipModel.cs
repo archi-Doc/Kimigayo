@@ -72,6 +72,7 @@ public enum OwnershipOperationKind : byte
     WriteElement,
     InitializeReceiverField,
     CheckReceiverField,
+    WriteBorrowedField,
 }
 
 public enum PlacementKind : byte
@@ -319,6 +320,9 @@ internal enum OwnershipValueKind : byte
     Element,
     Borrow,
     Phi,
+    Address,
+    BorrowedField,
+    BorrowedFieldWrite,
 }
 
 // Start/Count address PhiInputs for Phi, otherwise ValueOperands.

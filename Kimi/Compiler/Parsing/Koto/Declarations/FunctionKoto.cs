@@ -206,6 +206,16 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Body.Parent = this;
     }
 
+    internal FunctionKoto(StructKoto owner)
+        : base(owner.CodeContext, owner.Span)
+    {
+        this.Name = "init";
+        this.IsConstructor = true;
+        this.Modifier = ModifierKind.Public;
+        this.Parent = owner;
+        this.Body = new CodeBlockKoto(owner.CodeContext) { Parent = this };
+    }
+
     /// <summary>Consumes the function body.</summary>
     /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)

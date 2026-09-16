@@ -54,6 +54,10 @@ public sealed partial class Binding
         return source;
     }
 
+    internal static Koto PlaceOriginBinder(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Declaration : source;
+
+    internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Slot : 0;
+
     private static ConstraintProof ProjectedReceiverProof(BindingSymbol implementation)
         // Until Access Effect verification supplies callee/returned-Loan summaries, no body or signature is evidence.
         => implementation.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;
@@ -61,7 +65,7 @@ public sealed partial class Binding
     private BoundOrigin PlaceOrigin(Koto source)
     {
         source = PlaceOriginSource(source);
-        return source.BoundType?.Origin ?? this.OriginAtom(source.BoundSymbol?.Declaration ?? source, OriginKind.Projection, source.BoundSymbol?.Slot ?? 0);
+        return source.BoundType?.Origin ?? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)

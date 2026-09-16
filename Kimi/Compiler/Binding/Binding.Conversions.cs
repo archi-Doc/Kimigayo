@@ -86,6 +86,22 @@ public sealed partial class Binding
                 return Complete(conversion, null);
             }
 
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
+                (StructStorage.IsStruct(operandType) || ReferenceTypes.IsStruct(operandType)) &&
+                shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
+            {
+                var referent = IsBorrow(operandType.Semantics) ? operandType.Components[0] : operandType;
+                var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent]);
+                if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _))
+                {
+                    return Fail(conversion, BindingFailure.InvalidAssignment);
+                }
+
+                Complete(conversion.Right, adapted);
+                conversion.ConversionBinding = ConversionBinding.Borrow;
+                return Complete(conversion, adapted);
+            }
+
             if (semantics == SemanticsKind.Owner && SupportsIdentityAcquisition(operandType) &&
                 shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
             {

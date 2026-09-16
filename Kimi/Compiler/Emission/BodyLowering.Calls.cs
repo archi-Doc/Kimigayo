@@ -25,10 +25,10 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         if (operation.Source is not InvocationKoto { AttributeChain: null, BoundCall: { } plan } call ||
-            plan.Receiver is not null || plan.TypeArguments.Length != 0 || plan.Origins.Length != 0 ||
+            plan.TypeArguments.Length != 0 || plan.Origins.Length != 0 ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
-            plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count != target.Parameters.Count ||
-            !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceEquals(plan.ReturnType, target.IsConstructor ? StructStorage.ReceiverType(target) : target.BoundSymbol?.Type))
+            plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
+            !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceTypes.CallTypeMatches(target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type, plan.ReturnType, plan))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
@@ -44,21 +44,22 @@ internal sealed partial class BodyLowering
         this.parameterArguments.AsSpan(0, target.Parameters.Count).Fill(-1);
         var cursor = 0;
         var complete = true;
-        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        for (var i = plan.Receiver is null ? 0 : -1; i < call.ArgumentNodes.Count; i++)
         {
-            var parameter = plan.ArgumentToParameter[i];
-            var acquisition = plan.ArgumentOperations[i];
+            var parameter = i < 0 ? target.BoundSymbol!.ReceiverIndex : plan.ArgumentToParameter[i];
+            var acquisition = i < 0 ? plan.ReceiverOperation : plan.ArgumentOperations[i];
+            var sourceArgument = i < 0 ? plan.Receiver! : call.ArgumentNodes[i];
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
-                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow) || acquisition.ParameterIndex != parameter ||
-                (!ReferenceEquals(acquisition.ParameterType, target.Parameters[parameter].Type.BoundType) && !ReferenceParameterFits(plan, target, parameter, acquisition)) ||
-                (acquisition.Kind == ArgumentOperationKind.Borrow && !ReferenceTypes.IsString(acquisition.ParameterType)))
+                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || acquisition.ParameterIndex != parameter ||
+                !ReferenceTypes.CallTypeMatches(target.Parameters[parameter].Type.BoundType, acquisition.ParameterType, plan) ||
+                (acquisition.Kind != ArgumentOperationKind.Value && !ReferenceTypes.IsString(acquisition.ParameterType) && !ReferenceTypes.IsStruct(acquisition.ParameterType)))
             {
                 return Fail("Invalid call argument mapping or acquisition.", out failure);
             }
 
             // The builder omits CallEntry for an argument whose evaluation cannot complete.
             // It still checks the rest of the source and this call's signature.
-            if (!this.flow!.Nodes[call.ArgumentNodes[i]].CanCompleteNormally)
+            if (!this.flow!.Nodes[sourceArgument].CanCompleteNormally)
             {
                 this.parameterArguments[parameter] = -2;
                 complete = false;

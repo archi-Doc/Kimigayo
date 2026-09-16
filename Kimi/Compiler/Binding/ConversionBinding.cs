@@ -11,4 +11,5 @@ internal enum ConversionBinding : byte
     Abrupt,
     Numeric,
     Identity,
+    Borrow,
 }

@@ -1,5 +1,58 @@
 # Kimigayo Compiler Completion Plan
 
+## Program Milestone 5 completion (2026-09-17)
+
+This checkpoint concerns `milestones/Milestone5.kimi`, independently of the broader
+M1–M17 plan. Read AGENTS.md and all five original programs. The initial working tree
+was clean. The dependency sequence is output/startup (1), scalar control flow (2),
+functions/return/defer (3), owned construction/Move/destruction (4), then borrowed
+access, returned Origins and destruction lifetimes (5). Windows x64, .NET SDK
+10.0.401 and pinned LLVM 22.1.8 are available. NativeAOT is excluded.
+
+- First reproduction: after a successful current-source Debug solution build,
+  `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone5.kimi` failed
+  final Binding at `Counter.init()` (33:19), with further unsupported borrow and
+  construction diagnostics. The related baseline passed 126 tests. Ownership and
+  emission gaps were predictions until the Binding obstacles were removed.
+- Implementation order: synthesize eligible zero-argument construction; bind
+  explicit borrows and infer the constructed Type's declared Origins; discharge
+  input well-formedness obligations with call-site lifetime checks; retain borrow
+  dependencies through calls/storage/Move and deinit uses; lower reference values,
+  receiver arguments and field loads/stores; verify native execution and regressions.
+- Final stage: the unchanged target passes Binding, ownership, LLVM verification,
+  linking and native O0/O2 execution with the expected five lines, empty stderr and exit 0.
+  Reborrow rejection tests exposed parent access during an active shared child,
+  and a temporary-result test exposed an incorrect callee-based Origin anchor;
+  both are repaired. Unreachable code uses the existing checking states to reject
+  borrow conflicts even after Abort. Projection-aware legacy string Loans retain their existing
+  verifier. The focused borrow/guard/element/conversion regression passes 544 tests.
+- Verification: Debug/Release solution builds have zero warnings/errors; each full
+  managed suite passes 6,986 tests with no skips, including 31 new tests. Ten new
+  fixtures pass 20 O0/O2 native checks. Existing reference, string-guard and
+  element-borrow fixtures pass 100, 52 and 208 native checks respectively.
+  `test-milestone5.ps1` passes 47 checks per configuration: the original input,
+  renamed O0/O2 copies, two Abort variants, alternate counts, immediate temporary
+  borrows and fourteen rejected inputs. The first script run found an incorrect
+  expected diagnostic line (29, not 28); the script was corrected.
+  Milestones 1–4 pass their 25, 21, 37 and 33 checks, respectively, with both final
+  compiler configurations. No required check remains unverified and no blocker remains.
+- Reports: `bin/milestone5/Debug/711f7e5100bb4995b356f84739f3efda/verification.json`
+  and `bin/milestone5/Release/2eaa26fcd8bf4c6dae5e390a9403549c/verification.json`
+  retain exact output, source/compiler hashes and build identities. Expected stdout:
+  `Borrowed sum is 55.\nView destroyed; counter is still 55.\nFinal value is 56.\nCounter destroyed.\nDone.\n`.
+- Scope: synthesized construction is limited to eligible nongeneric, noninherited
+  structs; reference lowering covers struct pointers, borrowed receivers and
+  supported scalar/reference fields. General borrowed aggregate operations,
+  accessors and generic/inherited struct lowering remain separate plan work.
+- Concurrent additions of programs 6–9 and SPEC/STATUS/README links are external
+  work and preserved. Their snapshot is in `bin/milestone5-external-document-snapshot/`.
+  This implementation remains scoped to program 5; no later completion is claimed.
+
+Reproduce after a current-source build with
+`./backend/windows-x64/test-milestone5.ps1 -Configuration Debug` (or `Release`).
+No specification change was needed for this implementation; drafts and NativeAOT
+were untouched. Stop at program Milestone 5.
+
 ## Program Milestone 4 completion (2026-09-16)
 
 This checkpoint concerns `milestones/Milestone4.kimi`, independently of the broader

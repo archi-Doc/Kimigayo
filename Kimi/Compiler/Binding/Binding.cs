@@ -769,6 +769,11 @@ public sealed partial class Binding
                     this.Scope.ConformancePath = null;
                     break;
                 case DeclarationContainerKoto container:
+                    if (container is StructKoto structure)
+                    {
+                        structure.PrepareImplicitConstructor();
+                    }
+
                     if (!container.IsRoot)
                     {
                         var kind = container is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type;

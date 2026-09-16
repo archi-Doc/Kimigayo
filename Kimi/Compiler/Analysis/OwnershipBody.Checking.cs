@@ -125,7 +125,7 @@ public sealed partial class OwnershipBody
 
     private bool NeedsSourceState(OwnershipOperation operation)
         => operation.Place >= 0 && this.PlaceStorage[operation.Place].Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter &&
-            (operation.Kind is OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.WriteElement ||
+            (operation.Kind is OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.WriteElement or OwnershipOperationKind.WriteBorrowedField ||
                 (operation.Kind == OwnershipOperationKind.Write && operation.Source is BinaryKoto));
 
     private void SolveChecking()

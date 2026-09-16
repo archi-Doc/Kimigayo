@@ -122,7 +122,7 @@ internal sealed partial class BodyLowering
                         operation.Acquisition != AcquisitionKind.None || loan < 0 || body.ComparisonLoans[loan].Read != id || body.ComparisonLoans[loan].Call is null ||
                         (operation.Projection < 0 && (!ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) || !this.ValidateBorrowSource(body, operation))) ||
                         type!.Origin is not { Kind: OriginKind.Projection } origin ||
-                        !ReferenceEquals(origin.Binder, originSource.BoundSymbol?.Declaration ?? originSource) || origin.Slot != (originSource.BoundSymbol?.Slot ?? 0))
+                        !ReferenceEquals(origin.Binder, Binding.PlaceOriginBinder(originSource)) || origin.Slot != Binding.PlaceOriginSlot(originSource))
                     {
                         return Fail("Reference formation lacks its source and argument Loan.", out failure);
                     }
