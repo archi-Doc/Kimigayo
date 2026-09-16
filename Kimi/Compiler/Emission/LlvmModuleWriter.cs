@@ -119,7 +119,15 @@ internal static partial class LlvmModuleWriter
         {
             Name(output, "  %p", slot.Place);
             output.Write(" = getelementptr i8, ptr ");
-            WriteSlot(output, function, slot.Parent);
+            if (slot.Parent < 0)
+            {
+                output.Write("%ret"); // Dedicated construction/destruction receiver address.
+            }
+            else
+            {
+                WriteSlot(output, function, slot.Parent);
+            }
+
             output.Write(", i64 ");
             WriteNumber(output, slot.Offset);
             output.Write('\n');

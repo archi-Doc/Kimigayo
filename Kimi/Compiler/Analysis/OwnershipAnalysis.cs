@@ -212,6 +212,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
+        this.PrepareReceiverFields(function);
         var secured = -1;
         if (function.Body is { } block)
         {
@@ -239,6 +240,7 @@ public sealed partial class OwnershipAnalysis
             this.Unsupported(function);
         }
 
+        this.CheckConstruction(function);
         this.Cleanup(0, 0, function, CleanupReason.Return);
         this.Deliver(function, secured);
         this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
@@ -379,6 +381,11 @@ public sealed partial class OwnershipAnalysis
             this.temporaries.RemoveRange(temps, this.temporaries.Count - temps);
         }
 
+        if (ReferenceEquals(block, this.body.Function.Body))
+        {
+            this.CheckConstruction(block);
+        }
+
         this.Cleanup(this.temporaries.Count, mark, block, CleanupReason.ScopeExit);
         this.locals.RemoveRange(mark, this.locals.Count - mark);
         // A transfer's source continuation ends with this lexical body. It is not
@@ -425,6 +432,17 @@ public sealed partial class OwnershipAnalysis
 
     private int Expression(Koto node, PlaceUseKind use = PlaceUseKind.Consume, AcquisitionKind? acquisition = null)
     {
+        if (this.SpecialField(node))
+        {
+            var place = this.Local(node);
+            if (place >= 0 && use == PlaceUseKind.Consume && this.body.Places[place].Acquisition != AcquisitionKind.Copy)
+            {
+                this.Unsupported(node); // Special receivers cannot lose initialized fields.
+            }
+
+            return this.Use(node, place, use, acquisition);
+        }
+
         if (this.compilation.Binding.TryGetEnumConstruction(node, out var construction))
         {
             return this.ConstructEnum(node, construction!);
@@ -524,7 +542,7 @@ public sealed partial class OwnershipAnalysis
         if (assignment)
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
-            if (target is BinaryKoto element && ElementAccess.IsSyntax(element))
+            if (target is BinaryKoto element && ElementAccess.IsSyntax(element) && !this.SpecialField(target))
             {
                 return binary.Akind == KotoKind.Equals ? this.AssignElement(binary, element) : this.UpdateElement(binary, element);
             }
@@ -921,6 +939,7 @@ public sealed partial class OwnershipAnalysis
         if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
         {
             var secured = this.WriteResult(jump, this.resultPlace, value);
+            this.CheckConstruction(jump);
             this.Cleanup(0, 0, jump, CleanupReason.Return);
             this.Deliver(jump, secured);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);

@@ -214,6 +214,12 @@ internal sealed partial class BodyLowering
     private bool LowerOperation(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (operation.Kind is OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.CheckReceiverField)
+        {
+            failure = null;
+            return ValidateReceiverInitialization(body, operation) || Fail("Invalid special receiver initialization.", out failure);
+        }
+
         if (this.arguments.Count != 0 && operation.Kind is not (OwnershipOperationKind.CallEntry or OwnershipOperationKind.Call))
         {
             return Fail("Call entries must be consecutive and immediately precede their call.", out failure);

@@ -90,6 +90,12 @@ internal static partial class LlvmModuleWriter
 
         Name(output, "define internal void @__kimi_drop_aggregate", aggregate.Id);
         output.Write("(ptr %slot, ptr %location, i64 %length) #0 {\nentry:\n");
+        if (aggregate.Destructor >= 0)
+        {
+            Name(output, "  call void @__kimi_f", aggregate.Destructor);
+            output.Write("(ptr %slot)\n");
+        }
+
         if (aggregate.IsArray)
         {
             output.Write("  br label %test\ntest:\n  %remaining = phi i64 [ ");

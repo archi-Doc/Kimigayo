@@ -28,7 +28,7 @@ internal sealed partial class BodyLowering
             plan.Receiver is not null || plan.TypeArguments.Length != 0 || plan.Origins.Length != 0 ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count != target.Parameters.Count ||
-            !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceEquals(plan.ReturnType, target.BoundSymbol?.Type))
+            !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceEquals(plan.ReturnType, target.IsConstructor ? StructStorage.ReceiverType(target) : target.BoundSymbol?.Type))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
@@ -146,7 +146,7 @@ internal sealed partial class BodyLowering
             var physical = callee.Parameters[i];
             if (physical.Kind == AbiParameterKind.ResultSlot)
             {
-                if (!FunctionAbi.HasResultSlot(plan.ReturnType, this.aggregateLayouts))
+                if (!target.IsConstructor && !FunctionAbi.HasResultSlot(plan.ReturnType, this.aggregateLayouts))
                 {
                     return Fail("Physical result slot has no stored result representation.", out failure);
                 }
@@ -199,7 +199,7 @@ internal sealed partial class BodyLowering
 
         var expectedResult = FunctionAbi.ResultType(plan.ReturnType, this.aggregateLayouts);
         if (expectedResult != callee.Result || callee.NoReturn != ReferenceEquals(plan.ReturnType, BoundType.Never) ||
-            callee.ResultSlot != FunctionAbi.HasResultSlot(plan.ReturnType, this.aggregateLayouts) ||
+            callee.ResultSlot != (target.IsConstructor || FunctionAbi.HasResultSlot(plan.ReturnType, this.aggregateLayouts)) ||
             this.callOperands.Count != callee.Parameters.Length ||
             (IsScalar(plan.ReturnType) && (body.Values[id].Kind != OwnershipValueKind.Call || !ReferenceEquals(ValueType(body, id), plan.ReturnType))))
         {

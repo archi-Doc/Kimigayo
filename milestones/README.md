@@ -1,9 +1,9 @@
 # Language milestones
 
 Five short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestones 1–3 are verified through
-native execution (2026-09-16); Milestones 4–5 remain future targets, and their
-outputs below are specification expectations rather than execution claims.
+They are staged compiler implementation targets. Milestones 1–4 are verified through
+native execution (2026-09-16); Milestone 5 remains a future target, and its output
+below is a specification expectation rather than an execution claim.
 
 | Program | Added concepts |
 | --- | --- |
@@ -153,6 +153,26 @@ cannot opt into Copy or permit Partial Move that makes it incomplete.
 Focus: [construction](../spec/06-declarations-and-containers.md#623-constructors),
 [Move](../spec/15-ownership-and-lifetime-analysis.md#1515-movable-places), and
 [destruction](../spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+
+Reproduce Milestone 4 with the pinned Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone4.ps1 -Configuration Release
+```
+
+The script builds the unchanged single-source Application and byte-identical renamed
+copies at O0/O2, verifies LLVM through the normal pipeline, and compares native and
+both CLI `run` forms against exact output and exit status. Successful runs print
+the five lines above, have empty stderr, and exit 0. A separate loop-limit-9 variant
+prints only `Counter created.`, reports Abort at 14:9 and exits 1 without either
+defer or deinit. A destructor-inspection variant verifies the value is still 55
+at destruction. Twelve invalid inputs must fail before IR/executable publication.
+Variants never edit the checked-in program. Reports and build/source/compiler
+identities are under `bin/milestone4/<configuration>/<run-id>/`; Debug is supported.
+After running managed tests, related structure fixtures (including string release
+audits) can be executed with
+`./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Struct*.ll'`.
 
 ## Milestone 5: borrowing, Origins, and Lifetime
 

@@ -370,8 +370,8 @@ NextParameter:
             functionKoto.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
         }
 
-        // A constructor accepts only an access modifier and an executable Block (SPEC 6.2.3, F.3).
-        if (constructor && (genericArguments is not null || origins is not null || returnType is not null || reader.CurrentTokenKind == TokenKind.EqualsGreaterThan ||
+        // A constructor accepts an access modifier and a common Body (SPEC 6.2.3).
+        if (constructor && (genericArguments is not null || origins is not null || returnType is not null ||
             context.AttributeKoto is not null || context.ModifierKind != context.ModifierKind.ExtractAccessibilityModifiers()))
         {
             functionKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "constructor header");

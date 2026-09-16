@@ -885,8 +885,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 IsDestructor = true,
             };
 
-            // deinit accepts only its Block: no modifier, Attribute, or Expression body (SPEC 16.3, F.3).
-            if (context.ModifierKind != ModifierKind.NoModifier || context.AttributeKoto is not null || reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
+            // deinit accepts a common Body, without modifiers or attributes (SPEC 16.3).
+            if (context.ModifierKind != ModifierKind.NoModifier || context.AttributeKoto is not null)
             {
                 destructor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "deinit declaration");
             }

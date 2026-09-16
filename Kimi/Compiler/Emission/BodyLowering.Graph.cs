@@ -90,6 +90,10 @@ internal sealed partial class BodyLowering
         }
 
         this.PreparePartDestruction(body, function);
+        if (!this.PrepareReceiverFields(body, function, out failure))
+        {
+            return false;
+        }
 
         // Semantic dominance remains on the verification graph, including covered arms.
         if (this.hasMatches)
@@ -254,7 +258,7 @@ internal sealed partial class BodyLowering
                 return Fail("Unsupported value storage or string result/parameter.", out failure);
             }
 
-            if (!ReferenceTypes.IsString(place.Type) && value.Layout.Size != 0 && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
+            if (!ReferenceTypes.IsString(place.Type) && (value.Layout.Size != 0 || StructStorage.IsStruct(place.Type)) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
             {
                 function.Slots.Add(new(p, value));
             }

@@ -219,11 +219,11 @@ public class EnumOwnershipTest
     [Fact]
     public void RebindingChangedStorageInvalidatesTheSupportedTypeCache()
     {
-        var c = Parse("struct S\n    var value: i32\nenum E\n    Empty\nlet x = E.Empty");
+        var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\nlet x = E.Empty");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(body.Constructions[0].Case).Owner.Declaration;
-        c.Kotonoha.CreateCodeContext().Parse(declaration, "Full(S)");
+        c.Kotonoha.CreateCodeContext().Parse(declaration, "Full(S<i32>)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
         Assert.False(c.Ownership.Analyze().IsVerified);
@@ -231,7 +231,7 @@ public class EnumOwnershipTest
     }
 
     [Theory]
-    [InlineData("struct S\n    var value: i32\nenum E\n    Empty\n    Full(S)\nlet x = E.Empty")]
+    [InlineData("struct S<T>\n    var value: T\nenum E\n    Empty\n    Full(S<i32>)\nlet x = E.Empty")]
     [InlineData("enum E\n    Empty\n    Again(E)\nlet x = E.Empty")]
     [InlineData("enum E<T>\n    Empty\n    Again(E<E<T>>)\nlet x = E<i32>.Empty")]
     [InlineData("func f<T>(x: T) -> Option<T> => .Some(x)")]

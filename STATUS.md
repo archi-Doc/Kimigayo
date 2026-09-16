@@ -1,5 +1,45 @@
 # Kimigayo Implementation Status
 
+Program Milestone 4 complete (2026-09-16): the unchanged
+`milestones/Milestone4.kimi` now passes Binding, ownership, LLVM verification,
+native linking and execution. The first failure was outdated rejection of a
+single-item deinit Body followed by unsupported constructor Binding. Explicit
+constructors and their special field storage now check initialization and
+completeness at each successful exit, before and after cleanup. Owned struct
+parameters/results reuse aggregate slots. Field reads/updates retain initialization
+and access protection; whole-value Move transfers responsibility and partial Move
+through a deinit-bearing ancestor is rejected. Native destruction runs deinit,
+then fields in reverse logical order, without repeating construction or cleanup
+at the moved source. Descriptor pooling preserves distinct destructor identities.
+
+Expected stdout is exactly
+`Counter created.\nSum is 55.\nLeaving finish.\nCounter destroyed.\nDone.\n`,
+stderr is empty, exit 0. `test-milestone4.ps1` checks the original input plus renamed
+O0/O2 copies, an Abort sum variant (only creation output, exit 1, no defer/deinit),
+and a destructor that inspects the final value. It also rejects twelve invalid
+construction/Move/access/destruction inputs before IR/executable publication.
+Reports and source/compiler/build identities remain under
+`bin/milestone4/<configuration>/<run-id>/`.
+
+Debug/Release builds pass with zero warnings/errors and both full managed suites
+pass 6,955 tests. The 39 new struct tests include reload/rebinding, initialization
+diagnostics, normal/conditional Move, replacement, nested destruction, and zero
+measured warm ownership/IR allocations. Eighteen fixtures pass 36 O0/O2 native
+checks, including exact owned-string release counts and construction Abort.
+The milestone script passes 33 checks per Debug/Release compiler. Existing aggregate
+function, element-Move and deferred fixtures pass 118, 130 and 50 O0/O2 native checks
+respectively, including bounded nontermination. Milestones 1, 2 and 3 pass their
+25, 21 and 37 checks in both configurations. No required check remains unverified
+and no blocker remains. Final target reports are under Debug run
+`96fe216328304e22bdfdade8ebeb5b11` and Release run
+`36e2455629f148d493225c8d36c93485` in the report directory above.
+
+SPEC already prescribes these semantics and is unchanged. Drafts and NativeAOT
+were untouched. Generic/inherited structs, synthesized construction, structure
+methods, borrowed receivers and general accessors remain explicitly outside this
+execution subset. Milestone 5 was read for scope only; its implementation has not
+been started. Program numbering is independent of PLAN.md's broader stages.
+
 Program Milestone 3 complete (2026-09-16): the unmodified
 `milestones/Milestone3.kimi` passes final Binding, ownership, LLVM verification,
 native linking and execution with the current compiler. Existing explicit-main,

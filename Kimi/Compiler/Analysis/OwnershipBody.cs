@@ -267,6 +267,7 @@ public sealed partial class OwnershipBody
                 this.CheckInitialized(operation, operation.Place, this.ElementState(operation.Projection, true));
                 break;
             case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
+            case OwnershipOperationKind.CheckReceiverField:
                 this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
                 break;
             case OwnershipOperationKind.Write:
@@ -375,6 +376,7 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.PayloadPlacement:
             case OwnershipOperationKind.InitializeSubject:
+            case OwnershipOperationKind.InitializeReceiverField:
                 if (operation.Input >= 0)
                 {
                     this.Move(operation.Input);

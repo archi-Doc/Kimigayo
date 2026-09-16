@@ -70,6 +70,8 @@ public enum OwnershipOperationKind : byte
     ProjectElement,
     LocateReceiver,
     WriteElement,
+    InitializeReceiverField,
+    CheckReceiverField,
 }
 
 public enum PlacementKind : byte

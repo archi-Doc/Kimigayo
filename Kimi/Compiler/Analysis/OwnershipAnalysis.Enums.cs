@@ -60,6 +60,21 @@ public sealed partial class OwnershipAnalysis
             return supported;
         }
 
+        if (StructStorage.Declaration(type) is { } structure)
+        {
+            // Reserve the key before following fields to reject recursive inline storage.
+            this.supportedTypes[type] = false;
+            supported = structure.Bases.Count == 0 && structure.GenericArguments.Count == 0 &&
+                type.OriginArguments.Count == 0 && structure.Origins.Count == 0;
+            for (var i = 0; i < StructStorage.Count(type) && supported; i++)
+            {
+                supported = StructStorage.Field(type, i).BoundType is { } field && this.SupportsType(field);
+            }
+
+            this.supportedTypes[type] = supported;
+            return supported;
+        }
+
         if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
         {
             supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;

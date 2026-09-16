@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1402 // Physical aggregate descriptors and their reusable pool.
 
 /// <summary>A syntax-free aggregate representation. Fields remain in logical acquisition/destruction order.</summary>
-internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction)
+internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 }
@@ -21,6 +21,11 @@ internal sealed class AggregateLayoutPool
     private readonly Dictionary<BoundType, AggregateLayout?> resolved = new(ReferenceEqualityComparer.Instance);
     private readonly List<ValueLowering> fields = new();
     private readonly List<AggregateLayout?> children = new();
+    private readonly Dictionary<FunctionKoto, int> destructors = new(ReferenceEqualityComparer.Instance);
+
+    internal void RegisterDestructor(FunctionKoto function, int ordinal) => this.destructors[function] = ordinal;
+
+    internal void ClearDestructors() => this.destructors.Clear();
 
     internal Dictionary<BoundType, AggregateLayout?>.ValueCollection Used => this.resolved.Values;
 
@@ -37,7 +42,8 @@ internal sealed class AggregateLayoutPool
             return existing;
         }
 
-        if (depth == 64 || type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray) ||
+        var structure = StructStorage.IsStruct(type);
+        if (depth == 64 || (!structure && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray)) ||
             type.Semantics != SemanticsKind.Owner || type.Origin is not null || type.OriginArguments.Count != 0 ||
             (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Length > int.MaxValue || type.Components.Count != 1)))
         {
@@ -46,12 +52,14 @@ internal sealed class AggregateLayoutPool
 
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
-        var count = array ? (int)type.Length : type.Components.Count;
+        var fieldCount = structure ? StructStorage.Count(type) : type.Components.Count;
+        var count = array ? (int)type.Length : fieldCount;
+        var destructor = StructStorage.Destructor(type) is { } body ? this.destructors.GetValueOrDefault(body, -1) : -1;
         try
         {
-            for (var i = 0; i < type.Components.Count; i++)
+            for (var i = 0; i < fieldCount; i++)
             {
-                var component = type.Components[i];
+                var component = structure ? StructStorage.Field(type, i).BoundType! : type.Components[i];
                 var child = this.Get(component, depth + 1);
                 var value = child?.Value ?? (ScalarTypes.Supports(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
                 if (value is null)
@@ -66,7 +74,7 @@ internal sealed class AggregateLayoutPool
 
             foreach (var candidate in this.pool)
             {
-                if (candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != type.Components.Count)
+                if (candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor)
                 {
                     continue;
                 }
@@ -84,9 +92,8 @@ internal sealed class AggregateLayoutPool
                 }
             }
 
-            var fieldCount = type.Components.Count;
             var alignment = 1;
-            var destroy = false;
+            var destroy = destructor >= 0;
             for (var i = 0; i < fieldCount; i++)
             {
                 alignment = Math.Max(alignment, this.fields[start + i].Layout.Alignment);
@@ -139,7 +146,7 @@ internal sealed class AggregateLayoutPool
             // making padding into a typed source-language value.
             var storage = "{ [0 x i" + (alignment * 8).ToString(CultureInfo.InvariantCulture) + "], [" + size.ToString(CultureInfo.InvariantCulture) + " x i8] }";
             var representation = new ValueLowering(new(storage, (int)size, alignment, (int)size, offsets), storage, "ptr");
-            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy);
+            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor);
             this.pool.Add(result);
             this.resolved[type] = result;
             return result;

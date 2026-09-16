@@ -98,6 +98,11 @@ public sealed partial class Binding
 {
     private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
     {
+        if (member.Right.Akind == KotoKind.ConstructorReference)
+        {
+            return this.ConstructorMember(member, scope);
+        }
+
         if (member.Right is not IdentifierNameKoto right)
         {
             return null;
@@ -474,6 +479,11 @@ public sealed partial class Binding
             }
 
             call.BoundSymbol = winner;
+            if (selected.IsConstructor)
+            {
+                result = ((MemberAccessKoto)callee).Left.BoundType!;
+            }
+
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             (call.CallStorage ??= new()).Set(winner, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? selected.Parameters.Count : 0), selectedOperations[..argumentCount], receiverOperation, basePath);
             return Complete(call, result);
@@ -785,6 +795,11 @@ public sealed partial class Binding
             // Result-only Origin inference needs the later call-site solver. Never retain a
             // requirement's abstract binder as though it were this call's concrete Origin.
             return CandidateApplicability.Pending;
+        }
+
+        if (function.IsConstructor)
+        {
+            result = ((MemberAccessKoto)call.Method).Left.BoundType!;
         }
 
         if (expected is not null && !FitsType(result, this.ContractType(expected, scope)))

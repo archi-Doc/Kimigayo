@@ -1,5 +1,69 @@
 # Kimigayo Compiler Completion Plan
 
+## Program Milestone 4 completion (2026-09-16)
+
+This checkpoint concerns `milestones/Milestone4.kimi`, independently of the broader
+M1–M17 plan. Previous program checkpoints below are historical.
+
+- **Initial state:** read AGENTS.md, all five programs, current implementation and
+  relevant specification chapters. The working tree was clean; no uncommitted
+  changes needed saving. Windows x64, .NET SDK 10.0.401 and pinned LLVM 22.1.8/backend
+  were available. Dependencies are output/startup (1), scalar control flow/Abort
+  (2), functions/return/defer (3), owned structures/construction/Move/destruction
+  (4), then borrows/Origins/lifetimes (5). Program 5 informed boundaries only.
+- **First reproduced failure:** after rebuilding Debug from current source,
+  `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone4.kimi`
+  rejected `deinit => ...` at 9:5 (`UnexpectedToken_Kd`), then the constructor at
+  5:12 and construction expression with unsupported/unresolved Binding diagnostics.
+  Ownership and emission gaps were predictions at this point. The related
+  aggregate/function/ownership/property/defer baseline passed 197 tests.
+- **Order followed:** correct common Body parsing; bind construction and its special
+  receiver; track initialized fields and successful-exit completeness; reuse aggregate
+  projections/transfers/cleanup; lower receiver storage and destructor calls; retry
+  the target; expand normal/rejection/native coverage; run full regressions.
+- **Implementation:** explicit constructors use ordinary overload/argument checking
+  and produce fresh owned storage while retaining a Unit control result. Dedicated
+  construction/destruction receivers cannot become ordinary owners or escape.
+  Field Places check initialization, immutable reassignment and completeness before
+  and after cleanup. Whole-value Move transfers destruction responsibility; partial
+  Move across a deinit-bearing ancestor is rejected. Owned struct calls/results use
+  slots; field access uses protected aggregate projection. Aggregate descriptors
+  retain destructor identity separately from shape. Cleanup invokes deinit and then
+  fields in reverse logical order; conditional ownership retains destruction flags.
+  Zero-byte structs keep addressable storage. Abort never unwinds this cleanup.
+- **Intermediate evidence:** the target progressed through final Binding, ownership,
+  LLVM verification and native execution. Property names needed control-flow
+  designator handling. Additional tests exposed obsolete constructor expression-body
+  rejection and overload selection comparing expected results with Unit; both were
+  corrected. Indexed traversal repaired an allocation regression. Two old enum
+  subset tests now use generic structs to preserve their unsupported-storage/cache
+  invalidation purpose. Local LLVM execution permission resolved the later sandbox
+  `opt.exe --version` failure; this was separate from compiler failures.
+- **Verification:** Debug/Release solution builds pass with zero warnings or
+  errors; both full managed suites pass 6,955 tests, zero failures/skips. The 39 new
+  struct tests cover normal/rejected inputs, reload/rebinding and zero measured warm
+  ownership/IR allocations. Eighteen fixtures pass 36 O0/O2 native executions,
+  including string release audits and construction Abort. The target script passes
+  33 checks per configuration (21 native/CLI executions and 12 rejected inputs).
+  Existing aggregate-function, element-Move and deferred fixtures pass 118, 130 and
+  50 O0/O2 checks respectively, including bounded nontermination checks. Completed
+  Milestones 1, 2 and 3 pass 25, 21 and 37 checks in both configurations.
+- **Completion:** the unmodified target passes every required stage. Stdout is exactly
+  `Counter created.\nSum is 55.\nLeaving finish.\nCounter destroyed.\nDone.\n`,
+  stderr is empty and exit is 0. The sum-45 variant Aborts at 14:9 after creation
+  only, with exit 1; no deferred or destruction message runs. A destructor-inspection
+  variant confirms the stored value is still 55. No other side effect is required.
+  No blocker or required unverified check remains; stop at program Milestone 4.
+  Reproduce with `./backend/windows-x64/test-milestone4.ps1 -Configuration Release`
+  after building that compiler. Reports, source/compiler hashes, diagnostics and
+  build identities are retained under `bin/milestone4/<configuration>/<run-id>/`.
+  Final Debug report: `96fe216328304e22bdfdade8ebeb5b11/verification.json`;
+  final Release report: `36e2455629f148d493225c8d36c93485/verification.json`.
+- **Scope:** no SPEC/draft changes or NativeAOT. Generic/inherited structures,
+  synthesized constructors, ordinary structure methods, borrowed receivers and
+  general accessors remain outside this executable subset. Milestone 5 was read
+  only, and no later-program completion is claimed.
+
 ## Program Milestone 3 completion (2026-09-16)
 
 This checkpoint concerns `milestones/Milestone3.kimi`, not the broader M3 stage.

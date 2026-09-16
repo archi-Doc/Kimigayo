@@ -19,7 +19,7 @@ internal sealed class FunctionAbiPool
         }
 
         var logical = new ParameterShape[function.Parameters.Count];
-        var resultSlot = FunctionAbi.HasResultSlot(result, layouts);
+        var resultSlot = FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor;
         var count = resultSlot ? 1 : 0;
         for (var i = 0; i < logical.Length; i++)
         {
@@ -71,7 +71,7 @@ internal sealed class FunctionAbiPool
     {
         internal bool Matches(FunctionKoto function, BoundType result, AggregateLayoutPool? layouts)
         {
-            if (this.Result != FunctionAbi.ResultType(result, layouts) || this.ResultSlot != FunctionAbi.HasResultSlot(result, layouts) ||
+            if (this.Result != FunctionAbi.ResultType(result, layouts) || this.ResultSlot != (FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor) ||
                 this.NoReturn != ReferenceEquals(result, BoundType.Never) || this.Parameters.Length != function.Parameters.Count)
             {
                 return false;

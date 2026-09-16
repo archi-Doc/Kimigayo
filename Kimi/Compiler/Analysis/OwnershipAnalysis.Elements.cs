@@ -164,6 +164,16 @@ public sealed partial class OwnershipAnalysis
             }
 
             var output = this.Value(result);
+            for (var ancestor = projection; ancestor >= 0; ancestor = this.body.Projections[ancestor].Parent)
+            {
+                if (this.body.Places[result].Acquisition == AcquisitionKind.Move &&
+                    this.body.Operations[this.body.Projections[ancestor].Operation].Source is BinaryKoto path &&
+                    path.Left.BoundType is { } owner && StructStorage.Destructor(owner) is not null)
+                {
+                    this.Unsupported(source); // No partial Move through any deinit-bearing ancestor.
+                }
+            }
+
             this.SetValue(output, OwnershipValueKind.Element, []);
             this.body.Projections[projection] = this.body.Projections[projection] with { Output = output };
         }

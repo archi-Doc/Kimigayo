@@ -49,6 +49,21 @@ public sealed class LlvmEmitter
         failure = null;
         try
         {
+            var destructorOrdinal = 0;
+            for (var i = 0; i < c.Ownership.Bodies.Count; i++)
+            {
+                var body = c.Ownership.Bodies[i];
+                if (!this.SkipGenerated(body) && !body.Function.IsGenerated)
+                {
+                    if (body.Function.IsDestructor)
+                    {
+                        this.lowering.AggregateLayouts.RegisterDestructor(body.Function, destructorOrdinal);
+                    }
+
+                    destructorOrdinal++;
+                }
+            }
+
             failure = this.CheckInputs();
             if (failure is not null)
             {
@@ -106,6 +121,7 @@ public sealed class LlvmEmitter
             // Never retain a previous parse through the active declaration-to-ABI map.
             this.functions.Clear();
             this.lowering.ClearFunctionContext();
+            this.lowering.AggregateLayouts.ClearDestructors();
             if (!module.IsComplete)
             {
                 module.Clear();
@@ -131,7 +147,7 @@ public sealed class LlvmEmitter
         }
 
         if (c.KotonohaArray.Length != 0 || c.SourceModules.Length != 1 || startup.OutputKind != OutputKind.Application || startup.Kind is not (StartupKind.Implicit or StartupKind.Explicit) ||
-            c.Kotonoha.RootKoto.NestedContainers.Count != 0)
+            c.Kotonoha.RootKoto.NestedContainers.Any(x => x is not StructKoto))
         {
             return "This partial emitter supports Applications without external modules or declaration containers.";
         }
@@ -155,6 +171,11 @@ public sealed class LlvmEmitter
             }
 
             var function = body.Function;
+            if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor)
+            {
+                return "Ordinary structure methods need receiver/call lowering outside this subset.";
+            }
+
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
             if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
                 (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||

@@ -122,6 +122,22 @@ internal sealed partial class BodyLowering
 
     private static bool HasOwnedStorage(BoundType type)
     {
+        if (StructStorage.IsStruct(type))
+        {
+            if (StructStorage.Destructor(type) is not null)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < StructStorage.Count(type); i++)
+            {
+                if (HasOwnedStorage(StructStorage.Field(type, i).BoundType!))
+                {
+                    return true;
+                }
+            }
+        }
+
         if (ReferenceEquals(type, BoundType.String))
         {
             return true;
@@ -216,7 +232,7 @@ internal sealed partial class BodyLowering
 
     private bool IsStringStorage(OwnershipPlace place) => this.payloadOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
     {
-        OwnershipPlaceKind.Local => place.Source is FieldKoto,
+        OwnershipPlaceKind.Local => place.Source is FieldKoto or PropertyKoto,
         OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto || (place.Source is BinaryKoto element && ElementAccess.IsSyntax(element)),
         OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
         _ => false,

@@ -467,6 +467,11 @@ public sealed class ControlFlowAnalysis
             case ParenthesizedKoto p:
                 flow = this.Visit(p.Operand, reachable, expected);
                 break;
+            case MemberAccessKoto { BoundSymbol.Property: not null } member:
+                // A selected property name is a designator, not an evaluated local.
+                var ownerFlow = this.Visit(member.Left, reachable);
+                flow = new(ownerFlow.Normal, this.types.GetExpressionType(member), ownerFlow.Transfers, ownerFlow.Pending);
+                break;
             case MacroKoto macro when this.types.GetExpressionType(macro) == ControlFlowType.Never:
                 flow = this.Visit(macro.Operand, reachable, expected);
                 break;

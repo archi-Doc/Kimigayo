@@ -62,6 +62,7 @@ public sealed partial class OwnershipAnalysis
 
     private void Deliver(Koto source, int secured)
     {
+        this.CheckConstruction(source);
         var value = secured >= 0 && ScalarResult(this.body.Places[this.resultPlace].Type) && this.body.Values[secured].Kind == OwnershipValueKind.Alias ? this.body.ValueOperands[this.body.Values[secured].Start] : -1;
         var delivery = this.Emit(OwnershipOperationKind.Deliver, source, this.resultPlace);
         this.body.Deliveries.Add(new(delivery, value, secured));

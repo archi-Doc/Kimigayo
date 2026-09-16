@@ -819,6 +819,7 @@ public sealed partial class Binding
                     }
 
                     node.BoundSymbol = binding.symbols.GetValueOrDefault(node);
+                    binding.IndexSpecialReceiver(function, this.Scope);
                     break;
                 case PropertyAccessorKoto accessor:
                     this.Scope = binding.GetScope(node, this.Scope);

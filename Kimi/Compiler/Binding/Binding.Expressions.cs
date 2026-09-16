@@ -426,7 +426,7 @@ public sealed partial class Binding
             }
         }
 
-        if (function.IsAnonymous || function.IsConstructor || function.IsDestructor || function.IsSpecialization)
+        if (function.IsAnonymous || function.IsSpecialization)
         {
             return Fail(function, BindingFailure.Unsupported, true);
         }
@@ -494,6 +494,12 @@ public sealed partial class Binding
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
+        if (symbol.Name == "self" && symbol.Declaration is FunctionKoto special && (special.IsConstructor || special.IsDestructor) &&
+            (node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))
+        {
+            return Fail(node, BindingFailure.InvalidAssignment);
+        }
+
         if (symbol.ConditionalDeclaration is not null)
         {
             var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
@@ -530,6 +536,17 @@ public sealed partial class Binding
 
         if (symbol.Property is { } property)
         {
+            if (IsSpecialField(node, out var specialFunction) && specialFunction.IsConstructor)
+            {
+                if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
+                    !property.Getter.IsStandard || (property.Setter.IsPresent && !property.Setter.IsStandard))
+                {
+                    return Fail(node, BindingFailure.Unsupported);
+                }
+
+                return Complete(node, symbol.Type);
+            }
+
             var target = node;
             while (target.Parent is ParenthesizedKoto parentheses)
             {
@@ -703,7 +720,7 @@ public sealed partial class Binding
         }
 
         if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
-            !(kind == KotoKind.Equals && CanInitializeLocal(binary.Left, scope)))
+            !(kind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) || (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor))))
         {
             return Fail(binary, BindingFailure.InvalidAssignment);
         }

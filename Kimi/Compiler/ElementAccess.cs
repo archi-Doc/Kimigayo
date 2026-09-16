@@ -9,12 +9,13 @@ internal static class ElementAccess
     // Eligibility only; Lowering must also verify the owner's storage role and initialization.
     internal static bool SupportsBorrowRoot(OwnershipPlace place)
         => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
-            place.Type.Semantics == SemanticsKind.Owner && place.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
+            place.Type.Semantics == SemanticsKind.Owner && (place.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(place.Type));
 
     internal static bool SupportsMoveRoot(OwnershipPlace place)
         => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter && SupportsBorrowRoot(place);
 
-    internal static bool IsSyntax(Koto source) => source is IndexKoto or MemberAccessKoto { Right: NumberLiteralKoto };
+    internal static bool IsSyntax(Koto source) => source is IndexKoto or MemberAccessKoto { Right: NumberLiteralKoto } ||
+        (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && StructStorage.IsStruct(type));
 
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
     internal static int StaticSelector(BinaryKoto source)
@@ -89,6 +90,20 @@ internal static class ElementAccess
         if (type?.Semantics != SemanticsKind.Owner)
         {
             return false;
+        }
+
+        if (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true } && StructStorage.IsStruct(type))
+        {
+            for (var i = 0; i < StructStorage.Count(type); i++)
+            {
+                var field = StructStorage.Field(type, i);
+                if (ReferenceEquals(field.BoundSymbol, source.BoundSymbol))
+                {
+                    position = i;
+                    element = field.BoundType;
+                    return element is not null;
+                }
+            }
         }
 
         if (source is IndexKoto && type.Kind == BoundTypeKind.FixedArray && type.Components.Count == 1)
