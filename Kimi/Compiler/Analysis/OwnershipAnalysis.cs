@@ -434,6 +434,8 @@ public sealed partial class OwnershipAnalysis
         {
             case ParenthesizedKoto parentheses:
                 return this.Expression(parentheses.Operand, use, acquisition);
+            case MacroKoto { Operand: InvocationKoto abort } when ReferenceEquals(abort.BoundCall?.Target, this.compilation.Core.Abort):
+                return this.Call(abort);
             case IdentifierNameKoto:
                 if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
                 {
@@ -479,6 +481,12 @@ public sealed partial class OwnershipAnalysis
                 return this.Require(require);
             case WhileKoto loop:
                 this.Loop(loop);
+                if (ReferenceEquals(loop.BoundType, BoundType.Never))
+                {
+                    this.current = -1;
+                    return -1;
+                }
+
                 return this.Temporary(node);
             case JumpKoto jump:
                 return this.Jump(jump);
@@ -553,7 +561,11 @@ public sealed partial class OwnershipAnalysis
             var output = this.ResultPlace(binary);
             var condition = this.Value(this.Expression(binary.Left, PlaceUseKind.Read));
             var branch = this.Emit(OwnershipOperationKind.Branch, binary.Left);
-            this.SetValue(branch, OwnershipValueKind.Alias, [condition]);
+            if (condition >= 0)
+            {
+                this.SetValue(branch, OwnershipValueKind.Alias, [condition]);
+            }
+
             var evaluate = this.New(OwnershipOperationKind.Branch, binary.Right);
             var skip = this.New(OwnershipOperationKind.Branch, binary);
             var join = this.ResultJoin(binary, output);
@@ -610,7 +622,11 @@ public sealed partial class OwnershipAnalysis
             var branch = conditional.Branches[i];
             var condition = this.Condition(branch.Condition);
             var test = this.Emit(OwnershipOperationKind.Branch, branch.Condition);
-            this.SetValue(test, OwnershipValueKind.Alias, [condition]);
+            if (condition >= 0)
+            {
+                this.SetValue(test, OwnershipValueKind.Alias, [condition]);
+            }
+
             var yes = this.New(OwnershipOperationKind.Branch, branch.Body);
             var no = this.New(OwnershipOperationKind.Branch, conditional);
             this.Connect(test, yes, OwnershipEdgeKind.True);
@@ -704,6 +720,14 @@ public sealed partial class OwnershipAnalysis
             this.EndComparisonLoans(loanDepth, call);
             this.current = -1;
             this.comparisonDepth = loanDepth;
+            if (ReferenceEquals(plan.Target, this.compilation.Core.Abort))
+            {
+                // Source after explicit Abort is checked from the acquired argument
+                // state, without adding a runtime continuation or running cleanup.
+                this.checkingRegion = this.body.CheckingRegions.Count;
+                this.body.CheckingRegions.Add(new(invoke, -1));
+            }
+
             return -1;
         }
 
@@ -765,7 +789,11 @@ public sealed partial class OwnershipAnalysis
     {
         var condition = this.Condition(require.Condition);
         var test = this.Emit(OwnershipOperationKind.Branch, require.Condition);
-        this.SetValue(test, OwnershipValueKind.Alias, [condition]);
+        if (condition >= 0)
+        {
+            this.SetValue(test, OwnershipValueKind.Alias, [condition]);
+        }
+
         var success = this.New(OwnershipOperationKind.Branch, require);
         var failure = this.New(OwnershipOperationKind.Branch, require.ElseBody);
         this.Connect(test, success, OwnershipEdgeKind.True);
@@ -832,7 +860,11 @@ public sealed partial class OwnershipAnalysis
         this.Cleanup(mark, this.locals.Count, loop.Condition, CleanupReason.ExpressionEnd);
         this.temporaries.RemoveRange(mark, this.temporaries.Count - mark);
         var test = this.Emit(OwnershipOperationKind.Branch, loop.Condition);
-        this.SetValue(test, OwnershipValueKind.Alias, [condition]);
+        if (condition >= 0)
+        {
+            this.SetValue(test, OwnershipValueKind.Alias, [condition]);
+        }
+
         var enter = this.New(OwnershipOperationKind.Branch, loop.Body);
         this.Connect(test, enter, OwnershipEdgeKind.True);
         this.Connect(test, exit, OwnershipEdgeKind.False);

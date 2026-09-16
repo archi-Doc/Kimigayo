@@ -467,6 +467,9 @@ public sealed class ControlFlowAnalysis
             case ParenthesizedKoto p:
                 flow = this.Visit(p.Operand, reachable, expected);
                 break;
+            case MacroKoto macro when this.types.GetExpressionType(macro) == ControlFlowType.Never:
+                flow = this.Visit(macro.Operand, reachable, expected);
+                break;
             case IdentifierNameKoto name:
                 var nameType = this.types.GetExpressionType(name) ?? this.ResolveNameType(name);
                 flow = new(nameType != ControlFlowType.Never, nameType, Pending: nameType is null);

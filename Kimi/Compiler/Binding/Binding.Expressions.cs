@@ -601,6 +601,11 @@ public sealed partial class Binding
 
     private BoundType? BindUnary(UnaryKoto unary, BindingScope scope, BoundType? expected)
     {
+        if (unary is MacroKoto)
+        {
+            return this.BindAbort(unary, scope);
+        }
+
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
         {
             // A directly signed literal is fitted as a signed value (SPEC 12.3.1).

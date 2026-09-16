@@ -48,9 +48,10 @@ internal static partial class WindowsLowering
     // Hidden diagnostic context follows the ordinary parameters (SPEC 21.4.2, 22.5.1).
     internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
     internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, WriteLine.Parameters);
+    internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, WriteLine.Parameters, noReturn: true);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort];
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage];
 
     private static readonly Dictionary<BoundType, ValueLowering> Values = CreateValues();
 
@@ -64,7 +65,7 @@ internal static partial class WindowsLowering
     /// <param name="kind">The compiler function identity.</param>
     /// <returns>The implementation ABI, or null when no body is generated.</returns>
     internal static FunctionAbi? GetCompilerFunction(CompilerFunctionKind kind)
-        => kind == CompilerFunctionKind.WriteLine ? WriteLine : null;
+        => kind switch { CompilerFunctionKind.WriteLine => WriteLine, CompilerFunctionKind.Abort => AbortMessage, _ => null };
 
     private static Dictionary<BoundType, ValueLowering> CreateValues()
     {

@@ -33,7 +33,7 @@ internal sealed partial class BodyLowering
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
 
-        var runtime = ReferenceEquals(plan.Target, core.WriteLine);
+        var runtime = ReferenceEquals(plan.Target, core.WriteLine) || ReferenceEquals(plan.Target, core.Abort);
         var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : this.functions!.GetValueOrDefault(target);
         if (callee is null)
         {
@@ -157,7 +157,7 @@ internal sealed partial class BodyLowering
 
             if (physical.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
             {
-                if (!runtime || (location < 0 && !this.TryGetLocation(call, directory, constants, out location)))
+                if (!runtime || (location < 0 && !this.TryGetLocation(ReferenceEquals(plan.Target, core.Abort) ? call.Parent! : call, directory, constants, out location)))
                 {
                     return Fail("A runtime call has no diagnostic source location.", out failure);
                 }

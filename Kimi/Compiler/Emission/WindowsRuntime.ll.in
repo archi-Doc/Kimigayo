@@ -10,6 +10,7 @@ declare dllimport void @ExitProcess(i32) noreturn
 
 @__kimi_lf = private constant [1 x i8] c"\0A"
 @__kimi_abort_prefix = private constant [8 x i8] c": abort "
+@__kimi_explicit_abort = private constant [14 x i8] c"KIMI_E_ABORT: "
 @__kimi_os_prefix = private constant [8 x i8] c" (win32="
 @__kimi_close = private constant [1 x i8] c")"
 {{abort_reasons}}
@@ -85,6 +86,31 @@ entry:
   %error = call i64 @__kimi_write_bytes(i32 -12, ptr %data, i64 %length)
   %ok = icmp eq i64 %error, -1
   ret i1 %ok
+}
+
+; The owned message is evaluated/acquired before entry. Abort never destroys it.
+{{__kimi_abort_message}}
+entry:
+  %located = call i1 @__kimi_try_stderr(ptr %location, i64 %location_length)
+  br i1 %located, label %prefix, label %exit
+prefix:
+  %prefixed = call i1 @__kimi_try_stderr(ptr @__kimi_abort_prefix, i64 8)
+  br i1 %prefixed, label %code, label %exit
+code:
+  %coded = call i1 @__kimi_try_stderr(ptr @__kimi_explicit_abort, i64 14)
+  br i1 %coded, label %message, label %exit
+message:
+  %data = load ptr, ptr %text, align 8
+  %length_ptr = getelementptr %kimi.string, ptr %text, i32 0, i32 1
+  %length = load i64, ptr %length_ptr, align 8
+  %messaged = call i1 @__kimi_try_stderr(ptr %data, i64 %length)
+  br i1 %messaged, label %newline, label %exit
+newline:
+  %ignored = call i1 @__kimi_try_stderr(ptr @__kimi_lf, i64 1)
+  br label %exit
+exit:
+  call void @__kimi_exit(i32 1)
+  unreachable
 }
 
 {{__kimi_abort}}

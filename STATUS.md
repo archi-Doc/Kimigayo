@@ -1,5 +1,37 @@
 # Kimigayo Implementation Status
 
+Program Milestone 2 complete (2026-09-16): implemented explicit `$abort(expression)`
+through Binding, ownership, LLVM generation and ordinary Windows x64 execution.
+The reserved builtin expects one owned string, evaluates/acquires it once, has
+Type Never, and is independent of user `abort` declarations; no Core API was added.
+Its runtime emits the source location and `KIMI_E_ABORT` followed by unchanged
+UTF-8 message bytes and LF, then exits 1 without normal message destruction or
+enclosing cleanup. A failed stderr write still exits without recursive diagnostics.
+Argument return, nested Abort and checked arithmetic failure retain their own
+outcomes. Explicit Abort's checking-only continuation diagnoses moved/uninitialized
+uses in unreachable source. Never conditions retain no fabricated Boolean value,
+and a noncompleting while produces no value storage.
+
+The unmodified `milestones/Milestone2.kimi` builds and runs at O0/O2 with exact
+stdout `Sum is 55.\nDone.\n`, empty stderr and exit 0. Separate `expected = 54`
+variants have empty stdout, report `KIMI_E_ABORT: Unexpected sum` at 13:5 and exit 1.
+`backend/windows-x64/test-milestone2.ps1` passes 21 checks per Debug/Release compiler,
+including renamed byte-identical input, CLI forwarding and six rejected inputs.
+Reports and compiler/source/build identities are in
+`bin/milestone2/<configuration>/<run-id>/`.
+
+Both solution builds pass with zero warnings/errors; all 6,916 managed tests pass
+per configuration, zero failures/skips. The 38 new Abort tests cover positive,
+negative, ownership, reload and runtime-plan cases; 15 fixtures pass 30 O0/O2 native
+executions. Existing Counter/overflow native regressions pass 12 executions and
+output/runtime-adapter regressions pass 68. Milestone 1 passes 25 checks in both
+configurations. Warm ownership/IR generation allocates zero measured bytes; full
+warm Binding on the reload fixture measured 72 bytes/pass and was not optimized.
+No required check remains unverified. SPEC §§17.3/22.5 already prescribe this
+behavior and were not weakened or changed. Drafts and NativeAOT were untouched.
+Programs 3–5 were read only and remain unverified targets in this milestone series.
+See the current program checkpoint in PLAN.md for reproduction and scope.
+
 Program Milestone 1 complete (2026-09-16): the unmodified
 `milestones/Milestone1.kimi` passes source parsing, Binding/startup selection,
 ownership analysis, LLVM generation/verification, native linking and execution
@@ -147,7 +179,7 @@ Evidence: [Binding](Kimi/Compiler/Binding), [CoreIntrinsics](Kimi/Compiler/Bindi
 
 - Analyzes `if`, short-circuiting, `while`, `do`, `loop`, labels, `require`, `match`, return/yield/exit/continue, and defer. Distinguishes structural completion from execution reachability. Results are secured before cleanup and delivered only after normal completion. Abort performs no cleanup.
 - Destruction follows reverse logical order. If normal transfer interrupts construction or argument acquisition, already-acquired responsibilities are handled. No result delivery or subsequent destruction is generated after nonterminating cleanup.
-- Source checking after an explicit transfer uses a continuation separate from the execution CFG, including Never Subjects and nonterminating guards. Unsupported remains for unreachable operations whose checking entry state cannot be constructed, such as those after general Never calls, exitless loops, or cleanup that prevents continuation.
+- Source checking after an explicit transfer or explicit Abort uses a continuation separate from the execution CFG, including Never Subjects and nonterminating guards. Unsupported remains for unreachable operations whose checking entry state cannot be constructed, such as those after general Never calls, exitless loops, or cleanup that prevents continuation.
 - Whole-Subject guards have conservative validation paths in source order; effects on false paths also pass to later arms. Covered arms omitted at runtime are still diagnosed.
 - Loans currently cover string comparisons, shared arguments, temporary strings, string guard candidates, parent-storage protection for Tuples/fixed arrays, and exclusive protection for element writes. Statically disjoint element paths are allowed within §4.6's scope. Owners remain protected through later arguments, guards, and cleanup; Loans end after securing a normal result or during normal transfer. Simple element assignment also holds an exclusive Loan from final location resolution through old-value destruction and placement (§4.7). General reference storage/return, uniq/reborrow, effect summaries, and borrowed Subjects remain incomplete.
 

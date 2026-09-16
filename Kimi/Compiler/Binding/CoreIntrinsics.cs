@@ -20,6 +20,7 @@ public enum CompilerFunctionKind : byte
 {
     None,
     WriteLine,
+    Abort,
 }
 
 /// <summary>The compiler-owned Core identities. This is not the complete runtime Core library.</summary>
@@ -60,7 +61,8 @@ public sealed class CoreIntrinsics
             this.declarations[i] = this.declarations[i] with { Symbol = this.Create(i, (IntrinsicKind)(i + 1)) };
         }
 
-        this.WriteLine = this.CreateWriteLine();
+        this.WriteLine = this.CreateStringOperation(abort: false);
+        this.Abort = this.CreateStringOperation(abort: true);
         this.declarations[(int)CoreDeclarationId.WriteLine] = this.declarations[(int)CoreDeclarationId.WriteLine] with { Symbol = this.WriteLine };
         // Parse the canonical declarations once; every Bind uses the ordinary enum pipeline.
         this.CreateEnums();
@@ -96,6 +98,9 @@ public sealed class CoreIntrinsics
     public BindingSymbol Result => this.declarations[(int)CoreDeclarationId.Result].Symbol!;
 
     internal BindingScope Scope { get; }
+
+    // A compiler-only call identity, never entered into Core or source name lookup.
+    internal BindingSymbol Abort { get; }
 
     internal bool IsValid
     {
@@ -167,11 +172,11 @@ public sealed class CoreIntrinsics
         }
     }
 
-    private BindingSymbol CreateWriteLine()
+    private BindingSymbol CreateStringOperation(bool abort)
     {
         // Build ordinary declaration syntax once. Its implementation identity, not a fake
         // executable body or a spelling check at calls, supplies the later lowering hook.
-        var source = new SourceDocument("compiler://Core/writeLine", "string");
+        var source = new SourceDocument(abort ? "compiler://builtins/abort" : "compiler://Core/writeLine", "string");
         var context = new CodeContext(this.Kotonoha, sourceDocument: source);
         var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
         try
@@ -179,7 +184,18 @@ public sealed class CoreIntrinsics
             tokenizer.ReadAll();
             var reader = new TokenReader(context, ref tokenizer);
             var type = new TypeSemanticsKoto(ref reader, new Token(TokenKind.String));
-            var function = new FunctionKoto(ref reader, new(null, ModifierKind.Public, false), default, "writeLine", null, [new("text", "text", false, type, null)], null);
+            var function = new FunctionKoto(ref reader, new(null, ModifierKind.Public, false), default, abort ? "$abort" : "writeLine", null, [new("text", "text", false, type, null)], null);
+            if (abort)
+            {
+                type.BoundType = BoundType.String;
+                type.BindingState = BindingState.Resolved;
+                var symbol = new BindingSymbol("$abort", BindingSymbolKind.Function, function, this.Scope) { CompilerFunction = CompilerFunctionKind.Abort, Type = BoundType.Never };
+                function.BoundSymbol = symbol;
+                function.BoundType = BoundType.Never;
+                function.BindingState = BindingState.Resolved;
+                return symbol;
+            }
+
             this.Kotonoha.RootKoto.AddLast(function);
             return new("writeLine", BindingSymbolKind.Function, function, this.Scope) { CompilerFunction = CompilerFunctionKind.WriteLine };
         }

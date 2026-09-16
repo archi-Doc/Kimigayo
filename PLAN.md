@@ -1,5 +1,69 @@
 # Kimigayo Compiler Completion Plan
 
+## Program Milestone 2 completion (2026-09-16)
+
+This task targets `milestones/Milestone2.kimi`; program numbers are independent of
+the broader M1–M17 stages. The earlier program checkpoint below is historical.
+
+- **Initial state and scope:** AGENTS.md, all five programs, current implementation
+  and environment were checked. The working tree was clean, including the prior
+  Milestone 1 work. Windows x64/.NET SDK 10.0.401 and pinned LLVM 22.1.8 were
+  available. Program dependencies remain: 1 output/startup → 2 mutable scalars,
+  arithmetic, while/if and Abort → 3 functions/defer → 4 structs/Move/deinit →
+  5 borrowing/Origins/destruction lifetimes. Programs 3–5 were read only; no
+  later-only implementation or completion claim was made.
+- **Reproduction before changes:** a fresh Debug solution build passed, then
+  `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone2.kimi`
+  failed final Binding with `UnresolvedBinding_Kd` on `abort` at 13:6. Existing
+  scalar/control-flow/ownership tests passed 272 cases. Four new positive Abort
+  tests failed at the same front-end gate. Code inspection predicted ownership
+  and runtime gaps; these were not represented as already reproduced failures.
+- **Implementation order:** bind the reserved builtin with an expected string
+  argument and Never result; reuse owned call acquisition and nonreturning CFG
+  handling; add the Windows diagnostic operation; retry the original program;
+  expand normal/invalid/transfer tests; verify O0/O2 native behavior and regressions.
+  No source program, expected result, normative specification or draft was changed.
+- **Implementation:** a private compiler call identity keeps `$abort` independent
+  of user `abort` declarations without introducing `Core.abort`. The ordinary
+  argument plan retains the original source/type and Move checks. Explicit Abort
+  seeds a checking-only continuation after acquisition, preserving moved and
+  uninitialized diagnostics without an execution continuation. Noncompleting
+  conditions no longer manufacture a Boolean operand, and a Never while does not
+  allocate a value Place. The runtime writes source location, `KIMI_E_ABORT`, the
+  original UTF-8 bytes and LF using the existing checked stderr adapter, then
+  Exit(1). Failed stderr writes stop diagnostics and still exit, with no message
+  destruction, surrounding cleanup or dynamic formatting allocation.
+- **Intermediate findings:** expanded tests reproduced unsupported ownership state
+  after Abort and invalid value flow for Never conditions; both were repaired.
+  Three initial argument-control fixtures used invalid `yield`/indented closer
+  syntax and were corrected to the existing labeled-do/exit grammar. Existing
+  string-result tests rejected an aggregate string load in the initial runtime;
+  field loads now preserve the established representation and avoid loading the
+  unused release tag. All related tests subsequently passed. A full warm Bind
+  measured 72 bytes/pass on the reload fixture; no zero-allocation Binding or
+  throughput claim is made. Warm ownership plus IR generation measured zero bytes;
+  broader Binding allocation optimization is outside this milestone.
+- **Verification:** Debug/Release solution builds pass with zero warnings/errors.
+  All 534 focused tests and all 6,916 full tests per configuration pass with zero
+  failures/skips, including 38 new Abort tests. The milestone script passes 21
+  checks per configuration: actual-source and renamed O0/O2 normal execution,
+  `expected = 54` Abort execution, CLI output/exit forwarding, and six compile-time
+  rejection cases. Normal stdout is exactly `Sum is 55.\nDone.\n`, stderr empty,
+  exit 0. The Abort variant emits no stdout, reports its source at 13:5 with
+  `KIMI_E_ABORT: Unexpected sum`, and exits 1. No further side effects are required.
+  Final native regressions include 30 Abort, 2 Counter, 10 integer overflow and
+  68 output/runtime-adapter executions at O0/O2. Milestone 1 passes its 25 checks
+  with each compiler configuration. All builds use normal LLVM verification
+  before code generation and again after O2 optimization; NativeAOT was not run.
+- **Completion and reproduction:** Milestone 2 passes through native execution;
+  no blocker or required unverified check remains. Stop here. Build the selected
+  compiler configuration, then run
+  `./backend/windows-x64/test-milestone2.ps1 -Configuration Release` (or Debug).
+  Reports, source/compiler hashes, build identities and rejection diagnostics are
+  under `bin/milestone2/<configuration>/<run-id>/`. After managed fixture generation,
+  run `test-scalars.ps1 -FixturePattern 'Abort*.ll'` for the additional runtime cases.
+  The broader implementation plan remains unfinished.
+
 ## Program Milestone 1 completion (2026-09-16)
 
 This bounded task targets `milestones/Milestone1.kimi`, independently of the

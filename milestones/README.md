@@ -1,8 +1,8 @@
 # Language milestones
 
 Five short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestone 1 is verified through
-native execution (2026-09-16); Milestones 2–5 remain future targets, and their
+They are staged compiler implementation targets. Milestones 1–2 are verified through
+native execution (2026-09-16); Milestones 3–5 remain future targets, and their
 outputs below are specification expectations rather than execution claims.
 
 | Program | Added concepts |
@@ -70,6 +70,29 @@ Abort is process termination, not a catchable exception.
 
 Focus: [control flow](../spec/14-control-flow.md) and
 [explicit Abort](../spec/17-failure-handling.md#173-abort-termination).
+
+Milestone 2 is verified through native execution, including the `expected = 54`
+variant. Reproduce with the pinned Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone2.ps1 -Configuration Release
+```
+
+The script builds the original file as a single-source Application, checks
+byte-identical renamed copies and separate Abort variants at O0/O2, and verifies
+native execution plus both forms of CLI `run`. Normal output is exactly
+`Sum is 55.\nDone.\n`, stderr is empty, and exit is 0. The Abort variant has empty
+stdout, reports `KIMI_E_ABORT: Unexpected sum` at line 13, column 5 on stderr,
+and exits 1 without printing `Done.`. Six invalid inputs must fail before IR or
+executable publication. Reports and build identities remain under
+`bin/milestone2/<configuration>/<run-id>/`; Debug is also supported.
+
+`AbortEmissionTest` additionally generates native fixtures for UTF-8/NUL/empty
+messages, owned strings, shadowing, nested Abort, one-time argument evaluation,
+argument return/overflow, skipped cleanup and Never conditions. After running the
+managed tests, execute them with
+`./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Abort*.ll'`.
 
 ## Milestone 3: function calls and cleanup
 
