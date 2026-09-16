@@ -1,5 +1,36 @@
 # Kimigayo Implementation Status
 
+Program Milestone 6 complete (2026-09-17): the unchanged
+`milestones/Milestone6.kimi` passes Binding, ownership, LLVM verification, native
+linking and execution with the existing compiler implementation. Value-producing
+loop/if/do, guarded match, continue, yield, named exit and require already compose
+correctly through result acquisition, cleanup and scalar SSA joins. No compiler
+source change or new language feature was needed. The first attempted build
+reached LLVM generation but could not run the sandboxed LLVM version probe;
+granting local native-tool execution permission resolved that environment failure.
+
+Exact stdout is `Selected 7.\nControl flow passed.\n`, stderr is empty, exit 0.
+`test-milestone6.ps1` adds 63 CLI/native checks per configuration: the original
+single-source input and renamed O0/O2 copies, alternate search threshold, guard
+evaluation side effects, both selection paths, both validation failure paths,
+transfer cleanup and Abort suppression of pending cleanup. Twelve invalid inputs
+are rejected before IR/executable publication, including missing/wrong transfer
+targets, incompatible or implicit Unit results, unreachable mismatched results,
+continuing require failure, non-bool guard, missing match coverage and escaped
+pattern binding. Debug/Release builds have zero warnings/errors; each full managed
+suite passes 6,986 tests with no skips. The focused baseline passed 602 tests.
+Both milestone script runs pass, with source/compiler/build identities retained at
+`bin/milestone6/Debug/98a3947647c4494cb4666f78a2c01896/verification.json` and
+`bin/milestone6/Release/d945c54bb6b340d798c484200e300889/verification.json`.
+
+Related result, match and guard fixtures pass 40, 144 and 78 O0/O2 native checks,
+respectively. Completed programs 1–5 pass their 25, 21, 37, 33 and 47 checks,
+respectively, against both current-source compiler configurations. No blocker or
+required unverified check remains. Program 6 is distinct from PLAN.md's broader
+stages. All nine source programs were read for dependencies, but no later program
+was implemented. Source programs, SPEC and drafts remain unchanged. NativeAOT
+was not run.
+
 Program Milestone 5 complete (2026-09-17): the unchanged
 `milestones/Milestone5.kimi` passes Binding, ownership, LLVM verification, native
 linking and execution at O0/O2. Eligible structs receive synthesized construction;

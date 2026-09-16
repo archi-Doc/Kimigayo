@@ -1,10 +1,11 @@
 # Language milestones
 
 Nine short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestones 1–5 are verified through
-native execution (2026-09-17); Milestones 6–9 are specification targets, and their
+They are staged compiler implementation targets. Milestones 1–6 are verified through
+native execution (2026-09-17); Milestones 7–9 are specification targets, and their
 outputs below are specification expectations rather than execution claims.
-Milestones 6–9 were added without compiler capability checks, builds, or execution.
+Milestones 6–9 were originally added without compiler capability checks, builds,
+or execution; subsequent verification is documented per program below.
 
 | Program | Added concepts |
 | --- | --- |
@@ -251,6 +252,29 @@ result. `require` is an ordinary statement, distinct from test-only `$require`.
 Focus: [loop results](../spec/14-control-flow.md#1463-loop),
 [transfer targets](../spec/14-control-flow.md#1452-target-lookup),
 and [require](../spec/14-control-flow.md#1411-require-statement).
+
+Milestone 6 uses the existing compiler implementation without compiler source
+changes. Reproduce its complete checks with the pinned Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone6.ps1 -Configuration Release
+```
+
+The script builds the unchanged input and byte-identical renamed copies, verifies
+LLVM IR and native linking at O0/O2, and runs the executables and both CLI `run`
+forms. Exact normal stdout is the two lines above, with empty stderr and exit 0.
+The alternate search threshold confirms that the literal `3` arm continues before
+the guard and produces 5. Other variants check guard side effects, the if/else
+paths, early require failure, final comparison failure and cleanup through
+continue/yield/named exit. Abort variants check exact diagnostics, exit 1 and
+suppression of pending main cleanup. Twelve invalid inputs cover missing or
+wrong transfer targets, result mismatches (including unreachable results), implicit
+Unit, a normally continuing require failure body, non-bool guards, non-exhaustive
+match and escaped arm-local bindings. Rejections must precede IR/executable
+publication. Each configuration has 63 checks; reports and source/compiler/build
+identities remain under `bin/milestone6/<configuration>/<run-id>/`. Debug is also
+supported. The script does not build or run NativeAOT.
 
 ## Milestone 7: arrays and nested iteration
 
