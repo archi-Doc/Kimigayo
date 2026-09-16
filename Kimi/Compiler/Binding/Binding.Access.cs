@@ -68,6 +68,36 @@ public sealed partial class Binding
 
             var scope = this.ConstraintScope(clause);
             var owner = scope.Owner;
+            if (owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional && ReferenceEquals(clause.Parent, conditional.Operands[1]))
+            {
+                for (var p = 0; p < this.activeConformancePaths.Count; p++)
+                {
+                    var path = this.activeConformancePaths[p];
+                    if (ReferenceEquals(path.Premises, clause.Parent) && !ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
+                    {
+                        path.Invalid = true;
+                        path.IsVerified = false;
+                        Fail(clause, BindingFailure.Access);
+                        Fail(conditional, BindingFailure.Access);
+                        Fail(path.Use, BindingFailure.Access);
+                    }
+                }
+
+                if (TryConditionalBlock(conditional, out var block))
+                {
+                    for (var m = 0; m < block.Items.Count; m++)
+                    {
+                        var member = block.Items[m];
+                        if (member is FunctionKoto or PropertyKoto && member.BoundSymbol is { } memberDomain && !ProjectionAccessCovers(use.Use, use.Type, use.Contract, memberDomain))
+                        {
+                            Fail(member, BindingFailure.Access);
+                        }
+                    }
+                }
+
+                continue;
+            }
+
             if (clause.IsAssociatedConstraint && owner is not ContractKoto && clause.BoundSymbol is { } associated)
             {
                 var type = scope.ConformancePath?.Type ?? owner.BoundSymbol;
@@ -202,6 +232,18 @@ public sealed partial class Binding
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
+            if (this.nodes[i] is FunctionKoto or PropertyKoto && this.nodes[i].BoundSymbol is { ConditionalDeclaration: { } conditional } member)
+            {
+                var premises = (SyntaxFormKoto)conditional.Operands[1];
+                for (var p = 0; p < premises.Operands.Length; p++)
+                {
+                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } premise } && !ConstraintAccessCovers(premise, member))
+                    {
+                        Fail(this.nodes[i], BindingFailure.Access);
+                    }
+                }
+            }
+
             if (this.nodes[i] is DeclarationContainerKoto { BoundSymbol: { } domain } container && container is StructKoto or EnumKoto)
             {
                 for (var c = 0; c < container.ConstraintNodes.Count; c++)

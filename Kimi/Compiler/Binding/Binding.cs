@@ -240,7 +240,7 @@ public sealed partial class Binding
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
-            if (node is DeclarationKoto && node.BindingState == BindingState.Invalid)
+            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid)
             {
                 return true;
             }

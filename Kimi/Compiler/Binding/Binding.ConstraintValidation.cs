@@ -18,6 +18,11 @@ public sealed partial class Binding
         {
             if (node is IsKoto clause)
             {
+                if (parent is SyntaxFormKoto premises && premises.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional && ReferenceEquals(conditional.Operands[1], premises))
+                {
+                    return conditional.Operands[0];
+                }
+
                 if (clause.IsAssociatedConstraint)
                 {
                     return parent is ContractKoto ? parent : clause;
@@ -108,7 +113,14 @@ public sealed partial class Binding
             }
 
             var state = declaration.BindingState;
-            this.RequireConstraint(declaration, this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode);
+            var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+            this.RequireConstraint(declaration, proof, mode);
+            if (declaration.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional)
+            {
+                // The target owns conformance/Copy evidence; the block owns member applicability.
+                this.RequireConstraint(conditional, proof, mode);
+            }
+
             changed |= state != declaration.BindingState;
         }
 

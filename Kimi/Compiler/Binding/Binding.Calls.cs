@@ -520,6 +520,14 @@ public sealed partial class Binding
             proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope), true);
         }
 
+        if (call.Target.Declaration is FunctionKoto function)
+        {
+            // Conditional evidence can fail after candidate selection. Recheck the committed
+            // candidate's constraints without reopening lookup or overload selection.
+            proof = CombineProof(proof, this.CheckConstraints(function.TypeConstraints, function, call.TypeArguments, scope, call.ConformingType, call.DeclaringType), true);
+        }
+
+        proof = CombineProof(proof, this.ProveMemberConditions(call.Target, call.DeclaringType, scope), true);
         proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
         foreach (var operation in call.ArgumentOperations)
         {

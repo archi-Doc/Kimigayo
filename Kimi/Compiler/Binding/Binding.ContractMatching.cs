@@ -166,6 +166,19 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ContractType(this.SelfType(conformance.Type), scope);
+            if (conformance.Premises is { } premises)
+            {
+                for (var p = 0; p < premises.Operands.Length; p++)
+                {
+                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } constraint } clause && !ConstraintAccessCovers(constraint, conformance.Type, conformance.Contract))
+                    {
+                        Fail(clause, BindingFailure.Access);
+                        Fail(premises.Parent!, BindingFailure.Access);
+                        return Invalid(BindingFailure.Access);
+                    }
+                }
+            }
+
             if (conformance.Contract.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
             {
                 var intrinsicProof = this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy);

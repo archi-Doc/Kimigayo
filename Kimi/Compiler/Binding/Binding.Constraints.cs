@@ -418,7 +418,7 @@ public sealed partial class Binding
         for (var i = 0; i < clauses.Count; i++)
         {
             var constraint = (IsKoto)clauses[i];
-            if (binder is DeclarationContainerKoto && constraint.Left.BoundSymbol?.Kind is not (BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter))
+            if (binder is DeclarationContainerKoto && constraint.Left.BoundSymbol?.Kind is not (BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter) && constraint.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection)
             {
                 continue;
             }
@@ -435,7 +435,8 @@ public sealed partial class Binding
                 substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
             }
 
-            result = CombineProof(result, this.ProveConstraint(self is null ? substituted : this.ContractConstraint(substituted, scope, self), scope), true);
+            // Associated identities also need normalization for calls without a receiver.
+            result = CombineProof(result, this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope), true);
         }
 
         return result;

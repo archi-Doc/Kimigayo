@@ -42,14 +42,14 @@ public sealed partial class Binding
     private static bool IsRefinement(BindingSymbol child, BindingSymbol parent)
         => ReferenceEquals(child, parent) || (child.Contract is { } shape && shape.AncestorStorage.Contains(parent));
 
-    private static bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract)
+    private static bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
     {
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
         {
-            return ConstraintAccessCovers(constraint.Left!, contract) && (constraint.Right is null || ConstraintAccessCovers(constraint.Right, contract));
+            return ConstraintAccessCovers(constraint.Left!, contract, intersection) && (constraint.Right is null || ConstraintAccessCovers(constraint.Right, contract, intersection));
         }
 
-        return (constraint.Contract is null || AccessCovers(constraint.Contract, contract, contract)) && (constraint.RequiredType is null || TypeAccessCovers(constraint.RequiredType, contract, contract));
+        return (constraint.Contract is null || AccessCovers(constraint.Contract, contract, intersection ?? contract)) && (constraint.RequiredType is null || TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
     }
 
     private void ResetContracts()
@@ -381,7 +381,7 @@ public sealed partial class Binding
         return premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
     }
 
-    private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType self, bool normalize = true)
+    private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize = true)
     {
         if (constraint.Kind == ConstraintKind.Not)
         {

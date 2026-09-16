@@ -588,6 +588,78 @@ public class ModuleBindingTest
         }
     }
 
+    [Theory]
+    [InlineData(0, false, false)]
+    [InlineData(0, false, true)]
+    [InlineData(0, true, false)]
+    [InlineData(0, true, true)]
+    [InlineData(1, false, false)]
+    [InlineData(1, false, true)]
+    [InlineData(1, true, false)]
+    [InlineData(1, true, true)]
+    [InlineData(2, false, false)]
+    [InlineData(2, false, true)]
+    [InlineData(2, true, false)]
+    [InlineData(2, true, true)]
+    [InlineData(3, false, false)]
+    [InlineData(3, false, true)]
+    [InlineData(3, true, false)]
+    [InlineData(3, true, true)]
+    [InlineData(4, false, false)]
+    [InlineData(4, false, true)]
+    [InlineData(4, true, false)]
+    [InlineData(4, true, true)]
+    public void ImportedProjectionConstraintsAndConditionalDomainsRemainCurrent(int form, bool defaults, bool valid)
+    {
+        string library;
+        string consumer;
+        if (form < 2)
+        {
+            library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x";
+            consumer = form == 0
+                ? "group Consumer\n    func take<T>()\n        T is Source.Origin.Item\n        ()\n    func call() => take<i32>()"
+                : "contract C\nstruct S<T>\n    Self is C when T is Source.Origin.Item";
+        }
+        else if (form < 4)
+        {
+            library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Source\n        Self is Hidden\n        associate Hidden.Item is i32\n    " + (form == 2 ? "public" : "internal") + " contract C\n    public struct S<T>\n        Self is C when T is Source.Hidden.Item" + (form == 3 ? "\n            public func value() -> i32 => 1" : string.Empty);
+            consumer = form == 2 ? "()" : "group Consumer\n    func call() -> i32 => S<i32>.value()";
+        }
+        else
+        {
+            library = "public group Api\n    public contract Origin\n        associate Item\n    public struct Source\n        Self is Origin\n        associate Origin.Item is " + (valid ? "i32" : "string") + "\n    public struct Box<T>\n        T is Origin\n        T.Origin.Item is i32";
+            consumer = "group Consumer\n    func take<T>() => ()\n    func call() => take<Box<Source>>()";
+        }
+
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
+            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+            Assert.Equal(valid, c.Bind().IsComplete);
+            if (form is 0 or 3 or 4)
+            {
+                var call = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
+                Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall is not null);
+            }
+            else
+            {
+                var owner = form == 1 ? c.Kotonoha.RootKoto : c.SourceModules[1].RootKoto.NestedContainers.Single(x => x.Name == "Api");
+                var type = owner.NestedContainers.Single(x => x.Name == "S");
+                var contract = owner.NestedContainers.Single(x => x.Name == "C");
+                Assert.Equal(valid, c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
+            }
+
+            if (pass == 0)
+            {
+                foreach (var module in c.SourceModules)
+                {
+                    module.OnDeserialized(c);
+                }
+            }
+        }
+    }
+
     private static string ProjectionConsumer(bool runtime, string argument)
         => runtime
             ? "struct Target<T>\ngroup Consumer\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">"
