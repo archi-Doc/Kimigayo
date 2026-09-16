@@ -1,0 +1,131 @@
+# Language milestones
+
+Five short, independent programs based on the current [SPEC](../SPEC.md).
+They are staged compiler implementation targets, not claims of current compiler
+support. Compiler capability checks, compilation, and execution were intentionally
+not performed for these programs. Outputs below are specification expectations.
+
+| Program | Added concepts |
+| --- | --- |
+| [Milestone1](Milestone1.kimi) | Hello World, top-level startup, owned string argument |
+| [Milestone2](Milestone2.kimi) | `let`/`var`, `i32`, arithmetic, `while`, `if`/`else`, `$abort` |
+| [Milestone3](Milestone3.kimi) | Explicit `main`, function calls, arguments/results, `return`, `defer` |
+| [Milestone4](Milestone4.kimi) | `struct`, `init`, fields, whole-value Move, owned parameters, `deinit` |
+| [Milestone5](Milestone5.kimi) | `uniq`/`ref`, returned borrow, `origin`/`from`, scope and destruction lifetimes |
+
+Each file is a separate Application; do not combine them into one project.
+Under [single-source input rules](../spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
+the intended build/run commands, once the required features are implemented, are:
+
+```powershell
+kimi build milestones/Milestone1.kimi
+kimi run milestones/Milestone1.kimi
+```
+
+Replace `1` with the milestone number. `run` executes an existing build; it does
+not compile source. No separate project file is needed. Output uses fixed string
+literals so these milestones do not require numeric formatting or interpolation.
+
+## Milestone 1: Hello World
+
+Expected stdout:
+
+```text
+Hello, world!
+```
+
+Focus: [startup and console output](../spec/22-core-execution-and-foreign-functions.md).
+
+## Milestone 2: control flow and Abort
+
+Compute 1 through 10's sum and compare it with `expected`.
+
+```text
+Sum is 55.
+Done.
+```
+
+Change `expected` from `55` to `54` to take the Abort branch. The process must
+emit an Abort diagnostic to stderr, exit with code 1, and never print `Done.`.
+Abort is process termination, not a catchable exception.
+
+Focus: [control flow](../spec/14-control-flow.md) and
+[explicit Abort](../spec/17-failure-handling.md#173-abort-termination).
+
+## Milestone 3: function calls and cleanup
+
+Extract the sum into `sumTo`. Its result is secured before its deferred cleanup;
+the caller receives that result after cleanup completes.
+
+```text
+Leaving sumTo.
+Sum is 55.
+Leaving main.
+```
+
+Change `sumTo(10)` to `sumTo(-1)` to exercise Abort. Neither deferred message
+runs, even though both defers have been registered: Abort does not unwind.
+Normal runs must not mix explicit `main` with top-level executable statements.
+
+Focus: [functions](../spec/07-functions-and-callable-values.md) and
+[cleanup and result delivery](../spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
+
+## Milestone 4: struct ownership and destruction
+
+`Counter.init()` initializes its field. `finish(counter)` transfers the entire
+Non-Copy struct into an owned parameter. Move does not rerun `init` or `deinit`.
+The parameter is destroyed once when `finish` exits, after its defer; the moved
+source in `main` has no remaining destruction responsibility.
+
+```text
+Counter created.
+Sum is 55.
+Leaving finish.
+Counter destroyed.
+Done.
+```
+
+As a separate rejection exercise, add `counter.value` after `finish(counter)`:
+reading a moved value must be rejected. A struct with user-defined `deinit`
+cannot opt into Copy or permit Partial Move that makes it incomplete.
+
+Focus: [construction](../spec/06-declarations-and-containers.md#623-constructors),
+[Move](../spec/15-ownership-and-lifetime-analysis.md#1515-movable-places), and
+[destruction](../spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+
+## Milestone 5: borrowing, Origins, and Lifetime
+
+`add` mutates through an exclusive borrow without acquiring the Counter's
+ownership. `borrowCounter` returns a shared reference whose validity is bounded
+by its input Origin. `CounterView` stores that reference under its declared
+`source` Origin; creating the view never extends the Counter's lifetime.
+
+```text
+Borrowed sum is 55.
+View destroyed; counter is still 55.
+Final value is 56.
+Counter destroyed.
+Done.
+```
+
+The `do` scope destroys `view` before mutation resumes. Its deinit observes the
+borrowed Counter, keeping that shared Loan active through destruction even after
+the last explicit `view.read()` call. Destroying a shared reference does not
+destroy its referent. After the view's cleanup, another exclusive borrow and
+then a whole-value Move are legal.
+
+Try each of these independently as a compile-time rejection exercise:
+
+- Insert `add(counter@uniq, 1)` at the end of the `do` body: mutation conflicts
+  with the shared Loan still needed by `view`'s destruction.
+- Insert `finish(counter)` at the same location: Move conflicts with that Loan.
+- Replace `borrowCounter`'s body with construction of a local Counter followed
+  by `return local@ref`: a local lifetime cannot satisfy the caller's Origin.
+
+Focus: [Origins](../spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins),
+[Loans and lifetimes](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing),
+and [destruction lifetime checking](../spec/15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking).
+
+For all unmodified programs, successful output lines end with LF, stderr is empty,
+and normal termination returns exit code 0. Abort variants skip any remaining
+ordinary cleanup and return exit code 1 under the specified Windows runtime.

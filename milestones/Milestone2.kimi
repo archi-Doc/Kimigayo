@@ -1,0 +1,15 @@
+// Milestone 2: bindings, arithmetic, control flow, and explicit Abort.
+let expected: i32 = 55 // Change to 54 to exercise Abort.
+var number: i32 = 1
+var total: i32 = 0
+
+while number <= 10
+    total = total + number
+    number = number + 1
+
+if total == expected
+    ::Core.writeLine("Sum is 55.")
+else
+    $abort("Unexpected sum")
+
+::Core.writeLine("Done.")

@@ -1,0 +1,19 @@
+// Milestone 3: function arguments/results, return, and deferred cleanup.
+func sumTo(limit: i32) -> i32
+    defer => ::Core.writeLine("Leaving sumTo.")
+    if limit < 0
+        $abort("Limit must be nonnegative")
+
+    var number: i32 = 1
+    var total: i32 = 0
+    while number <= limit
+        total = total + number
+        number = number + 1
+    return total
+
+public func main()
+    defer => ::Core.writeLine("Leaving main.")
+    let total = sumTo(10) // Change to -1 to observe Abort without cleanup.
+    if total != 55
+        $abort("Unexpected sum")
+    ::Core.writeLine("Sum is 55.")

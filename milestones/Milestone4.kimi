@@ -1,0 +1,27 @@
+// Milestone 4: struct construction, whole-value Move, and destruction.
+struct Counter
+    public var value: i32
+
+    public init()
+        self.value = 0
+        ::Core.writeLine("Counter created.")
+
+    deinit => ::Core.writeLine("Counter destroyed.")
+
+func finish(counter: Counter)
+    defer => ::Core.writeLine("Leaving finish.")
+    if counter.value != 55
+        $abort("Unexpected sum")
+    ::Core.writeLine("Sum is 55.")
+    // The owned parameter is destroyed after the deferred message.
+
+public func main()
+    var counter = Counter.init()
+    var number: i32 = 1
+    while number <= 10
+        counter.value = counter.value + number
+        number = number + 1
+
+    finish(counter) // Moves ownership and destruction responsibility.
+    // counter cannot be read or borrowed after this Move.
+    ::Core.writeLine("Done.")
