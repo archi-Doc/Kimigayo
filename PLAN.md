@@ -1,5 +1,59 @@
 # Kimigayo Compiler Completion Plan
 
+## Program Milestone 1 completion (2026-09-16)
+
+This bounded task targets `milestones/Milestone1.kimi`, independently of the
+M1–M17 implementation stages below. All five source programs and their expected
+behavior were read before work. Their dependencies are:
+
+| Program | Required addition over preceding foundations | This task |
+| --- | --- | --- |
+| 1 | Implicit startup, Core identity, owned string acquisition, UTF-8/LF output, normal exit | Complete through native execution |
+| 2 | Bindings, arithmetic, while/if, explicit Abort | Read for context only |
+| 3 | Explicit main, function arguments/results, return and defer | Read for context only |
+| 4 | Struct construction/fields, whole-value Move, owned parameter destruction/deinit | Read for context only |
+| 5 | Shared/exclusive borrowing, returned Origins, stored borrow and destruction lifetime | Read for context only |
+
+- **Initial state:** AGENTS.md and the working tree were checked; there were no
+  pre-existing uncommitted changes to preserve. Windows x64, .NET SDK 10.0.401,
+  and the repository's pinned LLVM 22.1.8/backend were available.
+- **First reproduced failure:** after a fresh Debug compiler build,
+  `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone1.kimi`
+  passed analysis/ownership/emission but failed on `opt.exe --version` with
+  permission denied in the execution sandbox. The same command with permission
+  to run the local toolchain passed native build. This was an environment gate,
+  not a missing language feature. No downstream compiler failure was confirmed.
+- **Order followed:** isolate the tool execution failure; run existing focused
+  tests (160 passed); establish actual-source O0/O2 native output; add repeatable
+  positive/negative CLI verification; run full managed and related native
+  regressions; synchronize documentation. No compiler special case, specification
+  weakening, draft edit, or later-program implementation was needed.
+- **Implementation:** `backend/windows-x64/test-milestone1.ps1` builds the actual
+  single-source input and byte-identical renamed source copies with O0/O2. It
+  checks native and CLI execution, exact output bytes, exit 0 and empty stderr,
+  plus Unicode/NUL/empty strings and owned local acquisition. Ten invalid inputs
+  must fail before IR/executable publication: wrong type, missing/extra arguments,
+  wrong label, borrowed argument, use after Move, uninitialized local, mixed
+  startup, missing startup, and invalid main. Diagnostics and build hashes are
+  retained. An initial test-script project used scalar `Targets`; the existing
+  configuration parser correctly rejected it. The fixture was corrected to the
+  existing list format before the successful checks.
+- **Verification:** Debug/Release solution builds pass with zero warnings/errors;
+  full suites pass 6,878 each, zero failed/skipped. The new script passes 25 checks
+  per configuration (15 execution checks and 10 rejection checks). Existing
+  `test-emission.ps1 -Configuration Release` passes 68 native O0/O2 executions,
+  including runtime output/failure/cleanup adapters. Normal builds verify LLVM IR
+  before code generation and again after O2 optimization. Required stdout is
+  hex `48656C6C6F2C20776F726C64210A`; stderr is empty and exit is 0. There are no
+  additional program side effects specified and no earlier numbered program.
+- **Completion checkpoint:** Milestone 1 passes every required stage. No remaining
+  blocker or unverified required check. NativeAOT was deliberately not run. Later
+  programs were neither built nor declared complete. The broader plan below
+  remains unfinished; this task stops here. Reproduce with a fresh compiler build
+  followed by `./backend/windows-x64/test-milestone1.ps1 -Configuration Release`
+  (or Debug). Evidence is under `bin/milestone1/<configuration>/<run-id>/` and
+  `bin/emission-native/Release/verification.json`.
+
 ## 1. Goal and Scope
 
 ### Baseline

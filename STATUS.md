@@ -1,5 +1,31 @@
 # Kimigayo Implementation Status
 
+Program Milestone 1 complete (2026-09-16): the unmodified
+`milestones/Milestone1.kimi` passes source parsing, Binding/startup selection,
+ownership analysis, LLVM generation/verification, native linking and execution
+using the current compiler. The first native attempt failed only because the
+execution sandbox denied `opt.exe`; allowing the local toolchain execution
+resolved that failure. No compiler implementation change or SPEC amendment was
+needed: §§22.2/22.4 already define the implemented behavior.
+
+Added `backend/windows-x64/test-milestone1.ps1` for repeatable actual-source and
+byte-identical renamed-source verification. Debug/Release each pass 25 checks:
+O0/O2 native execution and CLI forwarding, exact UTF-8 `Hello, world!` plus LF,
+empty stderr and exit 0; owned local Move, Unicode/NUL/empty output; and ten
+rejected type/argument/ownership/startup inputs before emission. Borrowed output
+is rejected at the existing unsupported-Binding boundary; this does not claim
+more precise overload diagnostics or general borrowing support. Build records,
+compiler/source hashes, rejection diagnostics and byte results are retained in
+`bin/milestone1/<configuration>/<run-id>/`.
+
+Both solution builds have zero warnings/errors; both full managed suites pass
+6,878 tests with zero failures/skips. Existing Release emission/runtime regression
+coverage passes 68 native executions at O0/O2, including output faults and cleanup.
+No required Milestone 1 check remains unverified. NativeAOT was not run. Programs
+2–5 were read for dependencies only, with no implementation or completion claim;
+their numbers are independent of PLAN.md's M1–M17. See the program checkpoint at
+the top of PLAN.md and `milestones/README.md` for scope and reproduction commands.
+
 Dependency API renames (2026-09-15): Updated call sites to match the upgraded packages: Arc.Collections registration APIs, Arc.Threading termination waits, Arc.Unit logging configuration, empty console, notification and console input interfaces, SimpleCommandLine parser options, Tinyhand map header reads, and Benchmark's Arc.Crypto/FarmHash calls. Updated related comments and the test console implementation. `dotnet build Kimigayo.slnx --no-restore --nologo -v:q` passed with no warnings or errors; `dotnet test --project xUnitTest/xUnitTest.csproj --no-build --no-restore` passed all 4,870 tests. CLI `--help` output and normal exit were also verified. Language rules, CLI syntax, and data formats are unchanged, so the SPEC body needed no update. NativeAOT tests and performance measurements were not run.
 
 Updated: 2026-09-15. Baseline reviewed: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`. Static element partial Moves are covered in §4.8/§7.4; static string element comparisons and shared arguments in §4.9/§7.5; element borrowing from owned parameters and temporaries in §4.10/§7.6; and partial Moves from owned parameters in §4.11/§7.7.

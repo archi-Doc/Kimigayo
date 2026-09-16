@@ -1,9 +1,9 @@
 # Language milestones
 
 Five short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets, not claims of current compiler
-support. Compiler capability checks, compilation, and execution were intentionally
-not performed for these programs. Outputs below are specification expectations.
+They are staged compiler implementation targets. Milestone 1 is verified through
+native execution (2026-09-16); Milestones 2–5 remain future targets, and their
+outputs below are specification expectations rather than execution claims.
 
 | Program | Added concepts |
 | --- | --- |
@@ -35,6 +35,25 @@ Hello, world!
 ```
 
 Focus: [startup and console output](../spec/22-core-execution-and-foreign-functions.md).
+
+Milestone 1 uses the existing compiler implementation without source changes.
+With the pinned Windows x64 LLVM toolchain installed, reproduce its full checks:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone1.ps1 -Configuration Release
+```
+
+The script builds this exact file as an implicit single-source Application, then
+tests byte-identical renamed copies at O0/O2 through ordinary project settings.
+It verifies LLVM IR through the normal build pipeline, runs the generated native
+executables and CLI `run`, and checks exact UTF-8 stdout, empty stderr, and exit 0.
+Separate variants cover owned string Move, Unicode, embedded NUL, empty strings,
+and ten rejected inputs. Results and build identities are retained under
+`bin/milestone1/<configuration>/<run-id>/`. Debug is also supported. The compiler
+must be built before running the script; it does not build or publish NativeAOT.
+
+The program numbers here are independent of PLAN.md's broader M1–M17 stages.
 
 ## Milestone 2: control flow and Abort
 
