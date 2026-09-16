@@ -11,9 +11,30 @@ public sealed partial class Binding
     private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
 
-    private void ValidateBaseDeclarations()
+    private void ValidateBaseDeclarations(BindingMode? mode = null)
     {
         this.inheritanceStates.Clear();
+        // Bind all bases before checking retained projections, then propagate
+        // invalid bases through the ordinary inheritance walk.
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is StructKoto structure)
+            {
+                for (var b = 0; b < structure.Bases.Count; b++)
+                {
+                    var syntax = structure.Bases[b];
+                    var scope = this.scopes[structure];
+                    var type = this.BindType(syntax, scope);
+                    if (mode is { } bindingMode && type is not null)
+                    {
+                        this.RequireConstraint(syntax, this.CheckTypeConstraints(type, scope), bindingMode);
+                    }
+                }
+            }
+        }
+
+        this.ValidateBaseProjections(mode);
+
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is StructKoto structure)
@@ -32,15 +53,19 @@ public sealed partial class Binding
         }
 
         this.inheritanceStates.Add(symbol, 1);
-        var valid = structure.Bases.Count <= 1;
+        var valid = structure.BindingState != BindingState.Invalid && structure.Bases.Count <= 1;
         var scope = this.scopes[structure];
         for (var i = 0; i < structure.Bases.Count; i++)
         {
             var syntax = structure.Bases[i];
             var type = this.BindType(syntax, scope);
-            if (type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } || (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !TypeAccessCovers(type, symbol, symbol) || !this.ValidateBaseDeclaration(parent))
+            if (syntax.BindingState == BindingState.Invalid || type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } || (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !TypeAccessCovers(type, symbol, symbol) || !this.ValidateBaseDeclaration(parent))
             {
                 Fail(syntax, BindingFailure.InvalidTypeFormation);
+                valid = false;
+            }
+            else if (valid && !this.ValidateInheritedNames(structure, type, scope))
+            {
                 valid = false;
             }
         }
@@ -52,6 +77,33 @@ public sealed partial class Binding
         }
 
         return valid;
+    }
+
+    private bool ValidateInheritedNames(StructKoto structure, BoundType baseType, BindingScope scope)
+    {
+        foreach (var entry in scope.Values)
+        {
+            var member = entry.Value;
+            while (member is not null && member.Declaration is FunctionKoto { IsConstructor: true } or FunctionKoto { IsDestructor: true } or FunctionKoto { IsSpecialization: true })
+            {
+                member = member.Next;
+            }
+
+            if (member?.Kind is not (BindingSymbolKind.Function or BindingSymbolKind.Property))
+            {
+                continue;
+            }
+
+            // Names reserve the declaration layer regardless of signatures or conditions.
+            // The original derived receiver supplies protected access, including Properties.
+            if (this.LookupTypeMember(baseType, entry.Key, scope, this.SelfType(structure.BoundSymbol!)).Member is not null)
+            {
+                Fail(structure, BindingFailure.Duplicate);
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // Access and namespace select the layer. Receiver/argument/accessor checks never reopen it.

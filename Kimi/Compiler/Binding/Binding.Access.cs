@@ -9,9 +9,9 @@ public sealed partial class Binding
     private static BoundType EffectiveCore(BoundType type)
         => type.Kind == BoundTypeKind.Semantics && type.Components.Count == 1 ? type.Components[0] : type;
 
-    private static bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain)
-        => TypeAccessCovers(qualifier, domain, domain) && AccessCovers(contract, domain, domain) &&
-            (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, domain));
+    private static bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
+        => TypeAccessCovers(qualifier, domain, intersection ?? domain) && AccessCovers(contract, domain, intersection ?? domain) &&
+            (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, intersection ?? domain));
 
     private static FunctionKoto? FunctionSignatureOwner(Koto use)
     {
@@ -66,7 +66,34 @@ public sealed partial class Binding
                 continue;
             }
 
-            var owner = this.ConstraintScope(clause).Owner;
+            var scope = this.ConstraintScope(clause);
+            var owner = scope.Owner;
+            if (clause.IsAssociatedConstraint && owner is not ContractKoto && clause.BoundSymbol is { } associated)
+            {
+                var type = scope.ConformancePath?.Type ?? owner.BoundSymbol;
+                for (var p = 0; p < this.activeConformancePaths.Count; p++)
+                {
+                    var path = this.activeConformancePaths[p];
+                    if (!ReferenceEquals(path.Type, type) || !path.Contract.Contract!.AssociatedStorage.Contains(associated) ||
+                        (scope.ConformancePath is { } declaringPath && !ReferenceEquals(path.RootPath, declaringPath.RootPath)))
+                    {
+                        continue;
+                    }
+
+                    // A narrower child Contract cannot narrow an ancestor's domain.
+                    // Conditional specifications belong only to their root path.
+                    if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
+                    {
+                        path.Invalid = true;
+                        path.IsVerified = false;
+                        Fail(clause, BindingFailure.Access);
+                        Fail(path.Use, BindingFailure.Access);
+                    }
+                }
+
+                continue;
+            }
+
             IReadOnlyList<Koto> clauses;
             BindingSymbol domain;
             switch (owner)
@@ -106,7 +133,72 @@ public sealed partial class Binding
         }
     }
 
-    private void ValidateApiAccess()
+    private void ValidateBaseProjections(BindingMode? mode)
+    {
+        for (var i = 0; i < this.projectionUses.Count; i++)
+        {
+            var use = this.projectionUses[i];
+            var node = use.Use;
+            while (node.Parent is { } parent && parent is not DeclarationContainerKoto && node is not (FunctionKoto or PropertyKoto))
+            {
+                node = parent;
+            }
+
+            if (node.Parent is not StructKoto structure)
+            {
+                continue;
+            }
+
+            for (var b = 0; b < structure.Bases.Count; b++)
+            {
+                if (ReferenceEquals(node, structure.Bases[b]))
+                {
+                    if (mode is { } bindingMode)
+                    {
+                        // The normalized base may no longer contain its projection qualifier.
+                        this.RequireConstraint(node, this.CheckTypeConstraints(use.Type, this.scopes[structure]), bindingMode);
+                    }
+                    else if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, structure.BoundSymbol!))
+                    {
+                        Fail(node, BindingFailure.Access);
+                        Fail(structure, BindingFailure.Access);
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
+
+    private void ValidateEnumProjections(BindingMode? mode = null)
+    {
+        for (var i = 0; i < this.projectionUses.Count; i++)
+        {
+            var use = this.projectionUses[i];
+            var node = use.Use;
+            while (node.Parent is { } parent && parent is not DeclarationContainerKoto && node is not (FunctionKoto or PropertyKoto))
+            {
+                node = parent;
+            }
+
+            if (node is SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration })
+            {
+                if (mode is { } bindingMode)
+                {
+                    var proof = this.CheckTypeConstraints(use.Type, this.scopes[enumeration]);
+                    this.RequireConstraint(node, proof, bindingMode);
+                    this.RequireConstraint(enumeration, proof, bindingMode);
+                }
+                else if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, enumeration.BoundSymbol!))
+                {
+                    Fail(node, BindingFailure.Access);
+                    Fail(enumeration, BindingFailure.Access);
+                }
+            }
+        }
+    }
+
+    private void ValidateApiAccess(BindingMode mode)
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -170,7 +262,11 @@ public sealed partial class Binding
             {
                 Fail(function, BindingFailure.Access);
             }
+
+            this.RequireConstraint(function, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
         }
+
+        this.ValidateEnumProjections(mode);
     }
 
     private bool DerivesFrom(BindingSymbol? type, BindingSymbol target)

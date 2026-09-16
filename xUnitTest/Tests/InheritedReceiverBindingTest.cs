@@ -10,16 +10,13 @@ namespace XunitTest;
 public class InheritedReceiverBindingTest
 {
     [Theory]
-    [InlineData("private", true)]
-    [InlineData("public", false)]
-    public void OnlyAnAccessibleLayerCommitsLookup(string access, bool valid)
+    [InlineData("private")]
+    [InlineData("public")]
+    public void DerivedAccessDoesNotPermitHidingAnAccessibleBaseName(string access)
     {
         var c = Parse($"open struct Base\n    public func f(x: i32) -> i32 => x\nstruct D: Base\n    {access} func f(x: string) -> i32 => 1\nfunc use() -> i32 => D.f(1)");
-        Assert.True(c.Bind().IsComplete == valid, Describe(c));
-        if (valid)
-        {
-            Assert.Equal("Base", Call(c).BoundCall!.DeclaringType!.Name);
-        }
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Node is StructKoto { Name: "D" } && x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
 
     [Theory]
@@ -354,12 +351,14 @@ public class InheritedReceiverBindingTest
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
     }
 
-    [Fact]
-    public void PublicConformanceCannotSkipAPrivateSelectedImplementation()
+    [Theory]
+    [InlineData("public", DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("private", DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    public void PublicConformanceCannotUseInvalidOrPrivateSelectedImplementation(string baseAccess, DiagnosticCode failure)
     {
-        var c = Parse("public contract C\n    func f() -> i32\npublic open struct Base\n    public func f() -> i32 => 1\npublic struct D: Base\n    Self is C\n    private func f() -> i32 => 2");
+        var c = Parse("public contract C\n    func f() -> i32\npublic open struct Base\n    " + baseAccess + " func f() -> i32 => 1\npublic struct D: Base\n    Self is C\n    private func f() -> i32 => 2");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == failure);
     }
 
     [Fact]

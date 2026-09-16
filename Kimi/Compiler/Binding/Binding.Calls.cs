@@ -497,11 +497,54 @@ public sealed partial class Binding
     private Koto? CallReceiver(Koto callee)
         => callee is MemberAccessKoto member && (this.requirementGroups.TryGetValue(member, out var group) && group.Active ? !group.TypeAccess : member.Left.BoundSymbol?.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.Container)) ? member.Left : null;
 
+    private ConstraintProof CheckCallTypeConstraints(BoundCall call, BindingScope scope)
+    {
+        if (InvalidDeclarationContext(call.Target.Declaration))
+        {
+            return ConstraintProof.Error;
+        }
+
+        var proof = this.CheckTypeConstraints(call.ReturnType, scope);
+        if (call.DeclaringType is { } declaringType)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);
+        }
+
+        if (call.ConformingType is { } conformingType)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope), true);
+        }
+
+        foreach (var argument in call.TypeArguments)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope), true);
+        }
+
+        proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
+        foreach (var operation in call.ArgumentOperations)
+        {
+            proof = CombineProof(proof, this.CheckOperationTypeConstraints(operation, scope), true);
+        }
+
+        return proof;
+    }
+
+    private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
+    {
+        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope) : ConstraintProof.Proven;
+        if (operation.ParameterType is { } parameter && !ReferenceEquals(parameter, operation.SourceType))
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope), true);
+        }
+
+        return proof;
+    }
+
     private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed)
     {
         defaultsUsed = 0;
         operations.Clear();
-        if (function.BindingState == BindingState.Invalid)
+        if (InvalidDeclarationContext(function))
         {
             return CandidateApplicability.Error;
         }
@@ -737,6 +780,19 @@ public sealed partial class Binding
         }
 
         var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType);
+        if (declaringType is not null)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);
+        }
+
+        proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
+        // A substitution must be a valid complete Type independently of whether
+        // the function constrains or uses that slot (SPEC 8.1.3).
+        for (var i = 0; i < function.GenericArguments.Count; i++)
+        {
+            proof = CombineProof(proof, arguments[i] is { } argument ? this.CheckTypeConstraints(argument, scope) : ConstraintProof.Unknown, true);
+        }
+
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
         return proof switch
         {

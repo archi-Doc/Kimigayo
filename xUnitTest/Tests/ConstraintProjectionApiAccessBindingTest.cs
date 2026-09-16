@@ -54,11 +54,12 @@ public class ConstraintProjectionApiAccessBindingTest
     [Theory]
     [InlineData("(i32, [1 of S.C.Element])")]
     [InlineData("Box<i32>.C.Element")]
-    public void UnsupportedRequirementSpellingsRemainParseErrors(string requirement)
+    public void TupleAndConstructedProjectionRequirementsReachBinding(string requirement)
     {
-        var c = MinimalEmissionTest.Analyze($"public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose<T>(value: T)\n        T is {requirement}\n        ()");
-        Assert.True(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C").CodeContext.DiagnosticCollection.HasErrors);
-        Assert.False(c.Emission.Validate(out _));
+        var source = $"public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose<T>(value: T)\n        T is {requirement}\n        ()";
+        var tree = ParseTestHelper.Parse(source);
+        ParseTestHelper.AssertValid(tree);
+        Check(MinimalEmissionTest.Analyze(source), true);
     }
 
     [Theory]
@@ -193,7 +194,7 @@ public class ConstraintProjectionApiAccessBindingTest
 
     private static void Check(Compilation c, bool valid)
     {
-        var diagnostics = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C").CodeContext.DiagnosticCollection;
+        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi");
         Assert.False(diagnostics.HasErrors, string.Join(", ", diagnostics.GetArray().Select(x => x.Entry.Name)));
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         if (!valid)

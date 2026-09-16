@@ -71,7 +71,7 @@ public sealed partial class Binding
 
     private static bool InvalidConstraintType(BoundType type)
     {
-        if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
+        if (type.Symbol is { } symbol && InvalidDeclarationContext(symbol.Declaration))
         {
             return true;
         }
@@ -89,7 +89,7 @@ public sealed partial class Binding
 
     private ConstraintProof JudgeConstraintAtom(BoundConstraint proposition, BindingScope scope)
     {
-        if (InvalidConstraintType(proposition.Subject!) || (proposition.RequiredType is { } required && InvalidConstraintType(required)) || proposition.Contract?.Declaration.BindingState == BindingState.Invalid)
+        if (InvalidConstraintType(proposition.Subject!) || (proposition.RequiredType is { } required && InvalidConstraintType(required)) || (proposition.Contract is { } contractSymbol && InvalidDeclarationContext(contractSymbol.Declaration)))
         {
             return ConstraintProof.Error;
         }

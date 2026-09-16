@@ -212,7 +212,7 @@ public sealed partial class Binding
 
     private void ValidateProperties(BindingMode mode)
     {
-        // Projection normalization must not erase signature access obligations.
+        // Projection normalization must not erase signature access or input constraints.
         // Check before publishing Property verification or building conformance witnesses.
         for (var i = 0; i < this.projectionUses.Count; i++)
         {
@@ -229,6 +229,8 @@ public sealed partial class Binding
             {
                 Fail(declaration!, BindingFailure.Access);
             }
+
+            this.RequireConstraint(declaration!, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
         }
 
         for (var i = 0; i < this.nodes.Count; i++)
@@ -248,7 +250,7 @@ public sealed partial class Binding
 
             var proof = this.ValidateAccessor(property.Getter);
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
-            property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingState != BindingState.Invalid;
+            property.IsVerified = proof == ConstraintProof.Proven && !InvalidDeclarationContext(syntax);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(syntax, proof, mode);
@@ -265,7 +267,7 @@ public sealed partial class Binding
 
         var property = accessor.Property;
         var syntax = accessor.Declaration;
-        if (syntax?.BindingState == BindingState.Invalid || property.Declaration.BindingState == BindingState.Invalid)
+        if (syntax?.BindingState == BindingState.Invalid || InvalidDeclarationContext(property.Declaration))
         {
             return ConstraintProof.Error;
         }
@@ -273,6 +275,25 @@ public sealed partial class Binding
         if (property.Type is null || accessor.Result is null)
         {
             return ConstraintProof.Unknown;
+        }
+
+        // A resolved signature can still contain a constructed Type whose input
+        // constraints fail. Validate before publishing a Property certificate.
+        var scope = syntax is null ? this.DeclarationScope(property.Symbol) : this.scopes[syntax];
+        var formation = CombineProof(this.CheckTypeConstraints(property.Type, scope), this.CheckTypeConstraints(accessor.Result, scope), true);
+        if (accessor.Input is { } inputType)
+        {
+            formation = CombineProof(formation, this.CheckTypeConstraints(inputType, scope), true);
+        }
+
+        if (accessor.Receiver is { } receiverSignature)
+        {
+            formation = CombineProof(formation, this.CheckTypeConstraints(receiverSignature, scope), true);
+        }
+
+        if (formation != ConstraintProof.Proven)
+        {
+            return formation;
         }
 
         if (syntax is not null && syntax.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))

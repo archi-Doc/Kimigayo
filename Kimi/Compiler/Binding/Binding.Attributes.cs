@@ -6,21 +6,32 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private void IndexLayoutAttribute(AttributeKoto attribute)
+    private static Koto? AttributeTarget(AttributeKoto attribute)
     {
-        attribute.BindingFailure = BindingFailure.None;
-        attribute.BindingState = BindingState.Unvisited;
-        attribute.BoundType = null;
-        this.nodes.Add(attribute);
         var target = attribute.Parent;
         while (target is AttributeKoto)
         {
             target = target.Parent;
         }
 
+        return target;
+    }
+
+    private void IndexLayoutAttribute(AttributeKoto attribute)
+    {
+        attribute.BindingFailure = BindingFailure.None;
+        attribute.BindingState = BindingState.Unvisited;
+        attribute.BoundType = null;
+        this.nodes.Add(attribute);
+        var target = AttributeTarget(attribute);
+
         if (target is not StructKoto || attribute.LayoutMode is null)
         {
             Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+            if (target is not null)
+            {
+                Fail(target, BindingFailure.InvalidTypeFormation);
+            }
         }
         else
         {
@@ -40,6 +51,7 @@ public sealed partial class Binding
             string? mode = null;
             AttributeKoto? latestSpecification = null;
             var previousFragment = -1;
+            var valid = true;
             for (var attribute = container.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
             {
                 if (attribute.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "Layout" })
@@ -52,12 +64,15 @@ public sealed partial class Binding
                     Fail(attribute, BindingFailure.InvalidLayoutAttribute);
                 }
 
+                valid &= attribute.BindingState != BindingState.Invalid;
+
                 previousFragment = attribute.FragmentOrdinal;
                 if (attribute.LayoutMode is { } explicitMode)
                 {
                     if (mode is not null && mode != explicitMode)
                     {
                         Fail(latestSpecification!, BindingFailure.ConflictingLayout);
+                        valid = false;
                     }
                     else if (mode is null)
                     {
@@ -67,23 +82,24 @@ public sealed partial class Binding
                 }
             }
 
-            if (mode != "C")
-            {
-                continue;
-            }
-
             var storageFragment = -1;
-            for (var m = 0; m < container.Members.Count; m++)
+            for (var m = 0; mode == "C" && m < container.Members.Count; m++)
             {
                 if (container.Members[m] is PropertyKoto field && IsStoredVariable(field))
                 {
                     if (storageFragment >= 0 && storageFragment != field.FragmentOrdinal)
                     {
                         Fail(field, BindingFailure.SplitCLayoutStorage);
+                        valid = false;
                     }
 
                     storageFragment = field.FragmentOrdinal;
                 }
+            }
+
+            if (!valid)
+            {
+                Fail(container, BindingFailure.InvalidTypeFormation);
             }
         }
     }

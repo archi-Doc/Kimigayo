@@ -394,10 +394,24 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved || plan.Case.Owner.Declaration.BindingState != BindingState.Resolved)
+            if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved || plan.Case.Owner.Declaration.BindingState != BindingState.Resolved || InvalidDeclarationContext(plan.Case.Owner.Declaration))
             {
                 plan.IsValid = false;
                 Fail(entry.Key, BindingFailure.InvalidTypeFormation);
+                continue;
+            }
+
+            var scope = this.ConstraintScope(entry.Key);
+            var formation = this.CheckTypeConstraints(plan.Type, scope);
+            for (var i = 0; i < plan.PayloadOperations.Length; i++)
+            {
+                formation = CombineProof(formation, this.CheckTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope), true);
+            }
+
+            if (formation != ConstraintProof.Proven)
+            {
+                plan.IsValid = false;
+                Fail(entry.Key, formation == ConstraintProof.Error ? BindingFailure.InvalidConstraint : formation == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, formation == ConstraintProof.Unknown);
                 continue;
             }
 

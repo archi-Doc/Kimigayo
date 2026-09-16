@@ -157,6 +157,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.ValidateLayoutFragments();
             this.ValidateBaseDeclarations();
             this.PrepareStorage();
             this.ComputeOriginRequirements();
@@ -175,16 +176,29 @@ public sealed partial class Binding
             this.BindNode(this.Core.Result.Declaration, this.Core.Scope);
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
-            this.ValidateProperties(mode);
             this.ComputeOriginRequirements();
             this.ValidateOriginRequirements();
+            this.ValidateApiAccess(mode);
+            // Base constraints need capability evidence; propagate failures before certificates.
+            this.ValidateBaseDeclarations(mode);
+            // Property certificates must include final Origin and declaration API validity.
+            this.ValidateProperties(mode);
             this.ValidateConformances(mode, true);
             this.ValidateConstraintUses(mode);
+            // Late witness failures can invalidate declarations that normalized their projections.
+            // Revisit dependent certificates only while declaration states change monotonically.
+            while (this.ValidateDeclarationProjectionInputs(mode))
+            {
+                this.ClearCapabilityResults();
+                this.ValidateBaseDeclarations(mode);
+                this.ValidateProperties(mode);
+                this.ValidateConformances(mode, true);
+            }
+
             this.ClearCapabilityResults();
+            this.ValidateExpressionProjectionInputs(mode);
             this.CompleteEnumAcquisitions();
             this.CompletePatternAcquisitions();
-            this.ValidateApiAccess();
-            this.ValidateLayoutFragments();
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -221,6 +235,19 @@ public sealed partial class Binding
     }
 
     internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => this.symbols[function.Parameters[index]];
+
+    private static bool InvalidDeclarationContext(Koto declaration)
+    {
+        for (Koto? node = declaration; node is not null; node = node.Parent)
+        {
+            if (node is DeclarationKoto && node.BindingState == BindingState.Invalid)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
@@ -305,6 +332,21 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
+            // API and constraint validation can invalidate a target or Type after call selection.
+            if (node is InvocationKoto { BoundCall: { } call })
+            {
+                this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
+            }
+            else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
+            {
+                var proof = this.CheckRuntimeTestTypeConstraints(runtimeTest, this.ConstraintScope(test));
+                this.RequireConstraint(test, proof, mode);
+                if (proof != ConstraintProof.Proven)
+                {
+                    test.BoundRuntimeTest = null;
+                }
+            }
+
             if (node.BindingState == BindingState.Unvisited)
             {
                 Fail(node, BindingFailure.Unsupported, true);
@@ -589,10 +631,20 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } })
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } invalidTest)
             {
                 Fail(node, BindingFailure.InvalidTestDefinition);
                 binding.nodes.Add(node);
+                if (AttributeTarget(invalidTest) is { } invalidTarget)
+                {
+                    Fail(invalidTarget, BindingFailure.InvalidTestDefinition);
+                }
+
+                if (invalidTest.AttributeChain is { } precedingMarker)
+                {
+                    this.Visit(precedingMarker);
+                }
+
                 return;
             }
 
@@ -605,6 +657,14 @@ public sealed partial class Binding
                 }
 
                 return;
+            }
+
+            if (node is AttributeKoto selectedAttribute && AttributeTarget(selectedAttribute) is { } target &&
+                (selectedAttribute.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "LibraryImport" } || target is not FunctionKoto))
+            {
+                // Layout/Test are handled above. Unrecognized markers and non-function
+                // LibraryImport targets cannot certify; retain syntax and diagnostics.
+                Fail(target, BindingFailure.InvalidTypeFormation);
             }
 
             if (node is ConversionKoto conversion)
@@ -775,8 +835,13 @@ public sealed partial class Binding
                     {
                         var bound = variableSymbol.Property ??= new(variableSymbol);
                         bound.IsVerified = false;
-                        Reset(bound.Getter, property.GetAccessor(PropertyAccessorKind.Get), true);
+                        var getter = property.GetAccessor(PropertyAccessorKind.Get);
+                        Reset(bound.Getter, getter, bound.IsStored || getter is not null);
                         Reset(bound.Setter, property.GetAccessor(PropertyAccessorKind.Set), property.DeclarationKind == PropertyDeclarationKind.Var || property.GetAccessor(PropertyAccessorKind.Set) is not null);
+                        if (!bound.IsStored && getter is null)
+                        {
+                            Fail(property, BindingFailure.InvalidTypeFormation);
+                        }
                     }
 
                     break;

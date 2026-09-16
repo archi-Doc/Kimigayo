@@ -140,7 +140,7 @@ public sealed partial class Binding
 
     private ConstraintProof VerifyConformance(BoundConformancePath conformance)
     {
-        if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || conformance.Contract.Declaration.BindingState == BindingState.Invalid || conformance.Type.Declaration.BindingState == BindingState.Invalid)
+        if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || InvalidDeclarationContext(conformance.Contract.Declaration) || InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
             return ConstraintProof.Error;
@@ -185,6 +185,15 @@ public sealed partial class Binding
                 {
                     return Invalid(BindingFailure.Access);
                 }
+
+                // Normalized identity/Core shape alone does not prove nested input constraints.
+                proof = CombineProof(proof, this.CheckTypeConstraints(associated, scope), true);
+                var inputs = this.associatedBindings[(conformance.RootPath, shape.AssociatedTypes[i])].Candidates;
+                for (var input = 0; input < inputs.Count; input++)
+                {
+                    // Projection normalization may erase an invalid constructed qualifier.
+                    proof = CombineProof(proof, this.CheckTypeConstraints(inputs[input], scope), true);
+                }
             }
 
             for (var i = 0; i < shape.Ancestors.Count; i++)
@@ -226,6 +235,11 @@ public sealed partial class Binding
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
                 {
+                    if (clause.BindingState == BindingState.Invalid)
+                    {
+                        return Invalid(BindingFailure.InvalidAssociatedType);
+                    }
+
                     proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
                 }
             }
@@ -398,6 +412,12 @@ public sealed partial class Binding
         if (requirement.BindingState == BindingState.Invalid || implementation.BindingState == BindingState.Invalid || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
         {
             return ConstraintProof.Error;
+        }
+
+        var formation = CombineProof(this.CheckSignatureTypeConstraints(requirement), this.CheckSignatureTypeConstraints(implementation), true);
+        if (formation != ConstraintProof.Proven)
+        {
+            return formation;
         }
 
         var key = (conformance, requirement.BoundSymbol!);

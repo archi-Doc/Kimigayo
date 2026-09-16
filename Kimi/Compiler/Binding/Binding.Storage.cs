@@ -133,6 +133,8 @@ public sealed partial class Binding
                 Fail(container, BindingFailure.InvalidTypeFormation);
             }
         }
+
+        this.ValidateEnumProjections();
     }
 
     private BoundType? StoredType(BoundType field, BoundType owner)

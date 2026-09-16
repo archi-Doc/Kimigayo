@@ -141,20 +141,6 @@ public sealed partial class Binding
 
         plan.ExpectedType = resultContext.Expected;
         this.CalculateMatchCoverage(plan, subject);
-        if (plan.Coverage.State is MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive)
-        {
-            for (var later = 1; later < plan.Arms.Count; later++)
-            {
-                for (var earlier = 0; earlier < later; earlier++)
-                {
-                    if (plan.Arms[earlier].Syntax.Guard is null && ContainsPattern(plan, plan.Arms[earlier].Pattern, plan.Arms[later].Pattern))
-                    {
-                        this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, plan.Arms[earlier].Syntax.Pattern, earlier));
-                        break;
-                    }
-                }
-            }
-        }
 
         var pendingBody = false;
         var required = KotoHelper.IsResultRequiringSelection(match);
@@ -198,7 +184,8 @@ public sealed partial class Binding
 
         if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
         {
-            return Fail(match, BindingFailure.NonExhaustiveMatch);
+            // Keep the match unavailable until late Type validation decides the diagnostic.
+            return Complete(match, null);
         }
 
         if (plan.Invalid)
@@ -228,6 +215,11 @@ public sealed partial class Binding
         plan.PositionStorage.Add(new(syntax, matched, BoundPatternKind.Invalid, parent, element, index + 1));
         var position = plan.PositionStorage[index];
         plan.Invalid |= syntax.BindingState == BindingState.Invalid;
+        if (!this.ValidatePatternType(plan, syntax, matched, outer))
+        {
+            return index;
+        }
+
         var type = matched;
         var structural = syntax is not IdentifierNameKoto { IdentifierName: "_" } and not SyntaxFormKoto { Akind: KotoKind.BindingPattern };
         var unsupported = false;
@@ -414,13 +406,35 @@ public sealed partial class Binding
         }
     }
 
+    private bool ValidatePatternType(BoundMatch plan, Koto syntax, BoundType type, BindingScope scope)
+    {
+        var proof = this.CheckTypeConstraints(type, scope);
+        if (proof == ConstraintProof.Proven)
+        {
+            return true;
+        }
+
+        plan.Invalid |= proof != ConstraintProof.Unknown;
+        plan.Pending |= proof == ConstraintProof.Unknown;
+        Fail(syntax, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+        return false;
+    }
+
     private void CompletePatternAcquisitions()
     {
         foreach (var plan in this.matches.Values)
         {
+            var scope = this.ConstraintScope(plan.Syntax);
             for (var i = 0; i < plan.PositionStorage.Count; i++)
             {
                 var position = plan.PositionStorage[i];
+                // Recheck after late declaration/constraint validation, including discards.
+                if (!this.ValidatePatternType(plan, position.Source, position.MatchedType, scope))
+                {
+                    plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
+                    continue;
+                }
+
                 if (position.Kind != BoundPatternKind.Binding || position.AccessMode == PatternAccessMode.Shared)
                 {
                     continue;
@@ -434,6 +448,27 @@ public sealed partial class Binding
                     plan.Invalid = true;
                     plan.Coverage = new(MatchCoverageState.Invalid);
                     Fail(position.Source, BindingFailure.InvalidConstraint);
+                }
+            }
+
+            if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
+            {
+                Fail(plan.Syntax, BindingFailure.NonExhaustiveMatch);
+            }
+
+            // Publish coverage warnings only after all Pattern Type checks have completed.
+            if (plan.Coverage.State is MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive)
+            {
+                for (var later = 1; later < plan.Arms.Count; later++)
+                {
+                    for (var earlier = 0; earlier < later; earlier++)
+                    {
+                        if (plan.Arms[earlier].Syntax.Guard is null && ContainsPattern(plan, plan.Arms[earlier].Pattern, plan.Arms[later].Pattern))
+                        {
+                            this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, plan.Arms[earlier].Syntax.Pattern, earlier));
+                            break;
+                        }
+                    }
                 }
             }
         }

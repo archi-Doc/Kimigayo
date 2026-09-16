@@ -2003,6 +2003,11 @@ CloseParameters:
 
             if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
             {
+                if (!parsesSemantics && IsTupleRequirement(ref reader))
+                {
+                    return ParseDeclarationType(ref reader);
+                }
+
                 var openRange = reader.CurrentTokenRange;
                 reader.Advance();
                 var operand = ParseCondition(ref reader, parsesSemantics);
@@ -2045,7 +2050,22 @@ CloseParameters:
             }
 
             var name = ParseConstraintSubject(ref reader);
-            return reader.CurrentTokenKind == TokenKind.LessThan ? ParseGenericsPostfix(ref reader, name) : name;
+            while (true)
+            {
+                if (reader.CurrentTokenKind == TokenKind.LessThan)
+                {
+                    name = ParseGenericsPostfix(ref reader, name);
+                }
+                else if (reader.TryConsume(TokenKind.Dot))
+                {
+                    var member = ParseName(ref reader);
+                    name = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, member.Span.End), name, member);
+                }
+                else
+                {
+                    return name;
+                }
+            }
         }
     }
 

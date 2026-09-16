@@ -130,6 +130,13 @@ public sealed partial class Binding
             return Complete(node, BoundType.Unit);
         }
 
+        // Attribute-chain entries are independent selected markers. An indexed
+        // error or completed built-in marker must not suppress an earlier entry.
+        if (node is AttributeKoto { AttributeChain: { } precedingAttribute })
+        {
+            this.BindNode(precedingAttribute, scope);
+        }
+
         if (node.BindingState == BindingState.Resolved)
         {
             return node.BoundType;
@@ -146,7 +153,7 @@ public sealed partial class Binding
             return testDefinition.BoundType;
         }
 
-        if (node.AttributeChain is { } attribute)
+        if (node is not AttributeKoto && node.AttributeChain is { } attribute)
         {
             this.BindNode(attribute, scope);
         }

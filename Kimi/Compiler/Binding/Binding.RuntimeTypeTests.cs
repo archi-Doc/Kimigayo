@@ -80,7 +80,18 @@ public sealed partial class Binding
             }
         }
 
-        test.BoundRuntimeTest = new(operand, target);
+        var plan = new BoundRuntimeTypeTest(operand, target);
+        var proof = this.CheckRuntimeTestTypeConstraints(plan, scope);
+        if (proof != ConstraintProof.Proven)
+        {
+            this.RequireConstraint(test, proof, this.capabilityMode);
+            return null;
+        }
+
+        test.BoundRuntimeTest = plan;
         return Complete(test, BoundType.Boolean);
     }
+
+    private ConstraintProof CheckRuntimeTestTypeConstraints(BoundRuntimeTypeTest test, BindingScope scope)
+        => CombineProof(this.CheckTypeConstraints(test.OperandType, scope), this.CheckTypeConstraints(test.TargetType, scope), true);
 }

@@ -6,6 +6,144 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private static Koto? ProjectionDeclarationOwner(Koto use)
+    {
+        if (((Koto?)FunctionSignatureOwner(use) ?? PropertySignatureOwner(use)) is { } signature)
+        {
+            return signature;
+        }
+
+        var node = use;
+        while (node.Parent is { } parent && node is not (FunctionKoto or PropertyKoto))
+        {
+            if (node is IsKoto clause)
+            {
+                if (clause.IsAssociatedConstraint)
+                {
+                    return parent is ContractKoto ? parent : clause;
+                }
+
+                IReadOnlyList<Koto>? constraints = parent switch
+                {
+                    FunctionKoto function => function.TypeConstraints,
+                    DeclarationContainerKoto container when container is ContractKoto || clause.Left is not IdentifierNameKoto { IdentifierName: "Self" } => container.ConstraintNodes,
+                    _ => null,
+                };
+                if (constraints is not null)
+                {
+                    for (var i = 0; i < constraints.Count; i++)
+                    {
+                        if (ReferenceEquals(clause, constraints[i]))
+                        {
+                            return parent;
+                        }
+                    }
+                }
+            }
+
+            if (parent is DeclarationContainerKoto)
+            {
+                break;
+            }
+
+            node = parent;
+        }
+
+        if (node.Parent is StructKoto structure)
+        {
+            for (var i = 0; i < structure.Bases.Count; i++)
+            {
+                if (ReferenceEquals(node, structure.Bases[i]))
+                {
+                    return node;
+                }
+            }
+        }
+
+        return node is SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration } ? enumeration : null;
+    }
+
+    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
+    {
+        if (type.Symbol is { } symbol && InvalidDeclarationContext(symbol.Declaration))
+        {
+            return ConstraintProof.Error;
+        }
+
+        var proof = ConstraintProof.Proven;
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(type.Components[i], scope), true);
+        }
+
+        if (type is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container } && container.ConstraintNodes.Count != 0)
+        {
+            proof = CombineProof(proof, this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope), true);
+        }
+
+        return proof;
+    }
+
+    private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
+    {
+        var scope = this.scopes[function];
+        var proof = function.BoundSymbol?.Type is { } result ? this.CheckTypeConstraints(result, scope) : ConstraintProof.Unknown;
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            proof = CombineProof(proof, function.Parameters[i].Type.BoundType is { } parameter ? this.CheckTypeConstraints(parameter, scope) : ConstraintProof.Unknown, true);
+        }
+
+        return proof;
+    }
+
+    private bool ValidateDeclarationProjectionInputs(BindingMode mode)
+    {
+        var changed = false;
+        foreach (var use in this.projectionUses)
+        {
+            var declaration = ProjectionDeclarationOwner(use.Use);
+            if (declaration is null)
+            {
+                continue;
+            }
+
+            var state = declaration.BindingState;
+            this.RequireConstraint(declaration, this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode);
+            changed |= state != declaration.BindingState;
+        }
+
+        return changed;
+    }
+
+    private void ValidateExpressionProjectionInputs(BindingMode mode)
+    {
+        foreach (var use in this.projectionUses)
+        {
+            ConstraintProof? proof = null;
+            for (var node = use.Use; node.Parent is { } parent && parent is not DeclarationKoto; node = parent)
+            {
+                // Explicit Type syntax can normalize away the constrained qualifier.
+                if (parent is InvocationKoto call && ReferenceEquals(node, call.Method))
+                {
+                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+                    this.RequireConstraint(call, proof.Value, mode);
+                }
+                else if (parent is IsKoto { IsRuntimeTest: true } test && ReferenceEquals(node, test.Right))
+                {
+                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+                    this.RequireConstraint(test, proof.Value, mode);
+                    if (proof != ConstraintProof.Proven)
+                    {
+                        test.BoundRuntimeTest = null;
+                    }
+                }
+            }
+        }
+    }
+
+    private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope)
+        => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope), true);
+
     private void ValidateConstraintUses(BindingMode mode)
     {
         for (var i = 0; i < this.nodes.Count; i++)

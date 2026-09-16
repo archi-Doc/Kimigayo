@@ -12,6 +12,72 @@ namespace Kimi.Compiler;
 
 public static partial class Parser
 {
+    private static bool IsTupleRequirement(ref TokenReader reader)
+    {
+        // Only a comma at this parenthesis level distinguishes a Tuple from a
+        // grouped requirement. Nested Type arguments and arrays own their commas.
+        if (reader.PeekKind() == TokenKind.CloseParenthesis)
+        {
+            return true;
+        }
+
+        var parentheses = 1;
+        var brackets = 0;
+        var arguments = 0;
+        for (var offset = 1; ; offset++)
+        {
+            var kind = reader.PeekKind(offset);
+            if (kind is TokenKind.Invalid or TokenKind.EndBlock or TokenKind.StartBlock)
+            {
+                return false;
+            }
+
+            if (kind == TokenKind.OpenParenthesis)
+            {
+                parentheses++;
+            }
+            else if (kind == TokenKind.CloseParenthesis && --parentheses == 0)
+            {
+                return false;
+            }
+            else if (kind == TokenKind.OpenBracket)
+            {
+                brackets++;
+            }
+            else if (kind == TokenKind.CloseBracket)
+            {
+                brackets--;
+            }
+            else if (brackets == 0)
+            {
+                if (kind == TokenKind.LessThan)
+                {
+                    arguments++;
+                }
+                else if (kind == TokenKind.GreaterThan)
+                {
+                    arguments--;
+                }
+                else if (kind == TokenKind.GreaterThanGreaterThan)
+                {
+                    arguments -= 2;
+                }
+                else if (parentheses == 1 && arguments == 0)
+                {
+                    if (kind == TokenKind.Comma)
+                    {
+                        return true;
+                    }
+
+                    if (kind is TokenKind.And or TokenKind.Or or TokenKind.Not)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
     private static Koto ParseConstraintSubject(ref TokenReader reader)
     {
         Koto subject;
