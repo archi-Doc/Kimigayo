@@ -1,5 +1,57 @@
 # Kimigayo Compiler Completion Plan
 
+## Program Milestone 3 completion (2026-09-16)
+
+This checkpoint concerns `milestones/Milestone3.kimi`, not the broader M3 stage.
+Earlier program checkpoints below retain their historical scope.
+
+- **Initial state:** checked AGENTS.md, the clean working tree, all five programs,
+  existing function/defer/Abort implementation and test environment. There were
+  no uncommitted changes to save. Windows x64, .NET SDK 10.0.401 and pinned LLVM
+  22.1.8/backend were available. The programs build on output/startup (1), scalar
+  control flow/Abort (2), function arguments/results/return/defer (3), structs and
+  destruction (4), then borrowing/Origins/lifetimes (5). Programs 4–5 informed
+  scope only; no later-only feature was implemented or declared complete.
+- **First reproduction:** after rebuilding the Debug solution from current source,
+  `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone3.kimi` passed
+  final Binding, ownership and IR generation, then failed at `opt.exe --version`
+  with sandbox permission denied. Allowing local tool execution made that same
+  native build succeed. No language/compiler failure or predicted downstream
+  feature gap was confirmed. Existing FunctionEmission, DeferredEmission,
+  AbortEmission and StartupBinding baselines passed 211 tests before changes.
+- **Order followed:** isolate the environment failure; inspect function result
+  acquisition and cleanup against §§7, 16.1–16.2, 17.3 and 22.2; verify the actual
+  input natively; add repeatable normal/Abort/snapshot and rejection checks; run
+  Debug/Release and completed-program regressions; update the execution record.
+  Existing implementation already meets this target, so compiler and specification
+  changes were unnecessary. The milestone source and expected outputs are unchanged.
+- **Added evidence:** `backend/windows-x64/test-milestone3.ps1` builds the actual
+  single-source Application and byte-identical renamed copies at O0/O2. Normal
+  stdout is exactly `Leaving sumTo.\nSum is 55.\nLeaving main.\n`, with empty stderr
+  and exit 0. Separate copies test negative input (`sumTo(-1)`: empty stdout,
+  Abort at 5:9, exit 1), caller-side rejection (`sumTo(9)`: only `Leaving sumTo.\n`,
+  Abort at 18:9, exit 1), and an extra defer that overwrites `total` after return
+  acquisition (normal output unchanged). Native and both CLI run forms are checked.
+  Ten invalid inputs diagnose wrong/missing/extra arguments, wrong/missing results,
+  invalid/mixed main, return across the defer boundary, and moved/uninitialized
+  values used during cleanup. Failed builds must publish no IR or executable.
+- **Verification:** Debug/Release solution builds pass, zero warnings/errors;
+  full managed suites pass 6,916 each, zero failed/skipped. The new script passes
+  37 checks per configuration (27 execution checks, 10 rejected inputs). Existing
+  function fixtures pass 56 O0/O2 native checks and deferred fixtures pass 50,
+  including their bounded nontermination checks. Milestone 1's 25 and Milestone 2's
+  21 checks pass under both compiler configurations. Normal builds verify input
+  LLVM IR and optimized O2 IR before native linking. No filesystem or other side
+  effect beyond the specified output/termination is required by this program.
+- **Completion:** all required stages pass; no blocker or required unverified check
+  remains. No NativeAOT, draft edit, performance optimization or Milestone 4 work
+  was performed. Reproduce after building the chosen compiler with
+  `./backend/windows-x64/test-milestone3.ps1 -Configuration Release` (or Debug).
+  Evidence with source/compiler hashes, build records and diagnostics is under
+  `bin/milestone3/<configuration>/<run-id>/`. After managed fixture generation,
+  use `test-scalars.ps1 -FixturePattern 'Function*.ll'` and then `'Deferred*.ll'`
+  for the related native regressions. The broader compiler plan remains unfinished.
+
 ## Program Milestone 2 completion (2026-09-16)
 
 This task targets `milestones/Milestone2.kimi`; program numbers are independent of

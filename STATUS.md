@@ -1,5 +1,33 @@
 # Kimigayo Implementation Status
 
+Program Milestone 3 complete (2026-09-16): the unmodified
+`milestones/Milestone3.kimi` passes final Binding, ownership, LLVM verification,
+native linking and execution with the current compiler. Existing explicit-main,
+function argument/result, return/defer and Milestone 2 Abort support were
+sufficient; no compiler or SPEC changes were needed. The initial native attempt
+failed only at the sandbox's LLVM execution permission and passed once local tool
+execution was allowed.
+
+Added `backend/windows-x64/test-milestone3.ps1`: Debug/Release each pass 37 checks,
+including actual-source and renamed O0/O2 builds, native/CLI execution and ten
+rejected argument/result/startup/defer/ownership inputs. Successful stdout is
+exactly `Leaving sumTo.\nSum is 55.\nLeaving main.\n`, stderr empty, exit 0.
+`sumTo(-1)` produces no stdout or deferred messages and Aborts at 5:9 with exit 1.
+`sumTo(9)` prints only `Leaving sumTo.\n` before the caller's Abort at 18:9.
+A separate deferred-mutation variant confirms the returned i32 is secured before
+cleanup changes its source. Variants never alter the checked-in milestone file.
+Reports, diagnostics and source/compiler/build identities are retained under
+`bin/milestone3/<configuration>/<run-id>/`.
+
+Both solution builds pass with zero warnings/errors and both full managed suites
+pass 6,916 tests, zero failures/skips. Existing function and defer fixtures pass
+56 and 50 O0/O2 native checks respectively, including bounded nontermination
+checks. Completed Milestones 1 and 2 pass their 25 and 21 checks respectively in
+both configurations. No required check remains unverified. NativeAOT and draft
+edits were not performed. Milestones 4–5 were read only; this checkpoint makes no
+completion claim for them. See PLAN.md's program checkpoint and milestones/README.md
+for reproduction commands; program numbers are independent of PLAN's M1–M17.
+
 Program Milestone 2 complete (2026-09-16): implemented explicit `$abort(expression)`
 through Binding, ownership, LLVM generation and ordinary Windows x64 execution.
 The reserved builtin expects one owned string, evaluates/acquires it once, has

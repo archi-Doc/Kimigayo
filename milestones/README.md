@@ -1,8 +1,8 @@
 # Language milestones
 
 Five short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestones 1–2 are verified through
-native execution (2026-09-16); Milestones 3–5 remain future targets, and their
+They are staged compiler implementation targets. Milestones 1–3 are verified through
+native execution (2026-09-16); Milestones 4–5 remain future targets, and their
 outputs below are specification expectations rather than execution claims.
 
 | Program | Added concepts |
@@ -111,6 +111,25 @@ Normal runs must not mix explicit `main` with top-level executable statements.
 
 Focus: [functions](../spec/07-functions-and-callable-values.md) and
 [cleanup and result delivery](../spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
+
+Milestone 3 passes with the existing compiler, including the explicit Abort
+implementation completed for Milestone 2. With the pinned Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone3.ps1 -Configuration Release
+```
+
+The script builds the original single-source input and byte-identical renamed
+copies at O0/O2. It checks exact stdout/stderr and exit codes through native
+execution and both CLI `run` forms. Additional copies test `sumTo(-1)` (no output
+or deferred cleanup, Abort at 5:9, exit 1), `sumTo(9)` (only `Leaving sumTo.` before
+the caller Aborts at 18:9), and deferred mutation of `total` after securing its
+return value (the original successful output remains unchanged). Ten invalid
+argument/result/startup/defer/ownership inputs must fail before emission.
+All variants are generated separately; the milestone file is never edited.
+Reports and source/compiler/build identities remain in
+`bin/milestone3/<configuration>/<run-id>/`; Debug is also supported.
 
 ## Milestone 4: struct ownership and destruction
 
