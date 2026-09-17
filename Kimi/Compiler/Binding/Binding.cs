@@ -630,6 +630,39 @@ public sealed partial class Binding
 
     private sealed class IndexVisitor(Binding binding) : KotoVisitor
     {
+        private void IndexCandidates(Koto syntax, bool guarded)
+        {
+            syntax = KotoHelper.UnwrapParentheses(syntax);
+            if (syntax is not SyntaxFormKoto form)
+            {
+                return;
+            }
+
+            if (form.Akind == KotoKind.BindingPattern && form.Operands[0] is IdentifierNameKoto name)
+            {
+                if (!guarded)
+                {
+                    binding.symbols.Remove(name);
+                    return;
+                }
+
+                if (binding.symbols.TryGetValue(name, out var candidate) && candidate.Name != name.IdentifierName)
+                {
+                    binding.symbols.Remove(name);
+                }
+
+                var bodySymbol = form.BoundSymbol;
+                binding.Declare(name, name.IdentifierName, BindingSymbolKind.PatternCandidate, form, this.Scope);
+                form.BoundSymbol = bodySymbol;
+                return;
+            }
+
+            foreach (var operand in form.Operands)
+            {
+                this.IndexCandidates(operand, guarded);
+            }
+        }
+
         private int patternDepth;
 
         internal BindingScope Scope { get; set; } = null!;
@@ -776,23 +809,13 @@ public sealed partial class Binding
                         {
                             this.Scope = binding.GetScope(guard, outer);
                             binding.candidateScopes.Add(guard);
-                            if (KotoHelper.UnwrapParentheses(arm.Pattern) is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
-                            {
-                                if (binding.symbols.TryGetValue(name, out var candidate) && candidate.Name != name.IdentifierName)
-                                {
-                                    binding.symbols.Remove(name);
-                                }
-
-                                var bodySymbol = pattern.BoundSymbol;
-                                binding.Declare(name, name.IdentifierName, BindingSymbolKind.PatternCandidate, pattern, this.Scope);
-                                pattern.BoundSymbol = bodySymbol;
-                            }
+                            this.IndexCandidates(arm.Pattern, true);
 
                             this.Visit(guard);
                         }
-                        else if (KotoHelper.UnwrapParentheses(arm.Pattern) is SyntaxFormKoto { Akind: KotoKind.BindingPattern } unguarded)
+                        else
                         {
-                            binding.symbols.Remove(unguarded.Operands[0]);
+                            this.IndexCandidates(arm.Pattern, false);
                         }
 
                         this.Scope = armScope;
@@ -830,6 +853,17 @@ public sealed partial class Binding
                     this.Scope = container.IsRoot ? binding.ModuleScope(node) : binding.GetScope(node, this.Scope);
                     break;
                 case FunctionKoto function:
+                    if (function.IsAnonymous)
+                    {
+                        if (!binding.symbols.TryGetValue(function, out var closureSymbol))
+                        {
+                            closureSymbol = new(string.Empty, BindingSymbolKind.Function, function, this.Scope);
+                            binding.symbols.Add(function, closureSymbol);
+                        }
+
+                        closureSymbol.Scope = this.Scope;
+                    }
+
                     if (!function.IsGenerated && !function.IsAnonymous)
                     {
                         var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;

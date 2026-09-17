@@ -121,7 +121,7 @@ public sealed class BoundOrigin
 }
 
 /// <summary>A retained semantic requirement, independent of successful name resolution.</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null);
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null);
 
 internal enum TypePosition : byte
 {

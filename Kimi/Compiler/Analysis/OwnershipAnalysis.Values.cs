@@ -51,7 +51,11 @@ public sealed partial class OwnershipAnalysis
         {
             var sourcePlace = kind == OwnershipOperationKind.InitializeSubject ? input : place;
             var destination = kind == OwnershipOperationKind.InitializeSubject ? place : input;
-            this.SetValue(id, OwnershipValueKind.Alias, [this.Value(sourcePlace)]);
+            if (this.Value(sourcePlace) >= 0)
+            {
+                this.SetValue(id, OwnershipValueKind.Alias, [this.Value(sourcePlace)]);
+            }
+
             this.placeValues[destination] = id;
         }
 

@@ -152,8 +152,8 @@ public class BindingTest
         var compilation = Parse("func identity<T>(value: T) -> T => value\nlet a = identity(1)\nlet b = identity<i64>(2)\nlet pair: (i32, i32) = (1, 2)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var calls = All(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
-        Assert.Equal("i32", calls[0].BoundCall!.TypeArguments[0].Name);
-        Assert.Equal("i64", calls[1].BoundCall!.TypeArguments[0].Name);
+        Assert.Equal("i32", calls[0].BoundCall!.TypeArguments[0]!.Name);
+        Assert.Equal("i64", calls[1].BoundCall!.TypeArguments[0]!.Name);
         var pair = All(compilation.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "pair");
         Assert.Same(pair.TypeKoto!.BoundType, pair.InitializerKoto!.BoundType);
     }
@@ -206,7 +206,7 @@ public class BindingTest
         var compilation = Parse("func identity<T>(value: T) -> T => value\nlet result: i64 = identity(1)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var call = Assert.Single(All(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Equal("i64", call.BoundCall!.TypeArguments[0].Name);
+        Assert.Equal("i64", call.BoundCall!.TypeArguments[0]!.Name);
     }
 
     [Fact]

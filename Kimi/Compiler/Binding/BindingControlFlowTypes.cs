@@ -37,8 +37,8 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
         }
 
         var bound = call.BoundCall;
-        receiver = bound?.Receiver;
-        return bound is not null;
+        receiver = bound?.Receiver ?? call.BoundValueCall?.Receiver;
+        return bound is not null || call.BoundValueCall is not null;
     }
 
     public override ControlFlowType? GetDefaultGetterResultType(PropertyKoto property)

@@ -26,6 +26,40 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(KotoKind Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right), BoundLength> lengths = new();
     private readonly List<BindingSymbol> activeLengthConstants = new();
+    private readonly ScratchBuffers<BoundLength?> lengthScratch = new();
+
+    internal bool IsVerifiedLengthObligation(BindingObligation obligation)
+    {
+        if (obligation is not { Kind: BindingObligationKind.TypeFormation, Deadline: BindingDeadline.Instantiation, Length: { } length } ||
+            obligation.Use.BindingState != BindingState.Resolved || obligation.Use.BoundType is not { IsInteger: true })
+        {
+            return false;
+        }
+
+        var function = this.ConstraintScope(obligation.Use).Function;
+        return (function is not null && IsSignatureLength(obligation.Use, function)) || this.ProveLength(length, function);
+    }
+
+    private static bool IsSignatureLength(Koto node, FunctionKoto function)
+    {
+        for (Koto? current = node; current is not null && !ReferenceEquals(current, function); current = current.Parent)
+        {
+            if (ReferenceEquals(current, function.ReturnType))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (ReferenceEquals(current, function.Parameters[i].Type))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 
     private static bool SameLengthSignature(BoundLength? a, BoundLength? b, Koto aBinder, Koto bBinder)
     {
@@ -97,8 +131,49 @@ public sealed partial class Binding
         }
     }
 
+    private static int CompareLength(BoundLength? left, BoundLength? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left is null || right is null)
+        {
+            return left is null ? -1 : 1;
+        }
+
+        var result = left.Operation.CompareTo(right.Operation);
+        if (result == 0)
+        {
+            result = left.Value.CompareTo(right.Value);
+        }
+
+        if (result == 0)
+        {
+            result = (left.Parameter?.Slot ?? -1).CompareTo(right.Parameter?.Slot ?? -1);
+        }
+
+        if (result == 0)
+        {
+            result = (left.Parameter?.Declaration.Span.Start ?? -1).CompareTo(right.Parameter?.Declaration.Span.Start ?? -1);
+        }
+
+        if (result == 0)
+        {
+            result = CompareLength(left.Left, right.Left);
+        }
+
+        return result == 0 ? CompareLength(left.Right, right.Right) : result;
+    }
+
     private BoundLength InternLength(KotoKind operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null)
     {
+        if (operation is KotoKind.Plus or KotoKind.Asterisk && CompareLength(left, right) > 0)
+        {
+            (left, right) = (right, left);
+        }
+
         var key = (operation, value, parameter, left, right);
         if (!this.lengths.TryGetValue(key, out var result))
         {
@@ -106,6 +181,159 @@ public sealed partial class Binding
         }
 
         return result;
+    }
+
+    private bool ValidLength(long value) => value >= 0 && (this.compilation.PointerWidth == 64 || value <= int.MaxValue);
+
+    private bool IsLengthArgument(Koto syntax, BindingScope scope)
+    {
+        syntax = UnwrapTypeSyntax(syntax);
+        if (syntax is ParenthesizedTypeKoto grouped)
+        {
+            return this.IsLengthArgument(grouped.Type, scope);
+        }
+
+        if (syntax is NumberLiteralKoto or ParenthesizedKoto ||
+            syntax is UnaryKoto { Akind: KotoKind.PrefixMinus or KotoKind.PrefixPlus } ||
+            syntax is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent })
+        {
+            return true;
+        }
+
+        var name = TypeSpelling(syntax);
+        if (syntax is MemberAccessKoto member)
+        {
+            return this.LengthArgumentSymbol(member, scope)?.Kind == BindingSymbolKind.Property;
+        }
+
+        return name is not null && this.Lookup(name, scope, syntax, false) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
+    }
+
+    private BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundLength?> arguments)
+    {
+        if (expression.Parameter is { } parameter)
+        {
+            return ReferenceEquals(parameter.Scope.Owner, binder) ? arguments[parameter.Slot] : expression;
+        }
+
+        if (expression.IsConstant)
+        {
+            return expression;
+        }
+
+        var left = this.SubstituteLength(expression.Left!, binder, arguments);
+        var right = expression.Right is { } operand ? this.SubstituteLength(operand, binder, arguments) : null;
+        if (left is null || (expression.Right is not null && right is null))
+        {
+            return null;
+        }
+
+        if (!left.IsConstant || right is { IsConstant: false })
+        {
+            return this.InternLength(expression.Operation, left: left, right: right);
+        }
+
+        if (expression.Operation == KotoKind.PrefixMinus)
+        {
+            var minimum = this.compilation.PointerWidth == 64 ? long.MinValue : int.MinValue;
+            return left.Value == minimum ? null : this.InternLength(KotoKind.NumberLiteral, -left.Value);
+        }
+
+        return TryLengthArithmetic(expression.Operation, BoundType.ISize, this.compilation.PointerWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
+            ? this.InternLength(KotoKind.NumberLiteral, unchecked((long)value)) : null;
+    }
+
+    private bool InferLength(BoundType pattern, BoundType actual, Koto binder, BoundLength?[] arguments)
+    {
+        var supplied = actual.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, actual.Length);
+        if (pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
+        {
+            var previous = arguments[parameter.Slot];
+            if (previous is null)
+            {
+                arguments[parameter.Slot] = supplied;
+                return true;
+            }
+
+            return ReferenceEquals(previous, supplied);
+        }
+
+        var required = pattern.LengthExpression is { } expression ? this.SubstituteLength(expression, binder, arguments) : this.InternLength(KotoKind.NumberLiteral, pattern.Length);
+        // A later input may establish slots used by a compound expression. The
+        // completed signature is checked after all direct-slot evidence is known.
+        return required is null || ReferenceEquals(required, supplied);
+    }
+
+    private bool ProveLength(BoundLength expression, FunctionKoto? function)
+    {
+        if (expression.IsConstant)
+        {
+            return this.ValidLength(expression.Value);
+        }
+
+        if (expression.Parameter is not null)
+        {
+            return true; // Every length slot is inherently nonnegative isize.
+        }
+
+        if (function is not null)
+        {
+            if (Contains(function.BoundSymbol?.Type))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (Contains(function.Parameters[i].Type.BoundType))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+
+        bool Contains(BoundType? type)
+        {
+            if (type is null)
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(type.LengthExpression, expression))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (Contains(type.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    private bool ProveTypeLengths(BoundType type, FunctionKoto? function)
+    {
+        if (type.LengthExpression is { } expression && !this.ProveLength(expression, function))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (!this.ProveTypeLengths(type.Components[i], function))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private BoundLength? CorrespondingLength(BoundLength? length, Koto from, Koto to)
@@ -136,7 +364,13 @@ public sealed partial class Binding
 
         if (symbolic is not null)
         {
-            this.AddObligation(new(BindingObligationKind.TypeFormation, syntax, BindingDeadline.Instantiation));
+            if (scope.Function is { } function && !IsSignatureLength(syntax, function) && !this.ProveLength(symbolic, function))
+            {
+                Fail(syntax, BindingFailure.InvalidTypeFormation);
+                return null;
+            }
+
+            this.AddObligation(new(BindingObligationKind.TypeFormation, syntax, BindingDeadline.Instantiation, Length: symbolic));
             return symbolic;
         }
 
@@ -154,6 +388,16 @@ public sealed partial class Binding
     // Normal name/member binding supplies lookup, accessibility and capture checks.
     private bool LengthTypeEvidence(Koto syntax, BindingScope scope, ref BoundType? type)
     {
+        if (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
+        {
+            return this.LengthTypeEvidence(inner, scope, ref type);
+        }
+
+        if (syntax is ParenthesizedTypeKoto grouped)
+        {
+            return this.LengthTypeEvidence(grouped.Type, scope, ref type);
+        }
+
         if (syntax is ParenthesizedKoto parent)
         {
             return this.LengthTypeEvidence(parent.Operand, scope, ref type);
@@ -174,12 +418,12 @@ public sealed partial class Binding
             return this.LengthTypeEvidence(binary.Left, scope, ref type) && this.LengthTypeEvidence(binary.Right, scope, ref type);
         }
 
-        if (syntax is not (IdentifierNameKoto or MemberAccessKoto))
+        if (syntax is not (IdentifierNameKoto or MemberAccessKoto or TypeSemanticsKoto { Type: null }))
         {
             return false;
         }
 
-        var established = this.BindNode(syntax, scope);
+        var established = this.BindLengthName(syntax, scope);
         if (established is not { IsInteger: true, Semantics: SemanticsKind.Owner } || syntax.BindingFailure != BindingFailure.None ||
             (type is not null && !ReferenceEquals(type, established)))
         {
@@ -196,7 +440,21 @@ public sealed partial class Binding
         symbolic = null;
         var width = ScalarTypes.Width(type, this.compilation.PointerWidth);
         var signed = ScalarTypes.Signed(type);
-        if (syntax is ParenthesizedKoto parent)
+        if (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
+        {
+            if (!this.EvaluateLength(inner, scope, type, out value, out symbolic))
+            {
+                return false;
+            }
+        }
+        else if (syntax is ParenthesizedTypeKoto grouped)
+        {
+            if (!this.EvaluateLength(grouped.Type, scope, type, out value, out symbolic))
+            {
+                return false;
+            }
+        }
+        else if (syntax is ParenthesizedKoto parent)
         {
             if (!this.EvaluateLength(parent.Operand, scope, type, out value, out symbolic))
             {
@@ -216,9 +474,9 @@ public sealed partial class Binding
             value = negative ? unchecked((UInt128)0 - magnitude) : magnitude;
             Complete(literal, type);
         }
-        else if (syntax is IdentifierNameKoto or MemberAccessKoto)
+        else if (syntax is IdentifierNameKoto or MemberAccessKoto or TypeSemanticsKoto { Type: null })
         {
-            if (!ReferenceEquals(this.BindNode(syntax, scope), type) || syntax.BoundSymbol is not { } symbol || syntax.BindingFailure != BindingFailure.None)
+            if (!ReferenceEquals(this.BindLengthName(syntax, scope), type) || syntax.BoundSymbol is not { } symbol || syntax.BindingFailure != BindingFailure.None)
             {
                 return false;
             }
@@ -314,5 +572,42 @@ public sealed partial class Binding
 
         Complete(syntax, type);
         return true;
+    }
+
+    private BoundType? BindLengthName(Koto syntax, BindingScope scope)
+    {
+        if (syntax is TypeSemanticsKoto { Type: null } name)
+        {
+            return this.Lookup(name.Identifier, scope, syntax, false) is { } symbol ? this.BindReference(syntax, symbol, scope) : null;
+        }
+
+        if (syntax is MemberAccessKoto member && member.Right is not IdentifierNameKoto)
+        {
+            var symbol = this.LengthArgumentSymbol(member, scope);
+            if (symbol is null)
+            {
+                return null;
+            }
+
+            var result = this.BindReference(member, symbol, scope);
+            member.Right.BoundSymbol = symbol;
+            Complete(member.Right, result);
+            return result;
+        }
+
+        return this.BindNode(syntax, scope);
+    }
+
+    private BindingSymbol? LengthArgumentSymbol(MemberAccessKoto member, BindingScope scope)
+    {
+        if (this.TypeName(member.Left, scope, false) is not { Declaration: GroupKoto } qualifier ||
+            !this.scopes.TryGetValue(qualifier.Declaration, out var members) || TypeSpelling(member.Right) is not { } name)
+        {
+            return null;
+        }
+
+        member.Left.BoundSymbol = qualifier;
+        member.Left.BindingState = BindingState.Resolved;
+        return members.Values.GetValueOrDefault(name);
     }
 }

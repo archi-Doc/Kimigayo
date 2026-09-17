@@ -210,7 +210,7 @@ public sealed partial class Binding
 
                 return Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
             case FunctionKoto function:
-                return this.BindFunction(function, scope);
+                return function.IsAnonymous ? this.BindClosure(function, scope, expected) : this.BindFunction(function, scope);
             case VariableKoto variable:
                 return this.BindVariable(variable, scope);
             case AliasKoto alias:
@@ -528,9 +528,16 @@ public sealed partial class Binding
             }
         }
 
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate && scope.Function != symbol.Scope.Function)
+        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function)
         {
-            return Fail(node, BindingFailure.Capture);
+            if (scope.Function is not { IsAnonymous: true, Captures: null } closure ||
+                this.Capture(closure, symbol, this.scopes[closure]) is not { } capture)
+            {
+                return Fail(node, BindingFailure.Capture);
+            }
+
+            symbol = capture;
+            node.BoundSymbol = symbol;
         }
 
         if (symbol.Kind == BindingSymbolKind.Function)

@@ -90,10 +90,46 @@ internal static partial class LlvmModuleWriter
 
         Name(output, "define internal void @__kimi_drop_aggregate", aggregate.Id);
         output.Write("(ptr %slot, ptr %location, i64 %length) #0 {\nentry:\n");
+        if (aggregate.FunctionHandle)
+        {
+            output.Write("  %word = load i64, ptr %slot, align 8\n  %tableSlot = getelementptr i8, ptr %slot, i64 8\n  %table = load ptr, ptr %tableSlot, align 8\n  %dropSlot = getelementptr i8, ptr %table, i64 16\n  %drop = load ptr, ptr %dropSlot, align 8\n  %present = icmp ne ptr %drop, null\n  br i1 %present, label %destroy, label %done\ndestroy:\n  %contextSlot = getelementptr i8, ptr %table, i64 8\n  %context = load ptr, ptr %contextSlot, align 8\n  call void %drop(i64 %word, ptr %context, ptr %location, i64 %length)\n  br label %done\ndone:\n  ret void\n}\n");
+            return;
+        }
+
         if (aggregate.Destructor >= 0)
         {
             Name(output, "  call void @__kimi_f", aggregate.Destructor);
             output.Write("(ptr %slot)\n");
+        }
+
+        if (aggregate.Cases is { } cases)
+        {
+            output.Write("  %tag = load i32, ptr %slot, align 4\n  %payload = getelementptr i8, ptr %slot, i64 ");
+            WriteNumber(output, aggregate.PayloadOffset);
+            output.Write("\n  switch i32 %tag, label %invalid [\n");
+            for (var i = 0; i < cases.Length; i++)
+            {
+                Name(output, "    i32 ", i);
+                Name(output, ", label %case", i);
+                output.Write('\n');
+            }
+
+            output.Write("  ]\ninvalid:\n  unreachable\n");
+            for (var i = 0; i < cases.Length; i++)
+            {
+                Name(output, "case", i);
+                output.Write(":\n");
+                if (cases[i].NeedsDestruction)
+                {
+                    Name(output, "  call void @__kimi_drop_aggregate", cases[i].Id);
+                    output.Write("(ptr %payload, ptr %location, i64 %length)\n");
+                }
+
+                output.Write("  ret void\n");
+            }
+
+            output.Write("}\n");
+            return;
         }
 
         if (aggregate.IsArray)

@@ -17,16 +17,19 @@ internal enum SharedStorageOperation : byte
     Deliver,
     Boolean,
     ReadBoolean,
+    Length,
+    FieldAddress,
+    ArrayRead,
     Return,
 }
 
-internal readonly record struct SharedStorageInstruction(SharedStorageOperation Kind, int Destination, int Source, int Count, int CopyPlace, int Next, int Alternative, int Condition, int Location, bool Reachable, int DestructionStart = -1);
+internal readonly record struct SharedStorageInstruction(SharedStorageOperation Kind, int Destination, int Source, int Count, int CopyPlace, int Next, int Alternative, int Condition, int Location, bool Reachable, int DestructionStart = -1, int FieldOffset = -1, int Index = -1);
 
 internal readonly record struct SharedStorageLeaf(int Place, int Parent, int Selector, int Parameter, bool Result, int Policy = -1);
 
 internal sealed record SharedStorageBody(string Name, SharedStorageLeaf[] Leaves, SharedStorageInstruction[] Instructions, int PolicyCount, int ParameterCount, CleanupAction[] Destructions, bool[] LiveFlags);
 
-internal readonly record struct SharedStoragePolicy(int Size, bool Copy, string? Destructor);
+internal readonly record struct SharedStoragePolicy(int Size, bool Copy, string? Destructor, long Length = 0);
 
 internal sealed record SharedStorageEntry(FunctionAbi Abi, SharedStorageBody Body, int[] Offsets, SharedStoragePolicy[] Policies, int ScratchSize, int ScratchAlignment, ValueLowering[] Parameters, ValueLowering Result);
 
@@ -180,6 +183,7 @@ internal sealed class GenericStoragePlan
         }
 
         var instructions = new SharedStorageInstruction[body.Operations.Count];
+        var projections = new List<(int Place, int Selector)>();
         var destructions = new List<CleanupAction>();
         var liveFlags = new bool[leaves.Count];
         for (var id = 0; id < instructions.Length; id++)
@@ -192,6 +196,8 @@ internal sealed class GenericStoragePlan
             var count = op.Place < 0 ? 0 : counts[op.Place];
             var copyPlace = -1;
             var condition = -1;
+            var fieldOffset = -1;
+            var indexLeaf = -1;
             switch (op.Kind)
             {
                 case OwnershipOperationKind.Entry:
@@ -239,6 +245,120 @@ internal sealed class GenericStoragePlan
                 case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Constant && ReferenceEquals(body.Places[op.Place].Type, BoundType.Boolean):
                     kind = SharedStorageOperation.Boolean;
                     source = value.Constant == 0 ? 0 : 1;
+                    break;
+                case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Sequence:
+                    if (value.Constant >= 0 && value.Constant < body.Sequences.Count && body.Sequences[(int)value.Constant].Kind == SequenceOperation.Read)
+                    {
+                        var read = body.Sequences[(int)value.Constant];
+                        if (read.Operation != id || read.Projection != -1 || (uint)read.Receiver >= (uint)body.Places.Count ||
+                            (uint)read.Index >= (uint)id || value.Count != 1 || count != 1 || op.Source is not IndexKoto indexed ||
+                            !ReferenceTypes.IsArray(body.Places[read.Receiver].Type) || body.Places[read.Receiver].Type.Semantics != SemanticsKind.Ref ||
+                            !ReferenceEquals(body.Places[read.Receiver].Type, indexed.Left.BoundType) ||
+                            !ReferenceEquals(body.Places[read.Receiver].Type.Components[0].Components[0], body.Places[op.Place].Type) ||
+                            body.Places[op.Place].Acquisition != AcquisitionKind.Copy)
+                        {
+                            return Fail("Shared array read requires a verified Copy element and borrowed array.", out failure);
+                        }
+
+                        var receiverProducer = body.ValueOperands[value.Start];
+                        var indexOperation = body.Operations[read.Index];
+                        var indexPlace = indexOperation.Kind == OwnershipOperationKind.Consume ? indexOperation.Input : indexOperation.Place;
+                        var receiverOperation = (uint)receiverProducer < (uint)id ? body.Operations[receiverProducer] : default;
+                        var arrayReceiverPlace = receiverOperation.Kind == OwnershipOperationKind.Consume ? receiverOperation.Input : receiverOperation.Place;
+                        if (receiverProducer < 0 || receiverProducer >= id || arrayReceiverPlace != read.Receiver ||
+                            !ReferenceEquals(receiverOperation.Source, indexed.Left) ||
+                            indexPlace < 0 || !ReferenceEquals(body.Places[indexPlace].Type, BoundType.ISize) ||
+                            !ReferenceEquals(indexOperation.Source, indexed.Right) || counts[indexPlace] != 1 ||
+                            (body.IsReachable(id) && ((body.GetInputState(id, read.Receiver) & PlaceState.MustInit) == 0 ||
+                            (body.GetInputState(id, indexPlace) & PlaceState.MustInit) == 0)))
+                        {
+                            return Fail("Shared array read lacks checked receiver/index producers.", out failure);
+                        }
+
+                        kind = SharedStorageOperation.ArrayRead;
+                        source = starts[read.Receiver];
+                        copyPlace = read.Receiver;
+                        indexLeaf = starts[indexPlace];
+                        break;
+                    }
+
+                    if (value.Constant < 0 || value.Constant >= body.Sequences.Count || count != 1 ||
+                        !ReferenceEquals(body.Places[op.Place].Type, BoundType.ISize))
+                    {
+                        return Fail("Shared length metadata has no verified sequence plan.", out failure);
+                    }
+
+                    var sequence = body.Sequences[(int)value.Constant];
+                    if (sequence.Operation != id || sequence.Kind != SequenceOperation.Length || sequence.Projection != -1 || sequence.Index != -1 ||
+                        (uint)sequence.Receiver >= (uint)body.Places.Count ||
+                        op.Source is not MemberAccessKoto { Right: IdentifierNameKoto { IdentifierName: "length" } } metadata ||
+                        metadata.Left.BoundSymbol is not { } receiverSymbol || !body.SymbolPlaces.TryGetValue(receiverSymbol, out var receiverPlace) || receiverPlace != sequence.Receiver ||
+                        !ReferenceEquals(metadata.Left.BoundType, body.Places[receiverPlace].Type) ||
+                        (body.IsReachable(id) && (body.GetInputState(id, receiverPlace) & PlaceState.MustInit) == 0))
+                    {
+                        return Fail("Shared length metadata must inspect its initialized array binding.", out failure);
+                    }
+
+                    var receiverType = body.Places[receiverPlace].Type;
+                    var borrowed = ReferenceTypes.IsArray(receiverType);
+                    if ((!borrowed && receiverType.Kind != BoundTypeKind.FixedArray) || value.Count != (borrowed ? 1 : 0))
+                    {
+                        return Fail("Shared length metadata has an inconsistent array receiver.", out failure);
+                    }
+
+                    if (borrowed)
+                    {
+                        var producer = body.ValueOperands[value.Start];
+                        if ((uint)producer >= (uint)id || body.Operations[producer].Place != receiverPlace ||
+                            body.Operations[producer].Kind != OwnershipOperationKind.Read || !ReferenceEquals(body.Operations[producer].Source, metadata.Left))
+                        {
+                            return Fail("Shared borrowed length requires its retained receiver read.", out failure);
+                        }
+                    }
+
+                    kind = SharedStorageOperation.Length;
+                    copyPlace = receiverPlace; // The array policy also carries logical length, independently of stride.
+                    break;
+                case OwnershipOperationKind.Borrow when value.Kind == OwnershipValueKind.Address && op.Source is MemberAccessKoto member:
+                    var receiver = body.Places[op.Place].Type;
+                    var output = op.Input < 0 ? null : body.Places[op.Input].Type;
+                    if (!ReferenceTypes.IsStruct(receiver) || receiver.Semantics != SemanticsKind.Ref ||
+                        !ReferenceTypes.IsStorage(output) || output!.Semantics != SemanticsKind.Ref ||
+                        !ReferenceEquals(member.Left.BoundType, receiver) || !ReferenceEquals(member.BoundType, output.Components[0]) ||
+                        value.Count != 1 || value.Constant != op.Place || count != 1 || counts[op.Input] != 1 || op.LoanMode != LoanRequirement.Ref ||
+                        (body.IsReachable(id) && (body.GetInputState(id, op.Place) & PlaceState.MustInit) == 0))
+                    {
+                        return Fail("Shared projected borrow requires a checked shared receiver and reference result.", out failure);
+                    }
+
+                    var fieldProducer = body.ValueOperands[value.Start];
+                    if ((uint)fieldProducer >= (uint)id || body.Operations[fieldProducer].Kind != OwnershipOperationKind.Read ||
+                        body.Operations[fieldProducer].Place != op.Place || !ReferenceEquals(body.Operations[fieldProducer].Source, member.Left))
+                    {
+                        return Fail("Shared projected borrow has no retained receiver read.", out failure);
+                    }
+
+                    var fieldIndex = -1;
+                    for (var f = 0; f < StructStorage.Count(receiver.Components[0]); f++)
+                    {
+                        if (ReferenceEquals(StructStorage.Field(receiver.Components[0], f).BoundSymbol, member.BoundSymbol))
+                        {
+                            fieldIndex = f;
+                            break;
+                        }
+                    }
+
+                    if (fieldIndex < 0 || !ReferenceEquals(StructStorage.FieldType(receiver.Components[0], fieldIndex), member.BoundType))
+                    {
+                        return Fail("Shared projected borrow has no matching stored field.", out failure);
+                    }
+
+                    fieldOffset = leaves.Count + projections.Count;
+                    projections.Add((op.Place, fieldIndex));
+                    (dest, source) = (source, dest);
+                    kind = SharedStorageOperation.FieldAddress;
+                    break;
+                case OwnershipOperationKind.Read when ReferenceTypes.IsStorage(body.Places[op.Place].Type):
                     break;
                 case OwnershipOperationKind.Read when ReferenceEquals(body.Places[op.Place].Type, BoundType.Boolean):
                     kind = SharedStorageOperation.ReadBoolean;
@@ -351,7 +471,7 @@ internal sealed class GenericStoragePlan
                 }
             }
 
-            instructions[id] = new(kind, dest, source, count, copyPlace, next, alternative, condition, module.Constants.Intern(location, LlvmConstantKind.Location), body.IsReachable(id), destructionStart);
+            instructions[id] = new(kind, dest, source, count, copyPlace, next, alternative, condition, module.Constants.Intern(location, LlvmConstantKind.Location), body.IsReachable(id), destructionStart, fieldOffset, indexLeaf);
         }
 
         // Canonical definition-side requirements: equal complete symbolic Types share
@@ -388,7 +508,7 @@ internal sealed class GenericStoragePlan
         }
 
         var physical = new SharedStorageBody("__kimi_shared" + module.SharedBodies.Count, leaves.ToArray(), instructions, policies.Count, function.Parameters.Count, destructions.ToArray(), liveFlags);
-        template = new(body, physical, policies.ToArray());
+        template = new(body, physical, policies.ToArray(), projections.ToArray());
         return true;
 
         int BooleanPlace(int id)
@@ -405,7 +525,9 @@ internal sealed class GenericStoragePlan
 
         bool Add(BoundType type, int place, int parent, int selector, int argument, bool result, int depth)
         {
-            if (depth > 32 || type.Origin is not null || type.OriginArguments.Count != 0)
+            var borrowedStorage = ReferenceTypes.IsStorage(type) && type.Semantics == SemanticsKind.Ref &&
+                type.Origin is { Kind: OriginKind.Input } origin && ReferenceEquals(origin.Binder, function);
+            if (depth > 32 || (type.Origin is not null && !borrowedStorage) || type.OriginArguments.Count != 0)
             {
                 return false;
             }
@@ -434,7 +556,7 @@ internal sealed class GenericStoragePlan
                 return true;
             }
 
-            if (type.Kind != BoundTypeKind.Parameter && !ReferenceEquals(type, BoundType.Boolean))
+            if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.FixedArray) && !ReferenceEquals(type, BoundType.Boolean) && !ReferenceEquals(type, BoundType.ISize) && !borrowedStorage)
             {
                 return false;
             }
@@ -451,8 +573,12 @@ internal sealed class GenericStoragePlan
                 return (ReferenceEquals(type.Symbol!.Scope.Owner, function) ? "function:" : "container:") + type.Symbol.Slot;
             }
 
-            return type.Kind + ":" + type.Name + "<" + string.Join(",", type.Components.Select(TypeKey)) + ">";
+            return type.Kind + ":" + type.Name + ":" + (type.LengthExpression is { } length ? LengthKey(length) : type.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)) + "<" + string.Join(",", type.Components.Select(TypeKey)) + ">";
         }
+
+        string LengthKey(BoundLength length) => length.Parameter is { } symbol ? "slot:" + symbol.Slot : length.IsConstant
+            ? length.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : length.Operation + "(" + LengthKey(length.Left!) + "," + (length.Right is null ? string.Empty : LengthKey(length.Right)) + ")";
     }
 
     private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure)
@@ -487,7 +613,9 @@ internal sealed class GenericStoragePlan
         {
             var type = binding.InstantiateStorageType(target.Parameters[i].Type.BoundType!, call);
             var value = type is null ? null : FunctionAbi.GetValue(type, layouts);
-            if (type is null || value is null || ReferenceTypes.IsString(type) || ReferenceTypes.IsStruct(type))
+            var borrowedStorage = ReferenceTypes.IsStorage(type) && type!.Semantics == SemanticsKind.Ref && ReferenceTypes.IsStorage(target.Parameters[i].Type.BoundType);
+            if (type is null || value is null || ReferenceTypes.IsString(type) || (ReferenceTypes.IsStorage(type) && !borrowedStorage) ||
+                (borrowedStorage && layouts.Get(type.Components[0]) is null))
             {
                 return Fail("Shared entry parameter requires a concrete owned storage representation.", out failure);
             }
@@ -503,14 +631,14 @@ internal sealed class GenericStoragePlan
         foreach (var existing in this.calls.Values)
         {
             if (ReferenceEquals(existing.Template, template) && ReferenceEquals(existing.Result, result) &&
-                existing.Parameters.AsSpan().SequenceEqual(parameters) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) && existing.Arguments.AsSpan().SequenceEqual(call.TypeArguments))
+                existing.Parameters.AsSpan().SequenceEqual(parameters) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) && existing.Arguments.AsSpan().SequenceEqual(call.TypeArguments) && existing.Lengths.AsSpan().SequenceEqual(call.LengthArguments))
             {
                 entry = existing;
                 return true;
             }
         }
 
-        var offsets = new int[template.Physical.Leaves.Length];
+        var offsets = new int[template.Physical.Leaves.Length + template.Projections.Length];
         var policies = new SharedStoragePolicy[template.Types.Length];
         var placeOffsets = new int[body.Places.Count];
         var scratchPlaces = new bool[body.Places.Count];
@@ -559,7 +687,7 @@ internal sealed class GenericStoragePlan
 
         size = (int)capacity;
 
-        for (var i = 0; i < offsets.Length; i++)
+        for (var i = 0; i < template.Physical.Leaves.Length; i++)
         {
             var leaf = template.Physical.Leaves[i];
             var offset = 0;
@@ -582,12 +710,23 @@ internal sealed class GenericStoragePlan
             offsets[i] = offset;
         }
 
+        for (var i = 0; i < template.Projections.Length; i++)
+        {
+            var projection = template.Projections[i];
+            if (!ReferenceTypes.IsStruct(resolved[projection.Place]) || layouts.Get(resolved[projection.Place].Components[0]) is not { } ownerLayout)
+            {
+                return Fail("Shared projected borrow has no instantiated receiver layout.", out failure);
+            }
+
+            offsets[template.Physical.Leaves.Length + i] = ownerLayout.Offset(projection.Selector);
+        }
+
         for (var i = 0; i < policies.Length; i++)
         {
             var type = binding.InstantiateStorageType(template.Types[i], call);
             var value = type is null ? null : FunctionAbi.GetValue(type, layouts);
             var proof = type is null ? ConstraintProof.Unknown : binding.ProveCopy(type, target);
-            if (type is null || value is null || proof is not (ConstraintProof.Proven or ConstraintProof.Refuted))
+            if (type is null || value is null || value.Layout.Stride != value.Layout.Size || proof is not (ConstraintProof.Proven or ConstraintProof.Refuted))
             {
                 return Fail("Shared policy requires concrete layout and proved acquisition effects.", out failure);
             }
@@ -595,17 +734,18 @@ internal sealed class GenericStoragePlan
             var aggregate = layouts.Get(type);
             var destroy = ReferenceEquals(type, BoundType.String) ? "__kimi_destroy_string" :
                 aggregate?.NeedsDestruction == true ? "__kimi_drop_aggregate" + aggregate.Id : null;
-            policies[i] = new(value.Layout.Size, proof == ConstraintProof.Proven, destroy);
+            var array = ReferenceTypes.IsArray(type) ? type.Components[0] : type;
+            policies[i] = new(value.Layout.Size, proof == ConstraintProof.Proven, destroy, array.Kind == BoundTypeKind.FixedArray ? array.Length : 0);
         }
 
         var abi = new FunctionAbi("__kimi_generic_entry" + module.SharedEntries.Count, FunctionAbi.ResultType(result, layouts)!, abiParameters.ToArray(), resultSlot: resultSlot);
         var generated = new SharedStorageEntry(abi, template.Physical, offsets, policies, size, alignment, values, resultValue);
         module.SharedEntries.Add(generated);
-        entry = new(template, generated, parameters, result, call.DeclaringType, call.TypeArguments.ToArray());
+        entry = new(template, generated, parameters, result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray());
         return true;
     }
 
-    internal sealed record Template(OwnershipBody Body, SharedStorageBody Physical, BoundType[] Types);
+    internal sealed record Template(OwnershipBody Body, SharedStorageBody Physical, BoundType[] Types, (int Place, int Selector)[] Projections);
 
-    internal sealed record CallEntry(Template Template, SharedStorageEntry Physical, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType[] Arguments);
+    internal sealed record CallEntry(Template Template, SharedStorageEntry Physical, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType?[] Arguments, BoundLength?[] Lengths);
 }

@@ -79,8 +79,9 @@ public class ConstantLengthBindingTest
         var array = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         var expression = array.BoundType!.LengthExpression!;
         Assert.Equal(KotoKind.Plus, expression.Operation);
-        Assert.Equal(4, expression.Right!.Value);
-        Assert.Null(expression.Right.Parameter);
+        var constant = expression.Left!.IsConstant ? expression.Left : expression.Right!;
+        Assert.Equal(4, constant.Value);
+        Assert.Null(constant.Parameter);
         Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.TypeFormation && ReferenceEquals(x.Use, array.Length));
     }
 

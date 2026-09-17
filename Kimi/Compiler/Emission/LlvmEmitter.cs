@@ -194,7 +194,7 @@ public sealed class LlvmEmitter
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
             if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
                 (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||
-                function.IsAnonymous || function.IsSpecialization || function.IsRequirement || function.Captures is { Length: > 0 } ||
+                (function.IsAnonymous && function.BoundClosure is null) || function.IsSpecialization || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
                 function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0)
             {
                 return "A selected function requires unsupported signature, capture or implementation lowering.";
@@ -221,7 +221,7 @@ public sealed class LlvmEmitter
         for (var i = 0; i < container.NestedContainers.Count; i++)
         {
             var nested = container.NestedContainers[i];
-            if (nested is not (StructKoto or GroupKoto) || !this.SupportedContainers(nested))
+            if (nested is not (StructKoto or GroupKoto or EnumKoto) || !this.SupportedContainers(nested))
             {
                 return false;
             }

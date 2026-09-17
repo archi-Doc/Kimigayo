@@ -12,7 +12,7 @@ internal static partial class LlvmModuleWriter
         }
 
         // Metadata executes already verified ownership operations. Context carries no live flags.
-        output.Write("%kimi.shared.policy = type { i64, i64, ptr, ptr }\n");
+        output.Write("%kimi.shared.policy = type { i64, i64, ptr, ptr, i64 }\n");
         output.Write("define internal void @__kimi_shared_drop(ptr %slot, ptr %context, ptr %location, i64 %length) #0 {\nentry:\n  ret void\n}\n");
         foreach (var entry in module.SharedEntries)
         {
@@ -40,7 +40,7 @@ internal static partial class LlvmModuleWriter
         {
             var policy = entry.Policies[i];
             output.Write(i == 0 ? string.Empty : ", ");
-            output.Write($"%kimi.shared.policy {{ i64 {policy.Size}, i64 {(policy.Copy ? 1 : 0)}, ptr @{(policy.Destructor is null ? "__kimi_shared_drop" : name + "_drop" + i)}, ptr null }}");
+            output.Write($"%kimi.shared.policy {{ i64 {policy.Size}, i64 {(policy.Copy ? 1 : 0)}, ptr @{(policy.Destructor is null ? "__kimi_shared_drop" : name + "_drop" + i)}, ptr null, i64 {policy.Length} }}");
         }
 
         output.Write("]\n");
@@ -67,7 +67,7 @@ internal static partial class LlvmModuleWriter
         for (var i = 0; i < entry.Parameters.Length; i++)
         {
             var value = entry.Parameters[i];
-            if (value.ArgumentType == "ptr" && value.Layout.Size != 0)
+            if (value.ArgumentType == "ptr" && value.ComputationType != "ptr" && value.Layout.Size != 0)
             {
                 continue;
             }
@@ -92,7 +92,7 @@ internal static partial class LlvmModuleWriter
         output.Write($"  call void @{entry.Body.Name}(ptr {(entry.Abi.ResultSlot || entry.Result.Layout.Size != 0 ? "%ret" : "null")}");
         for (var i = 0; i < entry.Parameters.Length; i++)
         {
-            output.Write(entry.Parameters[i].Layout.Size == 0 ? ", ptr null" : entry.Parameters[i].ArgumentType == "ptr" ? $", ptr %a{i}" : $", ptr %arg{i}");
+            output.Write(entry.Parameters[i].Layout.Size == 0 ? ", ptr null" : entry.Parameters[i].ArgumentType == "ptr" && entry.Parameters[i].ComputationType != "ptr" ? $", ptr %a{i}" : $", ptr %arg{i}");
         }
 
         output.Write($", ptr @{name}_offsets, ptr @{name}_policies, ptr {(entry.ScratchSize == 0 ? "null" : "%scratch")})\n");
@@ -138,6 +138,7 @@ internal static partial class LlvmModuleWriter
             output.Write($"  %copyptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 1\n  %copyword{i} = load i64, ptr %copyptr{i}, align 8\n  %copy{i} = trunc i64 %copyword{i} to i8\n");
             output.Write($"  %dropptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 2\n  %drop{i} = load ptr, ptr %dropptr{i}, align 8\n");
             output.Write($"  %ctxptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 3\n  %ctx{i} = load ptr, ptr %ctxptr{i}, align 8\n");
+            output.Write($"  %lengthptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 4\n  %length{i} = load i64, ptr %lengthptr{i}, align 8\n");
         }
 
         output.Write("  br label %b0\n");
@@ -207,6 +208,25 @@ internal static partial class LlvmModuleWriter
                         break;
                     case SharedStorageOperation.Boolean:
                         output.Write($"  store i8 {op.Source}, ptr %p{dest}, align 1\n");
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.Length:
+                        output.Write($"  store i64 %length{op.CopyPlace}, ptr %p{dest}, align 8\n");
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.FieldAddress:
+                        output.Write($"  %fieldOffsetPtr{id} = getelementptr i64, ptr %offsets, i64 {op.FieldOffset}\n  %fieldOffset{id} = load i64, ptr %fieldOffsetPtr{id}, align 8\n");
+                        output.Write($"  %receiver{id} = load ptr, ptr %p{source}, align 8\n  %field{id} = getelementptr i8, ptr %receiver{id}, i64 %fieldOffset{id}\n  store ptr %field{id}, ptr %p{dest}, align 8\n");
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.ArrayRead:
+                        var elementPolicy = body.Leaves[dest].Policy;
+                        var readLocation = constants[op.Location];
+                        output.Write($"  %index{id} = load i64, ptr %p{op.Index}, align 8\n  %outOfBounds{id} = icmp uge i64 %index{id}, %length{op.CopyPlace}\n");
+                        output.Write($"  br i1 %outOfBounds{id}, label %boundsAbort{id}, label %elementRead{id}\nboundsAbort{id}:\n");
+                        output.Write($"  call void @{WindowsLowering.Abort.Name}(i32 {WindowsLowering.IndexBoundsReason}, ptr @{readLocation.Name}, i64 {readLocation.ByteLength}, i64 -2)\n  unreachable\nelementRead{id}:\n");
+                        output.Write($"  %array{id} = load ptr, ptr %p{source}, align 8\n  %byteOffset{id} = mul i64 %index{id}, %size{elementPolicy}\n  %element{id} = getelementptr i8, ptr %array{id}, i64 %byteOffset{id}\n");
+                        output.Write($"  call void @llvm.memcpy.p0.p0.i64(ptr %p{dest}, ptr %element{id}, i64 %size{elementPolicy}, i1 false)\n");
                         Live(dest, true);
                         break;
                 }

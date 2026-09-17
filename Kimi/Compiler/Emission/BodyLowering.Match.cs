@@ -15,6 +15,7 @@ internal sealed partial class BodyLowering
     private int[] subjectInitializers = [];
     private int[] logicalIncoming = [];
     private int[] patternAcquisitions = [];
+    private int[] patternDecompositions = [];
     private int[] slotUses = [];
     private bool hasMatches;
 
@@ -29,7 +30,7 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.TransferAggregate or EmissionOpcode.DestroyAggregate)
+            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.CompositePattern or EmissionOpcode.PatternRead or EmissionOpcode.TransferAggregate or EmissionOpcode.DestroyAggregate)
             {
                 this.UseMatchStorage(function, instruction.Place);
             }
@@ -129,6 +130,8 @@ internal sealed partial class BodyLowering
         Grow(ref this.subjectInitializers, body.Places.Count);
         Grow(ref this.matchTests, body.Operations.Count);
         Grow(ref this.patternAcquisitions, body.Operations.Count);
+        Grow(ref this.patternDecompositions, body.Operations.Count);
+        this.patternDecompositions.AsSpan(0, body.Operations.Count).Clear();
         this.patternAcquisitions.AsSpan(0, body.Operations.Count).Clear();
         this.matchPlaces.AsSpan(0, body.Places.Count).Clear();
         this.subjectInitializers.AsSpan(0, body.Places.Count).Fill(-1);
@@ -168,7 +171,7 @@ internal sealed partial class BodyLowering
             if (!binding.IsCurrent || binding.Coverage.State != MatchCoverageState.Exhaustive || match.ArmCount <= 0 ||
                 match.ArmCount != binding.Arms.Count || match.ArmStart < 0 || match.ArmStart > body.MatchArms.Count - match.ArmCount ||
                 (uint)match.Subject >= (uint)body.Places.Count || this.matchPlaces[match.Subject] != 0 || this.subjectInitializers[match.Subject] < 0 ||
-                (!IsScalar(body.Places[match.Subject].Type) && !ReferenceEquals(body.Places[match.Subject].Type, BoundType.Unit) && !ReferenceEquals(body.Places[match.Subject].Type, BoundType.String)))
+                (!IsScalar(body.Places[match.Subject].Type) && !ReferenceEquals(body.Places[match.Subject].Type, BoundType.Unit) && !ReferenceEquals(body.Places[match.Subject].Type, BoundType.String) && !this.IsCompositeSubject(body.Places[match.Subject].Type)))
             {
                 return Fail("Unsupported or inconsistent match plan.", out failure);
             }
@@ -204,13 +207,14 @@ internal sealed partial class BodyLowering
                 var armIndex = match.ArmStart + n;
                 var arm = body.MatchArms[armIndex];
                 if (arm.Match != m || arm.Pattern != binding.Arms[n].Pattern || (uint)arm.Pattern >= (uint)binding.Positions.Count ||
-                    (uint)arm.Test >= (uint)body.Operations.Count || this.matchTests[arm.Test] != -1 || arm.DecompositionCount != 0)
+                    (uint)arm.Test >= (uint)body.Operations.Count || this.matchTests[arm.Test] != -1)
                 {
                     return Fail("Unsupported match arm or guard.", out failure);
                 }
 
                 var pattern = binding.Positions[arm.Pattern];
-                if (pattern.Parent != -1 || pattern.End != arm.Pattern + 1 || pattern.AccessMode != PatternAccessMode.Owned || pattern.ImplicitDeref != PatternImplicitDeref.None ||
+                var composite = this.IsCompositeSubject(pattern.MatchedType);
+                if (pattern.Parent != -1 || (!composite && (pattern.End != arm.Pattern + 1 || arm.DecompositionCount != 0)) || pattern.AccessMode != PatternAccessMode.Owned || pattern.ImplicitDeref != PatternImplicitDeref.None ||
                     !ReferenceEquals(pattern.MatchedType, body.Places[match.Subject].Type) ||
                     body.Operations[arm.Test].Kind != OwnershipOperationKind.PatternTest || body.Operations[arm.Test].Place != match.Subject ||
                     body.OperationSteps[arm.Test] != armIndex || !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[arm.Test].Source), pattern.Source) || !this.PureMatchTest(body, arm.Test))
@@ -220,14 +224,25 @@ internal sealed partial class BodyLowering
 
                 this.matchTests[arm.Test] = armIndex;
                 var guarded = binding.Arms[n].Syntax.Guard is not null;
-                if (guarded && !MatchTypes.SupportsGuard(pattern.MatchedType))
+                if (guarded && !MatchTypes.SupportsGuard(binding, arm.Pattern))
                 {
                     return Fail("Unsupported guarded Subject Type.", out failure);
                 }
 
                 var unconditional = pattern.Kind is BoundPatternKind.Wildcard or BoundPatternKind.Binding or BoundPatternKind.Unit;
                 var duplicate = false;
-                if (pattern.Kind == BoundPatternKind.Literal)
+                if (composite)
+                {
+                    if (!this.ValidateCompositePattern(binding, arm.Pattern) || !this.PrepareCompositeAcquisitions(body, arm, match.Subject, out failure))
+                    {
+                        return Fail(failure ?? "Unsupported or inconsistent composite Pattern.", out failure);
+                    }
+
+                    // Exhaustive Binding proves the remaining domain reaches the final
+                    // unguarded arm. Earlier tests retain source-order short circuiting.
+                    unconditional |= !guarded && n == match.ArmCount - 1;
+                }
+                else if (pattern.Kind == BoundPatternKind.Literal)
                 {
                     if (pattern.Literal.Kind == PatternLiteralKind.String && ReferenceEquals(pattern.MatchedType, BoundType.String) && pattern.Literal.Text is { } text)
                     {
@@ -317,7 +332,7 @@ internal sealed partial class BodyLowering
                     return Fail("Unguarded Pattern has an unexpected guard plan.", out failure);
                 }
 
-                if (pattern.Kind == BoundPatternKind.Binding)
+                if (!composite && pattern.Kind == BoundPatternKind.Binding)
                 {
                     var expectedAcquisition = ReferenceEquals(pattern.MatchedType, BoundType.String) ? PatternAcquisition.Move : PatternAcquisition.Copy;
                     var entry = body.EdgeHeads[arm.BodyEntry];
@@ -457,6 +472,11 @@ internal sealed partial class BodyLowering
                     return Fail("Guard selection is not dominated by its evaluation and cleanup.", out failure);
                 }
             }
+        }
+
+        if (this.IsCompositeSubject(type) || operation.Kind == OwnershipOperationKind.DecomposeCase || this.decompositionOwners[operation.Place] >= 0)
+        {
+            return this.LowerCompositeMatchOperation(body, function, id, out failure);
         }
 
         if (operation.Kind == OwnershipOperationKind.InitializeSubject)

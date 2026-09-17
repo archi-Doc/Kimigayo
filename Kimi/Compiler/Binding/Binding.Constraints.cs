@@ -615,16 +615,16 @@ public sealed partial class Binding
         }
     }
 
-    private BoundConstraint SubstituteConstraint(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments)
+    private BoundConstraint SubstituteConstraint(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default)
     {
         if (constraint.Kind == ConstraintKind.Not)
         {
-            return this.NegateConstraint(this.SubstituteConstraint(constraint.Left!, binder, arguments));
+            return this.NegateConstraint(this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths));
         }
 
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            return this.InternConstraint(new(constraint.Kind, left: this.SubstituteConstraint(constraint.Left!, binder, arguments), right: this.SubstituteConstraint(constraint.Right!, binder, arguments)));
+            return this.InternConstraint(new(constraint.Kind, left: this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths), right: this.SubstituteConstraint(constraint.Right!, binder, arguments, lengths)));
         }
 
         if (constraint.Subject is null)
@@ -632,12 +632,12 @@ public sealed partial class Binding
             return constraint;
         }
 
-        var subject = this.SubstituteType(constraint.Subject, binder, arguments);
-        var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments);
+        var subject = this.SubstituteType(constraint.Subject, binder, arguments, lengths);
+        var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments, lengths);
         return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
     }
 
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default)
     {
         var result = ConstraintProof.Proven;
         for (var i = 0; i < clauses.Count; i++)
@@ -654,7 +654,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(bound, binder, arguments);
+            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths);
             if (declaringType?.Symbol?.Declaration is { } owner)
             {
                 substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);

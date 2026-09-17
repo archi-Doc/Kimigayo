@@ -207,7 +207,7 @@ public sealed partial class OwnershipAnalysis
         this.normalExit = this.New(OwnershipOperationKind.Exit, function);
         this.abortExit = this.New(OwnershipOperationKind.Exit, function);
         this.resultPlace = this.Place(function, declarationDefault >= 0 ? function.Parameters[declarationDefault].Type.BoundType : function.BoundSymbol?.Type ?? BoundType.Unit, OwnershipPlaceKind.Result, true);
-        if (declarationDefault < 0 && function.Captures is { Length: > 0 })
+        if (declarationDefault < 0 && function.Captures is { Length: > 0 } && function.BoundClosure is null)
         {
             this.Unsupported(function);
         }
@@ -240,6 +240,18 @@ public sealed partial class OwnershipAnalysis
             this.Connect(this.current, this.normalExit);
             this.CompleteBody(function);
             return;
+        }
+
+        if (function.BoundClosure is { } closure)
+        {
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                var capture = closure.Captures[i].Environment;
+                var place = this.Place(function, capture.Type, OwnershipPlaceKind.Parameter, false);
+                this.body.SymbolPlaces[capture] = place;
+                var initialized = this.Emit(OwnershipOperationKind.Produce, function, place);
+                this.SetValue(initialized, OwnershipValueKind.Capture, [], constant: i);
+            }
         }
 
         this.PrepareReceiverFields(function);
@@ -498,6 +510,8 @@ public sealed partial class OwnershipAnalysis
 
         switch (node)
         {
+            case FunctionKoto { BoundClosure: { } } closure:
+                return this.CreateClosure(closure);
             case ParenthesizedKoto parentheses:
                 return this.Expression(parentheses.Operand, use, acquisition);
             case MacroKoto { Operand: InvocationKoto abort } when ReferenceEquals(abort.BoundCall?.Target, this.compilation.Core.Abort):
@@ -528,19 +542,21 @@ public sealed partial class OwnershipAnalysis
                 this.Unsupported(test);
                 return this.Temporary(test);
             case ConversionKoto conversion:
-                if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsStruct(conversion.BoundType))
+                if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsStorage(conversion.BoundType))
                 {
                     return this.BorrowStruct(conversion.Left, conversion.BoundType!);
                 }
 
                 return this.ConversionValue(conversion);
-            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice:
+            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice || ReferenceTypes.IsArray(member.Left.BoundType):
                 return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType):
                 return this.ReadBorrowedField(member);
             case IndexKoto slice when slice.BoundType?.Kind == BoundTypeKind.Slice && slice.Right is RangeKoto:
                 return this.CreateSlice(slice);
             case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Slice:
+                return this.ReadSlice(element);
+            case IndexKoto element when ReferenceTypes.IsArray(element.Left.BoundType):
                 return this.ReadSlice(element);
             case BinaryKoto element when ElementAccess.IsSyntax(element):
                 return this.ElementValue(element, use);
@@ -794,6 +810,11 @@ public sealed partial class OwnershipAnalysis
 
     private int Call(InvocationKoto call)
     {
+        if (call.BoundValueCall is { } valueCall)
+        {
+            return this.CallValue(call, valueCall);
+        }
+
         if (call.BoundCall is not { } plan)
         {
             this.Unsupported(call);
@@ -805,7 +826,7 @@ public sealed partial class OwnershipAnalysis
         var borrows = false;
         if (plan.Receiver is { } receiver)
         {
-            this.arguments.Add(ReferenceTypes.IsStruct(plan.ReceiverOperation.ParameterType) && plan.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
+            this.arguments.Add(ReferenceTypes.IsStorage(plan.ReceiverOperation.ParameterType) && plan.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
                 ? this.BorrowStruct(receiver, plan.ReceiverOperation.ParameterType!) : this.Argument(receiver, plan.ReceiverOperation.Kind));
         }
 
@@ -813,7 +834,7 @@ public sealed partial class OwnershipAnalysis
         {
             var argument = plan.ArgumentOperations[i];
             borrows |= argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType);
-            this.arguments.Add(ReferenceTypes.IsStruct(argument.ParameterType) && argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
+            this.arguments.Add(ReferenceTypes.IsStorage(argument.ParameterType) && argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
                 ? this.BorrowStruct(call.ArgumentNodes[i], argument.ParameterType!) : argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType)
                 ? this.BorrowArgument(call, argument) : this.Argument(call.ArgumentNodes[i], argument.Kind));
         }

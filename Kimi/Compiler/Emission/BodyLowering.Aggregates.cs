@@ -14,6 +14,7 @@ internal sealed partial class BodyLowering
     private int[] aggregateDeclarations = [];
     private int[] payloadPlacements = [];
     private int[] aggregateCompletions = [];
+    private int[] decompositionOwners = [];
 
     internal AggregateLayoutPool AggregateLayouts => this.aggregateLayouts;
 
@@ -45,6 +46,8 @@ internal sealed partial class BodyLowering
         Grow(ref this.aggregateDeclarations, body.Places.Count);
         Grow(ref this.payloadPlacements, body.Places.Count);
         Grow(ref this.aggregateCompletions, body.Places.Count);
+        Grow(ref this.decompositionOwners, body.Places.Count);
+        this.decompositionOwners.AsSpan(0, body.Places.Count).Fill(-1);
         this.payloadOwners.AsSpan(0, body.Places.Count).Fill(-1);
         this.constructionOwners.AsSpan(0, body.Places.Count).Fill(-1);
         this.aggregateDeclarations.AsSpan(0, body.Places.Count).Fill(-1);
@@ -53,17 +56,17 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice) && !StructStorage.IsStruct(place.Type))
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type))
             {
                 continue;
             }
 
             var layout = this.aggregateLayouts.Get(place.Type);
-            if (layout is null || place.Kind == OwnershipPlaceKind.Subject ||
+            if (layout is null ||
                 (place.Kind == OwnershipPlaceKind.Parameter && this.slotFunctionPlaces[p] != 1) ||
                 (place.Kind == OwnershipPlaceKind.Result && this.slotResultPlaces[p] == 0 && this.slotFunctionPlaces[p] != 2))
             {
-                return Fail("Aggregate execution requires an owned tuple/fixed array of supported values, at most 64 nesting levels and 2147483647 layout bytes; aggregate Subjects are not implemented.", out failure);
+                return Fail("Aggregate execution requires a finite supported physical layout and verified parameter/result storage.", out failure);
             }
 
             this.aggregatePlaces[place.Id] = layout;
@@ -72,18 +75,42 @@ internal sealed partial class BodyLowering
         for (var c = 0; c < body.Constructions.Count; c++)
         {
             var plan = body.Constructions[c];
-            if ((uint)plan.Place >= (uint)body.Places.Count || plan.Case is not null || this.aggregatePlaces[plan.Place] is not { } layout ||
+            if ((uint)plan.Place >= (uint)body.Places.Count || this.aggregatePlaces[plan.Place] is not { } ownerLayout ||
                 this.constructionOwners[plan.Place] >= 0 ||
-                plan.PayloadCount != layout.Count || plan.PayloadStart <= plan.Place || plan.PayloadStart > body.Places.Count - plan.PayloadCount ||
-                body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto))
+                plan.PayloadStart <= plan.Place || plan.PayloadStart > body.Places.Count - plan.PayloadCount)
             {
                 return Fail("Aggregate construction has no matching physical shape.", out failure);
             }
 
             var type = body.Places[plan.Place].Type;
+            var layout = ownerLayout;
+            var offset = 0;
+            if (plan.Case is { } selected)
+            {
+                if (ownerLayout.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length ||
+                    !ReferenceEquals(EnumStorage.Case(type, selected.Ordinal), selected) || !ReferenceEquals(body.Places[plan.Place].Source.BoundSymbol?.EnumCase, selected))
+                {
+                    return Fail("Enum construction has no matching active Case.", out failure);
+                }
+
+                layout = cases[selected.Ordinal];
+                type = type.StoredCases![selected.Ordinal];
+                offset = ownerLayout.PayloadOffset;
+            }
+            else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto))
+            {
+                return Fail("Aggregate construction has no matching source shape.", out failure);
+            }
+
             this.constructionOwners[plan.Place] = c;
-            var elements = body.Places[plan.Place].Source is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)body.Places[plan.Place].Source).Elements;
-            if (elements.Count != plan.PayloadCount)
+            IReadOnlyList<Koto>? elements = body.Places[plan.Place].Source switch
+            {
+                TupleLiteralKoto tuple => tuple.Elements,
+                ArrayLiteralKoto array => array.Elements,
+                InvocationKoto call => call.Arguments,
+                _ => null,
+            };
+            if (layout.Count != plan.PayloadCount || (elements is not null && elements.Count != plan.PayloadCount))
             {
                 return Fail("Aggregate source and payload counts disagree.", out failure);
             }
@@ -92,7 +119,7 @@ internal sealed partial class BodyLowering
             {
                 var p = plan.PayloadStart + i;
                 if (this.payloadOwners[p] >= 0 || body.Places[p].Kind != OwnershipPlaceKind.Payload ||
-                    !ReferenceEquals(body.Places[p].Source, elements[i]) ||
+                    (elements is not null && !ReferenceEquals(body.Places[p].Source, elements[i])) ||
                     !ReferenceEquals(body.Places[p].Type, type.Components[layout.IsArray ? 0 : i]))
                 {
                     return Fail("Aggregate payload ownership or Type does not match its shape.", out failure);
@@ -102,7 +129,57 @@ internal sealed partial class BodyLowering
                 if (layout.Fields[layout.IsArray ? 0 : i].Layout.Size != 0)
                 {
                     function.SlotAddresses[p] = new(EmissionOperandKind.ProjectedSlot, p);
-                    function.Subslots.Add(new(p, plan.Place, layout.Offset(i)));
+                    function.Subslots.Add(new(p, plan.Place, offset + layout.Offset(i)));
+                }
+            }
+        }
+
+        for (var d = 0; d < body.Decompositions.Count; d++)
+        {
+            var plan = body.Decompositions[d];
+            if ((uint)plan.Place >= (uint)body.Places.Count || this.aggregatePlaces[plan.Place] is not { NeedsDestruction: false } owner ||
+                plan.PayloadStart <= plan.Place || plan.PayloadStart > body.Places.Count - plan.PayloadCount)
+            {
+                return Fail("Pattern decomposition requires supported owned storage without destruction.", out failure);
+            }
+
+            var type = body.Places[plan.Place].Type;
+            var shape = owner;
+            var offset = 0;
+            if (plan.Case is { } selected)
+            {
+                if (owner.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length || !ReferenceEquals(EnumStorage.Case(type, selected.Ordinal), selected))
+                {
+                    return Fail("Pattern decomposition has the wrong enum Case.", out failure);
+                }
+
+                shape = cases[selected.Ordinal];
+                type = type.StoredCases![selected.Ordinal];
+                offset = owner.PayloadOffset;
+            }
+            else if (type.Kind != BoundTypeKind.Tuple)
+            {
+                return Fail("Pattern decomposition requires a tuple or selected Case.", out failure);
+            }
+
+            if (shape.Count != plan.PayloadCount)
+            {
+                return Fail("Pattern decomposition arity differs from storage.", out failure);
+            }
+
+            for (var i = 0; i < plan.PayloadCount; i++)
+            {
+                var p = plan.PayloadStart + i;
+                if (this.payloadOwners[p] >= 0 || this.decompositionOwners[p] >= 0 || body.Places[p].Kind != OwnershipPlaceKind.Payload || !ReferenceEquals(body.Places[p].Type, type.Components[i]))
+                {
+                    return Fail("Pattern payload has inconsistent ownership or Type.", out failure);
+                }
+
+                this.decompositionOwners[p] = d;
+                if (shape.Fields[i].Layout.Size != 0)
+                {
+                    function.SlotAddresses[p] = new(EmissionOperandKind.ProjectedSlot, p);
+                    function.Subslots.Add(new(p, plan.Place, offset + shape.Offset(i)));
                 }
             }
         }
@@ -152,7 +229,7 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Kind == OwnershipPlaceKind.Payload && this.payloadOwners[place.Id] < 0)
+            if (place.Kind == OwnershipPlaceKind.Payload && this.payloadOwners[place.Id] < 0 && this.decompositionOwners[place.Id] < 0)
             {
                 return Fail("Payload storage has no unique construction owner.", out failure);
             }
@@ -202,6 +279,8 @@ internal sealed partial class BodyLowering
 
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.Read when place.Type.Kind == BoundTypeKind.Function:
+                return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
             case OwnershipOperationKind.Declare:
                 if (place.Kind == OwnershipPlaceKind.Result && this.slotResultDeclarations[id] == 0)
                 {
@@ -210,6 +289,11 @@ internal sealed partial class BodyLowering
 
                 break;
             case OwnershipOperationKind.Produce:
+                if (body.Values[id].Kind == OwnershipValueKind.Closure)
+                {
+                    return this.LowerClosure(body, function, id, out failure);
+                }
+
                 if (this.slotFunctionProduces[id] == 0)
                 {
                     return Fail("Aggregate receipt has no verified parameter or normal call result.", out failure);
@@ -243,6 +327,11 @@ internal sealed partial class BodyLowering
                             return Fail("Aggregate completion requires every payload initialized.", out failure);
                         }
                     }
+                }
+
+                if (plan.Case is { } activeCase)
+                {
+                    function.AddScalar(EmissionOpcode.StoreScalar, id, [new(EmissionOperandKind.Integer, activeCase.Ordinal)], "i32", place: place.Id, representation: WindowsLowering.GetValue(BoundType.I32));
                 }
 
                 break; // Payload slots already occupy their final byte offsets.

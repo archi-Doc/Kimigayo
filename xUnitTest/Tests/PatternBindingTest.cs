@@ -141,7 +141,7 @@ public class PatternBindingTest
     public void GuardDoesNotPoisonIndependentCoverage()
     {
         var c = Parse("func f(x: Option<i32>) => match x\n    .Some(let n) if n > 0 => ()\n    .Some(_) => ()\n    .None => ()");
-        Assert.False(c.Bind().IsComplete);
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
     }

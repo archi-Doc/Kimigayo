@@ -49,19 +49,20 @@ public class GenericTypeArgumentBindingTest
     [Theory]
     [InlineData("G", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("C", DiagnosticCode.InvalidTypeFormation_Kd)]
-    [InlineData("1", DiagnosticCode.UnresolvedBinding_Kd)]
-    [InlineData("(1 + 2)", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("1", DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("(1 + 2)", DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("Box", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("([2 of Box])", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("([2 of C])", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("(Box<C>)", DiagnosticCode.InvalidTypeFormation_Kd)]
-    public void NonTypesAndIncompleteNestedTypesRemainInvalid(string type, DiagnosticCode expected)
+    public void NonTypesAndIncompleteNestedTypesRemainInvalid(string type, DiagnosticCode expected, DiagnosticCode? callExpected = null)
     {
         foreach (var use in new[] { $"func f(value: Box<{type}>) => ()", $"take<{type}>()" })
         {
             var c = Parse($"group G\ncontract C\nstruct Box<T>\nfunc take<T>() => ()\n{use}");
             Assert.False(c.Bind().IsComplete);
-            Assert.Contains(c.Binding.Issues, x => x.Code == expected);
+            var diagnostic = use.StartsWith("take", StringComparison.Ordinal) ? callExpected ?? expected : expected;
+            Assert.Contains(c.Binding.Issues, x => x.Code == diagnostic);
             Assert.False(Reload(c).Bind().IsComplete);
         }
     }

@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1402 // Physical aggregate descriptors and their reusable pool.
 
 /// <summary>A syntax-free aggregate representation. Fields remain in logical acquisition/destruction order.</summary>
-internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1)
+internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 }
@@ -22,6 +22,7 @@ internal sealed class AggregateLayoutPool
     private readonly List<ValueLowering> fields = new();
     private readonly List<AggregateLayout?> children = new();
     private readonly Dictionary<FunctionKoto, int> destructors = new(ReferenceEqualityComparer.Instance);
+    private AggregateLayout? functionHandle;
 
     internal void RegisterDestructor(FunctionKoto function, int ordinal) => this.destructors[function] = ordinal;
 
@@ -40,6 +41,22 @@ internal sealed class AggregateLayoutPool
         if (this.resolved.TryGetValue(type, out var existing))
         {
             return existing;
+        }
+
+        if (EnumStorage.IsEnum(type))
+        {
+            return this.GetEnum(type, depth);
+        }
+
+        if (type.Kind == BoundTypeKind.Function)
+        {
+            if (this.functionHandle is null)
+            {
+                this.functionHandle = new(this.pool.Count, new(new("[16 x i8]", 16, 8, 16, new[] { 0, 8 }), "[16 x i8]", "ptr"), [], [], 0, false, true, FunctionHandle: true);
+                this.pool.Add(this.functionHandle);
+            }
+
+            return this.resolved[type] = this.functionHandle;
         }
 
         var structure = StructStorage.IsStruct(type);
@@ -75,7 +92,7 @@ internal sealed class AggregateLayoutPool
 
             foreach (var candidate in this.pool)
             {
-                if (candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor)
+                if (candidate.FunctionHandle || candidate.Cases is not null || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor)
                 {
                     continue;
                 }
@@ -157,5 +174,54 @@ internal sealed class AggregateLayoutPool
             this.fields.RemoveRange(start, this.fields.Count - start);
             this.children.RemoveRange(start, this.children.Count - start);
         }
+    }
+
+    private AggregateLayout? GetEnum(BoundType type, int depth)
+    {
+        if (depth == 64 || type.Origin is not null || type.OriginArguments.Count != 0 || type.StoredCases is not { Length: > 0 } types)
+        {
+            return null;
+        }
+
+        this.resolved[type] = null; // Reject recursive inline representations.
+        var cases = new AggregateLayout[types.Length];
+        var alignment = 1;
+        long payloadSize = 0;
+        var destroy = false;
+        for (var i = 0; i < types.Length; i++)
+        {
+            if (this.Get(types[i], depth + 1) is not { } payload)
+            {
+                return null;
+            }
+
+            cases[i] = payload;
+            alignment = Math.Max(alignment, payload.Value.Layout.Alignment);
+            payloadSize = Math.Max(payloadSize, payload.Value.Layout.Size);
+            destroy |= payload.NeedsDestruction;
+        }
+
+        foreach (var candidate in this.pool)
+        {
+            if (candidate.Cases is { } previous && previous.AsSpan().SequenceEqual(cases))
+            {
+                this.resolved[type] = candidate;
+                return candidate;
+            }
+        }
+
+        var offset = (int)Align(4, alignment);
+        var size = Align(offset + Align(payloadSize, alignment), Math.Max(4, alignment));
+        if (size > int.MaxValue)
+        {
+            return null;
+        }
+
+        var storage = "{ i32, { [0 x i" + (alignment * 8).ToString(CultureInfo.InvariantCulture) + "], [" + Align(payloadSize, alignment).ToString(CultureInfo.InvariantCulture) + " x i8] } }";
+        var value = new ValueLowering(new(storage, (int)size, Math.Max(4, alignment), (int)size, new[] { 0, offset }), storage, "ptr");
+        var result = new AggregateLayout(this.pool.Count, value, [], [], 0, false, destroy, Cases: cases, PayloadOffset: offset);
+        this.pool.Add(result);
+        this.resolved[type] = result;
+        return result;
     }
 }

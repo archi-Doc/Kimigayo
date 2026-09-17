@@ -13,7 +13,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (value.Kind == OwnershipValueKind.Address)
         {
-            if (operation.Kind != OwnershipOperationKind.Borrow || !ReferenceTypes.IsStruct(ValueType(body, id)) ||
+            if (operation.Kind != OwnershipOperationKind.Borrow || !ReferenceTypes.IsStorage(ValueType(body, id)) ||
                 (uint)operation.Place >= (uint)body.Places.Count || value.Constant != operation.Place ||
                 (body.IsReachable(id) && (body.GetInputState(id, operation.Place) & PlaceState.MustInit) == 0))
             {
@@ -22,7 +22,36 @@ internal sealed partial class BodyLowering
 
             var type = body.Places[operation.Place].Type;
             var output = ValueType(body, id)!;
-            if (ReferenceTypes.IsStruct(type))
+            if (operation.Source is MemberAccessKoto projected && ReferenceTypes.IsStruct(projected.Left.BoundType))
+            {
+                var projectedOwner = projected.Left.BoundType!.Components[0];
+                var projectedLayout = this.aggregateLayouts.Get(projectedOwner);
+                var projectedPosition = -1;
+                for (var i = 0; i < StructStorage.Count(projectedOwner); i++)
+                {
+                    if (ReferenceEquals(StructStorage.Field(projectedOwner, i).BoundSymbol, projected.BoundSymbol))
+                    {
+                        projectedPosition = i;
+                        break;
+                    }
+                }
+
+                if (projectedLayout is null || projectedPosition < 0 || value.Count != 1 ||
+                    !ReferenceEquals(type, projected.Left.BoundType) ||
+                    !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
+                    !ReferenceEquals(StructStorage.FieldType(projectedOwner, projectedPosition), projected.BoundType) ||
+                    !ReferenceEquals(projected.BoundType, output.Components[0]) ||
+                    (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
+                    (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
+                {
+                    return Fail("Projected borrow lacks a matching stored field and typed receiver.", out failure);
+                }
+
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, projectedLayout.Offset(projectedPosition))]);
+                return true;
+            }
+
+            if (ReferenceTypes.IsStorage(type))
             {
                 if (value.Count != 1 || (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)) ||
                     !ReferenceEquals(type.Components[0], output.Components[0]) || (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq))

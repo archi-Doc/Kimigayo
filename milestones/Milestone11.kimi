@@ -1,6 +1,9 @@
 // Milestone 11: shared generic generation and explicit specialization selection.
 group Weights
-    public func weight<T>(value: ref/T) -> i32 => 1
+    // Group members are static; no static modifier is used.
+    public let defaultWeight: i32 = 1
+
+    public func weight<T>(value: ref/T) -> i32 => defaultWeight
     specialize func weight<i32>(value: ref/i32) -> i32 => 2
 
     // A generic forwarding call must retain the selected specialization.

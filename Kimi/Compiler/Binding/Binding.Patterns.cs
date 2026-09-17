@@ -159,7 +159,7 @@ public sealed partial class Binding
 
             if (arm.Guard is { } guard)
             {
-                if (plan.Pending || !MatchTypes.SupportsGuard(subject))
+                if (plan.Pending || !MatchTypes.SupportsGuard(plan, plan.Arms[i].Pattern))
                 {
                     this.MarkPatternTree(guard);
                     this.MarkPatternTree(arm.Body);

@@ -1,5 +1,465 @@
 # Kimigayo Compiler Completion Plan
 
+## Program Milestone 9 resumed after program 10 (2026-09-17, incomplete)
+
+Execution started at **08:55:11 UTC**, with a **09:55:11 UTC** soft deadline.
+Execution closed at **09:54:45 UTC** (59.57 minutes elapsed), after finishing the current implementation, verification and documentation units. No additional enum implementation unit was started in the remaining sub-minute window. The target remains incomplete.
+
+The latest explicit target is program 9. Re-read current HEAD (`cc2cb04`), worktree,
+AGENTS.md, execution instructions, this plan and the implementation before work.
+Preserved pre-existing changed/untracked files and binary diff under
+`bin/milestone9-final-20260917/baseline/` and `baseline.patch`. All fourteen
+milestone programs were read (the repository contains fourteen, not five).
+Programs 1–8 provide ownership, borrowing, arrays and shared generic storage;
+completed program 10 provides enum layouts and nested patterns. Programs 11–14
+remain design context. Plan stage IDs and program numbers are distinct.
+
+At execution start, `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone9.kimi`
+first failed final Binding at 24:20 (`NotCallable_Kd`), with additional anonymous
+function/capture failures. See `initial-target.log`. The original program was not
+changed. Its required stdout remains:
+
+```text
+Found 6 at index 3.
+Missing value handled.
+Search finished.
+Batch destroyed.
+```
+
+Required stderr is empty and exit code is 0. **The target has not executed.**
+
+| Item | Current state | Implemented and verified scope |
+| --- | --- | --- |
+| P9-C1 | DONE | Checked common-function invocation Binding; positional signature, adaptation and retained acquisition plans. |
+| P9-C2 | DONE (target closure subset) | Scalar/Unit snapshots, inline environment word/operations table, checked indirect calls, moves, returns, cleanup and call-wide shared Loans. |
+| P9-G1 | DONE | Concrete borrowed struct field addresses and declared result Origins. |
+| P9-G2 | DONE | Symbolic `ref/T` field addresses through universally checked shared bodies and instantiated offset metadata. |
+| P9-G3 | DONE | Borrowed fixed-array Copy element reads through shared size/length policies, including bounds checks for zero-sized elements. |
+| P9-G | IN_PROGRESS | Generic enum result/construction, shared iteration/callback adaptation and generic destructor generation remain. |
+| P9-F | IN_PROGRESS | Current foundation regression complete; unchanged target LLVM/native verification remains blocked by implementation. |
+
+**Current target stage:** final Binding passes in Debug and Release. `Batch.view()`,
+the generic element read and common-function call pass ownership. First remaining
+failure is ownership of `Hit<T>` at 20:21, followed by `.Found`/`.Missing`
+construction at 25:28 and 26:20. `g3-target.log` and `target-release.log` retain the
+current diagnostics. Target LLVM generation, expected output, exit and cleanup
+side effects remain **UNVERIFIED**; Milestone 9 is not DONE.
+
+**Verification checkpoint (09:52 UTC, about 57 minutes elapsed):**
+
+- Debug/Release solution builds: zero warnings and errors.
+- Both complete managed suites: **7,812 passed**, including 68 new tests. Final
+  strengthening of projected-offset fixtures also passes all ten focused tests
+  in both configurations; compiler implementation and test count are unchanged.
+- Related LLVM verification/linking/native checks: **471 fixtures / 942 unique
+  O0/O2 executions**, with **2,355 matching IR/expectation hashes**. Two projected
+  fixtures were additionally rerun after strengthening their nonzero-offset case.
+- Completed programs **1–8 and 10**: **756 Debug/Release integration checks**;
+  all eighteen reports match current compiler and program hashes.
+- Positives, invalid captures/types/arity, move/Loan conflicts, invalid lifetime,
+  unproved Copy, bounds failures, corrupt plans, reload and reanalysis are covered.
+  Final callback tests check receiver/argument/body order, nonexecution of a Never
+  body during creation, and explicit rejection of oversized environments.
+- Warm closure Binding/ownership are allocation-free in the focused measurement.
+  The test excludes the previously recorded 72-byte require-expression Binding
+  baseline. Shared module construction is not claimed allocation-free.
+- `git diff --check` passes. NativeAOT was not run. SPEC.md and draft are unchanged.
+
+Evidence is in `bin/milestone9-final-20260917/verification.json`, its linked
+integration reports and named logs. Intermediate work-unit checkpoints are retained
+in `PLAN-work-unit-history.md` there. The independently changed Milestone11 example,
+its README entry and STATUS entry were preserved; this execution implemented no
+later-program functionality.
+
+**Boundaries:** common-call generation currently accepts scalar parameters and
+scalar/Unit/Never results. Closure conversion requires a fixed expected common
+signature with explicit parameter Types and scalar/Unit captures fitting the
+8-byte inline environment. Owning/borrowed captures, heap environments, general
+concrete closure values, inferred parameters and public borrowed callable
+signatures remain explicitly unsupported.
+
+**Next exact action:** reproduce with
+`dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone9.kimi`, then
+implement finite symbolic enum payload ownership in `OwnershipAnalysis.Enums.cs`
+and shared enum tag/payload/result policies in `GenericStoragePlan.cs` and its
+writer. Preserve Copy/Move, active-case cleanup and universal definition checks.
+Then implement shared range iteration, common-call ABI adaptation and generic
+`Batch<T>` destruction, rerunning the unchanged target after each coherent unit.
+
+Focused independent reproducers are saved as `remaining-enum.kimi`,
+`remaining-iteration.kimi`, `remaining-callback.kimi` and `remaining-destructor.kimi`
+with corresponding logs in the evidence directory. The enum reproducer fails
+ownership; the other three pass ownership and reproduce separate shared-generation
+boundaries. Those are **isolated reproducer failures**, not evidence that the
+Milestone 9 target has reached generation. Do not advance to another program.
+## Program Milestone 10 integration (2026-09-17, complete)
+
+Resume audit: **DONE**, started 2026-09-17 08:32:05 UTC with a 60-minute soft
+deadline of 09:32:05 UTC; closed at approximately 08:33 UTC (one minute elapsed).
+Re-read current HEAD/worktree, AGENTS.md, the execution prompt, latest plan and
+status. All P10 items remain DONE; no executable work remains within the explicit
+program-10 scope. Preserved current changed/untracked files and binary diff under
+`bin/milestone10-resume-20260917-083205/`. Read-only evidence checks PASS: all
+eighteen integration reports match current compiler/source hashes, and all 2,220
+fixture/expectation hashes match. `git diff --check` passes. No implementation
+change or new failure requires repeating successful builds/tests; none were rerun.
+Only this plan checkpoint was added. No remaining target action; stop without
+starting program 9 or programs 11–14. Product support and STATUS.md are unchanged.
+Repeated resume check at 08:33:15 UTC (deadline 09:33:15 UTC), closed at
+08:33:40 UTC, about 25 seconds elapsed: instructions and current state re-read;
+all 64 changed/untracked files other than this plan match the saved checkpoint.
+The previous plan was preserved as `PLAN-before-083315.md` in the audit directory.
+Diff check PASS. No newly executable in-scope item or changed implementation was
+found; completion and the stop-at-program-10 scope remain unchanged. No tests rerun.
+
+Execution started at 07:47:36 UTC. The preceding execution's 60-minute soft limit
+is retained for this continuation (08:47:36 UTC); after it, finish only the current
+coherent unit and its required verification/documentation. Program numbers are
+independent of this document's compiler stages. Current HEAD is `cc2cb04`.
+All pre-existing changed/untracked files and the binary diff were preserved in
+`bin/milestone10-work-20260917/baseline/` and `baseline.patch` before changes.
+AGENTS.md, the execution prompt, current PLAN and implementation were re-read.
+There are fourteen milestone sources rather than five; all fourteen were read.
+Programs 1–8 supply scalar/control-flow, ownership, borrowing, arrays and generic
+storage. Program 9 remains incomplete, but its callback functionality is not a
+dependency of program 10. Program 10 requires concrete generic enum layout,
+nested tuple/payload patterns, guard candidate reads, Copy array iteration and
+existing cross-selection/loop transfers. Programs 11–14 are design context only.
+
+At execution start, the Debug compiler first failed final Binding on the target's match and
+its nested-payload guard at 17:31 / 18:45 (`UnsupportedBinding_Kd`). This is an
+observed failure. Ownership currently gates tuple patterns; emission gates enum
+layouts and composite match plans. These are inspected implementation boundaries,
+not evidence that the whole target has reached those phases. Expected stdout is
+`Accepted total is 12.\nPattern run finished.\n`, empty stderr and exit 0.
+
+- **P10-1 DONE (Binding/ownership subset):** bind nested guarded patterns and retain checked candidate
+  projections and tuple decomposition through ownership, with positive/negative tests.
+- **P10-2 DONE (target subset):** concrete enum storage/construction and composite match generation,
+  using existing layout/ownership plans and checking LLVM/native O0/O2 behavior.
+- **P10-3 DONE:** integrate Copy aggregate array iteration and target transfers;
+  verify unchanged target and focused runtime/invalid-input variants.
+- **P10-V DONE:** final Debug/Release regression, completed programs 1–8, documentation.
+
+No program 9 completion or later-program-specific implementation is claimed.
+
+At 07:55 UTC, 249 focused Binding/ownership/guard tests pass. Recursive candidate
+indexing preserves separate guard/body identities; scalar candidate projections
+do not acquire payload ownership. Owned tuple decomposition reuses the existing
+selected-case ownership path. Two prior unsupported tuple tests are now positive;
+the exhaustive guarded enum Binding test now expects successful Binding. The
+unchanged target passes Binding and first fails ownership at aggregate array
+iteration (16:9). No target generation or execution has passed yet.
+
+At 08:07 UTC (20 elapsed minutes), the unchanged target passes ownership, LLVM
+verification, native linking and ordinary Debug/O2 CLI execution: exact expected
+lines and exit 0. Enum layout/construction passes five O0/O2 fixtures (10 runs);
+composite scalar candidate patterns pass four O0/O2 fixtures (8 runs). Composite
+match generation currently requires storage without destruction; whole enum
+construction/transfer/destruction supports active Non-Copy payloads independently.
+Pattern tests short-circuit from outer tags to inner literals before guard reads;
+selected bindings then acquire from checked payload subslots. Copy aggregate array
+iteration snapshots its input and copies each element. Final acceptance remains
+pending O0/O2 target variants, invalid plans/inputs and final regression.
+The first full managed run found six warm-allocation regressions from interface
+enumeration and one formerly unsupported tuple-pattern expectation; these are
+being corrected without weakening allocation or invalid-input checks.
+
+At 08:21 UTC (34 elapsed minutes), the dedicated program-10 script passes 54
+Debug checks: original source, byte-identical renamed O0/O2 copies, alternate
+values, exhaustion, empty input, immediate Stop, guard cleanup, Abort, and nine
+invalid inputs. Expanded native fixtures exposed an undefined zero-size array
+slot; value-only Unit iteration now computes an unused zero-offset address without
+requiring storage, preserving bounds/length behavior. LLVM/O0/O2 confirmation
+passes. Six malformed composite-plan tests and two malformed construction-plan
+tests reject before writing; reanalysis restores valid plans. Reload preserves
+IR, and warm nested Binding, ownership and physical writing allocate zero.
+The earlier allocation regressions were fixed with indexed declaration traversal.
+Module preparation retains physical descriptors and is not claimed allocation-free.
+Final solution builds are clean; full managed suites and current-identity native
+regression are being completed. No source-level special cases or target edits were
+introduced; callbacks and later-program-only functionality remain out of scope.
+
+Final acceptance at 08:31 UTC (approximately 44 elapsed minutes): the unchanged
+program passes current-source Debug/Release builds, final Binding, ownership,
+LLVM verification/linking, ordinary native O0/O2 execution and both CLI run forms.
+Exact stdout is the two expected lines above, stderr is empty, and exit is 0;
+the deferred cleanup line follows the accepted-total line. Both solution builds
+have zero warnings/errors; both full managed suites pass 7,744 tests, with 44 new
+tests and no failures/skips. Related LLVM/native regression passes 444 fixtures /
+888 O0/O2 executions, and all 2,220 final IR/expectation hashes still match.
+Dedicated program-10 integration passes 54 checks per configuration (108 total),
+including nine invalid inputs per configuration. Completed programs 1–8 pass
+648 Debug/Release checks. All eighteen integration reports match current compiler
+and milestone source SHA256 values. Evidence and final logs are retained in
+`bin/milestone10-work-20260917/verification.json` and its containing directory.
+
+Required checks: PASS. NativeAOT: NOT_RUN, as instructed. No required check is
+environment-blocked or unverified. No target work or blocker remains. Reproduce
+target acceptance after a corresponding solution build with
+`./backend/windows-x64/test-milestone10.ps1 -Configuration Debug` and
+`./backend/windows-x64/test-milestone10.ps1 -Configuration Release`.
+The next action for this request is to stop at program 10. Program 9 remains
+incomplete; programs 11–14 were not implemented. Composite match generation with
+owned destruction or borrowed candidate paths remains an explicit unsupported
+boundary outside this target. SPEC.md, draft files and milestone program sources
+were not changed. Existing uncommitted work remains preserved.
+
+## Program Milestone 9 integration (2026-09-17, in progress)
+
+### Timed continuation: 2026-09-17 06:41:07 UTC
+
+This execution has a 60-minute soft wall-clock limit (07:41:07 UTC).
+Current HEAD remains `cc2cb04`. All pre-existing modified and untracked source
+files were copied to `bin/milestone9-resume-20260917/baseline/`; the binary diff
+is retained beside them. The execution prompt, AGENTS.md, current plan and
+implementation were re-read before changes. The execution baseline Debug build
+passed with zero warnings/errors; 109 focused length/generic tests passed. The
+unchanged target first failed at 24:20 (`NotCallable_Kd`).
+
+- **P9-L1 DONE (Binding subset):** retain separate call length substitutions, substitute
+  dependent fixed-array lengths, and test explicit/inferred arguments, invalid
+  formation, overload selection, rebind/reload and allocation behavior. Binding
+  completion of this unit does not imply complete Milestone 9 execution.
+- **P9-L2 DONE:** carry the admitted length-dependent storage subset through
+  universal ownership and shared generation, with LLVM and native O0/O2 evidence.
+- **P9-C TODO:** common-function invocation/captures, generic result flow and
+  remaining borrowed generic operations, followed by full target execution.
+- **P9-L3 DONE:** lower fixed-array length metadata in the shared body,
+  including checked shared borrowed-array input representation; verify empty,
+  nonempty and zero-sized-element lengths through native O0/O2 execution.
+- **P9-L4 DONE:** preserve kind-directed explicit argument lookup when a Type and
+  length constant share a name, including nested transparent grouping. Final
+  Debug/Release suites pass all five namespace-selection regression cases.
+- **P9-V DONE:** final Debug/Release builds, managed suites, fixture hash
+  equivalence and completed-program reports match the current source/compiler.
+  This verification closes the implemented subset only; program 9 is incomplete.
+
+The historical evidence below describes the preceding execution; new evidence
+is recorded in this subsection and `bin/milestone9-resume-20260917/`.
+
+At 07:00 UTC (19 elapsed minutes), P9-L1 implements explicit and inferred length
+slots, literal fitting, checked signature substitution, normalized commutative
+length expressions and definition-side formation checks. Length substitutions
+are retained independently from nullable Type slots and passed into constraints
+and storage instantiation. Inapplicable formation conditions eliminate overload
+candidates. Rebinding revokes stale call plans; reload and warm zero-allocation
+tests pass. Forty-one new tests cover these behaviors and negative boundaries.
+Debug build is clean and the complete suite passes 7,668 tests. Two existing
+negative call diagnostics now identify a known argument-kind mismatch as
+NoApplicableOverload instead of unresolved type information; type-constructor
+diagnostics remain unchanged. A normalization test now finds the constant operand
+independently of canonical operand order. The unchanged target still first fails
+at callback invocation, so complete target execution remains unverified.
+P9-L2's initial current-source CLI probe produces an incomplete build manifest;
+the next focused tests will identify the ownership/emission boundary precisely.
+
+At 07:10 UTC (29 elapsed minutes), P9-L2 passes 17 focused tests and nine
+LLVM/native fixtures at O0/O2 (18 executions); reload adds a tenth fixture for
+the final native run. Whole length-dependent arrays use opaque storage policies
+in the existing shared CFG, including Copy/Move, empty/nested arrays, choices
+and reverse destruction. Length formation obligations retain their checked
+expression so ownership accepts only the Binding-certified subset. Entry identity
+also retains lengths. Invalid generic reuse is rejected by ownership errors,
+not by an unsupported-operation gate. Current-source full regression is running.
+Warm length-call Binding and ownership allocate zero after removing boxing in
+obligation traversal. Shared module construction still allocates existing plans;
+an independent require-expression Binding path without length generics allocates 72 bytes
+per analysis and is outside this unit. Neither is claimed allocation-free.
+
+At 07:18 UTC (37 elapsed minutes), P9-L3 implements a logical-length field in
+the shared policy, independent of byte size/stride. Shared borrowed-array entries
+store the incoming pointer value in their argument slot instead of interpreting
+the referent as owned argument storage. Admission is limited to explicitly
+declared shared-array inputs; generic T instantiated with a borrow remains gated.
+Empty arrays, zero-sized elements and ordinary arrays pass initial native O0/O2
+checks. Five additional negative/plan-corruption tests cover uninitialized input,
+wrong receiver, wrong operation, unexpected index and replaced receiver producer.
+Current Debug/Release solution builds are clean; all 7,695 Debug tests pass.
+Final Release tests, native fixture checks and programs 1–8 integration are next.
+The unchanged target still fails at callback invocation in both configurations;
+target ownership and execution remain unverified. No subsequent milestone is
+being implemented.
+
+At 07:25 UTC (44 elapsed minutes), P9-L4 restores Type-only lookup when a same-name
+integer value exists, while length-only declarations continue to resolve the
+value namespace. Three added tests cover these cases and the explicit boundary:
+overloads offering both slot kinds for a spelling present in both namespaces
+remain Unsupported until candidate-local dual-namespace binding is implemented.
+This prevents silently selecting the length overload. It is not needed by the
+target program. The unused Type-only substitution wrapper was removed. Both
+managed suites pass 7,698 tests; final formatting/build identity and programs
+1–8 integration are being refreshed before handoff.
+
+Current next implementation action: reproduce `accepts(value)` in an isolated
+common-function-parameter test, commit a checked indirect-call plan (including
+argument acquisition), then implement captures/erasure and its ownership/ABI.
+Continue with Copy-constrained borrowed element reads, borrowed generic field
+addresses, generic enum results and shared iteration/calls. Do not rebind generic
+bodies per concrete instantiation. The unchanged target's required stdout is
+`Found 6 at index 3.\nMissing value handled.\nSearch finished.\nBatch destroyed.\n`,
+with empty stderr and exit 0. None of those complete-target effects is verified.
+
+At 07:31 UTC (50 elapsed minutes), final Debug/Release builds have zero warnings
+or errors and both full suites pass 7,698 tests. All 715 IR/expectation hashes
+match the 143 LLVM/native-verified fixtures (286 O0/O2 executions), so current
+regeneration is identical in both configurations. The length-transfer probe also
+passes ordinary Release CLI `build` followed by `run` with exit 0. Programs 1–8
+pass all 324 Release integration checks; final Debug reports are being refreshed
+after the formatting-only build identity change. No implementation unit will be
+expanded while this final verification/handoff unit is in progress.
+
+Independent current-source resumption probes are retained in the continuation
+directory: `next-indirect-call.kimi` fails Binding with NotCallable at 1:60;
+`next-capture.kimi` fails anonymous-function Binding;
+`next-generic-borrow.kimi` reaches and fails ownership for `ref/T` field access;
+`next-enum-result.kimi` reaches generation and fails the enum-container boundary.
+`next-copy-read.kimi` fails ownership for a Copy-constrained generic element read;
+`next-shared-iteration.kimi` reaches generation and fails shared generic iteration.
+These are observed subset failures, separately from the unchanged target's first
+Binding failure. They do not establish that later target phases have passed.
+
+Resume with:
+
+```powershell
+dotnet build Kimigayo.slnx -c Debug --no-restore
+dotnet Kimi/bin/Debug/net10.0/Kimi.dll build bin/milestone9-resume-20260917/next-indirect-call.kimi
+dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone9.kimi
+```
+
+The next call plan must retain a shared invocation of the owned common-function
+environment instead of moving the callback on each iteration. Follow SPEC 7.6
+and 21.2.5: 16-byte common-function handle, layout-selected inline/heap environment
+and 24-byte operations table, with capture acquisition and cleanup verified before
+erasure. Existing direct `BoundCall.Target` assumptions must not be bypassed by
+merely removing NotCallable or anonymous-function Unsupported diagnostics.
+
+At 07:36 UTC (55 elapsed minutes), final review reproduced the same Type/value
+namespace regression through parenthesized explicit arguments (`use<(Size)>()`).
+The current P9-L4 unit now unwraps transparent grouping before selecting the
+declared slot kind, with nested-group Type and length tests. Final builds and
+regressions are being refreshed. If verification crosses 07:41:07 UTC, finish
+this current unit and its records only; do not start callback implementation.
+
+At 07:40 UTC (59 elapsed minutes), the final grouping correction passes clean
+Debug/Release builds and 7,700 managed tests per configuration (73 added in this
+continuation). All 715 regenerated IR/expectation hashes still match the 143
+LLVM/native-verified fixtures and their 286 O0/O2 executions. The unchanged target
+still fails NotCallable at 24:20 in both configurations. Completed-program reports
+are being refreshed against the final compiler identities. Sandboxed LLVM startup
+was denied; the authorized ordinary native verification is running outside that
+sandbox. Only this current verification/documentation unit will finish after the
+soft deadline; callback implementation remains the next execution's work.
+
+At 07:41:07 UTC the soft limit elapsed. No new implementation unit was started.
+The already-running final completed-program verification and handoff records are
+the only remaining work in this execution.
+
+Final handoff at 07:47 UTC (approximately 66 elapsed minutes): P9-L1 through
+P9-L4 and their verification are complete within the explicitly bounded subsets.
+Both final solution builds have zero warnings/errors; both managed suites pass
+7,700 tests, including 73 added cases. LLVM verification and ordinary native O0/O2
+checks pass 143 related fixtures / 286 executions; all 715 regenerated IR and
+expectation files match the saved native-verified inputs. Programs 1–8 pass
+25/21/37/33/47/63/52/46 checks respectively in each configuration (648 total).
+All sixteen integration reports match the final compiler and milestone-source
+SHA256 values. The evidence summary is
+`bin/milestone9-resume-20260917/verification.json`; complete logs and the original
+worktree backup are retained beside it. `git diff --check` passes. NativeAOT was
+not run, and SPEC.md, milestone programs and draft files are unchanged.
+
+The timed execution stops here after completing only the verification/documentation
+unit already in progress at the deadline. Milestone 9 remains IN_PROGRESS: its
+first current-source failure is still Binding `NotCallable_Kd` at 24:20 in both
+configurations. Whole-target ownership, LLVM/native generation, expected stdout,
+exit 0 and cleanup remain unverified. P9-C is the next unit; use the exact resume
+commands above to begin checked common-function-value invocation, then captures,
+Copy-constrained reads, generic borrowed fields, enum results and shared iteration.
+No subsequent program milestone was started.
+
+### Previous execution checkpoint
+
+The target is `milestones/Milestone9.kimi`, independently of this plan's M1–M17
+stages. Initial HEAD was `cc2cb04`; the worktree was clean and no uncommitted
+changes needed archiving. Root AGENTS.md and all fourteen current programs were
+read (the request referred to five). Programs 1–8 provide scalar execution,
+control flow, ownership/destruction, borrowing, sequences and generic storage.
+Program 9 adds length/type arguments, Copy-constrained array reads, common
+function callbacks with immutable captures, generic enum results and borrowed
+generic storage. Programs 10–14 inform the design but are outside this request.
+
+The current-source Debug baseline built without warnings or errors. The first
+failure was `MissingOriginBinding_Kd` at 11:35 (`self.value@ref/T`); additional
+Binding failures involved borrowed-array metadata/indexing, callable values,
+length arguments and captures. Ownership and emission were not reached, so
+their expected missing support was not classified as an observed target failure.
+The 148 existing focused generic-storage, sequence and reference tests passed.
+Evidence is retained under `bin/milestone9-work/`.
+
+Implementation order: (1) explicit borrow adaptation and borrowed-array access;
+(2) length argument substitution and universal Copy acquisition; (3) callback
+capture/erasure/invocation and enum result flow; (4) shared generation, LLVM
+verification/linking and exact O0/O2 native execution of the unchanged target.
+
+Completed foundation: explicit `@ref/T` and `@uniq/T` derive omitted outer Origins
+from the operand while checking referent compatibility and written Origins.
+Concrete fixed-array references support metadata snapshots and checked scalar
+reads through ordinary borrow lifetimes and the existing pointer ABI. Empty
+borrowed arrays retain aligned nonnull backing storage. Exclusive array reads do
+not consume the reference, and a live child reborrow suspends parent access.
+The new fixtures cover empty/nonempty arrays, forwarding, immediate temporaries,
+returned references, bounds Abort, mutation/escape/type/initialization rejection,
+reload and zero-allocation warm analysis/emission. This does not implement
+generic borrowed field addressing or the complete program.
+
+**Program 9 remains incomplete at final Binding.** The latest target diagnostic
+starts at 24:20, `NotCallable_Kd` for `accepts(value)`. Length-generic invocation,
+anonymous functions/captures and dependent result patterns still fail Binding.
+Target ownership verification, LLVM generation, linking, expected stdout,
+exit status and destruction order have not been verified. Native subset fixture
+success must not be interpreted as completion of this milestone.
+
+Next implementation work: retain separate length substitutions alongside Type
+substitutions in committed call plans and substitute fixed-array length expressions;
+then add checked common-function invocation and capture acquisition. Existing
+`TryCandidate` explicitly defers length parameters, `BindFunction` rejects anonymous
+functions, and `GenericStoragePlan` currently accepts only owned storage transfers
+and boolean control flow. Borrowed generic field addresses, common-function ABI,
+generic enum layout/results and shared length-dependent reads need corresponding
+ownership and physical plans, not per-instantiation source rebinding.
+
+Reproduce the target from current source:
+
+```powershell
+dotnet build Kimigayo.slnx -c Debug --no-restore
+dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone9.kimi
+```
+
+No milestone source, language specification or draft is changed. NativeAOT tests
+are excluded. Final Debug/Release solution builds have zero warnings/errors;
+both complete managed suites pass 7,627 tests without failures or skips,
+including 33 new tests. Initial full regression exposed a boxed enumerator in
+the new empty-storage scan; indexed traversal removes the allocation, and all
+existing and new warmed zero-allocation checks pass. A malformed sequence plan
+that substituted a different reference producer is now rejected before emission.
+
+LLVM verification and native O0/O2 regression pass for 3 TypedBorrow, 11
+BorrowedArray, 10 BorrowStruct, 23 Sequence, 50 Reference, 18 Struct and 13
+GenericStorage fixtures: 128 fixtures and 256 executions. Boundary fixtures
+check exact source-position diagnostics and exit 1; successful fixtures check
+exact output and exit 0. Final Debug/Release regeneration matches all 640 saved
+IR/expectation-file hashes. The initial LLVM sandbox execution denial was resolved
+through authorized execution; these subset checks are not environment-blocked.
+Target execution is unverified because target compilation still fails.
+
+Completed programs 1–8 pass 25/21/37/33/47/63/52/46 integration checks in each
+configuration (648 total), including LLVM verification, O0/O2 native and CLI
+execution and invalid-input rejection. Every final integration report matches
+its current compiler and source hashes. Debug integration was repeated after
+the final borrowed-generic ABI guard and empty-storage scan adjustment; no
+compiler changes followed. Logs, hashes, target failure records and the explicit
+incomplete summary are under `bin/milestone9-work/verification.json`.
+
 ## Program Milestone 8 integration (2026-09-17)
 
 This request targets `milestones/Milestone8.kimi`, independently of this plan's

@@ -122,6 +122,22 @@ internal sealed partial class BodyLowering
 
     private static bool HasOwnedStorage(BoundType type)
     {
+        if (type.Kind == BoundTypeKind.Function)
+        {
+            return true;
+        }
+
+        if (EnumStorage.IsEnum(type) && type.StoredCases is { } cases)
+        {
+            foreach (var payload in cases)
+            {
+                if (HasOwnedStorage(payload))
+                {
+                    return true;
+                }
+            }
+        }
+
         if (StructStorage.IsStruct(type))
         {
             if (StructStorage.Destructor(type) is not null)

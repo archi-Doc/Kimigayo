@@ -393,6 +393,14 @@ public sealed class ControlFlowAnalysis
                     function.Body ?? function.ExpressionBody,
                     function.ReturnType,
                     KotoHelper.DiscardsFunctionBody(function) ? ControlFlowType.Unit : this.types.GetExpectedResultType(function));
+                if (function.BoundClosure is not null)
+                {
+                    var closureType = this.types.GetExpressionType(function);
+                    this.nodes[function].ExpressionType = closureType;
+                    this.nodes[function].CanCompleteNormally = true;
+                    return new(true, closureType); // Creation does not execute the body.
+                }
+
                 return new(true, null); // A function value is not its body or its return type.
             case PropertyAccessorKoto accessor:
                 var getterResult = accessor.Parent is PropertyKoto property

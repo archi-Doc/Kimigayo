@@ -92,7 +92,7 @@ public sealed partial class OwnershipBody
                         continue;
                     }
 
-                    var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && ReferenceTypes.IsStruct(this.Places[root].Type);
+                    var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && ReferenceTypes.IsStorage(this.Places[root].Type);
                     var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, operation.LoanMode);
                     if (this.Places[p].Type.Kind == BoundTypeKind.Slice && operation.Projection >= 0 && this.Projections[operation.Projection].Root == root)
                     {
@@ -106,14 +106,14 @@ public sealed partial class OwnershipBody
 
                     var conflict = !external && ((BorrowState(op, root) & PlaceState.MustInit) == 0 || accessConflict);
                     var value = this.Values[op];
-                    if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.Address && value.Count > 0)
+                    if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.Address or OwnershipValueKind.Sequence && value.Count > 0)
                     {
                         var receiver = this.ValueOperands[value.Start];
                         var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
                         var access = value.Kind == OwnershipValueKind.BorrowedFieldWrite ? LoanRequirement.Uniq
                             : value.Kind == OwnershipValueKind.Address ? operation.LoanMode : LoanRequirement.Ref;
                         if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
-                            (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p))
+                            (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq || this.Places[sourcePlace].Type.Semantics == SemanticsKind.Uniq) && !this.IsBorrowAncestor(receiver, p))
                         {
                             conflict = true;
                         }

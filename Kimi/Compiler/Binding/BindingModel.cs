@@ -41,6 +41,7 @@ public enum BindingSymbolKind : byte
     PropertyAccessor,
     EnumCase,
     PatternCandidate,
+    Capture,
 }
 
 /// <summary>Classifies normalized semantic types.</summary>
@@ -223,6 +224,8 @@ public sealed record BoundType : ControlFlowType
 
     // Refilled by ownership preparation after each final bind; excluded from Type identity.
     internal BoundType[]? StoredFields { get; set; }
+
+    internal BoundType[]? StoredCases { get; set; }
 
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
 

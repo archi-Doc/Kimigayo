@@ -42,11 +42,12 @@ internal sealed partial class BodyLowering
             var value = body.Values[id];
             var expected = value.Kind switch
             {
-                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.Sequence => 0,
+                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection => 0,
                 OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField => 1,
                 OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite => 2,
-                OwnershipValueKind.Address => value.Count is 0 or 1 ? value.Count : -1,
-                OwnershipValueKind.Phi => value.Count,
+                OwnershipValueKind.Address or OwnershipValueKind.Sequence => value.Count is 0 or 1 ? value.Count : -1,
+                OwnershipValueKind.Phi or OwnershipValueKind.Closure => value.Count,
+                OwnershipValueKind.Capture => 0,
                 _ => -1,
             };
             var length = value.Kind == OwnershipValueKind.Phi ? body.PhiInputs.Count : body.ValueOperands.Count;

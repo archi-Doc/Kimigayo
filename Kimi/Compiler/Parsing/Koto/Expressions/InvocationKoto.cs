@@ -11,7 +11,10 @@ namespace Kimi.Compiler.Parsing;
 public sealed class InvocationKoto : ApplicationKoto
 {
     /// <summary>Gets the selected call plan for the current Binding, or null before selection.</summary>
-    public BoundCall? BoundCall => this.BindingState == BindingState.Resolved ? this.CallStorage : null;
+    public BoundCall? BoundCall => this.BindingState == BindingState.Resolved && !this.IsValueCall ? this.CallStorage : null;
+
+    /// <summary>Gets a checked invocation of a common function value.</summary>
+    public BoundValueCall? BoundValueCall => this.BindingState == BindingState.Resolved && this.IsValueCall ? this.ValueCallStorage : null;
 
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Invocation;
@@ -20,6 +23,10 @@ public sealed class InvocationKoto : ApplicationKoto
     public Koto Method => this.Target;
 
     internal BoundCall? CallStorage { get; set; }
+
+    internal BoundValueCall? ValueCallStorage { get; set; }
+
+    internal bool IsValueCall { get; set; }
 
     // Allocated only when at least one argument is labeled.
     private string?[]? argumentLabels;

@@ -11,9 +11,9 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
         var range = instruction.Representation == WindowsLowering.Unit;
-        if (instruction.ScalarOperator is "Read" or "ArrayRead")
+        if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead")
         {
-            var arrayRead = instruction.ScalarOperator == "ArrayRead";
+            var arrayRead = instruction.ScalarOperator != "Read";
             if (!arrayRead)
             {
                 Name(output, "  %seqbase", id);
@@ -64,7 +64,11 @@ internal static partial class LlvmModuleWriter
 
             Name(output, ", i64 %offset", id);
             output.Write('\n');
-            WriteScalar(output, constants, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation.ComputationType }, []);
+            if (instruction.ScalarOperator != "ArrayStorageRead")
+            {
+                WriteScalar(output, constants, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation.ComputationType }, []);
+            }
+
             return;
         }
 

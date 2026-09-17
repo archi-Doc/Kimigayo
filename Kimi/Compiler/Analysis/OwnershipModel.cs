@@ -333,6 +333,9 @@ internal enum OwnershipValueKind : byte
     BorrowedField,
     BorrowedFieldWrite,
     Sequence,
+    PatternProjection,
+    Closure,
+    Capture,
 }
 
 internal enum SequenceOperation : byte

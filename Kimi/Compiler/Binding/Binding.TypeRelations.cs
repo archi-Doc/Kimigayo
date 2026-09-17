@@ -175,7 +175,7 @@ public sealed partial class Binding
         return whole;
     }
 
-    private BoundType? SubstituteType(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments)
+    private BoundType? SubstituteType(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default)
     {
         if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection && type.Symbol!.Scope.Owner == binder)
         {
@@ -207,10 +207,27 @@ public sealed partial class Binding
         var scratch = this.RentTypes(type.Components.Count);
         try
         {
-            var changed = false;
+            var length = type.Length;
+            var expression = type.LengthExpression;
+            if (!lengths.IsEmpty && expression is not null)
+            {
+                expression = this.SubstituteLength(expression, binder, lengths);
+                if (expression is null || (expression.IsConstant && !this.ValidLength(expression.Value)))
+                {
+                    return null;
+                }
+
+                if (expression.IsConstant)
+                {
+                    length = expression.Value;
+                    expression = null;
+                }
+            }
+
+            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression);
             for (var i = 0; i < type.Components.Count; i++)
             {
-                var substituted = this.SubstituteType(type.Components[i], binder, arguments);
+                var substituted = this.SubstituteType(type.Components[i], binder, arguments, lengths);
                 if (substituted is null)
                 {
                     return null;
@@ -242,7 +259,7 @@ public sealed partial class Binding
                 return this.InternType(BoundTypeKind.Semantics, null, whole.Semantics, scratch.AsSpan(0, 1), origin: type.Origin);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, type.Origin, (BoundOrigin[])type.OriginArguments, expression) : type;
         }
         finally
         {

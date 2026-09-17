@@ -20,14 +20,16 @@ public sealed partial class OwnershipAnalysis
     {
         // Snapshot the Copy handle before evaluating the index; its Origin remains
         // live until the indexed read, even if the original handle is reassigned.
-        var receiver = this.Expression(source.Left);
+        var receiver = this.Expression(source.Left, ReferenceTypes.IsArray(source.Left.BoundType) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq ? PlaceUseKind.Read : PlaceUseKind.Consume);
         var index = this.Value(this.Expression(source.Right));
         if (receiver < 0 || index < 0)
         {
             return -1;
         }
 
-        if (!ScalarTypes.Supports(source.BoundType))
+        if (!ScalarTypes.Supports(source.BoundType) &&
+            !(source.BoundType?.Kind == BoundTypeKind.Parameter && ReferenceTypes.IsArray(source.Left.BoundType) &&
+            this.compilation.Binding.ProveCopy(source.BoundType, source) == ConstraintProof.Proven))
         {
             this.Unsupported(source);
             return -1;
@@ -40,7 +42,7 @@ public sealed partial class OwnershipAnalysis
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
-        this.SetValue(op, OwnershipValueKind.Sequence, [], constant: this.body.Sequences.Count);
+        this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
         this.body.Sequences.Add(new(op, kind, receiver, projection, index));
         return this.RegisterTemporary(result);
     }
@@ -67,7 +69,7 @@ public sealed partial class OwnershipAnalysis
             return root;
         }
 
-        return this.Expression(source);
+        return this.Expression(source, ReferenceTypes.IsArray(source.BoundType) ? PlaceUseKind.Read : PlaceUseKind.Consume);
     }
 
     private int SequenceMember(MemberAccessKoto source)
@@ -100,7 +102,7 @@ public sealed partial class OwnershipAnalysis
     {
         var array = source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
         var element = array ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
-        if (array && !ScalarTypes.Supports(element))
+        if (array && (!this.SupportsType(element) || this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven))
         {
             this.Unsupported(source);
             return;

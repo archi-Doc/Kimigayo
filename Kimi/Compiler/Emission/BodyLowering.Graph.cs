@@ -184,7 +184,7 @@ internal sealed partial class BodyLowering
 
             var exit = body.Operations[op].Kind == OwnershipOperationKind.Exit;
             var call = body.Operations[op].Kind == OwnershipOperationKind.Call;
-            var neverCall = call && body.Operations[op].Source is InvocationKoto invocation && ReferenceEquals(invocation.BoundCall?.ReturnType, BoundType.Never);
+            var neverCall = call && body.Operations[op].Source is InvocationKoto invocation && ReferenceEquals(invocation.BoundCall?.ReturnType ?? invocation.BoundValueCall?.ReturnType, BoundType.Never);
             if (aborts != (call ? 1 : 0) || (exit || neverCall ? successors != 0 : successors == 0 || (successors != 1 && (successors != 2 || yes != 1 || no != 1)) || (successors == 1 && yes + no != 0)))
             {
                 return Fail("Missing or inconsistent CFG terminator.", out failure);
@@ -266,7 +266,17 @@ internal sealed partial class BodyLowering
                 return Fail("Unsupported value storage or string result/parameter.", out failure);
             }
 
-            if (!ReferenceTypes.IsString(place.Type) && (value.Layout.Size != 0 || StructStorage.IsStruct(place.Type)) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
+            var addressRequired = false;
+            if (value.Layout.Size == 0 && place.Type.Kind == BoundTypeKind.FixedArray)
+            {
+                for (var i = 0; i < body.Operations.Count && !addressRequired; i++)
+                {
+                    var operation = body.Operations[i];
+                    addressRequired = operation.Kind == OwnershipOperationKind.Borrow && operation.Place == p;
+                }
+            }
+
+            if (!ReferenceTypes.IsString(place.Type) && (value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
             {
                 function.Slots.Add(new(p, value));
             }
@@ -508,6 +518,11 @@ internal sealed partial class BodyLowering
         if (value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Parameter)
         {
             return true;
+        }
+
+        if (value.Kind == OwnershipValueKind.Capture)
+        {
+            return this.LowerCapture(body, function, id, out failure);
         }
 
         if (value.Kind == OwnershipValueKind.Phi)

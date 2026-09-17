@@ -9,6 +9,52 @@ public sealed partial class Binding
     private static bool IsArrayArgument(Koto source)
         => KotoHelper.UnwrapParentheses(source) is ArrayLiteralKoto;
 
+    private bool InferArrayCall(BoundType pattern, Koto source, FunctionKoto function, BoundType?[] types, BoundLength?[] lengths, bool fitLiterals)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        if (source is ArrayLiteralKoto array)
+        {
+            if (pattern.Kind != BoundTypeKind.FixedArray)
+            {
+                return true; // Existing candidate-specific probing diagnoses other shapes.
+            }
+
+            if (pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, function))
+            {
+                var length = this.InternLength(KotoKind.NumberLiteral, array.Elements.Count);
+                if (lengths[parameter.Slot] is { } previous && !ReferenceEquals(previous, length))
+                {
+                    return false;
+                }
+
+                lengths[parameter.Slot] = length;
+            }
+
+            for (var i = 0; i < array.Elements.Count; i++)
+            {
+                if (!this.InferArrayCall(pattern.Components[0], array.Elements[i], function, types, lengths, fitLiterals))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if (source.BoundType is { } actual)
+        {
+            return this.Infer(pattern, actual, function, types, lengths: lengths);
+        }
+
+        if (!fitLiterals || this.SubstituteType(pattern, function, types, lengths) is not null)
+        {
+            return true;
+        }
+
+        var literal = source is NumberLiteralKoto number ? number : source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : null;
+        return literal is null || this.Infer(pattern, literal.IsInteger ? BoundType.I32 : BoundType.F64, function, types, lengths: lengths);
+    }
+
     private bool PrepareArrayArgument(Koto source, BindingScope scope)
     {
         source = KotoHelper.UnwrapParentheses(source);

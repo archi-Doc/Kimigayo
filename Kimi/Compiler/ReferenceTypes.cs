@@ -10,7 +10,13 @@ internal static class ReferenceTypes
     internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
         && StructStorage.IsStruct(type.Components[0]);
 
-    internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsStruct(type);
+    internal static bool IsArray(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+        && type.Components[0].Kind == BoundTypeKind.FixedArray;
+
+    internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) ||
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && type.Components[0].Kind == BoundTypeKind.Parameter);
+
+    internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsStorage(type);
 
     internal static bool CallTypeMatches(BoundType? formal, BoundType? actual, BoundCall call)
     {

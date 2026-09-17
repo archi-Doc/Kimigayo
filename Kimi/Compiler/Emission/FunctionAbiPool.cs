@@ -20,7 +20,7 @@ internal sealed class FunctionAbiPool
 
         var logical = new ParameterShape[function.Parameters.Count];
         var resultSlot = FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor;
-        var count = resultSlot ? 1 : 0;
+        var count = (resultSlot ? 1 : 0) + (function.IsAnonymous ? 2 : 0);
         for (var i = 0; i < logical.Length; i++)
         {
             logical[i] = Shape(function.Parameters[i].Type.BoundType!, layouts);
@@ -34,6 +34,11 @@ internal sealed class FunctionAbiPool
             parameters[physical++] = new("ptr", "ret", AbiParameterKind.ResultSlot);
         }
 
+        if (function.IsAnonymous)
+        {
+            parameters[physical++] = new("i64", "environment", AbiParameterKind.Environment);
+        }
+
         for (var i = 0; i < logical.Length; i++)
         {
             if (logical[i].Type is not null)
@@ -42,9 +47,14 @@ internal sealed class FunctionAbiPool
             }
         }
 
+        if (function.IsAnonymous)
+        {
+            parameters[physical++] = new("ptr", "context", AbiParameterKind.Context);
+        }
+
         var never = ReferenceEquals(result, BoundType.Never);
         var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), FunctionAbi.ResultType(result, layouts)!, parameters, never, resultSlot);
-        var signature = new Signature(FunctionAbi.ResultType(result, layouts)!, resultSlot, never, logical, abi);
+        var signature = new Signature(FunctionAbi.ResultType(result, layouts)!, resultSlot, never, function.IsAnonymous, logical, abi);
         if (ordinal == this.signatures.Count)
         {
             this.signatures.Add(signature);
@@ -67,11 +77,11 @@ internal sealed class FunctionAbiPool
 
     private readonly record struct ParameterShape(string? Type, AbiParameterKind Kind);
 
-    private sealed record Signature(string Result, bool ResultSlot, bool NoReturn, ParameterShape[] Parameters, FunctionAbi Abi)
+    private sealed record Signature(string Result, bool ResultSlot, bool NoReturn, bool Closure, ParameterShape[] Parameters, FunctionAbi Abi)
     {
         internal bool Matches(FunctionKoto function, BoundType result, AggregateLayoutPool? layouts)
         {
-            if (this.Result != FunctionAbi.ResultType(result, layouts) || this.ResultSlot != (FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor) ||
+            if (this.Closure != function.IsAnonymous || this.Result != FunctionAbi.ResultType(result, layouts) || this.ResultSlot != (FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor) ||
                 this.NoReturn != ReferenceEquals(result, BoundType.Never) || this.Parameters.Length != function.Parameters.Count)
             {
                 return false;

@@ -114,8 +114,13 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the capture list; null distinguishes an omitted list.</summary>
     public CaptureKoto[]? Captures { get; private set; }
 
+    /// <summary>Gets the checked direct common-function conversion, when present.</summary>
+    public BoundClosure? BoundClosure => this.BindingState == BindingState.Resolved ? this.ClosureStorage : null;
+
     /// <summary>Gets the base constructor initializer.</summary>
     public InvocationKoto? BaseInitializer { get; private set; }
+
+    internal BoundClosure? ClosureStorage { get; set; }
 
     internal void SetCaptures(CaptureKoto[]? captures) => this.Captures = captures;
 

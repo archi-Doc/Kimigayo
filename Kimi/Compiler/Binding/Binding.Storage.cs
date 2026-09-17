@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -7,6 +8,35 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<DeclarationContainerKoto, StorageShape> storageShapes = new(ReferenceEqualityComparer.Instance);
+    private readonly List<BoundType> enumPayloadTypes = new();
+
+    internal bool PrepareEnumCases(BoundType type)
+    {
+        var count = Compiler.EnumStorage.Count(type);
+        if (type.StoredCases?.Length != count)
+        {
+            type.StoredCases = new BoundType[count];
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            this.enumPayloadTypes.Clear();
+            foreach (var syntax in Compiler.EnumStorage.Case(type, i)!.Payload)
+            {
+                if (this.StoredType(syntax, type) is not { } payload)
+                {
+                    return false;
+                }
+
+                this.enumPayloadTypes.Add(payload);
+            }
+
+            type.StoredCases[i] = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, CollectionsMarshal.AsSpan(this.enumPayloadTypes));
+        }
+
+        this.enumPayloadTypes.Clear();
+        return true;
+    }
 
     internal IReadOnlyList<Koto>? EnumStorage(BoundType type)
         => type.Symbol?.Declaration is EnumKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape) ? shape.Types : null;

@@ -12,7 +12,7 @@ public sealed partial class Binding
 
     internal BoundType? InstantiateStorageType(BoundType type, BoundCall call)
         => this.MemberType(type, call.DeclaringType) is { } member
-            ? this.SubstituteType(member, call.Target.Declaration, call.TypeArguments) : null;
+            ? this.SubstituteType(member, call.Target.Declaration, call.TypeArguments, call.LengthArguments) : null;
 
     private static bool IsSpecialField(Koto node, out FunctionKoto function)
     {

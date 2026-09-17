@@ -11,6 +11,8 @@ namespace XunitTest;
 public class MatchOwnershipTest
 {
     [Theory]
+    [InlineData("func f(x: (i32, i32)) => match x\n    (let a, _) => ()")]
+    [InlineData("func f(x: Option<(i32, i32)>) => match x\n    .Some((let a, _)) => ()\n    .None => ()")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32\n    return match x\n        .Some(let n)\n            yield n\n        .None\n            yield 0")]
     [InlineData("func f(x: Option<string>) => match x\n    .Some(let text) => writeLine(text)\n    .None => ()")]
@@ -33,6 +35,7 @@ public class MatchOwnershipTest
     [InlineData("enum E\n    One(string)\n    Two(string, string)\nfunc f(x: E) -> string => match x\n    .One(let a) => a\n    .Two(_, let b) => b")]
     [InlineData("func f(x: Option<string>) -> Option<string> => match x\n    .Some(let s) => .Some(s)\n    .None => .None")]
     [InlineData("func f(x: bool) -> i32 => match x\n    true => match (yield 1)\n        _ => 2\n    false => 0")]
+    [InlineData("func f<T>(x: ref/T) => match x\n    let r => ()")]
     public void SupportedMatchesVerify(string source)
     {
         var c = Parse(source);
@@ -43,9 +46,6 @@ public class MatchOwnershipTest
     [InlineData("func f<T>(x: T) => match x\n    let value => ()")]
     [InlineData("func f<T>(x: T) => match x\n    _ => ()")]
     [InlineData("func f(x: ref/i32 from static) => match x\n    let r => ()")]
-    [InlineData("func f<T>(x: ref/T) => match x\n    let r => ()")]
-    [InlineData("func f(x: (i32, i32)) => match x\n    (let a, _) => ()")]
-    [InlineData("func f(x: Option<(i32, i32)>) => match x\n    .Some((let a, _)) => ()\n    .None => ()")]
     public void BoundButUnsupportedMatchCannotVerify(string source)
     {
         var c = Parse(source);

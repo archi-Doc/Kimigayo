@@ -89,15 +89,40 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)
     {
+        foreach (var instruction in function.Instructions)
+        {
+            if (instruction.Opcode == EmissionOpcode.CreateClosure)
+            {
+                output.Write('@');
+                WriteClosureTableName(output, function, instruction.Operation);
+                output.Write(" = private constant { ptr, ptr, ptr } { ptr @");
+                output.Write(instruction.Callee!.Name);
+                output.Write(", ptr null, ptr null }, align 8\n");
+            }
+
+            if (instruction.Opcode == EmissionOpcode.CompositePattern)
+            {
+                WriteCompositePatternHelper(output, function, instruction);
+            }
+        }
+
         output.Write(function.Abi.GetDefinition(function.Exported));
         output.Write("entry:\n");
+        foreach (var parameter in function.Abi.Parameters)
+        {
+            if (parameter.Kind == AbiParameterKind.Environment)
+            {
+                output.Write("  %environmentSlot = alloca i64, align 8\n  store i64 %environment, ptr %environmentSlot, align 8\n");
+            }
+        }
+
         // Fixed-size allocas precede calls in the entry block (SPEC 21.5.5).
         foreach (var slot in function.Slots)
         {
             output.Write("  %p");
             WriteNumber(output, slot.Place);
             output.Write(" = alloca ");
-            output.Write(slot.Value.Layout.StorageType);
+            output.Write(slot.Value.Layout.Size == 0 ? "i8" : slot.Value.Layout.StorageType);
             output.Write(", align ");
             WriteNumber(output, slot.Value.Layout.Alignment);
             output.Write('\n');
@@ -151,6 +176,17 @@ internal static partial class LlvmModuleWriter
                 case EmissionOpcode.StringPattern:
                     WriteStringPattern(output, constants, function, instruction);
                     continue;
+                case EmissionOpcode.CompositePattern:
+                    Name(output, "  %v", instruction.Operation);
+                    output.Write(" = call i1 @");
+                    WritePatternName(output, function, instruction.Operation);
+                    output.Write("(ptr ");
+                    WriteSlot(output, function, instruction.Place);
+                    output.Write(")\n");
+                    break;
+                case EmissionOpcode.PatternRead:
+                    WritePatternRead(output, function, instruction);
+                    break;
                 case EmissionOpcode.MoveString:
                 case EmissionOpcode.DestroyStringIfLive:
                 case EmissionOpcode.StoreLiveFlag:
@@ -176,7 +212,10 @@ internal static partial class LlvmModuleWriter
                         WriteOperand(output, address);
                     }
 
-                    output.Write(", i64 0\n");
+                    output.Write(", i64 ");
+                    var borrowOperands = function.GetOperands(instruction);
+                    output.Write(borrowOperands.Length == 2 ? (long)borrowOperands[1].Value : 0);
+                    output.Write('\n');
                     break;
                 case EmissionOpcode.StringEquals:
                 case EmissionOpcode.StringCompare:
@@ -208,6 +247,14 @@ internal static partial class LlvmModuleWriter
 
                 case EmissionOpcode.Call:
                     WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation, function);
+                    break;
+
+                case EmissionOpcode.CreateClosure:
+                    WriteClosure(output, function, instruction);
+                    break;
+
+                case EmissionOpcode.CallValue:
+                    WriteValueCall(output, function, instruction);
                     break;
 
                 case EmissionOpcode.ReturnVoid:
@@ -249,7 +296,11 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteStorageAddress(TextWriter output, EmissionFunction function, EmissionOperand address)
     {
-        if (address.Kind == EmissionOperandKind.SlotAddress)
+        if (address.Kind == EmissionOperandKind.EnvironmentAddress)
+        {
+            output.Write("%environmentSlot");
+        }
+        else if (address.Kind == EmissionOperandKind.SlotAddress)
         {
             WriteSlot(output, function, (int)address.Value);
         }

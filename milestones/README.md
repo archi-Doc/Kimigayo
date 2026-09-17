@@ -1,13 +1,14 @@
 # Language milestones
 
 Fourteen short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestones 1–7 are verified through
-native execution (2026-09-17); Milestones 8–14 are specification targets, and their
-outputs below are specification expectations rather than execution claims.
+They are staged compiler implementation targets. Milestones 1–8 and 10 have
+native execution evidence (2026-09-17); Milestones 9 and 11–14 remain specification
+targets, and their outputs below are expectations rather than execution claims.
 Milestones 6–9 were originally added without compiler capability checks, builds,
 or execution; subsequent verification is documented per program below.
-Milestones 10–14 were added from the specification without compiler capability
-checks, builds, or execution.
+Milestones 10–14 were originally added from the specification without compiler
+capability checks, builds, or execution. Subsequent verification is recorded below
+and in [STATUS.md](../STATUS.md).
 
 | Program | Added concepts |
 | --- | --- |
@@ -21,7 +22,7 @@ checks, builds, or execution.
 | [Milestone8](Milestone8.kimi) | Nested `group` containers, generic struct/function, generic Copy/Move acquisition |
 | [Milestone9](Milestone9.kimi) | Length/type parameters, Copy constraint, callbacks/capture, generic enum, borrowed storage |
 | [Milestone10](Milestone10.kimi) | Generic enum/Tuple patterns, guards, value-producing loop/match/if, cross-loop transfers |
-| [Milestone11](Milestone11.kimi) | Multiple type/length instantiations, generic forwarding, explicit specialization, sharing invariants |
+| [Milestone11](Milestone11.kimi) | Immutable static member, multiple type/length instantiations, generic forwarding, explicit specialization, sharing invariants |
 | [Milestone12](Milestone12.kimi) | Mutable/nested/Move captures, exclusive Callable, concrete and common function values |
 | [Milestone13](Milestone13.kimi) | Generic Iterator conformance, Slice storage, external Origins, retained element borrows |
 | [Milestone14](Milestone14.kimi) | Generic Slice pipeline, Iterator, exclusive borrowed capture, obj creation/Move/destruction |
@@ -424,12 +425,41 @@ Focus: [patterns and matching](../spec/14-control-flow.md#148-match-expressions-
 [transfer targets](../spec/14-control-flow.md#1452-target-lookup), and
 [conditional conformance](../spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
 
+Reproduce the complete program checks with the pinned Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone10.ps1 -Configuration Release
+```
+
+The script performs 54 checks per configuration, covering the unchanged source,
+byte-identical renamed O0/O2 copies, alternate values, exhaustion, empty input,
+immediate Stop, guard cleanup, Abort, and nine invalid inputs. It checks LLVM
+verification, native linking, exact UTF-8 stdout/stderr and exit status through
+direct execution and both CLI `run` forms. Normal output is the two lines above,
+stderr is empty and exit is 0. Abort exits 1 without the main defer. Invalid
+payload/pattern shapes, duplicate names, candidate assignment, wrong guard Types,
+missing Cases/targets, uninitialized storage and escaped bindings fail before
+IR or executable publication. Reports with source/compiler/build identities are
+retained under `bin/milestone10/<configuration>/<run-id>/`. Debug is also supported;
+the script does not build or run NativeAOT. This independent program's completion
+does not imply completion of program 9 or of broader compiler plan stages.
+
 ## Milestone 11: generic sharing and implementation selection
 
 The same total/forward definitions process i32, i64, and bool arrays, with lengths
 3 and 2. Borrowed element access needs no Copy constraint or per-element owned
-temporary. The default weight is 1; the explicit i32 specialization returns 2.
-The generic forwarding call must preserve that selection.
+temporary. The default weight reads `Weights.defaultWeight`, an immutable static
+i32 stored Property initialized to 1; the explicit i32 specialization returns 2.
+Group members are inherently static; a `static` modifier is not valid syntax.
+The one group slot is shared by all calls and is not instantiated per generic
+Type or length. The generic forwarding call must preserve specialization selection.
+
+This static-member step uses only a literal initializer and Copy reads, with no
+mutation, user-defined cleanup, or initialization dependencies. It still obeys
+[per-slot first-access initialization](../spec/22-core-execution-and-foreign-functions.md#2223-os-entry-static-initialization-and-shutdown);
+constant folding may remove machinery only when it preserves the specified
+behavior. It does not establish coverage of general static initialization.
 
 ```text
 Generic weights are 6, 3, 2.

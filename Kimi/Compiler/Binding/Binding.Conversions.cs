@@ -78,6 +78,34 @@ public sealed partial class Binding
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope)
     {
         var syntax = ConversionTargetSyntax(conversion);
+        if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq })
+        {
+            var pattern = this.BindType(conversion.Right, scope, this.TypeContext(conversion.Right, scope) with { SuppressOuter = true });
+            var actual = this.BindNode(conversion.Left, scope);
+            if (pattern is null || actual is null)
+            {
+                return Complete(conversion, null);
+            }
+
+            if (ReferenceEquals(actual, BoundType.Never))
+            {
+                conversion.ConversionBinding = ConversionBinding.Abrupt;
+                return Complete(conversion, actual);
+            }
+
+            if (!this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out var adapted, out _, out _) ||
+                !FitsType(adapted.Components[0], pattern.Components[0]) ||
+                (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))
+            {
+                return Fail(conversion, BindingFailure.InvalidAssignment);
+            }
+
+            var result = pattern.Origin is null ? adapted : pattern;
+            Complete(conversion.Right, result);
+            conversion.ConversionBinding = ConversionBinding.Borrow;
+            return Complete(conversion, result);
+        }
+
         if (syntax is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
         {
             var operandType = this.BindNode(conversion.Left, scope);
@@ -87,7 +115,7 @@ public sealed partial class Binding
             }
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
-                (StructStorage.IsStruct(operandType) || ReferenceTypes.IsStruct(operandType)) &&
+                (StructStorage.IsStruct(operandType) || operandType.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsStorage(operandType)) &&
                 shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
             {
                 var referent = IsBorrow(operandType.Semantics) ? operandType.Components[0] : operandType;

@@ -45,12 +45,12 @@ public sealed partial class OwnershipAnalysis
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
-        if (ReferenceTypes.IsString(type) || ReferenceTypes.IsStruct(type))
+        if (ReferenceTypes.IsString(type) || ReferenceTypes.IsStorage(type))
         {
             return true;
         }
 
-        if (type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice)
+        if (type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function)
         {
             return true;
         }
@@ -93,7 +93,7 @@ public sealed partial class OwnershipAnalysis
             supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                supported &= this.SupportsType(type.Components[i]);
+                supported &= type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]);
             }
 
             this.supportedTypes[type] = supported;
@@ -132,6 +132,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);
+        supported = supported && this.compilation.Binding.PrepareEnumCases(type);
         this.supportedTypes[type] = supported;
         return supported;
     }

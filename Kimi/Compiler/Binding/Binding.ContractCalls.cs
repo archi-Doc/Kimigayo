@@ -110,7 +110,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null)
+    private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default)
     {
         if (this.MemberType(type, declaringType) is not { } memberType)
         {
@@ -123,7 +123,7 @@ public sealed partial class Binding
             type = this.ContractType(type, scope, self);
         }
 
-        var result = this.Substitute(type, function, arguments);
+        var result = this.SubstituteType(type, function, arguments, lengths);
         if (result is not null)
         {
             result = this.ContractType(result, scope, self);

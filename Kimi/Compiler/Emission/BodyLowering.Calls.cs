@@ -29,6 +29,11 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
+        if (operation.Source is InvocationKoto { BoundValueCall: { } valueCall } invocation)
+        {
+            return this.LowerValueCall(body, function, id, invocation, valueCall, out failure);
+        }
+
         var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) : null;
         if (operation.Source is not InvocationKoto { AttributeChain: null, BoundCall: { } plan } call ||
             (generic is null && plan.TypeArguments.Length != 0) || plan.Origins.Length != 0 ||
@@ -66,7 +71,7 @@ internal sealed partial class BodyLowering
                     !ReferenceEquals(omitted.Parameter.Scope.Owner, target) || !ScalarDefaults.SupportsValue(omitted.ParameterType))) ||
                 acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || acquisition.ParameterIndex != parameter ||
                 !ReferenceTypes.CallTypeMatches(generic?.Parameters[parameter] ?? target.Parameters[parameter].Type.BoundType, acquisition.ParameterType, plan) ||
-                (acquisition.Kind != ArgumentOperationKind.Value && !ReferenceTypes.IsString(acquisition.ParameterType) && !ReferenceTypes.IsStruct(acquisition.ParameterType)))
+                (acquisition.Kind != ArgumentOperationKind.Value && !ReferenceTypes.IsString(acquisition.ParameterType) && !ReferenceTypes.IsStorage(acquisition.ParameterType)))
             {
                 return Fail("Invalid call argument mapping or acquisition.", out failure);
             }

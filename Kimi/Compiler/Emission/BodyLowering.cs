@@ -258,6 +258,16 @@ internal sealed partial class BodyLowering
             return this.ValidateElementBorrow(body, index, index) || Fail("Element borrowing requires an initialized, protected source address.", out failure);
         }
 
+        if (body.Values[index].Kind == OwnershipValueKind.PatternProjection)
+        {
+            return this.LowerPatternProjection(body, function, index, out failure);
+        }
+
+        if (operation.Kind is OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.DecomposeCase)
+        {
+            return this.LowerMatchOperation(body, function, constants, index, out failure);
+        }
+
         if (operation.Place >= 0 && operation.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver) &&
             (this.aggregatePlaces[operation.Place] is not null || operation.Kind == OwnershipOperationKind.PayloadPlacement))
         {
@@ -268,11 +278,6 @@ internal sealed partial class BodyLowering
             operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.Read or OwnershipOperationKind.Consume))
         {
             return this.LowerReference(body, index, out failure);
-        }
-
-        if (operation.Kind is OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.AcquirePattern)
-        {
-            return this.LowerMatchOperation(body, function, constants, index, out failure);
         }
 
         if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.String))

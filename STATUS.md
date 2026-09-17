@@ -1,5 +1,90 @@
 # Kimigayo Implementation Status
 
+Milestone 9 continuation (2026-09-17, incomplete target): checked common-function
+invocation and direct anonymous-function conversion now support scalar/Unit snapshot
+captures in the inline 8-byte environment. Owned function handles move and clean
+up normally; calls hold a shared Loan through argument evaluation. Borrowed struct
+fields can be returned with declared Origins, including symbolic `ref/T` fields
+through shared offset metadata. Borrowed generic array reads require Copy and use
+shared element-size/length policies, retaining bounds checks for zero-sized elements.
+Both Debug/Release builds have zero warnings/errors, and both full managed suites
+pass 7,812 tests (68 added). Related LLVM/native regression passes 471 fixtures /
+942 unique O0/O2 runs, with 2,355 matching fixture/expectation hashes. Completed
+programs 1–8 and 10 pass 756 Debug/Release integration checks; all eighteen reports
+match current compiler/program hashes. Evaluation order, Never-body creation,
+nonzero generic field offsets and explicit oversized-environment rejection are covered.
+The unchanged target passes final Binding and the `Batch.view()`/generic element
+ownership paths, but still fails ownership on `Hit<T>` result/construction. Target
+LLVM generation and native execution remain UNVERIFIED. Shared enum results,
+iteration/callback adaptation and generic destructor generation remain unfinished.
+No target completion is claimed; NativeAOT was not run. Evidence and the exact
+next action are in current PLAN.md and `bin/milestone9-final-20260917/`.
+
+Milestone 11 static-member example (2026-09-17): Added the immutable i32 group Property `Weights.defaultWeight = 1` and used it in the generic default weight implementation. The expected output remains `Generic weights are 6, 3, 2.` README explains inherent group static membership, the single shared slot, and first-access initialization semantics. This is a specification example update only; no compiler capability checks, builds, or tests were performed. Language rules and SPEC.md are unchanged.
+
+Milestone 10 integration (2026-09-17, complete): owned nested tuple/enum
+patterns now bind distinct guard candidates and body locals. Scalar/Unit nested
+candidate reads and owned tuple decomposition pass ownership analysis. Concrete
+enum storage uses an explicit i32 tag and aligned active payload; construction,
+whole-value transfer and active-case destruction have LLVM/O0/O2 evidence.
+Composite pattern generation currently supports layouts without destruction,
+retaining short-circuit tests and post-guard acquisition. Copy aggregate fixed-array
+iteration reaches generation. The unchanged program passes LLVM verification,
+ordinary native O0/O2 execution and CLI runs in Debug and Release. Exact stdout is
+`Accepted total is 12.\nPattern run finished.\n`, with empty stderr and exit 0.
+Dedicated integration passes 54 checks per configuration, including nine rejected
+invalid inputs. Final Debug/Release builds have zero warnings/errors; both managed
+suites pass 7,744 tests (44 added in this execution). Related native regression
+passes 444 fixtures / 888 O0/O2 executions, with 2,220 matching IR/expectation
+hashes. Completed programs 1–8 pass 648 integration checks; all eighteen program
+reports match current compiler/source hashes. Evidence is retained in
+`bin/milestone10-work-20260917/verification.json`. No target work or required
+verification remains. NativeAOT was not run as instructed. See PLAN.md's separate
+P10 items; program 9 remains incomplete and programs 11–14 were not implemented.
+Composite matches with owned destruction or borrowed candidate paths remain
+explicitly unsupported outside the completed target.
+
+Milestone 9 continuation (2026-09-17): function calls now retain distinct length
+and Type substitutions, infer fixed-array lengths from established inputs and
+candidate-fitted literals, and substitute checked length expressions. Signature
+formation conditions filter candidates; function bodies cannot introduce unproved
+length requirements. Length-dependent whole-array Copy/Move and destruction use
+the existing shared CFG with concrete policies. Owned and explicitly declared
+shared borrowed arrays expose logical length through that policy, including
+empty arrays and zero-sized elements. Borrowed entry arguments retain pointer
+values in their own slots. Reanalysis, reload, invalid-plan rejection and warm
+length-call Binding/ownership allocation checks pass. Shared module construction
+is not claimed allocation-free. Dual-namespace explicit arguments across overloads
+with different generic slot kinds remain explicitly unsupported.
+At the program-9 checkpoint, both managed suites passed 7,700 tests (73 new in that continuation), with clean
+Debug/Release solution builds. Type-only and length-only namespace lookup also
+preserves transparent argument grouping. Related LLVM and O0/O2 native regression
+passes 143 fixtures / 286 executions; all 715 regenerated IR/expectation hashes
+match the verified inputs. Completed Milestones 1–8 pass 648 Debug/Release
+integration checks, with all reports matching final compiler/source hashes.
+Evidence is retained in `bin/milestone9-resume-20260917/verification.json`.
+The execution stopped after approximately 66 minutes, completing only the already
+running verification/documentation after its 60-minute soft limit. Complete
+At that earlier checkpoint, Milestone 9 execution remained unverified; the next unit was checked common-function
+invocation at `accepts(value)`, followed by captures and the remaining generic
+read, borrowed-field, enum-result and iteration paths.
+
+Program Milestone 9 integration (2026-09-17, incomplete): explicit typed value
+borrows now derive omitted outer Origins from their operands. Borrowed concrete
+fixed arrays support indices/length snapshots and checked scalar reads, including
+nonnull storage for empty arrays, reference forwarding/results and exclusive
+reference inspection without Move. Child reborrows suspend parent access.
+At that earlier checkpoint, the unchanged target failed final Binding at callback invocation and lacked
+capture/common-function integration. Its ownership, LLVM/native build, output,
+exit status and cleanup are **not verified**. See PLAN.md's separate program-9
+checkpoint and `bin/milestone9-work/` for reproduction and subset evidence.
+This is an implemented foundation, not completion of Milestone 9 or the broader
+plan stages. Specification semantics and milestone sources are unchanged.
+The previous execution's verification counts are retained in PLAN.md; these
+program-9 figures are historical, superseded by program-10 verification above.
+NativeAOT was not run.
+These results establish the implemented subset only.
+
 Program Milestone 8 integration (2026-09-17, complete): the unchanged program
 passes final Binding, universal ownership checking, LLVM verification/linking and
 ordinary native O0/O2 execution. Exact stdout is

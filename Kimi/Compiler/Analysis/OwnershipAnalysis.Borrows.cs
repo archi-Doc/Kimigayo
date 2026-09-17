@@ -8,8 +8,15 @@ public sealed partial class OwnershipAnalysis
 {
     internal bool SupportsOriginObligations()
     {
-        foreach (var obligation in this.compilation.Binding.Obligations)
+        var obligations = this.compilation.Binding.Obligations;
+        for (var i = 0; i < obligations.Count; i++)
         {
+            var obligation = obligations[i];
+            if (this.compilation.Binding.IsVerifiedLengthObligation(obligation))
+            {
+                continue; // Definition conditions and each call's substituted lengths were checked by Binding.
+            }
+
             // A well-formed borrowed input guarantees its nested stored Origins
             // outlive that input. Call-site borrow formation checks the concrete
             // nested dependencies, including deinit uses, in VerifyBorrows.
@@ -30,7 +37,21 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
-        var place = StructStorage.IsStruct(source.BoundType) && unwrapped is IdentifierNameKoto
+        if (unwrapped is MemberAccessKoto field && ReferenceTypes.IsStruct(field.Left.BoundType))
+        {
+            var receiver = this.Expression(field.Left, PlaceUseKind.Read);
+            if (receiver < 0)
+            {
+                return -1;
+            }
+
+            var projected = this.Place(field, type, OwnershipPlaceKind.Temporary, false);
+            var address = this.Emit(OwnershipOperationKind.Borrow, field, receiver, projected, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+            this.SetValue(address, OwnershipValueKind.Address, [this.Value(receiver)], constant: receiver);
+            return this.RegisterTemporary(projected);
+        }
+
+        var place = (StructStorage.IsStruct(source.BoundType) || source.BoundType?.Kind == BoundTypeKind.FixedArray) && unwrapped is IdentifierNameKoto
             ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {
@@ -39,7 +60,7 @@ public sealed partial class OwnershipAnalysis
 
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
         var operation = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
-        this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsStruct(source.BoundType) ? [this.Value(place)] : [], constant: place);
+        this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsStorage(source.BoundType) ? [this.Value(place)] : [], constant: place);
         return this.RegisterTemporary(result);
     }
 

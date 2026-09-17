@@ -38,7 +38,7 @@ public class ConditionalMemberBindingTest
         var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f<U>(x: T, y: U) -> U => y\nfunc use() -> bool => S<i32>.f(1, true)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Equal("bool", call.BoundCall!.TypeArguments[0].Name);
+        Assert.Equal("bool", call.BoundCall!.TypeArguments[0]!.Name);
         Assert.Equal("bool", call.BoundType!.Name);
     }
 

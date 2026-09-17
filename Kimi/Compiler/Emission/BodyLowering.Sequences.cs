@@ -39,6 +39,26 @@ internal sealed partial class BodyLowering
         }
 
         var address = new EmissionOperand(EmissionOperandKind.SlotAddress, plan.Receiver);
+        var borrowedArray = ReferenceTypes.IsArray(receiver);
+        if (!borrowedArray && value.Count != 0)
+        {
+            return Fail("Owned sequence metadata must not carry a reference operand.", out failure);
+        }
+
+        if (borrowedArray)
+        {
+            if (plan.Projection != -1 || value.Count != 1 || (uint)Input(body, id, 0) >= (uint)id ||
+                ValuePlace(body.Operations[Input(body, id, 0)]) != plan.Receiver ||
+                !ReferenceEquals(ValueType(body, Input(body, id, 0)), receiver) ||
+                (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
+            {
+                return Fail("Borrowed sequence requires a dominating reference value.", out failure);
+            }
+
+            address = this.PhysicalOperand(body, Input(body, id, 0));
+            receiver = receiver.Components[0];
+        }
+
         if (plan.Projection >= 0)
         {
             if ((uint)plan.Projection >= (uint)body.Projections.Count)
@@ -60,23 +80,33 @@ internal sealed partial class BodyLowering
 
         if (plan.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead)
         {
-            var arrayRead = plan.Kind == SequenceOperation.ArrayRead;
-            if (arrayRead && receiver.Length == 0)
+            var arrayRead = plan.Kind == SequenceOperation.ArrayRead || borrowedArray;
+            if (arrayRead && (receiver.Length == 0 || this.aggregateLayouts.Get(receiver)?.Value.Layout.Size == 0))
             {
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
-            var validSource = arrayRead ? operation.Source is ForKoto { Iterable.BoundType.Kind: BoundTypeKind.FixedArray } :
+            var validSource = borrowedArray ? operation.Source is IndexKoto index && ReferenceTypes.IsArray(index.Left.BoundType) :
+                arrayRead ? operation.Source is ForKoto { Iterable.BoundType.Kind: BoundTypeKind.FixedArray } :
                 operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice };
+            var aggregate = plan.Kind == SequenceOperation.ArrayRead ? this.aggregateLayouts.Get(ValueType(body, id)!) : null;
             if (receiver.Kind != (arrayRead ? BoundTypeKind.FixedArray : BoundTypeKind.Slice) || !validSource ||
-                !ReferenceEquals(ValueType(body, id), receiver.Components[0]) || !ScalarTypes.Supports(ValueType(body, id)) ||
+                !ReferenceEquals(ValueType(body, id), receiver.Components[0]) || (!ScalarTypes.Supports(ValueType(body, id)) && aggregate is null && !ReferenceEquals(ValueType(body, id), BoundType.Unit)) ||
+                (plan.Kind == SequenceOperation.ArrayRead && body.Places[operation.Place].Acquisition != AcquisitionKind.Copy) ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
                 (body.IsReachable(id) && !this.Dominates(plan.Index, id)) || !this.TryGetLocation(operation.Source, directory, constants, out var location))
             {
                 return Fail("Slice read requires a protected handle and an isize index.", out failure);
             }
 
-            function.AddScalar(EmissionOpcode.Sequence, id, [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, arrayRead ? receiver.Length : -1)], place: body.Operations.Count + id, location: location, op: arrayRead ? "ArrayRead" : "Read", check: ArithmeticCheckKind.Bounds, representation: WindowsLowering.GetValue(ValueType(body, id)!));
+            function.AddScalar(EmissionOpcode.Sequence, id, [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, arrayRead ? receiver.Length : -1)], place: body.Operations.Count + id, location: location, op: aggregate is not null || ReferenceEquals(ValueType(body, id), BoundType.Unit) ? "ArrayStorageRead" : arrayRead ? "ArrayRead" : "Read", check: ArithmeticCheckKind.Bounds, representation: aggregate?.Value ?? WindowsLowering.GetValue(ValueType(body, id)!));
+            if (aggregate is { Value.Layout.Size: > 0 })
+            {
+                var start = function.Operands.Count;
+                function.Operands.Add(new(EmissionOperandKind.ElementAddress, id));
+                function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, operation.Place, OperandStart: start, OperandCount: 1, Aggregate: aggregate));
+            }
+
             return true;
         }
 

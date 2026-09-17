@@ -19,6 +19,7 @@ public class AggregateEmissionTest
         { "AggregateCopy", "let value: (u8, u64) = (2, 7)\nlet other = value\nlet again = value", string.Empty },
         { "AggregateArrayCopy", "let value: [3 of i32] = [1, 2, 3]\nlet other = value\nlet again = value", string.Empty },
         { "AggregateUnit", "let value: [2 of ()] = [(), ()]", string.Empty },
+        { "AggregateTuplePattern", "let value = (1, 2)\nmatch value\n    (let a, _) => ()", string.Empty },
         { "AggregateEmpty", "let value: [0 of string] = []", string.Empty },
         { "AggregateConditional", "var flag = true\nvar value = (\"a\", \"b\")\nif flag => value\nvalue = (\"c\", \"d\")", "a=1;b=1;c=1;d=1" },
         { "AggregateConditionalSkip", "var flag = false\nvar value = (\"a\", \"b\")\nif flag => value\nvalue = (\"c\", \"d\")", "a=1;b=1;c=1;d=1" },
@@ -121,7 +122,6 @@ public class AggregateEmissionTest
     [Theory]
     [InlineData("var value: [2147483647 of string]")]
     [InlineData("func echo(value: [2147483647 of string]) -> [2147483647 of string] => value\n()")]
-    [InlineData("let value = (1, 2)\nmatch value\n    (let a, _) => ()")]
     public void UnsupportedAggregateShapesRemainExplicit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

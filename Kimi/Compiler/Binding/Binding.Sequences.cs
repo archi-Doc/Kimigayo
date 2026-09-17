@@ -15,6 +15,11 @@ public sealed partial class Binding
         }
 
         var receiver = this.BindNode(source.Left, scope);
+        if (ReferenceTypes.IsArray(receiver))
+        {
+            receiver = receiver!.Components[0];
+        }
+
         if (receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice))
         {
             return false;

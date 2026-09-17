@@ -34,6 +34,10 @@ internal enum EmissionOpcode : byte
     StringEquals,
     StringCompare,
     StringPattern,
+    CompositePattern,
+    PatternRead,
+    CreateClosure,
+    CallValue,
 
     /// <summary>Memcpy: zero operands use Place/Constant slots; one supplies the source address; two supply source and destination addresses.</summary>
     TransferAggregate,
@@ -80,6 +84,7 @@ internal enum EmissionOperandKind : byte
     /// <summary>Exact IEEE 754 bits in the selected format.</summary>
     Float32,
     Float64,
+    EnvironmentAddress,
 }
 
 // Internal managed storage only: 8-byte packing avoids 16-byte tail padding for the tag.
@@ -104,7 +109,9 @@ internal enum ArithmeticCheckKind : byte
 }
 
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>
-internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null, AggregateLayout? Aggregate = null, int Continuation = -1);
+internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null, AggregateLayout? Aggregate = null, int Continuation = -1, PatternTestStep[]? Pattern = null);
+
+internal readonly record struct PatternTestStep(int Offset, ValueLowering Representation, Int128 Expected);
 
 /// <summary>One physical function definition. Its lists are reused by later preparations.</summary>
 internal sealed class EmissionFunction

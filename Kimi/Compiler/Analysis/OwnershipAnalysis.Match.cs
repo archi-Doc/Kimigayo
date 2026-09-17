@@ -9,7 +9,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<SelectionFrame> selections = new();
     private readonly List<int> activeDecompositions = new();
     private readonly List<bool> patternStorageNeeded = new();
-    private readonly List<(BindingSymbol Symbol, int Subject, int Value, int Arm, int Loan)> candidates = new();
+    private readonly List<(BindingSymbol Symbol, int Subject, int Value, int Arm, int Loan, int Position)> candidates = new();
 
     private static AcquisitionKind PatternAcquisitionKind(BoundPattern pattern) => pattern.Acquisition switch
     {
@@ -32,7 +32,7 @@ public sealed partial class OwnershipAnalysis
 
         for (var i = 0; i < plan.Arms.Count; i++)
         {
-            if (plan.Arms[i].Syntax.Guard is not null && !MatchTypes.SupportsGuard(plan.Syntax.Expression.BoundType))
+            if (plan.Arms[i].Syntax.Guard is not null && !MatchTypes.SupportsGuard(plan, plan.Arms[i].Pattern))
             {
                 return false;
             }
@@ -42,7 +42,6 @@ public sealed partial class OwnershipAnalysis
         {
             var position = plan.Positions[i];
             if (position.AccessMode != PatternAccessMode.Owned || position.ImplicitDeref != PatternImplicitDeref.None ||
-                position.Kind == BoundPatternKind.Tuple ||
                 position.Acquisition == PatternAcquisition.Deferred || !this.SupportsType(position.MatchedType) ||
                 (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Move)))
             {
@@ -158,9 +157,12 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 var candidateMark = this.candidates.Count;
-                if (plan.Positions[arm.Pattern].CandidateSymbol is { } candidate)
+                for (var position = arm.Pattern; position < plan.Positions[arm.Pattern].End; position++)
                 {
-                    this.candidates.Add((candidate, subject, this.Value(subject), armStart + i, guardLoan));
+                    if (plan.Positions[position].CandidateSymbol is { } candidate)
+                    {
+                        this.candidates.Add((candidate, subject, this.Value(subject), armStart + i, guardLoan, position == arm.Pattern ? -1 : position));
+                    }
                 }
 
                 var condition = this.Condition(guard, out guardCleanupStart);
@@ -348,9 +350,9 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        if (pattern.Kind != BoundPatternKind.Case)
+        if (pattern.Kind is not (BoundPatternKind.Case or BoundPatternKind.Tuple))
         {
-            throw new InvalidOperationException("Only owned Case paths can precede a supported Pattern binding.");
+            throw new InvalidOperationException("Only owned Case or Tuple paths can precede a supported Pattern binding.");
         }
 
         var payloadStart = this.body.PlaceStorage.Count;
@@ -384,6 +386,23 @@ public sealed partial class OwnershipAnalysis
             var candidate = this.candidates[i];
             if (ReferenceEquals(candidate.Symbol, source.BoundSymbol) && use != PlaceUseKind.Borrow)
             {
+                if (candidate.Position >= 0)
+                {
+                    var result = this.Place(source, source.BoundType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+                    this.Emit(OwnershipOperationKind.Declare, source, result);
+                    var inspect = this.Emit(OwnershipOperationKind.Read, source, candidate.Subject, result);
+                    this.body.OperationSteps[inspect] = candidate.Arm;
+                    this.SetValue(inspect, OwnershipValueKind.PatternProjection, [], constant: candidate.Position);
+                    var produce = this.Emit(OwnershipOperationKind.Produce, source, result);
+                    if (ScalarTypes.Supports(source.BoundType))
+                    {
+                        this.SetValue(produce, OwnershipValueKind.Alias, [inspect]);
+                    }
+
+                    this.placeValues[candidate.Subject] = candidate.Value;
+                    return this.RegisterTemporary(result);
+                }
+
                 if (ReferenceTypes.IsString(source.BoundType))
                 {
                     var reference = this.Place(source, source.BoundType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
