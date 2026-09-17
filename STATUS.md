@@ -9,9 +9,13 @@ agree. Ordinary completing branches may feed a later scope termination, and ever
 function-terminal branch of a completing selection (a partial early return, Never
 call or divergent loop followed by later termination) is recorded and joined by the
 enclosing scope or terminal selection, so its Move/initialization history reaches
-the later dead source. A partial branch that ends in a labeled transfer (exit,
-continue or yield) is never joined as terminal: selection joins omit it, as before,
-and scope joins containing one remain guarded.
+the later dead source. Completing loop/while bodies now retain their escaping
+terminal paths. Each pending checking seed carries its transfer target; exits,
+continues and yields handled inside a construct are removed before its state
+reaches an enclosing join. Transfers in dead source preserve the original path's
+target, including through later Never calls and divergence. Joins with different
+targets support local checking, but propagation of their merged state to an
+enclosing join remains guarded. No runtime edge or result arrival is added.
 
 Noncompleting loops with only scalar/Unit loop-local effects preserve enclosing
 facts. A noncompleting while condition preserves the state after its argument
@@ -19,11 +23,11 @@ acquisitions when the body has only local scalar effects. These paths work in
 supported scalar defaults and through do wrappers. Every default declaration still
 requires independent checking, including when its argument is supplied.
 
-Current limits include outer-mutating or owned/effectful loop bodies, completing
-loops and labeled partial transfers inside noncompleting scopes, deferred-cleanup
-joins, unequal active Loan joins, short-circuit conditions, recursive-default
+Current limits include outer-mutating or owned/effectful divergent loop bodies,
+mixed-target continuation propagation, deferred-cleanup joins, unequal active
+Loan joins, short-circuit conditions, recursive-default
 completion proofs and general owned/borrowed defaults. They remain guarded; M2/M3 are incomplete. PLAN.md units
-21–29 record the verified slices and the next resumption case.
+21–30 record the verified slices and the next resumption case.
 
 Final Debug/Release builds are clean and full suites pass 7,455 each. All default
 and noncompletion fixtures per configuration pass ordinary native O0/O2, including

@@ -108,14 +108,29 @@ public class PartialScopeContinuationTest
 
     [Theory]
     [InlineData("func f(c: bool, s: string)\n    do\n        if c\n            writeLine(s)\n            return\n        defer => loop => ()\n        stop()\n    writeLine(s)")]
-    [InlineData("func f(c: bool, s: string)\n    do\n        loop\n            if c => return\n            exit\n        stop()\n    writeLine(s)")]
-    [InlineData("func f(c: bool, s: string)\n    loop\n        do\n            if c => exit\n            writeLine(s)\n            stop()\n        writeLine(s)")]
     [InlineData("func f(c: bool, s: string) -> bool\n    let r = s == do\n        if c => return true\n        stop()\n    writeLine(s)\n    r")]
-    public void CleanupLoopLabeledAndLoanPathsRetainTheirGuard(string source)
+    public void CleanupAndLoanPathsRetainTheirGuard(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+    }
+
+    [Fact]
+    public void CompletingLoopJoinsItsEarlyReturn()
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, s: string)\n    do\n        loop\n            if c => return\n            exit\n        stop()\n    writeLine(s)");
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Fact]
+    public void LabeledScopePathsPreserveMoveHistory()
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, s: string)\n    loop\n        do\n            if c => exit\n            writeLine(s)\n            stop()\n        writeLine(s)");
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }
 
     [Fact]
