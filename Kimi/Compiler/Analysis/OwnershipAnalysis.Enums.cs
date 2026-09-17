@@ -123,12 +123,12 @@ public sealed partial class OwnershipAnalysis
         supported = true;
         for (var i = 0; i < type.Components.Count && supported; i++)
         {
-            supported = this.SupportsType(type.Components[i]);
+            supported = type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]);
         }
 
         for (var i = 0; i < storage.Count && supported; i++)
         {
-            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && this.SupportsType(payload);
+            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && (payload.Kind == BoundTypeKind.Parameter || this.SupportsType(payload));
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);

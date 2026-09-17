@@ -6,7 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
 {
+    private readonly List<(int To, int Next)> checkingBorrowEdges = new();
     private bool[] borrowLive = [];
+    private int[] checkingBorrowHeads = [];
     private LoanRequirement[] borrowDependencies = [];
     private int[] slicePaths = [];
 
@@ -40,6 +42,7 @@ public sealed partial class OwnershipBody
         }
 
         this.PrepareSlicePaths();
+        this.PrepareCheckingBorrowEdges();
 
         Grow(ref this.borrowLive, checked(count * this.Operations.Count));
         this.borrowLive.AsSpan(0, count * this.Operations.Count).Clear();
@@ -58,6 +61,11 @@ public sealed partial class OwnershipBody
                         {
                             var edge = this.Edges[e];
                             live |= edge.Kind != OwnershipEdgeKind.Abort && this.borrowLive[(edge.To * count) + p];
+                        }
+
+                        for (var e = this.checkingBorrowHeads[op]; e >= 0 && !live; e = this.checkingBorrowEdges[e].Next)
+                        {
+                            live |= this.borrowLive[(this.checkingBorrowEdges[e].To * count) + p];
                         }
                     }
 
@@ -291,6 +299,43 @@ public sealed partial class OwnershipBody
     }
 
     private static int ValuePlaceForBorrow(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
+
+    private void PrepareCheckingBorrowEdges()
+    {
+        Grow(ref this.checkingBorrowHeads, this.Operations.Count);
+        this.checkingBorrowHeads.AsSpan(0, this.Operations.Count).Fill(-1);
+        this.checkingBorrowEdges.Clear();
+        for (var i = 1; i < this.CheckingRegions.Count; i++)
+        {
+            var region = this.CheckingRegions[i];
+            if (region.Entry < 0 || !this.HasCheckingState(region.Entry))
+            {
+                continue;
+            }
+
+            for (var s = 0; s < Math.Max(1, region.SeedCount); s++)
+            {
+                var seed = region.SeedCount == 0 ? new OwnershipCheckingSeed(region.Seed, region.Target, region.Replay) : this.CheckingSeeds[region.SeedStart + s];
+                var next = region.Entry;
+                for (var replay = seed.Replay; replay >= 0; replay = this.CheckingReplays[replay].Previous)
+                {
+                    var path = this.CheckingReplays[replay];
+                    Add(path.End, next);
+                    next = path.Entry;
+                }
+
+                Add(seed.Operation, next);
+            }
+        }
+
+        // Liveness follows the same pre-cleanup seeds and replay order as state
+        // checking. These links never become runtime or cleanup-plan edges.
+        void Add(int from, int to)
+        {
+            this.checkingBorrowEdges.Add((to, this.checkingBorrowHeads[from]));
+            this.checkingBorrowHeads[from] = this.checkingBorrowEdges.Count - 1;
+        }
+    }
 
     private void PrepareSlicePaths()
     {

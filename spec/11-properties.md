@@ -169,7 +169,7 @@ Accessors inherit Property access unless explicitly restricted. A restriction mu
 | private protected | private |
 | private | None |
 
-Neither accessor must retain the Property's full access domain, and set access need not be contained in get access. API signature and protected-receiver checks still apply. Object/projection calls require published ObjectCompatible Proven (§12.4.4); writing ref/Self or uniq/Self alone supplies no proof.
+Neither accessor must retain the Property's full access domain, and set access need not be contained in get access. API signature and protected-receiver checks still apply. Object/projection calls require published ObjectCallCompatible Proven (§12.4.4); writing ref/Self or uniq/Self alone supplies no proof.
 
 ### 11.2.2. Computed properties
 
@@ -324,7 +324,7 @@ contract ReplaceableItem
 
 Select a new implementation by ordinary member lookup; inherited conformance retains its mapping under §8.4.4. Check the selected let/var/computed operations without retrying another Name/base candidate because of Type, accessor, or accessibility failure. Substitute requirement-side Self, generic arguments, and associated Types while retaining the implementation's declaring Self and permitted receiver correspondence. Apply function requirement compatibility without implicit conversions or stronger implementation preconditions. Check access, Origins/Loans, and generic premises. No blanket equality between storage Type and requirement header is imposed.
 
-Compatible custom/computed accessors implement calls directly. Calls through base projections or object borrows require published ObjectCompatible Proven (§12.4.4). A concrete Core Object View does not require runtime Contract conformance. Unknown generic capabilities cannot establish compatibility.
+Compatible custom/computed accessors implement calls directly. Calls through base projections or object borrows require published ObjectCallCompatible Proven (§12.4.4). A concrete Core Object View does not require runtime Contract conformance. Unknown generic capabilities cannot establish compatibility.
 
 ### 11.4.2. Standard operation witnesses
 

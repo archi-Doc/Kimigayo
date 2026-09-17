@@ -12,7 +12,7 @@ internal static partial class LlvmModuleWriter
         }
 
         // Metadata executes already verified ownership operations. Context carries no live flags.
-        output.Write("%kimi.shared.policy = type { i64, i64, ptr, ptr, i64 }\n");
+        output.Write("%kimi.shared.policy = type { i64, i64, ptr, ptr, i64, ptr }\n");
         output.Write("define internal void @__kimi_shared_drop(ptr %slot, ptr %context, ptr %location, i64 %length) #0 {\nentry:\n  ret void\n}\n");
         foreach (var entry in module.SharedEntries)
         {
@@ -28,6 +28,19 @@ internal static partial class LlvmModuleWriter
     private static void WriteSharedEntry(TextWriter output, SharedStorageEntry entry)
     {
         var name = entry.Abi.Name;
+        output.Write($"@{name}_direct = private constant [{entry.DirectCalls.Length} x ptr] [");
+        for (var i = 0; i < entry.DirectCalls.Length; i++)
+        {
+            output.Write(i == 0 ? string.Empty : ", ");
+            output.Write($"ptr @{name}_direct{i}");
+        }
+
+        output.Write("]\n");
+        for (var i = 0; i < entry.DirectCalls.Length; i++)
+        {
+            WriteSharedDirectAdapter(output, name + "_direct" + i, entry.DirectCalls[i]);
+        }
+
         output.Write($"@{name}_offsets = private constant [{entry.Offsets.Length} x i64] [");
         for (var i = 0; i < entry.Offsets.Length; i++)
         {
@@ -40,12 +53,17 @@ internal static partial class LlvmModuleWriter
         {
             var policy = entry.Policies[i];
             output.Write(i == 0 ? string.Empty : ", ");
-            output.Write($"%kimi.shared.policy {{ i64 {policy.Size}, i64 {(policy.Copy ? 1 : 0)}, ptr @{(policy.Destructor is null ? "__kimi_shared_drop" : name + "_drop" + i)}, ptr null, i64 {policy.Length} }}");
+            output.Write($"%kimi.shared.policy {{ i64 {policy.Size}, i64 {(policy.Copy ? 1 : 0)}, ptr @{(policy.Destructor is null ? "__kimi_shared_drop" : name + "_drop" + i)}, ptr null, i64 {policy.Length}, ptr {(policy.Call is null ? "null" : "@" + name + "_call" + i)} }}");
         }
 
         output.Write("]\n");
         for (var i = 0; i < entry.Policies.Length; i++)
         {
+            if (entry.Policies[i].Call is { } adapter)
+            {
+                WriteSharedCallAdapter(output, name + "_call" + i, adapter);
+            }
+
             if (entry.Policies[i].Destructor is { } destructor)
             {
                 output.Write($"define internal void @{name}_drop{i}(ptr %slot, ptr %context, ptr %location, i64 %length) #0 {{\nentry:\n  call void @{destructor}(ptr %slot, ptr %location, i64 %length)\n  ret void\n}}\n");
@@ -54,6 +72,22 @@ internal static partial class LlvmModuleWriter
 
         output.Write(entry.Abi.GetDefinition(false));
         output.Write("entry:\n");
+        if (entry.Selected is { } selected)
+        {
+            output.Write(selected.Result == "void" ? "  call void" : $"  %selected = call {selected.Result}");
+            output.Write($" @{selected.Name}(");
+            for (var i = 0; i < entry.Abi.Parameters.Length; i++)
+            {
+                output.Write(i == 0 ? string.Empty : ", ");
+                var parameter = entry.Abi.Parameters[i];
+                output.Write($"{parameter.Type} %{parameter.Name}");
+            }
+
+            output.Write(")\n");
+            output.Write(selected.Result == "void" ? "  ret void\n}\n" : $"  ret {selected.Result} %selected\n}}\n");
+            return;
+        }
+
         if (entry.ScratchSize != 0)
         {
             output.Write($"  %scratch = alloca [{entry.ScratchSize} x i8], align {entry.ScratchAlignment}\n");
@@ -95,7 +129,7 @@ internal static partial class LlvmModuleWriter
             output.Write(entry.Parameters[i].Layout.Size == 0 ? ", ptr null" : entry.Parameters[i].ArgumentType == "ptr" && entry.Parameters[i].ComputationType != "ptr" ? $", ptr %a{i}" : $", ptr %arg{i}");
         }
 
-        output.Write($", ptr @{name}_offsets, ptr @{name}_policies, ptr {(entry.ScratchSize == 0 ? "null" : "%scratch")})\n");
+        output.Write($", ptr @{name}_offsets, ptr @{name}_policies, ptr {(entry.ScratchSize == 0 ? "null" : "%scratch")}, ptr @{name}_direct)\n");
         if (entry.Abi.Result == "void")
         {
             output.Write("  ret void\n}\n");
@@ -118,7 +152,12 @@ internal static partial class LlvmModuleWriter
             output.Write($", ptr %a{p}");
         }
 
-        output.Write(", ptr %offsets, ptr %policies, ptr %scratch) #0 {\nentry:\n");
+        output.Write(", ptr %offsets, ptr %policies, ptr %scratch, ptr %direct) #0 {\nentry:\n");
+        for (var i = 0; i < body.DirectArguments.Length; i++)
+        {
+            output.Write($"  %directSlot{i} = getelementptr ptr, ptr %direct, i64 {i}\n  %directCall{i} = load ptr, ptr %directSlot{i}, align 8\n");
+        }
+
         for (var i = 0; i < body.Leaves.Length; i++)
         {
             var leaf = body.Leaves[i];
@@ -139,6 +178,7 @@ internal static partial class LlvmModuleWriter
             output.Write($"  %dropptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 2\n  %drop{i} = load ptr, ptr %dropptr{i}, align 8\n");
             output.Write($"  %ctxptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 3\n  %ctx{i} = load ptr, ptr %ctxptr{i}, align 8\n");
             output.Write($"  %lengthptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 4\n  %length{i} = load i64, ptr %lengthptr{i}, align 8\n");
+            output.Write($"  %callptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 5\n  %call{i} = load ptr, ptr %callptr{i}, align 8\n");
         }
 
         output.Write("  br label %b0\n");
@@ -184,6 +224,35 @@ internal static partial class LlvmModuleWriter
 
                 switch (op.Kind)
                 {
+                    case SharedStorageOperation.DirectCall:
+                        output.Write($"  call void %directCall{op.Source}(ptr {(dest < 0 ? "null" : "%p" + dest)}");
+                        foreach (var argument in body.DirectArguments[op.Source])
+                        {
+                            output.Write($", ptr %p{argument}");
+                        }
+
+                        output.Write(")\n");
+                        if (dest >= 0)
+                        {
+                            Live(dest, true);
+                        }
+
+                        break;
+                    case SharedStorageOperation.Call:
+                        var call = body.Calls[op.Source];
+                        output.Write($"  call void %call{op.CopyPlace}(ptr {(dest < 0 ? "null" : "%p" + dest)}, ptr %p{call.Receiver}");
+                        foreach (var argument in call.Arguments)
+                        {
+                            output.Write($", ptr %p{argument}");
+                        }
+
+                        output.Write(")\n");
+                        if (dest >= 0)
+                        {
+                            Live(dest, true);
+                        }
+
+                        break;
                     case SharedStorageOperation.Initialize:
                         Live(dest, true);
                         break;
@@ -214,27 +283,96 @@ internal static partial class LlvmModuleWriter
                         output.Write($"  store i64 %length{op.CopyPlace}, ptr %p{dest}, align 8\n");
                         Live(dest, true);
                         break;
+                    case SharedStorageOperation.Indices:
+                        output.Write($"  store i64 0, ptr %p{dest}, align 8\n  %rangeEnd{id} = getelementptr i8, ptr %p{dest}, i64 8\n  store i64 %length{op.CopyPlace}, ptr %rangeEnd{id}, align 8\n");
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.RangePart:
+                        output.Write($"  %rangePart{id} = getelementptr i8, ptr %p{source}, i64 {op.FieldOffset}\n  %endpoint{id} = load i64, ptr %rangePart{id}, align 8\n  store i64 %endpoint{id}, ptr %p{dest}, align 8\n");
+                        Live(dest, true);
+                        break;
                     case SharedStorageOperation.FieldAddress:
                         output.Write($"  %fieldOffsetPtr{id} = getelementptr i64, ptr %offsets, i64 {op.FieldOffset}\n  %fieldOffset{id} = load i64, ptr %fieldOffsetPtr{id}, align 8\n");
                         output.Write($"  %receiver{id} = load ptr, ptr %p{source}, align 8\n  %field{id} = getelementptr i8, ptr %receiver{id}, i64 %fieldOffset{id}\n  store ptr %field{id}, ptr %p{dest}, align 8\n");
                         Live(dest, true);
                         break;
                     case SharedStorageOperation.ArrayRead:
+                    case SharedStorageOperation.ArrayAddress:
                         var elementPolicy = body.Leaves[dest].Policy;
                         var readLocation = constants[op.Location];
-                        output.Write($"  %index{id} = load i64, ptr %p{op.Index}, align 8\n  %outOfBounds{id} = icmp uge i64 %index{id}, %length{op.CopyPlace}\n");
+                        output.Write($"  %index{id} = or i64 0, %v{op.Index}\n  %outOfBounds{id} = icmp uge i64 %index{id}, %length{op.CopyPlace}\n");
                         output.Write($"  br i1 %outOfBounds{id}, label %boundsAbort{id}, label %elementRead{id}\nboundsAbort{id}:\n");
                         output.Write($"  call void @{WindowsLowering.Abort.Name}(i32 {WindowsLowering.IndexBoundsReason}, ptr @{readLocation.Name}, i64 {readLocation.ByteLength}, i64 -2)\n  unreachable\nelementRead{id}:\n");
-                        output.Write($"  %array{id} = load ptr, ptr %p{source}, align 8\n  %byteOffset{id} = mul i64 %index{id}, %size{elementPolicy}\n  %element{id} = getelementptr i8, ptr %array{id}, i64 %byteOffset{id}\n");
-                        output.Write($"  call void @llvm.memcpy.p0.p0.i64(ptr %p{dest}, ptr %element{id}, i64 %size{elementPolicy}, i1 false)\n");
+                        if (op.Kind == SharedStorageOperation.ArrayAddress)
+                        {
+                            output.Write($"  %strideSlot{id} = getelementptr i64, ptr %offsets, i64 {op.FieldOffset}\n  %stride{id} = load i64, ptr %strideSlot{id}, align 8\n");
+                        }
+
+                        output.Write($"  %array{id} = load ptr, ptr %p{source}, align 8\n  %byteOffset{id} = mul i64 %index{id}, %{(op.Kind == SharedStorageOperation.ArrayAddress ? "stride" + id : "size" + elementPolicy)}\n  %element{id} = getelementptr i8, ptr %array{id}, i64 %byteOffset{id}\n");
+                        output.Write(op.Kind == SharedStorageOperation.ArrayAddress ? $"  store ptr %element{id}, ptr %p{dest}, align 8\n" : $"  call void @llvm.memcpy.p0.p0.i64(ptr %p{dest}, ptr %element{id}, i64 %size{elementPolicy}, i1 false)\n");
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.ConstructEnum:
+                        var construction = body.Constructions[op.Source];
+                        for (var p = 0; p < construction.Sources.Length; p++)
+                        {
+                            var payload = construction.Sources[p];
+                            output.Write($"  %payloadOffsetPtr{id}_{p} = getelementptr i64, ptr %offsets, i64 {construction.Offsets[p]}\n  %payloadOffset{id}_{p} = load i64, ptr %payloadOffsetPtr{id}_{p}, align 8\n");
+                            output.Write($"  %payload{id}_{p} = getelementptr i8, ptr %p{dest}, i64 %payloadOffset{id}_{p}\n  call void @llvm.memcpy.p0.p0.i64(ptr %payload{id}_{p}, ptr %p{payload}, i64 %size{body.Leaves[payload].Policy}, i1 false)\n");
+                            Live(payload, false);
+                        }
+
+                        output.Write($"  store i32 {construction.Tag}, ptr %p{dest}, align 4\n");
                         Live(dest, true);
                         break;
                 }
             }
 
+            if (op.Scalar is { } scalar)
+            {
+                if (scalar.Kind == OwnershipValueKind.Constant)
+                {
+                    output.Write($"  %v{id} = or {scalar.Type} 0, {scalar.Constant}\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Alias)
+                {
+                    output.Write($"  %v{id} = or {scalar.Type} 0, %v{scalar.First}\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Binary && scalar.Operator == "add")
+                {
+                    var location = constants[op.Location];
+                    output.Write($"  %sum{id} = call {{ {scalar.Type}, i1 }} @llvm.sadd.with.overflow.{scalar.Type}({scalar.Type} %v{scalar.First}, {scalar.Type} %v{scalar.Second})\n  %v{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 0\n  %overflow{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 1\n");
+                    output.Write($"  br i1 %overflow{id}, label %overflowAbort{id}, label %sumReady{id}\noverflowAbort{id}:\n  call void @{WindowsLowering.Abort.Name}(i32 {WindowsLowering.IntegerOverflowReason}, ptr @{location.Name}, i64 {location.ByteLength}, i64 -2)\n  unreachable\nsumReady{id}:\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Binary)
+                {
+                    output.Write($"  %v{id} = icmp slt {(scalar.Operator == "slt32" ? "i32" : "i64")} %v{scalar.First}, %v{scalar.Second}\n");
+                }
+                else if (scalar.Type == "i1")
+                {
+                    output.Write($"  %readByte{id} = load i8, ptr %p{op.Destination}, align 1\n  %v{id} = trunc i8 %readByte{id} to i1\n");
+                }
+                else
+                {
+                    output.Write($"  %v{id} = load {scalar.Type}, ptr %p{op.Destination}, align {(scalar.Type == "i32" ? 4 : 8)}\n");
+                }
+
+                if (scalar.Store)
+                {
+                    if (scalar.Type == "i1")
+                    {
+                        output.Write($"  %storeByte{id} = zext i1 %v{id} to i8\n  store i8 %storeByte{id}, ptr %p{op.Destination}, align 1\n");
+                    }
+                    else
+                    {
+                        output.Write($"  store {scalar.Type} %v{id}, ptr %p{op.Destination}, align {(scalar.Type == "i32" ? 4 : 8)}\n");
+                    }
+                }
+            }
+
             if (op.Alternative >= 0)
             {
-                output.Write($"  %condbyte{id} = load i8, ptr %p{op.Condition}, align 1\n  %condition{id} = trunc i8 %condbyte{id} to i1\n  br i1 %condition{id}, label %b{op.Next}, label %b{op.Alternative}\n");
+                output.Write($"  br i1 %v{op.Condition}, label %b{op.Next}, label %b{op.Alternative}\n");
             }
             else if (op.Kind == SharedStorageOperation.Return)
             {

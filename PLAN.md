@@ -1,6 +1,493 @@
 # Kimigayo Compiler Completion Plan
 
-## Program Milestone 9 resumed after program 10 (2026-09-17, incomplete)
+## Current timed continuation — ownership scope joins (2026-09-17)
+
+**Final checkpoint: units 36–42 / T4n-w–ac are DONE.** Final integration completed
+at **13:24:11 UTC**, **58m25s** after the execution start. Both builds have zero
+warnings/errors; both full managed suites PASS **8,107 tests** (146 net added).
+All **136 new fixtures / 272 native O0/O2 executions PASS**. All **524 source
+hashes** and **3,065 input hashes for 613 native fixtures** match final artifacts;
+477 of those fixtures retain their previous native evidence through identical inputs.
+Programs **1–11 PASS all 984 integration checks** across both configurations;
+all 22 reports match the final compiler and program identities. Warmed analysis/
+emission reuse allocates zero bytes in the retained workloads. Final diff review
+PASS; no implemented unit has missing verification. Changes remain uncommitted.
+The full compiler plan and M2/M3 remain IN_PROGRESS. The next action is the
+partial-terminal mixed-branch reproducer recorded below. Evidence is consolidated
+in `bin/plan-execution/20260917-122546/verification.json` and adjacent manifests.
+
+Final documentation/workspace review finished **13:26:10 UTC**, **60m24s elapsed**. No further work unit was started.
+
+Started **12:25:46 UTC**, soft deadline **13:25:46 UTC**, including repository
+inspection, implementation and verification. Fresh HEAD is `7869ce7`; preserved
+the existing modified and untracked unit 33–35 files. Re-read AGENTS.md, execution
+instructions, this plan, owning specification rules and current implementation.
+All 519 source identities from the previous checkpoint still match. Baseline
+worktree/patch, plan and evidence are under `bin/plan-execution/20260917-122546/`.
+The broader compiler scope remains authorized; program 11 is already complete.
+ObjectCallCompatible implementation, draft edits and NativeAOT remain excluded.
+
+**Unit 36 / I6/I8 T4n-w DONE:** reproduce the current short-circuit failure
+and extend `ScopedCheckingProof` to logical operands whose entire evaluation
+completes. Keep transfer/divergence operands guarded. Reuse existing short-circuit
+CFGs, per-target replay and Loan checking; preserve skipped paths, evaluation
+order, initialization/Move histories and runtime reachability. Required evidence:
+positive/negative and/or/nested/scoped effects, execution/skip behavior, stored
+Loans, reload/warm reuse, clean Debug/Release builds/full suites and new O0/O2
+native fixtures. No semantic change to SPEC §13.4 or §14.10.3 is proposed.
+
+Completed **12:33:14 UTC** (7m28s). The baseline reproducer failed with
+UnsupportedOwnership_Kd and now passes. Completing logical operands reuse the
+existing evaluated/skipped CFG join; transfers and noncompleting operands remain
+guarded. Clean Debug/Release builds and full suites PASS **7,988/configuration**
+(27 added cases); **26 new fixtures / 52 native O0/O2 executions PASS**. All
+2,385 previous native input hashes still match. Reload/warm reuse allocates zero
+bytes in the tested workload. Evidence: `w-*` logs and source/fixture manifests.
+Initial test-only do expressions discarded their final bool under the common Body
+rules; corrected them to effectful Unit-argument calls so the negative tests reach
+ownership analysis. No specification change, draft edits or NativeAOT.
+
+**Unit 37 / I6/I8 T4n-x DONE, started 12:35 UTC:** the fresh `next-require.kimi`
+reproducer fails UnsupportedOwnership_Kd at 10:13. Require's failure body currently
+discards its terminal continuation. Retain it before implicit cleanup, alongside
+nested terminal seeds, for enclosing scope/selection joins; preserve require's
+ordinary success-only successor and transparent target lookup. Admit require in
+the bounded scope proof only through the already-supported condition/body checks.
+Verify direct/block failures, partial nested paths, targets, initialization/Move/
+let/Loans, default checking, guards, reload/warm reuse, full Debug/Release suites
+and ordinary native O0/O2 execution. General region-changing replay stays guarded.
+The default checks found a prerequisite in `ScalarDefaults`: require was rejected
+before declaration/caller ownership checking. Reuse the existing scalar condition,
+body and contained-transfer validation, then verify both supplied declaration
+checking and omitted default execution, results and caller histories in this unit.
+Completed **12:42 UTC** (about 16 minutes elapsed). Clean Debug/Release builds
+and full suites PASS **8,017/configuration** (29 added); **26 fixtures / 52 native
+O0/O2 executions PASS**. All 2,515 prior native input hashes match regeneration.
+The reproducer now passes; supplied-default errors, target filtering, ordinary
+success-only state, stored Loans and zero-allocation reload/warm checks pass.
+Evidence: `x-*` logs/manifests. General compiler M2/M3 remain incomplete.
+
+**Unit 38 / I6/I8 T4n-y DONE, started 12:42 UTC:** record short-circuit terminal
+operand continuations and join evaluated/skipped checking paths after a
+noncompleting left operand. `next-logical-terminal.kimi` reproduces the missing
+outer state at 9:13. Preserve no-runtime-successor/result behavior, RHS skip
+semantics, source diagnostics and terminal target extents. Remove the unit 36
+completing-only proof restriction only after these paths have explicit provenance;
+mixed region-changing replays, deferred and effectful divergent operands remain
+guarded. Require targeted state/Loan/default/reload tests, full Debug/Release and
+new native O0/O2 evidence before DONE.
+Completed **12:48 UTC** (about 22 minutes elapsed). The reproducer now passes;
+clean Debug/Release builds/full suites PASS **8,043/configuration** (26 added).
+**28 fixtures / 56 O0/O2 executions PASS**, including Abort, skipped and executed
+returns and bounded default divergence. Initialization/Move/let/Loan, nested
+operand and zero-allocation reload/warm checks pass. All 2,645 prior native input
+hashes match. Evidence: `y-*` logs/manifests. The existing mixed-target terminal
+operand guard cases still pass; their missing per-branch replay remains separate.
+
+**Unit 39 / I6/I8 T4n-z DONE, started 12:51 UTC:** the fresh
+`next-mixed-terminal-branch.kimi` still fails at 13:13. Preserve per-target state
+at a proven common branch prefix, then seed separate checking regions for the
+terminal branches. Limit the first slice to closed terminal if/else selections;
+keep the ordinary runtime edges, original targets and pre-cleanup state unchanged.
+Do not weaken the existing closed-graph replay proof. Verify branch-specific
+effects, nested/else-if paths, common guarantees, Loan liveness, guarded partial
+and divergent paths, reload/warm allocation and full/native regressions.
+The unit 38 compiler integrations are running against unchanged binaries; any
+later compiler build will require those affected integration checks again.
+At **12:55 UTC**, the reproducer and branch-state cases pass. Loan/local-cleanup
+tests exposed a deferred-capture bug: a continuation referenced a region whose
+Entry was later assigned by implicit cleanup, producing an invalid replay range.
+Capture the immutable constituent seed range before cleanup instead. The tests
+retain this crash regression, and the newly supported closed-terminal guard case
+moves to positive coverage while a partial-terminal branch preserves its old guard.
+Completed **13:00:30 UTC** (34m44s elapsed): clean Debug/Release builds and full
+suites PASS **8,066/configuration** (23 added); **20 fixtures / 40 native O0/O2
+executions PASS**. All 2,785 prior native input hashes match. The crash regression,
+Loan liveness, owned locals, neutral divergence and zero-allocation warmed reload
+pass. Indexed branch traversal removes a measured 320 B/8-iteration iterator cost.
+Evidence: `z-*`. Partial-terminal branches and mixed require remain guarded.
+
+**Unit 40 / I6/I8 T4n-aa DONE, started 13:00:30 UTC:** reuse the proven branch
+prefix for require's failure and success checking regions. The existing fresh
+`next-mixed-require.kimi` fails at 13:13. Retain failure histories separately while
+the success path continues, without a normal failure successor. Verify target
+filtering, conditional/common effects, nested failures, Move/let/Loan state,
+cleanup/divergence guards and warmed reuse, full Debug/Release and new native
+O0/O2 fixtures. No new replay-proof relaxation is proposed.
+Completed **13:05 UTC** (about 39 minutes elapsed): clean Debug/Release builds
+and full suites PASS **8,085/configuration** (19 added); **14 fixtures / 28 native
+O0/O2 executions PASS**. All 2,885 prior native input hashes match. The reproducer,
+target filtering, failure/success/condition effects, nested failures, stored Loans
+and zero-allocation warmed reload pass. Evidence: `aa-*`.
+
+**Unit 41 / I6/I8 T4n-ab DONE, started 13:05 UTC:** reuse branch prefixes for
+mixed-target logical expressions with a completing left and terminal right operand.
+`next-mixed-logical-right.kimi` still fails at 13:13. Keep the skipped path as the
+only ordinary logical successor; retain terminal RHS histories for enclosing joins.
+Do not broaden noncompleting-left or partial-RHS support in this slice. Verify
+and/or, transfers/divergence guards, Move/Loan histories, target filtering and
+warmed reload, full Debug/Release and new ordinary O0/O2 fixtures.
+Completed **13:09 UTC** (about 43 minutes elapsed): clean Debug/Release builds
+and full suites PASS **8,096/configuration** (11 net added); **12 fixtures / 24
+native O0/O2 executions PASS**. All 2,955 prior native inputs match. Supported
+guard cases moved to positive coverage; partial RHS, deferred and effectful
+divergence guards remain. Warmed reload allocates zero bytes. Evidence: `ab-*`.
+
+**Unit 42 / I6/I8 T4n-ac DONE, started 13:09 UTC:** extend the same prefix split
+to noncompleting left operands, using the existing explicit evaluated/skipped
+checking join (and no runtime result). `next-mixed-logical-left.kimi` reproduces
+UnsupportedOwnership_Kd at 13:13. Preserve common guarantees across RHS execution
+and skipping, original target extents, Loans and zero-allocation reuse. Partial
+RHS and general effectful divergence remain guarded. Verify full Debug/Release,
+new native O0/O2 and final completed-program regressions against frozen binaries.
+At **13:12:13 UTC** (46m27s), implementation and focused/native verification PASS:
+clean Debug/Release builds and full suites **8,107/configuration** (11 added),
+**10 fixtures / 20 native O0/O2 executions**, common-guarantee/Move/let/Loan and
+zero-allocation warmed reload checks. Final program 1–11 regressions are running
+against frozen binaries, prioritizing 1/8/9/11. Check the soft deadline between
+program runs; do not start another implementation unit while these checks run.
+Final program regressions remained pending at that checkpoint; all subsequently
+passed at 13:24:11 UTC, completing this unit without further source changes.
+At **13:18 UTC** (about 52 minutes), final programs **1/8/9/11 PASS 370 checks**
+across both configurations; reports match the frozen compiler hashes. Remaining
+completed programs 2–7/10 are running, with the same deadline check between runs.
+All seven new native groups returned exit 0. No further implementation unit has
+started; final source/fixture identities and the resumption reproducer are recorded.
+
+Final artifact review: **524 source identities**, **613 native fixtures / 3,065
+IR and expectation identities**, comprising 136 new fixtures / 272 new executions
+and 477 previously verified fixtures with unchanged inputs. All 146 net added
+managed cases pass per configuration. Baseline-only ownership body files and the
+existing mixed-target test remain byte-identical to the starting worktree.
+No specification, draft or milestone source edits; NativeAOT NOT_RUN. The review
+found no remaining diagnostic scaffolding or unrelated source changes.
+
+**Exact next implementation action after this execution:** reproduce
+`dotnet Kimi/bin/Debug/net10.0/Kimi.dll check bin/plan-execution/20260917-122546/next-partial-terminal-branch.kimi`.
+Both configurations currently report UnsupportedOwnership_Kd at **13:13** for
+`if c => return else => x = 3` following a mixed-target join. Extend branch-prefix
+tracking to partial-terminal selections only with an explicit normal-tail join;
+keep terminal histories pending for enclosing extents, and never let them replace
+the ordinary successor's state. Add missing-else, both branch orders, Move/let/
+Loan and normal-tail effect tests before broadening the current proof. Partial
+logical operands, unequal Loan joins, deferred cleanup and general effectful
+divergence remain separate obligations. M2/M3 and the full compiler are incomplete.
+
+## Previous timed continuation — broader ownership plan (2026-09-17)
+
+**Final checkpoint: units 33–35 are DONE.** Verification finished at
+**12:22:56 UTC**, **59m34s** after execution start. No further unit is started.
+Both builds have zero warnings/errors and both full suites pass **7,961 tests**
+(80 net added). LLVM/native regression covers **477 unique fixtures / 954 unique
+O0/O2 executions**; all **2,385 fixture/expectation hashes** and **519 source
+hashes** match final inputs. Programs **1/8/9/11 pass all 370 integration checks**
+across Debug/Release; all eight reports match the final compiler identities.
+Reload/warmed analysis and emission allocate zero bytes in the retained workloads.
+Final documentation/workspace review finished at **12:25:16 UTC**, **61m54s** elapsed.
+Workspace/diff review PASS. SPEC.md, specification chapters, draft and milestone
+sources were not changed. NativeAOT was not run. Changes are uncommitted.
+
+M2/M3 and the full compiler plan remain IN_PROGRESS. No implemented unit has
+missing verification. **Exact next action:** reproduce
+`dotnet Kimi/bin/Debug/net10.0/Kimi.dll check bin/plan-execution/20260917-112322/next-short-circuit.kimi`
+(UnsupportedOwnership_Kd at 13:13), then extend `ScopedCheckingProof` only for
+proven completing short-circuit operands. Preserve skipped-path joins, Move and
+Loan histories; operands with transfers/divergence require separate proof.
+That next unit has not been implemented. Region-changing terminal branches,
+unequal Loan joins, deferred cleanup and general effectful divergence remain.
+
+Started **11:23:22 UTC**, soft deadline **12:23:22 UTC** (60 elapsed minutes,
+including inspection and verification). Fresh HEAD is `7869ce7`; the worktree was
+clean. Re-read the execution instructions, current plan, repository rules,
+specification and ownership implementation. The user selected continuation of
+the broader compiler plan; program 11 remains complete and programs 12–14 are
+not this execution's target. ObjectCallCompatible implementation remains deferred
+by the latest SPEC.md update.
+
+**Unit 33 / I6/I8 T4n-t DONE:** reproduced the unit 32 mixed-effect
+failure, then preserved per-target checking state through straight-line effects
+after a mixed join. Retain original transfer targets and pre-cleanup seeds;
+never add runtime predecessors or use one merged state after target filtering.
+Branching continuations, unequal Loan joins, deferred cleanup and general
+effectful divergence remain separate obligations. Required evidence: focused
+initialization/Move/let/Loan/cleanup and transfer-chain cases, reload/warm reuse,
+Debug/Release builds and managed regression, LLVM/native O0/O2 fixtures.
+
+At **11:34 UTC** (about 11 minutes), both builds have zero warnings/errors and
+both full managed suites PASS **7,908** tests (27 net additional cases). The
+original reproducer now passes. Native regression is running. Replays are retained
+value records with a reusable stack; warmed reanalysis/emission allocates zero
+bytes in the regression workload. No overall performance improvement is claimed.
+Additional Loan inspection at **11:39 UTC** found that stored-borrow liveness
+did not follow checking seed/replay links. A counter mutation followed by a later
+use of its stored shared borrow was wrongly accepted. The unit now also propagates
+liveness through separate pre-cleanup checking links; 346 focused ownership/Borrow
+tests pass, including required conflict rejection and last-use positive controls.
+Full regression must be rerun for this correction. Existing native fixtures will
+be hash-compared after regeneration; new Loan fixtures require native verification.
+
+Completed at **11:44 UTC** (about 21 minutes). Final clean Debug/Release builds
+and full suites PASS **7,914/configuration** (33 net new tests). LLVM/native PASS
+**492 Never + 414 Default + 8 new stored-Loan O0/O2 executions** (overlapping
+families). All 2,145 earlier fixture/expectation hashes match regeneration after
+the liveness fix. Stored-borrow reload/warmed analysis and emission also allocate
+zero bytes. Diff review/check PASS. SPEC §14.10.3 and §15.6 already require this
+behavior; no specification change is needed. NativeAOT is NOT_RUN.
+
+**Unit 34 / I6/I8 T4n-u DONE**, started **11:44 UTC**: extend replay to
+closed acyclic checking CFGs whose paths all reach the retained endpoint. The
+fresh `next-mixed-branch.kimi` reproducer replaces the assignment with a completing
+if/else and still fails UnsupportedOwnership_Kd at 13:13. Preserve separate
+constituent states, normal join rules, and stored Loan liveness; reject cycles,
+escaping paths and region-changing terminal branches until separately represented.
+Required checks: positive/negative branch initialization and Move histories,
+missing else, nested conditionals, target filtering, Loans, reload/warm reuse,
+full managed suites and new native O0/O2 fixtures. At **11:50 UTC** (26m38s),
+both clean builds and full suites PASS **7,943/configuration** (29 new cases).
+All 2,165 prior fixture/expectation hashes match. Completed **11:51 UTC** with
+**52 new LLVM/native O0/O2 executions PASS**; stored-Loan reload/warm reuse passes
+without allocations. Cyclic continuation remains rejected by a fresh reproducer.
+
+**Unit 35 / I6/I8 T4n-v DONE**, started **11:51 UTC** (about 28 minutes):
+support closed same-region cyclic checking CFGs when every retained node can
+reach the endpoint. Use the existing finite-state fixed-point solver independently
+for each constituent. A forward closure and reverse reachability proof must reject
+region escapes and terminal components that cannot reach the endpoint. Preserve
+zero-iteration paths, Move/let histories and stored Loans; keep divergent scopes,
+deferred cleanup and terminal branches crossing checking regions guarded. The
+fresh `next-mixed-loop.kimi` still fails UnsupportedOwnership_Kd at 13:13.
+Required verification: zero/multiple-iteration abstract histories, nested loops,
+branch interaction, Loan/cleanup boundaries, reload/warm reuse, both full suites,
+native O0/O2 fixtures and completed-program regression.
+
+At **11:55 UTC** (about 32 minutes), both builds are clean and full suites PASS
+**7,961/configuration** (18 new cases). All 2,295 earlier native fixture/expectation
+hashes match; new loop fixtures and programs 1/8/9/11 are being verified. Closed
+cyclic replay preserves zero-iteration and fixed-point histories. Proof storage,
+replay states and worklists are reused; stored-Loan warm/reload tests pass.
+Completed at **12:22:56 UTC**: all 36 new native runs and 370 completed-program
+checks pass. All eight program reports match current compiler and source hashes.
+
+Reproduction commands (configurations/native scripts run serially):
+`dotnet build Kimigayo.slnx -c Debug --no-restore` and the Release counterpart;
+`dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll` and the Release counterpart;
+`./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Never*.ll'` and
+`'*Default*.ll'`, plus recorded new Loan/branch/while fixture groups;
+`./backend/windows-x64/test-milestone<N>.ps1 -Configuration <Debug|Release>`
+for N = 1, 8, 9, 11. Native tools required an approved sandbox escalation after
+the first opt.exe launch was denied; no verification remains environment-blocked.
+See `verification.json`, `t-*`, `u-*`, `v-*`, and linked integration reports in
+the evidence root. Native family counts overlap; the final unique count above
+deduplicates their manifests. No new out-of-scope finding was introduced.
+
+Evidence root: `bin/plan-execution/20260917-112322/`, with `t-*` records for unit
+33 and `u-*` records for unit 34. Earlier execution deadlines and stop-at-program
+instructions below are historical. Next action is the unimplemented short-circuit
+reproducer above. The soft deadline elapsed during final documentation; only the
+current unit's evidence and handoff records were completed after that point.
+
+## Program Milestone 11 completed (2026-09-17)
+
+Started **10:37:44 UTC**, soft deadline **11:37:44 UTC**. Latest target is program
+11, independently of this plan's implementation-stage numbering. Re-read the
+current instructions, plan, worktree and all fourteen program files. Preserved
+all pre-existing Milestone 9 changes, untracked files and binary diff under
+`bin/milestone11-work-20260917/`; HEAD is `1e13acc`.
+
+**Target program 11 is DONE.** All required verification finished at
+**11:13:44 UTC**, **36.02 minutes** after execution start. No later-program work
+was started. Final documentation/workspace review finished at **11:14:50 UTC**
+(**37.10 minutes** elapsed), within the 60-minute soft limit.
+
+The initial unchanged-target reproduction failed Binding: explicit specialization at 7:21
+was unsupported and the forwarding call at 10:52 had an unproven constraint.
+Downstream gaps were initially predictions and were subsequently reproduced below.
+Programs 1–10 supply existing scalar, ownership, array, enum and shared generic
+foundations. Program 11 adds closed implementation selection through generic
+forwarding, static immutable state and indexed shared borrowing. Programs 12–14
+are design context only; mutable captures and Iterator work remain out of scope.
+
+| Unit | State | Work and required verification |
+| --- | --- | --- |
+| P11-S | DONE | Closed Type specialization contracts: fifteen positive/negative binding/ownership tests, ambiguity and rebind invalidation; ordinary definitions remain universally checked. |
+| P11-G | DONE | Selected implementations, shared direct-call adapters, checked i32 operations and indexed shared borrows; normal, boundary, recursion and corrupt-plan checks pass through native O0/O2. |
+| P11-P | DONE | Verified pure immutable group scalar literal reads execute; mutable/effectful unsupported state and invalid writes/initializers reject emission. |
+| P11-F | DONE | Both clean builds, 7,881 managed tests/configuration, 506 native fixtures and all completed-program/target integrations pass with current source/compiler identities. |
+
+Expected target stdout is `Generic weights are 6, 3, 2.\n`, empty stderr and exit
+0. **Remaining target work: None. Next action: None; stop at Milestone 11.**
+NativeAOT is NOT_RUN as instructed. No required check was blocked by the environment.
+Reproduction: `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone11.kimi`.
+
+**Final verification: PASS**
+
+- Debug and Release solution builds: zero warnings/errors.
+- Both full managed suites: **7,881 passed**; **37 new tests**.
+- Related LLVM/native regression: **506 fixtures / 1,012 unique O0/O2 runs**;
+  all **2,530 fixture/expectation hashes** match.
+- Programs 1–10 plus target 11: **984 integration checks**. All **22 reports**
+  match current compiler and program hashes. The target contributes 110 checks;
+  the prior completed programs contribute 874.
+- Target exact stdout: `Generic weights are 6, 3, 2.\n`; stderr empty; exit 0.
+- Shared-body identity and selected-callee inspection: four unchanged-source
+  Debug/Release O0/O2 IR artifacts pass; retained in `shared-generation.json`.
+- Checked specialization contract/ambiguity/duplicate/invalidation failures,
+  universal ordinary-body checking, ordinary overload selection, recursive
+  specialization calls, length forwarding, non-Copy element borrowing, empty
+  arrays, bounds Abort, i32 overflow and corrupted ownership/value plans.
+- `git diff --check`: PASS. All Milestone sources and draft are unmodified by
+  this execution. Concurrent documentation edits are preserved as noted below.
+
+Evidence: `bin/milestone11-work-20260917/verification.json`, named build/test/native
+logs, source and fixture manifests, linked integration reports and
+`shared-generation.json`. Earlier unit states are archived in
+`PLAN-work-unit-history.md`. Reproduce the full target integration:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone11.ps1 -Configuration Release
+```
+
+**Retained boundaries:** no effectful/mutable static initialization, static address
+identity, length/receiver/constrained/defaulted specialization headers, explicit
+specialization Origin binders or dependent owned-result forwarding was added.
+Those unsupported paths still reject generation/verification rather than weakening
+the language. Concrete call-context expansion is bounded at depth 128. Shared
+execution allocates fixed stack scratch and no per-element heap objects; no new
+allocation-performance claim is made. Programs 12–14 remain out of scope.
+
+### Implementation checkpoints (historical within this execution)
+
+At 10:49 UTC (about 12 minutes), the unchanged target passes Binding. Confirmed
+ownership blockers: immutable static read, concrete scalar reference and indexed
+shared element borrowing. Added concrete scalar reference representation to the
+existing reference family; explicit `@ref/i32` tests now pass. Scalar `@ref`
+shorthand remains outside this unit. Next: represent static constant reads and
+indexed references with retained checked ownership operations, then shared calls.
+
+At **10:56:43 UTC** (18.98 minutes), the unchanged target builds, LLVM-verifies and
+runs natively at O2 with exact expected stdout and exit 0. Five focused fixtures
+pass LLVM verification and **10 O0/O2 native executions**. The static scalar path
+only folds verified immutable integer/bool literal initializers with no observable
+initialization effect; effectful initializers, mutable static storage and static
+address identity remain unsupported rather than being eagerly executed or omitted.
+Forwarding metadata chooses concrete entry adapters while retaining one checked
+shared body per ordinary generic definition. Indexed borrows retain evaluated
+receiver/index snapshots and runtime bounds checks without requiring Copy on T.
+Next: semantic/negative/corruption boundary coverage and full completion checks.
+
+At **11:08 UTC** (about 31 minutes), both Debug/Release builds have zero warnings
+or errors and both full managed suites pass **7,881 tests** (37 new). Target
+integration passes **55 checks/configuration**, including byte-identical O0/O2
+copies, native and CLI execution, changed default/specialized weights, another
+specialization key, empty/singleton arrays, renamed identifiers and ten invalid
+inputs rejected before artifact emission. Four unchanged-source Debug/Release
+O0/O2 IR artifacts contain exactly three shared generic bodies, nine concrete
+entries, six forwarding adapters and one selected specialization call; identities
+and hashes are retained in `shared-generation.json`.
+
+Broader forwarding with a dependent owned result still lacks retained result
+storage and explicitly rejects generation; a negative test records this boundary.
+New reference support is limited to the checked input/projection Origin family;
+existing unsupported static-Origin scalar payload tests remain unchanged and pass.
+Native diagnostic expected columns were corrected to the actual expressions
+(indexed borrow 2:79; i32 addition 1:41). Program/spec expectations are unchanged.
+
+During final verification (11:10 UTC), an independent workspace edit changed
+ObjectCompatible/RuntimeUsable terminology in SPEC.md and related chapters to
+ObjectCallCompatible/ObjectViewCompatible. Inspected and preserved those edits;
+they do not change this target's specialization, storage or static-read semantics.
+The observed diff is recorded in `concurrent-specification.patch`. This execution
+has not edited SPEC.md, specification chapters or draft. Existing Milestone 9
+files remain preserved; overlap is limited to documented shared lowering and
+progress/README updates.
+
+## Program Milestone 9 completed (2026-09-17)
+
+Execution started **09:56:24 UTC**, soft deadline **10:56:24 UTC**. All required
+verification completed at **10:34:17 UTC** (37.88 minutes). Documentation and final
+workspace review finished at **10:36:22 UTC** (**39.97 minutes** elapsed). Target program 9 is **DONE**;
+no later-program implementation was started.
+
+At startup, re-read AGENTS.md, `prompts/implementation-execution.md`, current HEAD
+`1e13acc`, this plan, implementation and verification environment. The worktree was
+clean; baseline/status and the previous plan are preserved under
+`bin/milestone9-complete-20260917/`. Read all fourteen current program files (the
+repository has fourteen, not five). Programs 1–8 provide ownership, borrowing,
+arrays and generic storage; completed program 10 provides enum layouts/patterns.
+Programs 11–14 remained design context. These program numbers are distinct from
+this plan's broader implementation stages.
+
+The initial current-compiler reproduction failed ownership on `Hit<T>` at 20:21
+and its cases at 25:28/26:20. Subsequent confirmed blockers were shared generic
+destruction, range storage/iteration and common-function calls. Each was addressed
+through checked ownership plans, shared lowering, LLVM verification and native
+execution; no filename, constant, output or source-program special case was added.
+
+| Item | State | Completed target scope |
+| --- | --- | --- |
+| P9-C1/C2 | DONE | Retained checked common-function calls and inline scalar/Unit capture conversion. |
+| P9-G1/G2/G3 | DONE | Retained borrowed field Origins and Copy element reads through shared offset/size/length policies. |
+| P9-G4 | DONE | Finite symbolic enum ownership, selected tag/payload construction, results and active-case destruction. |
+| P9-G5 | DONE | Shared range iteration, scalar SSA snapshots, checked isize addition, receiver Loans and concrete callback ABI adapters. |
+| P9-G6 | DONE | One checked generic destructor body when receiver fields are unobserved; instantiated field cleanup runs afterwards. |
+| P9-G | DONE | All shared-generation work required by the unchanged target. |
+| P9-F | DONE | Current-source Debug/Release build, full managed regression, LLVM/O0/O2 native execution, invalid inputs and completed programs. |
+
+The unchanged target has exact stdout:
+
+```text
+Found 6 at index 3.
+Missing value handled.
+Search finished.
+Batch destroyed.
+```
+
+Stderr is empty; exit code is 0. The messages verify the successful search, empty
+exhaustion and defer-before-destructor order. Target integration passes **59 checks
+per configuration**, covering byte-identical O0/O2 copies, native and both CLI run
+forms, first/last/singleton/absent results, nonempty exhaustion, i64 instantiation,
+Abort without cleanup and eight invalid programs rejected before artifact emission.
+
+**Final verification: PASS**
+
+- Debug and Release solution builds: zero warnings/errors.
+- Both complete managed suites: **7,844 passed** (32 new tests).
+- Related LLVM/native regression: **492 fixtures / 984 unique O0/O2 executions**;
+  all **2,460 IR/expectation hashes** match the generated fixtures.
+- Completed programs 1–8 and 10 plus target 9: **874 integration checks**. All
+  twenty reports match the current compiler and program hashes; target accounts
+  for 118 checks and prior completed programs for 756.
+- Coverage includes owned active enum cleanup, nested destructor ordering,
+  empty/single/multiple iterations, retained scalar snapshots, overflow diagnostics,
+  different scalar callback ABIs, repeated/multiple/zero arguments and Unit results,
+  wrong Types/arity/lengths, missing Copy, moved values and corrupt retained plans.
+- `git diff --check`: PASS. NativeAOT: NOT_RUN as instructed. SPEC.md, draft and
+  every Milestone program are unchanged.
+
+Evidence: `bin/milestone9-complete-20260917/verification.json`, native manifest and
+named logs; integration reports are linked from that JSON. Intermediate work-unit
+states are archived in `PLAN-work-unit-history.md` there. A malformed callback test
+was corrected to valid syntax. An overflow fixture's expected source column was
+corrected to the start of `n + 1` (47). Neither correction changes the target or
+its expected behavior.
+
+**Remaining target work: None. Next action: None; stop at Milestone 9.** Reproduce:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone9.ps1 -Configuration Release
+```
+
+**Retained boundaries:** shared callback adapters accept direct scalar ABI
+parameters and bool/isize/Unit results. Generic destructors that observe fields,
+heap/owned/borrowed capture environments, arbitrary Callable witnesses and later
+program features remain explicitly unsupported where previously unsupported.
+ResolvedRange support added here is internal shared storage, not new ordinary
+function-signature support. No allocation-performance improvement is claimed.
+No additional unrelated specification issue was taken into scope.
+
+## Historical execution: program Milestone 9 resumed after program 10 (2026-09-17, incomplete at that checkpoint)
 
 Execution started at **08:55:11 UTC**, with a **09:55:11 UTC** soft deadline.
 Execution closed at **09:54:45 UTC** (59.57 minutes elapsed), after finishing the current implementation, verification and documentation units. No additional enum implementation unit was started in the remaining sub-minute window. The target remains incomplete.
@@ -608,7 +1095,11 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-- Timed execution closed **2026-09-17T15:04:22+09:00**; elapsed **20m17s**. The 20-minute limit has elapsed. Units 31–32 are DONE; no further unit was started. M2/M3 remain IN_PROGRESS. Final diff checks pass; the workspace is coherent and uncommitted.
+The current 60-minute execution and unit 33–35 evidence are recorded at the top
+of this plan. The following timed checkpoints are historical; their deadlines and
+then-current next actions do not override the current checkpoint.
+
+- Historical timed execution closed **2026-09-17T15:04:22+09:00**; elapsed **20m17s**. Units 31–32 were DONE and M2/M3 remained IN_PROGRESS.
 
 - Last updated: **2026-09-17T15:03:00+09:00** (Asia/Tokyo).
 - Current execution: 20-minute soft limit starting **14:44:05 JST**, including inspection and verification; deadline **15:04:05 JST**. At the deadline, finish the current bounded unit or leave a coherent documented checkpoint; do not start another unit. Earlier execution limits are historical.
@@ -635,7 +1126,7 @@ Use states `TODO`, `IN_PROGRESS`, `IMPLEMENTED_UNVERIFIED`, `DONE`, `BLOCKED`, `
 | --- | --- | --- | --- |
 | M1 | DONE | 2026-09-17 at HEAD `8c49edb`: I1 baseline (V1–V3 PASS in both configurations, V4–V5 Struct-family PASS, G5 resolved) and I2 Appendix A clause coverage map recorded in Section 4; no discrepancy observed, all uncovered clause families assigned to existing T/I IDs | M2/I3 |
 | M2 | IN_PROGRESS | Selected defaults, declaration checks and omitted-call completion verified through T4n; I3 final clause closure and broader I4/I5 obligations remain | Remaining inference/call closure and declaration ownership proofs |
-| M3 | IN_PROGRESS | T4n-a–s verify bounded noncompletion/checking, terminal-path joins, target-aware loops, unchanged mixed-target joins and bare-transfer continuations. General effects/Loans/refinement, effectful divergent loops, effects after mixed joins, deferred cleanup, unequal Loan joins and owned/borrowed defaults remain incomplete | I6/I8 per-target checking effects (unit 32 next action) |
+| M3 | IN_PROGRESS | T4n-a–v verify bounded noncompletion/checking, target-aware joins, straight-line and closed CFG per-target effects, and stored-Loan liveness through checking seeds. General effects/Loans/refinement, effectful divergence, region-changing terminal branches, deferred cleanup, unequal Loan joins and owned/borrowed defaults remain incomplete | Investigate the recorded short-circuit reproducer |
 | M4 | TODO | Concrete structs already have execution support; inherited layout/accessors/static storage need integration | I9–I11 |
 | M5 | TODO | Concrete enum semantic plans exist; general enum/Pattern execution absent | I12 |
 | M6 | IN_PROGRESS | Program 8 adds universal stored-field CopyOrMove checking and shared transfer/selection CFGs with concrete entries and fixed frames; broader universal bodies, explicit selection and generic operations remain incomplete | Remaining I13–I16 obligations |
@@ -952,7 +1443,7 @@ Boxes track the entire I item. Verified sub-units do not close a parent while it
 | I3 | M2 / R1–R3, R27 | [ ] IN_PROGRESS 2026-09-17. Audit: all 250 ```kimi blocks under `spec/` parse except intentional errors, standalone Type fragments, bodyless signatures and root-level Property accessor fragments (Chapter 11 confines Properties to struct/group/rootgroup); no lexical/type-syntax defect found; the only parser gap is `$expect`/`$require` (R25, recorded under I30). `check` on programs 1–6 passes; 7–9 fail only at planned later-milestone boundaries (see V11 record). SpecTour `check` gives 544 sites, 381 `UnsupportedBinding_Kd`; non-Unsupported codes reviewed, one M2 defect found. **T3a DONE:** merged containers now retain the first declaring fragment's CodeContext (`DeclarationContainerKoto.GetOrAddChild` / `GetOrAddDeclarationContainer` accept the parsing context; `TryParseDeclarationContainer` and rootgroup parsing pass `reader.CodeContext`), so container-level Binding failures report `file:line:col` instead of `Project:@0`. **T1a DONE 2026-09-17:** unavailable modifiers now report `UnavailableFeature_Kd` and recover across all planned declaration/accessor forms without reserving ordinary Names; 40 new cases, 275 focused cases and full Debug/Release suites (7,027 each) pass. Original parser fails all 28 negative cases; V9 comparison and CLI rejection recorded in unit 2. T27a/T27b DONE: append/reload invalidation and persistent source-error state verified. T7a DONE: effect-diagnostic correction and retained rejection/no-reselection verified; effect-family implementation remains I7 and persistent semantic artifact reuse remains I29. G9 resolved under I5. I3 remains IN_PROGRESS for final R1–R3 clause-coverage closure; the concrete effect and in-memory stale-analysis reproducers are now recorded and resolved or assigned to their owning later milestones. |
 | I4 | M2 / R4 | [ ] IN_PROGRESS. Selected omitted-default plans, independent declaration checking, scalar execution and selected default completion are verified through T4n-a–g. General inference/call closure, recursive-default completion, effectful/borrowed/owned defaults and pending-slot cleanup remain unfinished. Evidence and exact resumption are in Section 2 and unit 20. |
 | I5 | M2 / R5, R19 | [ ] IN_PROGRESS. T5a/G9 DONE: isolated unresolved conformance causes no longer publish derived container/Copy/Property cascades; other facts/errors remain visible. Complete the remaining retained Contract/projection/certificate obligations and canonical Core identities. |
-| I6 | M3 / R6–R7 | [ ] IN_PROGRESS. T4n-a–g add nonreturning-call/local divergence and operand checking; T4n-h–p add scoped/default/partial terminal joins; T4n-q retains transfer targets through completing loops. T4n-r–s preserve constituent targets across unchanged mixed joins and bare transfers. Per-target subsequent effects, general places/Loans/Origins, unequal Loan joins and retained result/storage dependencies remain. |
+| I6 | M3 / R6–R7 | [ ] IN_PROGRESS. T4n-a–s establish noncompletion checking and target-aware terminal joins. T4n-t–u preserve per-target straight-line/acyclic effects and stored-Loan liveness; T4n-v adds closed cyclic replay, with final program verification tracked above. Region-changing terminal branches, short-circuit scope proofs, general places/Loans/Origins, unequal Loan joins and retained result/storage dependencies remain. |
 | I7 | M3 / R7, R20 | [ ] Compute effect-family fixed points and public guarantees; complete dependent usage checks. |
 | I8 | M3 / R8–R9, R27 | [ ] IN_PROGRESS. T4c–T4m implement bounded scalar/Unit preparation and subplace inspection; T4g/T4h diagnose definite prepared Moves. T4n-a–g independently check scalar default initialization and preserve no-arrival behavior through calls/operators/state-neutral wrappers. General escaping-Borrow/capture/Copy proofs, owned default cleanup, effectful-divergence/deferred-cleanup continuation joins and refinement remain incomplete; partial scoped terminal joins and target-aware completing-loop continuations are verified by T4n-p–q. |
 | I9 | M4 / R10 | [ ] Extend existing struct/base layout/construction/destruction and inherited receiver support. |

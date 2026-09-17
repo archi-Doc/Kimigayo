@@ -720,7 +720,7 @@ public sealed partial class Binding
 
         if (function.IsSpecialization)
         {
-            return CandidateApplicability.Pending;
+            return CandidateApplicability.Inapplicable;
         }
 
         for (var i = 0; i < function.GenericArguments.Count; i++)

@@ -233,7 +233,6 @@ public class EnumOwnershipTest
     [Theory]
     [InlineData("enum E\n    Empty\n    Again(E)\nlet x = E.Empty")]
     [InlineData("enum E<T>\n    Empty\n    Again(E<E<T>>)\nlet x = E<i32>.Empty")]
-    [InlineData("func f<T>(x: T) -> Option<T> => .Some(x)")]
     [InlineData("enum A\n    Empty\n    Again(B)\nenum B\n    Again(A)\nlet x = A.Empty")]
     [InlineData("enum V<T> origin a\n    Some(ref/T from a)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
     [InlineData("func f(x: ref/i32 from static) -> Option<ref/i32 from static> => .Some(x)")]
@@ -250,6 +249,13 @@ public class EnumOwnershipTest
     public void CommonFunctionPayloadHasOwnedStorage()
     {
         var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\n    Full(S<(i32) -> i32>)\nlet x = E.Empty");
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+    }
+
+    [Fact]
+    public void SymbolicEnumPayloadHasUniversalOwnership()
+    {
+        var c = Parse("func f<T>(x: T) -> Option<T> => .Some(x)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
     }
 

@@ -205,7 +205,7 @@ Owning-handle replacement retains normal borrowing/destruction conditions. Exclu
 
 #### 12.4.4.1. Public status and use
 
-**ObjectCompatible** is the public guarantee that a borrowed-receiver call preserves receiver completeness, access authority, and its Type/Origin/Loan contract. Its key is the **call operation Identity**, not a Type substitution or a separate receiver-kind key; receiver kind belongs to the Signature. Functions and custom/computed get/set each use their declaration Identity.
+**ObjectCallCompatible** is the public guarantee that a borrowed-receiver call preserves receiver completeness, access authority, and its Type/Origin/Loan contract. An ObjectCallCompatible operation is compatible with calls through object borrows or base-subobject projections, subject to the ordinary call, access, Type, Origin, and Loan checks. Its key is the **call operation Identity**, not a Type substitution or a separate receiver-kind key; receiver kind belongs to the Signature. Functions and custom/computed get/set each use their declaration Identity.
 
 Direct standard get/set remain Place operations, checked by acquisition and Property permissions; they are not implicit getter functions. In particular, borrowing `Box<T>.item` with `@ref` does not require T is Copy. Standard Contract witnesses are call operations: their generated Identity distinguishes the Requirement Identity, Property Identity, and bridge kind within the conformance mapping. Preserve each witness's result Type and public premises; do not merge different witnesses or publish a status for each concrete instantiation.
 
@@ -240,7 +240,7 @@ A callee's whole-value replacement mapped onto a caller's Part is not replacemen
 
 For same-build calls, propagate direct effects over the finite declaration-schema/root domain to the least union fixed point, including recursion and the implementation families below. Do not enumerate concrete Types or remove specializations based on a particular call. Recursion alone is not an unproven effect; an unfinished empty summary is not a proof. A verified empty summary is valid.
 
-Separate, indirect, and generic-requirement calls use validated public summaries or requirement Effect contracts. Without an optional effect guarantee, propagate unproven effects to potentially affected roots; do not inspect private bodies or enumerate possible implementations. Missing mandatory artifact data is an artifact error, not an optional missing guarantee. Receiverless helpers may publish input-root summaries without an ObjectCompatible status.
+Separate, indirect, and generic-requirement calls use validated public summaries or requirement Effect contracts. Without an optional effect guarantee, propagate unproven effects to potentially affected roots; do not inspect private bodies or enumerate possible implementations. Missing mandatory artifact data is an artifact error, not an optional missing guarantee. Receiverless helpers may publish input-root summaries without an ObjectCallCompatible status.
 
 An implementation succeeds only when normal semantic checking completes and every admitted binding has no receiver violation or unproven effect. Pending call/conformance obligations remain explicit until resolved. The effect fixed point does not prove a circular conformance declaration; normal proof deadlines and errors still apply.
 

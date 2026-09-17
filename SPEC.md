@@ -24,6 +24,20 @@ For the first executable program, start with [minimal console output](spec/22-co
 
 The source commands share [input resolution and implicit single-source projects](spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects), including extensionless project/source lookup and Application/O2 defaults. See [dependency resolution and lock lifecycle](spec/18-modules-and-dependencies.md#185-lock-files-and-input-records) for `restore` and `check --locked`; implementation coverage remains in [STATUS.md](STATUS.md).
 
+## Deferred
+
+The implementation has been planned, but we have intentionally not started it yet. We will begin executing the plan when the appropriate time comes. Until then, please wait for further instructions.
+
+### ObjectCallCompatible
+
+The existing [inference and call rules](spec/12-expressions.md#1244-object-receiver-compatibility) and [public summary requirements](spec/18-modules-and-dependencies.md#187-verified-information-and-reuse) remain unchanged. Implementation will proceed in three stages:
+
+1. **Document the plan (current stage).** Preserve the existing specification; make no implementation changes.
+2. **Implement inference and publication.** Verify bodies, callees, and all explicit specializations; publish completed `Proven` / `NotProven` results in public API information and enforce the existing call rules.
+3. **Check release compatibility.** Compare corresponding public APIs with a previous published Package version and report `Proven` to `NotProven` as a breaking change. Baseline selection, API matching, and release enforcement remain to be specified.
+
+This plan adds no Attribute or changes to compatibility rules. Stages 2 and 3 await further instructions.
+
 ## Part I. Introduction and source text
 
 - [1. Overview](spec/01-overview.md)

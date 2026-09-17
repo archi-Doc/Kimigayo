@@ -85,6 +85,7 @@ public sealed partial class Binding
             this.resultContexts.Clear();
             this.resultCursor = 0;
             this.ResetStartup();
+            this.specializations.Clear();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
             foreach (var construction in this.enumConstructions.Values)
@@ -167,6 +168,7 @@ public sealed partial class Binding
             this.capabilitiesReady = true;
             this.ValidateConformances(mode, false);
             this.ValidateConstraintEnvironments();
+            this.PrepareSpecializations();
             foreach (var module in this.compilation.SourceModules)
             {
                 this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
@@ -560,14 +562,14 @@ public sealed partial class Binding
             {
                 for (var a = first; a is not null; a = a.Next)
                 {
-                    if (a.Declaration is not FunctionKoto fa)
+                    if (a.Declaration is not FunctionKoto fa || fa.IsSpecialization)
                     {
                         continue;
                     }
 
                     for (var b = a.Next; b is not null; b = b.Next)
                     {
-                        if (b.Declaration is not FunctionKoto fb || fa.GenericArguments.Count != fb.GenericArguments.Count || fa.Parameters.Count != fb.Parameters.Count)
+                        if (b.Declaration is not FunctionKoto fb || fb.IsSpecialization || fa.GenericArguments.Count != fb.GenericArguments.Count || fa.Parameters.Count != fb.Parameters.Count)
                         {
                             continue;
                         }

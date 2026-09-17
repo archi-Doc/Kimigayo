@@ -68,7 +68,8 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |
 | Move | Transfer of a value and responsibility or capability, marking its source Moved. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
 | Move Path | A statically tracked path with independent initialization state and destruction responsibility. | [Move Paths](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) |
-| ObjectCompatible | Public receiver-preservation guarantee per call operation | [Object calls](../12-expressions.md#1244-object-receiver-compatibility) |
+| ObjectCallCompatible | Public receiver-preservation guarantee for calls through object borrows or base-subobject projections, per call operation | [Object calls](../12-expressions.md#1244-object-receiver-compatibility) |
+| ObjectViewCompatible | Contract eligibility as an Object View Target with fixed associated Types, within the runtime Contract extension | [Runtime contracts](../08-generics-constraints-and-contracts.md#85-runtime-contracts) |
 | Owned / OwnedOrigins | Lifetime independence from non-static dependencies / the conservative Origin closure proving it | [static and Owned](../15-ownership-and-lifetime-analysis.md#1523-static-and-owned) |
 | Origin | A set of program points where a borrow is guaranteed valid. | [Origin expressions](../15-ownership-and-lifetime-analysis.md#1521-origin-expressions) |
 | Partial Move | Transfer of an aggregate's part, leaving the aggregate incomplete. | [Move Paths](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) |

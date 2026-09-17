@@ -18,23 +18,133 @@ public sealed partial class OwnershipAnalysis
         var region = this.body.CheckingRegions[this.checkingRegion];
         if (!region.MixedTargets)
         {
-            return new(this.CheckingSeed(), region.Target);
+            return new(this.CheckingSeed(), region.Target, Replay: region.Entry < 0 ? region.Replay : -1);
         }
 
-        // Preserve each incoming path only while the local join is unchanged.
-        // Subsequent checking effects require separate state per target.
-        return region.SeedCount > 0 && this.current == region.Entry ? new(this.CheckingSeed(), Region: this.checkingRegion) : new(-1);
+        // Local diagnostics use the common state. Enclosing extents must apply
+        // later effects to each constituent before selecting escaping targets.
+        var seed = this.CheckingSeed();
+        // Freeze the seed range now: the caller may emit lexical cleanup that
+        // gives this region an entry before it records the captured continuation.
+        return this.CanReplayChecking(region, seed, out var graph) ? new(seed, SeedStart: this.ReplayCheckingSeeds(region, seed, graph), SeedCount: region.SeedCount) : new(-1);
     }
 
     private void BeginChecking(int seed, Koto? target = null, OwnershipCheckingRegion? previous = null)
     {
         // A transfer in dead source cannot replace the extent of the path that
-        // made it unreachable. An unchanged seed also retains its constituent
-        // targets across a bare transfer, before the transfer's implicit cleanup.
+        // made it unreachable. Replay stops after operand acquisition, before
+        // this transfer's implicit cleanup, and retains the original targets.
         var origin = previous ?? this.body.CheckingRegions[this.checkingRegion];
-        var unchanged = origin.MixedTargets && seed >= 0 && (seed == origin.Entry || (origin.Entry < 0 && seed == origin.Seed));
-        this.body.CheckingRegions.Add(new(seed, -1, unchanged ? origin.SeedStart : 0, unchanged ? origin.SeedCount : 0, this.checkingRegion > 0 ? origin.Target : target, origin.MixedTargets));
+        var graph = false;
+        var retained = origin.MixedTargets && this.CanReplayChecking(origin, seed, out graph);
+        var start = retained ? this.ReplayCheckingSeeds(origin, seed, graph) : 0;
+        this.body.CheckingRegions.Add(new(seed, -1, start, retained ? origin.SeedCount : 0, this.checkingRegion > 0 ? origin.Target : target, origin.MixedTargets, origin.Entry < 0 ? origin.Replay : -1));
         this.checkingRegion = this.body.CheckingRegions.Count - 1;
+    }
+
+    private bool CanReplayChecking(OwnershipCheckingRegion region, int end, out bool graph)
+    {
+        graph = false;
+        if (region.SeedCount == 0 || end < 0)
+        {
+            return false;
+        }
+
+        if (region.Entry < 0)
+        {
+            return end == region.Seed;
+        }
+
+        var owner = this.body.OperationRegions[region.Entry];
+        for (var cursor = region.Entry; cursor <= end;)
+        {
+            if (this.body.OperationRegions[cursor] != owner)
+            {
+                return false;
+            }
+
+            if (cursor == end)
+            {
+                return true;
+            }
+
+            var next = this.body.LinearCheckingSuccessor(cursor);
+            if (next <= cursor)
+            {
+                break;
+            }
+
+            cursor = next;
+        }
+
+        graph = this.body.CanReplayCheckingGraph(region.Entry, end);
+        return graph;
+    }
+
+    private int ReplayCheckingSeeds(OwnershipCheckingRegion region, int end, bool graph)
+    {
+        if (region.Entry < 0 || end == region.Entry)
+        {
+            return region.SeedStart;
+        }
+
+        var start = this.body.CheckingSeeds.Count;
+        for (var i = 0; i < region.SeedCount; i++)
+        {
+            var seed = this.body.CheckingSeeds[region.SeedStart + i];
+            var replay = this.body.CheckingReplays.Count;
+            this.body.CheckingReplays.Add(new(region.Entry, end, seed.Replay, graph));
+            this.body.CheckingSeeds.Add(seed with { Replay = replay });
+        }
+
+        return start;
+    }
+
+    private int CheckingLoanState(CheckingContinuation seed)
+        => this.body.LoanStates[seed.Replay < 0 ? seed.Seed : this.body.CheckingReplays[seed.Replay].End];
+
+    private bool HasTerminalBranches(IfKoto source)
+    {
+        if (source.ElseBody is not { } otherwise || this.flow!.Nodes[otherwise].CanCompleteNormally)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < source.Branches.Count; i++)
+        {
+            var branch = source.Branches[i];
+            if (!this.flow.Nodes[branch.Condition].CanCompleteNormally || this.flow.Nodes[branch.Body].CanCompleteNormally)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private OwnershipCheckingRegion? ForkChecking(int seed)
+    {
+        var region = this.body.CheckingRegions[this.checkingRegion];
+        if (!region.MixedTargets || !this.CanReplayChecking(region, seed, out var graph))
+        {
+            return null;
+        }
+
+        // Both branches start from the same proven prefix, but retain separate
+        // constituent histories when a terminal operand changes checking region.
+        return new(seed, -1, this.ReplayCheckingSeeds(region, seed, graph), region.SeedCount, region.Target, true);
+    }
+
+    private void EnterCheckingBranch(int operation, OwnershipCheckingRegion? fork)
+    {
+        if (fork is { } region)
+        {
+            this.checkingRegion = this.body.CheckingRegions.Count;
+            this.body.CheckingRegions.Add(region with { Entry = operation });
+            this.body.OperationRegions[operation] = this.checkingRegion;
+        }
+
+        this.current = operation;
     }
 
     // Internal exits/continues/yields feed the construct's ordinary CFG. Their
@@ -62,8 +172,8 @@ public sealed partial class OwnershipAnalysis
 
     // Joins the terminal paths recorded since mark, then releases them. Every path
     // must be available; the join is the continuation of later dead source. A
-    // mixed-target join checks local dead source using the common state. An
-    // unchanged join can also export its constituent paths to enclosing extents.
+    // mixed-target join checks local dead source using the common state. A
+    // closed continuation can export each constituent with its own later effects.
     private void JoinChecking(Koto source, int mark)
     {
         this.FilterTerminalSeeds(source, mark);
@@ -79,7 +189,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = mark; i < end; i++)
         {
             var seed = this.terminalSeeds[i];
-            if (seed.Seed < 0 || (i > mark && this.body.LoanStates.Count > 0 && this.body.LoanStates[seed.Seed] != this.body.LoanStates[first.Seed]))
+            if (seed.Seed < 0 || (i > mark && this.body.LoanStates.Count > 0 && this.CheckingLoanState(seed) != this.CheckingLoanState(first)))
             {
                 this.terminalSeeds.RemoveRange(mark, end - mark);
                 return; // Different active Loan stacks need a separate lifetime join.
@@ -91,7 +201,7 @@ public sealed partial class OwnershipAnalysis
         this.checkingRegion = this.body.CheckingRegions.Count;
         if (count == 1)
         {
-            this.body.CheckingRegions.Add(new(first.Seed, -1, Target: first.Target));
+            this.body.CheckingRegions.Add(new(first.Seed, -1, Target: first.Target, Replay: first.Replay));
         }
         else
         {
@@ -100,7 +210,7 @@ public sealed partial class OwnershipAnalysis
             for (var i = mark; i < end; i++)
             {
                 var seed = this.terminalSeeds[i];
-                this.body.CheckingSeeds.Add(new(seed.Seed, seed.Target));
+                this.body.CheckingSeeds.Add(new(seed.Seed, seed.Target, seed.Replay));
             }
 
             this.current = -1;
@@ -112,26 +222,25 @@ public sealed partial class OwnershipAnalysis
 
     private void AddTerminalSeed(CheckingContinuation continuation)
     {
-        if (continuation.Region < 0)
+        if (continuation.SeedCount == 0)
         {
             this.terminalSeeds.Add(continuation);
             return;
         }
 
-        var region = this.body.CheckingRegions[continuation.Region];
-        for (var i = 0; i < region.SeedCount; i++)
+        for (var i = 0; i < continuation.SeedCount; i++)
         {
-            var seed = this.body.CheckingSeeds[region.SeedStart + i];
-            this.terminalSeeds.Add(new(seed.Operation, seed.Target));
+            var seed = this.body.CheckingSeeds[continuation.SeedStart + i];
+            this.terminalSeeds.Add(new(seed.Operation, seed.Target, Replay: seed.Replay));
         }
     }
 
-    private readonly record struct CheckingContinuation(int Seed, Koto? Target = null, int Region = -1);
+    private readonly record struct CheckingContinuation(int Seed, Koto? Target = null, int SeedStart = 0, int SeedCount = 0, int Replay = -1);
 
     // This is a bounded continuation proof, not an executable-syntax allowlist.
     // Terminal branches of every selection record their seeds, so selections are
     // walked as ordinary children, as are completing loops. Divergent effects,
-    // cleanup and short-circuit effects still need additional joins.
+    // cleanup and region-changing mixed replay still need additional joins.
     // The visitor is retained and walks owned children without allocating arrays.
     private sealed class ScopedCheckingProof(OwnershipAnalysis owner) : KotoVisitor
     {
@@ -165,8 +274,7 @@ public sealed partial class OwnershipAnalysis
                 return;
             }
 
-            if (node is MatchKoto or ForKoto or RequireKoto or DeferredBlockKoto ||
-                node is BinaryKoto { Akind: KotoKind.And or KotoKind.Or })
+            if (node is MatchKoto or ForKoto or DeferredBlockKoto)
             {
                 this.supported = false;
                 return;
@@ -175,11 +283,11 @@ public sealed partial class OwnershipAnalysis
             node.VisitChildren(this);
         }
 
-        internal bool Check(CodeBlockKoto block, bool allowTermination = true)
+        internal bool Check(Koto source, bool allowTermination = true)
         {
             this.supported = true;
             this.allowTermination = allowTermination;
-            this.Visit(block);
+            this.Visit(source);
             return this.supported;
         }
     }

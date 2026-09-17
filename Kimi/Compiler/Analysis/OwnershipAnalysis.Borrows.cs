@@ -37,6 +37,23 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (unwrapped is IndexKoto index && ReferenceTypes.IsArray(index.Left.BoundType) &&
+            index.Left.BoundType!.Semantics == SemanticsKind.Ref && type.Semantics == SemanticsKind.Ref)
+        {
+            var receiver = this.Expression(index.Left, PlaceUseKind.Read);
+            var receiverValue = this.Value(receiver);
+            var subscript = this.Expression(index.Right);
+            if (receiver < 0 || subscript < 0)
+            {
+                return -1;
+            }
+
+            var projected = this.Place(index, type, OwnershipPlaceKind.Temporary, false);
+            var address = this.Emit(OwnershipOperationKind.Borrow, index, receiver, projected, loanMode: LoanRequirement.Ref);
+            this.SetValue(address, OwnershipValueKind.Address, [receiverValue, this.Value(subscript)], constant: receiver);
+            return this.RegisterTemporary(projected);
+        }
+
         if (unwrapped is MemberAccessKoto field && ReferenceTypes.IsStruct(field.Left.BoundType))
         {
             var receiver = this.Expression(field.Left, PlaceUseKind.Read);

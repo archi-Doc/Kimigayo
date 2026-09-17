@@ -156,17 +156,17 @@ public sealed partial class OwnershipBody
         return next >= 0 && this.BlockOf[next] == block ? next : -1;
     }
 
-    private int LoadBlock(int block, bool checking = false)
+    private int LoadBlock(int block, bool checking = false, ulong[]? replayStates = null)
     {
         var width = this.words * Lanes;
-        var states = checking ? this.checkingStates : this.BlockStates;
+        var states = replayStates ?? (checking ? this.checkingStates : this.BlockStates);
         states.AsSpan(block * width, width).CopyTo(this.Scratch);
         return checking ? this.checkingLeaders[block] : this.BlockLeaders[block];
     }
 
-    private int RunBlock(int block, bool finalize, bool checking = false)
+    private int RunBlock(int block, bool finalize, bool checking = false, int stop = -1, ulong[]? replayStates = null)
     {
-        var operation = this.LoadBlock(block, checking);
+        var operation = this.LoadBlock(block, checking, replayStates);
         while (true)
         {
             if (finalize)
@@ -184,7 +184,7 @@ public sealed partial class OwnershipBody
 
             this.Transfer(operation);
             var next = this.NextInBlock(operation, block, checking);
-            if (next < 0)
+            if (next < 0 || operation == stop)
             {
                 return operation;
             }
