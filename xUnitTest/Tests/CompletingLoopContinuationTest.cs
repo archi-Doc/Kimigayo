@@ -50,9 +50,9 @@ public class CompletingLoopContinuationTest
             returns ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Theory]
-    [InlineData("")]
+    [InlineData("\n            x = 3")]
     [InlineData("\n            stop()")]
-    [InlineData("\n            return")]
+    [InlineData("\n            x = 3\n            return")]
     [InlineData("\n            loop => continue")]
     [InlineData("\n            if c => return else => return")]
     public void MixedTargetPropagationRemainsGuarded(string dead)

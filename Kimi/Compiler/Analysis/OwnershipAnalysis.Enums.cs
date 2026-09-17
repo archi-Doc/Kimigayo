@@ -69,11 +69,19 @@ public sealed partial class OwnershipAnalysis
         {
             // Reserve the key before following fields to reject recursive inline storage.
             this.supportedTypes[type] = false;
-            supported = structure.Bases.Count == 0 && structure.GenericArguments.Count == 0 &&
+            supported = structure.Bases.Count == 0 &&
                 type.OriginArguments.Count <= structure.OriginNames.Count;
+            var count = StructStorage.Count(type);
+            if (type.StoredFields?.Length != count)
+            {
+                type.StoredFields = new BoundType[count];
+            }
+
             for (var i = 0; i < StructStorage.Count(type) && supported; i++)
             {
-                supported = StructStorage.Field(type, i).BoundType is { } field && this.SupportsType(field);
+                var field = this.compilation.Binding.StoredType(StructStorage.Field(type, i), type);
+                supported = field is not null && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
+                type.StoredFields[i] = field!;
             }
 
             this.supportedTypes[type] = supported;

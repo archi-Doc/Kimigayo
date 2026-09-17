@@ -27,7 +27,7 @@ internal sealed partial class BodyLowering
         var syntaxReceiver = operation.Source switch
         {
             BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
-            ForKoto loop when plan.Kind is SequenceOperation.Start or SequenceOperation.End => ElementAccess.ValueSource(loop.Iterable),
+            ForKoto loop when plan.Kind is SequenceOperation.Start or SequenceOperation.End or SequenceOperation.ArrayRead => ElementAccess.ValueSource(loop.Iterable),
             _ => null,
         };
         var receiverPlace = body.Places[plan.Receiver];
@@ -58,17 +58,25 @@ internal sealed partial class BodyLowering
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
         }
 
-        if (plan.Kind == SequenceOperation.Read)
+        if (plan.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead)
         {
-            if (receiver.Kind != BoundTypeKind.Slice || operation.Source is not IndexKoto source || source.Left.BoundType?.Kind != BoundTypeKind.Slice ||
+            var arrayRead = plan.Kind == SequenceOperation.ArrayRead;
+            if (arrayRead && receiver.Length == 0)
+            {
+                address = new(EmissionOperandKind.NullAddress, 0);
+            }
+
+            var validSource = arrayRead ? operation.Source is ForKoto { Iterable.BoundType.Kind: BoundTypeKind.FixedArray } :
+                operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice };
+            if (receiver.Kind != (arrayRead ? BoundTypeKind.FixedArray : BoundTypeKind.Slice) || !validSource ||
                 !ReferenceEquals(ValueType(body, id), receiver.Components[0]) || !ScalarTypes.Supports(ValueType(body, id)) ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
-                (body.IsReachable(id) && !this.Dominates(plan.Index, id)) || !this.TryGetLocation(source, directory, constants, out var location))
+                (body.IsReachable(id) && !this.Dominates(plan.Index, id)) || !this.TryGetLocation(operation.Source, directory, constants, out var location))
             {
                 return Fail("Slice read requires a protected handle and an isize index.", out failure);
             }
 
-            function.AddScalar(EmissionOpcode.Sequence, id, [address, this.PhysicalOperand(body, plan.Index)], place: body.Operations.Count + id, location: location, op: "Read", check: ArithmeticCheckKind.Bounds, representation: WindowsLowering.GetValue(ValueType(body, id)!));
+            function.AddScalar(EmissionOpcode.Sequence, id, [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, arrayRead ? receiver.Length : -1)], place: body.Operations.Count + id, location: location, op: arrayRead ? "ArrayRead" : "Read", check: ArithmeticCheckKind.Bounds, representation: WindowsLowering.GetValue(ValueType(body, id)!));
             return true;
         }
 

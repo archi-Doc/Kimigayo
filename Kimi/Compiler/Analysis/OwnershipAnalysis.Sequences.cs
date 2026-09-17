@@ -98,6 +98,14 @@ public sealed partial class OwnershipAnalysis
 
     private void Iterate(ForKoto source)
     {
+        var array = source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
+        var element = array ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
+        if (array && !ScalarTypes.Supports(element))
+        {
+            this.Unsupported(source);
+            return;
+        }
+
         var iterable = this.Expression(source.Iterable);
         if (iterable < 0)
         {
@@ -124,15 +132,24 @@ public sealed partial class OwnershipAnalysis
         var bindingMark = this.locals.Count;
         this.loops.Add(new(source, head, exit, bindingMark, this.temporaries.Count, Comparisons: this.comparisonDepth));
         var name = source.Bindings[0];
-        var binding = this.LocalPlace(name.BoundSymbol, name, BoundType.ISize, false);
+        var binding = this.LocalPlace(name.BoundSymbol, name, element, false);
         this.locals.Add(new(binding, name, this.registrationSequence++));
         this.Emit(OwnershipOperationKind.Declare, name, binding);
         // Acquire the current value before advancing the hidden iterator. The last
         // increment reaches end (at most maximum isize), never end + 1.
-        var item = this.Place(name, BoundType.ISize, OwnershipPlaceKind.Temporary, true);
-        var itemOp = this.Emit(OwnershipOperationKind.Produce, name, item);
-        this.SetValue(itemOp, OwnershipValueKind.Alias, [this.Value(current)]);
-        this.RegisterTemporary(item);
+        int item;
+        if (array)
+        {
+            item = this.SequenceValue(source, element, SequenceOperation.ArrayRead, iterable, index: this.Value(current));
+        }
+        else
+        {
+            item = this.Place(name, BoundType.ISize, OwnershipPlaceKind.Temporary, true);
+            var itemOp = this.Emit(OwnershipOperationKind.Produce, name, item);
+            this.SetValue(itemOp, OwnershipValueKind.Alias, [this.Value(current)]);
+            this.RegisterTemporary(item);
+        }
+
         this.Emit(OwnershipOperationKind.Write, name, binding, item);
         var one = this.SequenceConstant(source, BoundType.ISize, 1);
         var next = this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(one), KotoKind.Plus);

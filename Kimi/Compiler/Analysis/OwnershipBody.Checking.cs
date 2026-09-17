@@ -156,7 +156,7 @@ public sealed partial class OwnershipBody
             var ready = true;
             for (var s = 0; s < Math.Max(1, region.SeedCount); s++)
             {
-                var seed = region.SeedCount == 0 ? region.Seed : this.CheckingSeeds[region.SeedStart + s];
+                var seed = region.SeedCount == 0 ? region.Seed : this.CheckingSeeds[region.SeedStart + s].Operation;
                 Debug.Assert(this.OperationRegions[seed] < i);
                 var runtime = this.Reachable[seed];
                 if (!runtime && !this.HasCheckingState(seed))

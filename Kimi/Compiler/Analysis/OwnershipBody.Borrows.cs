@@ -227,7 +227,7 @@ public sealed partial class OwnershipBody
 
                 for (var i = 0; i < StructStorage.Count(type); i++)
                 {
-                    if (Observes(StructStorage.Field(type, i).BoundType!))
+                    if (Observes(StructStorage.FieldType(type, i)!))
                     {
                         return true;
                     }

@@ -10,6 +10,10 @@ public class SequenceEmissionTest
 {
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "ArrayValues", "var a: [3 of i32] = [2, 4, 6]\nvar sum = 0\nfor value in a\n    a = [9, 9, 9]\n    sum += value\nrequire sum == 12 and a[0] == 9 else => $abort(\"snapshot\")\nwriteLine(\"ok\")", "ok\n" },
+        { "ArrayEmpty", "let a: [0 of bool] = []\nfor value in a => $abort(\"empty\")\nwriteLine(\"ok\")", "ok\n" },
+        { "ArrayOnce", "func make() -> [2 of f64]\n    writeLine(\"once\")\n    return [1.5, 2.5]\nvar sum: f64 = 0.0\nfor value in make() => sum += value\nrequire sum == 4.0 else => $abort(\"sum\")", "once\n" },
+        { "ArrayTransfer", "let a: [3 of i32] = [1, 2, 3]\nvar sum = 0\nouter: for value in a\n    defer => writeLine(\"step\")\n    for other in a\n        if value == 1 => continue to outer\n        sum += value + other\n        exit to outer\nrequire sum == 3 else => $abort(\"transfer\")", "step\nstep\n" },
         { "Indices", "var a: [3 of i32] = [10, 20, 12]\nvar sum = 0\nfor i in a.indices\n    sum += a[i]\nrequire sum == 42 else => $abort(\"sum\")\nwriteLine(\"ok\")", "ok\n" },
         { "Empty", "let a: [0 of i32] = []\nfor i in a.indices => $abort(\"iteration\")\nlet s = a[..]\nrequire s.isEmpty and s.length == 0 else => $abort(\"empty\")\nfor i in s.indices => $abort(\"slice iteration\")\nwriteLine(\"ok\")", "ok\n" },
         { "Metadata", "let a: [2 of string] = [\"a\", \"b\"]\nlet r = a.indices\nlet copy = r\nrequire r.start == 0 and r.end == 2 and r.length == 2 and not r.isEmpty else => $abort(\"range\")\nrequire a.length == 2 else => $abort(\"length\")\nwriteLine(a[0])\nwriteLine(a[1])", "a\nb\n" },
@@ -46,6 +50,10 @@ public class SequenceEmissionTest
             "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Theory]
+    [InlineData("let a: [1 of i32] = [1]\nfor i in a => i = 2")]
+    [InlineData("let a: [1 of i32]\nfor i in a => ()")]
+    [InlineData("let a: [1 of i32] = [1]\nfor i in a => ()\ni")]
+    [InlineData("let a: [1 of i32] = [1]\nfor (i, j) in a => ()")]
     [InlineData("let a: [1 of i32] = [1]\nfor i in a.indices => i = 2")]
     [InlineData("let a: [1 of i32] = [1]\nfor i in a.indices => ()\ni")]
     [InlineData("for i in 0..3 => ()")]

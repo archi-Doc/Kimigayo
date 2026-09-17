@@ -14,6 +14,7 @@ public sealed class LlvmEmitter
     private readonly EmissionModule module = new();
     private readonly BodyLowering lowering = new();
     private readonly FunctionAbiPool signatures = new();
+    private readonly GenericStoragePlan generics = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
 
     internal LlvmEmitter(Compilation compilation)
@@ -53,7 +54,7 @@ public sealed class LlvmEmitter
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
                 var body = c.Ownership.Bodies[i];
-                if (!this.SkipGenerated(body) && !body.Function.IsGenerated)
+                if (!this.SkipGenerated(body) && !body.Function.IsGenerated && !GenericStoragePlan.IsGeneric(body.Function))
                 {
                     if (body.Function.IsDestructor)
                     {
@@ -70,12 +71,19 @@ public sealed class LlvmEmitter
                 return false;
             }
 
+            if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, out failure))
+            {
+                return false;
+            }
+
+            this.lowering.GenericCalls = this.generics.Calls;
+
             // Register every selected signature first: recursion refers to the same record.
             var ordinal = 0;
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
                 var body = c.Ownership.Bodies[i];
-                if (this.SkipGenerated(body))
+                if (this.SkipGenerated(body) || GenericStoragePlan.IsGeneric(body.Function))
                 {
                     continue;
                 }
@@ -88,7 +96,7 @@ public sealed class LlvmEmitter
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
                 var body = c.Ownership.Bodies[i];
-                if (this.SkipGenerated(body))
+                if (this.SkipGenerated(body) || GenericStoragePlan.IsGeneric(body.Function))
                 {
                     continue;
                 }
@@ -120,6 +128,7 @@ public sealed class LlvmEmitter
         {
             // Never retain a previous parse through the active declaration-to-ABI map.
             this.functions.Clear();
+            this.generics.Clear();
             this.lowering.ClearFunctionContext();
             this.lowering.AggregateLayouts.ClearDestructors();
             if (!module.IsComplete)
@@ -147,7 +156,7 @@ public sealed class LlvmEmitter
         }
 
         if (c.KotonohaArray.Length != 0 || c.SourceModules.Length != 1 || startup.OutputKind != OutputKind.Application || startup.Kind is not (StartupKind.Implicit or StartupKind.Explicit) ||
-            c.Kotonoha.RootKoto.NestedContainers.Any(x => x is not StructKoto))
+            !this.SupportedContainers(c.Kotonoha.RootKoto))
         {
             return "This partial emitter supports Applications without external modules or declaration containers.";
         }
@@ -171,6 +180,11 @@ public sealed class LlvmEmitter
             }
 
             var function = body.Function;
+            if (GenericStoragePlan.IsGeneric(function))
+            {
+                continue; // Universally verified CFG and concrete entry checks run in GenericStoragePlan.
+            }
+
             if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor &&
                 (function.BoundSymbol.ReceiverIndex < 0 || !ReferenceTypes.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType)))
             {
@@ -200,5 +214,19 @@ public sealed class LlvmEmitter
         }
 
         return null;
+    }
+
+    private bool SupportedContainers(DeclarationContainerKoto container)
+    {
+        for (var i = 0; i < container.NestedContainers.Count; i++)
+        {
+            var nested = container.NestedContainers[i];
+            if (nested is not (StructKoto or GroupKoto) || !this.SupportedContainers(nested))
+            {
+                return false;
+            }
+        }
+
+        return container is not GroupKoto || container.Members.All(x => x is FunctionKoto or AliasKoto);
     }
 }

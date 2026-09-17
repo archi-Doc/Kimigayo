@@ -131,7 +131,7 @@ internal sealed partial class BodyLowering
 
             for (var i = 0; i < StructStorage.Count(type); i++)
             {
-                if (HasOwnedStorage(StructStorage.Field(type, i).BoundType!))
+                if (HasOwnedStorage(StructStorage.FieldType(type, i)!))
                 {
                     return true;
                 }

@@ -11,25 +11,38 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
         var range = instruction.Representation == WindowsLowering.Unit;
-        if (instruction.ScalarOperator == "Read")
+        if (instruction.ScalarOperator is "Read" or "ArrayRead")
         {
-            Name(output, "  %seqbase", id);
-            output.Write(" = load ptr, ptr ");
-            Address();
-            output.Write(", align 8\n");
-            Name(output, "  %seqendptr", id);
-            output.Write(" = getelementptr i8, ptr ");
-            Address();
-            output.Write(", i64 8\n");
-            Name(output, "  %seqend", id);
-            output.Write(" = load i64, ptr ");
-            Name(output, "%seqendptr", id);
-            output.Write(", align 8\n");
+            var arrayRead = instruction.ScalarOperator == "ArrayRead";
+            if (!arrayRead)
+            {
+                Name(output, "  %seqbase", id);
+                output.Write(" = load ptr, ptr ");
+                Address();
+                output.Write(", align 8\n");
+                Name(output, "  %seqendptr", id);
+                output.Write(" = getelementptr i8, ptr ");
+                Address();
+                output.Write(", i64 8\n");
+                Name(output, "  %seqend", id);
+                output.Write(" = load i64, ptr ");
+                Name(output, "%seqendptr", id);
+                output.Write(", align 8\n");
+            }
+
             Name(output, "  %invalid", id);
             output.Write(" = icmp uge i64 ");
             WriteOperand(output, operands[1]);
             output.Write(", ");
-            Name(output, "%seqend", id);
+            if (arrayRead)
+            {
+                output.Write((long)operands[2].Value);
+            }
+            else
+            {
+                Name(output, "%seqend", id);
+            }
+
             output.Write('\n');
             WriteArithmeticFailure(output, constants, instruction, "%invalid");
             Name(output, "  %offset", id);
@@ -39,7 +52,16 @@ internal static partial class LlvmModuleWriter
             output.Write(instruction.Representation!.Layout.Stride);
             output.Write('\n');
             Name(output, "  %element", id);
-            Name(output, " = getelementptr i8, ptr %seqbase", id);
+            output.Write(" = getelementptr i8, ptr ");
+            if (arrayRead)
+            {
+                Address();
+            }
+            else
+            {
+                Name(output, "%seqbase", id);
+            }
+
             Name(output, ", i64 %offset", id);
             output.Write('\n');
             WriteScalar(output, constants, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation.ComputationType }, []);

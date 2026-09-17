@@ -12,9 +12,12 @@ internal sealed partial class BodyLowering
     private ControlFlowAnalysis? flow;
     private int[] parameterArguments = [];
 
+    internal IReadOnlyDictionary<BoundCall, GenericStoragePlan.CallEntry>? GenericCalls { get; set; }
+
     internal void ClearFunctionContext()
     {
         this.functions = null;
+        this.GenericCalls = null;
         this.flow = null;
         this.arguments.Clear();
         this.aggregateLayouts.Clear();
@@ -26,17 +29,18 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
+        var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) : null;
         if (operation.Source is not InvocationKoto { AttributeChain: null, BoundCall: { } plan } call ||
-            plan.TypeArguments.Length != 0 || plan.Origins.Length != 0 ||
+            (generic is null && plan.TypeArguments.Length != 0) || plan.Origins.Length != 0 ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
-            !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceTypes.CallTypeMatches(target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type, plan.ReturnType, plan))
+            !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceTypes.CallTypeMatches(generic?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), plan.ReturnType, plan))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
 
         var runtime = ReferenceEquals(plan.Target, core.WriteLine) || ReferenceEquals(plan.Target, core.Abort);
-        var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : this.functions!.GetValueOrDefault(target);
+        var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : generic?.Physical.Abi ?? this.functions!.GetValueOrDefault(target);
         if (callee is null)
         {
             return Fail("Call target has no selected implementation ABI.", out failure);
@@ -61,7 +65,7 @@ internal sealed partial class BodyLowering
                 (isDefault && (parameter <= previousDefault || !target.Parameters[parameter].IsOptional || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
                     !ReferenceEquals(omitted.Parameter.Scope.Owner, target) || !ScalarDefaults.SupportsValue(omitted.ParameterType))) ||
                 acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || acquisition.ParameterIndex != parameter ||
-                !ReferenceTypes.CallTypeMatches(target.Parameters[parameter].Type.BoundType, acquisition.ParameterType, plan) ||
+                !ReferenceTypes.CallTypeMatches(generic?.Parameters[parameter] ?? target.Parameters[parameter].Type.BoundType, acquisition.ParameterType, plan) ||
                 (acquisition.Kind != ArgumentOperationKind.Value && !ReferenceTypes.IsString(acquisition.ParameterType) && !ReferenceTypes.IsStruct(acquisition.ParameterType)))
             {
                 return Fail("Invalid call argument mapping or acquisition.", out failure);
@@ -188,7 +192,7 @@ internal sealed partial class BodyLowering
             }
 
             var entry = this.parameterArguments[physical.LogicalIndex];
-            var type = target.Parameters[physical.LogicalIndex].Type.BoundType!;
+            var type = generic?.Parameters[physical.LogicalIndex] ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
             if (physical.Kind == AbiParameterKind.Value && IsScalar(type))
             {
                 var value = Input(body, entry, 0);

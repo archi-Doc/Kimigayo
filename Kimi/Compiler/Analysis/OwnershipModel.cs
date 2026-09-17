@@ -202,7 +202,7 @@ public sealed partial class OwnershipBody
     internal readonly List<int> LoanStates = new();
     internal readonly List<int> OperationRegions = new();
     internal readonly List<OwnershipCheckingRegion> CheckingRegions = new();
-    internal readonly List<int> CheckingSeeds = new();
+    internal readonly List<OwnershipCheckingSeed> CheckingSeeds = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
     internal bool[] Reachable = [];
     internal bool[] BlockReachable = [];
@@ -308,9 +308,11 @@ public sealed partial class OwnershipBody
 
 // A checking-only seed edge. Its source is replayed after its containing region
 // converges; it never enters EdgeStorage or contributes a runtime predecessor.
-// Target is null for function-terminal paths. MixedTargets permits local checking,
-// but its merged state cannot be propagated across another extent boundary.
+// Target is null for function-terminal paths. MixedTargets permits local checking;
+// only its unchanged constituent seeds may cross another extent boundary.
 internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry, int SeedStart = 0, int SeedCount = 0, Koto? Target = null, bool MixedTargets = false);
+
+internal readonly record struct OwnershipCheckingSeed(int Operation, Koto? Target);
 
 // Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.
 internal enum OwnershipValueKind : byte
@@ -335,6 +337,7 @@ internal enum OwnershipValueKind : byte
 
 internal enum SequenceOperation : byte
 {
+    ArrayRead,
     Indices,
     Length,
     Start,

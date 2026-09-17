@@ -10,6 +10,10 @@ public sealed partial class Binding
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
 
+    internal BoundType? InstantiateStorageType(BoundType type, BoundCall call)
+        => this.MemberType(type, call.DeclaringType) is { } member
+            ? this.SubstituteType(member, call.Target.Declaration, call.TypeArguments) : null;
+
     private static bool IsSpecialField(Koto node, out FunctionKoto function)
     {
         if (node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol: { Name: "self", Declaration: FunctionKoto receiver } } } &&
@@ -53,8 +57,7 @@ public sealed partial class Binding
 
         var qualifier = this.TypeName(member.Left, scope, false);
         var type = qualifier is null ? null : this.EnumQualifierType(member.Left, qualifier, scope, null);
-        if (StructStorage.Declaration(type) is not { } declaration || declaration.Bases.Count != 0 ||
-            declaration.GenericArguments.Count != 0 ||
+        if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } || declaration.Bases.Count != 0 ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
             Fail(member, BindingFailure.Unsupported);

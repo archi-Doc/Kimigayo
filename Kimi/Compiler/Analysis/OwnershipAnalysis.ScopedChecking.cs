@@ -16,15 +16,24 @@ public sealed partial class OwnershipAnalysis
     private CheckingContinuation Continuation()
     {
         var region = this.body.CheckingRegions[this.checkingRegion];
-        return region.MixedTargets ? new(-1) : new(this.CheckingSeed(), region.Target);
+        if (!region.MixedTargets)
+        {
+            return new(this.CheckingSeed(), region.Target);
+        }
+
+        // Preserve each incoming path only while the local join is unchanged.
+        // Subsequent checking effects require separate state per target.
+        return region.SeedCount > 0 && this.current == region.Entry ? new(this.CheckingSeed(), Region: this.checkingRegion) : new(-1);
     }
 
-    private void BeginChecking(int seed, Koto? target = null)
+    private void BeginChecking(int seed, Koto? target = null, OwnershipCheckingRegion? previous = null)
     {
         // A transfer in dead source cannot replace the extent of the path that
-        // made it unreachable. This also retains mixed-target propagation guards.
-        var origin = this.body.CheckingRegions[this.checkingRegion];
-        this.body.CheckingRegions.Add(new(seed, -1, Target: this.checkingRegion > 0 ? origin.Target : target, MixedTargets: origin.MixedTargets));
+        // made it unreachable. An unchanged seed also retains its constituent
+        // targets across a bare transfer, before the transfer's implicit cleanup.
+        var origin = previous ?? this.body.CheckingRegions[this.checkingRegion];
+        var unchanged = origin.MixedTargets && seed >= 0 && (seed == origin.Entry || (origin.Entry < 0 && seed == origin.Seed));
+        this.body.CheckingRegions.Add(new(seed, -1, unchanged ? origin.SeedStart : 0, unchanged ? origin.SeedCount : 0, this.checkingRegion > 0 ? origin.Target : target, origin.MixedTargets));
         this.checkingRegion = this.body.CheckingRegions.Count - 1;
     }
 
@@ -53,8 +62,8 @@ public sealed partial class OwnershipAnalysis
 
     // Joins the terminal paths recorded since mark, then releases them. Every path
     // must be available; the join is the continuation of later dead source. A
-    // mixed-target join can check its own dead source, but cannot supply a merged
-    // state to an enclosing join that may consume only some of those targets.
+    // mixed-target join checks local dead source using the common state. An
+    // unchanged join can also export its constituent paths to enclosing extents.
     private void JoinChecking(Koto source, int mark)
     {
         this.FilterTerminalSeeds(source, mark);
@@ -90,7 +99,8 @@ public sealed partial class OwnershipAnalysis
             this.body.CheckingRegions.Add(new(first.Seed, -1, this.body.CheckingSeeds.Count, count, first.Target, mixed));
             for (var i = mark; i < end; i++)
             {
-                this.body.CheckingSeeds.Add(this.terminalSeeds[i].Seed);
+                var seed = this.terminalSeeds[i];
+                this.body.CheckingSeeds.Add(new(seed.Seed, seed.Target));
             }
 
             this.current = -1;
@@ -100,7 +110,23 @@ public sealed partial class OwnershipAnalysis
         this.terminalSeeds.RemoveRange(mark, end - mark);
     }
 
-    private readonly record struct CheckingContinuation(int Seed, Koto? Target = null);
+    private void AddTerminalSeed(CheckingContinuation continuation)
+    {
+        if (continuation.Region < 0)
+        {
+            this.terminalSeeds.Add(continuation);
+            return;
+        }
+
+        var region = this.body.CheckingRegions[continuation.Region];
+        for (var i = 0; i < region.SeedCount; i++)
+        {
+            var seed = this.body.CheckingSeeds[region.SeedStart + i];
+            this.terminalSeeds.Add(new(seed.Operation, seed.Target));
+        }
+    }
+
+    private readonly record struct CheckingContinuation(int Seed, Koto? Target = null, int Region = -1);
 
     // This is a bounded continuation proof, not an executable-syntax allowlist.
     // Terminal branches of every selection record their seeds, so selections are

@@ -100,7 +100,7 @@ internal static class ElementAccess
                 if (ReferenceEquals(field.BoundSymbol, source.BoundSymbol))
                 {
                     position = i;
-                    element = field.BoundType;
+                    element = StructStorage.FieldType(type, i);
                     return element is not null;
                 }
             }

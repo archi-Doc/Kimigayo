@@ -60,7 +60,7 @@ internal sealed class AggregateLayoutPool
         {
             for (var i = 0; i < fieldCount; i++)
             {
-                var component = sequence ? BoundType.ISize : structure ? StructStorage.Field(type, i).BoundType! : type.Components[i];
+                var component = sequence ? BoundType.ISize : structure ? StructStorage.FieldType(type, i)! : type.Components[i];
                 var child = this.Get(component, depth + 1);
                 var value = type.Kind == BoundTypeKind.Slice && i == 0 ? WindowsLowering.StringReference : child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
                 if (value is null)

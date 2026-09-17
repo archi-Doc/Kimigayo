@@ -155,7 +155,7 @@ public sealed partial class OwnershipAnalysis
         {
             result = this.Temporary(source, projection: projection);
             if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
-                (!allowMove || this.body.Places[result].Acquisition != AcquisitionKind.Move || this.body.Projections[projection].Path != projection ||
+                (!allowMove || this.body.Places[result].Acquisition is not (AcquisitionKind.Move or AcquisitionKind.CopyOrMove) || this.body.Projections[projection].Path != projection ||
                     !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))
             {
                 // Inspection and shared arguments must borrow the element Place;
@@ -166,7 +166,7 @@ public sealed partial class OwnershipAnalysis
             var output = this.Value(result);
             for (var ancestor = projection; ancestor >= 0; ancestor = this.body.Projections[ancestor].Parent)
             {
-                if (this.body.Places[result].Acquisition == AcquisitionKind.Move &&
+                if (this.body.Places[result].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&
                     this.body.Operations[this.body.Projections[ancestor].Operation].Source is BinaryKoto path &&
                     path.Left.BoundType is { } owner && StructStorage.Destructor(owner) is not null)
                 {

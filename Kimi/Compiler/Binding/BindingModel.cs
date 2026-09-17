@@ -221,6 +221,9 @@ public sealed record BoundType : ControlFlowType
 
     internal static readonly BoundType String = Primitives["string"];
 
+    // Refilled by ownership preparation after each final bind; excluded from Type identity.
+    internal BoundType[]? StoredFields { get; set; }
+
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
 
     internal bool IsFloatingPoint => this.numeric == NumericCategory.Float;

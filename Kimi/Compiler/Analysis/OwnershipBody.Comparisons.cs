@@ -33,7 +33,7 @@ public sealed partial class OwnershipBody
 
             // Root protection during location is wider than a completed element borrow.
             return (operation.Kind == OwnershipOperationKind.WriteElement ||
-                (operation.Acquisition == AcquisitionKind.Move && loanId != access.Loan)) &&
+                (operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove && loanId != access.Loan)) &&
                 (loan.Projection < 0 || this.ElementPathsOverlap(operation.Projection, loan.Projection));
         }
 
@@ -202,7 +202,7 @@ public sealed partial class OwnershipBody
 
             for (var i = 0; region.Entry >= 0 && i < region.SeedCount; i++)
             {
-                if (this.LoanStates[this.CheckingSeeds[region.SeedStart + i]] != this.LoanInputs[region.Entry])
+                if (this.LoanStates[this.CheckingSeeds[region.SeedStart + i].Operation] != this.LoanInputs[region.Entry])
                 {
                     return false;
                 }

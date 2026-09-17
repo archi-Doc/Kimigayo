@@ -7,7 +7,9 @@ namespace Kimi.Compiler;
 /// <summary>Logical stored fields of the concrete owned structure execution subset.</summary>
 internal static class StructStorage
 {
-    internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Nominal, Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto };
+    internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto };
+
+    internal static BoundType? FieldType(BoundType type, int index) => type.StoredFields is { } fields ? fields[index] : Field(type, index).BoundType;
 
     internal static StructKoto? Declaration(BoundType? type) => IsStruct(type) ? (StructKoto)type!.Symbol!.Declaration : null;
 

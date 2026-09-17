@@ -1,0 +1,243 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+namespace Kimi.Compiler;
+
+internal static partial class LlvmModuleWriter
+{
+    private static void WriteSharedStorage(EmissionModule module, TextWriter output)
+    {
+        if (module.SharedBodies.Count == 0)
+        {
+            return;
+        }
+
+        // Metadata executes already verified ownership operations. Context carries no live flags.
+        output.Write("%kimi.shared.policy = type { i64, i64, ptr, ptr }\n");
+        output.Write("define internal void @__kimi_shared_drop(ptr %slot, ptr %context, ptr %location, i64 %length) #0 {\nentry:\n  ret void\n}\n");
+        foreach (var entry in module.SharedEntries)
+        {
+            WriteSharedEntry(output, entry);
+        }
+
+        foreach (var body in module.SharedBodies)
+        {
+            WriteSharedBody(output, module.Constants, body);
+        }
+    }
+
+    private static void WriteSharedEntry(TextWriter output, SharedStorageEntry entry)
+    {
+        var name = entry.Abi.Name;
+        output.Write($"@{name}_offsets = private constant [{entry.Offsets.Length} x i64] [");
+        for (var i = 0; i < entry.Offsets.Length; i++)
+        {
+            output.Write(i == 0 ? string.Empty : ", ");
+            output.Write($"i64 {entry.Offsets[i]}");
+        }
+
+        output.Write($"]\n@{name}_policies = private constant [{entry.Policies.Length} x %kimi.shared.policy] [");
+        for (var i = 0; i < entry.Policies.Length; i++)
+        {
+            var policy = entry.Policies[i];
+            output.Write(i == 0 ? string.Empty : ", ");
+            output.Write($"%kimi.shared.policy {{ i64 {policy.Size}, i64 {(policy.Copy ? 1 : 0)}, ptr @{(policy.Destructor is null ? "__kimi_shared_drop" : name + "_drop" + i)}, ptr null }}");
+        }
+
+        output.Write("]\n");
+        for (var i = 0; i < entry.Policies.Length; i++)
+        {
+            if (entry.Policies[i].Destructor is { } destructor)
+            {
+                output.Write($"define internal void @{name}_drop{i}(ptr %slot, ptr %context, ptr %location, i64 %length) #0 {{\nentry:\n  call void @{destructor}(ptr %slot, ptr %location, i64 %length)\n  ret void\n}}\n");
+            }
+        }
+
+        output.Write(entry.Abi.GetDefinition(false));
+        output.Write("entry:\n");
+        if (entry.ScratchSize != 0)
+        {
+            output.Write($"  %scratch = alloca [{entry.ScratchSize} x i8], align {entry.ScratchAlignment}\n");
+        }
+
+        if (!entry.Abi.ResultSlot && entry.Result.Layout.Size != 0)
+        {
+            output.Write($"  %ret = alloca {entry.Result.Layout.StorageType}, align {entry.Result.Layout.Alignment}\n");
+        }
+
+        for (var i = 0; i < entry.Parameters.Length; i++)
+        {
+            var value = entry.Parameters[i];
+            if (value.ArgumentType == "ptr" && value.Layout.Size != 0)
+            {
+                continue;
+            }
+
+            if (value.Layout.Size == 0)
+            {
+                continue;
+            }
+
+            output.Write($"  %arg{i} = alloca {value.Layout.StorageType}, align {value.Layout.Alignment}\n");
+
+            if (value.ComputationType == "i1")
+            {
+                output.Write($"  %bool{i} = zext i1 %a{i} to i8\n  store i8 %bool{i}, ptr %arg{i}, align 1\n");
+            }
+            else
+            {
+                output.Write($"  store {value.ComputationType} %a{i}, ptr %arg{i}, align {value.Layout.Alignment}\n");
+            }
+        }
+
+        output.Write($"  call void @{entry.Body.Name}(ptr {(entry.Abi.ResultSlot || entry.Result.Layout.Size != 0 ? "%ret" : "null")}");
+        for (var i = 0; i < entry.Parameters.Length; i++)
+        {
+            output.Write(entry.Parameters[i].Layout.Size == 0 ? ", ptr null" : entry.Parameters[i].ArgumentType == "ptr" ? $", ptr %a{i}" : $", ptr %arg{i}");
+        }
+
+        output.Write($", ptr @{name}_offsets, ptr @{name}_policies, ptr {(entry.ScratchSize == 0 ? "null" : "%scratch")})\n");
+        if (entry.Abi.Result == "void")
+        {
+            output.Write("  ret void\n}\n");
+        }
+        else if (entry.Abi.Result == "i1")
+        {
+            output.Write("  %byte = load i8, ptr %ret, align 1\n  %value = trunc i8 %byte to i1\n  ret i1 %value\n}\n");
+        }
+        else
+        {
+            output.Write($"  %value = load {entry.Abi.Result}, ptr %ret, align {entry.Result.Layout.Alignment}\n  ret {entry.Abi.Result} %value\n}}\n");
+        }
+    }
+
+    private static void WriteSharedBody(TextWriter output, LlvmConstantPool constants, SharedStorageBody body)
+    {
+        output.Write($"define internal void @{body.Name}(ptr %ret");
+        for (var p = 0; p < body.ParameterCount; p++)
+        {
+            output.Write($", ptr %a{p}");
+        }
+
+        output.Write(", ptr %offsets, ptr %policies, ptr %scratch) #0 {\nentry:\n");
+        for (var i = 0; i < body.Leaves.Length; i++)
+        {
+            var leaf = body.Leaves[i];
+            var address = leaf.Result ? "%ret" : leaf.Parameter >= 0 ? "%a" + leaf.Parameter : "%scratch";
+            if (body.LiveFlags[i])
+            {
+                output.Write($"  %live{i} = alloca i8, align 1\n  store i8 0, ptr %live{i}, align 1\n");
+            }
+
+            output.Write($"  %offptr{i} = getelementptr i64, ptr %offsets, i64 {i}\n  %off{i} = load i64, ptr %offptr{i}, align 8\n");
+            output.Write($"  %p{i} = getelementptr i8, ptr {address}, i64 %off{i}\n");
+        }
+
+        for (var i = 0; i < body.PolicyCount; i++)
+        {
+            output.Write($"  %meta{i} = getelementptr %kimi.shared.policy, ptr %policies, i64 {i}\n  %size{i} = load i64, ptr %meta{i}, align 8\n");
+            output.Write($"  %copyptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 1\n  %copyword{i} = load i64, ptr %copyptr{i}, align 8\n  %copy{i} = trunc i64 %copyword{i} to i8\n");
+            output.Write($"  %dropptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 2\n  %drop{i} = load ptr, ptr %dropptr{i}, align 8\n");
+            output.Write($"  %ctxptr{i} = getelementptr %kimi.shared.policy, ptr %meta{i}, i32 0, i32 3\n  %ctx{i} = load ptr, ptr %ctxptr{i}, align 8\n");
+        }
+
+        output.Write("  br label %b0\n");
+        for (var id = 0; id < body.Instructions.Length; id++)
+        {
+            var op = body.Instructions[id];
+            if (!op.Reachable)
+            {
+                continue;
+            }
+
+            output.Write($"b{id}:\n");
+            if (op.Kind is SharedStorageOperation.Destroy or SharedStorageOperation.Transfer)
+            {
+                for (var k = op.Count - 1; k >= 0; k--)
+                {
+                    var action = body.Destructions[op.DestructionStart + k];
+                    if (action == CleanupAction.Skip)
+                    {
+                        continue;
+                    }
+
+                    var dest = op.Destination + k;
+                    var policy = body.Leaves[dest].Policy;
+                    var location = constants[op.Location];
+                    if (action == CleanupAction.Conditional)
+                    {
+                        output.Write($"  %alivebyte{id}_{k} = load i8, ptr %live{dest}, align 1\n  %alive{id}_{k} = icmp ne i8 %alivebyte{id}_{k}, 0\n  br i1 %alive{id}_{k}, label %drop{id}_{k}, label %after{id}_{k}\ndrop{id}_{k}:\n");
+                    }
+
+                    output.Write($"  call void %drop{policy}(ptr %p{dest}, ptr %ctx{policy}, ptr @{location.Name}, i64 {location.ByteLength})\n");
+                    if (action == CleanupAction.Conditional)
+                    {
+                        output.Write($"  br label %after{id}_{k}\nafter{id}_{k}:\n");
+                    }
+                }
+            }
+
+            for (var k = 0; k < op.Count; k++)
+            {
+                var dest = op.Destination + k;
+                var source = op.Source + k;
+
+                switch (op.Kind)
+                {
+                    case SharedStorageOperation.Initialize:
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.Declare:
+                    case SharedStorageOperation.Deliver:
+                    case SharedStorageOperation.Destroy:
+                        Live(dest, false);
+                        break;
+                    case SharedStorageOperation.Transfer:
+                    case SharedStorageOperation.Acquire:
+                        output.Write($"  call void @llvm.memcpy.p0.p0.i64(ptr %p{dest}, ptr %p{source}, i64 %size{body.Leaves[dest].Policy}, i1 false)\n");
+                        Live(dest, true);
+                        if (op.Kind == SharedStorageOperation.Acquire && body.LiveFlags[source])
+                        {
+                            output.Write($"  store i8 %copy{op.CopyPlace}, ptr %live{source}, align 1\n");
+                        }
+                        else
+                        {
+                            Live(source, false);
+                        }
+
+                        break;
+                    case SharedStorageOperation.Boolean:
+                        output.Write($"  store i8 {op.Source}, ptr %p{dest}, align 1\n");
+                        Live(dest, true);
+                        break;
+                }
+            }
+
+            if (op.Alternative >= 0)
+            {
+                output.Write($"  %condbyte{id} = load i8, ptr %p{op.Condition}, align 1\n  %condition{id} = trunc i8 %condbyte{id} to i1\n  br i1 %condition{id}, label %b{op.Next}, label %b{op.Alternative}\n");
+            }
+            else if (op.Kind == SharedStorageOperation.Return)
+            {
+                output.Write("  ret void\n");
+            }
+            else if (op.Next >= 0)
+            {
+                output.Write($"  br label %b{op.Next}\n");
+            }
+            else
+            {
+                output.Write("  unreachable\n");
+            }
+        }
+
+        output.Write("}\n");
+
+        void Live(int leaf, bool initialized)
+        {
+            if (body.LiveFlags[leaf])
+            {
+                output.Write($"  store i8 {(initialized ? "1" : "0")}, ptr %live{leaf}, align 1\n");
+            }
+        }
+    }
+}

@@ -1,5 +1,62 @@
 # Kimigayo Compiler Completion Plan
 
+## Program Milestone 8 integration (2026-09-17)
+
+This request targets `milestones/Milestone8.kimi`, independently of this plan's
+M1–M17 stages. HEAD `cf6fa41` and the initial worktree were clean, so there were
+no uncommitted changes to archive. Root AGENTS.md and all fourteen current
+programs were read (the request referred to five). Programs 1–7 supply scalar
+execution, functions, destruction, borrowing, transfers and sequence views.
+Program 8 requires nested groups, generic construction/ownership and direct
+fixed-array iteration. Programs 9–14 require additional callbacks, enums,
+length generics, specialization, Iterator and object support; those remain outside
+this checkpoint. No draft or specification program is modified.
+
+The current-source Debug baseline built cleanly and 174 focused tests passed.
+The unchanged target first failed final Binding at generic construction calls
+and direct `for` iteration. Ownership and generation were initially untested,
+not established failures. Evidence is under `bin/milestone8-work/`.
+
+**Program 8 COMPLETE.** The unchanged target passes Binding, universal ownership
+checking, LLVM verification, linking and ordinary native O0/O2 execution. Exact
+stdout is `Chosen item.\nBoxed array total is 12.\nGeneric scope finished.\n`,
+with empty stderr and exit 0. Generic field acquisition retains CopyOrMove path
+state; deinit-bearing partial acquisition and possible reuse are rejected at
+definition. Generation shares each admitted generic storage CFG, with concrete
+ABI entries, deduplicated symbolic type policies, immutable 8-byte context slots
+and operation/context pairs. Entry scratch reserves only required local storage,
+excluding parameters/results and empty values; conditional destruction flags are
+limited to paths whose live state can vary. Copy fixed arrays are acquired once
+for iteration. No source-specific special case or language-rule relaxation is used.
+
+Final Debug/Release solution builds pass with zero warnings/errors. Both full
+suites pass 7,567 tests each with no failures/skips, including 40 added cases.
+Tests cover Copy and Move instantiations, shared-body/policy identity, exact frame
+capacity, reverse field destruction, unused definitions, malformed lowering plans,
+reanalysis, snapshot/empty array loops, and related invalid source rejection.
+The new `backend/windows-x64/test-milestone8.ps1` passes 46 checks per configuration:
+unchanged/renamed inputs, both choices, alternate/empty arrays, explicit Abort,
+and thirteen rejected inputs. Completed programs 1–7 also pass their respective
+25/21/37/33/47/63/52 checks in both configurations: 648 integration checks total.
+Each final report matches the current compiler and source SHA-256 hashes.
+
+LLVM verification and native O0/O2 regressions pass for 13 GenericStorage,
+23 Sequence, 466 Element, 18 Struct and 50 Reference fixtures: 570 fixtures and
+1,140 executions. Final Debug/Release fixture regeneration matches the saved
+native IR/expectation hashes; native execution and regeneration were serialized.
+Evidence, logs, hashes and the final summary are in
+`bin/milestone8-work/verification.json`. Original LLVM sandbox permission denial
+was resolved by authorized execution; no required check remains unverified.
+NativeAOT tests were not run. Work stops at program 8; the broader plan stages
+below retain their separate incomplete obligations.
+
+The shared backend currently admits owned transfer/placement/cleanup, boolean
+selection and direct generic stored fields. Generic forwarding calls, arbitrary
+symbolic compound fields, length-dependent storage, specialization, borrowed
+generic ABI and general generic arithmetic remain guarded. Direct iteration is
+limited to supported scalar Copy fixed arrays; general owned element iteration,
+Slice iteration and user Iterable/Iterator dispatch remain separate work.
+
 ## Program Milestone 7 integration (2026-09-17)
 
 This request targets `milestones/Milestone7.kimi`, independently of this plan's
@@ -91,11 +148,16 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-- Last updated: **2026-09-17T09:42:00+09:00** (Asia/Tokyo).
-- Current execution: user-authorized continuation of unit 29; the previous execution's deadline and elapsed time are historical. No new time budget was specified.
-- Fresh resumption: HEAD `97bebe1` (user commit `.`); the working tree was clean and unit 29's implementation and evidence were available. Root AGENTS.md, plan, relevant specification, implementation and verification setup inspected; no nested AGENTS.md. Current evidence root: `bin/plan-execution/20260917-092418/`.
-- Current milestones: **M2/M3 IN_PROGRESS**. **T4n-q DONE** (execution unit 30): per-path transfer targets support completing loop/while continuations and filter internal transfers. Full Debug/Release suites PASS **7,487/configuration**, zero failures/skips, and new fixtures PASS **32 ordinary native O0/O2 executions/configuration**. Broader native regression PASS **348 Never + 414 Default executions**; Milestone 1 PASS **25 checks/configuration**. Unit 29's T4n-p evidence is historical and preserved. Changes are uncommitted.
-- Current next action: mixed-target continuation propagation; reproduce `bin/plan-execution/20260917-092418/next-mixed-target.kimi` (see unit 30). Effectful/outer-mutating divergent loops, deferred-cleanup joins, unequal Loan joins, short-circuit conditions and broader M2/M3 remain incomplete.
+- Timed execution closed **2026-09-17T15:04:22+09:00**; elapsed **20m17s**. The 20-minute limit has elapsed. Units 31–32 are DONE; no further unit was started. M2/M3 remain IN_PROGRESS. Final diff checks pass; the workspace is coherent and uncommitted.
+
+- Last updated: **2026-09-17T15:03:00+09:00** (Asia/Tokyo).
+- Current execution: 20-minute soft limit starting **14:44:05 JST**, including inspection and verification; deadline **15:04:05 JST**. At the deadline, finish the current bounded unit or leave a coherent documented checkpoint; do not start another unit. Earlier execution limits are historical.
+- Fresh checkpoint: HEAD `cf6fa41`, with the completed program-8 changes still uncommitted. Re-read the current instructions, plan and affected implementation. Preserve those changes; initial tracked/untracked files and patch are archived under `bin/plan-execution/20260917-144405/`. Program 8 is complete; resume the broad plan's latest explicit M2/M3 next action rather than starting program 9.
+- **Unit 31 / I6/I8 T4n-r DONE:** unchanged mixed joins retain their constituent targets. Both clean builds and full suites PASS 7,583/configuration; LLVM/native regression PASS 380 Never + 414 Default executions, including 32 new executions. Milestone 1/8 PASS 25/46 checks per configuration. Current evidence: `bin/plan-execution/20260917-144405/`.
+- **Unit 32 / I6/I8 T4n-s DONE:** started 14:59:35 JST (15m30s elapsed), verified at 15:03 JST. Bare checking-only transfers retain original targets and pre-cleanup seeds, including consecutive transfers. Both clean builds and full suites PASS 7,594/configuration; 32 new ordinary O0/O2 executions PASS. All prior Never/Default native fixture and expectation hashes match final regeneration. Assignments/calls/operand effects remain guarded; no unverified implementation work remains in units 31–32.
+- Previous resumption (unit 30): HEAD `97bebe1` (user commit `.`); the working tree was clean and unit 29's implementation and evidence were available. Root AGENTS.md, plan, relevant specification, implementation and verification setup inspected; no nested AGENTS.md. Current evidence root: `bin/plan-execution/20260917-092418/`.
+- Previous checkpoint: **M2/M3 IN_PROGRESS**. **T4n-q DONE** (execution unit 30): per-path transfer targets support completing loop/while continuations and filter internal transfers. Full Debug/Release suites PASS **7,487/configuration**, zero failures/skips, and new fixtures PASS **32 ordinary native O0/O2 executions/configuration**. Broader native regression PASS **348 Never + 414 Default executions**; Milestone 1 PASS **25 checks/configuration**. Unit 29's T4n-p evidence is historical and preserved. Changes are uncommitted.
+- Current next action after this timed stop: reproduce `dotnet Kimi/bin/Debug/net10.0/Kimi.dll check bin/plan-execution/20260917-144405/next-mixed-effect.kimi` (UnsupportedOwnership_Kd at 13:13). Carry subsequent checking effects per target before an enclosing extent filters paths; do not propagate one merged state or omit a path. This requires a separate coherent unit and is not started in the remaining minute. Outer-mutating divergent loops, deferred-cleanup joins, unequal Loan joins, short-circuit conditions and broader M2/M3 remain incomplete.
 - Earlier executions: the 02:42–03:42 run completed T4a–T4f; the 03:43–04:43 run completed T4g–T4m and added 91 tests. Their changes are part of the current committed baseline and are preserved by this run.
 - Historical execution baseline evidence is retained under `bin/plan-execution/20260917-024236/`; the 04:43 execution verified `bin/plan-execution/20260917-034310/final-manifest.txt` at its start. Preserve all prior changes and the committed user draft.
 - Previous execution: 01:42:22–02:42:20 JST, 59m58s; T1a, T5a/G9, T27a, T27b and T7a DONE. Final full suites passed 7,050 cases per configuration. Native Milestone 1 passed 25 checks per configuration at T27b. These records remain tied to their inputs; rerun affected checks after new changes.
@@ -106,19 +168,19 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 - T4b checkpoint (about 16 minutes elapsed): **IMPLEMENTED_UNVERIFIED**. Ten original-code reproducers failed: default flow was absent, value-producing selections/do were discarded, and jumps escaped into outer function/loop bodies. Defaults are now visited independently, recognized as value contexts and form a transfer boundary. Twelve new cases and 222 focused cases pass, including bodyless requirements, checking-only branches, internal exits, independent callee completion and zero-allocation warmed reanalysis. Both clean builds pass after a helper-order warning fix; final full suites are running.
 - **T4b DONE at 03:01 JST (about 18 minutes elapsed)**: both clean builds and full suites pass, 7,074 cases per configuration. Next **T4c IN_PROGRESS**, a bounded I4/I8 default-execution slice whose call-plan and flow prerequisites are T4a/T4b: support scalar literal/preceding-parameter arithmetic defaults through prepared argument slots, ownership and lowering. Check every default declaration; keep generic, borrowed/owned, effectful and other unsupported default expressions rejected. Other M2/M3 obligations remain open. Required evidence: original-code emission failures, ordering/snapshot/repeated-call cases, meaningful malformed-plan checks, full Debug/Release suites and new O0/O2 native execution/Abort cases before DONE.
 - Remaining: I3 final R1–R3 clause closure; I4 default/call/inference plans; I5 remaining Contract/projection/Core obligations. Effect-family verification remains I7/M3, default ownership/cleanup I8/M3, persistent semantic artifact reuse I29/M12. G9 is resolved; G1/G2 still block only their undefined public integration slices.
-- Applicable rules: root AGENTS.md; no nested instruction file found. English documentation, practical allocation/performance optimization, no draft edits and no NativeAOT tests. The current 60-minute soft stopping rule takes precedence over continuing through all remaining work.
+- Applicable rules: root AGENTS.md; no nested instruction file found. English documentation, practical allocation/performance optimization, no draft edits and no NativeAOT tests. The current 20-minute soft stopping rule takes precedence over continuing through all remaining work.
 Use states `TODO`, `IN_PROGRESS`, `IMPLEMENTED_UNVERIFIED`, `DONE`, `BLOCKED`, `NOT_APPLICABLE`. DONE requires the milestone's acceptance evidence, not historical reports. Use verification results `PASS`, `FAIL`, `NOT_RUN`, `BLOCKED`.
 
 | ID | State | Completion evidence or remaining work | Next action |
 | --- | --- | --- | --- |
 | M1 | DONE | 2026-09-17 at HEAD `8c49edb`: I1 baseline (V1–V3 PASS in both configurations, V4–V5 Struct-family PASS, G5 resolved) and I2 Appendix A clause coverage map recorded in Section 4; no discrepancy observed, all uncovered clause families assigned to existing T/I IDs | M2/I3 |
 | M2 | IN_PROGRESS | Selected defaults, declaration checks and omitted-call completion verified through T4n; I3 final clause closure and broader I4/I5 obligations remain | Remaining inference/call closure and declaration ownership proofs |
-| M3 | IN_PROGRESS | T4n-a–q verify bounded noncompletion/checking, conditional and partial terminal-path joins, target-aware completing-loop continuations, local loop effects and scalar default initialization. General effects/Loans/refinement, effectful divergent loops, mixed-target propagation, deferred-cleanup joins, unequal Loan joins and owned/borrowed default cleanup remain incomplete | I6/I8 next bounded join (see unit 30 next action) |
+| M3 | IN_PROGRESS | T4n-a–s verify bounded noncompletion/checking, terminal-path joins, target-aware loops, unchanged mixed-target joins and bare-transfer continuations. General effects/Loans/refinement, effectful divergent loops, effects after mixed joins, deferred cleanup, unequal Loan joins and owned/borrowed defaults remain incomplete | I6/I8 per-target checking effects (unit 32 next action) |
 | M4 | TODO | Concrete structs already have execution support; inherited layout/accessors/static storage need integration | I9–I11 |
 | M5 | TODO | Concrete enum semantic plans exist; general enum/Pattern execution absent | I12 |
-| M6 | TODO | Generic schema/proof foundations exist; universal bodies/selection/shared generation incomplete | I13–I16 |
+| M6 | IN_PROGRESS | Program 8 adds universal stored-field CopyOrMove checking and shared transfer/selection CFGs with concrete entries and fixed frames; broader universal bodies, explicit selection and generic operations remain incomplete | Remaining I13–I16 obligations |
 | M7 | TODO | Capture syntax and Callable identities exist; Closure/function-value execution incomplete | I17–I18 |
-| M8 | IN_PROGRESS | Program 7 subset implemented (see integration checkpoint above); general sequence Core APIs/witnesses and Iterable/Iterator dispatch remain unfinished | I19–I20 |
+| M8 | IN_PROGRESS | Program 7 sequence subset and program 8 scalar Copy fixed-array iteration implemented (see integration checkpoints above); general sequence Core APIs/witnesses and Iterable/Iterator dispatch remain unfinished | I19–I20 |
 | M9 | TODO | Collection/Stringify/comparison contracts specified; executable Core incomplete | I21–I23 |
 | M10 | TODO | Object/Weak APIs and profile specified; generation/runtime incomplete | I24–I25 |
 | M11 | TODO | Import declarations/pointer syntax partially supported; native execution boundary needs completion | I26 |
@@ -430,16 +492,16 @@ Boxes track the entire I item. Verified sub-units do not close a parent while it
 | I3 | M2 / R1–R3, R27 | [ ] IN_PROGRESS 2026-09-17. Audit: all 250 ```kimi blocks under `spec/` parse except intentional errors, standalone Type fragments, bodyless signatures and root-level Property accessor fragments (Chapter 11 confines Properties to struct/group/rootgroup); no lexical/type-syntax defect found; the only parser gap is `$expect`/`$require` (R25, recorded under I30). `check` on programs 1–6 passes; 7–9 fail only at planned later-milestone boundaries (see V11 record). SpecTour `check` gives 544 sites, 381 `UnsupportedBinding_Kd`; non-Unsupported codes reviewed, one M2 defect found. **T3a DONE:** merged containers now retain the first declaring fragment's CodeContext (`DeclarationContainerKoto.GetOrAddChild` / `GetOrAddDeclarationContainer` accept the parsing context; `TryParseDeclarationContainer` and rootgroup parsing pass `reader.CodeContext`), so container-level Binding failures report `file:line:col` instead of `Project:@0`. **T1a DONE 2026-09-17:** unavailable modifiers now report `UnavailableFeature_Kd` and recover across all planned declaration/accessor forms without reserving ordinary Names; 40 new cases, 275 focused cases and full Debug/Release suites (7,027 each) pass. Original parser fails all 28 negative cases; V9 comparison and CLI rejection recorded in unit 2. T27a/T27b DONE: append/reload invalidation and persistent source-error state verified. T7a DONE: effect-diagnostic correction and retained rejection/no-reselection verified; effect-family implementation remains I7 and persistent semantic artifact reuse remains I29. G9 resolved under I5. I3 remains IN_PROGRESS for final R1–R3 clause-coverage closure; the concrete effect and in-memory stale-analysis reproducers are now recorded and resolved or assigned to their owning later milestones. |
 | I4 | M2 / R4 | [ ] IN_PROGRESS. Selected omitted-default plans, independent declaration checking, scalar execution and selected default completion are verified through T4n-a–g. General inference/call closure, recursive-default completion, effectful/borrowed/owned defaults and pending-slot cleanup remain unfinished. Evidence and exact resumption are in Section 2 and unit 20. |
 | I5 | M2 / R5, R19 | [ ] IN_PROGRESS. T5a/G9 DONE: isolated unresolved conformance causes no longer publish derived container/Copy/Property cascades; other facts/errors remain visible. Complete the remaining retained Contract/projection/certificate obligations and canonical Core identities. |
-| I6 | M3 / R6–R7 | [ ] IN_PROGRESS. T4n-a–g add verified nonreturning-call, state-neutral loop/wrapper and operand/result-arrival checking. T4n-h–o add scoped/default continuation joins; T4n-p joins every recorded terminal path of a scope or terminal selection, including partial early transfers followed by later termination. T4n-q carries transfer targets through completing-loop continuations and removes internal transfers at each extent. Mixed-target propagation, general authorized places/Loans/Origins, unequal Loan joins and retained result/storage dependencies remain. |
+| I6 | M3 / R6–R7 | [ ] IN_PROGRESS. T4n-a–g add nonreturning-call/local divergence and operand checking; T4n-h–p add scoped/default/partial terminal joins; T4n-q retains transfer targets through completing loops. T4n-r–s preserve constituent targets across unchanged mixed joins and bare transfers. Per-target subsequent effects, general places/Loans/Origins, unequal Loan joins and retained result/storage dependencies remain. |
 | I7 | M3 / R7, R20 | [ ] Compute effect-family fixed points and public guarantees; complete dependent usage checks. |
 | I8 | M3 / R8–R9, R27 | [ ] IN_PROGRESS. T4c–T4m implement bounded scalar/Unit preparation and subplace inspection; T4g/T4h diagnose definite prepared Moves. T4n-a–g independently check scalar default initialization and preserve no-arrival behavior through calls/operators/state-neutral wrappers. General escaping-Borrow/capture/Copy proofs, owned default cleanup, effectful-divergence/deferred-cleanup continuation joins and refinement remain incomplete; partial scoped terminal joins and target-aware completing-loop continuations are verified by T4n-p–q. |
 | I9 | M4 / R10 | [ ] Extend existing struct/base layout/construction/destruction and inherited receiver support. |
 | I10 | M4 / R11 | [ ] Connect standard/custom/computed/Contract Property operations through ownership and generation. |
 | I11 | M4 / R11, R24 | [ ] Implement first-access static states, effects, cycle checks and ordered shutdown. |
 | I12 | M5 / R12 | [ ] Complete enum/tag/payload ABI and owned/shared Pattern lowering. |
-| I13 | M6 / R5–R7, R13 | [ ] Verify generic bodies universally and preserve symbolic acquisition/cleanup plans. |
+| I13 | M6 / R5–R7, R13 | [ ] Program 8 verifies conditional stored-field acquisition and cleanup in the existing ownership CFG; broader universal operations/effects remain. |
 | I14 | M6 / R13 | [ ] Close and validate explicit specialization sets; retain selected implementation at every call/reference. |
-| I15 | M6 / R14 | [ ] Build baseline shared bodies, metadata/schemas, entry adapters and exact fixed frames. |
+| I15 | M6 / R14 | [ ] Program 8 supplies shared storage/selection bodies, deduplicated policies, concrete entry adapters and exact fixed scratch frames; general calls/compound fields/lengths remain. |
 | I16 | M6 / R14, R28 | [ ] Add deterministic finite resource limits and bounded optional optimization; measure effects. |
 | I17 | M7 / R15 | [ ] Implement captures/concrete environments and receiver-specific callable analysis/lowering. |
 | I18 | M7 / R7, R14–R15 | [ ] Implement function items, common Function values, erasure and indirect-call adapters. |
@@ -1060,6 +1122,59 @@ Mixed-target joins remain valid for local checking, but `MixedTargets` explicitl
 Tests: `CompletingLoopContinuationTest` adds **32 cases**, covering early-return Move/uninitialized/let histories, loop and while, internal exit/continue/yield, nested and outer targets, same-target joins, dead transfers, function-terminal selections, Borrow ending, omitted/supplied scalar defaults, mixed-target guards, serialization/reload and zero warmed allocation. Two former partial-scope guard cases now check successful completing-loop analysis and the correct Move diagnostic. Focused Debug checks PASS **639**; full Debug and Release checks PASS **7,487 each**, zero failures/skips; builds have zero warnings/errors. Sixteen new fixtures/configuration PASS **32 O0/O2 native executions/configuration**. Broader replay PASS **348 Never + 414 Default executions** (patterns overlap for default/Never fixtures); Milestone 1 PASS **25/configuration**, reports at `bin/milestone1/Debug/684f853e8e3945e6b5fdd842d32a9632/verification.json` and `bin/milestone1/Release/599310bce5fd4088846e314e000fa532/verification.json`. Native execution initially encountered sandbox tool permissions and then passed under authorized escalation. Source/artifact and fixture hashes are recorded in `source-artifact-hashes.json` and `fixture-hashes.json`. SPEC.md and §14.10.3 already define the required behavior and need no change; no draft edits, NativeAOT tests or commit.
 
 **Exact next action:** mixed-target propagation. `next-mixed-target.kimi` and `next-mixed-target.log` in this unit's evidence root reproduce UnsupportedOwnership_Kd at 12:13 for a scope containing `loop\n    if c\n        x = 1\n        return\n    else => exit`, followed by `x = 2; stop()` and an outer dead read of `x`; the correct result is acceptance. The terminal selection's local join is valid, but an outer loop must retain only the return path while handling the exit normally. Keep constituent targets and any subsequent checking-only effects separate until the enclosing extent has selected its escaping paths; do not assign one target to a merged state or drop an unavailable path. Deferred cleanup, unequal Loan heads, short-circuit conditions and effectful divergent loops remain separate unfinished obligations. M2/M3 remain IN_PROGRESS; this unit has no unverified implementation work.
+
+### Execution unit 31 — I6/I8 T4n-r unchanged mixed-target continuations
+
+**DONE, 2026-09-17 14:58 JST (about 14 minutes elapsed).**
+The baseline Debug build was clean and 62 existing loop/partial-scope tests passed.
+The current-source CLI reproduced unit 30's UnsupportedOwnership_Kd at 12:13.
+Checking seeds now retain both operation and transfer target. A mixed region may
+export its original constituent seeds only while its current tail is exactly the
+join entry; enclosing constructs filter their own handled targets before joining.
+The local common-state join and runtime CFG are unchanged. Subsequent checking
+effects still produce an unavailable continuation rather than a guessed target or
+discarded state. This is a deliberately bounded slice of unit 30's next action.
+
+Sixteen new tests cover nested selection/loop/scope/yield extents, branch order,
+both execution choices, Move/init/let histories, local dead-source checking and
+reload/warmed zero-allocation analysis/emission. The old empty-tail guard case is
+now positive coverage; its guard slot uses a subsequent assignment instead.
+Focused Debug PASS 78; final Debug/Release builds have zero warnings/errors and
+both full suites PASS 7,583 each, zero failures/skips. LLVM/native O0/O2 regression
+PASS 380 Never + 414 Default executions (overlapping families), including 32 new
+executions. Milestone 1/8 PASS 25/46 checks per configuration. Evidence root:
+`bin/plan-execution/20260917-144405/`. SPEC §14.10.3 already defines the
+behavior; no language change or draft edit is needed. A possible next bounded
+slice is an identity continuation through a subsequent bare transfer:
+`next-bare-transfer.kimi` still reproduces UnsupportedOwnership_Kd at 13:13.
+Preserve original targets and pre-cleanup seeds; never apply a later dead transfer's
+target to every incoming path. Additional checking effects remain separate work.
+
+### Execution unit 32 — I6/I8 T4n-s bare transfers after mixed joins
+
+**DONE, 15:03 JST (about 19 minutes elapsed).** Retain the
+constituent seed range when a bare transfer preserves the mixed join's exact
+pre-cleanup seed. Capture its region before lowering implicit cleanup: the first
+focused run exposed three chain/reuse failures because cleanup itself gave the
+previously empty region an entry before provenance was inspected. The corrected
+path captures the existing value-type region once, without allocating or changing
+runtime edges. Ordinary unavailable/effectful continuations remain guarded.
+Eleven new cases cover return/exit/continue and consecutive transfers, both native
+choices, and invalid initialization/Move/let histories. Reload/warmed allocation
+coverage now includes consecutive transfers. Final Debug/Release builds have zero
+warnings/errors; full suites PASS 7,594 each with no failures/skips. Sixteen new
+fixtures across both configurations PASS 32 LLVM/O0/O2 native executions. Every
+previous Never/Default IR and expectation hash matches final regeneration, retaining
+unit 31's native evidence without unnecessary repeat execution. Together these
+two units add 27 cases and 64 new native executions. No NativeAOT test, draft edit,
+specification change or commit was made; prior uncommitted work is preserved.
+Evidence uses `s-*` files in `bin/plan-execution/20260917-144405/`.
+
+Next action: `next-mixed-effect.kimi` adds `x = 3` after the mixed terminal selection
+and reproduces UnsupportedOwnership_Kd at 13:13. It requires per-target application
+of later checking effects; a merged state cannot be filtered correctly afterward.
+Do not remove the guard without that representation and its negative/Loan/cleanup
+tests. No part of this next implementation was started under the remaining budget.
 
 ## 9. Risks and Implementation Notes
 

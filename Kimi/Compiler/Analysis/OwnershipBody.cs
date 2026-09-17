@@ -349,9 +349,9 @@ public sealed partial class OwnershipBody
 
                 break;
             case OwnershipOperationKind.Produce:
-                if (operation.Projection >= 0 && operation.Acquisition == AcquisitionKind.Move && this.projectionPaths[operation.Projection] >= 0)
+                if (operation.Projection >= 0 && operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove && this.projectionPaths[operation.Projection] >= 0)
                 {
-                    this.SetPathState(this.projectionPaths[operation.Projection], false);
+                    this.SetPathState(this.projectionPaths[operation.Projection], false, conditional: operation.Acquisition == AcquisitionKind.CopyOrMove);
                 }
 
                 this.Initialize(place);

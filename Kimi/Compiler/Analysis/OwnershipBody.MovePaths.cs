@@ -79,7 +79,7 @@ public sealed partial class OwnershipBody
         this.projectionPaths.AsSpan(0, this.Projections.Count).Fill(-1);
         foreach (var plan in this.Projections)
         {
-            if (plan.Output >= 0 && this.Operations[plan.Output].Acquisition == AcquisitionKind.Move && this.moveRoots[plan.Root] < 0)
+            if (plan.Output >= 0 && this.Operations[plan.Output].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove && this.moveRoots[plan.Root] < 0)
             {
                 this.moveRoots[plan.Root] = this.movePaths.Count;
                 this.movePaths.Add(new(plan.Root, -1, -1, this.Places[plan.Root].Type));
@@ -176,7 +176,7 @@ public sealed partial class OwnershipBody
         return state;
     }
 
-    private void SetPathState(int path, bool initialized, bool declare = false, bool cleanup = false)
+    private void SetPathState(int path, bool initialized, bool declare = false, bool cleanup = false, bool conditional = false)
     {
         for (var slot = this.PathSlot(path, false); slot <= this.PathSlot(path); slot++)
         {
@@ -190,6 +190,11 @@ public sealed partial class OwnershipBody
                 {
                     this.Clear(slot, MustLane);
                     this.Clear(slot, MayLane);
+                }
+                else if (conditional)
+                {
+                    this.Clear(slot, MustLane);
+                    this.Set(slot, MovedLane);
                 }
                 else
                 {
@@ -206,7 +211,7 @@ public sealed partial class OwnershipBody
 
         for (var child = this.movePaths[path].Child; child >= 0; child = this.movePaths[child].Next)
         {
-            this.SetPathState(child, initialized, declare, cleanup);
+            this.SetPathState(child, initialized, declare, cleanup, conditional);
         }
     }
 }

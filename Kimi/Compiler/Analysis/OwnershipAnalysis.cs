@@ -331,7 +331,7 @@ public sealed partial class OwnershipAnalysis
         var id = this.Place(source, source.BoundType, kind, true);
         if (produce)
         {
-            this.Emit(OwnershipOperationKind.Produce, source, id, acquisition: projection >= 0 && this.body.Places[id].Acquisition == AcquisitionKind.Move ? AcquisitionKind.Move : AcquisitionKind.None, projection: projection);
+            this.Emit(OwnershipOperationKind.Produce, source, id, acquisition: projection >= 0 && this.body.Places[id].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove ? this.body.Places[id].Acquisition : AcquisitionKind.None, projection: projection);
             this.RegisterTemporary(id);
         }
 
@@ -755,7 +755,7 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.Produce, conditional, output);
             if (!completes)
             {
-                this.terminalSeeds.Add(this.Continuation());
+                this.AddTerminalSeed(this.Continuation());
             }
         }
 
@@ -784,11 +784,11 @@ public sealed partial class OwnershipAnalysis
     {
         if (!this.flow!.Nodes[block].CanCompleteNormally)
         {
-            this.terminalSeeds.Add(continuation);
+            this.AddTerminalSeed(continuation);
         }
         else if (!completes)
         {
-            this.terminalSeeds.Add((this.scopedCheckingProof ??= new(this)).Check(block, false) ? this.Continuation() : new(-1));
+            this.AddTerminalSeed((this.scopedCheckingProof ??= new(this)).Check(block, false) ? this.Continuation() : new(-1));
         }
     }
 
@@ -973,7 +973,7 @@ public sealed partial class OwnershipAnalysis
             // A completing scope leaves its pending terminal paths to the enclosing join.
             if (continuation.Seed >= 0 && (this.scopedCheckingProof ??= new(this)).Check(block))
             {
-                this.terminalSeeds.Add(continuation);
+                this.AddTerminalSeed(continuation);
                 this.JoinChecking(owner, mark);
             }
 
@@ -1127,6 +1127,7 @@ public sealed partial class OwnershipAnalysis
             seed = this.current; // Ownership state is unchanged; abandoned Loans stay ended in checking code.
         }
 
+        var continuationRegion = this.body.CheckingRegions[this.checkingRegion];
         if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
         {
             var secured = this.WriteResult(jump, this.resultPlace, value);
@@ -1174,7 +1175,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.current = -1;
-        this.BeginChecking(seed, ReferenceEquals(target, this.body.Function) ? null : target);
+        this.BeginChecking(seed, ReferenceEquals(target, this.body.Function) ? null : target, continuationRegion);
         return -1;
     }
 

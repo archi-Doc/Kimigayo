@@ -1,5 +1,28 @@
 # Kimigayo Implementation Status
 
+Program Milestone 8 integration (2026-09-17, complete): the unchanged program
+passes final Binding, universal ownership checking, LLVM verification/linking and
+ordinary native O0/O2 execution. Exact stdout is
+`Chosen item.\nBoxed array total is 12.\nGeneric scope finished.\n`, with empty
+stderr and exit 0. Generic
+constructors use existing member substitution; unknown-Copy field acquisition
+retains conditional Move paths and rejects invalid definition-side reuse/deinit
+extraction. Shared storage CFGs use concrete ABI entries and immutable layout,
+Copy and destruction policies, deduplicated by symbolic type. Context slots are
+8 bytes, fixed scratch excludes external/empty storage, and live flags are emitted
+only for conditional destruction. Scalar Copy fixed-array iteration snapshots its
+input once. Final Debug/Release builds have zero warnings/errors; both full suites
+pass 7,567 tests each, including 40 new cases. Programs 1–8 pass 648 integration
+checks across both configurations, including 46 program-8 checks each and thirteen
+invalid-input cases. Related LLVM/O0/O2 regression passes 570 fixtures and 1,140
+native executions; regenerated final fixtures match the saved native hashes.
+Final integration reports match current compiler/source hashes. See PLAN.md's
+separate program-8 checkpoint and `bin/milestone8-work/verification.json`.
+No required check remains unverified; NativeAOT tests were not run. Language
+semantics, draft and milestone source programs are unchanged. Generic forwarding,
+compound symbolic fields, lengths, specialization, borrowed generic ABI and
+general Iterable/Iterator support remain guarded outside this checkpoint.
+
 Specification programs 10–14 (2026-09-17): Added [Milestone10–14](milestones/README.md#milestone-10-patterns-inside-result-producing-control-flow) combining nested enum/Tuple patterns and transfers, type/length-generic forwarding and explicit specialization, mutable/nested/consuming captures, a generic Slice-backed Iterator, and a callback pipeline with Core.makeObj and scoped object borrowing. README records expected outputs, rejection/Abort exercises, and the distinction between semantic output and evidence of physical generic code sharing. These additions are specification targets only; no compiler capability checks, builds, execution, or tests (including NativeAOT) were performed. Language rules are unchanged; SPEC.md links to the expanded series.
 
 Ownership checking continuations (2026-09-17): noncompleting do scopes,
@@ -16,8 +39,15 @@ terminal paths. Each pending checking seed carries its transfer target; exits,
 continues and yields handled inside a construct are removed before its state
 reaches an enclosing join. Transfers in dead source preserve the original path's
 target, including through later Never calls and divergence. Joins with different
-targets support local checking, but propagation of their merged state to an
-enclosing join remains guarded. No runtime edge or result arrival is added.
+targets support local checking. An unchanged mixed join retains its constituent
+seeds and targets for enclosing constructs to filter independently. Bare dead
+return/exit/continue chains retain that provenance before implicit cleanup;
+subsequent checking effects still guard propagation. No runtime edge or result
+arrival is added. Final builds are clean and all 7,594 managed tests pass in each
+configuration, including 27 new cases and zero warmed allocation checks. Native
+verification includes 380 Never + 414 Default executions, then 32 new bare-transfer
+executions; prior fixture hashes match final regeneration. Milestone 1/8 passes
+25/46 checks per configuration at unit 31 (see PLAN.md units 31–32).
 
 Noncompleting loops with only scalar/Unit loop-local effects preserve enclosing
 facts. A noncompleting while condition preserves the state after its argument
@@ -26,12 +56,12 @@ supported scalar defaults and through do wrappers. Every default declaration sti
 requires independent checking, including when its argument is supplied.
 
 Current limits include outer-mutating or owned/effectful divergent loop bodies,
-mixed-target continuation propagation, deferred-cleanup joins, unequal active
+effects after mixed-target continuation joins, deferred-cleanup joins, unequal active
 Loan joins, short-circuit conditions, recursive-default
 completion proofs and general owned/borrowed defaults. They remain guarded; M2/M3 are incomplete. PLAN.md units
 21–30 record the verified slices and the next resumption case.
 
-Final Debug/Release builds are clean and full suites pass 7,455 each. All default
+The earlier continuation checkpoint had clean Debug/Release builds and 7,455 passing tests each. All default
 and noncompletion fixtures per configuration pass ordinary native O0/O2, including
 the eight new partial-scope fixtures per configuration. Milestone 1 passes 25 checks
 per configuration. Rebind/reload and warmed analysis/emission checks pass with zero
