@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -17,32 +18,54 @@ public sealed partial class OwnershipAnalysis
         => !this.flow!.Nodes[block].CanCompleteNormally ? continuation :
             (this.scopedCheckingProof ??= new(this)).Check(block, false) ? this.current : -1;
 
-    private void JoinChecking(Koto source, int start, int count)
+    // Joins the terminal paths recorded since mark, then releases them. Every path
+    // must be available; the join is the continuation of later dead source. An
+    // unknown labeled path (-2) is omitted from a selection's join, as before these
+    // joins existed, but a scope cannot carry a state that may never leave it.
+    private void JoinChecking(Koto source, int mark, bool labeled)
     {
-        var first = this.body.CheckingSeeds[start];
-        if (first < 0)
+        var end = this.terminalSeeds.Count;
+        var write = mark;
+        for (var i = mark; i < end; i++)
         {
-            return;
-        }
-
-        for (var i = 1; i < count; i++)
-        {
-            var seed = this.body.CheckingSeeds[start + i];
-            if (seed < 0 || (this.body.LoanStates.Count > 0 && this.body.LoanStates[seed] != this.body.LoanStates[first]))
+            var seed = this.terminalSeeds[i];
+            if (seed == -2 && source is IfKoto)
             {
+                continue;
+            }
+
+            if (seed < 0 || (write > mark && this.body.LoanStates.Count > 0 && this.body.LoanStates[seed] != this.body.LoanStates[this.terminalSeeds[mark]]))
+            {
+                this.terminalSeeds.RemoveRange(mark, end - mark);
                 return; // Different active Loan stacks need a separate lifetime join.
             }
+
+            this.terminalSeeds[write++] = seed;
         }
 
+        var count = write - mark;
+        var first = this.terminalSeeds[mark];
         this.checkingRegion = this.body.CheckingRegions.Count;
-        this.body.CheckingRegions.Add(new(first, -1, start, count));
-        this.current = -1;
-        this.Emit(OwnershipOperationKind.Branch, source);
+        if (count == 1)
+        {
+            this.body.CheckingRegions.Add(new(first, -1, Labeled: labeled));
+        }
+        else
+        {
+            // A multi-seed region needs its entry now so that a nested continuation reads the join.
+            this.body.CheckingRegions.Add(new(first, -1, this.body.CheckingSeeds.Count, count, labeled));
+            this.body.CheckingSeeds.AddRange(CollectionsMarshal.AsSpan(this.terminalSeeds).Slice(mark, count));
+            this.current = -1;
+            this.Emit(OwnershipOperationKind.Branch, source);
+        }
+
+        this.terminalSeeds.RemoveRange(mark, end - mark);
     }
 
     // This is a bounded continuation proof, not an executable-syntax allowlist.
-    // Closed terminal selections have their own checking joins. Partial transfers
-    // and cleanup effects still need joins before a scope can carry their state.
+    // Terminal branches of every selection record their seeds, so selections are
+    // walked as ordinary children. Loops, cleanup and short-circuit effects still
+    // need joins before a scope can carry their state.
     // The visitor is retained and walks owned children without allocating arrays.
     private sealed class ScopedCheckingProof(OwnershipAnalysis owner) : KotoVisitor
     {
@@ -77,32 +100,6 @@ public sealed partial class OwnershipAnalysis
                 return;
             }
 
-            if (node is IfKoto conditional)
-            {
-                if (owner.flow!.Nodes[conditional].CanCompleteNormally)
-                {
-                    var previous = this.allowTermination;
-                    this.allowTermination = false;
-                    node.VisitChildren(this);
-                    this.allowTermination = previous;
-                    return;
-                }
-
-                for (var i = 0; i < conditional.Branches.Count; i++)
-                {
-                    var branch = conditional.Branches[i];
-                    this.Visit(branch.Condition);
-                    this.VisitBranchBody(branch.Body);
-                }
-
-                if (conditional.ElseBody is { } otherwise)
-                {
-                    this.VisitBranchBody(otherwise);
-                }
-
-                return;
-            }
-
             if (node is MatchKoto or ForKoto or RequireKoto or DeferredBlockKoto ||
                 node is BinaryKoto { Akind: KotoKind.And or KotoKind.Or })
             {
@@ -119,14 +116,6 @@ public sealed partial class OwnershipAnalysis
             this.allowTermination = allowTermination;
             this.Visit(block);
             return this.supported;
-        }
-
-        private void VisitBranchBody(CodeBlockKoto block)
-        {
-            var previous = this.allowTermination;
-            this.allowTermination &= !owner.flow!.Nodes[block].CanCompleteNormally;
-            this.Visit(block);
-            this.allowTermination = previous;
         }
     }
 }

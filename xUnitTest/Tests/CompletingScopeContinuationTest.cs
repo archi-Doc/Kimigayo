@@ -46,11 +46,11 @@ public class CompletingScopeContinuationTest
     [InlineData("if c => return\n        stop()")]
     [InlineData("if c => stop() else => ()\n        stop()")]
     [InlineData("if c\n            if c => return\n        stop()")]
-    public void PartialTerminationStillRequiresAnOuterJoin(string scoped)
+    public void PartialTerminationJoinsEveryPath(string scoped)
     {
         var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, x: i32)\n    do\n        " + scoped + "\n    let y = x\nf(true, 1)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

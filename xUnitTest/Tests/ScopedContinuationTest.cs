@@ -59,12 +59,10 @@ public class ScopedContinuationTest
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }
 
-    [Theory]
-    [InlineData("func f(c: bool, s: string)\n    do\n        if c\n            writeLine(s)\n            return\n        stop()\n    writeLine(s)")]
-    [InlineData("func f(x: i32)\n    work: do\n        defer => loop => ()\n        exit to work\n    let y = x")]
-    public void MultipleTerminalPathsAndCleanupRetainTheirGuard(string source)
+    [Fact]
+    public void DivergentCleanupRetainsItsGuard()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + source);
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(x: i32)\n    work: do\n        defer => loop => ()\n        exit to work\n    let y = x");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }
