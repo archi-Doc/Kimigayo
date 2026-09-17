@@ -252,7 +252,7 @@ public sealed partial class OwnershipBody
     {
         this.Function = function;
         this.IsVerified = false;
-        this.IsConcrete = function.GenericArguments.Count == 0;
+        this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();
         this.OperationStorage.Clear();
         this.EdgeStorage.Clear();

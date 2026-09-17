@@ -1,6 +1,207 @@
 # Kimigayo Compiler Completion Plan
 
-## Program Milestone 9 resumed after program 10 (2026-09-17, incomplete)
+## Program Milestone 11 completed (2026-09-17)
+
+Started **10:37:44 UTC**, soft deadline **11:37:44 UTC**. Latest target is program
+11, independently of this plan's implementation-stage numbering. Re-read the
+current instructions, plan, worktree and all fourteen program files. Preserved
+all pre-existing Milestone 9 changes, untracked files and binary diff under
+`bin/milestone11-work-20260917/`; HEAD is `1e13acc`.
+
+**Target program 11 is DONE.** All required verification finished at
+**11:13:44 UTC**, **36.02 minutes** after execution start. No later-program work
+was started. Final documentation/workspace review finished at **11:14:50 UTC**
+(**37.10 minutes** elapsed), within the 60-minute soft limit.
+
+The initial unchanged-target reproduction failed Binding: explicit specialization at 7:21
+was unsupported and the forwarding call at 10:52 had an unproven constraint.
+Downstream gaps were initially predictions and were subsequently reproduced below.
+Programs 1–10 supply existing scalar, ownership, array, enum and shared generic
+foundations. Program 11 adds closed implementation selection through generic
+forwarding, static immutable state and indexed shared borrowing. Programs 12–14
+are design context only; mutable captures and Iterator work remain out of scope.
+
+| Unit | State | Work and required verification |
+| --- | --- | --- |
+| P11-S | DONE | Closed Type specialization contracts: fifteen positive/negative binding/ownership tests, ambiguity and rebind invalidation; ordinary definitions remain universally checked. |
+| P11-G | DONE | Selected implementations, shared direct-call adapters, checked i32 operations and indexed shared borrows; normal, boundary, recursion and corrupt-plan checks pass through native O0/O2. |
+| P11-P | DONE | Verified pure immutable group scalar literal reads execute; mutable/effectful unsupported state and invalid writes/initializers reject emission. |
+| P11-F | DONE | Both clean builds, 7,881 managed tests/configuration, 506 native fixtures and all completed-program/target integrations pass with current source/compiler identities. |
+
+Expected target stdout is `Generic weights are 6, 3, 2.\n`, empty stderr and exit
+0. **Remaining target work: None. Next action: None; stop at Milestone 11.**
+NativeAOT is NOT_RUN as instructed. No required check was blocked by the environment.
+Reproduction: `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone11.kimi`.
+
+**Final verification: PASS**
+
+- Debug and Release solution builds: zero warnings/errors.
+- Both full managed suites: **7,881 passed**; **37 new tests**.
+- Related LLVM/native regression: **506 fixtures / 1,012 unique O0/O2 runs**;
+  all **2,530 fixture/expectation hashes** match.
+- Programs 1–10 plus target 11: **984 integration checks**. All **22 reports**
+  match current compiler and program hashes. The target contributes 110 checks;
+  the prior completed programs contribute 874.
+- Target exact stdout: `Generic weights are 6, 3, 2.\n`; stderr empty; exit 0.
+- Shared-body identity and selected-callee inspection: four unchanged-source
+  Debug/Release O0/O2 IR artifacts pass; retained in `shared-generation.json`.
+- Checked specialization contract/ambiguity/duplicate/invalidation failures,
+  universal ordinary-body checking, ordinary overload selection, recursive
+  specialization calls, length forwarding, non-Copy element borrowing, empty
+  arrays, bounds Abort, i32 overflow and corrupted ownership/value plans.
+- `git diff --check`: PASS. All Milestone sources and draft are unmodified by
+  this execution. Concurrent documentation edits are preserved as noted below.
+
+Evidence: `bin/milestone11-work-20260917/verification.json`, named build/test/native
+logs, source and fixture manifests, linked integration reports and
+`shared-generation.json`. Earlier unit states are archived in
+`PLAN-work-unit-history.md`. Reproduce the full target integration:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone11.ps1 -Configuration Release
+```
+
+**Retained boundaries:** no effectful/mutable static initialization, static address
+identity, length/receiver/constrained/defaulted specialization headers, explicit
+specialization Origin binders or dependent owned-result forwarding was added.
+Those unsupported paths still reject generation/verification rather than weakening
+the language. Concrete call-context expansion is bounded at depth 128. Shared
+execution allocates fixed stack scratch and no per-element heap objects; no new
+allocation-performance claim is made. Programs 12–14 remain out of scope.
+
+### Implementation checkpoints (historical within this execution)
+
+At 10:49 UTC (about 12 minutes), the unchanged target passes Binding. Confirmed
+ownership blockers: immutable static read, concrete scalar reference and indexed
+shared element borrowing. Added concrete scalar reference representation to the
+existing reference family; explicit `@ref/i32` tests now pass. Scalar `@ref`
+shorthand remains outside this unit. Next: represent static constant reads and
+indexed references with retained checked ownership operations, then shared calls.
+
+At **10:56:43 UTC** (18.98 minutes), the unchanged target builds, LLVM-verifies and
+runs natively at O2 with exact expected stdout and exit 0. Five focused fixtures
+pass LLVM verification and **10 O0/O2 native executions**. The static scalar path
+only folds verified immutable integer/bool literal initializers with no observable
+initialization effect; effectful initializers, mutable static storage and static
+address identity remain unsupported rather than being eagerly executed or omitted.
+Forwarding metadata chooses concrete entry adapters while retaining one checked
+shared body per ordinary generic definition. Indexed borrows retain evaluated
+receiver/index snapshots and runtime bounds checks without requiring Copy on T.
+Next: semantic/negative/corruption boundary coverage and full completion checks.
+
+At **11:08 UTC** (about 31 minutes), both Debug/Release builds have zero warnings
+or errors and both full managed suites pass **7,881 tests** (37 new). Target
+integration passes **55 checks/configuration**, including byte-identical O0/O2
+copies, native and CLI execution, changed default/specialized weights, another
+specialization key, empty/singleton arrays, renamed identifiers and ten invalid
+inputs rejected before artifact emission. Four unchanged-source Debug/Release
+O0/O2 IR artifacts contain exactly three shared generic bodies, nine concrete
+entries, six forwarding adapters and one selected specialization call; identities
+and hashes are retained in `shared-generation.json`.
+
+Broader forwarding with a dependent owned result still lacks retained result
+storage and explicitly rejects generation; a negative test records this boundary.
+New reference support is limited to the checked input/projection Origin family;
+existing unsupported static-Origin scalar payload tests remain unchanged and pass.
+Native diagnostic expected columns were corrected to the actual expressions
+(indexed borrow 2:79; i32 addition 1:41). Program/spec expectations are unchanged.
+
+During final verification (11:10 UTC), an independent workspace edit changed
+ObjectCompatible/RuntimeUsable terminology in SPEC.md and related chapters to
+ObjectCallCompatible/ObjectViewCompatible. Inspected and preserved those edits;
+they do not change this target's specialization, storage or static-read semantics.
+The observed diff is recorded in `concurrent-specification.patch`. This execution
+has not edited SPEC.md, specification chapters or draft. Existing Milestone 9
+files remain preserved; overlap is limited to documented shared lowering and
+progress/README updates.
+
+## Program Milestone 9 completed (2026-09-17)
+
+Execution started **09:56:24 UTC**, soft deadline **10:56:24 UTC**. All required
+verification completed at **10:34:17 UTC** (37.88 minutes). Documentation and final
+workspace review finished at **10:36:22 UTC** (**39.97 minutes** elapsed). Target program 9 is **DONE**;
+no later-program implementation was started.
+
+At startup, re-read AGENTS.md, `prompts/implementation-execution.md`, current HEAD
+`1e13acc`, this plan, implementation and verification environment. The worktree was
+clean; baseline/status and the previous plan are preserved under
+`bin/milestone9-complete-20260917/`. Read all fourteen current program files (the
+repository has fourteen, not five). Programs 1–8 provide ownership, borrowing,
+arrays and generic storage; completed program 10 provides enum layouts/patterns.
+Programs 11–14 remained design context. These program numbers are distinct from
+this plan's broader implementation stages.
+
+The initial current-compiler reproduction failed ownership on `Hit<T>` at 20:21
+and its cases at 25:28/26:20. Subsequent confirmed blockers were shared generic
+destruction, range storage/iteration and common-function calls. Each was addressed
+through checked ownership plans, shared lowering, LLVM verification and native
+execution; no filename, constant, output or source-program special case was added.
+
+| Item | State | Completed target scope |
+| --- | --- | --- |
+| P9-C1/C2 | DONE | Retained checked common-function calls and inline scalar/Unit capture conversion. |
+| P9-G1/G2/G3 | DONE | Retained borrowed field Origins and Copy element reads through shared offset/size/length policies. |
+| P9-G4 | DONE | Finite symbolic enum ownership, selected tag/payload construction, results and active-case destruction. |
+| P9-G5 | DONE | Shared range iteration, scalar SSA snapshots, checked isize addition, receiver Loans and concrete callback ABI adapters. |
+| P9-G6 | DONE | One checked generic destructor body when receiver fields are unobserved; instantiated field cleanup runs afterwards. |
+| P9-G | DONE | All shared-generation work required by the unchanged target. |
+| P9-F | DONE | Current-source Debug/Release build, full managed regression, LLVM/O0/O2 native execution, invalid inputs and completed programs. |
+
+The unchanged target has exact stdout:
+
+```text
+Found 6 at index 3.
+Missing value handled.
+Search finished.
+Batch destroyed.
+```
+
+Stderr is empty; exit code is 0. The messages verify the successful search, empty
+exhaustion and defer-before-destructor order. Target integration passes **59 checks
+per configuration**, covering byte-identical O0/O2 copies, native and both CLI run
+forms, first/last/singleton/absent results, nonempty exhaustion, i64 instantiation,
+Abort without cleanup and eight invalid programs rejected before artifact emission.
+
+**Final verification: PASS**
+
+- Debug and Release solution builds: zero warnings/errors.
+- Both complete managed suites: **7,844 passed** (32 new tests).
+- Related LLVM/native regression: **492 fixtures / 984 unique O0/O2 executions**;
+  all **2,460 IR/expectation hashes** match the generated fixtures.
+- Completed programs 1–8 and 10 plus target 9: **874 integration checks**. All
+  twenty reports match the current compiler and program hashes; target accounts
+  for 118 checks and prior completed programs for 756.
+- Coverage includes owned active enum cleanup, nested destructor ordering,
+  empty/single/multiple iterations, retained scalar snapshots, overflow diagnostics,
+  different scalar callback ABIs, repeated/multiple/zero arguments and Unit results,
+  wrong Types/arity/lengths, missing Copy, moved values and corrupt retained plans.
+- `git diff --check`: PASS. NativeAOT: NOT_RUN as instructed. SPEC.md, draft and
+  every Milestone program are unchanged.
+
+Evidence: `bin/milestone9-complete-20260917/verification.json`, native manifest and
+named logs; integration reports are linked from that JSON. Intermediate work-unit
+states are archived in `PLAN-work-unit-history.md` there. A malformed callback test
+was corrected to valid syntax. An overflow fixture's expected source column was
+corrected to the start of `n + 1` (47). Neither correction changes the target or
+its expected behavior.
+
+**Remaining target work: None. Next action: None; stop at Milestone 9.** Reproduce:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone9.ps1 -Configuration Release
+```
+
+**Retained boundaries:** shared callback adapters accept direct scalar ABI
+parameters and bool/isize/Unit results. Generic destructors that observe fields,
+heap/owned/borrowed capture environments, arbitrary Callable witnesses and later
+program features remain explicitly unsupported where previously unsupported.
+ResolvedRange support added here is internal shared storage, not new ordinary
+function-signature support. No allocation-performance improvement is claimed.
+No additional unrelated specification issue was taken into scope.
+
+## Historical execution: program Milestone 9 resumed after program 10 (2026-09-17, incomplete at that checkpoint)
 
 Execution started at **08:55:11 UTC**, with a **09:55:11 UTC** soft deadline.
 Execution closed at **09:54:45 UTC** (59.57 minutes elapsed), after finishing the current implementation, verification and documentation units. No additional enum implementation unit was started in the remaining sub-minute window. The target remains incomplete.

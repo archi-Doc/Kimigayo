@@ -45,7 +45,8 @@ internal sealed partial class BodyLowering
                 OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection => 0,
                 OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField => 1,
                 OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite => 2,
-                OwnershipValueKind.Address or OwnershipValueKind.Sequence => value.Count is 0 or 1 ? value.Count : -1,
+                OwnershipValueKind.Address => value.Count is >= 0 and <= 2 ? value.Count : -1,
+                OwnershipValueKind.Sequence => value.Count is 0 or 1 ? value.Count : -1,
                 OwnershipValueKind.Phi or OwnershipValueKind.Closure => value.Count,
                 OwnershipValueKind.Capture => 0,
                 _ => -1,
@@ -138,6 +139,16 @@ internal sealed partial class BodyLowering
             if (value.Kind == OwnershipValueKind.Constant)
             {
                 var type = ValueType(body, id);
+                if (operation.Source.BoundSymbol?.Property is { } property)
+                {
+                    if (!StaticScalar.TryGet(property, out var literal) || !ReferenceEquals(type, property.Type) || literal != value.Constant)
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
                 if (FloatingTypes.Supports(type) || FloatingTypes.Supports(operation.Source.BoundType))
                 {
                     if (!ReferenceEquals(type, operation.Source.BoundType) ||

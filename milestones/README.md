@@ -1,8 +1,8 @@
 # Language milestones
 
 Fourteen short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestones 1–8 and 10 have
-native execution evidence (2026-09-17); Milestones 9 and 11–14 remain specification
+They are staged compiler implementation targets. Milestones 1–10 have
+native execution evidence (2026-09-17); Milestones 11–14 remain specification
 targets, and their outputs below are expectations rather than execution claims.
 Milestones 6–9 were originally added without compiler capability checks, builds,
 or execution; subsequent verification is documented per program below.
@@ -401,6 +401,23 @@ Focus: [function length parameters](../spec/04-arrays-indexing-and-slices.md#44-
 [enum results](../spec/06-declarations-and-containers.md#63-enums), and
 [Origins](../spec/15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts).
 
+Reproduce the Milestone 9 integration checks with the pinned Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone9.ps1 -Configuration Release
+```
+
+The script verifies the unchanged program and byte-identical renamed O0/O2 copies,
+then executes each native binary and both CLI `run` forms. It checks exact output,
+empty stderr and exit 0, including defer-before-destructor ordering. Variants cover
+first/last/singleton matches, absence, nonempty exhaustion, i64 instantiation and
+Abort without cleanup. Eight invalid programs check payload/callback Types, arity,
+Copy constraints, lengths, coverage, moved callbacks and local borrow escape.
+There are 59 checks per compiler configuration. Reports and build identities are
+retained under `bin/milestone9/<configuration>/<run-id>/`. Debug is also supported;
+the script does not build or run NativeAOT.
+
 ## Milestone 10: patterns inside result-producing control flow
 
 A fixed array contains generic enum commands whose Data payload is a Tuple.
@@ -471,8 +488,8 @@ may apply bounded automatic specialization or other permitted optimization.
 The result must stay identical across sharing/specialization budget choices;
 an automatic specialization budget of zero must still select the explicit i32
 implementation. Ordinary output alone cannot prove physical code sharing.
-Future generation verification should inspect emitted body/context identities
-and call targets, accounting for permitted inlining, merging, and elimination.
+Generation verification inspects emitted body/context identities and selected
+call targets in addition to execution, before permitted inlining or elimination.
 
 As a source exercise, remove the explicit specialization and change the expected
 Tuple to `(3, 3, 2)`. Do not add a specialization directive: `specialize func`
@@ -480,6 +497,23 @@ selects a source implementation, while baseline sharing is a compiler policy.
 
 Focus: [full specialization](../spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
 and [generic code generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+
+Reproduce the current executable integration with the pinned Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone11.ps1 -Configuration Release
+```
+
+The script checks the unchanged original and byte-identical renamed O0/O2 copies,
+exact stdout/stderr and exit status through native execution and both CLI run
+forms. Separate variants change default/specialized weights, the specialization
+key, array lengths and identifiers; ten invalid inputs must fail before emission.
+Debug is also supported. Reports and build/source/compiler hashes are retained
+under `bin/milestone11/<configuration>/<run-id>/`. This literal-only static path
+does not implement effectful initialization or mutable static storage. Closed
+Type specializations without inherited defaults, Constraints or explicit Origin
+binders are supported here; broader specialization forms remain explicit limits.
 
 ## Milestone 12: capture acquisition and call requirements
 

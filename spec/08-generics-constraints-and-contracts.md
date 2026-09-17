@@ -253,11 +253,11 @@ Unconditional generic Type conformance must hold for every binding allowed by th
 
 Retain the verified requirement-to-Member Identity mapping and associated-Type bindings. Contract calls use this mapping rather than rediscovering members in the caller's source environment or after instantiation. No external registration, replacement conformance, default implementation, or access-bypassing witness thunk is introduced.
 
-**Inherited conformance.** A verified `(B, C)` is inherited by `D : B` only if every requirement, with requirement-side Self replaced by D, is satisfied by the retained mapping. If Member M was declared in A, its implementation-side Self remains A, even through A -> B -> D. Apply Type/Origin substitutions along D's base path to A and retain associated-Type bindings. Only an eligible borrowed receiver may use [base-subobject projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection); other parameters/results gain no base conversion, and owning receivers gain no slicing. Check §8.4.5's access, Origins, Effects, and premises and §11.4's Property rules. Projected calls require published ObjectCompatible Proven (§12.4.4).
+**Inherited conformance.** A verified `(B, C)` is inherited by `D : B` only if every requirement, with requirement-side Self replaced by D, is satisfied by the retained mapping. If Member M was declared in A, its implementation-side Self remains A, even through A -> B -> D. Apply Type/Origin substitutions along D's base path to A and retain associated-Type bindings. Only an eligible borrowed receiver may use [base-subobject projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection); other parameters/results gain no base conversion, and owning receivers gain no slicing. Check §8.4.5's access, Origins, Effects, and premises and §11.4's Property rules. Projected calls require published ObjectCallCompatible Proven (§12.4.4).
 
 | Requirement shape | Inheritance through this path |
 | --- | --- |
-| Self only in a borrowed receiver, as in Stringify | Possible if all other checks and ObjectCompatible succeed |
+| Self only in a borrowed receiver, as in Stringify | Possible if all other checks and ObjectCallCompatible succeed |
 | `other: ref/Self`, as in Equatable/Comparable | Fails: ref/A does not match ref/D |
 | `func empty() -> Self` | Fails: A's result does not supply D |
 | `owner/Self`, as in Iterable | Fails: no owning receiver projection |
@@ -267,7 +267,7 @@ One failed inheritance path does not invalidate D's declaration. Determine `(D, 
 
 Copy, Owned, Callable, and other intrinsic capabilities retain their own derivation rules. In particular, struct Copy requires the derived declaration's opt-in and all stored components; it is not inherited automatically.
 
-Do not warn merely because an open base has a conformance its descendants cannot inherit. At a failing derived `Self is C` or constraint use, identify the requirement and cause: Self mismatch, owning receiver, access/Origin/premise failure, or ObjectCompatible NotProven and its responsible implementation. Diagnose an unresolved proof as Unknown, not Refuted. For example, an Equatable Shape may have a valid `Circle : Shape` without Circle being Equatable; requiring Circle's conformance reports the ref/Shape versus ref/Circle mismatch and the inherited-Name prohibition. When descendants need such Self-dependent Contracts, implementing them on leaf Types or using composition avoids this restriction; the base's own conformance remains valid.
+Do not warn merely because an open base has a conformance its descendants cannot inherit. At a failing derived `Self is C` or constraint use, identify the requirement and cause: Self mismatch, owning receiver, access/Origin/premise failure, or ObjectCallCompatible NotProven and its responsible implementation. Diagnose an unresolved proof as Unknown, not Refuted. For example, an Equatable Shape may have a valid `Circle : Shape` without Circle being Equatable; requiring Circle's conformance reports the ref/Shape versus ref/Circle mismatch and the inherited-Name prohibition. When descendants need such Self-dependent Contracts, implementing them on leaf Types or using composition avoids this restriction; the base's own conformance remains valid.
 
 ### 8.4.5. Implementation matching
 
@@ -422,7 +422,9 @@ This feature defines static conformance and generic use. It adds no external reg
 
 Compile-time conformance and runtime View usability are separate. A runtime Contract exposes requirements through dynamic dispatch without instance state. A bare Contract name is never a value Type; the extension uses explicit Object Semantics such as `objref/C`, `objuniq/C`, and `obj/C`.
 
-**`RuntimeUsable(C)`** holds exactly when `C` is explicitly designated for runtime use, it has no type-function requirements (including inherited ones), and, after fixing associated Types, every instance requirement satisfies:
+An **ObjectViewCompatible** Contract is a Contract that, with its associated Types fixed, can be used as the View Target of an Object View Type, such as `obj/C`, `objref/C`, or `objuniq/C`, within this runtime Contract extension. The Contract is the View Target, not the object's Dynamic Type, which remains the concrete Core actually constructed. This Contract property is distinct from the ObjectCallCompatible guarantee of each implementation's call operations.
+
+**`ObjectViewCompatible(C)`** holds exactly when `C` is explicitly designated for runtime use, it has no type-function requirements (including inherited ones), and, after fixing associated Types, every instance requirement satisfies:
 
 | Aspect | Initial requirement |
 | --- | --- |
@@ -433,11 +435,11 @@ Compile-time conformance and runtime View usability are separate. A runtime Cont
 | Signature | Parameter/result Types are determined without knowing the hidden concrete Type |
 | Origins | Expressible through borrowed receiver, explicit inputs, and `static`; no hidden payload Origin, contract-level abstract Origin, or higher-ranked requirement |
 
-Check every getter result and setter requirement separately. Forming `objref/C` or another object form requires `RuntimeUsable(C)`, even when the concrete payload is unknown; it does not require searching all implementations. Unsupported requirements cannot simply be removed from the view. For example, `equals(other: Self)` cannot become heterogeneous comparison between arbitrary `objref/C` values.
+Check every getter result and setter requirement separately. Forming `objref/C` or another object form requires `ObjectViewCompatible(C)`, even when the concrete payload is unknown; it does not require searching all implementations. Unsupported requirements cannot simply be removed from the view. For example, `equals(other: Self)` cannot become heterogeneous comparison between arbitrary `objref/C` values.
 
-**`Implements(D, C)`** checks explicit or [validly inherited conformance](#844-conformance). Every requirement has one implementation for D, with compatible signature, access, Origins, and published ObjectCompatible Proven (§12.4.4). Unknown does not establish this guarantee.
+**`Implements(D, C)`** checks explicit or [validly inherited conformance](#844-conformance). Every requirement has one implementation for D, with compatible signature, access, Origins, and published ObjectCallCompatible Proven (§12.4.4). Unknown does not establish this guarantee.
 
-Use the unique static conformance for the concrete Type and Contract Identity; changing View bindings cannot create another conformance. Static conformance does not generally persist in derived Types. This extension must ensure that RuntimeUsable restrictions, fixed associated-Type bindings, and published implementation guarantees preserve its Supports relation through every derived layer. Static conformance alone is not sufficient proof of that invariant.
+Use the unique static conformance for the concrete Type and Contract Identity; changing View bindings cannot create another conformance. Static conformance does not generally persist in derived Types. This extension must ensure that ObjectViewCompatible restrictions, fixed associated-Type bindings, and published implementation guarantees preserve its Supports relation through every derived layer. Static conformance alone is not sufficient proof of that invariant.
 
 Contract refinement follows [static refinement](#842-refinement). No replacement conformance, default implementation, or external registration is introduced. Registration and artifact consistency follow [metadata](21-layout-runtime-and-code-generation.md#2121-type-identity-and-descriptors). Static declarations and associated-Type specifications are defined; only runtime-use designation and View binding syntax remain deferred here.
 
@@ -619,7 +621,7 @@ The restriction concerns the specialization declaration, not ordinary syntax ins
 
 Validate all necessary Type Origins before comparison. After matching inherited binders, the body must work for **every Origin binding permitted by the original contract**. Do not add an Origin parameter or lifetime restriction, narrow applicability by Origin, or register another implementation for different Origins. A specialization cannot rescue an invalid ordinary implementation or replace a declaration-required proof; [deferred generic checking](#810-generic-body-checking-and-deferred-obligations) retains its stated design boundary.
 
-Inferred ObjectCompatible is a [common implementation guarantee](12-expressions.md#12443-implementation-families), not an additional declaration obligation inherited from the ordinary body. A specialization may make that public guarantee NotProven without being invalid for that reason; declared Signature, Constraints, Safety, and Effect requirements still apply.
+Inferred ObjectCallCompatible is a [common implementation guarantee](12-expressions.md#12443-implementation-families), not an additional declaration obligation inherited from the ordinary body. A specialization may make that public guarantee NotProven without being invalid for that reason; declared Signature, Constraints, Safety, and Effect requirements still apply.
 
 ### 8.8.3. Selection and declaration ownership
 
@@ -709,6 +711,6 @@ For example, using the target projection T as a local Type inside `func f<s/T>(x
 
 Concrete layout/representation validity may still depend on substitution or the prepared target, including finite representable storage for an otherwise well-typed body local. Record such dependencies in the definition artifact with their source and target requirements before clients instantiate it. These checks concern representability only and cannot disguise a Type, capability, or lifetime restriction. A call satisfying the public contract must not fail later because its callee newly discovers a semantic body requirement. Ordinary caller-side initialization and Loan checks, specified runtime checks, target representation failures, and documented compiler resource exhaustion remain distinct; resource exhaustion is not semantic invalidity.
 
-ObjectCompatible (§12.4.4) is a completed public operation guarantee used by projection/object-call legality, not a new conditional applicability premise or a deferred body requirement. Verify its common implementation family before publication; caller-specific instantiations cannot strengthen it. Changes use §21.3.4's dependency revalidation.
+ObjectCallCompatible (§12.4.4) is a completed public operation guarantee used by projection/object-call legality, not a new conditional applicability premise or a deferred body requirement. Verify its common implementation family before publication; caller-specific instantiations cannot strengthen it. Changes use §21.3.4's dependency revalidation.
 
 Diagnostics for definition errors identify the body use and missing declared proof; instantiation diagnostics identify the already-published dependent/representation obligation, definition site, arguments, and failed condition. Preserve verified summaries and plans in compile-time metadata even when runtime keys erase Origins. Do not add caller aliases/extensions, redo overload choice for favorable concrete Types, or use obligation strength to rank candidates. Environment directives provide no Type/capability evidence and retain their earlier selection deadlines.

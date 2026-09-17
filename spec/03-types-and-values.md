@@ -279,7 +279,7 @@ A completed object has exactly one Dynamic Type, unchanged throughout its lifeti
 **`Supports(D, V)`** relates a concrete Core `D` to a View Target `V`. It holds exactly when either:
 
 - `V` is `D` itself or a direct or indirect base Core of `D`; or
-- `V` is a runtime Contract View `C` with fixed associated Types and both `RuntimeUsable(C)` and `Implements(D, C)` hold under [runtime contracts](08-generics-constraints-and-contracts.md#85-runtime-contracts).
+- `V` is a runtime Contract View `C` with fixed associated Types and both `ObjectViewCompatible(C)` and `Implements(D, C)` hold under [runtime contracts](08-generics-constraints-and-contracts.md#85-runtime-contracts).
 
 Upcasts, view-support tests, checked casts, and metadata share this relation. It does not grant access, ownership, `Owned`, Origin/Loan validity, or permission to invoke an incompatible ordinary member. Generic element relationships do not imply container covariance. Core inheritance alone does not establish substitutability of complete Types: no slicing, implicit `owner/Dog -> owner/Animal`, ordinary `ref/Dog -> ref/Animal`, or `uniq/Dog -> uniq/Animal` conversion is introduced. Object upcasts are explicit operations; [inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) supplies only the receiver of a selected inherited member.
 

@@ -29,10 +29,12 @@ internal sealed partial class BodyLowering
     private int[] deferredOwners = [];
     private int[] deliveries = [];
     private int pointerWidth;
+    private bool eraseReceiver;
 
     internal bool Lower(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
     {
         this.pointerWidth = pointerWidth;
+        this.eraseReceiver = CanEraseReceiver(body);
         this.functions = functions;
         this.flow = flow;
         this.arguments.Clear();

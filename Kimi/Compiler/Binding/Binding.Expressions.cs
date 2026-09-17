@@ -438,7 +438,7 @@ public sealed partial class Binding
             }
         }
 
-        if (function.IsAnonymous || function.IsSpecialization)
+        if (function.IsAnonymous || (function.IsSpecialization && !this.specializations.ContainsKey(function)))
         {
             return Fail(function, BindingFailure.Unsupported, true);
         }

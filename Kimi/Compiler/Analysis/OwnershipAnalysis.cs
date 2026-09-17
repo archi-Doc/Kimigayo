@@ -492,6 +492,13 @@ public sealed partial class OwnershipAnalysis
 
     private int Expression(Koto node, PlaceUseKind use = PlaceUseKind.Consume, AcquisitionKind? acquisition = null)
     {
+        if (node is IdentifierNameKoto or MemberAccessKoto && StaticScalar.TryGet(node.BoundSymbol?.Property, out var staticValue))
+        {
+            var result = this.Temporary(node);
+            this.SetValue(this.Value(result), OwnershipValueKind.Constant, [], constant: staticValue);
+            return result;
+        }
+
         if (this.SpecialField(node))
         {
             var place = this.Local(node);

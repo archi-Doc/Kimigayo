@@ -71,13 +71,6 @@ public sealed class LlvmEmitter
                 return false;
             }
 
-            if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, out failure))
-            {
-                return false;
-            }
-
-            this.lowering.GenericCalls = this.generics.Calls;
-
             // Register every selected signature first: recursion refers to the same record.
             var ordinal = 0;
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
@@ -92,6 +85,13 @@ public sealed class LlvmEmitter
                 var abi = source.IsGenerated ? WindowsLowering.Entry : this.signatures.Get(ordinal++, source, this.lowering.AggregateLayouts);
                 this.functions.Add(source, abi);
             }
+
+            if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
+            {
+                return false;
+            }
+
+            this.lowering.GenericCalls = this.generics.Calls;
 
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
@@ -192,10 +192,10 @@ public sealed class LlvmEmitter
             }
 
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
-            if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
+            if ((!body.IsConcrete && !BodyLowering.CanEraseReceiver(body)) || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
                 (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||
-                (function.IsAnonymous && function.BoundClosure is null) || function.IsSpecialization || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
-                function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0)
+                (function.IsAnonymous && function.BoundClosure is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
+                (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.Origins.Count != 0 || function.TypeConstraints.Count != 0)
             {
                 return "A selected function requires unsupported signature, capture or implementation lowering.";
             }
@@ -227,6 +227,7 @@ public sealed class LlvmEmitter
             }
         }
 
-        return container is not GroupKoto || container.Members.All(x => x is FunctionKoto or AliasKoto);
+        return container is not GroupKoto || container.Members.All(x => x is FunctionKoto or AliasKoto ||
+            (x is PropertyKoto property && StaticScalar.TryGet(property.BoundSymbol?.Property, out _)));
     }
 }

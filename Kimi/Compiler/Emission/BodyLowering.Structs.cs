@@ -6,6 +6,31 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    // A destructor that never observes receiver storage has one representation-independent
+    // body. Concrete aggregate destruction still destroys its instantiated fields afterwards.
+    internal static bool CanEraseReceiver(OwnershipBody body)
+    {
+        if (!body.IsVerified || !body.Function.IsDestructor || body.Function.BoundSymbol?.Scope.Owner is not StructKoto { GenericArguments.Count: > 0 })
+        {
+            return false;
+        }
+
+        foreach (var operation in body.Operations)
+        {
+            if ((ReceiverField(body, operation.Place) && (operation.Kind != OwnershipOperationKind.InitializeReceiverField || !ValidateReceiverInitialization(body, operation))) ||
+                ReceiverField(body, operation.Input))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool ReceiverField(OwnershipBody body, int place)
+        => (uint)place < (uint)body.Places.Count && body.Places[place] is { Kind: OwnershipPlaceKind.Local, Source: PropertyKoto field } &&
+            ReferenceEquals(field.Parent, body.Function.BoundSymbol?.Scope.Owner);
+
     private static bool ValidateReceiverInitialization(OwnershipBody body, OwnershipOperation operation)
         => (operation.Kind == OwnershipOperationKind.CheckReceiverField ? body.Function.IsConstructor : body.Function.IsDestructor) && StructStorage.ReceiverType(body.Function) is { } type &&
             operation.Place >= 0 && body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Source: PropertyKoto field } &&
@@ -15,7 +40,7 @@ internal sealed partial class BodyLowering
     private bool PrepareReceiverFields(OwnershipBody body, EmissionFunction function, out string? failure)
     {
         failure = null;
-        if (StructStorage.ReceiverType(body.Function) is not { } type)
+        if (this.eraseReceiver || StructStorage.ReceiverType(body.Function) is not { } type)
         {
             return true;
         }

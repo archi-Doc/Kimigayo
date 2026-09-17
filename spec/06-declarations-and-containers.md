@@ -176,7 +176,7 @@ An override preserves Shared/Exclusive receiver kind and, after normalization an
 
 The target and each overridden accessor must be accessible. Preserve their declared access, except that a protected-internal member overridden in another Kotonoha is declared protected there. Private members, and internal/private-protected members outside their Kotonoha, are ineligible. This grants no permission to expose inaccessible API Types.
 
-Initial virtual calls are safe. Each virtual implementation and override independently requires [ObjectCompatible Proven](12-expressions.md#1244-object-receiver-compatibility), including its implementation family; failure is a declaration error even without object call sites. This is an explicit guarantee, unlike an ordinary member's inferred public status. A base body's proof cannot validate an override.
+Initial virtual calls are safe. Each virtual implementation and override independently requires [ObjectCallCompatible Proven](12-expressions.md#1244-object-receiver-compatibility), including its implementation family; failure is a declaration error even without object call sites. This is an explicit guarantee, unlike an ordinary member's inferred public status. A base body's proof cannot validate an override.
 
 Static lookup selects the declaration, overload, access, labels, and public contract. Runtime dispatch selects only that slot's implementation for the Dynamic Type; it never repeats lookup or adds derived-only overloads.
 

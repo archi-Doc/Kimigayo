@@ -267,11 +267,11 @@ These keys find candidates only. Actual Type and Symbol identities retain the de
 | --- | --- |
 | Declarations/contracts | Defining Symbol, access/enclosing domains, public paths, open/base relations, Field identity, complete Types/Semantics/Origins, generic slots/projections, Constraints, unsafe and length conditions |
 | Property/callable contracts | Stored Types, standard/custom permissions, accessor signatures/Origins, environment/capture identity, internal/public call signatures, receiver acquisition, per-call Origins, effects and returned Loan anchors |
-| Conformance/public guarantees | Witness and associated-Type mappings, conditional premises, closed specialization sets, completed ObjectCompatible/root-operation summaries and causes, Supports relationships, Runtime Type Identity and required adjustment/destruction/release contracts |
+| Conformance/public guarantees | Witness and associated-Type mappings, conditional premises, closed specialization sets, completed ObjectCallCompatible/root-operation summaries and causes, Supports relationships, Runtime Type Identity and required adjustment/destruction/release contracts |
 | Semantic plans | Verified bodies, acquisition/ownership/cleanup, definition-site binding and private dependencies, legitimate representation obligations |
 | Verification records | Subject, property, premises, result, content dependencies, rule identity, source references, and generation provenance |
 
-Private information may support generation/reverification without entering consumer lookup; using a public contract must not require searching private bodies. Preserve Origins even when erased at runtime. Export ObjectCompatible only as completed Proven/NotProven plus causes, never pending status. Legitimate generic representation obligations retain subject, premises, dependencies, and deadline; they are not completed proofs. Each use still checks its own obligations, Loans, initialization, and cleanup.
+Private information may support generation/reverification without entering consumer lookup; using a public contract must not require searching private bodies. Preserve Origins even when erased at runtime. Export ObjectCallCompatible only as completed Proven/NotProven plus causes, never pending status. Legitimate generic representation obligations retain subject, premises, dependencies, and deadline; they are not completed proofs. Each use still checks its own obligations, Loans, initialization, and cleanup.
 
 ### 18.7.3. Invalidation and persistence
 

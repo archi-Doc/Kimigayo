@@ -1,6 +1,65 @@
 # Kimigayo Implementation Status
 
-Milestone 9 continuation (2026-09-17, incomplete target): checked common-function
+Object compatibility terminology (2026-09-17): the specification now names the
+call-operation guarantee ObjectCallCompatible and the runtime Contract View
+eligibility predicate ObjectViewCompatible(C). Definitions and specification
+references are aligned. This is a terminology-only documentation update; no
+Attributes, compatibility rules, extension boundaries, or compiler behavior change.
+ObjectCallCompatible body/callee verification remains incomplete, and runtime
+Contract designation and View binding syntax remain deferred.
+
+Milestone 11 integration (2026-09-17, complete): the unchanged
+program passes Binding, ownership, LLVM verification, native O0/O2 and CLI execution
+with stdout `Generic weights are 6, 3, 2.\n`, empty stderr and exit 0. Both builds
+have zero warnings/errors; both full managed suites pass 7,881 tests (37 added).
+Target integration passes 55 checks per configuration, including ten rejected
+inputs. Four Debug/Release O0/O2 IR artifacts independently confirm three shared
+bodies, nine entries, six forwarding adapters and one selected specialization.
+Closed Type specializations are checked against their original input,
+result, argument-name and Origin contracts and are excluded from overload choice.
+Shared generic calls carry selected entry adapters without cloning the checked
+definition. Indexed shared borrows require no Copy on T and retain bounds checks;
+shared i32 addition checks overflow. Verified immutable group integer/bool literal
+initializers can be folded because their initialization has no observable effect.
+Effectful/mutable static storage, length/receiver/constrained specializations and
+explicit specialization Origins remain unsupported. Dependent owned-result
+forwarding still rejects generation. Related LLVM/native regression passes
+**506 fixtures / 1,012 O0/O2 runs**, with **2,530 matching hashes**. Programs 1–11
+pass **984 integration checks**; all 22 reports match current compiler/program
+hashes. Target work and required verification are complete. Evidence is in
+`bin/milestone11-work-20260917/verification.json` and `shared-generation.json`.
+NativeAOT was not run as instructed; no later program was implemented. This
+execution did not edit Milestone sources, SPEC.md or draft; independent specification
+terminology changes observed during verification were preserved.
+
+Milestone 9 integration (2026-09-17, complete): the unchanged generic search
+program passes current-source Debug/Release builds, LLVM verification and ordinary
+native O0/O2 execution. Exact stdout is
+`Found 6 at index 3.\nMissing value handled.\nSearch finished.\nBatch destroyed.\n`,
+with empty stderr and exit 0. Dedicated integration passes **59 checks per compiler
+configuration**, including first/last/singleton/absent matches, empty/nonempty
+exhaustion, i64 instantiation, Abort without cleanup and eight rejected inputs.
+
+Finite symbolic enum ownership and shared tag/payload construction/results are
+implemented. Shared range iteration retains scalar SSA snapshots and checked isize
+addition; indexed reads use evaluated index values. Common-function calls keep
+receiver Loans and acquired argument storage, with concrete entry adapters for the
+callback ABI. A generic destructor that never observes receiver fields uses one
+checked representation-independent body; instantiated field destruction follows.
+Shared adapters currently accept direct scalar ABI parameters and bool/isize/Unit
+results. Generic destructors that observe fields remain explicitly unsupported.
+These implementation limits do not narrow language semantics.
+
+Both builds have zero warnings/errors. Both full managed suites pass **7,844 tests**
+(32 added). Related LLVM/native regression passes **492 fixtures / 984 O0/O2
+executions**, with **2,460 matching fixture/expectation hashes**. Programs 1–10 pass
+**874 integration checks**; all twenty reports match current compiler/source hashes.
+Evidence is retained in `bin/milestone9-complete-20260917/verification.json` and
+PLAN.md's P9 completion record. No target work or required verification remains.
+NativeAOT was not run. SPEC.md, draft and all program sources are unchanged;
+programs 11–14 were not implemented.
+
+Previous Milestone 9 continuation (2026-09-17, incomplete target): checked common-function
 invocation and direct anonymous-function conversion now support scalar/Unit snapshot
 captures in the inline 8-byte environment. Owned function handles move and clean
 up normally; calls hold a shared Loan through argument evaluation. Borrowed struct
@@ -40,7 +99,7 @@ hashes. Completed programs 1–8 pass 648 integration checks; all eighteen progr
 reports match current compiler/source hashes. Evidence is retained in
 `bin/milestone10-work-20260917/verification.json`. No target work or required
 verification remains. NativeAOT was not run as instructed. See PLAN.md's separate
-P10 items; program 9 remains incomplete and programs 11–14 were not implemented.
+P10 items; program 9 was incomplete at that checkpoint and programs 11–14 were not implemented.
 Composite matches with owned destruction or borrowed candidate paths remain
 explicitly unsupported outside the completed target.
 
@@ -318,7 +377,7 @@ Projected-call diagnostic boundary (2026-09-17): inherited borrowed-receiver
 method calls whose effect verification is still unimplemented now report
 `UnsupportedBinding_Kd`. Their receiver plans keep internal Unknown proof,
 and emission remains rejected without overload reselection. This does not
-implement public ObjectCompatible summaries. The three existing adaptation
+implement public ObjectCallCompatible summaries. The three existing adaptation
 cases were corrected and strengthened; 204 focused cases and full Debug/Release
 suites (7,050 each) pass.
 
@@ -711,7 +770,7 @@ Current [Compilation.Bind](Kimi/Compiler/Core/Compilation.cs) performs final Bin
 | Fixed-array length constants | Eligible integer let locals and static stored Properties, qualified names and accessible standard getters; recursive initializer evaluation, checked arithmetic in the established integer Type, literal-only subtree fitting, all 12 integer widths including 128-bit intermediates, and final nonnegative-isize checks. Private constants expand into values in symbolic length expressions. | Does not execute getters or initialize static storage. Calls, var, parameters, instance Fields, custom/computed accessors, cycles, and inaccessible constants cannot supply lengths. Generic instantiation, separate-compilation records, and general length inference remain incomplete. ConstantLengthBinding covers reload/rebinding, zero measured warm Binding allocations, and ordinary native fixed-array execution. |
 | Local fixed-array inference | Explicit fixed shapes ending in `_` infer a unique element Type from initializer elements or an independently typed array; direct literals fit established evidence. Nested shapes, Copy/Move, cleanup order, evaluation count, rebind/reload and zero measured warm Binding allocations are covered, with 21 ordinary native fixtures | Empty untyped arrays, conflicting evidence and shape errors are rejected. General collection/control-flow/generic inference remains incomplete |
 | Fixed-array call arguments | Candidate-local fitting handles fixed shapes, nested arrays/Tuples and element literals; established inner expressions retain their Types. Candidate-order independence, numeric ambiguity, named evaluation order, string cleanup, reload and zero measured warm Binding allocations are covered, with 21 ordinary native fixtures | General length/element generic inference, dynamic collection candidates and shared expected Types for unresolved nested calls remain incomplete |
-| Constraints and Contracts | Proven/Refuted/Unknown/Error states, declaration assumptions, associated Types, refinement, verified witnesses, conditional conformance/members, and inherited receiver selection | Unknown is not treated as success. Full candidate equivalence, generic body/effect proofs, and ObjectCompatible body/callee validation remain incomplete |
+| Constraints and Contracts | Proven/Refuted/Unknown/Error states, declaration assumptions, associated Types, refinement, verified witnesses, conditional conformance/members, and inherited receiver selection | Unknown is not treated as success. Full candidate equivalence, generic body/effect proofs, and ObjectCallCompatible body/callee validation remain incomplete |
 | Properties | Stored/computed/requirement Properties, accessor types, permissions, Copy/Origin handling, and operation-specific witnesses | General expression read/get/set/init, receiver/cleanup handling, and generation remain incomplete |
 | Enums and Patterns | Case identity, construction with an expected Type, payload acquisition, Tuple/Case/whole Patterns, exhaustiveness/subsumption warnings, and separate guard-candidate/body binding | Borrowed Subjects, general decomposition/guards, and generic proofs/generation remain incomplete. Arms that receive warnings are still checked |
 | Runtime `is` / `is not` | Binds object Semantics over concrete struct Core to bool, retaining original operands/targets and shared-access requirements | Flow Type refinement, object Loans, and execution are unsupported |
