@@ -1,5 +1,11 @@
 # Kimigayo Implementation Status
 
+ObjectCallCompatible implementation plan (2026-09-17): [SPEC.md](SPEC.md#objectcallcompatible)
+records three stages: document the plan, implement inference/public summaries and
+call checks, then detect guarantee loss across Package releases. The current stage
+is documentation only; stages 2 and 3 are deferred pending further instructions.
+Existing language rules and implementation coverage are unchanged.
+
 Object compatibility terminology (2026-09-17): the specification now names the
 call-operation guarantee ObjectCallCompatible and the runtime Contract View
 eligibility predicate ObjectViewCompatible(C). Definitions and specification

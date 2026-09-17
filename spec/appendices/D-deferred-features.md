@@ -6,6 +6,7 @@ This index links to design boundaries owned by the language sections. It adds no
 
 | Feature | Status | Owning section |
 | --- | --- | --- |
+| ObjectCallCompatible implementation and release comparison | Existing inference, publication, and call rules remain specified; implementation awaits further instructions | [Deferred implementation plan](../../SPEC.md#objectcallcompatible), [Object calls](../12-expressions.md#1244-object-receiver-compatibility) |
 | Fixed-array fill/repetition and element-generator construction | Deferred design; whole initialized inputs/results and element literals remain available | [Fixed-array initialization](../04-arrays-indexing-and-slices.md#43-initialization-and-inference) |
 | Mutable/exclusive-element Slice | Not introduced; mutate through authorized whole-array access and indices | [Sequence operations](../04-arrays-indexing-and-slices.md#45-operations-and-ownership) |
 | Source transparent Type aliases | Not introduced; source alias opens a Container only | [Alias boundary](../18-modules-and-dependencies.md#181-external-references-and-aliases) |
