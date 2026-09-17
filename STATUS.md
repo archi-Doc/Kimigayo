@@ -1,5 +1,34 @@
 # Kimigayo Implementation Status
 
+Mixed-target ownership continuations (2026-09-17): straight-line and closed CFG checking-only
+effects now preserve each original transfer target and pre-cleanup state through
+enclosing joins. Assignments, Moves, supported calls and transfer chains retain
+ordinary diagnostics without creating runtime arrivals or cleanup. Stored-borrow
+liveness follows checking seed and replay links, including later uses across an
+outer join. Completing conditional branches retain per-target common guarantees.
+Closed cycles preserve zero-iteration paths and converge per constituent.
+Short-circuit operands retain terminal paths and evaluated/skipped checking joins,
+preserving initialization, Move/assignment histories and stored Loans without
+inventing runtime arrivals or results after a noncompleting left operand.
+Require failure continuations retain pre-cleanup state and transfer targets for
+enclosing joins, including mixed-target prefixes, without feeding failure facts
+into require's ordinary success successor.
+Scalar defaults support require with validated scalar bodies and contained transfers.
+Closed terminal if/else branches after mixed-target joins now retain independent
+per-target prefixes. Continuation capture freezes its seed range before later
+lexical cleanup can change the region entry.
+Mixed-target logical expressions with a terminal RHS preserve its separate history;
+the skipped path alone supplies the ordinary logical successor. A noncompleting
+left operand retains the evaluated/skipped checking join without a runtime result.
+Debug/Release suites pass 8,107 tests each; 136 new continuation fixtures pass O0/O2,
+and all inputs of the 477 previously verified native fixtures still match.
+Programs 1–11 pass all 984 integration checks across Debug/Release, with all
+22 reports matching the final compiler and program identities.
+Reload/warmed zero-allocation checks pass. Mixed-target partial-terminal branches,
+partial logical operands, unequal Loan joins,
+deferred cleanup and general effectful divergence remain incomplete. Detailed
+execution evidence and remaining compiler work are maintained in PLAN.md.
+
 ObjectCallCompatible implementation plan (2026-09-17): [SPEC.md](SPEC.md#objectcallcompatible)
 records three stages: document the plan, implement inference/public summaries and
 call checks, then detect guarantee loss across Package releases. The current stage

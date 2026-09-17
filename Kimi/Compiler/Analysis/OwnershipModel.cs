@@ -203,6 +203,7 @@ public sealed partial class OwnershipBody
     internal readonly List<int> OperationRegions = new();
     internal readonly List<OwnershipCheckingRegion> CheckingRegions = new();
     internal readonly List<OwnershipCheckingSeed> CheckingSeeds = new();
+    internal readonly List<OwnershipCheckingReplay> CheckingReplays = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
     internal bool[] Reachable = [];
     internal bool[] BlockReachable = [];
@@ -291,6 +292,7 @@ public sealed partial class OwnershipBody
         this.OperationRegions.Clear();
         this.CheckingRegions.Clear();
         this.CheckingSeeds.Clear();
+        this.CheckingReplays.Clear();
         this.CheckingRegions.Add(new(-1, -1)); // Region zero is ordinary source flow.
         this.checkingSolved = false;
         this.ResetCompletion();
@@ -309,10 +311,14 @@ public sealed partial class OwnershipBody
 // A checking-only seed edge. Its source is replayed after its containing region
 // converges; it never enters EdgeStorage or contributes a runtime predecessor.
 // Target is null for function-terminal paths. MixedTargets permits local checking;
-// only its unchanged constituent seeds may cross another extent boundary.
-internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry, int SeedStart = 0, int SeedCount = 0, Koto? Target = null, bool MixedTargets = false);
+// constituent seeds retain their own effects when crossing an extent boundary.
+internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry, int SeedStart = 0, int SeedCount = 0, Koto? Target = null, bool MixedTargets = false, int Replay = -1);
 
-internal readonly record struct OwnershipCheckingSeed(int Operation, Koto? Target);
+internal readonly record struct OwnershipCheckingSeed(int Operation, Koto? Target, int Replay = -1);
+
+// A proven closed checking path, applied to one constituent state before joining.
+// Previous links are strictly older; storage is reused across analysis passes.
+internal readonly record struct OwnershipCheckingReplay(int Entry, int End, int Previous, bool Graph = false);
 
 // Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.
 internal enum OwnershipValueKind : byte

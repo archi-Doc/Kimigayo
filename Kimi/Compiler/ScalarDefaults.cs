@@ -35,6 +35,8 @@ internal static class ScalarDefaults
             BinaryKoto element when ElementAccess.IsSyntax(element) => SupportsPreparedStorage(element, function, parameterIndex),
             ParenthesizedKoto parentheses => SupportsExpression(parentheses.Operand, function, parameterIndex),
             IfKoto conditional => SupportsConditional(conditional, function, parameterIndex),
+            RequireKoto require => SupportsExpression(require.Condition, function, parameterIndex) &&
+                (require.ElseBody is CodeBlockKoto failure ? SupportsBody(failure, function, parameterIndex) : SupportsExpression(require.ElseBody, function, parameterIndex)),
             DoKoto scoped => SupportsBody(scoped.Body, function, parameterIndex),
             LoopKoto loop => SupportsBody(loop.Body, function, parameterIndex),
             WhileKoto loop => SupportsExpression(loop.Condition, function, parameterIndex) && SupportsBody(loop.Body, function, parameterIndex),

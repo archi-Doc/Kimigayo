@@ -11,6 +11,8 @@ public sealed partial class OwnershipBody
     private readonly List<(int Entry, int Exit, bool CanComplete)> completionChecks = new();
 #endif
     private readonly HashSet<(Koto Source, OwnershipOperationKind Kind, int Place)> checkedUses = new();
+    private readonly List<int> checkingReplayProof = new();
+    private readonly List<(int Source, int Next)> checkingReplayReverse = new();
     private int[] checkingBlockOf = [];
     private int[] checkingLeaders = [];
     private int[] checkingNext = [];
@@ -18,6 +20,11 @@ public sealed partial class OwnershipBody
     private int[] checkingPredecessor = [];
     private bool[] checkingReached = [];
     private ulong[] checkingStates = [];
+    private int[] checkingReplayStack = [];
+    private byte[] checkingReplayMarks = [];
+    private int[] checkingReplayHeads = [];
+    private ulong[] checkingReplayStates = [];
+    private bool[] checkingReplayReached = [];
     private int checkingBlockCount;
     private bool checkingSolved;
 
@@ -90,6 +97,103 @@ public sealed partial class OwnershipBody
                 this.ReportIssue(new(operation.Source, OwnershipFailure.Unsupported, operation.Place));
             }
         }
+    }
+
+    internal int LinearCheckingSuccessor(int operation)
+    {
+        var next = -1;
+        for (var e = this.EdgeHeads[operation]; e >= 0; e = this.EdgeStorage[e].Next)
+        {
+            var edge = this.EdgeStorage[e];
+            if (edge.Kind == OwnershipEdgeKind.Abort)
+            {
+                continue;
+            }
+
+            if (next >= 0)
+            {
+                return -1;
+            }
+
+            next = edge.To;
+        }
+
+        return next;
+    }
+
+    internal bool CanReplayCheckingGraph(int entry, int end)
+    {
+        var owner = this.OperationRegions[entry];
+        Grow(ref this.checkingReplayMarks, this.Operations.Count);
+        Grow(ref this.checkingReplayHeads, this.Operations.Count);
+        this.checkingReplayMarks.AsSpan(0, this.Operations.Count).Clear();
+        this.checkingReplayHeads.AsSpan(0, this.Operations.Count).Fill(-1);
+        this.checkingReplayProof.Clear();
+        this.checkingReplayReverse.Clear();
+        this.checkingReplayProof.Add(entry);
+        this.checkingReplayMarks[entry] = 1;
+        for (var i = 0; i < this.checkingReplayProof.Count; i++)
+        {
+            var operation = this.checkingReplayProof[i];
+            if (operation == end)
+            {
+                continue;
+            }
+
+            var successor = false;
+            for (var e = this.EdgeHeads[operation]; e >= 0; e = this.EdgeStorage[e].Next)
+            {
+                var edge = this.EdgeStorage[e];
+                if (edge.Kind == OwnershipEdgeKind.Abort)
+                {
+                    continue;
+                }
+
+                if (this.OperationRegions[edge.To] != owner)
+                {
+                    return false;
+                }
+
+                successor = true;
+                this.checkingReplayReverse.Add((operation, this.checkingReplayHeads[edge.To]));
+                this.checkingReplayHeads[edge.To] = this.checkingReplayReverse.Count - 1;
+                if (this.checkingReplayMarks[edge.To] == 0)
+                {
+                    this.checkingReplayMarks[edge.To] = 1;
+                    this.checkingReplayProof.Add(edge.To);
+                }
+            }
+
+            if (!successor)
+            {
+                return false;
+            }
+        }
+
+        if (this.checkingReplayMarks[end] == 0)
+        {
+            return false;
+        }
+
+        // Every retained node must have an exit to the endpoint. A cycle with an
+        // exit is solved to a fixed point; a closed terminal component is not lost.
+        this.checkingReplayProof.Clear();
+        this.checkingReplayProof.Add(end);
+        this.checkingReplayMarks[end] = 2;
+        for (var i = 0; i < this.checkingReplayProof.Count; i++)
+        {
+            for (var e = this.checkingReplayHeads[this.checkingReplayProof[i]]; e >= 0; e = this.checkingReplayReverse[e].Next)
+            {
+                var source = this.checkingReplayReverse[e].Source;
+                if (this.checkingReplayMarks[source] == 1)
+                {
+                    this.checkingReplayMarks[source] = 2;
+                    this.checkingReplayProof.Add(source);
+                }
+            }
+        }
+
+        return this.checkingReplayMarks.AsSpan(0, this.Operations.Count).IndexOf((byte)1) < 0;
     }
 
     [Conditional("DEBUG")]
@@ -167,6 +271,7 @@ public sealed partial class OwnershipBody
 
                 this.LoadInput(seed, !runtime);
                 this.Transfer(seed);
+                this.ReplayChecking(region.SeedCount == 0 ? region.Replay : this.CheckingSeeds[region.SeedStart + s].Replay);
                 var destination = this.checkingStates.AsSpan(block * width, width);
                 if (s == 0)
                 {
@@ -201,6 +306,52 @@ public sealed partial class OwnershipBody
     private bool IsCheckingEdge(OwnershipEdge edge)
         => this.OperationRegions[edge.From] > 0 && this.OperationRegions[edge.From] == this.OperationRegions[edge.To] &&
             edge.Kind != OwnershipEdgeKind.Abort;
+
+    private void ReplayChecking(int replay)
+    {
+        var count = 0;
+        for (var current = replay; current >= 0; current = this.CheckingReplays[current].Previous)
+        {
+            Grow(ref this.checkingReplayStack, count + 1);
+            this.checkingReplayStack[count++] = current;
+        }
+
+        while (count > 0)
+        {
+            var path = this.CheckingReplays[this.checkingReplayStack[--count]];
+            if (path.Graph)
+            {
+                this.ReplayCheckingGraph(path);
+                continue;
+            }
+
+            for (var cursor = path.Entry; ; cursor = this.LinearCheckingSuccessor(cursor))
+            {
+                Debug.Assert(!this.Reachable[cursor]);
+                this.Transfer(cursor);
+                if (cursor == path.End)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    private void ReplayCheckingGraph(OwnershipCheckingReplay path)
+    {
+        var width = this.words * Lanes;
+        Grow(ref this.checkingReplayStates, checked(this.checkingBlockCount * width));
+        Grow(ref this.checkingReplayReached, this.checkingBlockCount);
+        this.checkingReplayReached.AsSpan(0, this.checkingBlockCount).Clear();
+        var entry = this.checkingBlockOf[path.Entry];
+        Debug.Assert(this.checkingLeaders[entry] == path.Entry);
+        this.Scratch.AsSpan(0, width).CopyTo(this.checkingReplayStates.AsSpan(entry * width, width));
+        this.checkingReplayReached[entry] = true;
+        this.Converge(entry, true, path.End, this.checkingReplayStates, this.checkingReplayReached);
+        var end = this.checkingBlockOf[path.End];
+        Debug.Assert(this.checkingReplayReached[end]);
+        this.RunBlock(end, false, true, path.End, this.checkingReplayStates);
+    }
 
     private void PartitionCheckingBlocks()
     {
@@ -270,11 +421,11 @@ public sealed partial class OwnershipBody
         }
     }
 
-    private void Converge(int entry, bool checking)
+    private void Converge(int entry, bool checking, int stop = -1, ulong[]? replayStates = null, bool[]? replayReached = null)
     {
         var blocks = checking ? this.checkingBlockCount : this.blockCount;
-        var states = checking ? this.checkingStates : this.BlockStates;
-        var reached = checking ? this.checkingReached : this.BlockReachable;
+        var states = replayStates ?? (checking ? this.checkingStates : this.BlockStates);
+        var reached = replayReached ?? (checking ? this.checkingReached : this.BlockReachable);
         var blockOf = checking ? this.checkingBlockOf : this.BlockOf;
         var width = this.words * Lanes;
         this.BlockQueued[entry] = true;
@@ -287,7 +438,12 @@ public sealed partial class OwnershipBody
             head = head + 1 == blocks ? 0 : head + 1;
             size--;
             this.BlockQueued[block] = false;
-            var last = this.RunBlock(block, false, checking);
+            var last = this.RunBlock(block, false, checking, stop, replayStates);
+            if (last == stop)
+            {
+                continue;
+            }
+
             var output = this.Scratch.AsSpan(0, width);
             for (var e = this.EdgeHeads[last]; e >= 0; e = this.EdgeStorage[e].Next)
             {
