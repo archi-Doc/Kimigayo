@@ -16,18 +16,36 @@ public group SpecTour
         public func read(self: ref/Self) -> i32 => self.measured
         public func calibrate(self: uniq/Self, value: i32) => self.measured = value
 
+        public func overwrite(self: uniq/Self, value: i32)
+            Kimi.replace(self, with: Sensor.init(value))
+
     public group Objects
         public func runValues()
             var sensor = Sensor.init(23)
             sensor.calibrate(24)
-            ::Core.writeLine("ordinary value: v\(sensor.version()), reading=\(sensor.read())")
+            ::Kimi.Console.writeLine("ordinary value: v\(sensor.version()), reading=\(sensor.read())")
 
-        // 以下は外部から取得済みの具象 Core オブジェクトを受け取る境界の例。
-        // Sensor.init(...) は値を作る。obj/Sensor の生成 API 名はまだ未確定。
+        // Sensor.init constructs an owner value; Kimi.makeObj creates an object.
+        // Sensor is non-open, so a complete Sensor payload can be borrowed as a value.
+        public func create() -> obj/Sensor
+            return Kimi.makeObj<Sensor>(Sensor.init(23))
+
+        public func readPayload(sensor: objref/Sensor) -> ref/Sensor from sensor
+            return sensor@ref/Sensor
+
+        public func replacePayload(sensor: objuniq/Sensor, value: i32)
+            Kimi.replace(sensor@uniq/Sensor, with: Sensor.init(value))
+            // Same-complete-Type receivers also project implicitly.
+            sensor.overwrite(value)
+
+        public func swapPayloads(first: objuniq/Sensor, second: objuniq/Sensor)
+            Kimi.swap(first@uniq/Sensor, second@uniq/Sensor)
+
+        // A Device base View remains protected even when a derived Type is sealed.
         public func inspect(device: objref/Device)
             require device is Sensor else => return
             // require が正常継続する経路では device は objref/Sensor に絞り込まれる。
-            ::Core.writeLine("object sensor=\(device.read())")
+            ::Kimi.Console.writeLine("object sensor=\(device.read())")
 
         public func edit(device: objuniq/Device)
             require device is Sensor else => return
@@ -46,7 +64,7 @@ public group SpecTour
         public func inspectRc(device: rc/Device)
             let moved = device // 参照カウント増加ではなく所有 handle の Move。
             inspect(moved@objref)
-            if moved is not Sensor => ::Core.writeLine("another device")
+            if moved is not Sensor => ::Kimi.Console.writeLine("another device")
 
         public func inspectArc(device: arc/Device)
             inspect(device@objref)

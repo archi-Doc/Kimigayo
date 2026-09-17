@@ -12,27 +12,27 @@ public class ElementParameterMoveEmissionTest
 
     public static TheoryData<string, string, string, string, int[]> Fixtures => new()
     {
-        { "Return", "func f(a: (string, string)) -> string => a.0\nwriteLine(f((\"first\", \"last\")))", "first\n", "first=1;last=1", [1, 0] },
+        { "Return", "func f(a: (string, string)) -> string => a.0\nConsole.writeLine(f((\"first\", \"last\")))", "first\n", "first=1;last=1", [1, 0] },
         { "Local", "func f(a: (string, string))\n    let moved = a.0\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [0, 1] },
         { "Conditional", Conditional, string.Empty, "first=2;last=2", [0, 1, 1, 0] },
         { "Both", "func f(a: (string, string))\n    let first = a.0\n    let last = a.1\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
-        { "CopyAfter", "func f(a: (string, i32)) -> i32\n    let moved = a.0\n    return a.1\nif f((\"first\", 42)) == 42 => writeLine(\"ok\")", "ok\n", "first=1;ok=1", [0, 1] },
-        { "Nested", "func f(a: (string, (string, string))) -> string => a.1.0\nwriteLine(f((\"outer\", (\"first\", \"last\"))))", "first\n", "outer=1;first=1;last=1", [2, 0, 1] },
+        { "CopyAfter", "func f(a: (string, i32)) -> i32\n    let moved = a.0\n    return a.1\nif f((\"first\", 42)) == 42 => Console.writeLine(\"ok\")", "ok\n", "first=1;ok=1", [0, 1] },
+        { "Nested", "func f(a: (string, (string, string))) -> string => a.1.0\nConsole.writeLine(f((\"outer\", (\"first\", \"last\"))))", "first\n", "outer=1;first=1;last=1", [2, 0, 1] },
         { "Aggregate", "func f(a: ((string, string), string)) -> (string, string) => a.0\nlet moved = f(((\"first\", \"last\"), \"outer\"))", string.Empty, "first=1;last=1;outer=1", [2, 1, 0] },
-        { "Array", "func f(a: [5 of string]) -> string => a[(0x2)]\nlet a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nwriteLine(f(a))", "c\n", "a=1;b=1;c=1;d=1;e=1", [4, 3, 1, 0, 2] },
+        { "Array", "func f(a: [5 of string]) -> string => a[(0x2)]\nlet a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nConsole.writeLine(f(a))", "c\n", "a=1;b=1;c=1;d=1;e=1", [4, 3, 1, 0, 2] },
         { "ArrayNested", "func f(a: (string, [2 of string])) -> [2 of string] => a.1\nlet a: (string, [2 of string]) = (\"outer\", [\"first\", \"last\"])\nlet moved = f(a)", string.Empty, "outer=1;first=1;last=1", [0, 2, 1] },
-        { "BorrowAfter", Same + "func f(a: (string, string))\n    let moved = a.0\n    if same(a.1, a.1) => writeLine(\"ok\")\nf((\"first\", \"last\"))", "ok\n", "first=1;last=1;ok=1", [2, 0, 1] },
-        { "BorrowBefore", Same + "func f(a: (string, string)) -> string\n    let equal = same(a.0, a.0)\n    return a.0\nwriteLine(f((\"first\", \"last\")))", "first\n", "first=1;last=1", [1, 0] },
-        { "SharedSibling", "func inspect(a: ref/string, b: string)\n    if a == a => writeLine(b)\nfunc f(a: (string, string)) => inspect(a.0, a.1)\nf((\"first\", \"last\"))", "last\n", "first=1;last=1", [1, 0] },
+        { "BorrowAfter", Same + "func f(a: (string, string))\n    let moved = a.0\n    if same(a.1, a.1) => Console.writeLine(\"ok\")\nf((\"first\", \"last\"))", "ok\n", "first=1;last=1;ok=1", [2, 0, 1] },
+        { "BorrowBefore", Same + "func f(a: (string, string)) -> string\n    let equal = same(a.0, a.0)\n    return a.0\nConsole.writeLine(f((\"first\", \"last\")))", "first\n", "first=1;last=1", [1, 0] },
+        { "SharedSibling", "func inspect(a: ref/string, b: string)\n    if a == a => Console.writeLine(b)\nfunc f(a: (string, string)) => inspect(a.0, a.1)\nf((\"first\", \"last\"))", "last\n", "first=1;last=1", [1, 0] },
         { "DeferMove", "func f(a: (string, string))\n    defer\n        let moved = a.0\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [0, 1] },
         { "DeferClones", "func f(a: (string, string), early: bool)\n    defer\n        let moved = a.0\n    if early => return\nf((\"first\", \"last\"), true)\nf((\"first\", \"last\"), false)", string.Empty, "first=2;last=2", [0, 1, 0, 1] },
-        { "Selection", "func f(a: (string, string), take: bool) -> string => if take => a.0 else => a.1\nwriteLine(f((\"first\", \"last\"), true))\nwriteLine(f((\"first\", \"last\"), false))", "first\nlast\n", "first=2;last=2", [1, 0, 0, 1] },
+        { "Selection", "func f(a: (string, string), take: bool) -> string => if take => a.0 else => a.1\nConsole.writeLine(f((\"first\", \"last\"), true))\nConsole.writeLine(f((\"first\", \"last\"), false))", "first\nlast\n", "first=2;last=2", [1, 0, 0, 1] },
         { "WholeOrPart", "func f(a: (string, string), whole: bool)\n    if whole\n        let moved = a\n    else\n        let moved = a.0\nf((\"first\", \"last\"), true)\nf((\"first\", \"last\"), false)", string.Empty, "first=2;last=2", [1, 0, 0, 1] },
-        { "Parameters", "func f(a: (string, string), b: (string, string)) -> string\n    let moved = b.0\n    return a.0\nwriteLine(f((\"a\", \"b\"), (\"c\", \"d\")))", "a\n", "a=1;b=1;c=1;d=1", [2, 3, 1, 0] },
-        { "LoopExit", "func f(a: (string, string)) -> string\n    loop\n        return a.0\nwriteLine(f((\"first\", \"last\")))", "first\n", "first=1;last=1", [1, 0] },
+        { "Parameters", "func f(a: (string, string), b: (string, string)) -> string\n    let moved = b.0\n    return a.0\nConsole.writeLine(f((\"a\", \"b\"), (\"c\", \"d\")))", "a\n", "a=1;b=1;c=1;d=1", [2, 3, 1, 0] },
+        { "LoopExit", "func f(a: (string, string)) -> string\n    loop\n        return a.0\nConsole.writeLine(f((\"first\", \"last\")))", "first\n", "first=1;last=1", [1, 0] },
         { "Dead", "func f(a: (string, string))\n    return\n    let moved = a.0\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
         { "Covered", "func f(a: (string, string))\n    match true\n        _ => ()\n        true => (work: do\n            let moved = a.0\n        )\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
-        { "Transfer", "func inspect(a: string, b: bool) => ()\nfunc f(a: (string, string)) -> string\n    inspect(a.0, (return \"out\"))\n    return \"bad\"\nwriteLine(f((\"first\", \"last\")))", "out\n", "first=1;last=1;out=1;bad=0", [0, 1, 2] },
+        { "Transfer", "func inspect(a: string, b: bool) => ()\nfunc f(a: (string, string)) -> string\n    inspect(a.0, (return \"out\"))\n    return \"bad\"\nConsole.writeLine(f((\"first\", \"last\")))", "out\n", "first=1;last=1;out=1;bad=0", [0, 1, 2] },
         { "ZeroSize", "func f(a: ([0 of string], string)) -> [0 of string] => a.0\nlet a: ([0 of string], string) = ([], \"last\")\nlet moved = f(a)", string.Empty, "last=1", [0] },
         { "ConditionalNested", "func f(a: ((string, string), string), take: bool)\n    if take\n        let moved = a.0.0\n    else\n        let moved = a.0\nf(((\"first\", \"last\"), \"outer\"), true)\nf(((\"first\", \"last\"), \"outer\"), false)", string.Empty, "first=2;last=2;outer=2", [0, 2, 1, 1, 0, 2] },
     };
@@ -63,7 +63,7 @@ public class ElementParameterMoveEmissionTest
     [InlineData("func f(a: (string, [1 of i32])) -> i32\n    return a.1[(work: do\n        let moved = a.0\n        exit to work: 0\n    )]", OwnershipFailure.ComparisonLoanConflict)]
     public void InvalidMovesFailBeforeEmission(string source, OwnershipFailure failure)
     {
-        var c = MinimalEmissionTest.Analyze(source + "\nwriteLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
         using var writer = new StringWriter();
@@ -153,7 +153,7 @@ public class ElementParameterMoveEmissionTest
     [Fact]
     public void ParameterStorageIsUsedWithoutAWholeAggregateTransfer()
     {
-        var c = MinimalEmissionTest.Analyze("func f(a: (string, string)) -> string => a.0\nwriteLine(f((\"first\", \"last\")))");
+        var c = MinimalEmissionTest.Analyze("func f(a: (string, string)) -> string => a.0\nConsole.writeLine(f((\"first\", \"last\")))");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[1];
         var function = module.GetFunction(1);
@@ -176,7 +176,7 @@ public class ElementParameterMoveEmissionTest
     [Fact]
     public void AbortingDeferPreventsRemainingDestructionAndReturnDelivery()
     {
-        const string Source = "func f(a: (string, string)) -> string\n    defer\n        var n = 2147483647\n        n += 1\n    return a.0\nwriteLine(f((\"first\", \"last\")))";
+        const string Source = "func f(a: (string, string)) -> string\n    defer\n        var n = 2147483647\n        n += 1\n    return a.0\nConsole.writeLine(f((\"first\", \"last\")))";
         const string Error = "Hello.kimi:4:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementParameterMoveCleanupAbort", Source, string.Empty, 1, Error);
         StringEmissionTest.WriteAuditedFixture("ElementParameterMoveCleanupAbort", Source, ir, string.Empty, "first=0;last=0", 1, Error);
@@ -184,7 +184,7 @@ public class ElementParameterMoveEmissionTest
 
     [Fact]
     public void NonterminatingDeferPreventsRemainingDestructionAndReturnDelivery()
-        => ScalarEmissionTest.EmitFixture("ElementParameterMoveDivergent", "func f(a: (string, string)) -> string\n    defer => loop => ()\n    return a.0\nwriteLine(f((\"first\", \"last\")))", string.Empty, timeoutMilliseconds: 300);
+        => ScalarEmissionTest.EmitFixture("ElementParameterMoveDivergent", "func f(a: (string, string)) -> string\n    defer => loop => ()\n    return a.0\nConsole.writeLine(f((\"first\", \"last\")))", string.Empty, timeoutMilliseconds: 300);
 
     [Fact]
     public void WarmParameterMovesAllocateNothing()

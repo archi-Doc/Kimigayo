@@ -279,7 +279,7 @@ While retains a static false-condition path even for `true`. Use loop for uncond
 
 ### 14.6.2. Iteration protocol and acquisition
 
-The recognized Core Iterable and Iterator Contracts define for iteration. Evaluate E once and acquire it, using ordinary Copy/Move, into a hidden iterable local. Invoke its consuming iterate mapping once to obtain a hidden iterator local. Repeatedly invoke Iterator.next with a short exclusive reborrow of that iterator. A Some payload supplies the next element; None terminates the loop. Missing or ambiguous conformances are errors; no method-name duck typing or fallback protocol is used.
+The recognized Kimi Iterable and Iterator Contracts define for iteration. Evaluate E once and acquire it, using ordinary Copy/Move, into a hidden iterable local. Invoke its consuming iterate mapping once to obtain a hidden iterator local. Repeatedly invoke Iterator.next with a short exclusive reborrow of that iterator. A Some payload supplies the next element; None terminates the loop. Missing or ambiguous conformances are errors; no method-name duck typing or fallback protocol is used.
 
 ~~~text
 iterable := acquire(E)
@@ -478,7 +478,7 @@ Here the first `data` is `ref/Data` in the guard and `Data` in the body. Writing
 func same(a: ref/string, b: ref/string) -> bool => a == b
 
 match "hello"
-    let text if same(text, "hello") => writeLine(text)
+    let text if same(text, "hello") => Console.writeLine(text)
     _ => ()
 ```
 
@@ -722,6 +722,8 @@ Warn on `while true`, including parenthesized true, suggesting loop for uncondit
 ## 14.10. Type refinement
 
 ### 14.10.1. Stable bindings and effective types
+
+A complete payload update invalidates facts about old field contents and their projections, including `let` fields, while preserving object Identity/Dynamic Type refinements and still-valid storage access (§15.7.3). A `let` field is not an object-lifetime constant. Handle replacement/movement retains the separate invalidation rules below.
 
 Runtime Type refinement attaches to the current **Value Instance** of a resolved **Binding Identity**. Eligible subjects are parenthesized or bare names of object-typed local `let` bindings or non-reassignable parameters with struct Core targets. `var`, Fields, computed/required Properties, indexing, and call results can be tested but do not refine later reads. Facts do not transfer to aliases or shadowed bindings.
 

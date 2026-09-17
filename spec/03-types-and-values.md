@@ -52,7 +52,7 @@ Type
    └─ static
 ```
 
-Named examples do not introduce separate declaration forms or mutually exclusive categories. Structs and enums follow §6; arrays follow [arrays and slices](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices). The **Core Kotonoha** in §22 is the language's foundation module, distinct from a Type's Core.
+Named examples do not introduce separate declaration forms or mutually exclusive categories. Structs and enums follow §6; arrays follow [arrays and slices](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices). The **Kimi Kotonoha** in §22 is the language's foundation module, distinct from a Type's Core.
 
 ## 3.1. Primitive cores
 
@@ -182,9 +182,9 @@ An empty environment or `func []` does not imply purity, a function-pointer ABI,
 
 ### 3.2.2. Weak reference values
 
-`Core.Weak<S>` is a compiler-managed Non-Copy struct Core. After normalization, S must be a complete rc/T or arc/T satisfying the existing object View Target rules. Generic definitions need the same evidence; a pair `<s/T>` requires s to be rc or arc. A bare payload Core, obj, object borrow or Weak itself is not a valid S.
+`Kimi.Weak<S>` is a compiler-managed Non-Copy struct Core. After normalization, S must be a complete rc/T or arc/T satisfying the existing object View Target rules. Generic definitions need the same evidence; a pair `<s/T>` requires s to be rc or arc. A bare payload Core, obj, object borrow or Weak itself is not a valid S.
 
-A Weak owns one responsibility for a particular weak management area, never strong payload ownership. Its outer Semantics is ordinary owner; `ref/Weak<S>` borrows the Weak slot. Normal acquisition Moves it, and Core.clone explicitly duplicates its weak responsibility. Users cannot replace its fields or deinit.
+A Weak owns one responsibility for a particular weak management area, never strong payload ownership. Its outer Semantics is ordinary owner; `ref/Weak<S>` borrows the Weak slot. Normal acquisition Moves it, and Kimi.clone explicitly duplicates its weak responsibility. Users cannot replace its fields or deinit.
 
 Every Weak has a target management area. **There is no empty Weak and no zero-argument Weak constructor.** Use `Option<Weak<S>>` with None for absence. An expired Weak is a present value whose target cannot be upgraded; neither expiration nor construction state changes Non-Copy classification. No niche or one-word Option representation is promised.
 
@@ -232,6 +232,8 @@ A Requirement on a Semantics binding may also name any concrete Semantics listed
 
 ### 3.3.2. Value borrows
 
+A complete Sealed object payload may supply an ordinary value borrow through §13.5.5. Its outer Loan retains the object owner and referent dependencies. Whole-content updates use §15.7; allocation lifetime and content lifetime remain distinct.
+
 Value borrows provide non-owning access to the immediate complete Referent Type's storage, subject to lifetime constraints. They do not automatically follow a pointer stored there: `ref/(rc/T)` borrows a handle slot, while `objref/T` borrows the object. Physical storage follows §21.2.4.
 
 - `ref/T` is a shared borrow; multiple shared references may coexist.
@@ -250,7 +252,7 @@ An object retains its complete dynamic payload, type metadata, and ownership res
 
 - `arc/T` uses atomic reference counting. Atomic ownership management does not guarantee safe concurrent mutation of `T`.
 
-Core [object ownership operations](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) create these representations from owned values and explicitly duplicate `rc`/`arc` strong owners. Their release follows [object destruction](16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
+Kimi [object ownership operations](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) create these representations from owned values and explicitly duplicate `rc`/`arc` strong owners. Their release follows [object destruction](16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
 
 ### 3.3.4. Object borrows
 
@@ -261,6 +263,8 @@ Object borrows provide non-owning access to objects, subject to lifetime constra
 - `objuniq/T` is an exclusive mutable object borrow; no conflicting reference may coexist.
 
 ### 3.3.5. Object views and identity
+
+Every valid owner Core except Never is a possible concrete payload, including non-struct Cores. Complete payload replacement (§15.7) preserves Identity, Dynamic Type, allocation, and metadata; it changes only contents and their destruction responsibilities. A Sealed View Target proves the payload is complete without changing the Supports relation.
 
 References to Contract targets in the object model describe the [runtime Contract extension](08-generics-constraints-and-contracts.md#85-runtime-contracts), outside the static Contracts defined in this revision. Concrete Core targets remain governed by the ordinary Object View rules.
 
@@ -378,7 +382,7 @@ Classify complete Types using Core, Semantics, and stored components:
 | Function Item | Copy |
 | Concrete Closure | Copy exactly when every captured complete Type is Copy; empty environments qualify |
 | Common Function Type under `owner` Semantics | Non-Copy regardless of its hidden environment |
-| `Core.Weak<S>` under `owner` Semantics | Non-Copy in every state, including expiration; explicit duplication retains weak-management storage |
+| `Kimi.Weak<S>` under `owner` Semantics | Non-Copy in every state, including expiration; explicit duplication retains weak-management storage |
 | Tuple / fixed-length array under `owner` Semantics | Copy exactly when every component Type is Copy |
 | User-defined struct under `owner` Semantics | Non-Copy unless explicitly opted in |
 | Enum under `owner` Semantics | Non-Copy unless explicitly opted in under [enum derivation](#352-enum-copy) |
@@ -404,7 +408,7 @@ func duplicate<T>(value: T) -> (T, T)
 
 Unknown Copy capability follows [Generic Access Effects](08-generics-constraints-and-contracts.md#89-generic-access-effects), preserving conditional acquisition plans and separate shared element-read rules.
 
-Duplication that allocates, increments a reference count or duplicates a resource requires an explicit operation. rc/arc and Weak use [Core.clone](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing); no general duplication API is defined.
+Duplication that allocates, increments a reference count or duplicates a resource requires an explicit operation. rc/arc and Weak use [Kimi.clone](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing); no general duplication API is defined.
 
 ### 3.5.2. Enum Copy
 

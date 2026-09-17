@@ -7,30 +7,30 @@ namespace XunitTest;
 
 public class ResultEmissionTest
 {
-    internal const string Nested = "var i = 0\nwhile i < 1000000\n    let x = if i < 5 => (if true => i else => -1) else => i\n    if x != i => writeLine(\"bad\")\n    i += 1\nif i == 1000000 => writeLine(\"ok\")";
+    internal const string Nested = "var i = 0\nwhile i < 1000000\n    let x = if i < 5 => (if true => i else => -1) else => i\n    if x != i => Console.writeLine(\"bad\")\n    i += 1\nif i == 1000000 => Console.writeLine(\"ok\")";
 
     public static TheoryData<string, string> Fixtures => new()
     {
-        { "ResultIf", "var c = false\nlet x = if c => 1 else => 2\nif x == 2 => writeLine(\"ok\")" },
-        { "ResultElseIf", "var c = 2\nlet x = if c == 0 => 10 else if c == 1 => 20 else => 30\nif x == 30 => writeLine(\"ok\")" },
-        { "ResultBool", "let x = if false => false else => true\nif x and true => writeLine(\"ok\")" },
-        { "ResultYield", "let x = if true\n    yield 1\nelse\n    yield 2\nif x == 1 => writeLine(\"ok\")" },
-        { "ResultDo", "let x = do => 3\nif x == 3 => writeLine(\"ok\")" },
-        { "ResultDoExit", "let x = work: do\n    exit to work: 4\nif x == 4 => writeLine(\"ok\")" },
-        { "ResultLabeledDo", "let x = work: do\n    if true => exit to work: 5\n    exit to work: 6\nif x == 5 => writeLine(\"ok\")" },
-        { "ResultLabeledIf", "let x = choice: if true\n    if true => yield to choice: 7\n    yield 8\nelse\n    yield 9\nif x == 7 => writeLine(\"ok\")" },
-        { "ResultLoop", "var i = 0\nlet x = loop\n    i += 1\n    if i < 3 => continue\n    exit i\nif x == 3 => writeLine(\"ok\")" },
-        { "ResultLoopExits", "var c = false\nlet x = loop\n    if c => exit 1\n    exit 2\nif x == 2 => writeLine(\"ok\")" },
-        { "ResultOuterLoop", "let x = outer: loop\n    loop\n        exit to outer: 3\nif x == 3 => writeLine(\"ok\")" },
-        { "ResultOneInput", "var c = true\nwhile true\n    let x = if c => 1 else => exit\n    if x == 1 => writeLine(\"ok\")\n    exit" },
+        { "ResultIf", "var c = false\nlet x = if c => 1 else => 2\nif x == 2 => Console.writeLine(\"ok\")" },
+        { "ResultElseIf", "var c = 2\nlet x = if c == 0 => 10 else if c == 1 => 20 else => 30\nif x == 30 => Console.writeLine(\"ok\")" },
+        { "ResultBool", "let x = if false => false else => true\nif x and true => Console.writeLine(\"ok\")" },
+        { "ResultYield", "let x = if true\n    yield 1\nelse\n    yield 2\nif x == 1 => Console.writeLine(\"ok\")" },
+        { "ResultDo", "let x = do => 3\nif x == 3 => Console.writeLine(\"ok\")" },
+        { "ResultDoExit", "let x = work: do\n    exit to work: 4\nif x == 4 => Console.writeLine(\"ok\")" },
+        { "ResultLabeledDo", "let x = work: do\n    if true => exit to work: 5\n    exit to work: 6\nif x == 5 => Console.writeLine(\"ok\")" },
+        { "ResultLabeledIf", "let x = choice: if true\n    if true => yield to choice: 7\n    yield 8\nelse\n    yield 9\nif x == 7 => Console.writeLine(\"ok\")" },
+        { "ResultLoop", "var i = 0\nlet x = loop\n    i += 1\n    if i < 3 => continue\n    exit i\nif x == 3 => Console.writeLine(\"ok\")" },
+        { "ResultLoopExits", "var c = false\nlet x = loop\n    if c => exit 1\n    exit 2\nif x == 2 => Console.writeLine(\"ok\")" },
+        { "ResultOuterLoop", "let x = outer: loop\n    loop\n        exit to outer: 3\nif x == 3 => Console.writeLine(\"ok\")" },
+        { "ResultOneInput", "var c = true\nwhile true\n    let x = if c => 1 else => exit\n    if x == 1 => Console.writeLine(\"ok\")\n    exit" },
         { "ResultNestedLoop", Nested },
-        { "ResultReadOrder", "var x = 2\nlet y = x + (if true => x++ else => 0)\nif y == 4 and x == 3 => writeLine(\"ok\")" },
-        { "ResultCheckedEdge", "var x = 3\nlet y = if true => x + 1 else => x - 1\nif y == 4 => writeLine(\"ok\")" },
-        { "ResultDead", "while true\n    exit\n    let x = if true => 1 else => 2\nwriteLine(\"ok\")" },
-        { "ResultNever", "while true\n    let x: i32 = if true => exit else => continue\nwriteLine(\"ok\")" },
-        { "ResultDeadLoop", "while true\n    exit\n    let x: i32 = loop => continue\nwriteLine(\"ok\")" },
-        { "ResultShortTransfer", "let x = outer: do\n    let b = true and (inner: do => exit to outer: 1)\n    exit to outer: 2\nif x == 1 => writeLine(\"ok\")" },
-        { "ResultShortSkipTransfer", "let x = outer: do\n    let b = false and (inner: do => exit to outer: 1)\n    exit to outer: 2\nif x == 2 => writeLine(\"ok\")" },
+        { "ResultReadOrder", "var x = 2\nlet y = x + (if true => x++ else => 0)\nif y == 4 and x == 3 => Console.writeLine(\"ok\")" },
+        { "ResultCheckedEdge", "var x = 3\nlet y = if true => x + 1 else => x - 1\nif y == 4 => Console.writeLine(\"ok\")" },
+        { "ResultDead", "while true\n    exit\n    let x = if true => 1 else => 2\nConsole.writeLine(\"ok\")" },
+        { "ResultNever", "while true\n    let x: i32 = if true => exit else => continue\nConsole.writeLine(\"ok\")" },
+        { "ResultDeadLoop", "while true\n    exit\n    let x: i32 = loop => continue\nConsole.writeLine(\"ok\")" },
+        { "ResultShortTransfer", "let x = outer: do\n    let b = true and (inner: do => exit to outer: 1)\n    exit to outer: 2\nif x == 1 => Console.writeLine(\"ok\")" },
+        { "ResultShortSkipTransfer", "let x = outer: do\n    let b = false and (inner: do => exit to outer: 1)\n    exit to outer: 2\nif x == 2 => Console.writeLine(\"ok\")" },
     };
 
     [Theory]
@@ -56,7 +56,7 @@ public class ResultEmissionTest
     [Fact]
     public void UnreachableResultsHaveNoSyntheticMissingValuesOrPhysicalBlocks()
     {
-        var c = MinimalEmissionTest.Analyze("while true\n    exit\n    let x = if true\n        yield 1\n    else\n        yield 2\nwriteLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("while true\n    exit\n    let x = if true\n        yield 1\n    else\n        yield 2\nConsole.writeLine(\"ok\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies[0];
         var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);
@@ -120,7 +120,7 @@ public class ResultEmissionTest
     [InlineData("missing-terminator")]
     public void MalformedResultPlansNeverWriteIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("var c = true\nlet x = if c => 1 + 2 else => 4 + 5\nif x == 3 => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("var c = true\nlet x = if c => 1 + 2 else => 4 + 5\nif x == 3 => Console.writeLine(\"ok\")");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);

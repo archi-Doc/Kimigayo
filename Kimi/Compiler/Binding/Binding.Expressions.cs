@@ -594,14 +594,16 @@ public sealed partial class Binding
 
             if (!operation.IsStandard || (update && !property.Setter.IsStandard))
             {
-                if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) && pathSelection.Path is not null && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
+                if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) &&
+                    (pathSelection.Path is not null || IsObjectSemantics(sourceType.Semantics)) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
                 {
                     if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind))
                     {
                         return Fail(node, BindingFailure.TypeMismatch);
                     }
 
-                    this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, ProjectedReceiverProof(symbol));
+                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol);
+                    this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, compatibility);
                 }
 
                 // Callable Property uses need the operation/Origin plans of expression

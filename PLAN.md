@@ -1056,7 +1056,7 @@ and new throughput benchmarks were not run. Work stops at program 7.
 
 I19/I20 and plan stage M8 remain incomplete: this integration implements the
 built-in ResolvedRange path from `indices`, not general user-defined
-Iterable/Iterator dispatch. General Core sequence declarations and explicit Type
+Iterable/Iterator dispatch. General Kimi sequence declarations and explicit Type
 APIs, Index/from-end/bounded Range operations, arbitrary Slice element results,
 direct collection/Slice iteration, tuple iteration bindings and generic
 collection/iteration ABI remain separate work. Mixed Slice provenance widens to
@@ -1131,7 +1131,7 @@ Use states `TODO`, `IN_PROGRESS`, `IMPLEMENTED_UNVERIFIED`, `DONE`, `BLOCKED`, `
 | M5 | TODO | Concrete enum semantic plans exist; general enum/Pattern execution absent | I12 |
 | M6 | IN_PROGRESS | Program 8 adds universal stored-field CopyOrMove checking and shared transfer/selection CFGs with concrete entries and fixed frames; broader universal bodies, explicit selection and generic operations remain incomplete | Remaining I13–I16 obligations |
 | M7 | TODO | Capture syntax and Callable identities exist; Closure/function-value execution incomplete | I17–I18 |
-| M8 | IN_PROGRESS | Program 7 sequence subset and program 8 scalar Copy fixed-array iteration implemented (see integration checkpoints above); general sequence Core APIs/witnesses and Iterable/Iterator dispatch remain unfinished | I19–I20 |
+| M8 | IN_PROGRESS | Program 7 sequence subset and program 8 scalar Copy fixed-array iteration implemented (see integration checkpoints above); general sequence Kimi APIs/witnesses and Iterable/Iterator dispatch remain unfinished | I19–I20 |
 | M9 | TODO | Collection/Stringify/comparison contracts specified; executable Core incomplete | I21–I23 |
 | M10 | TODO | Object/Weak APIs and profile specified; generation/runtime incomplete | I24–I25 |
 | M11 | TODO | Import declarations/pointer syntax partially supported; native execution boundary needs completion | I26 |
@@ -1181,15 +1181,15 @@ Classifications apply to the stated input range. “Implemented” below means i
 | R13–R14: generic universal proofs/selection/generation | P/schema B: Partially Implemented; general A/G: Not Implemented through emitter guards | `Binding.Constraints*.cs`, `Binding.OriginRequirements.cs`; `LlvmEmitter.CheckInputs` rejects generic arguments, Origins, constraints and specializations. Declaration proof tests do not prove universal body execution. |
 | R15: Closures/common function values | P: Implemented syntax; B/A: Partially Implemented identities; G: Not Implemented through emitter guard | Capture Koto/function Types, `CoreIntrinsics.Callable`; captures fail ownership, anonymous functions fail final Binding. |
 | R16–R18: Index/Range/Slice/for/dynamic collections | P: Partially Implemented; general B/A/G: Not Implemented for missing Core entries | `CoreIntrinsics` missing entries; for/range syntax exists. Fixed-array isize indexing and literal static Move paths are already implemented and reusable. Do not equate absent Core entries with absent fixed-array support. |
-| R19: Stringify/interpolation/Contract comparisons | P and primitive comparisons: Partially Implemented; missing Core Contract operations: Not Implemented | Core catalog and `Binding.Expressions.cs`; literal strings and primitive comparisons already execute. No inferred permission for deferred concatenation. |
-| R20: objects/Weak/runtime type refinement | B: Partially Implemented runtime tests; A/G/runtime: Partially Implemented foundations only | `Binding.RuntimeTypeTests.cs`, `RuntimeTypeTest`; Core catalog has no Weak declaration or object-operation symbols. `CompilerFunctionKind` currently contains WriteLine and Abort only. |
+| R19: Stringify/interpolation/Contract comparisons | P and primitive comparisons: Partially Implemented; missing Core Contract operations: Not Implemented | Kimi catalog and `Binding.Expressions.cs`; literal strings and primitive comparisons already execute. No inferred permission for deferred concatenation. |
+| R20: objects/Weak/runtime type refinement | B: Partially Implemented runtime tests; A/G/runtime: Partially Implemented foundations only | `Binding.RuntimeTypeTests.cs`, `RuntimeTypeTest`; Kimi catalog has no Weak declaration or object-operation symbols. `CompilerFunctionKind` currently contains WriteLine and Abort only. |
 | R21: raw pointers/FFI/C layout | P/declaration B: Partially Implemented; complete native path: Unknown/blocked by current emitter restrictions | `Binding.Attributes.cs`, `LibraryImportTargetBindingTest`, `LayoutAttributeBindingTest`; imported attributed functions cannot simply pass current function generation checks. Inspect operation-by-operation before implementing. |
 | R22–R24: modules/packages/reuse/native inputs | Project B/A and restore: Partially Implemented; Package loading/commands: Not Implemented; cross-module G: Not Implemented | `Compilation.Modules.cs`, resolver guard and command registry; `ModuleBindingTest`, `DependencyLockTest`, `EmissionArtifactsTest`. Existing serialization is source reload, not portable semantic records. |
 | R25: language tests | Product exclusion P/B/A/G: Partially Implemented; test-mode discovery/runner: Not Implemented through registered CLI | `TestDefinition`, `ProductTestMembershipTest`, `TestAttributeCertificateBindingTest`; `OwnershipAnalysis.Collector` skips marked tests. |
 | R26: Mods | Provisional/final Binding and appended-source infrastructure: Partially Implemented; external execution: Not Implemented | `Compilation.Bind` explicitly says no Mod execution exists; public interfaces separately undefined. |
 | R27–R28: diagnostics/performance/conformance | Partially Implemented infrastructure; current comprehensive verification: Unknown | Diagnostic collections/spans, reusable pools, benchmark workloads, native scripts. No measured current-run speedup. |
 
-Core catalog discrepancy: code currently has 18 entries and constructs six validated declarations; the table in §22.1 now also requires Weak and explicitly named object factories/operations. `CoreIntrinsics.cs` still comments that object operation spellings are deferred. This is an **IMPLEMENTATION_MISMATCH**, not permission to omit R20 or invent a new catalog contract.
+Kimi catalog discrepancy: code currently has 18 entries and constructs six validated declarations; the table in §22.1 now also requires Weak and explicitly named object factories/operations. `CoreIntrinsics.cs` still comments that object operation spellings are deferred. This is an **IMPLEMENTATION_MISMATCH**, not permission to omit R20 or invent a new catalog contract.
 
 Reload/invalidation: `Kotonoha.OnDeserialized` reparses saved `SourceDocument` objects with new contexts; it does not restore authoritative semantic proofs. `Binding.Bind` resets semantic fields, invalidates ownership, recomputes conformance/constraint certificates and prunes reused state. `LlvmEmitter` clears its declaration-to-ABI map in `finally`. Preserve these boundaries when adding facts; serialize verified semantic records only under R23, never mutable Koto graphs. Test added/removed declarations, changed aliases/constraints/effects and source replacement, not just serialization round trips.
 
@@ -1263,7 +1263,7 @@ Genuine gaps confirmed by this audit (all already carried by the checklist, so n
 | G1 `SPEC_GAP` | §20.7.7 and D list concrete Mod query/marker APIs, packaging/compatibility, settings and host limits as design work. R26/M14 | Separate public API/host design must define these before external implementation. Retain existing append/rebind infrastructure and verify settled lifecycle rules internally. Do not treat illustrative `IMod`/`ModContext` as adopted interfaces. |
 | G2 `SPEC_GAP` | D.4 explicitly defers temp-directory API, deadlines/recovery defaults/options, budgets, transport/report schemas, empty-set option, exits and ID encodings. R25/M13 | Separate consolidated profile decision required before I31: settle all listed interfaces and bounds together. I30 semantic membership/discovery/verification work is independent. Do not publish a supposedly complete runner using invented public contracts. |
 | G3 `INVESTIGATION_GAP` | D's collection storage entry versus settled §4.6.8/§4.7 complexity/storage freedom. R16–R18/M8–M9 | Public storage ABI remains excluded. Proposed internal Slice location/length and Array contiguous storage are implementation choices, subject to layout/Loan/zero-size validation. Proposed Dictionary indexed slots/free-list/order links allow allocation-free churn; benchmark before optimizing search. No user approval is needed for ordinary private layout choices within these contracts. |
-| G4 `IMPLEMENTATION_MISMATCH` | Core catalog omits required Weak and leaves object operations missing with a stale deferral comment, despite §22.1 and §13.5.8–9. R19–R20/M2, M10 | Add canonical declarations/identities with their implementation milestones; update catalog tests intentionally. Do not make `IsCompleteLibrary` true just by changing a count or weakening required shapes. |
+| G4 `IMPLEMENTATION_MISMATCH` | Kimi catalog omits required Weak and leaves object operations missing with a stale deferral comment, despite §22.1 and §13.5.8–9. R19–R20/M2, M10 | Add canonical declarations/identities with their implementation milestones; update catalog tests intentionally. Do not make `IsCompleteLibrary` true just by changing a count or weakening required shapes. |
 | G5 `INVESTIGATION_GAP` — **RESOLVED 2026-09-17** | `dotnet test --help` printed MTP help then attempted extension discovery/build, reporting `Access to the path 'C:\Users\bwff1\AppData\Roaming\NuGet\NuGet.Config' is denied.` SDK wrapper exited 0 despite the nested failure. All build/test evidence | Resolution: on the implementation run, `dotnet restore Kimigayo.slnx` completed ("all projects up to date", exit 0) and both configurations built and tested without any NuGet configuration error; the earlier denial was a sandboxed-probe environment condition, not a repository or user-configuration defect. No NuGet configuration was edited. Keep using the direct xUnit runner DLL rather than `dotnet test --help` style probes. |
 | G6 `INVESTIGATION_GAP` | Historical success is not current evidence; only selected hot paths/guards were inspected. R1–R28/M1, M15 | Reproduce focused baselines, expand clause coverage using Appendix A before each milestone. Unknown support needs a targeted source reproducer/code trace, not “not implemented” from a failed search. |
 | G7 `INVESTIGATION_GAP` | `AggregateLayoutPool` uses int offsets/counts, depth 64 and rejects size > int.MaxValue; §21 defines broader checked layout/resource rules. R10/R14/R16/M4, M6 | Determine which are documented resource limits versus unnecessarily restrictive representations. Use checked wide arithmetic internally where needed; keep finite limits explicit and distinguish semantic, resource and representation diagnostics. Do not allocate giant fixtures to test overflow. |
@@ -1493,7 +1493,7 @@ For a negative test, first make the surrounding program valid, then change only 
 | T27a / R1, R5, R23 | Append valid/invalid source through both entry points; replace with empty/nonempty snapshot; revoke retained certificates and require fresh analysis | DONE; seven new cases, full managed and native smoke evidence in unit 4 | MinimalEmissionTest, ContractBindingTest |
 | T27b / R1, R23, R27 | Parse errors survive display clearing and duplicate-location reports with default/custom destinations; prior errors and warnings alone do not poison source | DONE; seven new cases, full managed and native evidence in unit 5 | MinimalEmissionTest |
 | T4 / R4,R8 | Example A below plus named/default/receiver ordering, default borrowing, interrupted acquisition; count each evaluation once and clean acquired values in specified order | B/A plans, native log, failed default/use span | DefaultBindingTest, FunctionEmissionTest; **new** DefaultExecutionTest |
-| T5 / R5,R19 | Core impostors/invalid shape, conditional witnesses, dependent projections, proof cycles/Unknown/Error, comparison mappings; declaration/order/reload variants keep same result | B certificates and diagnostic causes, no stale winner after repair | CoreCatalogTest, ContractBindingTest, ConditionalConformanceBindingTest, NormalizedConstraintProofBindingTest |
+| T5 / R5,R19 | Kimi impostors/invalid shape, conditional witnesses, dependent projections, proof cycles/Unknown/Error, comparison mappings; declaration/order/reload variants keep same result | B certificates and diagnostic causes, no stale winner after repair | CoreCatalogTest, ContractBindingTest, ConditionalConformanceBindingTest, NormalizedConstraintProofBindingTest |
 | T6 / R6–R7 | Move then read, partial Move/repair, branch/loop state, simultaneous ref/uniq and Reborrow; returned reference to local rejected, input-derived reference accepted | A at the invalid use/escaping result; native final cleanup after accepted borrow ends | OwnershipAnalysisTest, ElementMoveEmissionTest, ReferenceEmissionTest; **new** BorrowCompletionTest |
 | T7 / R7 | Direct/recursive/indirect/imported callee mutates a static protected by a live Loan; changed callee effect invalidates use; independent shared read stays valid | B/A public summaries, caller diagnostics, reload/cross-module comparison | ModuleBindingTest; **new** EffectSummaryTest |
 | T8 / R6,R8,R10 | Existing Resource fixtures plus base/derived construction, partial failure, field reordering and zero-size deinit; child/base destruction order observable once | B/A/TypeLayout/IR/native, C cross-check only for C layout | StructEmissionTest; **new** InheritedStructEmissionTest |
@@ -1526,10 +1526,10 @@ Representative source inputs (proposed tests, not files created in this phase):
 
 ```kimi
 func defaultValue() -> i32
-    ::Core.writeLine("default")
+    ::Kimi.Console.writeLine("default")
     return 7
 func take(value?: i32 = defaultValue()) -> i32
-    ::Core.writeLine("body")
+    ::Kimi.Console.writeLine("body")
     return value
 let result = take()
 require result == 7 else => $abort("wrong result")
@@ -1538,9 +1538,9 @@ require result == 7 else => $abort("wrong result")
 **B — owned enum payload (T12).** Expect `held\n`; string responsibility transfers into then out of Some exactly once.
 
 ```kimi
-let value: ::Core.Option<string> = .Some("held")
+let value: ::Kimi.Option<string> = .Some("held")
 match value
-    .Some(let text) => ::Core.writeLine(text)
+    .Some(let text) => ::Kimi.Console.writeLine(text)
     .None => $abort("missing")
 ```
 
@@ -1560,10 +1560,10 @@ require forward<i32>(value@ref) == 1 else => $abort("wrong implementation")
 var names: Dictionary<i32, string> = [:]
 match names.tryInsert(1, "first")
     .Ok(()) => ()
-    .Err(let entry) => Core.writeLine(entry.1)
+    .Err(let entry) => Kimi.Console.writeLine(entry.1)
 names[1] = "replacement"
 match names.remove(1)
-    .Some(let entry) => Core.writeLine(entry.1)
+    .Some(let entry) => Kimi.Console.writeLine(entry.1)
     .None => $abort("missing")
 ```
 
@@ -1584,9 +1584,9 @@ require last == 30 else => $abort("wrong element")
 ```kimi
 #Test
 func stopsAfterFailure()
-    defer => ::Core.writeLine("Not run after Abort")
+    defer => ::Kimi.Console.writeLine("Not run after Abort")
     $require(false, message: "Input is not ready")
-    ::Core.writeLine("Not reached")
+    ::Kimi.Console.writeLine("Not reached")
 ```
 
 Omissions: no expected outcomes for undefined unsafe behavior; no runtime Contract Views, mutable Slices, source threads, parameterized test extensions, unknown-substitution scratch, or NativeAOT tests. Do not build an exhaustive Cartesian feature cross-product. Select interactions that exercise distinct acquisition, cleanup, proof, ABI and invalidation boundaries; Appendix A's explicitly required cases still apply.

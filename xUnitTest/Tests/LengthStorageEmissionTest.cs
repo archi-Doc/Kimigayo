@@ -9,7 +9,7 @@ public class LengthStorageEmissionTest
 {
     private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value\n";
     private const string Choose = "func choose<length N, T>(a: [N of T], b: [N of T], first: bool) -> [N of T] => if first => a else => b\n";
-    private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => writeLine(\"one\")\n        if self.id == 2 => writeLine(\"two\")\n        if self.id == 3 => writeLine(\"three\")\n        if self.id == 4 => writeLine(\"four\")\n";
+    private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     [Theory]
     [InlineData(Keep + "let a = keep<2, i32>([4, 9])")]
@@ -30,18 +30,18 @@ public class LengthStorageEmissionTest
     {
         { "Copy", Keep + "let a: [2 of i32] = [2, 7]\nlet b = keep<2, i32>(a)\nrequire a[0] + b[1] == 9 else => $abort(\"copy\")", string.Empty },
         { "Inferred", Keep + "let b = keep([2, 7])\nrequire b[1] == 7 else => $abort(\"inferred\")", string.Empty },
-        { "Empty", Keep + "let b = keep<0, string>([])\nrequire b.length == 0 else => $abort(\"empty\")\nwriteLine(\"empty\")", "empty\n" },
-        { "Move", Keep + "let b = keep<2, string>([\"one\", \"two\"])\nwriteLine(b[0])\nwriteLine(b[1])", "one\ntwo\n" },
+        { "Empty", Keep + "let b = keep<0, string>([])\nrequire b.length == 0 else => $abort(\"empty\")\nConsole.writeLine(\"empty\")", "empty\n" },
+        { "Move", Keep + "let b = keep<2, string>([\"one\", \"two\"])\nConsole.writeLine(b[0])\nConsole.writeLine(b[1])", "one\ntwo\n" },
         { "Nested", Keep + "let a: [2 of [2 of i32]] = [[1, 2], [3, 4]]\nlet b = keep(a)\nrequire b[1][0] == 3 and a[0][1] == 2 else => $abort(\"nested\")", string.Empty },
-        { "Destruction", Token + Keep + "do\n    let b = keep<2, Token>([Token.init(1), Token.init(2)])\n    writeLine(\"returned\")\nwriteLine(\"done\")", "returned\ntwo\none\ndone\n" },
-        { "Choice", Token + Choose + "do\n    let b = choose<2, Token>([Token.init(1), Token.init(2)], [Token.init(3), Token.init(4)], true)\n    writeLine(\"returned\")", "four\nthree\nreturned\ntwo\none\n" },
+        { "Destruction", Token + Keep + "do\n    let b = keep<2, Token>([Token.init(1), Token.init(2)])\n    Console.writeLine(\"returned\")\nConsole.writeLine(\"done\")", "returned\ntwo\none\ndone\n" },
+        { "Choice", Token + Choose + "do\n    let b = choose<2, Token>([Token.init(1), Token.init(2)], [Token.init(3), Token.init(4)], true)\n    Console.writeLine(\"returned\")", "four\nthree\nreturned\ntwo\none\n" },
         { "ChoiceSecond", Choose + "let b = choose([1, 2], [3, 4], false)\nrequire b[0] == 3 and b[1] == 4 else => $abort(\"choice\")", string.Empty },
         { "CheckedExpression", "func keep<length N>(value: [(N - 1) of i32]) -> [(N - 1) of i32] => value\nlet b = keep<3>([4, 9])\nrequire b[1] == 9 else => $abort(\"formation\")", string.Empty },
         { "Metadata", "func count<length N, T>(a: [N of T]) -> isize => a.length\nrequire count<3, i32>([1, 2, 3]) == 3 else => $abort(\"length\")", string.Empty },
         { "BorrowedMetadata", "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [3 of i32] = [1, 2, 3]\nrequire count(a@ref) == 3 and a[2] == 3 else => $abort(\"borrow\")", string.Empty },
         { "EmptyMetadata", "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [0 of string] = []\nrequire count(a@ref) == 0 else => $abort(\"empty\")", string.Empty },
         { "ZeroSizedMetadata", "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [3 of ()] = [(), (), ()]\nrequire count(a@ref) == 3 else => $abort(\"zero stride\")", string.Empty },
-        { "BorrowedMoveMetadata", Token + "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\ndo\n    let a: [2 of Token] = [Token.init(1), Token.init(2)]\n    require count(a@ref) == 2 else => $abort(\"borrow\")\n    writeLine(\"inspected\")", "inspected\ntwo\none\n" },
+        { "BorrowedMoveMetadata", Token + "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\ndo\n    let a: [2 of Token] = [Token.init(1), Token.init(2)]\n    require count(a@ref) == 2 else => $abort(\"borrow\")\n    Console.writeLine(\"inspected\")", "inspected\ntwo\none\n" },
     };
 
     [Theory]
@@ -51,7 +51,7 @@ public class LengthStorageEmissionTest
 
     [Theory]
     [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a\n    return a\nlet b = twice<2, i32>([1, 2])")]
-    [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a\n    return a\nwriteLine(\"unused definition\")")]
+    [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a\n    return a\nConsole.writeLine(\"unused definition\")")]
     [InlineData(Keep + "let a: [1 of string] = [\"one\"]\nlet b = keep(a)\nlet c = keep(a)")]
     public void RejectsPotentialMovesBeforeEmission(string source)
     {

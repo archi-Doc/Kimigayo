@@ -11,7 +11,7 @@ public class IntegerEmissionTest
     private const string Overflow = "KIMI_E_INT_OVERFLOW: Integer overflow";
     private const string DivisionZero = "KIMI_E_INT_DIV_ZERO: Integer division or remainder by zero";
     private const string ShiftCount = "KIMI_E_INT_SHIFT_COUNT: Shift count out of range";
-    private const string Mixed = "func small(x: i8, y: u8, z: i16, w: u16, a: u64, b: isize) -> u64\n    if x == -128 and y == 200 and z == -32768 and w == 65535 and b == -1 => return a\n    return 0\npublic func main()\n    var n: u8 = 7\n    var u: u64 = 1\n    var s: i16 = -128\n    defer => n = 0\n    let x = if true => u << n else => u\n    if x == 128 and (s >> n) == -1 and small(-128, 200, -32768, 65535, 18446744073709551615, -1) == 18446744073709551615\n        writeLine(\"ok\")";
+    private const string Mixed = "func small(x: i8, y: u8, z: i16, w: u16, a: u64, b: isize) -> u64\n    if x == -128 and y == 200 and z == -32768 and w == 65535 and b == -1 => return a\n    return 0\npublic func main()\n    var n: u8 = 7\n    var u: u64 = 1\n    var s: i16 = -128\n    defer => n = 0\n    let x = if true => u << n else => u\n    if x == 128 and (s >> n) == -1 and small(-128, 200, -32768, 65535, 18446744073709551615, -1) == 18446744073709551615\n        Console.writeLine(\"ok\")";
 
     public static TheoryData<string, int, bool, string, string> Types => new()
     {
@@ -29,7 +29,7 @@ public class IntegerEmissionTest
         var source = $"func id(x: {type}) -> {type} => x\nfunc snapshot(x: {type}) -> {type}\n    var y = x\n    defer => y = 0\n    return y\n" +
             $"var x: {type} = 9\nvar y: {type} = 2\nlet q = x / y\nlet r = x % y\nx += 3\nx -= 2\nx *= 2\nx /= 2\nx %= 7\nx |= 4\nx &= 6\nx ^= 3\nx <<= 1\nx >>= 1\nlet old = x++\n++x\nlet current = --x\nx--\n" +
             $"let low: {type} = {minimum}\nlet high: {type} = {maximum}\nlet top: {type} = 1 << {width - 1}\nvar c = true\nlet phi = if c => id(high) else => id(low)\n" +
-            $"if q == 4 and r == 1 and x == 5 and old == 5 and current == 6 and low < high and high > low and high >= high and low <= low and high / 1 == high and high % 1 == 0 and low / 1 == low and low % 1 == 0 and (top >> {width - 1}) == {(signed ? "-1" : "1")} and {(signed ? "top == low" : "top > 1 and top < high")} and snapshot(high) == high and phi == high\n    writeLine(\"ok\")";
+            $"if q == 4 and r == 1 and x == 5 and old == 5 and current == 6 and low < high and high > low and high >= high and low <= low and high / 1 == high and high % 1 == 0 and low / 1 == low and low % 1 == 0 and (top >> {width - 1}) == {(signed ? "-1" : "1")} and {(signed ? "top == low" : "top > 1 and top < high")} and snapshot(high) == high and phi == high\n    Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("IntegerValues" + type, source, "ok\n");
     }
 
@@ -47,7 +47,7 @@ public class IntegerEmissionTest
         };
         foreach (var failure in failures)
         {
-            Abort("IntegerFail" + type + failure.Name, $"var x: {type} = {failure.Initial}\n{failure.Expression}\nwriteLine(\"bad\")", failure.Reason, 2, 1);
+            Abort("IntegerFail" + type + failure.Name, $"var x: {type} = {failure.Initial}\n{failure.Expression}\nConsole.writeLine(\"bad\")", failure.Reason, 2, 1);
         }
 
         if (signed)
@@ -60,13 +60,13 @@ public class IntegerEmissionTest
 
     [Theory]
     [InlineData("IntegerMixedAbi", Mixed, "ok\n")]
-    [InlineData("IntegerShiftNarrowCount", "var x: u64 = 1\nvar n: i8 = 63\nif (x << n) == 9223372036854775808 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("IntegerShiftWideCount", "var x: u8 = 128\nvar n: u64 = 7\nlet y = if true => x >> n else => x << n\nif y == 1 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("IntegerSignedShift", "var x: i8 = -128\nvar n: u64 = 7\nif (x >> n) == -1 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("IntegerUnsignedHighDivision", "var x: u64 = 18446744073709551615\nvar y: u64 = 9223372036854775808\nif x / y == 1 and x % y == 9223372036854775807 and y / 2 == 4611686018427387904 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("IntegerSignedDivisionSigns", "var x: i64 = -7\nvar y: i64 = -3\nif x / y == 2 and x % y == -1 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("IntegerSkippedChecks", "if false\n    let x: u8 = 255 + 1\nvar x: u64 = 1\nvar n: i8 = -1\nif true or (x << n) == 0 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("IntegerLiteralUnsignedZeroNegation", "let x: u8 = -0\nif x == 0 => writeLine(\"ok\")", "ok\n")]
+    [InlineData("IntegerShiftNarrowCount", "var x: u64 = 1\nvar n: i8 = 63\nif (x << n) == 9223372036854775808 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("IntegerShiftWideCount", "var x: u8 = 128\nvar n: u64 = 7\nlet y = if true => x >> n else => x << n\nif y == 1 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("IntegerSignedShift", "var x: i8 = -128\nvar n: u64 = 7\nif (x >> n) == -1 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("IntegerUnsignedHighDivision", "var x: u64 = 18446744073709551615\nvar y: u64 = 9223372036854775808\nif x / y == 1 and x % y == 9223372036854775807 and y / 2 == 4611686018427387904 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("IntegerSignedDivisionSigns", "var x: i64 = -7\nvar y: i64 = -3\nif x / y == 2 and x % y == -1 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("IntegerSkippedChecks", "if false\n    let x: u8 = 255 + 1\nvar x: u64 = 1\nvar n: i8 = -1\nif true or (x << n) == 0 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("IntegerLiteralUnsignedZeroNegation", "let x: u8 = -0\nif x == 0 => Console.writeLine(\"ok\")", "ok\n")]
     public void MixedWidthsAndSourceOrderExecute(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
@@ -83,8 +83,8 @@ public class IntegerEmissionTest
     [Theory]
     [InlineData("IntegerLiteralOverflow", "let x: u8 = 255 + 1", Overflow, 1, 13)]
     [InlineData("IntegerUnsignedUnderflow", "var x: u64 = 1\n0 - x", Overflow, 2, 1)]
-    [InlineData("IntegerBeforeCleanup", "func f() -> u8\n    defer => writeLine(\"bad\")\n    return 255 + 1\nf()", Overflow, 3, 12)]
-    [InlineData("IntegerDuringCleanup", "defer => writeLine(\"bad\")\ndefer\n    var x: i8 = -128\n    x /= -1", Overflow, 4, 5)]
+    [InlineData("IntegerBeforeCleanup", "func f() -> u8\n    defer => Console.writeLine(\"bad\")\n    return 255 + 1\nf()", Overflow, 3, 12)]
+    [InlineData("IntegerDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    var x: i8 = -128\n    x /= -1", Overflow, 4, 5)]
     public void LiteralAndDeferredChecksRetainRuntimeFailure(string name, string source, string reason, int line, int column)
         => Abort(name, source, reason, line, column);
 

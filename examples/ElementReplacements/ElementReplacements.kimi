@@ -14,4 +14,4 @@ state.0 += work: do
     exit to work: 2
 
 if rows[0].1 == 42 and rows[1].1 == 2 and state.0 == 42
-    writeLine("element replacements complete")
+    Console.writeLine("element replacements complete")

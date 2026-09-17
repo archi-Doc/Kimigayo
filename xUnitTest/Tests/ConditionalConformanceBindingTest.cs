@@ -290,7 +290,7 @@ public class ConditionalConformanceBindingTest
         var parent = original.Parent!;
         var use = Function(c, "use");
         var type = use.Parameters[0].Type.BoundType!;
-        var contract = contractName == "Copy" ? c.Binding.Core.Copy : Container(c, "C").BoundSymbol!;
+        var contract = contractName == "Copy" ? c.Binding.Library.Copy : Container(c, "C").BoundSymbol!;
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ResolveConformance(type, contract, use, out _));
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));

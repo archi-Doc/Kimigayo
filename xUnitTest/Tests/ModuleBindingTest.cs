@@ -12,6 +12,9 @@ public class ModuleBindingTest
     [Theory]
     [InlineData("public func main() => Lib.Api.value()", true)]
     [InlineData("alias Lib.Api\npublic func main() => value()", true)]
+    [InlineData("alias A => Lib.Api\npublic func main() => A.value()", true)]
+    [InlineData("alias L => ::Lib\npublic func main() => L.Api.value()", true)]
+    [InlineData("alias A => Lib.Api\npublic func main() => Lib.A.value()", false)]
     [InlineData("public func main() => ::Lib.Api.value()", true)]
     [InlineData("public func main() => Api.value()", false)]
     [InlineData("public func main() => value()", false)]
@@ -40,7 +43,7 @@ public class ModuleBindingTest
 
     [Theory]
     [InlineData("public func unused() => missing()", false, true)]
-    [InlineData("public func unused()\n    let text = \"moved\"\n    ::Core.writeLine(text)\n    ::Core.writeLine(text)", true, false)]
+    [InlineData("public func unused()\n    let text = \"moved\"\n    ::Kimi.Console.writeLine(text)\n    ::Kimi.Console.writeLine(text)", true, false)]
     [InlineData("public func unused() => ()", true, true)]
     public void UnusedDependencyBodiesAreChecked(string library, bool bound, bool owned)
     {
@@ -56,7 +59,7 @@ public class ModuleBindingTest
     [Fact]
     public void DependencyRuntimeCannotBecomeApplicationStartup()
     {
-        var compilation = Create("public func main() => ()", "::Core.writeLine(\"illegal\")");
+        var compilation = Create("public func main() => ()", "::Kimi.Console.writeLine(\"illegal\")");
         Assert.True(compilation.Bind().IsComplete);
         Assert.False(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Contains(compilation.Binding.StartupIssues, x => x.Code == DiagnosticCode.LibraryRuntimeBody_Kd);
@@ -894,6 +897,28 @@ public class ModuleBindingTest
                 module.OnDeserialized(c);
             }
         }
+    }
+
+    [Theory]
+    [InlineData("alias Lib => Kimi.Console", true)]
+    [InlineData("alias Lib => ::Lib", false)]
+    public void DependencyQualifierHidingUsesResolvedIdentity(string source, bool warns)
+    {
+        var c = Create(source, "public group Api");
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(warns, c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray().Any(x => x.Entry.Name == nameof(DiagnosticCode.HiddenNamedAlias_Kd)));
+    }
+
+    [Fact]
+    public void NamedAliasKeepsDependencyDefinitionDefaults()
+    {
+        var c = Create("alias A => Lib.Api\npublic func main() => A.value()", "public group Api\n    public func value() => writeLine(\"library\")", configure: (_, library) => library.Alias = ["Kimi.Console"]);
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Ownership.Analyze().IsVerified);
+        c.SourceModules[1].AddSource(new SourceDocument("Generated.kimi", "group Generated\n    func output() => Console.writeLine(\"generated\")"));
+        Assert.True(c.Bind().IsComplete);
     }
 
     private static string ProjectionConsumer(bool runtime, string argument)

@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -26,7 +26,7 @@ public enum DiagnosticCode
     InvalidConstraint_Kd,
     UnprovenConstraint_Kd,
     UnsatisfiedConstraint_Kd,
-    InvalidCoreIntrinsics_Kd,
+    InvalidKimiLibrary_Kd,
     MissingContractImplementation_Kd,
     IncompatibleContractImplementation_Kd,
     InvalidAssociatedType_Kd,
@@ -42,6 +42,7 @@ public enum DiagnosticCode
     CompileTimeCaseFallbackMustBeLast_Kd,
     DuplicateCompileTimeCaseFallback_Kd,
     DeclarationOrderWarning_Kd,
+    HiddenNamedAlias_Kd,
     // Reserved for required constant evaluation; runtime arithmetic uses Abort reason codes.
     DivisionByZero_Kd,
     DuplicateModifier_Kd,

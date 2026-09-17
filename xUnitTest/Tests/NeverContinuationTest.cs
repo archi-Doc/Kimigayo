@@ -15,7 +15,7 @@ public class NeverContinuationTest
 
     [Theory]
     [InlineData("let n: i32 = do => loop => continue\nlet y = n", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"\nwriteLine(s)\ndo => loop => ()\nwriteLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\nConsole.writeLine(s)\ndo => loop => ()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(y?: i32 = (scope: do\n    let n: i32 = do => loop => continue\n    exit to scope: n\n)) => ()\nf(3)", OwnershipFailure.UninitializedUse)]
     public void TransparentDivergentScopesPreserveOwnershipFacts(string source, OwnershipFailure failure)
     {
@@ -29,7 +29,7 @@ public class NeverContinuationTest
     [InlineData("Nested", "var n: i32 = do => do => loop => continue\nn = 3\nlet y = n")]
     [InlineData("Default", "func f(y?: i32 = (do => loop => continue)) -> i32 => y\nvar n: i32 = f()\nn = 3\nlet y = n")]
     public void TransparentDivergentScopesHaveNoRuntimeSuccessor(string name, string source)
-        => ScalarEmissionTest.EmitFixture("NeverWrapper" + Configuration + name, "writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture("NeverWrapper" + Configuration + name, "Console.writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
 
     [Theory]
     [InlineData("value(stop()) + 1", "i32")]
@@ -65,12 +65,12 @@ public class NeverContinuationTest
 
     [Fact]
     public void DivergentOperatorSkipsCalleeAndLaterOutput()
-        => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Divergence", "writeLine(\"begin\")\nvar n: i32 = 1 << (loop => continue)\nn = 3\nlet y = n", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Divergence", "Console.writeLine(\"begin\")\nvar n: i32 = 1 << (loop => continue)\nn = 3\nlet y = n", "begin\n", timeoutMilliseconds: 200);
 
     [Theory]
     [InlineData("func value(x: i32) -> i32 => x\nlet n: i32 = value(stop())\nlet y = n")]
     [InlineData("func value(x: i32) -> i32 => x\nlet n: i32 = value(value(stop()))\nlet y = n")]
-    [InlineData("func value(x: i32) -> string => \"value\"\nlet n: string = value(stop())\nwriteLine(n)")]
+    [InlineData("func value(x: i32) -> string => \"value\"\nlet n: string = value(stop())\nConsole.writeLine(n)")]
     [InlineData("func value(x: i32) -> i32 => x\nvar n: i32\nn = value(stop())\nlet y = n")]
     [InlineData("func value(x?: i32 = (loop => continue)) -> i32 => x\nlet n: i32 = value()\nlet y = n")]
     [InlineData("func value(x?: i32 = (loop => continue), y?: i32 = 1) -> i32 => y\nlet n: i32 = value()\nlet y = n")]
@@ -87,7 +87,7 @@ public class NeverContinuationTest
     [Theory]
     [InlineData("Reinitialize", "func value(x: i32) -> i32 => x\nvar n: i32 = value(stop())\nn = 2\nlet y = n")]
     [InlineData("LaterAssignment", "func value(x: i32, y: ()) -> i32 => x\nvar n: i32\nvalue(stop(), n = 2)\nlet y = n")]
-    [InlineData("Borrow", "func value(s: ref/string, x: i32) -> i32 => x\nvar s = \"s\"\nvalue(s, stop())\ns = \"new\"\nwriteLine(s)")]
+    [InlineData("Borrow", "func value(s: ref/string, x: i32) -> i32 => x\nvar s = \"s\"\nvalue(s, stop())\ns = \"new\"\nConsole.writeLine(s)")]
     public void IncompleteCallsRetainCheckingEffectsWithoutExecuting(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverAcquisition" + Configuration + name, Stop + source, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
@@ -95,7 +95,7 @@ public class NeverContinuationTest
     public void IncompleteDefaultRetainsCheckingBorrowRelease()
         => ScalarEmissionTest.EmitFixture(
             "NeverAcquisition" + Configuration + "BorrowDefault",
-            "func value(s: ref/string, x?: i32 = (loop => continue)) -> i32 => x\nvar s = \"s\"\nwriteLine(\"begin\")\nvalue(s)\ns = \"new\"\nwriteLine(s)",
+            "func value(s: ref/string, x?: i32 = (loop => continue)) -> i32 => x\nvar s = \"s\"\nConsole.writeLine(\"begin\")\nvalue(s)\ns = \"new\"\nConsole.writeLine(s)",
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -103,7 +103,7 @@ public class NeverContinuationTest
     [InlineData("let n: i32 = loop => continue\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n: i32 = loop => ()\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n = 1\nloop => continue\nn = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"\nwriteLine(s)\nloop => ()\nwriteLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\nConsole.writeLine(s)\nloop => ()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f()\n    return\n    let n: i32 = loop => continue\n    let y = n", OwnershipFailure.UninitializedUse)]
     public void StateNeutralLoopsPreserveInitializationAndMoveFacts(string source, OwnershipFailure failure)
     {
@@ -120,15 +120,15 @@ public class NeverContinuationTest
     [InlineData("Initializer", "var n: i32 = loop => continue\nn = 2\nlet y = n")]
     [InlineData("Checking", "func f()\n    return\n    var n: i32 = loop => continue\n    n = 2\n    let y = n\nf()\nloop => ()")]
     public void EmitsStateNeutralLoopContinuations(string name, string source)
-        => ScalarEmissionTest.EmitFixture("NeverLoop" + Configuration + name, "writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture("NeverLoop" + Configuration + name, "Console.writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
 
     [Theory]
     [InlineData("let n: i32 = stop()\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n: i32\nstop()\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n = 1\nstop()\nn = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"\nwriteLine(s)\nstop()\nwriteLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\nConsole.writeLine(s)\nstop()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let n: i32 = stop()\nstop()\nlet y = n", OwnershipFailure.UninitializedUse)]
-    [InlineData("func take(s: string) -> Never => stop()\nlet s = \"s\"\ntake(s)\nwriteLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func take(s: string) -> Never => stop()\nlet s = \"s\"\ntake(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void NonreturningCallsPreserveInitializationAndMoveFacts(string body, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Stop + body);
@@ -143,9 +143,9 @@ public class NeverContinuationTest
     [InlineData("FirstWrite", "var n: i32\nstop()\nn = 2\nlet y = n")]
     [InlineData("NeverInitializer", "var n: i32 = stop()\nn = 2\nlet y = n")]
     [InlineData("Chained", "let n = 1\nstop()\nstop()\nlet y = n")]
-    [InlineData("Borrow", "func inspect(s: ref/string) -> Never => stop()\nvar s = \"s\"\ninspect(s)\ns = \"new\"\nwriteLine(s)")]
-    [InlineData("BorrowElement", "func inspect(s: ref/string) -> Never => stop()\nvar s = (\"s\", 0)\ninspect(s.0)\ns.0 = \"new\"\nwriteLine(s.0)")]
-    [InlineData("Cleanup", "let s = \"s\"\ndefer => writeLine(\"cleanup\")\nstop()\nwriteLine(s)")]
+    [InlineData("Borrow", "func inspect(s: ref/string) -> Never => stop()\nvar s = \"s\"\ninspect(s)\ns = \"new\"\nConsole.writeLine(s)")]
+    [InlineData("BorrowElement", "func inspect(s: ref/string) -> Never => stop()\nvar s = (\"s\", 0)\ninspect(s.0)\ns.0 = \"new\"\nConsole.writeLine(s.0)")]
+    [InlineData("Cleanup", "let s = \"s\"\ndefer => Console.writeLine(\"cleanup\")\nstop()\nConsole.writeLine(s)")]
     public void EmitsCheckingOnlyContinuations(string name, string body)
         => ScalarEmissionTest.EmitFixture("NeverContinuation" + Configuration + name, Stop + body, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
@@ -153,7 +153,7 @@ public class NeverContinuationTest
     public void NoncompletingFirstArgumentSkipsLaterAcquisitionsAndCallee()
         => ScalarEmissionTest.EmitFixture(
             "NeverContinuation" + Configuration + "FirstArgument",
-            "func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => writeLine(\"bad\")\nvar x = 1\nwriteLine(\"begin\")\nf(spin(), x++)\nwriteLine(\"bad\")",
+            "func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => Console.writeLine(\"bad\")\nvar x = 1\nConsole.writeLine(\"begin\")\nf(spin(), x++)\nConsole.writeLine(\"bad\")",
             "begin\n",
             timeoutMilliseconds: 200);
 

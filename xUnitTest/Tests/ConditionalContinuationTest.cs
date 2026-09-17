@@ -13,8 +13,8 @@ public class ConditionalContinuationTest
     [Theory]
     [InlineData("var x: i32", "x = 1\n        return", "return", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "x = 1\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "writeLine(x)\n        return", "return", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "return", "writeLine(x)\n        return", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "Console.writeLine(x)\n        return", "return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "Console.writeLine(x)\n        return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "x = 1\n        return", "return", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "return", "x = 1\n        return", "x = 2", OwnershipFailure.ReassignedLet)]
     public void AllTerminalPathsContributeTheirState(string declaration, string yes, string no, string tail, OwnershipFailure failure)
@@ -30,11 +30,11 @@ public class ConditionalContinuationTest
     [InlineData("Initialized", "let x = 1", "return", "return", "let y = x")]
     [InlineData("BothWrite", "var x: i32", "x = 1\n        return", "x = 2\n        return", "let y = x")]
     [InlineData("CheckingWrite", "var x: i32", "return\n        x = 1", "return\n        x = 2", "let y = x")]
-    [InlineData("Reinitialize", "var x = \"s\"", "writeLine(x)\n        return", "return", "x = \"new\"\n    writeLine(x)")]
+    [InlineData("Reinitialize", "var x = \"s\"", "Console.writeLine(x)\n        return", "return", "x = \"new\"\n    Console.writeLine(x)")]
     public void JoinedContinuationsNeverExecute(string name, string declaration, string yes, string no, string tail)
         => ScalarEmissionTest.EmitFixture(
             "NeverConditional" + Configuration + name,
-            Source(declaration, yes, no, tail) + "\nf(true)\nf(false)\nwriteLine(\"done\")",
+            Source(declaration, yes, no, tail) + "\nf(true)\nf(false)\nConsole.writeLine(\"done\")",
             name == "Reinitialize" ? "s\ndone\n" : "done\n");
 
     [Theory]
@@ -79,8 +79,8 @@ public class ConditionalContinuationTest
     }
 
     [Theory]
-    [InlineData("func f(c: bool, d: bool)\n    let x = \"s\"\n    if c\n        if d\n            writeLine(x)\n            return\n        else => return\n    else => return\n    writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    if c\n        writeLine(x)\n        return\n    else => return\n    writeLine(x)")]
+    [InlineData("func f(c: bool, d: bool)\n    let x = \"s\"\n    if c\n        if d\n            Console.writeLine(x)\n            return\n        else => return\n    else => return\n    Console.writeLine(x)")]
+    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    if c\n        Console.writeLine(x)\n        return\n    else => return\n    Console.writeLine(x)")]
     public void NestedAndAlreadyUnreachableJoinsRetainMoves(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -101,14 +101,14 @@ public class ConditionalContinuationTest
     public void NestedTerminalBranchesHaveNoRuntimeContinuation()
         => ScalarEmissionTest.EmitFixture(
             "NeverConditional" + Configuration + "Nested",
-            "func f(c: bool, d: bool)\n    var x: i32\n    if c\n        if d\n            x = 1\n            return\n        else\n            x = 2\n            return\n    else\n        x = 3\n        return\n    let y = x\n    writeLine(\"bad\")\nf(true, true)\nf(true, false)\nf(false, false)\nwriteLine(\"done\")",
+            "func f(c: bool, d: bool)\n    var x: i32\n    if c\n        if d\n            x = 1\n            return\n        else\n            x = 2\n            return\n    else\n        x = 3\n        return\n    let y = x\n    Console.writeLine(\"bad\")\nf(true, true)\nf(true, false)\nf(false, false)\nConsole.writeLine(\"done\")",
             "done\n");
 
     [Fact]
     public void CommonOuterBorrowSurvivesTheJoinUntilCallAcquisitionEnds()
         => ScalarEmissionTest.EmitFixture(
             "NeverConditional" + Configuration + "Borrow",
-            "func stop() -> Never => $abort(\"stop\")\nfunc inspect(s: ref/string, ready: bool) => ()\nfunc f(c: bool)\n    var s = \"s\"\n    inspect(s, if c => stop() else => stop())\n    s = \"new\"\n    writeLine(s)\nf(true)",
+            "func stop() -> Never => $abort(\"stop\")\nfunc inspect(s: ref/string, ready: bool) => ()\nfunc f(c: bool)\n    var s = \"s\"\n    inspect(s, if c => stop() else => stop())\n    s = \"new\"\n    Console.writeLine(s)\nf(true)",
             string.Empty,
             1,
             "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -116,7 +116,7 @@ public class ConditionalContinuationTest
     [Fact]
     public void UnequalActiveLoansRetainTheJoinGuard()
     {
-        var c = MinimalEmissionTest.Analyze("func stop() -> Never => $abort(\"stop\")\nfunc inspect(s: ref/string, ready: bool) => ()\nfunc f(c: bool)\n    var s = \"s\"\n    inspect(s, if c => return else => stop())\n    s = \"new\"\n    writeLine(s)\nf(true)");
+        var c = MinimalEmissionTest.Analyze("func stop() -> Never => $abort(\"stop\")\nfunc inspect(s: ref/string, ready: bool) => ()\nfunc f(c: bool)\n    var s = \"s\"\n    inspect(s, if c => return else => stop())\n    s = \"new\"\n    Console.writeLine(s)\nf(true)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }

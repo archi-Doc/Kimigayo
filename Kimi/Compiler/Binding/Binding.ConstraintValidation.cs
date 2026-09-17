@@ -376,6 +376,11 @@ public sealed partial class Binding
             return true;
         }
 
+        if (objectTarget && this.RequestCapability(type, this.Library.Sealed, scope) == ConstraintProof.Proven)
+        {
+            return true;
+        }
+
         if (objectTarget && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto)
         {
             return true;

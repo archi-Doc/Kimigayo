@@ -16,7 +16,7 @@ public class CompositeMatchTest
     [InlineData("TwoCandidates", "let x: (i32, i64) = (7, 5)\nlet y = match x\n    (let a, let b) if a == 7 and b == 5 => a\n    (_, _) => 0\nrequire y == 7 else => $abort(\"bad\")")]
     [InlineData("NestedEnum", "enum E<T>\n    A(T)\n    B\nlet x: E<E<(u8, i64)>> = .A(.A((3, 9)))\nlet y = match x\n    .A(.A((let n, 9))) if n == 3 => n\n    .A(_) => 0\n    .B => 0\nrequire y == 3 else => $abort(\"bad\")")]
     [InlineData("Wide", "let x: (u8, u128) = (3, 340282366920938463463374607431768211455)\nlet y = match x\n    (3, let n) => n\n    (_, _) => 0\nrequire y == 340282366920938463463374607431768211455 else => $abort(\"bad\")")]
-    [InlineData("GuardEffects", "func check(n: i32) -> bool\n    writeLine(\"guard\")\n    return n > 0\nlet x = (-1, true)\nlet y = match x\n    (let n, false) if check(n) => 1\n    (let n, true) if check(n) => 2\n    (_, _) => 3\nrequire y == 3 else => $abort(\"bad\")")]
+    [InlineData("GuardEffects", "func check(n: i32) -> bool\n    Console.writeLine(\"guard\")\n    return n > 0\nlet x = (-1, true)\nlet y = match x\n    (let n, false) if check(n) => 1\n    (let n, true) if check(n) => 2\n    (_, _) => 3\nrequire y == 3 else => $abort(\"bad\")")]
     [InlineData("ArrayTuple", "let a: [2 of (i32, bool)] = [(2, true), (3, false)]\nvar total = 0\nfor item in a\n    match item\n        (let n, _) => total += n\nrequire total == 5 else => $abort(\"bad\")")]
     [InlineData("ArrayUnit", "let a: [3 of ()] = [(), (), ()]\nvar total = 0\nfor item in a\n    total += 1\nrequire total == 3 else => $abort(\"bad\")")]
     [InlineData("EmptyArray", "let a: [0 of (i32, bool)] = []\nfor item in a\n    $abort(\"bad\")")]
@@ -26,7 +26,7 @@ public class CompositeMatchTest
     [InlineData("AlignedEnum", "enum E\n    A(u8, u128, u16)\n    B\nlet value: E = .A(3, 340282366920938463463374607431768211455, 9)\nmatch value\n    .A(let a, let b, let c)\n        require a == 3 and b == 340282366920938463463374607431768211455 and c == 9 else => $abort(\"bad\")\n    .B => $abort(\"bad\")")]
     public void NativePatterns(string name, string source)
     {
-        ScalarEmissionTest.EmitFixture("CompositePattern" + name, source + "\nwriteLine(\"ok\")", name == "GuardEffects" ? "guard\nok\n" : "ok\n");
+        ScalarEmissionTest.EmitFixture("CompositePattern" + name, source + "\nConsole.writeLine(\"ok\")", name == "GuardEffects" ? "guard\nok\n" : "ok\n");
     }
 
     [Theory]
@@ -102,7 +102,7 @@ public class CompositeMatchTest
     [Fact]
     public void ReloadAndWarmAnalysisPreserveNestedCandidates()
     {
-        const string Source = "enum E<T>\n    A(T)\n    B\nlet x: E<(i32, bool)> = .A((7, true))\nmatch x\n    .A((let n, true)) if n == 7 => writeLine(\"ok\")\n    .A(_) => ()\n    .B => ()";
+        const string Source = "enum E<T>\n    A(T)\n    B\nlet x: E<(i32, bool)> = .A((7, true))\nmatch x\n    .A((let n, true)) if n == 7 => Console.writeLine(\"ok\")\n    .A(_) => ()\n    .B => ()";
         var c = MinimalEmissionTest.Analyze(Source);
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);

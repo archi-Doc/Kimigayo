@@ -109,7 +109,7 @@ let text = "a"
 let same = text == "a" // Shared inspection; text is not Moved.
 // let invalid = text == take(text)
 // Error: the left operand's shared Loan is active when take acquires text by Move.
-writeLine(text) // Allowed: the completed comparison's Loan has ended.
+Console.writeLine(text) // Allowed: the completed comparison's Loan has ended.
 ```
 
 ```kimi
@@ -117,8 +117,8 @@ func same(left: ref/string, right: ref/string) -> bool
     return left == right // UTF-8 contents, not reference addresses.
 
 let text = "hello"
-if same(text, text) => writeLine("equal") // Two shared argument Loans may overlap.
-writeLine(text) // The call's independent bool result retains neither Loan.
+if same(text, text) => Console.writeLine("equal") // Two shared argument Loans may overlap.
+Console.writeLine(text) // The call's independent bool result retains neither Loan.
 ```
 
 Value equality and object identity are separate operations; `==` does not implicitly become an address comparison for object Types. Raw-pointer `== !=` are the explicit exception, following [pointer equality](05-raw-pointers-and-unsafe-memory.md#51-null-and-equality).
@@ -139,7 +139,7 @@ let clear = flags & mask == 0
 
 ### 13.4.1. Contract comparison mapping
 
-After the built-in cases in this section, comparison of two operands of the same complete user Type requires the recognized Core Contract below. Resolve its conformance mapping once; do not search same-named free functions, imported extensions, or conversion chains. Generic code requires the corresponding Constraint. Built-in comparisons retain priority and cannot be replaced by a conformance declaration.
+After the built-in cases in this section, comparison of two operands of the same complete user Type requires the recognized Kimi Contract below. Resolve its conformance mapping once; do not search same-named free functions, imported extensions, or conversion chains. Generic code requires the corresponding Constraint. Built-in comparisons retain priority and cannot be replaced by a conformance declaration.
 
 | Operators | Required operation | Result |
 | --- | --- | --- |
@@ -283,6 +283,38 @@ Apply rounding and checks at every `@` in a chain. Do not remove an intermediate
 
 ### 13.5.5. Explicit borrow and reborrow
 
+#### 13.5.5.1. Complete object payload projection
+
+A fully specified `@ref/T` or `@uniq/T` may project a complete object payload when `T is Kimi.Sealed` is Proven under §8.4.7. The source View Target and the immediate result Referent Type must be exactly the same complete T, including generic arguments and internal Origins. Only the outer borrow lifetime may shorten. The target contains no explicit Origin; infer it from the source and retain both referent and owning-handle dependencies.
+
+| Input | Explicit target | Result |
+| --- | --- | --- |
+| `objref/T` or `objuniq/T` | `@ref/T` | Shared child `ref/T` |
+| Readable `obj/T`, `rc/T`, or `arc/T` Place | `@ref/T` | Shared payload `ref/T` |
+| `objuniq/T` | `@uniq/T` | Exclusive child `uniq/T` |
+| Exclusively writable `obj/T` Place | `@uniq/T` | Exclusive payload `uniq/T` |
+
+Apply ordinary initialization, access, reborrow, Loan, and Origin checks. Shared projections may coexist; conflicting parent access, owner movement/release, and handle replacement remain forbidden while their dependent projection is live. No ownership transfer or reference-count operation occurs. Neither `rc` nor `arc` grants exclusive access, even with one strong reference.
+
+Use the effective static Type and declared constraints; an inventory of derived Types or an optimizer's Dynamic Type guess is not Sealed evidence. Open Views, runtime Contract Views, and base subobjects do not qualify. No ordinary argument gets an implicit payload projection. Only a selected same-complete-Type borrowed receiver may use the implicit path in §12.4.4.
+
+```kimi
+func borrowPayload<T>(source: objref/T) -> ref/T from source
+    T is Sealed
+    return source@ref/T
+func borrowPayloadMut<T>(source: objuniq/T) -> uniq/T from source
+    T is Sealed
+    return source@uniq/T
+
+// a and b are writable obj/Cell<i32> Places; Cell is non-open.
+Kimi.swap(a@uniq/Cell<i32>, b@uniq/Cell<i32>)         // Exchange payload contents.
+Kimi.swap(a@uniq/obj/Cell<i32>, b@uniq/obj/Cell<i32>) // Exchange handle values.
+```
+
+The shorthand operations below retain their existing meaning. In particular, `@ref`/`@uniq` do not select payload projection, and `@uniq/obj/T` borrows handle storage. No reverse value-borrow-to-object-borrow conversion is introduced.
+
+#### 13.5.5.2. Existing borrow and storage operations
+
 In value Borrow/Reborrow rows, `T` is the same normalized immediate Referent Type, which may itself have Semantics. In object rows it is the same View Target; changing that target uses the upcast tables below. Every row requires valid initialization, access, Loans, and Origins. These are explicit adaptations; do not add rows to implicit [argument fitting](10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals) solely because they appear here.
 
 | Input | Operation | Result |
@@ -363,6 +395,8 @@ Abort and cleanup follow ordinary failure/lifetime rules; completed Moves and ef
 
 ### 13.5.7. Object upcasts
 
+A same-target Sealed payload projection (§13.5.5) changes access to the complete payload, not its View Target. It is distinct from an upcast and never supplies base-subobject replacement permission.
+
 Let `S` be the source's static Core View Target and `V` a different target. An upcast requires static proof of `Supports(S, V)` that remains valid for every more-derived Dynamic Type. Concrete Core support follows the base graph. Static conformance alone does not establish this persistence: [inherited conformance](08-generics-constraints-and-contracts.md#844-conformance) is conditional on matching, and the [runtime Contract extension](08-generics-constraints-and-contracts.md#85-runtime-contracts) must guarantee persistent Supports for its Views. Validate [payload erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), initialization, access, Origins, and Loans in every row.
 
 | Source | Explicit operation | Acquisition/result |
@@ -387,16 +421,18 @@ Use a checked cast when the source view cannot guarantee the target, including c
 
 ### 13.5.8. Object ownership creation and sharing
 
-These public Core intrinsics use ordinary inference and argument labels value/build. T is a valid concrete object payload Core; S is a valid complete rc/arc handle Type. Eligibility is an intrinsic formation rule, not a new user Contract, and does not expand the current object/runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
+Any valid complete owner Core other than Never may be the concrete payload target. This includes open struct Cores; only projections to ordinary value borrows additionally require `Sealed` (§13.5.5). Generic signatures must prove target validity from their declared constraints (§8.10).
+
+These public Kimi intrinsics use ordinary inference and argument labels value/build. T is a valid concrete object payload Core; S is a valid complete rc/arc handle Type. Eligibility is an intrinsic formation rule, not a new user Contract, and does not expand the current object/runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
 
 | API | Input -> result | Contract |
 | --- | --- | --- |
-| `Core.makeObj<T>(value)` | T -> obj/T | Store a complete value in a new exclusive object |
-| `Core.makeRc<T>(value)` | T -> rc/T | Create non-atomic strong ownership, initially one |
-| `Core.makeArc<T>(value)` | T -> arc/T | Same with atomic counting |
-| `Core.clone<S>(value)` | ref/S -> S | Retain one strong for the same object/view/mode |
-| `Core.makeRcCyclic<T,F>(build)` | F -> rc/T | Cyclic construction below |
-| `Core.makeArcCyclic<T,F>(build)` | F -> arc/T | Corresponding arc construction |
+| `Kimi.makeObj<T>(value)` | T -> obj/T | Store a complete value in a new exclusive object |
+| `Kimi.makeRc<T>(value)` | T -> rc/T | Create non-atomic strong ownership, initially one |
+| `Kimi.makeArc<T>(value)` | T -> arc/T | Same with atomic counting |
+| `Kimi.clone<S>(value)` | ref/S -> S | Retain one strong for the same object/view/mode |
+| `Kimi.makeRcCyclic<T,F>(build)` | F -> rc/T | Cyclic construction below |
+| `Kimi.makeArcCyclic<T,F>(build)` | F -> arc/T | Corresponding arc construction |
 
 Normal creation acquires the complete input once by ordinary Copy/Move, allocates object storage, and Moves T into the payload without transferring ownership of its original storage or repeating constructors/accessors/deinit. Publish the initial exact-T view only after metadata and payload initialization. No blanket Owned constraint applies to concrete payload creation; preserve normal external dependencies. View erasure separately requires the existing Owned proof.
 
@@ -415,13 +451,13 @@ Required allocation failure or increment at the count maximum Aborts before publ
 
 ### 13.5.9. Weak reference operations
 
-S has §3.2.2's eligibility. Each public Core intrinsic evaluates its input once and holds the required shared access during the operation:
+S has §3.2.2's eligibility. Each public Kimi intrinsic evaluates its input once and holds the required shared access during the operation:
 
 | API | Input -> result | Contract |
 | --- | --- | --- |
-| `Core.downgrade<S>(value)` | ref/S -> `Weak<S>` | Retain a weak responsibility for the same target; do not change strong count |
-| `Core.upgrade<S>(value)` | `ref/Weak<S>` -> `Option<S>` | Retain a live strong and return Some, otherwise None |
-| `Core.clone<S>(value)` | `ref/Weak<S>` -> `Weak<S>` | Retain another responsibility for the same weak table |
+| `Kimi.downgrade<S>(value)` | ref/S -> `Weak<S>` | Retain a weak responsibility for the same target; do not change strong count |
+| `Kimi.upgrade<S>(value)` | `ref/Weak<S>` -> `Option<S>` | Retain a live strong and return Some, otherwise None |
+| `Kimi.clone<S>(value)` | `ref/Weak<S>` -> `Weak<S>` | Retain another responsibility for the same weak table |
 
 Inputs remain Initialized. downgrade accepts only a completed strong rc/arc handle, not obj, object borrows or raw pointers; its first side table may require allocation. upgrade and clone do not allocate. Their result retains the same object/view/mode. upgrade secures a live strong before reading the table's object pointer; its race with final arc release determines success (§21.2.3). None during Building may precede later publication, whereas failure after final release is permanent. Maximum-count failure Aborts rather than returning None.
 
@@ -442,13 +478,13 @@ struct Item
         self.value = value
 
 func expired() -> Weak<rc/Item>
-    let strong = Core.makeRc(Item.init(7))
-    return Core.downgrade(strong@ref)
+    let strong = Kimi.makeRc(Item.init(7))
+    return Kimi.downgrade(strong@ref)
 
 let weak = expired() // Present Weak; the local strong has been destroyed.
 let absent: Option<Weak<rc/Item>> = .None // Absence is a different value.
-let result = Core.upgrade(weak) // None; no resurrection.
-let other = Core.clone(weak) // Shares the table, not the payload.
+let result = Kimi.upgrade(weak) // None; no resurrection.
+let other = Kimi.clone(weak) // Shares the table, not the payload.
 let moved = other // Move, with no count increment.
 ```
 
@@ -459,10 +495,10 @@ struct Node
         self.selfWeak = selfWeak
 
 let build = func [] (weak: Weak<rc/Node>) -> Node
-    let before = Core.upgrade(weak) // None while Building.
+    let before = Kimi.upgrade(weak) // None while Building.
     return Node.init(weak)
-let node = Core.makeRcCyclic(build)
-let after = Core.upgrade(node.selfWeak@ref) // Some after publication.
+let node = Kimi.makeRcCyclic(build)
+let after = Kimi.upgrade(node.selfWeak@ref) // Some after publication.
 ```
 
 A stored Weak to a payload retaining a local borrow cannot escape that borrow's lifetime merely because the strong is expected to expire. Upgrade is required before payload access or view operations. No liveness-only API, implicit duplication, direct Weak view conversion, unsafe weak pointer, unowned reference or cycle collection is introduced. Any future Weak upcast must define Move/count effects; pointer equality grants no conversion. Atomic arc counting does not authorize source concurrency (Appendix D.2).
@@ -540,13 +576,7 @@ Use explicit locals when a particular order for receiver or index effects is nee
 
 Destination location uses the state after RHS evaluation. It may locate a Moved writable local's storage without reading its former value, but cannot read a Moved owner/receiver to find a target. Storage must remain valid from location through placement.
 
-**Destruction of the old destination must not invalidate an Origin or Loan required by the secured RHS result.** Check the same dependencies during LHS evaluation, its temporary cleanup, target access, later use, and Destruction. New values at an identical address do not inherit dependencies on the old value.
-
-```text
-RHS result borrows data owned by the old destination.
-Destroying the old destination would destroy that data.
-=> Reject the assignment: placing the result afterward cannot repair its Loan.
-```
+Apply the shared [storage update dependency rules](15-ownership-and-lifetime-analysis.md#1573-storage-update-dependencies) throughout acquisition, target evaluation, destruction, placement, and cleanup.
 
 If the RHS does not complete normally, do not evaluate the LHS. If LHS evaluation fails, do not destroy or place; if old-value destruction fails, do not place. Earlier effects and Moves are never rolled back. Keep the secured result alive during LHS evaluation; an ordinary control transfer cleans remaining temporaries under their normal lifetimes, after securing any transfer result. Abort follows the common termination rules.
 
@@ -584,8 +614,8 @@ If the right side or operation does not complete normally, do not write; getter 
 
 ## 13.8. Extension boundaries and reserved syntax
 
-Operator symbols, precedence, and associativity are fixed by the language. User-defined comparison uses the [Core Contract mapping](#1341-contract-comparison-mapping). User-defined arithmetic remains deferred and unavailable; a same-named method does not authorize an operator. Future arithmetic must preserve evaluation order and counts and assignment's Unit result.
+Operator symbols, precedence, and associativity are fixed by the language. User-defined comparison uses the [Kimi Contract mapping](#1341-contract-comparison-mapping). User-defined arithmetic remains deferred and unavailable; a same-named method does not authorize an operator. Future arithmetic must preserve evaluation order and counts and assignment's Unit result.
 
 `and`, `or`, `not`, `=`, `@`, `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Prefix `move`, a Move accessor, and a dedicated `<-` Move operator are not defined. Recognition by the lexer alone does not make a token a usable operator.
 
-`#Name` is an Attribute and `#if` / `#switch` are compile-time directives, not runtime unary operators. The **Composition Root** is the reserved root for language-provided operations selected by `$`, independently of ordinary Name lookup; it is neither a value nor a macro facility. This revision defines `$abort(...)` under [Abort Termination](17-failure-handling.md#173-abort-termination) and standalone test verification operations `$expect(...)` / `$require(...)` under [§17.5](17-failure-handling.md#175-test-verification-operations). These built-ins cannot be replaced, overloaded or acquired as function values. Unknown `$` operations are errors. Entry declarations/references, Provider selection and final composition remain unsettled; the withdrawn Composition Root design adds no source permission and does not redirect Core.writeLine. Dependency configuration and artifacts are independently specified in Chapter 18.
+`#Name` is an Attribute and `#if` / `#switch` are compile-time directives, not runtime unary operators. The **Composition Root** is the reserved root for language-provided operations selected by `$`, independently of ordinary Name lookup; it is neither a value nor a macro facility. This revision defines `$abort(...)` under [Abort Termination](17-failure-handling.md#173-abort-termination) and standalone test verification operations `$expect(...)` / `$require(...)` under [§17.5](17-failure-handling.md#175-test-verification-operations). These built-ins cannot be replaced, overloaded or acquired as function values. Unknown `$` operations are errors. Entry declarations/references, Provider selection and final composition remain unsettled; the withdrawn Composition Root design adds no source permission and does not redirect Kimi.Console.writeLine. Dependency configuration and artifacts are independently specified in Chapter 18.

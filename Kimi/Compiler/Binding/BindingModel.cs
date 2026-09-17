@@ -85,7 +85,7 @@ internal enum BindingFailure : byte
     InvalidConstraint,
     UnprovenConstraint,
     UnsatisfiedConstraint,
-    InvalidCore,
+    InvalidKimi,
     MissingImplementation,
     IncompatibleImplementation,
     InvalidAssociatedType,

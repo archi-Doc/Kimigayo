@@ -10,4 +10,4 @@ public func main()
     let count = 7@u8
     let bit = (1@u64 << count)@u8
     if low@i64 == -128 and wide == 255 and bit == 128 and narrow(200) == 200
-        writeLine("ok")
+        Console.writeLine("ok")

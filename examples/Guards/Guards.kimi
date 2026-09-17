@@ -5,6 +5,6 @@ func classify(value: i32) -> string
         _ => "positive"
 
 public func main()
-    writeLine(classify(-3))
-    writeLine(classify(0))
-    writeLine(classify(7))
+    Console.writeLine(classify(-3))
+    Console.writeLine(classify(0))
+    Console.writeLine(classify(7))

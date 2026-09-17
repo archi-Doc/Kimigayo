@@ -3,7 +3,7 @@ func same(left: ref/string, right: ref/string) -> bool
 
 var pair = ("alpha", "beta")
 if pair.0 == "alpha" and same(pair.0, pair.0)
-    writeLine("shared element")
+    Console.writeLine("shared element")
 
 // The comparison and call have released their Loans.
 pair.0 = "gamma"
@@ -11,11 +11,11 @@ let taken = pair.1
 
 // Partial Move does not prevent borrowing a remaining initialized element.
 if same(pair.0, pair.0)
-    writeLine(taken)
+    Console.writeLine(taken)
 
 pair.1 = "delta"
 let complete = pair
 
 var names: [2 of string] = ["first", "last"]
 if names[(0x0)] < names[1]
-    writeLine("element borrows complete")
+    Console.writeLine("element borrows complete")

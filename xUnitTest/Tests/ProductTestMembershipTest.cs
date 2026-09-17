@@ -11,9 +11,9 @@ namespace XunitTest;
 public class ProductTestMembershipTest
 {
     [Theory]
-    [InlineData("#Test\nfunc test() => TestOnly.missing()\nwriteLine(\"product\")")]
-    [InlineData("#Test()\nfunc test() -> ()\n    let text = \"moved\"\n    writeLine(text)\n    writeLine(text)\nwriteLine(\"product\")")]
-    [InlineData("#Test\npublic func main() => TestOnly.missing()\nwriteLine(\"product\")")]
+    [InlineData("#Test\nfunc test() => TestOnly.missing()\nConsole.writeLine(\"product\")")]
+    [InlineData("#Test()\nfunc test() -> ()\n    let text = \"moved\"\n    Console.writeLine(text)\n    Console.writeLine(text)\nConsole.writeLine(\"product\")")]
+    [InlineData("#Test\npublic func main() => TestOnly.missing()\nConsole.writeLine(\"product\")")]
     public void ProductDoesNotBindOrAnalyzeTestBodies(string source)
     {
         var compilation = MinimalEmissionTest.Analyze(source);
@@ -24,13 +24,13 @@ public class ProductTestMembershipTest
     }
 
     [Theory]
-    [InlineData("UnknownBody", "writeLine(\"product\")\n#Test\nfunc test() => TestOnly.missing()")]
-    [InlineData("MoveError", "writeLine(\"product\")\n#Test\nfunc test()\n    let text = \"test-only\"\n    writeLine(text)\n    writeLine(text)")]
-    [InlineData("TestMain", "#Test\npublic func main() => TestOnly.missing()\nwriteLine(\"product\")")]
-    [InlineData("ExplicitMain", "public func main() => writeLine(\"product\")\n#Test\nfunc test() => TestOnly.missing()")]
-    [InlineData("InfiniteTest", "writeLine(\"product\")\n#Test\nfunc test()\n    loop => ()")]
-    [InlineData("AbortTest", "writeLine(\"product\")\n#Test\nfunc test() => $abort(\"test-only\")")]
-    [InlineData("Overload", "func helper(value: i32) => writeLine(\"product\")\nhelper(1)\n#Test\nfunc helper() => TestOnly.missing()")]
+    [InlineData("UnknownBody", "Console.writeLine(\"product\")\n#Test\nfunc test() => TestOnly.missing()")]
+    [InlineData("MoveError", "Console.writeLine(\"product\")\n#Test\nfunc test()\n    let text = \"test-only\"\n    Console.writeLine(text)\n    Console.writeLine(text)")]
+    [InlineData("TestMain", "#Test\npublic func main() => TestOnly.missing()\nConsole.writeLine(\"product\")")]
+    [InlineData("ExplicitMain", "public func main() => Console.writeLine(\"product\")\n#Test\nfunc test() => TestOnly.missing()")]
+    [InlineData("InfiniteTest", "Console.writeLine(\"product\")\n#Test\nfunc test()\n    loop => ()")]
+    [InlineData("AbortTest", "Console.writeLine(\"product\")\n#Test\nfunc test() => $abort(\"test-only\")")]
+    [InlineData("Overload", "func helper(value: i32) => Console.writeLine(\"product\")\nhelper(1)\n#Test\nfunc helper() => TestOnly.missing()")]
     public void OnlyProductCodeIsEmitted(string name, string source)
         => ScalarEmissionTest.EmitFixture("ProductTest" + name, source, "product\n");
 
@@ -51,7 +51,7 @@ public class ProductTestMembershipTest
     [InlineData("#Test\nfunc outer()\n    #Test\n    let value = 1\n    ()")]
     public void InvalidSelectedTestDefinitionsRemainErrors(string source)
     {
-        var compilation = MinimalEmissionTest.Analyze(source + "\nwriteLine(\"product\")");
+        var compilation = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"product\")");
         Assert.False(compilation.Binding.Result.IsComplete);
         Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTestDefinition_Kd);
     }
@@ -64,7 +64,7 @@ public class ProductTestMembershipTest
     public void ReceiverFreeContainerTestsAreExcluded(string kind)
     {
         var cases = kind == "enum" ? "    Value\n" : string.Empty;
-        var compilation = MinimalEmissionTest.Analyze($"{kind} Container\n{cases}    #Test\n    func test() => Tests.missing()\nwriteLine(\"product\")");
+        var compilation = MinimalEmissionTest.Analyze($"{kind} Container\n{cases}    #Test\n    func test() => Tests.missing()\nConsole.writeLine(\"product\")");
         Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation, null));
         Assert.True(compilation.Ownership.Result.IsVerified);
     }
@@ -91,7 +91,7 @@ public class ProductTestMembershipTest
     [Fact]
     public void TestEditsDoNotChangeProductIrWhenProductLocationsAreUnchanged()
     {
-        const string Product = "writeLine(\"product\")\n";
+        const string Product = "Console.writeLine(\"product\")\n";
         var original = MinimalEmissionTest.Analyze(Product + "#Test\nfunc first() => Missing.first()");
         var changed = MinimalEmissionTest.Analyze(Product + "#Test\nfunc renamed()\n    loop => Missing.second()");
         var first = new StringWriter();
@@ -104,7 +104,7 @@ public class ProductTestMembershipTest
     [Fact]
     public void ReloadRetainsRawTestsAndReappliesProductMembership()
     {
-        var original = MinimalEmissionTest.Analyze("writeLine(\"product\")\n#Test\nfunc test() => Missing.api()");
+        var original = MinimalEmissionTest.Analyze("Console.writeLine(\"product\")\n#Test\nfunc test() => Missing.api()");
         var bytes = TinyhandSerializer.Serialize(original.Kotonoha);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
@@ -134,7 +134,7 @@ public class ProductTestMembershipTest
     [Fact]
     public void WarmProductMembershipAllocatesNothing()
     {
-        var compilation = MinimalEmissionTest.Analyze("writeLine(\"product\")\n#Test\nfunc test() => Missing.api()");
+        var compilation = MinimalEmissionTest.Analyze("Console.writeLine(\"product\")\n#Test\nfunc test() => Missing.api()");
         void Analyze()
         {
             if (!compilation.Bind().IsComplete || !compilation.Binding.CheckStartup(OutputKind.Application).IsComplete || !compilation.Ownership.Analyze().IsVerified)

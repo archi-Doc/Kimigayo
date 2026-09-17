@@ -17,7 +17,7 @@ public class EnumEmissionTest
     [InlineData("Aligned", "enum E<T>\n    A(u8, T, u16)\n    B\nlet values: [2 of E<u128>] = [.A(3, 340282366920938463463374607431768211455, 9), .B]")]
     public void ConcreteStorage(string name, string source)
     {
-        ScalarEmissionTest.EmitFixture("EnumStorage" + name, source + "\nwriteLine(\"ok\")", "ok\n");
+        ScalarEmissionTest.EmitFixture("EnumStorage" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
     }
 
     [Theory]

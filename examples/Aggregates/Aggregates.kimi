@@ -11,4 +11,4 @@ while i < 3
     let words: [2 of string] = ["iteration", "cleanup"]
     i += 1
 
-writeLine("aggregates complete")
+Console.writeLine("aggregates complete")

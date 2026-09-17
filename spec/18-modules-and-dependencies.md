@@ -20,32 +20,50 @@ Each Compilation owns a **Compilation root**, direct-dependency reference-name m
 
 Only directly referenced Kotonoha libraries are source-addressable by reference name. Use qualification such as `ExternalLib.GroupA.StructB` or an explicit `alias` declaration; do not search all external members unqualified. Multiple versions may use different reference names under §18.4. Loading transitive metadata for type checking does not expose those libraries by name.
 
-`alias ExternalLib.GroupA` opens a Container's direct members for unqualified lookup:
+### 18.1.1. Forms and resolution
 
-- Declare it at top level before ordinary declarations or executable code; it applies only to that SourceDocument. Nested aliases are invalid.
-- Resolve its Container path from the Compilation root, without other source aliases or default aliases. Check target accessibility at the declaration.
-- Introduce direct Types, functions, Fields, computed members, and child Containers in their namespaces; do not recursively introduce descendants. Conditional-member use still requires its published premises.
-- Retain a reference to the target Container. Check member access at each actual use, rather than caching one source-wide list of accessible members.
-- Treat explicit aliases together at their lookup stage and defaults together at a later stage. Order is irrelevant; deduplicate paths to the same Symbol. Different same-name functions form one candidate set, distinct Types use Type Name Selection, and mixed value kinds conflict.
-- Do not automatically re-export source aliases to other files or consumers.
+| Form | Introduction |
+| --- | --- |
+| `alias Path` | Open the Container's direct members in their respective namespaces. |
+| `alias Name => Path` | Introduce the target itself as a Type-namespace Qualifier named `Name`. |
+
+Both forms precede ordinary declarations and executable items at the SourceDocument top level. Nested aliases and access modifiers on named aliases are invalid. Directive selection and generation follow Chapter 19. `Name` is one ordinary identifier; the right side is a Container reference, not an expression or executable Body.
+
+Named targets are limited to Kotonoha and groups. They create no Core, value, storage, or declaration Identity and do not open the target's members. The opening form retains its existing Container target range. Neither form adds new Container placements or ways to instantiate them (§6.1). Where the Container rules permit a group under an instantiated parent, a named alias may retain that reference, with all required Type and Origin arguments bound; it acquires no generic parameters of its own.
+
+Resolve the entire target from the Compilation root without source or default aliases, including inside Type arguments and Origin specifications. Leading `::` is optional and does not change resolution. Built-in syntax such as `i32` and `from static` remains valid. Retain the definition environment when checking referenced declarations' bodies and constraints. Alias chains, cycles, source-order resolution, and transitive dependency reachability are not introduced. A real root declaration or direct reference with the same spelling remains usable.
 
 ```kimi
-// A.kimi; GroupA exports StructB and Child.StructC.
-alias ExternalLib.GroupA
-group Work
-    func accept(value: StructB) -> () => ()
-    func nested(value: Child.StructC) -> () => ()
-
-// B.kimi: merged Work does not inherit A.kimi's alias.
-group Work
-    func reject(value: StructB) -> () => () // Error: not imported here.
+alias Output => ::Kimi.Console
+alias K => Kimi
+Output.writeLine("Hello")
+K.Console.writeLine("Hello")
 ```
 
-Import `ExternalLib.GroupA.Child` explicitly to use `StructC` alone; `alias Child` cannot resolve through another alias. Library reference-name configuration is distinct from source `alias`.
+```kimi
+alias K => Kimi
+alias Output => K.Console       // Error if K exists only as an alias.
+alias Number => i32             // Error: a Core is not a named-alias target.
+alias O => Kimi.Option<i32>      // Error: an enum is not a named-alias target.
+alias f => Kimi.Console.writeLine // Error: a function is not a Container.
+alias Number = i32              // Error: no Type-alias declaration syntax.
+```
 
-**Type-alias boundary.** Source alias only opens a Container; it neither renames Types nor accepts `alias Name = Type`. Imported Names retain complete Types and Symbol Identity; use qualification to avoid conflicts. Alias expansion/equivalence elsewhere applies to internal transparent references and constrains any future Type-alias feature, without adding a source binding kind or alias-cycle checker. Existing reference/dependency cycle checks still apply.
+### 18.1.2. References, validation, and scope
 
-Dependency configuration and graph diagnostics follow §18.4. Re-export syntax remains deferred under [Re-exports](#182-re-exports).
+An alias retains the original declaration Identity and normalized argument bindings, not path substitution or use-site reinference. Register access, Type formation, input-condition and Origin obligations at the declaration, including intermediate qualifiers. Reject established errors; unresolved generated information may wait only until its existing deadline. Final Binding completes every required obligation. Check member access and use conditions at each use; an alias supplies neither access rights nor conformance evidence.
+
+Reference identity and validation completion are separate. Equal fixed references may share structure while obligations remain unresolved, but each path retains its obligations, state and dependencies. Sharing and deduplication never imply that validation succeeded.
+
+Aliases apply only to their SourceDocument. They do not propagate to other files, merged fragments, generated documents, or callers. They are not re-exported and create no root member addressable as `Project.A` or `::A`. Public Signatures still require access, direct dependencies and Name Reachability for the original Types. See §9.4.1 for collision and warning rules.
+
+### 18.1.3. Effective default aliases
+
+The effective defaults combine the language version's mandatory aliases with the defining module's configured additions. This revision requires an alias opening the reserved Kimi Kotonoha in every document, including dependency and generated sources. Configuration cannot remove it or replace its target.
+
+Mandatory and additional aliases participate together in the default lookup stage. Deduplicate identical resolved references within that stage. Explicit source aliases belong to the earlier explicit stage: `alias Kimi` can therefore change precedence. Never deduplicate across stages in a way that changes lookup order. Opening Kimi exposes `Console`, not its members; an additional default `Kimi.Console` exposes bare `writeLine`.
+
+Project configuration and manifest `aliases` store only user additions; do not append mandatory aliases when saving. Reconstruct the effective environment from the language version, selected Kimi contract, and saved additions. Empty additions and an addition of only `Kimi` have equal effective settings. Configuration equivalence that requires no name resolution may be normalized before input hashing; general path equivalence is determined later by semantic analysis.
 
 ## 18.2. Re-exports
 
@@ -54,6 +72,8 @@ Dependency configuration and graph diagnostics follow §18.4. Re-export syntax r
 Any future re-export design must preserve the original Symbol, avoid widening access, and reject cycles without a real target. Its syntax and compatibility requirements belong to that feature's specification.
 
 ## 18.3. Source artifacts and binary interfaces
+
+Publish openness and the dependencies of Sealed proofs, payload projections, complete-target effects, and all allowed Type/Origin/full-specialization checks. Recheck positive and negative proofs after openness changes. Treat an openness change as an API change and a breaking change when it invalidates a previously valid use. Do not replace required ObjectCallCompatible checks with Sealed alone.
 
 Initial distribution is **source-first**: Project references, source packages, exact versions, local publication stores, and optional verified semantic caches. Each package contains one Library Kotonoha. Inspection `.ll` files and serialized Koto graphs are not distribution formats. Distribution does not change definition-site lookup, access, generic selection, or ownership boundaries. Unsupported required Types, Loans, effects, cleanup, or generation paths must be diagnosed.
 
@@ -76,11 +96,11 @@ There is no Package-to-Project override. Updating a child and republishing to th
 
 PackageId starts with an ASCII lowercase letter and consists of lowercase ASCII letters/digits in nonempty segments separated by `.` or `-`. PackageVersion starts with an ASCII letter/digit and then permits ASCII letters/digits, `.`, `-`, and `+`. Compare versions by exact, case-sensitive equality; infer neither ordering nor compatibility. Referenced Libraries and packing roots require both fields. An Application need not have a package identity merely to consume dependencies.
 
-ReferenceName is a normal language identifier and must not collide with project-root declarations or reserved Core reference names. Multiple names/paths for one dependency do not create new Types or statics. Types and Symbols from different versions remain distinct.
+ReferenceName is a normal language identifier and must not collide with project-root declarations or reserved Kimi reference name. Multiple names/paths for one dependency do not create new Types or statics. Types and Symbols from different versions remain distinct.
 
 The module graph is a DAG. Diagnose self-reference and cycles with dependency paths; mutually dependent declarations may reside in one Kotonoha. Within a target graph, including its test extension, each ID/version has one input kind, content, and semantic configuration. Merge identical nodes reached by several paths; report both paths for conflicting inputs. Do not implicitly substitute a Project for a Package.
 
-Each module retains its own aliases/default aliases, access context, declarations, and closed specialization set. Consumers cannot append declarations or rebind the definition environment. The compiler selects one Core identity and contract for the graph.
+Each module retains its own aliases/default aliases, access context, declarations, and closed specialization set. Consumers cannot append declarations or rebind the definition environment. The compiler selects one Kimi identity and contract for the graph.
 
 ### 18.4.2. Project references and sources
 
@@ -160,7 +180,7 @@ kimi check Geometry.kimiproj --locked
 
 ### 18.5.2. Immutable processing records
 
-Fix each input byte snapshot and use those same bytes for verification, generation, and packing; do not re-read a mutable path after checking it. ProjectSnapshotId covers logical product-source paths/order/bytes and normalized effective semantic settings, including reference names and dependency IDs/versions. It reflects source membership rather than raw project-file formatting. Exclude test-only files/dependencies, retrieval/output paths, and generation-only optimization settings; record those in their appropriate stages. Ordinary files containing `#Test` retain their raw bytes. Include supported Mod registrations, implementations, and additional inputs under §20.7.5. ProjectSnapshotId is not SourceId.
+Fix each input byte snapshot and use those same bytes for verification, generation, and packing; do not re-read a mutable path after checking it. ProjectSnapshotId covers logical product-source paths/order/bytes and normalized effective semantic settings, including reference names and dependency IDs/versions. It reflects source membership rather than raw project-file formatting. Exclude test-only files/dependencies, retrieval/output paths, and generation-only optimization settings; record those in their appropriate stages. Ordinary files containing `#Test` retain their raw bytes. Include supported Mod registrations, implementations, and additional inputs under §20.7.5. ProjectSnapshotId is not SourceId. SourceId reflects the actual manifest bytes and content-hashed files; different saved bytes remain different content even when effective defaults are equal (§18.1.3). Stage input records retain their language/compiler/verification versions and Kimi contract. Input IDs do not require full alias resolution. Semantic reuse retains resolved references, lookup stages, definition environments, verification assumptions and dependencies, including candidate absence and access changes. Alias names and paths do not enter the underlying declaration or Type Identity. A rename alone never makes old inputs compatible.
 
 A build input record covers the root and every actual input, effective environment, resolved edges, verification rules, and native inputs needed at that stage. Mark unresolved native inputs and incomplete work explicitly. Bind each output to its input record and output hash. Lock equality alone does not fix root source, native files, toolchain, or runtime environment.
 
@@ -178,7 +198,7 @@ Store immutable records by content ID, with IDs/hashes and necessary structure/s
 4. Verify that final graph with the normal package loader and semantic verifier.
 5. Store the complete source-package closure, including existing Packages, children before parents. Report all content IDs and locations.
 
-Preserve product membership, logical paths/order, effective settings/default aliases, and native requirements; remove host locations. Distribute original conditional source, not a selected-branch rewrite. Neither a ProjectSnapshotId nor ID/version alone may select some earlier packed content. Validation may use a logical manifest/file view before ZIP serialization, provided the writer receives the same verified bytes.
+Preserve product membership, logical paths/order, effective settings, user-added default aliases (§18.1.3), and native requirements; remove host locations. Distribute original conditional source, not a selected-branch rewrite. Neither a ProjectSnapshotId nor ID/version alone may select some earlier packed content. Validation may use a logical manifest/file view before ZIP serialization, provided the writer receives the same verified bytes.
 
 The default directory is `bin/packages`; `--output <directory>` overrides it. Root and children use `<SourceId>.kimipkg` names and identical content is stored once. Complete each temporary archive, then use an atomic no-overwrite rename. Validate an existing/racing file under §18.6.3 and reuse only matching content. A parent becomes available only after its children are present. Trial packs may retain different SourceIds for the same version. Native files, runtime DLLs, and toolchains are outside this source closure.
 
@@ -204,7 +224,7 @@ A `.kimipkg` is a ZIP of regular files with a root UTF-8 `manifest.json`. Schema
 | schemaVersion, kind | Format version and artifact kind |
 | packageId, packageVersion, langVersion | Defining identity and resolved language version |
 | targets | Set of allowed targets |
-| compileTimeSettings, aliases | Definition settings and default aliases |
+| compileTimeSettings, aliases | Definition settings and user-added default aliases; mandatory defaults are reconstructed (§18.1.3) |
 | files | Every regular entry except manifest itself: path, size, sha256 |
 | sources | Ordered product-source paths |
 | dependencies | ReferenceName to packageId/packageVersion/sourceId map |
@@ -251,11 +271,11 @@ Before updating the table, inspect the entire closure and report every same-rele
 | --- | --- |
 | Input/distribution identity | SourceId or ProjectSnapshotId, resolved graph, effective environment |
 | Semantic validity | Declaration content, premises, effects, conformance, selections, absence dependencies, verification rules |
-| Code connection | Target/layout/ABI, Core/runtime, actual native supply and symbols |
+| Code connection | Target/layout/ABI, Kimi/runtime, actual native supply and symbols |
 
 Version equality, equal Type sizes, or LLVM verification cannot replace another check. Unknown, Error, missing implementation, and unfinished validation are never success evidence.
 
-ModuleInputId includes raw input identity, effective language, compiler build, verification rules, Core, target/layout/semantic profile, mode, settings, direct-reference mappings, and dependency ModuleInputIds. It is the whole-module fast path, not a declaration identity or a generation-order seed.
+ModuleInputId includes raw input identity, effective language, compiler build, verification rules, Kimi, target/layout/semantic profile, mode, settings, direct-reference mappings, and dependency ModuleInputIds. It is the whole-module fast path, not a declaration identity or a generation-order seed.
 
 ### 18.7.2. Correspondence and semantic records
 

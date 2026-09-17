@@ -109,7 +109,7 @@ public sealed class NativeToolchainTest : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => project.Build(cancelled.Token));
     }
 
-    private Project Create(string source = "::Core.writeLine(\"Hello\")")
+    private Project Create(string source = "::Kimi.Console.writeLine(\"Hello\")")
     {
         var project = Compilation.CreateForTest().Project;
         project.Name = "Native test";

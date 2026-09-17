@@ -2,9 +2,9 @@
 
 namespace Kimi.Compiler;
 
-#pragma warning disable SA1402, CS1591 // Stable compiler-owned Core catalog vocabulary.
+#pragma warning disable SA1402, CS1591 // Stable compiler-owned Kimi catalog vocabulary.
 
-public enum CoreDeclarationId : byte
+public enum KimiDeclarationId : byte
 {
     Copy,
     Owned,
@@ -24,9 +24,13 @@ public enum CoreDeclarationId : byte
     Iterator,
     Iterable,
     ObjectOwnership,
+    Sealed,
+    Replace,
+    Exchange,
+    Swap,
 }
 
-public enum CoreDeclarationState : byte
+public enum KimiDeclarationState : byte
 {
     Missing,
     Invalid,
@@ -34,4 +38,4 @@ public enum CoreDeclarationState : byte
 }
 
 /// <summary>A required identity and its current declaration validation; not runtime availability.</summary>
-public readonly record struct CoreDeclaration(CoreDeclarationId Id, string Name, BindingSymbol? Symbol, CoreDeclarationState State);
+public readonly record struct KimiDeclaration(KimiDeclarationId Id, string Name, BindingSymbol? Symbol, KimiDeclarationState State);

@@ -1,20 +1,24 @@
-# 22. Core, program execution, and foreign functions
+# 22. Kimi, program execution, and foreign functions
 
 [Specification index](../SPEC.md)
 
-This chapter defines the required declarations of the Core Kotonoha, process startup and shutdown, the foreign-call boundary, and minimal standard output. Here, Core names the foundation Kotonoha, not a Type component.
+This chapter defines the required declarations of the Kimi Kotonoha, process startup and shutdown, the foreign-call boundary, and minimal standard output. Kimi names the foundation library; Core remains a Type component.
 
-## 22.1. Required Core declarations
+<a id="221-required-core-declarations"></a>
 
-Every Compilation binds exactly one compiler-compatible **Core Kotonoha**, using the reserved direct reference name Core. The declarations below are public at that Kotonoha's root and available through default aliases. Qualified paths such as `::Core.Option<T>` identify them regardless of local shadowing. Compiler metadata records their originating Kotonoha/version and Symbol Identities; a same-spelled user declaration or replacement alias never receives their special behavior. Reject a missing, duplicate, or incompatible Core definition before finalization. The compiler may synthesize these definitions, but synthesized and loaded definitions must have the same language identities and contracts. Core itself is built with these identities designated by the compiler.
+## 22.1. Required Kimi declarations
+
+The library also provides the intrinsic `Sealed` requirement (§8.4.7) and the ordinary generic declarations `replace`, `exchange`, and `swap` (§15.7). Recognition uses the original Kimi declaration Identity, not names or user conformance. Their generic signatures impose no Sealed requirement; completeness is checked at each actual storage target.
+
+Every Compilation binds exactly one compiler-compatible **Kimi Kotonoha**, using the reserved direct reference name `Kimi`. User dependencies and project-root declarations cannot use that name. It is not a keyword; inner scopes follow normal shadowing. `::Kimi` bypasses locals and aliases. The declarations below are public at the library root, except `writeLine`, which belongs to the public `Console` group (§22.4). The mandatory default alias opens Kimi under §18.1.3. Qualified paths such as `::Kimi.Option<T>` identify them regardless of local shadowing. Compiler metadata records their originating Kotonoha/version and Symbol Identities; a same-spelled user declaration or replacement alias never receives their special behavior. Reject a missing, duplicate, or incompatible Kimi definition before finalization. The compiler may synthesize these definitions, but synthesized and loaded definitions must have the same language identities and contracts. Kimi itself is built with these identities designated by the compiler.
 
 This is the minimal set named by language rules, not a promise of a general standard library:
 
 | Declaration | Required shape or operation |
 | --- | --- |
-| `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Core.Copy} |
-| `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Core.Copy, E is Core.Copy} |
-| `Weak<S>` | Compiler-managed Non-Copy struct over a valid complete rc/arc S; always holds a target table, with no empty constructor. Core.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
+| `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Kimi.Copy} |
+| `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Kimi.Copy, E is Kimi.Copy} |
+| `Weak<S>` | Compiler-managed Non-Copy struct over a valid complete rc/arc S; always holds a target table, with no empty constructor. Kimi.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
 | `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; §4.6 indexing, §4.7 mutation/capacity APIs, literals and consuming Iterable conformance |
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
@@ -25,22 +29,22 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
 | `Iterator` | `associate Element`; `func next(self: uniq/Self) -> Option<Self.Element>` |
-| `Iterable` | `associate Element`; `associate Iterator is ::Core.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
-| Copy, Owned, Callable | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
-| Object ownership intrinsics | Core.makeObj / makeRc / makeArc, strong and Weak Core.clone, Core.downgrade / upgrade, Core.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
-| `writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
+| `Iterable` | `associate Element`; `associate Iterator is ::Kimi.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
+| Copy, Owned, Callable, Sealed | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
+| Object ownership intrinsics | Kimi.makeObj / makeRc / makeArc, strong and Weak Kimi.clone, Kimi.downgrade / upgrade, Kimi.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
+| `Console.writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
 
 Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
 
-Fixed arrays implement Iterable with Element = T. Owning Array/Dictionary iterators retain and destroy unyielded elements in §4.7.6 order. ResolvedRange and Slice use concrete Core iterator identities with §4.6’s element Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and both stay exhausted after None. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next’s result extends no lifetime. These requirements add no public iterator constructors or other changes to associated-requirement kinds.
+Fixed arrays implement Iterable with Element = T. Owning Array/Dictionary iterators retain and destroy unyielded elements in §4.7.6 order. ResolvedRange and Slice use concrete Kimi iterator identities with §4.6’s element Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and both stay exhausted after None. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next’s result extends no lifetime. These requirements add no public iterator constructors or other changes to associated-requirement kinds.
 
 The primitive keyword string denotes the compiler's UTF-8 string Core, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed-array syntax and layout follow [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](04-arrays-indexing-and-slices.md#46-indexing-and-slicing).
 
-For Option/Result Copy conditions, compare atom sets using §8.7's proposition identity and conjunction elimination. T/E denote the corresponding parameter slots and Core.Copy the recognized Symbol. Order, transparent grouping, and duplicate atoms do not change the set; missing/unconditional Copy, missing/extra atoms, or different identities are incompatible. Retain all other required-shape checks without general logical-equivalence reasoning. Generated sources may use canonical T, E order, but loaded Core definitions cannot be required to use that order.
+For Option/Result Copy conditions, compare atom sets using §8.7's proposition identity and conjunction elimination. T/E denote the corresponding parameter slots and Kimi.Copy the recognized Symbol. Order, transparent grouping, and duplicate atoms do not change the set; missing/unconditional Copy, missing/extra atoms, or different identities are incompatible. Retain all other required-shape checks without general logical-equivalence reasoning. Generated sources may use canonical T, E order, but loaded Kimi definitions cannot be required to use that order.
 
-Option/Result Copy and Owned follow ordinary enum rules; no extra copying is introduced. A changed Core contract invalidates dependent capability, acquisition, and generation results under §21.3.4. Unchanged Case order and payload structure do not establish binary compatibility with older Core artifacts.
+Option/Result Copy and Owned follow ordinary enum rules; no extra copying is introduced. A changed Kimi contract invalidates dependent capability, acquisition, and generation results under §21.3.4. Unchanged Case order and payload structure do not establish binary compatibility with older Kimi artifacts.
 
-Array/Dictionary contents, generic enum payloads, and fixed-array elements preserve complete Type/Origin/Loan dependencies under §15.4. Array's Owned classification follows T, Dictionary's follows K and V, independently of runtime contents; both remain Non-Copy. No container grants permission to hide dependencies or extend a referent's lifetime. Checked-cast designs use the required Core Option Identity despite deferred View syntax. Dictionary need not expose hashing. Dynamic mutation, allocation, ordering, retained dependencies, effects and complexity follow §4.7; further library APIs remain separate designs.
+Array/Dictionary contents, generic enum payloads, and fixed-array elements preserve complete Type/Origin/Loan dependencies under §15.4. Array's Owned classification follows T, Dictionary's follows K and V, independently of runtime contents; both remain Non-Copy. No container grants permission to hide dependencies or extend a referent's lifetime. Checked-cast designs use the required Kimi Option Identity despite deferred View syntax. Dictionary need not expose hashing. Dynamic mutation, allocation, ordering, retained dependencies, effects and complexity follow §4.7; further library APIs remain separate designs.
 
 ## 22.2. Program startup and static initialization
 
@@ -72,7 +76,7 @@ Execute the chosen document's body items in source order with its source scope, 
 ```kimi
 // Implicit startup; the uninitialized local itself also counts.
 let pending: i32
-::Core.writeLine("Hello, world!")
+::Kimi.Console.writeLine("Hello, world!")
 ```
 
 A minimal intentionally empty Application is the Unit expression `()`. Empty files and declaration-only files supply no implicit body.
@@ -86,11 +90,11 @@ Validate every root-level public main in an Application as a startup signature. 
 ```kimi
 public func main() -> ()
     let message = "Hello, world!"
-    ::Core.writeLine(message)
+    ::Kimi.Console.writeLine(message)
     // message has been moved; using it again is an error.
 ```
 
-Adding a top-level `::Core.writeLine("Top level")` to this project is an error because it mixes startup forms. Integer-returning main and a safe Core.exit API are not initial features; normal termination is 0 and Abort is 1. Runtime.Exit remains internal.
+Adding a top-level `::Kimi.Console.writeLine("Top level")` to this project is an error because it mixes startup forms. Integer-returning main and a safe Kimi.exit API are not initial features; normal termination is 0 and Abort is 1. Runtime.Exit remains internal.
 
 A Library requires no startup candidate, never automatically calls main, and emits no OS entry. Treat main as an ordinary function without the Application signature restriction. Reject top-level runtime body items, including uninitialized let/var. A Library may be consumed as a Project or distributed as a source package (§18.4–18.6), then participate in common final generation. Its inspection `.ll` is not that distribution format or an external library/DLL ABI; language functions remain internal even when public. Optimization may remove all functions from standalone inspection output, so inspect pre-optimization IR.
 
@@ -175,19 +179,33 @@ Exclude bool, char, string, borrows, object handles, aggregates (including C-exc
 
 ## 22.4. Minimal console output
 
-Core provides the public ordinary function `writeLine(text: string) -> ()` at its root, available through the Core default alias. `::Core.writeLine` identifies the required Symbol regardless of local shadowing. It is a safe, nongeneric function with one required owned string argument and no receiver, defaults, formatting parameters, or result borrow. The compiler/runtime supplies its implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
+```kimi
+Console.writeLine("Hello")
+::Kimi.Console.writeLine("Hello")
+```
+
+Opening Console explicitly, or through an additional default alias, permits the bare name:
+
+```kimi
+alias Kimi.Console
+writeLine("Hello")
+```
+
+There is no `Kimi.writeLine`, old `Core` compatibility reference, or forwarding API. `Core` is an ordinary user name. Console is a group, not a value or special syntax. An intrinsic is a declaration whose Identity has compiler-recognized meaning; no public `Intrinsic` namespace or `Kimi.Intrinsic` group is introduced. Aliases retain that Identity. `$abort`, `$expect`, `$require`, and the Composition Root retain their existing roles.
+
+Kimi provides the public ordinary function `writeLine(text: string) -> ()` as a direct member of its ordinary public `group Console`. The mandatory Kimi default alias makes `Console.writeLine` available. It does not recursively open Console. `::Kimi.Console.writeLine` identifies the required Symbol regardless of local shadowing. It is a safe, nongeneric function with one required owned string argument and no receiver, defaults, formatting parameters, or result borrow. The compiler/runtime supplies its implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
 
 Acquire text once under Copy/Move rules and write all its UTF-8 bytes plus one LF to standard output. NUL is data. Preserve contents without normalization, CRLF conversion, or locale encoding. Failure may leave partial output; no rollback or device atomicity is promised. Return Unit after host acceptance and flushing this call’s runtime buffer, not necessarily display or durable storage. Failure to complete initiates Abort under normal diagnostic/termination rules, even if stdout is unavailable. Destroy the acquired argument on normal return. Diagnose an unsupported target/feature if the backend cannot provide this operation.
 
 **Complete application example (implicit startup in one SourceDocument).**
 
 ```kimi
-::Core.writeLine("Hello, world!")
+::Kimi.Console.writeLine("Hello, world!")
 ```
 
 The required standard-output bytes are UTF-8 `Hello, world!` followed by LF; normal completion exits with code zero under §22.2. No source main function, user alias, unsafe block, interpolation, or user-declared foreign function is needed. Passing an existing string local Moves it; use its Stringify mapping to obtain an independent owned string when reuse is needed. Borrowed output overloads and general I/O error/result APIs remain outside this minimal operation.
 
-The initial Windows implementation of this operation is specified in §22.5; output settings, manifest, and manual build steps are in §20.8. The first executable implementation milestone and the distinction between existing and proposed settings are recorded in [STATUS.md](../STATUS.md#c12-first-executable-milestone). A prototype supporting only that subset must identify itself as partial; the milestone does not relax the Core identity/shape or validation requirements of a fully conforming Compilation. Unused executable Core bodies need not be emitted, but a same-spelled stub without the required identity and contract is not a compatible Core definition.
+The initial Windows implementation of this operation is specified in §22.5; output settings, manifest, and manual build steps are in §20.8. The first executable implementation milestone and the distinction between existing and proposed settings are recorded in [STATUS.md](../STATUS.md#c12-first-executable-milestone). A prototype supporting only that subset must identify itself as partial; the milestone does not relax the Kimi identity/shape or validation requirements of a fully conforming Compilation. Unused executable Kimi bodies need not be emitted, but a same-spelled stub without the required identity and contract is not a compatible Kimi definition.
 
 ## 22.5. Initial Windows runtime
 
@@ -269,7 +287,7 @@ The initial internal string storage representation is `{ ptr, i64, i8 }`: data, 
 
 Establish validity at construction, not by revalidating UTF-8/allocations on every use; corruption detection is not guaranteed. Literal backing may be shared without granting Copy to string. Hello world needs no heap allocation.
 
-The required Core.writeLine Symbol (§22.4) acquires its owned argument once, calls WriteStdout(data, length), calls WriteStdout on a one-byte LF constant, then normally destroys the argument and returns Unit. Static release does nothing; Heap release calls Free. An empty string still emits LF. Output failure Aborts without normal argument destruction; earlier output is not rolled back. No concatenation buffer is required.
+The required Kimi.Console.writeLine Symbol (§22.4) acquires its owned argument once, calls WriteStdout(data, length), calls WriteStdout on a one-byte LF constant, then normally destroys the argument and returns Unit. Static release does nothing; Heap release calls Free. An empty string still emits LF. Output failure Aborts without normal argument destruction; earlier output is not rolled back. No concatenation buffer is required.
 
 Write raw UTF-8 bytes to redirected files/pipes without changing the console code page. Non-ASCII console appearance depends on console configuration; universal Unicode console display is not initially guaranteed. A GetConsoleMode/WriteConsoleW adapter is a future extension, not implicit UTF-16 output.
 

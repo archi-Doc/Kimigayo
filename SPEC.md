@@ -6,15 +6,17 @@ Chapters 1–22 define language rules and implementation contracts; [§1.3](spec
 
 Design documents, decision records, and change records are stored in `draft/` (formerly `doc/`). The directory rename does not change the scope of existing precedence notices, including those below.
 
-The [final whole-value replacement proposal](draft/Changes/2026-09-17%20Whole%20Value%20Replacement.md) takes precedence over this index and its referenced specifications only for the changes mapped in its Section 6: the Sealed requirement and payload-target evidence, shared/exclusive payload projection into ordinary value borrows, Core.replace/exchange/swap, and the corresponding identity, dependency, receiver, ObjectCompatible, and code-generation rules. Existing rules govern all other matters; specification precedence does not establish implementation support.
+The [whole-value replacement change](draft/Changes/2026-09-17%20Whole%20Value%20Replacement.md) is integrated into [Sealed](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees), [payload projections](spec/13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow), [receiver compatibility](spec/12-expressions.md#1244-object-receiver-compatibility), and [whole-value updates and dependencies](spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates), with corresponding destruction, refinement, artifact, and code-generation rules. Its Section 6 changes take precedence; unrelated proposal features are not adopted. See STATUS.md for implementation coverage.
+
+The [Kimi library and named aliases change](draft/Changes/2026-09-17%20Kimi%20Library%20and%20Named%20Aliases.md) is integrated into [source aliases and effective defaults](spec/18-modules-and-dependencies.md#181-external-references-and-aliases), [name lookup and diagnostics](spec/09-names-signatures-and-access.md#941-named-aliases-collisions-and-warnings), and [the Kimi library](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). Core remains the Type component. This adoption does not adopt the separate Declaration Container nesting proposal; implementation coverage remains in STATUS.md.
 
 The dependency and artifact specification is integrated into [Chapter 18](spec/18-modules-and-dependencies.md), [native connections and commands](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution), [product/test generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), and [compiler verification requirements](spec/appendices/A-compiler-requirements.md#a16-dependencies-artifacts-and-bounded-reuse). These sections define source-first distribution, exact-version resolution, lock files, pack/publish, content stores, semantic reuse, and native input validation. They incorporate the adopted [dependency/artifact draft](draft/Design/2026-09-13%20Dependencies%20and%20Artifacts.md); implementation coverage remains in STATUS.md.
 
-For a broad, non-normative source walkthrough, see the [specification tour](examples/SpecTour/README.md). It illustrates specified language features beyond current executable support and identifies features whose source APIs remain undefined.
+For a broad, non-normative source walkthrough, see the [specification tour](examples/SpecTour/README.md). It illustrates specified language features beyond current executable support and identifies remaining implementation and language boundaries.
 
 For progressively more demanding, independent programs, see [Milestone1–14](milestones/README.md). They progress from Hello World through ownership/lifetimes to combined control flow and patterns, arrays, nested declaration containers, generic sharing/specialization, closures/captures, Slice/Iterator contracts, and exclusive object creation. Expected behavior follows the specification; verified implementation coverage is recorded separately.
 
-Composition Root Entry/Provider declarations and final selection remain unsettled following withdrawal of the design. [§13.8](spec/13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax) defines the reserved root and independently specified built-ins; it does not redirect Core.writeLine or introduce composition Bindings. [Appendix D](spec/appendices/D-deferred-features.md) tracks this boundary.
+Composition Root Entry/Provider declarations and final selection remain unsettled following withdrawal of the design. [§13.8](spec/13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax) defines the reserved root and independently specified built-ins; it does not redirect Kimi.Console.writeLine or introduce composition Bindings. [Appendix D](spec/appendices/D-deferred-features.md) tracks this boundary.
 
 The [testing design](draft/Design/2026-09-13%20Testing.md) is integrated into [Test declarations](spec/06-declarations-and-containers.md#651-test-definitions), [verification and cleanup](spec/17-failure-handling.md#175-test-verification-operations), [inputs](spec/18-modules-and-dependencies.md#188-product-and-test-inputs), [discovery and CLI](spec/20-compilation-configuration.md#209-test-command-and-discovery), [generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), and [execution/reporting](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting). Appendix A.17 defines compiler verification and Appendix F summarizes syntax. Concrete profile interfaces/defaults and future features remain in [Appendix D.4](spec/appendices/D-deferred-features.md#d4-testing-profile-details-and-extensions). Specification integration does not establish executable support; see [STATUS.md](STATUS.md).
 
@@ -30,7 +32,7 @@ The implementation has been planned, but we have intentionally not started it ye
 
 ### ObjectCallCompatible
 
-The existing [inference and call rules](spec/12-expressions.md#1244-object-receiver-compatibility) and [public summary requirements](spec/18-modules-and-dependencies.md#187-verified-information-and-reuse) remain unchanged. Implementation will proceed in three stages:
+The [inference and call rules](spec/12-expressions.md#1244-object-receiver-compatibility) and [public summary requirements](spec/18-modules-and-dependencies.md#187-verified-information-and-reuse) include the complete Sealed payload exception. Full public-effect inference and release checking will proceed in three stages:
 
 1. **Document the plan (current stage).** Preserve the existing specification; make no implementation changes.
 2. **Implement inference and publication.** Verify bodies, callees, and all explicit specializations; publish completed `Proven` / `NotProven` results in public API information and enforce the existing call rules.
@@ -78,7 +80,7 @@ Receiver shorthand is defined in [§7.3](spec/07-functions-and-callable-values.m
 - [19. Compile-time directives](spec/19-compile-time-directives.md)
 - [20. Compilation configuration](spec/20-compilation-configuration.md)
 - [21. Layout, runtime metadata, and code generation](spec/21-layout-runtime-and-code-generation.md)
-- [22. Core, program execution, and foreign functions](spec/22-core-execution-and-foreign-functions.md)
+- [22. Kimi, program execution, and foreign functions](spec/22-core-execution-and-foreign-functions.md)
 
 ## Appendices
 

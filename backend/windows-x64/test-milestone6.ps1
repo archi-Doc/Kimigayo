@@ -80,13 +80,13 @@ $original = [IO.File]::ReadAllText($source)
 foreach ($anchor in @('value >= 7', 'found == 7', 'yield found * 10', 'score == 70', 'exit to validate: false')) {
     if (-not $original.Contains($anchor)) { throw "Review the variants against the current source: $anchor" }
 }
-$cleanup = $original.Replace('public func main()', "public func main()`n    defer => ::Core.writeLine(`"main cleanup`")").
-    Replace('let found: i32 = search: loop', "let found: i32 = search: loop`n        defer => ::Core.writeLine(`"iteration cleanup`")").
-    Replace('let score: i32 = if found == 7', "let score: i32 = if found == 7`n        defer => ::Core.writeLine(`"selection cleanup`")").
-    Replace('let accepted: bool = validate: do', "let accepted: bool = validate: do`n        defer => ::Core.writeLine(`"validation cleanup`")")
+$cleanup = $original.Replace('public func main()', "public func main()`n    defer => ::Kimi.Console.writeLine(`"main cleanup`")").
+    Replace('let found: i32 = search: loop', "let found: i32 = search: loop`n        defer => ::Kimi.Console.writeLine(`"iteration cleanup`")").
+    Replace('let score: i32 = if found == 7', "let score: i32 = if found == 7`n        defer => ::Kimi.Console.writeLine(`"selection cleanup`")").
+    Replace('let accepted: bool = validate: do', "let accepted: bool = validate: do`n        defer => ::Kimi.Console.writeLine(`"validation cleanup`")")
 $guard = @'
 (probe: do
-                ::Core.writeLine("guard")
+                ::Kimi.Console.writeLine("guard")
                 exit to probe: value >= 7
             )
 '@

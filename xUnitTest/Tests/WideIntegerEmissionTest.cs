@@ -23,18 +23,18 @@ public class WideIntegerEmissionTest
         { "WideUnusedBody", "func unused() -> ()\n    let x: i128 = 1\n()", string.Empty },
         { "WideOldConversion", "let x = 1\nx@i128", string.Empty },
         { "WideEmptyArray", "let value: [0 of i128] = []", string.Empty },
-        { "WideSignedZero", "let x: u128 = -0\nif x == 0 => writeLine(\"ok\")", "ok\n" },
-        { "WideMatch", $"func f(x: u128) -> i128\n    return match x\n        {UnsignedMax} => {Min}\n        {High} => {Max}\n        _ => 0\nif f({UnsignedMax}) == {Min} and f({High}) == {Max} => writeLine(\"ok\")", "ok\n" },
-        { "WideGuard", $"let x: u128 = {UnsignedMax}\nmatch x\n    let y if y == {High} => writeLine(\"bad\")\n    let z if z == {UnsignedMax} => writeLine(\"ok\")\n    _ => writeLine(\"bad\")", "ok\n" },
-        { "WideTuple", $"var x = (1@u128, \"old\", ({Min}@i128, true))\nlet y = x\nx = y\nwriteLine(\"ok\")", "ok\n" },
-        { "WideArray", $"let x: [2 of u128] = [{High}, {UnsignedMax}]\nlet y = x\nwriteLine(\"ok\")", "ok\n" },
-        { "WideMixedAbi", $"func f(a: u8, b: i128, c: f64, d: u128, e: i128, f: string) -> u128\n    writeLine(f)\n    if a == 255 and b == {Min} and c == 1.5 and e == {Max} => return d\n    return 0\nif f(255, {Min}, 1.5, {UnsignedMax}, {Max}, \"call\") == {UnsignedMax} => writeLine(\"ok\")", "call\nok\n" },
-        { "WideOrder", "func left() -> u128\n    writeLine(\"left\")\n    return 3\nfunc right() -> u128\n    writeLine(\"right\")\n    return 7\nif left() * right() == 21 => writeLine(\"ok\")", "left\nright\nok\n" },
-        { "WideSkipped", $"var x: i128 = {Max}\nif true or x + 1 > 0 => writeLine(\"ok\")", "ok\n" },
-        { "WideCountOriginal", "var x: u8 = 1\nlet n: u128 = 7\nif (x << n) == 128 => writeLine(\"ok\")", "ok\n" },
-        { "WideSignedMultiplyEdge", $"var x: i128 = {Min}\nvar y: i128 = 1\nif x * y == {Min} and x * 0 == 0 and (x + 1) * -1 == {Max} => writeLine(\"ok\")", "ok\n" },
-        { "WideMultiplyCrossLimb", $"var x: u128 = {High}\nvar y: u128 = 18446744073709551615\nif x * y == 340282366920938463444927863358058659840 and y * y == 340282366920938463426481119284349108225 => writeLine(\"ok\")", "ok\n" },
-        { "WideHex", "let x: u128 = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF\nlet y: i128 = -0x80000000000000000000000000000000\nif x >> 127 == 1 and y >> 127 == -1 => writeLine(\"ok\")", "ok\n" },
+        { "WideSignedZero", "let x: u128 = -0\nif x == 0 => Console.writeLine(\"ok\")", "ok\n" },
+        { "WideMatch", $"func f(x: u128) -> i128\n    return match x\n        {UnsignedMax} => {Min}\n        {High} => {Max}\n        _ => 0\nif f({UnsignedMax}) == {Min} and f({High}) == {Max} => Console.writeLine(\"ok\")", "ok\n" },
+        { "WideGuard", $"let x: u128 = {UnsignedMax}\nmatch x\n    let y if y == {High} => Console.writeLine(\"bad\")\n    let z if z == {UnsignedMax} => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")", "ok\n" },
+        { "WideTuple", $"var x = (1@u128, \"old\", ({Min}@i128, true))\nlet y = x\nx = y\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "WideArray", $"let x: [2 of u128] = [{High}, {UnsignedMax}]\nlet y = x\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "WideMixedAbi", $"func f(a: u8, b: i128, c: f64, d: u128, e: i128, f: string) -> u128\n    Console.writeLine(f)\n    if a == 255 and b == {Min} and c == 1.5 and e == {Max} => return d\n    return 0\nif f(255, {Min}, 1.5, {UnsignedMax}, {Max}, \"call\") == {UnsignedMax} => Console.writeLine(\"ok\")", "call\nok\n" },
+        { "WideOrder", "func left() -> u128\n    Console.writeLine(\"left\")\n    return 3\nfunc right() -> u128\n    Console.writeLine(\"right\")\n    return 7\nif left() * right() == 21 => Console.writeLine(\"ok\")", "left\nright\nok\n" },
+        { "WideSkipped", $"var x: i128 = {Max}\nif true or x + 1 > 0 => Console.writeLine(\"ok\")", "ok\n" },
+        { "WideCountOriginal", "var x: u8 = 1\nlet n: u128 = 7\nif (x << n) == 128 => Console.writeLine(\"ok\")", "ok\n" },
+        { "WideSignedMultiplyEdge", $"var x: i128 = {Min}\nvar y: i128 = 1\nif x * y == {Min} and x * 0 == 0 and (x + 1) * -1 == {Max} => Console.writeLine(\"ok\")", "ok\n" },
+        { "WideMultiplyCrossLimb", $"var x: u128 = {High}\nvar y: u128 = 18446744073709551615\nif x * y == 340282366920938463444927863358058659840 and y * y == 340282366920938463426481119284349108225 => Console.writeLine(\"ok\")", "ok\n" },
+        { "WideHex", "let x: u128 = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF\nlet y: i128 = -0x80000000000000000000000000000000\nif x >> 127 == 1 and y >> 127 == -1 => Console.writeLine(\"ok\")", "ok\n" },
     };
 
     public static IEnumerable<object[]> ForbiddenOperations()
@@ -72,7 +72,7 @@ public class WideIntegerEmissionTest
         var source = $"func snapshot(x: {type}) -> {type}\n    var result = x\n    defer => result = 0\n    return result\n" +
             $"var x: {type} = 9\nx += 3\nx -= 2\nx *= 2\nx |= 4\nx &= 6\nx ^= 3\nx <<= 1\nx >>= 1\nlet old = x++\n++x\nlet current = --x\nx--\n" +
             $"let low: {type} = {minimum}\nlet high: {type} = {maximum}\nlet top: {type} = 1 << 127\nvar choice = true\nlet phi = if choice => snapshot(high) else => low\n" +
-            $"if x == 7 and old == 7 and current == 8 and low < high and high > low and high >= high and low <= low and (top >> 127) == {(signed ? "-1" : "1")} and phi == high and snapshot(low) == low => writeLine(\"ok\")";
+            $"if x == 7 and old == 7 and current == 8 and low < high and high > low and high >= high and low <= low and (top >> 127) == {(signed ? "-1" : "1")} and phi == high and snapshot(low) == low => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("WideOperations" + type, source, "ok\n");
     }
 
@@ -89,7 +89,7 @@ public class WideIntegerEmissionTest
     [InlineData("SignedIncrement", "i128", Max, "x++")]
     [InlineData("SignedDecrement", "i128", Min, "--x")]
     public void OverflowAbortsBeforeCommit(string name, string type, string initial, string expression)
-        => ScalarEmissionTest.EmitFixture("WideOverflow" + name, $"var x: {type} = {initial}\n{expression}\nwriteLine(\"bad\")", string.Empty, 1, $"Hello.kimi:2:1: abort {Overflow}\n");
+        => ScalarEmissionTest.EmitFixture("WideOverflow" + name, $"var x: {type} = {initial}\n{expression}\nConsole.writeLine(\"bad\")", string.Empty, 1, $"Hello.kimi:2:1: abort {Overflow}\n");
 
     [Theory]
     [InlineData("u128", "u8", "128")]
@@ -156,7 +156,7 @@ public class WideIntegerEmissionTest
     [Fact]
     public void SerializationRebuildsBothHalvesOfWideValues()
     {
-        var c = MinimalEmissionTest.Analyze($"let x: u128 = {UnsignedMax}\nlet y: i128 = {Min}\nif x >> 127 == 1 and y >> 127 == -1 => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze($"let x: u128 = {UnsignedMax}\nlet y: i128 = {Min}\nif x >> 127 == 1 and y >> 127 == -1 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);

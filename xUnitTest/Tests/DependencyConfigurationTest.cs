@@ -16,7 +16,7 @@ public class DependencyConfigurationTest
     [InlineData("PackageId=\"example.math\"")]
     [InlineData("PackageId=\"example.math\" PackageVersion=\"*\"")]
     [InlineData("Dependencies={Math={PackageId=\"example.math\" PackageVersion=\"1\" Project=\"M.kimiproj\" Package=\"M.kimipkg\"}}")]
-    [InlineData("Dependencies={Core={PackageId=\"example.core\" PackageVersion=\"1\"}}")]
+    [InlineData("Dependencies={Kimi={PackageId=\"example.core\" PackageVersion=\"1\"}}")]
     [InlineData("Dependencies={Math={PackageId=\"example.math\" PackageVersion=\"1\"} Math={PackageId=\"example.math\" PackageVersion=\"2\"}}")]
     [InlineData("KotonohaArray={{Name=\"Math\" Version=\"1\"}}")]
     [InlineData("PackageId=\"a-\" PackageVersion=\"1\"")]

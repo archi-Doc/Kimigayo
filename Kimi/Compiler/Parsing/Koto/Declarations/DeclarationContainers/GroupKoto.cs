@@ -105,6 +105,14 @@ public sealed class GroupKoto : DeclarationContainerKoto
             if (tokenKind == TokenKind.Alias)
             {
                 reader.Advance();
+                string? aliasName = null;
+                if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
+                {
+                    aliasName = reader.GetIdentifier(reader.Read());
+                    reader.Advance();
+                }
+
+                reader.TryConsume(TokenKind.ColonColon);
                 var qualifiedName = KotoHelper.ParseQualifiedNameSegments(ref reader);
                 if (hasNonAliasDeclaration)
                 {
@@ -112,7 +120,13 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 }
                 else
                 {
-                    this.AddLast(new AliasKoto(ref reader, qualifiedName));
+                    var context = reader.TakeContext();
+                    if (context.ModifierKind != default || context.AttributeKoto is not null)
+                    {
+                        reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
+                    }
+
+                    this.AddLast(new AliasKoto(ref reader, qualifiedName, aliasName, token.Span));
                 }
 
                 continue;

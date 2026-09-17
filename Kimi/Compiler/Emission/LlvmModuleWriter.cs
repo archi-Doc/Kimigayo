@@ -217,6 +217,9 @@ internal static partial class LlvmModuleWriter
                     output.Write(borrowOperands.Length == 2 ? (long)borrowOperands[1].Value : 0);
                     output.Write('\n');
                     break;
+                case EmissionOpcode.SwapScalars:
+                    WriteScalarSwap(output, function, instruction);
+                    break;
                 case EmissionOpcode.StringEquals:
                 case EmissionOpcode.StringCompare:
                     WriteStringComparison(output, function, instruction);

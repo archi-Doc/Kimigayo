@@ -1,0 +1,27 @@
+alias Output => Kimi.Console
+
+struct Cell
+    public let number: i32
+    public init(number: i32) => self.number = number
+    deinit
+        if self.number == 1 => Output.writeLine("Destroyed 1.")
+        else => Output.writeLine("Destroyed 2.")
+
+func replaceCell(cell: uniq/Cell)
+    Kimi.replace(cell, with: Cell.init(2))
+
+var cell = Cell.init(1)
+replaceCell(cell)
+Output.writeLine("Replacement installed.")
+
+var first: i32 = 10
+var second: i32 = 30
+let next = first + 1 // Compute before the exclusive target Loan starts.
+Kimi.replace(first, with: next)
+let old = Kimi.exchange(first, with: 20)
+Kimi.swap(first, second)
+if old == 11 and first == 30 and second == 20
+    Output.writeLine("Exchange and swap complete.")
+
+// Kimi.replace(first, with: first + 1) // Conflicting later read.
+// Kimi.swap(first, first)             // Overlapping targets.

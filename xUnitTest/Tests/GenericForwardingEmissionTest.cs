@@ -32,7 +32,7 @@ public class GenericForwardingEmissionTest
     [Fact]
     public void RejectsUnsupportedDependentResultForwarding()
     {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value\nfunc forward<T>(value: T) -> T => identity<T>(value)\nwriteLine(forward<string>(\"owned\"))");
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value\nfunc forward<T>(value: T) -> T => identity<T>(value)\nConsole.writeLine(forward<string>(\"owned\"))");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Ownership.Result.IsVerified);
         using var output = new StringWriter();
@@ -46,7 +46,7 @@ public class GenericForwardingEmissionTest
 
     [Fact]
     public void BorrowsNonCopyElementsWithoutMoving()
-        => ScalarEmissionTest.EmitFixture("GenericForwardingNonCopy", Weight + "let values: [2 of string] = [\"left\", \"right\"]\nrequire W.total<2, string>(values@ref) == 2 else => $abort(\"count\")\nwriteLine(values[0])\nwriteLine(values[1])", "left\nright\n");
+        => ScalarEmissionTest.EmitFixture("GenericForwardingNonCopy", Weight + "let values: [2 of string] = [\"left\", \"right\"]\nrequire W.total<2, string>(values@ref) == 2 else => $abort(\"count\")\nConsole.writeLine(values[0])\nConsole.writeLine(values[1])", "left\nright\n");
 
     [Fact]
     public void SharedI32Comparison()
@@ -72,7 +72,7 @@ public class GenericForwardingEmissionTest
 
     [Theory]
     [InlineData("group W\n    public var value: i32 = 1\nrequire W.value == 1 else => $abort(\"value\")")]
-    [InlineData("group W\n    public let value: i32 = effect()\n    public func effect() -> i32\n        writeLine(\"effect\")\n        return 1\nwriteLine(\"unused\")")]
+    [InlineData("group W\n    public let value: i32 = effect()\n    public func effect() -> i32\n        Console.writeLine(\"effect\")\n        return 1\nConsole.writeLine(\"unused\")")]
     [InlineData("group W\n    public let value: i32 = 1\nW.value = 2")]
     [InlineData("group W\n    public let value: i32 = true\n()")]
     public void RejectsInvalidOrUnsupportedStaticState(string source)

@@ -18,16 +18,16 @@ public class MixedRequireContinuationTest
     [InlineData("Conditional", "return", "require c else\n                if c\n                    x = 3\n                    return\n                else\n                    x = 4\n                    return\n            x = 5", true)]
     [InlineData("Chain", "x = 1\n                return", "require c else => return\n            require c else => exit\n            return", true)]
     public void RequirePathsKeepEachOriginalTarget(string name, string early, string dead, bool condition)
-        => ScalarEmissionTest.EmitFixture("NeverMixedRequire" + Configuration + name, Source("var x: i32", early, dead, "let y = x", "x = 2", condition) + "\nwriteLine(\"done\")", condition ? "done\n" : string.Empty, condition ? 0 : 1, condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
+        => ScalarEmissionTest.EmitFixture("NeverMixedRequire" + Configuration + name, Source("var x: i32", early, dead, "let y = x", "x = 2", condition) + "\nConsole.writeLine(\"done\")", condition ? "done\n" : string.Empty, condition ? 0 : 1, condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Theory]
     [InlineData("var x: i32", "require c else => return\n            x = 4", "let y = x", "x = 2", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "require c else\n                x = 3\n                return", "let y = x", "x = 2", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "require c else\n                x = 3\n                return\n            x = 4", "let y = x", "()", OwnershipFailure.UninitializedUse)]
     [InlineData("let x: i32", "require c else\n                x = 3\n                return", "x = 4", "()", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"", "require c else\n                writeLine(s)\n                return", "writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "require c else => return\n            writeLine(s)", "writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "require take(s) else => return", "writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "require c else\n                Console.writeLine(s)\n                return", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "require c else => return\n            Console.writeLine(s)", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "require take(s) else => return", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
     public void EffectsRemainSpecificToTheirSourcePaths(string declaration, string dead, string use, string tail, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, "return", dead, use, tail) + "\nfunc take(s: string) -> bool => true");

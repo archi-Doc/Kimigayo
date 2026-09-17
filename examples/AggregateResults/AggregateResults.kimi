@@ -3,10 +3,10 @@ var pair = ("old", 1)
 pair = if useOriginal => pair else => ("new", 2)
 
 let saved = work: do
-    defer => writeLine("cleanup")
+    defer => Console.writeLine("cleanup")
     exit to work: pair
 
 let words: [2 of string] = loop
     exit ["first", "second"]
 
-writeLine("aggregate results complete")
+Console.writeLine("aggregate results complete")

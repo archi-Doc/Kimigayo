@@ -11,7 +11,7 @@ public func main()
             _ => ()
 
     let score: i32 = if found == 7
-        ::Core.writeLine("Selected 7.")
+        ::Kimi.Console.writeLine("Selected 7.")
         yield found * 10
     else => 0
 
@@ -20,4 +20,4 @@ public func main()
         exit to validate: score == 70
 
     require accepted else => $abort("Control-flow check failed")
-    ::Core.writeLine("Control flow passed.")
+    ::Kimi.Console.writeLine("Control flow passed.")

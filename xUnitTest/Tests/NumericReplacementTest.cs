@@ -51,7 +51,7 @@ public class NumericReplacementTest
     [InlineData("U128", "u128", "340282366920938463463374607431768211455", "340282366920938463463374607431768211455")]
     public void ReplacementFittingAndEmissionUseTheNewValue(string name, string type, string literal, string expected)
     {
-        var c = MinimalEmissionTest.Analyze($"let value: {type} = 0@{type}\nif value == {expected} => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze($"let value: {type} = 0@{type}\nif value == {expected} => Console.writeLine(\"ok\")");
         var variable = Variable(c);
         var donor = MinimalEmissionTest.Analyze("let donor = " + literal);
         var replacement = Variable(donor).InitializerKoto!;

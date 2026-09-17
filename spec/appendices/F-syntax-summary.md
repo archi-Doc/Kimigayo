@@ -129,7 +129,7 @@ GenericParameters and TypeArguments are nonempty and allow trailing commas. Name
 QualifiedName        := Name ("." Name)*
 Access               := "private" | "internal" | "public" | "protected"
                       | "protected" "internal" | "private" "protected"
-AliasDeclaration     := "alias" QualifiedName
+AliasDeclaration     := "alias" (Name "=>")? ContainerReference
 LocalBinding         := ("let" | "var") Name (":" Type)? ("=" Expression)?
 GroupDeclaration     := Access? "group" Name ContainerBody
 RootGroupDeclaration := Access? "rootgroup" QualifiedName ContainerBody
@@ -251,6 +251,9 @@ Constraint subjects follow their declaration context: a Contract body constrains
 `ContractReference` resolves a nongeneric user-defined Contract through normal qualification and aliases; built-in parameterized requirements have separate productions. `TypeQualifier` must resolve to a Core, parameter, `Self`, or associated-Type projection, not a value or Semantics-applied expression. The Parser distinguishes declarations, specifications, Type positions, and Constraints-only regions by context, preserving dotted paths. Binding resolves the Contract/associated-Type roles and rejects distinct successful interpretations; expected results and value-member fallback cannot disambiguate them. Apply the same rules after ordinary compile-time selection.
 
 `ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructor Origin bindings come from the containing Type's Constraints. See [constructors](../06-declarations-and-containers.md#623-constructors) and [destruction declarations](../16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+
+Alias targets follow [§18.1](../18-modules-and-dependencies.md#181-external-references-and-aliases): `ContainerReference` is an optionally root-qualified reference valid under the Container rules, with their required arguments. A named target must be a Kotonoha or group. `=>` in this production introduces a reference, never an executable Body. There is no `alias Name = Type` production.
+
 
 ## F.4. Expression grammar
 
@@ -457,6 +460,7 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Attributes | Syntax, placement, and Mod marker behavior follow [§6.5](../06-declarations-and-containers.md#65-attributes); Layout follows [§21.1.2](../21-layout-runtime-and-code-generation.md#2112-layout-attribute-and-fragments), LibraryImport follows [§22.3](../22-core-execution-and-foreign-functions.md#223-foreign-function-imports), and argument-free Test follows [§6.5.1](../06-declarations-and-containers.md#651-test-definitions). Concrete marker registration and other general semantics remain design boundaries. |
 | Composition Root operations | `$abort(...)` is an expression. `$expect(...)` and `$require(...)` are standalone TestVerification items under [§17.5](../17-failure-handling.md#175-test-verification-operations), with the same test-only body restrictions and a message control boundary; they cannot be expression operands. Each evaluates its condition once; on false, expect records failure and continues, while require records failure and Aborts after condition/message temporary cleanup. Entry/Provider syntax remains unsettled under [§13.8](../13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |
 | Additional type arguments | [Generic application](../12-expressions.md#1242-invocation-and-generic-application) does not define general constant type arguments. |
-| Object ownership operations | [Core creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing), and [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) define their source names, Types and acquisition contracts using ordinary call syntax. `Type.init` constructs an owner value, and `@obj`/`@rc`/`@arc` add no allocation or count increment. |
+| Object ownership operations | [Kimi creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing), and [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) define their source names, Types and acquisition contracts using ordinary call syntax. `Type.init` constructs an owner value, and `@obj`/`@rc`/`@arc` add no allocation or count increment. |
+| Complete payload and whole-value updates | Sealed uses ordinary requirement syntax. Fully specified `@ref/T` and `@uniq/T` may project a proven complete payload (§13.5.5); shorthand meanings are unchanged. Kimi.replace/exchange/swap use ordinary generic calls and named arguments (§15.7). No new keyword or operator is introduced. |
 | Function parameters | The combined optional/external-name form remains under [parameter design boundaries](../10-overload-resolution-and-inference.md#109-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
 | Re-export, special FFI layouts, and failure propagation | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports), [layout boundaries](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi), and [error policy](../17-failure-handling.md#171-error-policy). |

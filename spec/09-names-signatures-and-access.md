@@ -72,7 +72,7 @@ Namespaces separate declaration kinds; a **Lookup Role** filters candidates by s
 
 | Namespace | Declarations |
 | --- | --- |
-| Type | Containers, Kotonoha reference names, Core and Semantics parameters, associated Types, `Self`, and built-in Semantics/category requirements |
+| Type | Containers, Kotonoha reference names, named aliases, Core and Semantics parameters, associated Types, `Self`, and built-in Semantics/category requirements |
 | Value | Functions, Fields, computed members, enum Cases, parameters, locals, local functions, function length parameters |
 | Origin | Origin declarations |
 | Label | Labels; use the dedicated transfer-target rules |
@@ -228,9 +228,9 @@ For the required namespace and role, search these stages in order. A bare Adapta
 1. Current local scope, then enclosing lexical and parameter scopes, each separately.
 2. Current Container.
 3. Parent Containers, separately, through the project root.
-4. Direct-dependency Kotonoha reference names in the Compilation root, for Type qualifiers only.
+4. Reserved Kimi and direct-dependency Kotonoha reference names in the Compilation root, for Type qualifiers only.
 5. Explicit aliases of the use's SourceDocument, together.
-6. Compilation default aliases, together.
+6. The defining module's effective default aliases, together (§18.1.3).
 
 Type parameters and contextual names occur at their declaring lexical positions. Stage 4 finds library reference names, not arbitrary library members.
 
@@ -253,6 +253,22 @@ A nearer group `X` does not stop Core lookup for an annotation `X`, but does sto
 There is no implicit `self`: instance members require `self.member` or another explicit receiver. An unqualified reference that finds only accessible instance members reports a missing receiver instead of searching for an outer static member.
 
 If all stages fail, prefer an inaccessible matching-role declaration diagnostic, then an accessible wrong-role diagnostic, then undefined Name. Diagnostic exploration of outer declarations never makes them valid fallback targets.
+
+### 9.4.1. Named aliases, collisions, and warnings
+
+Named aliases participate in the explicit source-alias stage in the Type namespace and preserve their target's Qualifier role. They are not Cores. The Type/Value path rules in §9.5 apply without a preference for aliases. Inner eligible declarations shadow normally; a selected qualifier lacking a later member never falls back to another alias or outer declaration.
+
+Check explicit name mappings at declaration time, once reference identity is fixed. In one selected SourceDocument, equal names with equal declaration references are duplicates of one mapping; equal names with distinct references are errors even when unused. Distinct normalized argument bindings mean distinct references. Defer comparison if identity is unresolved, retaining every path's validation obligations (§18.1.2). Never overwrite a prior mapping.
+
+Conflicts with members introduced by opening aliases are checked at use under the ordinary namespace, role, access and selection rules. Deduplicate equal references within the stage. Do not eagerly expand every opened member merely to detect collisions.
+
+After selection and generation, warn at a successfully resolved and validated named alias if an earlier root qualifier hides it. First collect same-name project-root Type-namespace Qualifiers accessible throughout the document. If none exist, consider the reserved or direct dependency reference. Warn if candidates exist and none is the alias's own declaration reference. Ignore arity applicability, later members and call arguments; do not enumerate potential uses. Do not warn for equal references, inner-only shadowing, or unresolved, invalid or conflicting aliases. This warning changes no lookup or acceptance rules.
+
+```kimi
+// If A is a direct dependency reference:
+alias A => ::Kimi.Console // Warning: choose another name.
+A.writeLine("Hello")     // Search dependency A, without fallback to Console.
+```
 
 ## 9.5. Qualified and inherited lookup
 
@@ -287,6 +303,8 @@ A derived `f(string)` with an accessible base `f(i32)` is a declaration error un
 Generic bodies use their [definition-site source environment](18-modules-and-dependencies.md#18-modules-and-dependencies), including during deferred instantiation; caller aliases and extensions never enlarge their candidate sets.
 
 ### 9.5.1. Base subobject receiver projection
+
+The complete Sealed payload receiver path (§12.4.4) is separate. Inherited Self remains the defining base, so a non-open derived Type cannot use that path to replace its base subobject.
 
 For `receiver.member`, when ordinary lookup selects an instance declaration in a base `B` of the receiver's static Effective Core `D`, **Base Subobject Receiver Projection** locates that declaration's inline base subobject along the unique inheritance path. Substitute base Type/Origin arguments at each layer. Check accessibility, including protected-receiver restrictions, against the original receiver before projection. Static members need no projection; Type-qualified unbound calls and function values retain ordinary argument rules.
 

@@ -14,7 +14,7 @@ public class LocalLoopContinuationTest
     [Theory]
     [InlineData("let x: i32\n", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x = 1\n", "x = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let x = \"s\"\nwriteLine(x)\n", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"\nConsole.writeLine(x)\n", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     public void LocalLoopEffectsDoNotRestoreEnclosingFacts(string before, string after, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(before + Loop + after);
@@ -31,12 +31,12 @@ public class LocalLoopContinuationTest
     [InlineData("Checking", "func f()\n    return\n    var x: i32 = loop\n        var n = 1\n        n = 2\n    x = 3\n    let y = x\nf()\nloop => continue")]
     [InlineData("ContainedExit", "let x = 1\nloop\n    var n = work: do\n        exit to work: 1\n    n += 1\nlet y = x")]
     public void EmitsLoopsWhoseEffectsStayLocal(string name, string source)
-        => ScalarEmissionTest.EmitFixture("NeverLocalLoop" + Configuration + name, "writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture("NeverLocalLoop" + Configuration + name, "Console.writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
 
     [Theory]
     [InlineData("var x = 1\nloop\n    x = 2\nlet y = x")]
     [InlineData("var x = 1\nloop\n    x++\nlet y = x")]
-    [InlineData("let x = \"s\"\nloop\n    let y = x\nwriteLine(x)")]
+    [InlineData("let x = \"s\"\nloop\n    let y = x\nConsole.writeLine(x)")]
     [InlineData("func f() => ()\nvar x = 1\nloop\n    f()\nlet y = x")]
     [InlineData("var x = 1\nloop\n    defer => ()\nlet y = x")]
     [InlineData("func f(x: i32)\n    loop => return\n    let y = x\nf(1)")]

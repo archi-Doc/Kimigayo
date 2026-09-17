@@ -10,27 +10,27 @@ public class ElementUpdateEmissionTest
 {
     public static TheoryData<string, string> Fixtures => new()
     {
-        { "Compound", "var a: [1 of i32] = [10]\nlet done: () = (a[0] += 32)\nif a[0] == 42 => writeLine(\"ok\")" },
-        { "Increment", "var a = (42, true)\nlet before = a.0++\nlet after = --a.0\nlet next = ++a.0\nlet last = a.0--\nif before == 42 and after == 42 and next == 43 and last == 43 and a.0 == 42 => writeLine(\"ok\")" },
-        { "Mixed", "var a: (string, [2 of i32]) = (\"held\", [40, 2])\nlet amount = a.1[1]\na.1[0] += amount\nif a.1[0] == 42 => writeLine(\"ok\")" },
-        { "Nested", "var a: [1 of [1 of i32]] = [[40]]\na[0][0] += 2\nif a[0][0] == 42 => writeLine(\"ok\")" },
-        { "SelfReadSnapshot", "var a: [1 of i32] = [21]\nlet amount = a[0]\na[0] += amount\nif a[0] == 42 => writeLine(\"ok\")" },
-        { "RhsUpdate", "var a = (40, true)\nvar b = (2, false)\na.0 += b.0++\nif a.0 == 42 and b.0 == 3 => writeLine(\"ok\")" },
-        { "IndexUpdate", "var a: [2 of i32] = [40, 0]\nvar i: [1 of isize] = [0]\na[i[0]++] += 2\nif a[0] == 42 and i[0] == 1 => writeLine(\"ok\")" },
-        { "IndexSnapshot", "var a: [2 of i32] = [40, 0]\nvar i: isize = 0\na[i++] += 2\nif a[0] == 42 and a[1] == 0 and i == 1 => writeLine(\"ok\")" },
-        { "RhsSelection", "var a = (40, true)\nlet flag = a.1\na.0 += if flag => 2 else => 0\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "RhsDo", "var a = (40, true)\na.0 += work: do\n    exit to work: 2\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "Deferred", "var a = (0, \"held\")\nvar i = 0\nloop\n    defer => a.0 += 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "DeferredIncrement", "var a = (39, \"held\")\nvar i = 0\nloop\n    defer => ++a.0\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "Function", "func f(input: [1 of i32]) -> i32\n    var a = input\n    a[0] += 2\n    return a[0]\nlet input: [1 of i32] = [40]\nif f(input) == 42 and input[0] == 40 => writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    var a = (40, true)\n    a.0 += 2\n    a.0++\nf()\nwriteLine(\"ok\")" },
-        { "Covered", "var a = (40, true)\nmatch true\n    _ => a.0 += 2\n    true => a.0 -= 1\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "RhsTransfer", "func f() -> i32\n    var a = (0, true)\n    defer => a.0++\n    a.0 += (return 42)\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "IndexTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += 2\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "IncrementTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "ShiftTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[0] <<= (return 42)\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += (return 1)\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "MixedShift", "var a: [1 of i8] = [-128]\nlet wide: u128 = 7\na[0] >>= wide\nvar b: [1 of u64] = [1]\nlet narrow: i8 = 63\nb[0] <<= narrow\nif a[0] == -1 and b[0] == 9223372036854775808 => writeLine(\"ok\")" },
+        { "Compound", "var a: [1 of i32] = [10]\nlet done: () = (a[0] += 32)\nif a[0] == 42 => Console.writeLine(\"ok\")" },
+        { "Increment", "var a = (42, true)\nlet before = a.0++\nlet after = --a.0\nlet next = ++a.0\nlet last = a.0--\nif before == 42 and after == 42 and next == 43 and last == 43 and a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "Mixed", "var a: (string, [2 of i32]) = (\"held\", [40, 2])\nlet amount = a.1[1]\na.1[0] += amount\nif a.1[0] == 42 => Console.writeLine(\"ok\")" },
+        { "Nested", "var a: [1 of [1 of i32]] = [[40]]\na[0][0] += 2\nif a[0][0] == 42 => Console.writeLine(\"ok\")" },
+        { "SelfReadSnapshot", "var a: [1 of i32] = [21]\nlet amount = a[0]\na[0] += amount\nif a[0] == 42 => Console.writeLine(\"ok\")" },
+        { "RhsUpdate", "var a = (40, true)\nvar b = (2, false)\na.0 += b.0++\nif a.0 == 42 and b.0 == 3 => Console.writeLine(\"ok\")" },
+        { "IndexUpdate", "var a: [2 of i32] = [40, 0]\nvar i: [1 of isize] = [0]\na[i[0]++] += 2\nif a[0] == 42 and i[0] == 1 => Console.writeLine(\"ok\")" },
+        { "IndexSnapshot", "var a: [2 of i32] = [40, 0]\nvar i: isize = 0\na[i++] += 2\nif a[0] == 42 and a[1] == 0 and i == 1 => Console.writeLine(\"ok\")" },
+        { "RhsSelection", "var a = (40, true)\nlet flag = a.1\na.0 += if flag => 2 else => 0\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "RhsDo", "var a = (40, true)\na.0 += work: do\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "Deferred", "var a = (0, \"held\")\nvar i = 0\nloop\n    defer => a.0 += 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "DeferredIncrement", "var a = (39, \"held\")\nvar i = 0\nloop\n    defer => ++a.0\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "Function", "func f(input: [1 of i32]) -> i32\n    var a = input\n    a[0] += 2\n    return a[0]\nlet input: [1 of i32] = [40]\nif f(input) == 42 and input[0] == 40 => Console.writeLine(\"ok\")" },
+        { "Dead", "func f()\n    return\n    var a = (40, true)\n    a.0 += 2\n    a.0++\nf()\nConsole.writeLine(\"ok\")" },
+        { "Covered", "var a = (40, true)\nmatch true\n    _ => a.0 += 2\n    true => a.0 -= 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "RhsTransfer", "func f() -> i32\n    var a = (0, true)\n    defer => a.0++\n    a.0 += (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "IndexTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "IncrementTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "ShiftTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[0] <<= (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += (return 1)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "MixedShift", "var a: [1 of i8] = [-128]\nlet wide: u128 = 7\na[0] >>= wide\nvar b: [1 of u64] = [1]\nlet narrow: i8 = 63\nb[0] <<= narrow\nif a[0] == -1 and b[0] == 9223372036854775808 => Console.writeLine(\"ok\")" },
     };
 
     [Theory]
@@ -53,7 +53,7 @@ public class ElementUpdateEmissionTest
     [InlineData("usize")]
     public void IntegerUpdatesPreserveEveryWidth(string type)
     {
-        var source = $"var a: [1 of {type}] = [10]\na[0] += 11\na[0] *= 2\na[0] -= 2\na[0] |= 3\na[0] &= 63\na[0] ^= 1\na[0] <<= 1\na[0] >>= 1\nlet old = a[0]++\nlet now = --a[0]\nif old == 42 and now == 42 and a[0] == 42 => writeLine(\"ok\")";
+        var source = $"var a: [1 of {type}] = [10]\na[0] += 11\na[0] *= 2\na[0] -= 2\na[0] |= 3\na[0] &= 63\na[0] ^= 1\na[0] <<= 1\na[0] >>= 1\nlet old = a[0]++\nlet now = --a[0]\nif old == 42 and now == 42 and a[0] == 42 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementUpdate" + type, source, "ok\n");
     }
 
@@ -63,14 +63,14 @@ public class ElementUpdateEmissionTest
     [InlineData("NegativeDivide", "/=", "-85", "2", "-42")]
     [InlineData("NegativeRemainder", "%=", "-85", "43", "-42")]
     public void DivisionAndRemainderUseCheckedIntegerRules(string name, string op, string initial, string rhs, string expected)
-        => ScalarEmissionTest.EmitFixture("ElementUpdate" + name, $"var a: [1 of i64] = [{initial}]\na[0] {op} {rhs}\nif a[0] == {expected} => writeLine(\"ok\")", "ok\n");
+        => ScalarEmissionTest.EmitFixture("ElementUpdate" + name, $"var a: [1 of i64] = [{initial}]\na[0] {op} {rhs}\nif a[0] == {expected} => Console.writeLine(\"ok\")", "ok\n");
 
     [Theory]
     [InlineData("f32")]
     [InlineData("f64")]
     public void FloatUpdatesUseIeeeArithmetic(string type)
     {
-        var source = $"var a: [1 of {type}] = [10.0]\na[0] += 11.0\na[0] *= 4.0\na[0] /= 2.0\na[0] -= 0.0\nif a[0] == 42.0 => writeLine(\"ok\")";
+        var source = $"var a: [1 of {type}] = [10.0]\na[0] += 11.0\na[0] *= 4.0\na[0] /= 2.0\na[0] -= 0.0\nif a[0] == 42.0 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementUpdate" + type, source, "ok\n");
     }
 
@@ -79,7 +79,7 @@ public class ElementUpdateEmissionTest
     [InlineData("f64")]
     public void FloatSpecialValuesSurviveUpdates(string type)
     {
-        var source = $"var a: [3 of {type}] = [0.0, 1.0, -0.0]\na[0] /= 0.0\na[1] /= 0.0\na[2] *= 2.0\nif a[0] != a[0] and a[1] > 1.0 and a[1] - a[1] != 0.0 and 1.0 / a[2] < 0.0 => writeLine(\"ok\")";
+        var source = $"var a: [3 of {type}] = [0.0, 1.0, -0.0]\na[0] /= 0.0\na[1] /= 0.0\na[2] *= 2.0\nif a[0] != a[0] and a[1] > 1.0 and a[1] - a[1] != 0.0 and 1.0 / a[2] < 0.0 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementUpdateSpecial" + type, source, "ok\n");
     }
 
@@ -97,7 +97,7 @@ public class ElementUpdateEmissionTest
     [InlineData("RemainderMinimum", "i64", "-9223372036854775808", "a[0] %= -1", "INT_OVERFLOW", "Integer overflow")]
     public void ArithmeticFailurePreventsStoreResultAndCleanup(string name, string type, string initial, string expression, string code, string reason)
     {
-        var source = $"var a: [1 of {type}] = [{initial}]\ndefer => writeLine(\"bad\")\n{expression}\nwriteLine(\"bad\")";
+        var source = $"var a: [1 of {type}] = [{initial}]\ndefer => Console.writeLine(\"bad\")\n{expression}\nConsole.writeLine(\"bad\")";
         ScalarEmissionTest.EmitFixture("ElementUpdateAbort" + name, source, string.Empty, 1, $"Hello.kimi:3:1: abort KIMI_E_{code}: {reason}\n");
     }
 
@@ -114,7 +114,7 @@ public class ElementUpdateEmissionTest
     [InlineData("Increment", "++a[0]")]
     public void BoundsFailurePrecedesTheRightSideAndCleanup(string name, string expression)
     {
-        var source = $"func rhs() -> i32\n    writeLine(\"bad\")\n    return 1\nvar a: [0 of i32] = []\ndefer => writeLine(\"bad\")\n{expression}";
+        var source = $"func rhs() -> i32\n    Console.writeLine(\"bad\")\n    return 1\nvar a: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\n{expression}";
         var column = name == "Increment" ? 3 : 1;
         ScalarEmissionTest.EmitFixture("ElementUpdateBounds" + name, source, string.Empty, 1, $"Hello.kimi:6:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
     }
@@ -149,7 +149,7 @@ public class ElementUpdateEmissionTest
     [Fact]
     public void UpdatesPreserveParentDestructionResponsibility()
     {
-        const string Source = "var a = (\"first\", 40, \"last\")\na.1 += 1\nlet previous = a.1++\nif previous == 41 and a.1 == 42 => writeLine(\"ok\")";
+        const string Source = "var a = (\"first\", 40, \"last\")\na.1 += 1\nlet previous = a.1++\nif previous == 41 and a.1 == 42 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementUpdateLifetime", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementUpdateLifetime", Source, ir, "ok\n", "first=1;last=1;ok=1", order: [2, 1, 0]);
     }
@@ -157,7 +157,7 @@ public class ElementUpdateEmissionTest
     [Fact]
     public void AbortedUpdateDoesNotDestroyTheParent()
     {
-        const string Source = "var a: (string, u8) = (\"held\", 255)\ndefer => writeLine(\"bad\")\na.1++";
+        const string Source = "var a: (string, u8) = (\"held\", 255)\ndefer => Console.writeLine(\"bad\")\na.1++";
         const string Error = "Hello.kimi:3:1: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementUpdateAbortLifetime", Source, string.Empty, 1, Error);
         StringEmissionTest.WriteAuditedFixture("ElementUpdateAbortLifetime", Source, ir, string.Empty, "held=0;bad=0", 1, Error);
@@ -185,9 +185,9 @@ public class ElementUpdateEmissionTest
     }
 
     [Theory]
-    [InlineData("IndexRead", "var a: [2 of isize] = [1, 41]\na[a[0]] += 1\nif a[1] == 42 => writeLine(\"ok\")")]
-    [InlineData("TransferReadCleanup", "func f() -> i32\n    var a: [1 of i32] = [42]\n    defer\n        if a[0] == 42 => writeLine(\"ok\")\n    a[0] += (return 0)\n    return 1\nf()")]
-    [InlineData("SimpleSelfRead", "var a: [1 of i32] = [21]\na[0] = a[0] + 21\nif a[0] == 42 => writeLine(\"ok\")")]
+    [InlineData("IndexRead", "var a: [2 of isize] = [1, 41]\na[a[0]] += 1\nif a[1] == 42 => Console.writeLine(\"ok\")")]
+    [InlineData("TransferReadCleanup", "func f() -> i32\n    var a: [1 of i32] = [42]\n    defer\n        if a[0] == 42 => Console.writeLine(\"ok\")\n    a[0] += (return 0)\n    return 1\nf()")]
+    [InlineData("SimpleSelfRead", "var a: [1 of i32] = [21]\na[0] = a[0] + 21\nif a[0] == 42 => Console.writeLine(\"ok\")")]
     public void ProtectionStartsAfterIndicesAndEndsOnTransfer(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementUpdateLoan" + name, source, "ok\n");
 
@@ -304,7 +304,7 @@ public class ElementUpdateEmissionTest
     [Fact]
     public void LocationAndReadPrecedeTheRightSideAndStore()
     {
-        const string Source = "func index() -> isize\n    writeLine(\"index\")\n    return 0\nfunc rhs() -> i32\n    writeLine(\"rhs\")\n    return 2\nvar a: [1 of i32] = [40]\na[index()] += rhs()\nif a[0] == 42 => writeLine(\"ok\")";
+        const string Source = "func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nfunc rhs() -> i32\n    Console.writeLine(\"rhs\")\n    return 2\nvar a: [1 of i32] = [40]\na[index()] += rhs()\nif a[0] == 42 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementUpdateOrder", Source, "index\nrhs\nok\n");
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);

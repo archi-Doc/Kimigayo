@@ -54,14 +54,14 @@ public group SpecTour
 
         public func report(command: ref/Command)
             match command
-                .Say(let message) => ::Core.writeLine("preview: \(message)")
-                .Set(let number) => ::Core.writeLine("preview value: \(number)")
-                .Stop => ::Core.writeLine("preview stop")
+                .Say(let message) => ::Kimi.Console.writeLine("preview: \(message)")
+                .Set(let number) => ::Kimi.Console.writeLine("preview value: \(number)")
+                .Stop => ::Kimi.Console.writeLine("preview stop")
 
         public func execute(command: Command)
             match command
-                .Say(let message) => ::Core.writeLine(message)
-                .Set(let number) => ::Core.writeLine("set: \(number)")
+                .Say(let message) => ::Kimi.Console.writeLine(message)
+                .Set(let number) => ::Kimi.Console.writeLine("set: \(number)")
                 .Stop => ()
 
         public func securedResult() -> i32
@@ -76,17 +76,17 @@ public group SpecTour
 
             let result = normalize(.Some(-4))
             match result
-                .Ok(let number) => ::Core.writeLine("ok=\(number)")
+                .Ok(let number) => ::Kimi.Console.writeLine("ok=\(number)")
                 .Err(let error)
                     match error
-                        .Empty => ::Core.writeLine("missing input")
-                        .Negative(let number) => ::Core.writeLine("negative=\(number)")
+                        .Empty => ::Kimi.Console.writeLine("missing input")
+                        .Negative(let number) => ::Kimi.Console.writeLine("negative=\(number)")
 
             let nested: Result<Option<i32>, InputError> = .Ok(.Some(7))
             match nested
                 .Ok(let option)
                     match option
-                        .Some(let number) => ::Core.writeLine("nested=\(number)")
+                        .Some(let number) => ::Kimi.Console.writeLine("nested=\(number)")
                         .None => ()
                 .Err(_) => ()
 
@@ -96,7 +96,7 @@ public group SpecTour
                 (_, _) => 0
 
             let answer: i32 = work: do
-                defer => ::Core.writeLine("leaving labeled do")
+                defer => ::Kimi.Console.writeLine("leaving labeled do")
                 if score > 0 => exit to work: score
                 exit to work: -1
 
@@ -130,7 +130,7 @@ public group SpecTour
             let localResult = twice(pending)
             func twice(value: i32) -> i32 => value * 2
 
-            for value in Countdown.init(3) => ::Core.writeLine("countdown=\(value)")
-            ::Core.writeLine("answer=\(answer), yield=\(conditional), found=\(found)")
-            ::Core.writeLine("iterations=\(iterations), local=\(localResult), secured=\(securedResult())")
-            ::Core.writeLine("required=\(required(.Some(42)))")
+            for value in Countdown.init(3) => ::Kimi.Console.writeLine("countdown=\(value)")
+            ::Kimi.Console.writeLine("answer=\(answer), yield=\(conditional), found=\(found)")
+            ::Kimi.Console.writeLine("iterations=\(iterations), local=\(localResult), secured=\(securedResult())")
+            ::Kimi.Console.writeLine("required=\(required(.Some(42)))")

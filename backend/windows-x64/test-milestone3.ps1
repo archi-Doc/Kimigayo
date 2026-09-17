@@ -114,10 +114,10 @@ $invalid = [ordered]@{
     WrongReturn = "func f() -> i32 => return true`npublic func main() => f()"
     MissingReturn = "func f() -> i32`n    let x: i32 = 1`npublic func main() => f()"
     InvalidMain = 'public func main() -> i32 => 0'
-    MixedStartup = "public func main() => ()`nwriteLine(`"mixed`")"
+    MixedStartup = "public func main() => ()`nConsole.writeLine(`"mixed`")"
     ReturnFromDefer = "public func main()`n    defer => return"
-    DeferredMovedUse = "public func main()`n    let text = `"x`"`n    defer => writeLine(text)`n    writeLine(text)"
-    DeferredUninitializedUse = "public func main()`n    let text: string`n    defer => writeLine(text)"
+    DeferredMovedUse = "public func main()`n    let text = `"x`"`n    defer => Console.writeLine(text)`n    Console.writeLine(text)"
+    DeferredUninitializedUse = "public func main()`n    let text: string`n    defer => Console.writeLine(text)"
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"

@@ -30,7 +30,7 @@ Use `Option` for a contract representing normal absence and `Result` for a contr
 
 `Option<T>` represents a value or normal absence without an absence reason.
 
-This is the compiler-recognized Core Option declaration, whose identity is fixed in §22.1. The following enum shows its required shape; it is not an instruction to redeclare it in each program.
+This is the compiler-recognized Kimi Option declaration, whose identity is fixed in §22.1. The following enum shows its required shape; it is not an instruction to redeclare it in each program.
 
 ```kimi
 enum Option<T>
@@ -51,7 +51,7 @@ match findUser(id)
 
 `Result<T, E>` represents success or failure with a reason. `E` is an ordinary Type; no exception object hierarchy is required.
 
-This is the compiler-recognized Core Result declaration under §22.1. The following enum shows its required shape. The discarded-Result warning refers to that Symbol Identity, including through aliases, rather than every user Type spelled Result.
+This is the compiler-recognized Kimi Result declaration under §22.1. The following enum shows its required shape. The discarded-Result warning refers to that Symbol Identity, including through aliases, rather than every user Type spelled Result.
 
 ```kimi
 enum Result<T, E>
@@ -99,7 +99,7 @@ func loadSize(path: string) -> Result<usize, FileError>
 
 The return Type describes contractual absence or recoverable failure; a function returning `Result` may still Abort on an invariant violation or unrecoverable condition.
 
-Discarding a Core `Result` expression in Discard Context is allowed but produces a compile-time warning, independently of Copy capability or runtime Ok/Err state. Identify it by its Core Symbol, including equivalent resolved paths. [Warning priority](#174-warnings) selects one report if several apply to the same discard. The warning does not change control flow. A caller can explicitly handle both variants with match to ignore the outcome intentionally. This section defines no special warning for discarding Option.
+Discarding a Core `Result` expression in Discard Context is allowed but produces a compile-time warning, independently of Copy capability or runtime Ok/Err state. Identify it by its Kimi Symbol, including equivalent resolved paths. [Warning priority](#174-warnings) selects one report if several apply to the same discard. The warning does not change control flow. A caller can explicitly handle both variants with match to ignore the outcome intentionally. This section defines no special warning for discarding Option.
 
 Returning a recoverable failure follows normal [Scope Exit](16-scope-exit-and-destruction.md#162-scope-exit-destruction) rules, including their requirement that earlier cleanup complete normally before remaining cleanup or result delivery proceeds. Use this path for ordinary failures requiring resource cleanup.
 
@@ -128,7 +128,7 @@ func allocateRequired(size: usize) -> Buffer
 
 `tryAllocate` returns absence when allocation is unavailable; `allocateRequired` treats that outcome as fatal.
 
-Failure to allocate storage required by common Function Type erasure or [Core object creation](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) follows Abort Termination, independently of Copy/Move input acquisition. Core strong-owner duplication also Aborts if its count cannot be incremented without overflow.
+Failure to allocate storage required by common Function Type erasure or [Kimi object creation](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) follows Abort Termination, independently of Copy/Move input acquisition. Kimi strong-owner duplication also Aborts if its count cannot be incremented without overflow.
 
 ### 17.3.2. Explicit abort and argument evaluation
 
@@ -263,9 +263,9 @@ The `$require` Abort identifies the failed verification site. Reuse the Abort te
 ```kimi
 #Test
 func stopsAfterFailure()
-    defer => ::Core.writeLine("Not run after Abort")
+    defer => ::Kimi.Console.writeLine("Not run after Abort")
     $require(false, message: "Input is not ready")
-    ::Core.writeLine("Not reached")
+    ::Kimi.Console.writeLine("Not reached")
 ```
 
 ### 17.5.3. Message control boundary and observation

@@ -10,6 +10,8 @@ This section defines Type slots. Function length slots use explicit `<length N>`
 
 ### 8.1.1. Slots and projections
 
+A Proven `T is Sealed` establishes a valid owner Core and supported object View Target (§8.4.7). This evidence is available during generic signature formation; it does not flatten nested Type or Origin layers.
+
 Both parameter forms consume **one complete Type argument**. Preserve Semantics, nested Types, and all Origins during binding:
 
 ```text
@@ -78,7 +80,7 @@ The following terms distinguish declared capabilities, conditions, and their ful
 
 A **Constraint Clause** expresses a Constraint in the form `subject is requirement`. All clauses in a declaration's Constraints must hold. Subjects include complete Types, Semantics, valid target projections, and `Self` (the enclosing Type), subject to each requirement's role. Clauses establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Constraints](07-functions-and-callable-values.md#74-function-constraints).
 
-Core requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#83-requirement-expressions).
+Kimi requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#83-requirement-expressions).
 
 A `struct` header may contain generic parameters and an Origin list. Its ordinary Constraints precede members; conditional conformances may appear at member positions (§8.4.8).
 
@@ -173,7 +175,7 @@ Reject a refinement when its requirements cannot coexist as separate implementat
 
 An associated Type is restricted to a Core. Unlike an ordinary generic Type slot, it cannot bind an arbitrary Semantics-applied complete Type.
 
-The only intrinsic exception is the Element requirement of Core.Iterable and Core.Iterator (§22.1), which binds a complete Type, including Semantics and existing Origins. Its explicit specification uses the same associate syntax; it adds no general complete-Type associated declaration facility. For ordinary Core-Type associated requirements, specify borrow Semantics and operation Origins at use sites. Existing dependencies inside a Type remain subject to ordinary Origin checking; generic substitutions must prove this restricted role or retain a legitimate obligation.
+The only intrinsic exception is the Element requirement of Kimi.Iterable and Kimi.Iterator (§22.1), which binds a complete Type, including Semantics and existing Origins. Its explicit specification uses the same associate syntax; it adds no general complete-Type associated declaration facility. For ordinary Core-Type associated requirements, specify borrow Semantics and operation Origins at use sites. Existing dependencies inside a Type remain subject to ordinary Origin checking; generic substitutions must prove this restricted role or retain a legitimate obligation.
 
 ```kimi
 contract BorrowSource
@@ -271,6 +273,8 @@ Do not warn merely because an open base has a conformance its descendants cannot
 
 ### 8.4.5. Implementation matching
 
+Receiver adaptations in custom accessors and generated Contract witnesses distinguish proven complete Sealed payload calls from protected object/base calls (§12.4.4). Preserve Property permissions, RHS-first assignment, witness Identity, and public premises; Sealed never changes ObjectViewCompatible.
+
 Validate ordinary declarations first. Functions differing only in result Type, Origins, Constraints, or `unsafe` cannot coexist in one scope under the existing Signature rules; they are duplicate declarations before conformance matching.
 
 After substituting `Self`, the conforming Type's arguments, and associated Types, identify a function implementation by the following key:
@@ -330,11 +334,28 @@ Use only the defined proof rules, not enumeration of instantiations or arbitrary
 
 ### 8.4.7. Intrinsic contracts and guarantees
 
-The [required Core declaration table](22-core-execution-and-foreign-functions.md#221-required-core-declarations) also fixes the identities and signatures used for `Stringify`, `Equatable`, `Comparable`, `Iterable`, and `Iterator`. Their source conformance uses the ordinary static Contract rules; their only special effects are the interpolation, comparison, and iteration mappings explicitly specified here.
+The [required Kimi declaration table](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) also fixes the identities and signatures used for `Stringify`, `Equatable`, `Comparable`, `Iterable`, and `Iterator`. Their source conformance uses the ordinary static Contract rules; their only special effects are the interpolation, comparison, and iteration mappings explicitly specified here.
 
 Some Contracts are **compiler-intrinsic**, including `Copy`. Each has only the special acquisition, destruction, layout, concurrency, or code-generation effects explicitly defined for it. These effects belong to the compiler-recognized Contract Identity; a user Contract with the same name or requirements does not gain them. `Self is MyCopy` does not make a Type Copy. Compiler-derived conformance is available only where individually specified, and `Self is Copy` must pass its ordinary derivation checks.
 
 Conformance proves only statically specified requirements. Documentation laws such as equality symmetry or transitivity are not enforced by the type system. It does not prove current initialization, absence of conflicting Loans, storage representation, or direct Field access. Ordinary usage checks and documented unsafe safety obligations still apply.
+
+#### 8.4.7.1. Sealed
+
+`Kimi.Sealed` is a compiler-intrinsic requirement. A normalized Type satisfies it exactly when its outer Semantics is owner and its Core is valid, is not Never, and is not an open struct. A sealed Core admits no derived Types. This covers scalars, string, Unit, enums, Tuples, fixed arrays, collections, Function Items, concrete Closures, and common Function Types. Callable and runtime Contract Views are requirements/views, not Cores.
+
+Only the outer Core is tested: non-open `Cell<T>` is Sealed even when T is open or contains borrows. `ref/X`, `uniq/X`, object handles/borrows, and raw pointers do not satisfy Sealed. The guarantee implies neither Copy, Owned, nor exclusive access. User conformance, implementations, and same-spelling declarations cannot grant it.
+
+Proven Sealed supplies the Supported Core/View Target evidence needed to form generic object Types, including `obj/T` and `objuniq/T`. It does not restrict existing object formation for open Cores. Proof uses the ordinary conjunction/disjunction/negation rules in §8.7; Unknown is not false. `T is not Sealed` proves neither owner Semantics nor an open Core.
+
+```kimi
+struct Cell<T>
+    public var value: T
+
+func readPayload<T>(source: objref/T) -> ref/T from source
+    T is Sealed
+    return source@ref/T
+```
 
 ### 8.4.8. Conditional conformance
 
@@ -676,6 +697,8 @@ use(value)
 Discarding the first result ends its shared Loan for `s = ref`; `s = uniq` also requires exclusive writability. Check the later use after that Loan ends. If Constraints admit non-Copy `s = owner`, the first use Moves the source and makes the definition invalid, even if current callers all use Copy values. Require Copy evidence or restrict Semantics and prove borrow permissions. If the result is retained, check subsequent uses throughout its Loan lifetime.
 
 ## 8.10. Generic body checking and deferred obligations
+
+Sealed and complete-payload uses are checked in both signatures and bodies under declared premises. Missing Type roles, capabilities, or lifetime evidence are definition errors; defer only representation obligations such as finite layout and profile-specific payload alignment. An openness change requires rechecking positive and negative Sealed results, inheritance, projections, and public effects, including all permitted specializations (§18.3).
 
 **Universal body verification.** An ordinary generic body must be semantically valid for every well-formed Type/length/Origin argument binding satisfying its declared Constraints, any enclosing conditional-conformance premises, and public Signature requirements. Verify this before accepting or exporting the definition, including definitions with no uses. Use the limited proof system of §8.7 and symbolic Type/Origin/effect rules; do not enumerate available Types or infer a hidden capability Constraint from the body. Failure to establish the required proof is a definition error. Explicit specializations cannot rescue an invalid ordinary body.
 

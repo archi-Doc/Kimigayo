@@ -4,10 +4,10 @@ func classify(text: string) -> string
         let other => other
 
 public func main()
-    writeLine(classify("ok"))
-    writeLine(classify("other"))
+    Console.writeLine(classify("ok"))
+    Console.writeLine(classify("other"))
     let number = match 2
         0 => 10
         1 => 20
         _ => 30
-    if number == 30 => writeLine("matched")
+    if number == 30 => Console.writeLine("matched")

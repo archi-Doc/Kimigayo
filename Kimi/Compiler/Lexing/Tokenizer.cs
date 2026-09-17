@@ -1101,6 +1101,21 @@ EndOfFile:
     {
         if (this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind is TokenKind.Colon or TokenKind.EqualsGreaterThan)
         {
+            // A named alias arrow introduces a Container reference, never a Body.
+            for (var i = this.tokenCount - 2; i >= 0; i--)
+            {
+                var kind = this.tokens[i].Kind;
+                if (kind == TokenKind.Alias)
+                {
+                    return false;
+                }
+
+                if (kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+                {
+                    break;
+                }
+            }
+
             return true;
         }
 

@@ -41,6 +41,8 @@ Initialized pointers may be compared even if null or dangling. Equal addresses i
 
 ## 5.2. Dereference and ownership
 
+Unsafe access obeys the storage/content lifetime distinction in §15.7.3. A payload update preserves its allocation but may invalidate old-content pointers and dependencies. Raw pointers supply no safe Loan, exclusivity, or completeness proof.
+
 `*pointer` denotes a memory place of Type `T`. Forming it requires live storage covering the required range, valid alignment, and provenance; null and one-past-the-end pointers cannot be dereferenced. **Provenance** records the allocation a pointer derives from and the basis for its accesses.
 
 Actual reads require initialized, valid `T` values and read permission. Writes require write permission and must obey initialization and replacement rules. All accesses must respect reference, aliasing, and data-race rules.

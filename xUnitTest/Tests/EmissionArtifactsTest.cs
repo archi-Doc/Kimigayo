@@ -155,7 +155,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public async Task GenerateConnectsProjectLoadingAnalysisAndPublication()
     {
         var c = this.Create();
-        c.Project.AddSource("Hello.kimi", "::Core.writeLine(\"Hello, world!\")");
+        c.Project.AddSource("Hello.kimi", "::Kimi.Console.writeLine(\"Hello, world!\")");
         Assert.True(await c.Project.Generate(TestContext.Current.CancellationToken));
         Assert.True(File.Exists(Path.Combine(this.directory, "out", "Hello.link.json")));
     }
@@ -164,7 +164,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public async Task CorrectingSettingsAllowsANewGenerationAttempt()
     {
         var c = this.Create();
-        c.Project.AddSource("Hello.kimi", "::Core.writeLine(\"Hello, world!\")");
+        c.Project.AddSource("Hello.kimi", "::Kimi.Console.writeLine(\"Hello, world!\")");
         c.Project.ProjectFile.Optimization = "O3";
         Assert.False(await c.Project.Generate(TestContext.Current.CancellationToken));
         c.Project.ProjectFile.Optimization = "O2";
@@ -176,7 +176,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         string Emit(string checkout)
         {
-            var c = MinimalEmissionTest.Analyze("writeLine(\"日本語\")", Path.Combine(checkout, "Hello.kimi"));
+            var c = MinimalEmissionTest.Analyze("Console.writeLine(\"日本語\")", Path.Combine(checkout, "Hello.kimi"));
             c.Project.Directory = checkout;
             using var writer = new StringWriter();
             Assert.True(c.Emission.WriteIr(writer, out var error), error);
@@ -202,7 +202,7 @@ public sealed class EmissionArtifactsTest : IDisposable
 
     private Compilation Create()
     {
-        var c = MinimalEmissionTest.Analyze("::Core.writeLine(\"Hello, world!\")");
+        var c = MinimalEmissionTest.Analyze("::Kimi.Console.writeLine(\"Hello, world!\")");
         c.Project.Directory = this.directory;
         c.Project.Name = "Hello";
         c.Project.ProjectFile.OutputPath = "out/Hello.ll";

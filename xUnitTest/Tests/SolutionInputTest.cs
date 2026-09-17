@@ -20,7 +20,7 @@ public sealed class SolutionInputTest : IDisposable
     public void ResolvesExactPathThenProjectThenSource()
     {
         var stem = Path.Combine(this.directory, "A");
-        var source = this.Write("A.kimi", "::Core.writeLine(\"single\")");
+        var source = this.Write("A.kimi", "::Kimi.Console.writeLine(\"single\")");
         Assert.Equal(source, Solution.ResolveInputPath(stem));
         var project = this.Write("A.kimiproj", "invalid project contents");
         Assert.Equal(project, Solution.ResolveInputPath(stem));
@@ -66,7 +66,7 @@ public sealed class SolutionInputTest : IDisposable
     public async Task InvalidSelectedProjectDoesNotFallBackToValidSource()
     {
         this.Write("A.kimiproj", "OutputKind=\"Invalid\"");
-        this.Write("A.kimi", "::Core.writeLine(\"single\")");
+        this.Write("A.kimi", "::Kimi.Console.writeLine(\"single\")");
         var solution = this.Load(Path.Combine(this.directory, "A"));
         Assert.Empty(solution.Projects);
         Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
@@ -98,7 +98,7 @@ public sealed class SolutionInputTest : IDisposable
     [Fact]
     public async Task ImplicitProjectEmitsOnlyTheSelectedSourceAndUsesExplicitTarget()
     {
-        var source = this.Write("Single.kimi", "::Core.writeLine(\"single\")");
+        var source = this.Write("Single.kimi", "::Kimi.Console.writeLine(\"single\")");
         this.Write("BrokenSibling.kimi", "let broken =");
         var solution = this.Load(Path.Combine(this.directory, "Single"));
         var project = Assert.Single(solution.Projects).Value;
@@ -172,7 +172,7 @@ public sealed class SolutionInputTest : IDisposable
     public async Task CheckDoesNotReadTestOnlyFilesOrPublishArtifacts(bool testExists)
     {
         var path = this.Write("Check.kimiproj", "Targets={\"x86_64-pc-windows-msvc\"} TestSources={\"Broken.kimi\"} TestDependencies={Missing={PackageId=\"example.missing\" PackageVersion=\"1\" Project=\"missing.kimiproj\"}}");
-        this.Write("Main.kimi", "writeLine(\"checked without running\")");
+        this.Write("Main.kimi", "Console.writeLine(\"checked without running\")");
         if (testExists)
         {
             File.WriteAllBytes(Path.Combine(this.directory, "Broken.kimi"), [0xff]);
@@ -212,7 +212,7 @@ public sealed class SolutionInputTest : IDisposable
         DependencyLock.Update(lockPath, resolution, TestContext.Current.CancellationToken);
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         var bytes = File.ReadAllBytes(lockPath);
-        this.Write("Main.kimi", "writeLine(\"source edit\")");
+        this.Write("Main.kimi", "Console.writeLine(\"source edit\")");
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         Assert.Equal(bytes, File.ReadAllBytes(lockPath));
     }

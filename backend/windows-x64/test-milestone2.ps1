@@ -96,7 +96,7 @@ foreach ($level in @('O0', 'O2')) {
 $invalid = [ordered]@{
     WrongAbortType = '$abort(1)'
     NamedAbort = '$abort(text: "bad")'
-    UseAfterMove = "let text = `"x`"`nwriteLine(text)`n`$abort(text)"
+    UseAfterMove = "let text = `"x`"`nConsole.writeLine(text)`n`$abort(text)"
     NonBooleanCondition = 'while 1 => ()'
     ImmutableAssignment = "let n: i32 = 1`nn = 2"
     OutOfRangeLiteral = 'let n: i32 = 2147483648'

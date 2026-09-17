@@ -196,7 +196,7 @@ public sealed partial class Binding
                 if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
-                    if (IsRefinement(contract, this.Core.Copy))
+                    if (IsRefinement(contract, this.Library.Copy))
                     {
                         this.RegisterCopy(target, container, scope, premises);
                     }

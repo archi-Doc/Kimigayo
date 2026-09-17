@@ -38,7 +38,7 @@ public group SpecTour
 
         deinit
             // deinit は自動呼び出し専用。Field はこの本体の後に自動破棄される。
-            ::Core.writeLine("destroy audit \(self.id)")
+            ::Kimi.Console.writeLine("destroy audit \(self.id)")
 
     public group Lifetimes
         public func choose<T>(left: ref/T, right: ref/T, useLeft: bool) -> ref/T from left and right
@@ -52,16 +52,16 @@ public group SpecTour
             let second: i32 = 20
             let selected = choose(first@ref, second@ref, true)
             let view: View<i32> = View<i32>.init(selected)
-            ::Core.writeLine("view=\(view.get())")
+            ::Kimi.Console.writeLine("view=\(view.get())")
             let paired = pair(first@ref, second@ref)
-            ::Core.writeLine("pair=\(paired.first), \(paired.second)")
+            ::Kimi.Console.writeLine("pair=\(paired.first), \(paired.second)")
 
             // 所有しているコンテナーでも、内部に格納した借用は消えない。
             let references: [2 of ref/i32] = [first@ref, second@ref]
             let ownedContainer = Box<ref/i32>.init(first@ref)
             let dynamicReferences = [first@ref, second@ref]
-            ::Core.writeLine("stored=\(ownedContainer.value), refs=\(references.length)")
-            for reference in dynamicReferences => ::Core.writeLine("\(reference)")
+            ::Kimi.Console.writeLine("stored=\(ownedContainer.value), refs=\(references.length)")
+            for reference in dynamicReferences => ::Kimi.Console.writeLine("\(reference)")
 
             var gauge = Gauge.init()
             do
@@ -72,20 +72,20 @@ public group SpecTour
                 let transferred = exclusive.take()
                 transferred.limit = 50
                 transferred.value = 70
-            ::Core.writeLine("gauge=\(gauge.value), limit=\(gauge.limit)")
+            ::Kimi.Console.writeLine("gauge=\(gauge.value), limit=\(gauge.limit)")
 
             var tuple: (string, i32) = ("before", 30)
             let old = tuple.0
             let age = tuple.1
             tuple.0 = "after"
             let complete = tuple
-            ::Core.writeLine("\(old) -> \(complete.0), age=\(age)")
+            ::Kimi.Console.writeLine("\(old) -> \(complete.0), age=\(age)")
 
             do
                 let firstAudit = Audit.init(1)
-                defer => ::Core.writeLine("defer A")
+                defer => ::Kimi.Console.writeLine("defer A")
                 let secondAudit = Audit.init(2)
                 defer
-                    defer => ::Core.writeLine("nested defer")
-                    ::Core.writeLine("defer B")
+                    defer => ::Kimi.Console.writeLine("nested defer")
+                    ::Kimi.Console.writeLine("defer B")
                 // B, nested, audit 2, A, audit 1 の順で片付ける。

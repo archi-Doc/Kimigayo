@@ -195,10 +195,10 @@ A Destruction receiver cannot become an owning/counting handle, be stored for la
 
 ```text
 During deinit (conceptual storage operations):
-    Exchange(self, replacement)       // Error: whole-self replacement.
+    Kimi.exchange(self, replacement)       // Error: whole-self replacement.
     self.reset()                     // Error if reset requires uniq/Self.
     observe(sharedBorrow(field))     // Allowed for an initialized field.
-    Exchange(field, with: newValue)   // Allowed with authorized field access.
+    Kimi.exchange(field, with: newValue)   // Allowed with authorized field access.
 ```
 
 ### 16.3.2. Field cleanup
@@ -242,6 +242,8 @@ Destruction lifetime checking applies at every actual observation, including fie
 
 ### 16.3.3. Ownership, object release, and reentry
 
+For whole payload replacement, run content destruction in its original storage without final release of the enclosing object (§15.7.3). Keep its allocation, header, mode, counts, and lifecycle state. Nested handles release normally. Install the preconstructed replacement only after destruction completes; do not rerun constructors, initializers, or setters. The special destruction receiver and reentry restrictions below still apply. Final object release later destroys the current payload exactly once.
+
 Destruction claims the target’s remaining responsibility. Until completion, only its special receiver and authorized field operations may observe live parts; it is neither an ordinary owner nor an empty replacement destination. Reject reentrant destruction, whole-value use, and callback replacement. Normal completion removes the responsibility and leaves surviving storage Uninitialized; its owning operation may then install the secured replacement. This internal transition provides no source destroy/reset operation and does not reset let initialization history.
 
 Destroy owner/T as exactly T. Destroy obj/T’s object, then release its original storage if required. Destroying rc/T or arc/T releases one strong reference; exactly the zero-count release performs object destruction and storage release, including under atomic arc ownership.
@@ -251,6 +253,8 @@ Use the actual owned Type’s complete derived-to-base cleanup, including automa
 Destroying a non-owning borrow or raw pointer ends that value's capability/lifetime and never destroys its referent. Scalar and other trivial Copy values have no user destruction work; copying them does not create a resource-release obligation. Automatic cleanup, replacement, abandoned construction, temporary expiration, and final object release all use the same recursive rules. If a destructor or component cleanup Aborts or diverges, remaining components, base layers, pending replacement, and allocation release do not run; there is no rollback or second cleanup attempt.
 
 ## 16.4. Closure and object lifetime boundaries
+
+Complete payload exchange transfers the old contents and their destruction responsibility to its result. Content lifetime may change while allocation lifetime continues; neither an identical address nor placement restores dependencies on old contents (§15.7.3).
 
 Destroy initialized captures with remaining responsibility in reverse environment-initialization order. Consumed captures are not destroyed twice. In a Consuming call, the implicit environment binding precedes explicit parameters, so its remaining captures are cleaned last, after body locals/defer and parameters, before result delivery. Shared/Exclusive calls do not own the environment's destruction. Destroying a captured reference does not destroy its referent. Capture-construction failure follows ordinary temporary, partial-initialization, cleanup and Abort rules without rollback of completed Moves or effects. Retain dependencies observed by captured destructors, including zero-sized captures.
 

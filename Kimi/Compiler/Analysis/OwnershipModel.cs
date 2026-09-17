@@ -73,6 +73,8 @@ public enum OwnershipOperationKind : byte
     InitializeReceiverField,
     CheckReceiverField,
     WriteBorrowedField,
+    UpdateTarget,
+    UpdateBorrowed,
 }
 
 public enum PlacementKind : byte
@@ -136,7 +138,7 @@ public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Ko
         OwnershipOperationKind.Read or OwnershipOperationKind.PatternTest => PlaceUseKind.Read,
         OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => PlaceUseKind.Consume,
         OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.PayloadPlacement => PlaceUseKind.Write,
-        OwnershipOperationKind.Borrow => PlaceUseKind.Borrow,
+        OwnershipOperationKind.Borrow or OwnershipOperationKind.UpdateTarget => PlaceUseKind.Borrow,
         _ => PlaceUseKind.None,
     };
 }
@@ -338,6 +340,7 @@ internal enum OwnershipValueKind : byte
     Address,
     BorrowedField,
     BorrowedFieldWrite,
+    BorrowedUpdate,
     Sequence,
     PatternProjection,
     Closure,

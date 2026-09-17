@@ -12,4 +12,5 @@ internal enum ConversionBinding : byte
     Numeric,
     Identity,
     Borrow,
+    PayloadBorrow,
 }

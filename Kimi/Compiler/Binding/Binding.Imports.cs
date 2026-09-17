@@ -6,6 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly Dictionary<(Kotonoha Module, string Path), BindingScope?> defaultAliasTargets = new();
     private Dictionary<Koto, List<BindingSymbol>>? importCandidates;
 
     private BindingSymbol? AccessibleImport(BindingSymbol head, BindingScope scope)
@@ -37,18 +38,35 @@ public sealed partial class Binding
 
     private BindingScope? DefaultAliasTarget(Koto use, string path)
     {
+        if (path is "Kimi" or "::Kimi")
+        {
+            return this.Library.Scope;
+        }
+
+        var key = (use.CodeContext.Kotonoha, path);
+        if (this.defaultAliasTargets.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        this.defaultAliasTargets.Add(key, null);
         var root = this.ModuleScope(use);
         var scope = root;
         var remaining = path.AsSpan();
+        if (remaining.StartsWith("::"))
+        {
+            remaining = remaining[2..];
+        }
+
         var first = true;
         while (!remaining.IsEmpty)
         {
             var dot = remaining.IndexOf('.');
             var name = dot < 0 ? remaining : remaining[..dot];
             scope.Types.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out var symbol);
-            if (first && name.SequenceEqual("Core"))
+            if (first && name.SequenceEqual("Kimi"))
             {
-                symbol = this.Core.Module;
+                symbol = this.Library.Module;
             }
 
             symbol = this.SelectTypeCandidate(symbol, root, use, false);
@@ -66,6 +84,7 @@ public sealed partial class Binding
 
             if (dot < 0)
             {
+                this.defaultAliasTargets[key] = scope;
                 return scope;
             }
 

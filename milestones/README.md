@@ -337,7 +337,7 @@ Debug is supported; NativeAOT is not used.
 The current executable subset supports the `indices` ResolvedRange adapter and
 inferred full Slice views with scalar indexed reads. It does not establish the
 broader PLAN.md M8 stage, general user-defined iteration, direct Slice iteration,
-or all specified Core sequence APIs. Those remain separate implementation work.
+or all specified Kimi sequence APIs. Those remain separate implementation work.
 
 ## Milestone 8: nested containers and generic ownership
 
@@ -544,7 +544,7 @@ and [closure generation](../spec/21-layout-runtime-and-code-generation.md#2125-c
 
 ## Milestone 13: a Slice-backed Iterator
 
-Cursor implements the Core Iterator Contract and explicitly binds its Element
+Cursor implements the Kimi Iterator Contract and explicitly binds its Element
 to `ref/T from source`. It stores a borrowed Slice and a position; it owns no
 Sample elements. Its next method yields a borrow of external backing storage,
 not of the Cursor or next's exclusive receiver. This makes it non-lending:
@@ -568,7 +568,7 @@ changing next's result, or Move samples while first still has a later use.
 Changing the next result Origin to self would break the advertised external
 Element contract and the retained-reference use case.
 
-Focus: [Core iteration contracts](../spec/22-core-execution-and-foreign-functions.md#221-required-core-declarations),
+Focus: [Kimi iteration contracts](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations),
 [associated Types](../spec/08-generics-constraints-and-contracts.md#843-associated-types),
 and [Slice iteration](../spec/04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
 
@@ -576,22 +576,26 @@ and [Slice iteration](../spec/04-arrays-indexing-and-slices.md#467-slice-iterati
 
 The generic run function uses a Slice's iterator and an exclusive Callable,
 stopping after three accepted jobs or exhaustion. Its callback rejects -1,
-adds 2, 4, and 6, and stops before 100. Core.makeObj acquires a fully initialized
+adds 2, 4, and 6, and stops before 100. Kimi.makeObj acquires a fully initialized
 Accumulator into a new exclusive object without repeating construction.
 Its methods read or update fields while preserving whole-object completeness.
 
 ```text
 Accepted three jobs.
+Accumulator destroyed.
 Object total is 12.
 Accumulator destroyed.
 Pipeline finished.
 ```
 
-An explicit objuniq local is Moved into the callback's environment using an
+An explicit uniq local projected from the Sealed Accumulator payload is Moved into the callback's environment using an
 ordinary capture. The callback remains concrete: its external borrow and
 Exclusive call requirement cannot be erased into a common function value.
 The do scope ends its Loan before the owning handle is read or Moved again.
-A consuming closure then transfers that handle to finish; normal parameter
+Whole-value exchange then installs fresh payload contents without changing object
+Identity. The returned old contents retain their own destruction responsibility;
+the program restores the total before they are destroyed. A consuming closure
+then transfers that handle to finish; normal parameter
 cleanup destroys the payload once and releases its object storage. Neither
 object borrowing nor moving the handle creates another object.
 

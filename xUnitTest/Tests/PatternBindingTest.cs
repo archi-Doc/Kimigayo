@@ -13,7 +13,7 @@ public class PatternBindingTest
     [Theory]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    Option<i32>.Some(let n,) => n\n    Option<i32>.None => 0")]
-    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    (::Core.Option<i32>.Some(let n)) => n\n    (::Core.Option<i32>.None) => 0")]
+    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    (::Kimi.Option<i32>.Some(let n)) => n\n    (::Kimi.Option<i32>.None) => 0")]
     [InlineData("enum E\n    A(i32)\n    B\nfunc f(x: E) -> i32 => match x\n    E.A(let n) => n\n    E.B => 0")]
     [InlineData("func f(x: (i32, bool)) -> i32 => match x\n    (let n, _) => n")]
     [InlineData("func f(x: ()) -> i32 => match x\n    () => 1")]

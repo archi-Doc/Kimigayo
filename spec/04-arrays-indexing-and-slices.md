@@ -155,7 +155,7 @@ A fixed array is Copy exactly when its complete element Type is Copy. Derive Own
 
 Array is Non-Copy and accepts any valid complete element Type with representable element layout; neither Owned nor Copy is required. Its Type preserves T's Origin dependencies and Loan requirements, and its values preserve the acquired elements' Loans under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts). To obtain a shared view of either owning array form, explicitly slice it.
 
-The element position preserves Origin variance; compose nested variance normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. This adds no covariance between different element Cores. Core's dynamic mutation operations are defined in §4.7; they require exclusive access to the Array as a whole, independently of reallocation. Ordinary indexing does not gain a Non-Copy Move operation.
+The element position preserves Origin variance; compose nested variance normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. This adds no covariance between different element Cores. Kimi's dynamic mutation operations are defined in §4.7; they require exclusive access to the Array as a whole, independently of reallocation. Ordinary indexing does not gain a Non-Copy Move operation.
 
 Array analysis retains element-originated Loans under §4.7.5's common collection dependency contract, including after removal, replacement and clear.
 
@@ -181,7 +181,7 @@ These built-in operations apply to `[N of T]`, `Array<T>`, and `Slice<T>`. Eleme
 | ResolvedRange | Copy, Owned validated absolute half-open interval; finite isize iteration |
 | `Slice<T>` from source | Copy shared view, independent of T's Copy capability; retains backing Origin and shared Loan |
 
-These names are not keywords; `::Core.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Core Kotonoha, never same-named user Types.
+These names are not keywords; `::Kimi.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
 
 **Length metadata.** Fixed arrays and Array provide length and indices; Slice also provides isEmpty. Evaluate the receiver once and require ordinary initialization, completeness, and access legality. Knowing a fixed length does not erase receiver effects or checks.
 
@@ -332,7 +332,7 @@ let b = ^(-1)..sideEffect() // Abort constructing Index; do not call sideEffect.
 
 Locate the built-in access receiver first. While evaluating its index, prohibit modification, destruction, Move, or reallocation of that storage; shared reads remain allowed, including values[values.length - 1]. For a chained Copy read, protect the located root through all index evaluations and the final element Copy. Acquire that Copy before evaluating later surrounding operands; do not copy intermediate arrays. A temporary receiver retains its ordinary enclosing-expression lifetime. Establish a write's exclusive Loan after resolving bounds and check existing Loans. Never reevaluate the receiver or boundaries. For a Slice, first Copy its handle; reassigning the original handle does not change the acquired view.
 
-[Simple assignment](13-operators-and-assignment.md#1371-simple-assignment) secures its RHS before locating the indexed target. [Compound assignment](13-operators-and-assignment.md#1372-compound-assignment) evaluates receiver/index, checks bounds, reads the old value, evaluates the RHS, computes, and writes back, once each. Increment/decrement use the same target/Loan rules. Arithmetic failure prevents writeback, and the established exclusive Loan forbids conflicting RHS access. [Exchange operations](15-ownership-and-lifetime-analysis.md#157-initialization-preserving-exchange) evaluate arguments left to right, retaining each target's exclusive Loan during later arguments; Swap requires static non-overlap, not merely runtime i != j. Exchange/Swap remain conceptual names with no additional source API here.
+[Simple assignment](13-operators-and-assignment.md#1371-simple-assignment) secures its RHS before locating the indexed target. [Compound assignment](13-operators-and-assignment.md#1372-compound-assignment) evaluates receiver/index, checks bounds, reads the old value, evaluates the RHS, computes, and writes back, once each. Increment/decrement use the same target/Loan rules. Arithmetic failure prevents writeback, and the established exclusive Loan forbids conflicting RHS access. [Exchange operations](15-ownership-and-lifetime-analysis.md#157-whole-value-updates) evaluate arguments left to right, retaining each target's exclusive Loan during later arguments; Swap requires static non-overlap, not merely runtime i != j. The ordinary Kimi.exchange and Kimi.swap APIs are specified in §15.7.
 
 Apply the common [Abort and constant-evaluation rules](17-failure-handling.md#1734-checks-builds-and-constant-evaluation). Syntax, Type, literal-fitting, and required constant-evaluation violations are compile-time errors. Ordinary out-of-bounds a[10] for a three-element array instead aborts if executed. A compiler may warn, but optimization must not turn such a runtime failure into language-level rejection. Rejection of an ineligible static Move Path is a separate rule.
 
@@ -538,7 +538,7 @@ From receiver identification through placement, prevent structural mutation, Mov
 var names: Dictionary<i32, string> = [:]
 match names.tryInsert(1, "first")
     .Ok(()) => ()
-    .Err(let entry) => Core.writeLine(entry.1)
+    .Err(let entry) => Kimi.Console.writeLine(entry.1)
 names[1] = "replacement" // Existing-key replacement, not insertion.
 let removed = names.remove(1) // A temporary key is borrowed under §10.2.
 ```

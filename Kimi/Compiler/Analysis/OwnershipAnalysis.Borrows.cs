@@ -68,7 +68,7 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(projected);
         }
 
-        var place = (StructStorage.IsStruct(source.BoundType) || source.BoundType?.Kind == BoundTypeKind.FixedArray) && unwrapped is IdentifierNameKoto
+        var place = (StructStorage.IsStruct(source.BoundType) || source.BoundType?.Kind == BoundTypeKind.FixedArray || ScalarTypes.Supports(source.BoundType)) && unwrapped is IdentifierNameKoto
             ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {

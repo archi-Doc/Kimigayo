@@ -7,28 +7,28 @@ namespace XunitTest;
 
 public class ScalarEmissionTest
 {
-    internal const string Counter = "var count: i32 = 0\nwhile count < 3\n    writeLine(\"tick\")\n    count = count + 1\nif count == 3\n    writeLine(\"done\")\nelse\n    writeLine(\"unexpected\")";
+    internal const string Counter = "var count: i32 = 0\nwhile count < 3\n    Console.writeLine(\"tick\")\n    count = count + 1\nif count == 3\n    Console.writeLine(\"done\")\nelse\n    Console.writeLine(\"unexpected\")";
 
     public static TheoryData<string, string, string, int> Fixtures => new()
     {
         { "Counter", Counter, "tick\ntick\ntick\ndone\n", 0 },
-        { "Minimum", "var x: i32 = -2147483648\nif x < 0 => writeLine(\"ok\")", "ok\n", 0 },
-        { "Short", "var x = 0\nif false and x++ > 0 => writeLine(\"bad\")\nif true or x++ > 0 => writeLine(\"ok\")\nif x == 0 => writeLine(\"zero\")", "ok\nzero\n", 0 },
-        { "NestedShort", "var x = 1\nif (x == 1 and (x + 1 == 2 or false)) and true => writeLine(\"ok\")", "ok\n", 0 },
-        { "Order", "var x = 2\nlet y = x + x++\nif y == 4 and x == 3 => writeLine(\"ok\")", "ok\n", 0 },
-        { "LongLoop", "var x = 0\nwhile x < 1000000\n    x += 1\n    if x < 1000000 => continue\n    exit\n    writeLine(\"dead\")\nif x == 1000000 => writeLine(\"ok\")", "ok\n", 0 },
-        { "ConditionalLocal", "var flag = true\nif flag\n    var x: i32\n    if flag => x = 2\nwriteLine(\"ok\")", "ok\n", 0 },
-        { "OverflowAdd", "var x = 2147483647\nx = x + 1\nwriteLine(\"bad\")", string.Empty, 1 },
+        { "Minimum", "var x: i32 = -2147483648\nif x < 0 => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "Short", "var x = 0\nif false and x++ > 0 => Console.writeLine(\"bad\")\nif true or x++ > 0 => Console.writeLine(\"ok\")\nif x == 0 => Console.writeLine(\"zero\")", "ok\nzero\n", 0 },
+        { "NestedShort", "var x = 1\nif (x == 1 and (x + 1 == 2 or false)) and true => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "Order", "var x = 2\nlet y = x + x++\nif y == 4 and x == 3 => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "LongLoop", "var x = 0\nwhile x < 1000000\n    x += 1\n    if x < 1000000 => continue\n    exit\n    Console.writeLine(\"dead\")\nif x == 1000000 => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "ConditionalLocal", "var flag = true\nif flag\n    var x: i32\n    if flag => x = 2\nConsole.writeLine(\"ok\")", "ok\n", 0 },
+        { "OverflowAdd", "var x = 2147483647\nx = x + 1\nConsole.writeLine(\"bad\")", string.Empty, 1 },
         { "OverflowSub", "var x = -2147483648\nx -= 1", string.Empty, 1 },
         { "OverflowMul", "var x = 50000\nx *= x", string.Empty, 1 },
         { "OverflowNeg", "var x = -2147483648\nx = -x", string.Empty, 1 },
         { "OverflowIncrement", "var x = 2147483647\nx++", string.Empty, 1 },
-        { "SkippedOverflow", "var x = 2147483647\nif false and x + 1 > 0 => writeLine(\"bad\")\nwriteLine(\"ok\")", "ok\n", 0 },
-        { "BooleanStorage", "var x = true\nlet y = x\nx = not y\nif x != y and y == true => writeLine(\"ok\")", "ok\n", 0 },
-        { "Increments", "var x = 3\nlet a = --x\nlet b = x--\nlet c = ++x\nif a == 2 and b == 2 and c == 2 and x == 2 => writeLine(\"ok\")", "ok\n", 0 },
-        { "Comparisons", "var x = -3\nlet y = +x\nif y <= -3 and y >= -3 and y != 0 and y > -4 => writeLine(\"ok\")", "ok\n", 0 },
-        { "DeadArithmetic", "var x = 0\nwhile true\n    exit\n    x = 2147483647 + 1\nif x == 0 => writeLine(\"ok\")", "ok\n", 0 },
-        { "NestedLoops", "var x = 0\nwhile x < 3\n    x += 1\n    var y = 0\n    while true\n        y += 1\n        if y == 2 => exit\n    if x == 2 => continue\n    writeLine(\"tick\")", "tick\ntick\n", 0 },
+        { "SkippedOverflow", "var x = 2147483647\nif false and x + 1 > 0 => Console.writeLine(\"bad\")\nConsole.writeLine(\"ok\")", "ok\n", 0 },
+        { "BooleanStorage", "var x = true\nlet y = x\nx = not y\nif x != y and y == true => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "Increments", "var x = 3\nlet a = --x\nlet b = x--\nlet c = ++x\nif a == 2 and b == 2 and c == 2 and x == 2 => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "Comparisons", "var x = -3\nlet y = +x\nif y <= -3 and y >= -3 and y != 0 and y > -4 => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "DeadArithmetic", "var x = 0\nwhile true\n    exit\n    x = 2147483647 + 1\nif x == 0 => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "NestedLoops", "var x = 0\nwhile x < 3\n    x += 1\n    var y = 0\n    while true\n        y += 1\n        if y == 2 => exit\n    if x == 2 => continue\n    Console.writeLine(\"tick\")", "tick\ntick\n", 0 },
     };
 
     [Theory]
@@ -43,7 +43,7 @@ public class ScalarEmissionTest
     [InlineData("if false\n    " + MinimalEmissionTest.FloatExpression)]
     [InlineData("while true\n    exit\n    " + MinimalEmissionTest.FloatExpression)]
     [InlineData("while true\n    continue\n    " + MinimalEmissionTest.FloatExpression)]
-    [InlineData("if true and ((" + MinimalEmissionTest.FloatExpression + ") == 0.0) => writeLine(\"bad\")")]
+    [InlineData("if true and ((" + MinimalEmissionTest.FloatExpression + ") == 0.0) => Console.writeLine(\"bad\")")]
     public void FloatingOperationsProduceCheckedIr(string source, bool emitted = true)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -76,7 +76,7 @@ public class ScalarEmissionTest
     [Fact]
     public void PreoptimizationIrPreservesReadOrderChecksAndStorage()
     {
-        var c = MinimalEmissionTest.Analyze("var x = 2\nlet y = x + x++\nif y == 4 => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("var x = 2\nlet y = x + x++\nif y == 4 => Console.writeLine(\"ok\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
         var loads = function.Instructions.Where(x => x.Opcode == EmissionOpcode.LoadScalar).ToArray();

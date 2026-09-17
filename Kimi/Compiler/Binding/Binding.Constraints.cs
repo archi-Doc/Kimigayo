@@ -217,7 +217,7 @@ public sealed partial class Binding
             return proposition.Mask.Contains(proposition.Subject.Semantics) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
-        if (proposition.Contract is { Intrinsic: IntrinsicKind.Copy or IntrinsicKind.Owned } intrinsic)
+        if (proposition.Contract is { Intrinsic: IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed } intrinsic)
         {
             return this.RequestCapability(proposition.Subject!, intrinsic, scope);
         }

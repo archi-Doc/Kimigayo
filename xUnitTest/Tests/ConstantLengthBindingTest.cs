@@ -69,7 +69,7 @@ public class ConstantLengthBindingTest
 
     [Fact]
     public void LocalConstantsProduceExecutableFixedArrays()
-        => ScalarEmissionTest.EmitFixture("ConstantLengthLocal", "let N: isize = 2\nlet M = N + 1\nlet row: [M of string] = [\"one\", \"two\", \"three\"]\nwriteLine(row[2])", "three\n");
+        => ScalarEmissionTest.EmitFixture("ConstantLengthLocal", "let N: isize = 2\nlet M = N + 1\nlet row: [M of string] = [\"one\", \"two\", \"three\"]\nConsole.writeLine(row[2])", "three\n");
 
     [Fact]
     public void SymbolicLengthsRetainExpandedPrivateConstants()
@@ -132,7 +132,7 @@ public class ConstantLengthBindingTest
     [Fact]
     public void ReloadAndWarmRebindingPreserveConstantLengths()
     {
-        var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of string] = [\"one\", \"two\"]\nwriteLine(row[1])");
+        var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of string] = [\"one\", \"two\"]\nConsole.writeLine(row[1])");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);

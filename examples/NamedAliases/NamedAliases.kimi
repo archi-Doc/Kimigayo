@@ -1,0 +1,6 @@
+alias Output => ::Kimi.Console
+alias Standard => Kimi
+
+Output.writeLine("Named aliases preserve the original declaration.")
+Standard.Console.writeLine("The alias names the library, not a value.")
+Console.writeLine("Kimi is opened by the mandatory default alias.")

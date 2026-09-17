@@ -28,6 +28,8 @@ scale(3, factor: 4)    // Error: factor is an internal name.
 
 ## 10.2. Argument adaptation and literals
 
+Same-complete-Type Sealed payload receiver projection (§12.4.4) ranks as a cross-Semantics Borrow/Reborrow. Perform ordinary lookup, applicability, comparison, and access checking first; evaluate and apply the selected receiver once. This adds no implicit projection to ordinary arguments and grants no inherited-base completeness.
+
 Compare adaptations in this order, best first:
 
 | Class | Meaning |

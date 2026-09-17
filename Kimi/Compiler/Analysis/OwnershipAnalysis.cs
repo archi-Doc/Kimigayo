@@ -521,7 +521,7 @@ public sealed partial class OwnershipAnalysis
                 return this.CreateClosure(closure);
             case ParenthesizedKoto parentheses:
                 return this.Expression(parentheses.Operand, use, acquisition);
-            case MacroKoto { Operand: InvocationKoto abort } when ReferenceEquals(abort.BoundCall?.Target, this.compilation.Core.Abort):
+            case MacroKoto { Operand: InvocationKoto abort } when ReferenceEquals(abort.BoundCall?.Target, this.compilation.Library.Abort):
                 return this.Call(abort);
             case IdentifierNameKoto:
                 if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
@@ -549,6 +549,13 @@ public sealed partial class OwnershipAnalysis
                 this.Unsupported(test);
                 return this.Temporary(test);
             case ConversionKoto conversion:
+                if (conversion.ConversionBinding == ConversionBinding.PayloadBorrow)
+                {
+                    this.Expression(conversion.Left, PlaceUseKind.Borrow);
+                    this.Unsupported(conversion); // Requires the object payload address and owner-Loan runtime plan.
+                    return -1;
+                }
+
                 if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsStorage(conversion.BoundType))
                 {
                     return this.BorrowStruct(conversion.Left, conversion.BoundType!);
@@ -863,6 +870,11 @@ public sealed partial class OwnershipAnalysis
         {
             this.Unsupported(call);
             return -1;
+        }
+
+        if (plan.Target.CompilerFunction is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap)
+        {
+            return this.WholeValueUpdate(call, plan);
         }
 
         var mark = this.arguments.Count;

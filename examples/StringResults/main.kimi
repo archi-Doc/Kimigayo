@@ -3,10 +3,10 @@ public func main()
     let selected = work: do
         defer => original = "after"
         exit to work: (if true => original else => "unused")
-    writeLine(selected)
-    writeLine(original)
+    Console.writeLine(selected)
+    Console.writeLine(original)
 
     var text = "old"
     var keep = false
     text = if keep => text else => "new"
-    writeLine(text)
+    Console.writeLine(text)

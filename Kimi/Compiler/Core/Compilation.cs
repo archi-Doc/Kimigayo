@@ -86,8 +86,8 @@ public partial class Compilation
     /// <summary>Gets reusable semantic analysis storage for this compilation.</summary>
     public Binding Binding => this.binding ??= new(this);
 
-    /// <summary>Gets this compilation's compiler-owned Core requirement identities.</summary>
-    public CoreIntrinsics Core => this.Binding.Core;
+    /// <summary>Gets this compilation's compiler-owned Kimi requirement identities.</summary>
+    public KimiLibrary Library => this.Binding.Library;
 
     private OwnershipAnalysis? ownership;
 

@@ -1,5 +1,115 @@
 # Kimigayo Implementation Status
 
+Whole-value replacement adoption (2026-09-17): the change is integrated into
+SPEC.md and its Type, constraint, expression, ownership, destruction, artifact,
+and generation chapters. Section 15.7 owns the three APIs and shared storage
+update dependencies; assignment refers to that section instead of repeating
+the rules. The original draft is unchanged by this implementation work.
+
+Implemented:
+
+- Kimi.Sealed has an intrinsic Identity and four-valued proof. Classification
+  checks the normalized outer Core, rejecting open structs, Never, and non-owner
+  Semantics without recursively imposing constraints on fields. User conformance
+  cannot manufacture evidence. Declared evidence validates generic object target
+  formation and exact-Type explicit payload projection.
+- Kimi.replace/exchange/swap are ordinary parsed generic declarations with
+  validated compiler implementation identities. Named aliases, source shadowing,
+  generic inference, external argument names, and textual evaluation order use
+  the existing Binding pipeline. The catalog now validates 10 of 22 entries;
+  catalog validation is separate from runtime coverage.
+- Binding distinguishes explicit Sealed payload projection, complete payload
+  receivers, and protected base projection. Fully specified handle/reference
+  storage borrows retain their own Type layer. Custom accessor selection retains
+  the same distinction without claiming completed accessor execution support.
+- Ownership and LLVM lowering execute updates on complete mutable owner locals,
+  including scalars, strings, and supported aggregates. Concrete scalar/struct/
+  fixed-array uniq paths also have checked address/update plans when their
+  contents are proven Owned. Target Loans begin before later arguments; ordinary
+  writes/transfer plans retain original-location destruction and old-value
+  responsibility. Exchange/swap transfers perform no user destruction.
+- Returning an exchanged aggregate no longer mistakes the function's result slot
+  for an input-Origin anchor. Scalar exclusive borrows use ordinary pointer
+  storage. Replace does not reserve unnecessary old-value scratch storage.
+- The existing tokenizer/parser syntax is sufficient: Sealed and update names
+  remain identifiers, and typed @ adaptation and named-argument syntax are reused.
+  Serialization/rebinding, invalid library edits, constraints, overlap, incomplete
+  targets, argument order, aliases, destruction and Abort have regression coverage.
+
+Implementation boundaries remain explicit: object allocation, object-borrow
+runtime plans and payload owner retention are not yet available, so payload
+projection binds but cannot pass executable ownership/lowering. General
+ObjectCallCompatible effect inference/publication and generated accessor execution
+also remain incomplete. Storage-polymorphic generic updates, general field/index
+targets, nested reference/handle storage updates, and borrowed updates with
+unproven Owned contents need additional plans. Owned is an implementation limit
+on that borrowed lowering path, not a constraint on the specified Kimi APIs.
+Unsupported paths are rejected; no no-op or approximate payload implementation is
+emitted. The object tour and Milestone 14 show the normative behavior and remain
+specification examples beyond executable coverage.
+
+The executable WholeValueReplacement example covers ordinary updates and borrowed
+struct replacement. Milestone 14 now uses an ordinary uniq projection of its
+Sealed payload, exchanges contents without replacing the object, and records the
+old payload's extra destruction in its expected output.
+
+Validation: Debug and Release each pass all 8,237 managed tests with no build
+warnings or errors. The WholeValue fixtures pass 30 native executions across O0
+and O2, and Milestone 5 passes 47 Release integration checks. Parser regressions
+cover all 56 example and Milestone Kimi files. The 28 specification Markdown
+files have no unresolved local links or anchors; git diff --check also passes.
+NativeAOT tests were not run. These checks cover the implemented paths above,
+not the remaining object runtime and generic execution requirements.
+
+Kimi library and named aliases (2026-09-17): the adopted change is integrated into
+SPEC.md, Chapters 3, 9, 18, 20 and 22, their library references, and Appendices A,
+E and F. Core remains the Type component. The separate Container nesting proposal
+is not adopted. The existing Chapter 22 file path remains stable for draft links.
+
+The compiler exposes its designated library as Kimi and places the existing output
+function in its ordinary public Console group. KimiLibrary and KimiDeclaration
+replace the internal library names. Analysis, lowering and emission retain the
+original function Identity and ownership/runtime behavior. There is no reserved
+Core reference or old output forwarding name.
+
+Every defining module receives the mandatory Kimi default alias, together with
+configured additions at one lookup stage. Saved ProjectFile additions remain
+unchanged; redundant Kimi additions have the same effective settings as none.
+Explicit aliases retain their earlier stage. Named aliases resolve root-based
+Kotonoha/group references, retain source-document scope and original Identity,
+reject unused conflicting mappings, and warn about distinct earlier root
+qualifiers. Opening aliases retain direct-member behavior. Both forms reject
+invalid placement, targets and unbound Container parameters. Generated sources
+and dependencies retain their own environments; re-Bind invalidates cached
+targets. Per-document name/member indexes and per-generation target caches avoid
+repeated global scans; warmed alias Binding allocates zero bytes.
+
+Examples, all fourteen Milestone sources, and their output test fixtures use the
+new library paths. The NamedAliases example demonstrates named group/library
+qualifiers and the mandatory default alias. Both Debug and Release pass all
+8,170 managed tests (63 added), with zero build warnings/errors. Syntax checks
+cover all 55 example/Milestone files. Milestone 1–11 pass 492 Release integration
+checks, including LLVM verification and native O0/O2 execution; all eleven
+reports match the final compiler and source hashes. The named-alias output fixture
+passes both O0/O2 runs with exact UTF-8, LF, empty stderr and exit 0. Specification
+file/heading links and git diff whitespace checks pass. Evidence is retained in
+`bin/kimi-alias-verification.json` and the `bin/kimi-alias-*.log` files.
+
+Existing implementation limits remain: the library catalog still lacks twelve
+declarations; general function-item erasure is Binding-only; source-package
+packing, content IDs and persistent semantic reuse are incomplete. The new
+specification defines their alias/default-environment requirements without
+claiming those broader facilities are implemented. Instantiated parent groups
+require the separately unadopted Container placement rules. NativeAOT is excluded.
+
+Earlier whole-value replacement proposal review (2026-09-17), preceding the
+implementation entry above: reorganized the
+[proposal](draft/Changes/2026-09-17%20Whole%20Value%20Replacement.md) in Japanese,
+aligned ObjectCallCompatible and Kimi API names, and distinguished complete
+payload calls from protected base-receiver calls and ObjectViewCompatible.
+Consolidated dependency/destruction rules and added evaluation-order, rejected-use,
+and payload-versus-handle swap examples. That earlier review was documentation-only.
+
 Mixed-target ownership continuations (2026-09-17): straight-line and closed CFG checking-only
 effects now preserve each original transfer target and pre-cleanup state through
 enclosing joins. Assignments, Moves, supported calls and transfer chains retain
@@ -202,7 +312,7 @@ semantics, draft and milestone source programs are unchanged. Generic forwarding
 compound symbolic fields, lengths, specialization, borrowed generic ABI and
 general Iterable/Iterator support remain guarded outside this checkpoint.
 
-Specification programs 10–14 (2026-09-17): Added [Milestone10–14](milestones/README.md#milestone-10-patterns-inside-result-producing-control-flow) combining nested enum/Tuple patterns and transfers, type/length-generic forwarding and explicit specialization, mutable/nested/consuming captures, a generic Slice-backed Iterator, and a callback pipeline with Core.makeObj and scoped object borrowing. README records expected outputs, rejection/Abort exercises, and the distinction between semantic output and evidence of physical generic code sharing. These additions are specification targets only; no compiler capability checks, builds, execution, or tests (including NativeAOT) were performed. Language rules are unchanged; SPEC.md links to the expanded series.
+Specification programs 10–14 (2026-09-17): Added [Milestone10–14](milestones/README.md#milestone-10-patterns-inside-result-producing-control-flow) combining nested enum/Tuple patterns and transfers, type/length-generic forwarding and explicit specialization, mutable/nested/consuming captures, a generic Slice-backed Iterator, and a callback pipeline with Kimi.makeObj and scoped object borrowing. README records expected outputs, rejection/Abort exercises, and the distinction between semantic output and evidence of physical generic code sharing. These additions are specification targets only; no compiler capability checks, builds, execution, or tests (including NativeAOT) were performed. Language rules are unchanged; SPEC.md links to the expanded series.
 
 Ownership checking continuations (2026-09-17): noncompleting do scopes,
 if conditions and terminal branches preserve source initialization, Move history
@@ -503,7 +613,7 @@ No required verification remains blocked or unverified. No new throughput
 benchmark was performed.
 
 This is the program-7 subset, not completion of PLAN.md's M8/I19/I20. General
-Core sequence declarations and explicit Type APIs, Index/from-end/bounded Range
+Kimi sequence declarations and explicit Type APIs, Index/from-end/bounded Range
 operations, general user Iterable/Iterator dispatch, direct array/Slice iteration,
 tuple iteration bindings and generic sequence ABI remain unimplemented. The
 supported Slice reads are scalar Copy reads; other element-result forms remain
@@ -650,7 +760,7 @@ for reproduction commands; program numbers are independent of PLAN's M1–M17.
 Program Milestone 2 complete (2026-09-16): implemented explicit `$abort(expression)`
 through Binding, ownership, LLVM generation and ordinary Windows x64 execution.
 The reserved builtin expects one owned string, evaluates/acquires it once, has
-Type Never, and is independent of user `abort` declarations; no Core API was added.
+Type Never, and is independent of user `abort` declarations; no Kimi API was added.
 Its runtime emits the source location and `KIMI_E_ABORT` followed by unchanged
 UTF-8 message bytes and LF, then exits 1 without normal message destruction or
 enclosing cleanup. A failed stderr write still exits without recursive diagnostics.
@@ -757,7 +867,7 @@ Current syntax uses `#switch`, Properties/accessors, and ordinary type adaptatio
 <a id="c28-positional-pattern-binding-and-match-coverage-2026-09-11"></a>
 <a id="c33-runtime-type-test-binding-2026-09-12"></a>
 
-## 2. Binding, Types, and Core
+## 2. Binding, Types, and Kimi
 
 Final expression validation retains associated projection qualifier constraints and conformance proofs that normalization removes from explicit generic call arguments and runtime-test targets. Invalid inputs or late-invalid witnesses revoke their call/runtime-test certificates. Valid nested Types, dependent caller evidence, independent member errors, source reload, replacement recovery and zero measured warm Binding allocations are covered by `ExpressionInputFormationBindingTest` and `ExpressionProjectionCertificateBindingTest`; general generic body proofs remain incomplete.
 
@@ -793,7 +903,7 @@ Current [Compilation.Bind](Kimi/Compiler/Core/Compilation.cs) performs final Bin
 
 | Area | Verified coverage | Remaining limits |
 | --- | --- | --- |
-| Names and calls | Separate Type/Value lookup, source-local scopes/aliases, forward functions, Core identity, visibility, positional/named arguments, static default Type checking with preceding-parameter lookup, ordinary generic inference and candidate selection | Full access/fragment validation, default argument ownership/execution, general Origin inference, specialization, constructors/deinit, and indirect calls remain incomplete. Defaults do not infer generic arguments; self/later parameters are unavailable in their declaration environment |
+| Names and calls | Separate Type/Value lookup, source-local scopes/aliases, forward functions, Kimi identity, visibility, positional/named arguments, static default Type checking with preceding-parameter lookup, ordinary generic inference and candidate selection | Full access/fragment validation, default argument ownership/execution, general Origin inference, specialization, constructors/deinit, and indirect calls remain incomplete. Defaults do not infer generic arguments; self/later parameters are unavailable in their declaration environment |
 | Declaration API accessibility | Recursive complete-Type exposure checks on named member-function parameters/results, generic struct/enum constraints, enum payloads and Property header/storage Types, using effective enclosing domains. Property headers (including inferred Types) retain the Property domain when accessors are restricted; requirement headers inherit the Contract domain. Additional accessor receiver/input/result Types use their own domains. Computed and requirement accessors share ordinary Self receiver validation; static accessors reject receivers, including in unused declarations. Conditional members use their declaring Container for receiver identity. Named member-function/Contract requirement parameter-result, explicit Property header, and explicit accessor receiver/input/result projections retain their qualifier, selected Contract and defining-requirement domains after normalization; invalid Property signatures cannot publish verified Properties or conformance witnesses; named-function API validation precedes final conformance certification, so rejected function signatures cannot retain verified witnesses; concrete bindings still undergo ordinary Type/conformance access checks. Parsed member-function/requirement and struct/enum/Contract constraints also retain projection domains on subjects and requirements, including associated requirements; invalid Contract constraints prevent conformance certification. Ordinary and conditional associated specifications retain qualifier/requirement projection access under the Type/Contract intersection, with independent ancestor checks; invalid paths cannot certify. Enum payload projections retain these domains before certification, including payloads bound early by inferred headers; invalid cases/enums cannot publish valid construction plans or conformances. Direct-base projections likewise retain these domains against the derived Type before inheritance validation; invalid bases propagate to descendants and prevent conformance certification. Private implementation storage remains separate. Unit/Tuple requirements and projections following constructed qualifiers now reach these checks, preserving requirement Boolean grouping and precedence. | Does not export source-local functions or infer named function result Types. Inferred Property Types are checked recursively after normalization; projection syntax confined to initializers/private helpers does not itself become an API component. Unused dependency APIs and explicit/default alias projections retain their defining domains, with module reload coverage. Remaining general access/fragment conformance audits still need completion. ApiAccessBinding, PropertyApiAccessBinding, AccessorReceiverBinding, ProjectionApiAccessBinding, PropertyProjectionApiAccessBinding, ConstraintProjectionApiAccessBinding, AssociatedSpecificationAccessBindingTest, InferredPropertyAccessBindingTest, EnumProjectionAccessBindingTest, BaseProjectionAccessBindingTest and RequirementTypeParsingTest cover private/internal/protected combinations, recursive payload/header Types, reload/replacement and zero measured warm Binding allocations |
 | Declaration fragments | Same-name Types with different generic arities keep separate symbols, headers, members and Attributes. Matching arities merge with kind, semantic modifier and access agreement after defaults; enums/contracts cannot split at the same identity. One defining base survives omitted clauses and resolves with its source-local aliases. Explicit group headers determine synthesized path access. Selected Attributes survive generic/base header parsing. Origin headers match ordered names and bounds: under the current source grammar, valid split-struct bounds identify shared declaration slots or static, independently of source-local Type aliases. Exact bound identity, conflicts, source order, rebind/reload/writing and zero measured warm unbounded-fragment Binding allocations are covered | Origin bound proofs remain unfinished: bounded declarations still report Unsupported, and unknown targets are rejected. General logical storage ordering, generated-fragment finalization and proof-dependent artifacts remain incomplete |
 | Type arity selection | Explicit and zero-arity Type uses select within the committed lexical, qualified, root, explicit-import or default-import stage; wrong nearer arities cannot fall back to outer/default candidates. Same-arity imports remain ambiguous. Generic Type member/base lookup, separate source fragments, canonical writing, replacement/rebinding, and module-local identities are covered | This does not complete omitted-argument inference or universal generic proofs, and does not enable nominal/generic native generation |
@@ -809,9 +919,9 @@ Current [Compilation.Bind](Kimi/Compiler/Core/Compilation.cs) performs final Bin
 | Properties | Stored/computed/requirement Properties, accessor types, permissions, Copy/Origin handling, and operation-specific witnesses | General expression read/get/set/init, receiver/cleanup handling, and generation remain incomplete |
 | Enums and Patterns | Case identity, construction with an expected Type, payload acquisition, Tuple/Case/whole Patterns, exhaustiveness/subsumption warnings, and separate guard-candidate/body binding | Borrowed Subjects, general decomposition/guards, and generic proofs/generation remain incomplete. Arms that receive warnings are still checked |
 | Runtime `is` / `is not` | Binds object Semantics over concrete struct Core to bool, retaining original operands/targets and shared-access requirements | Flow Type refinement, object Loans, and execution are unsupported |
-| Core | Validates six declarations: Copy, Owned, Callable, writeLine, Option, and Result. Derives Copy/Owned and rejects same-name Core impostors | 12 of the catalog's 18 slots are Missing. Option/Result declaration and analysis support does not establish complete generic runtime support |
+| Kimi library | Validates six declarations: Copy, Owned, Callable, writeLine, Option, and Result. Derives Copy/Owned and rejects same-name Kimi impostors | 12 of the catalog's 18 slots are Missing. Option/Result declaration and analysis support does not establish complete generic runtime support |
 
-Evidence: [Binding](Kimi/Compiler/Binding), [CoreIntrinsics](Kimi/Compiler/Binding/CoreIntrinsics.cs), [CoreCatalogTest](xUnitTest/Tests/CoreCatalogTest.cs), TypeBinding / ConstraintBinding / ContractBinding / PropertyBinding / ConditionalConformanceBinding / InheritedReceiverBinding / EnumBinding / PatternBinding / RuntimeTypeTest.
+Evidence: [Binding](Kimi/Compiler/Binding), [KimiLibrary](Kimi/Compiler/Binding/KimiLibrary.cs), [CoreCatalogTest](xUnitTest/Tests/CoreCatalogTest.cs), TypeBinding / ConstraintBinding / ContractBinding / PropertyBinding / ConditionalConformanceBinding / InheritedReceiverBinding / EnumBinding / PatternBinding / RuntimeTypeTest.
 
 <a id="c7-control-flow-and-failure-handling"></a>
 <a id="c24-whole-place-ownership-cfg-and-cleanup-plans-2026-09-11"></a>
@@ -1053,7 +1163,7 @@ Evidence: EmissionArtifacts / NativeToolchain / ToolchainResolver / Kernel32Impo
 | Area | State verified in code |
 | --- | --- |
 | Modules and Mod | [Compilation](Kimi/Compiler/Core/Compilation.cs) retains configured external Kotonoha identifiers but does not connect them to source loading. Bind does not execute Mod; generation rejects external modules/Libraries. Portable interchange and persistent semantic-plan reuse remain incomplete. Composition Root Entry/Provider integration remains unsettled |
-| Generics, objects, and Core | Generic shared/specialized generation; Closures/indirect calls; struct/enum/Property/user constructor/static execution; rc/arc/Weak and runtime refinement; Array/Slice/Dictionary and iteration; and the language test runner remain incomplete. See §2–3 for declaration/analysis coverage |
+| Generics, objects, and Kimi | Generic shared/specialized generation; Closures/indirect calls; struct/enum/Property/user constructor/static execution; rc/arc/Weak and runtime refinement; Array/Slice/Dictionary and iteration; and the language test runner remain incomplete. See §2–3 for declaration/analysis coverage |
 | LSP | [LspServer](Kimi/Lsp/LspServer.cs) handles initialize, document management, shutdown, and related communication. Diagnostic publication for open/change is commented out; only empty diagnostics on close are connected. Dump requests/output are also unconnected |
 | KimiCode | [extension.js](KimiCode/extension.js) hard-codes the adjacent Debug DLL and DebugWait=true. General-purpose server configuration and host integration tests are not established |
 | CI and distribution | [test.yml](.github/workflows/test.yml) / [publish.yml](.github/workflows/publish.yml) run a Linux Release build followed by tests without a specified configuration/target. PR coverage, Windows native checks, zero-test detection, and log retention are not established. NuGet pack/push is defined but was not run in this work |
@@ -1089,7 +1199,7 @@ The preceding §4.4 increment passed 4,354 managed tests per configuration, 95 E
 
 ### 7.2. Verification of the Preceding Increments (2026-09-14)
 
-The baseline review checked main entry points, type/conversion/ABI/aggregate and ownership rejection conditions, the Core catalog, and LSP/extension/CI against current code and related tests. After implementing §4.1 result delivery, §4.2 function ABI, and §4.3 Copy element reads, the following builds and managed checks were rerun.
+The baseline review checked main entry points, type/conversion/ABI/aggregate and ownership rejection conditions, the Kimi catalog, and LSP/extension/CI against current code and related tests. After implementing §4.1 result delivery, §4.2 function ABI, and §4.3 Copy element reads, the following builds and managed checks were rerun.
 
 | Check | Result on 2026-09-14 |
 | --- | --- |

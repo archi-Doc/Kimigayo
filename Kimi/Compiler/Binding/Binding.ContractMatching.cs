@@ -186,7 +186,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (conformance.Contract.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
+            if (conformance.Contract.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed)
             {
                 var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;

@@ -40,21 +40,21 @@ public group SpecTour
             let selected: string = select(1)
             let exact = select(1@i64)
 
-            ::Core.writeLine("\(title()): \(platform()), visit=\(visits)")
-            ::Core.writeLine("\(raw), \(letter), min=\(minimum), wide=\(mixed)")
-            ::Core.writeLine("truncated=\(truncated), bits=\(masked)")
-            ::Core.writeLine("pair=\(pair.0),\(pair.1), one=\(singleton.0)")
-            ::Core.writeLine("\(selected), exact=\(exact)")
+            ::Kimi.Console.writeLine("\(title()): \(platform()), visit=\(visits)")
+            ::Kimi.Console.writeLine("\(raw), \(letter), min=\(minimum), wide=\(mixed)")
+            ::Kimi.Console.writeLine("truncated=\(truncated), bits=\(masked)")
+            ::Kimi.Console.writeLine("pair=\(pair.0),\(pair.1), one=\(singleton.0)")
+            ::Kimi.Console.writeLine("\(selected), exact=\(exact)")
 
             #if debug
-                ::Core.writeLine("debug configuration")
+                ::Kimi.Console.writeLine("debug configuration")
             #switch
                 #case pointerWidth == 64
-                    ::Core.writeLine("64-bit target")
+                    ::Kimi.Console.writeLine("64-bit target")
                 #case _
-                    ::Core.writeLine("non-64-bit target")
+                    ::Kimi.Console.writeLine("non-64-bit target")
 
-    // Copy は明示宣言。独自比較は Core の Contract に適合させる。
+    // Copy は明示宣言。独自比較は Kimi の Contract に適合させる。
     public struct Reading
         Self is Copy
         Self is Comparable

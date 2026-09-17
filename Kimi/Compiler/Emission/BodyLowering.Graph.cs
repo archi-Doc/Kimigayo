@@ -62,7 +62,7 @@ internal sealed partial class BodyLowering
         };
     }
 
-    private bool LowerGraph(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, Span<byte> marks, out string? failure)
+    private bool LowerGraph(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, Span<byte> marks, out string? failure)
     {
         failure = null;
         var count = body.Operations.Count;
@@ -290,7 +290,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < count; i++)
         {
             this.instructionStarts[i] = this.validation.Instructions.Count;
-            if (!this.LowerOperation(core, body, this.validation, constants, directory, i, marks, out failure))
+            if (!this.LowerOperation(library, body, this.validation, constants, directory, i, marks, out failure))
             {
                 return false;
             }

@@ -9,32 +9,32 @@ namespace XunitTest;
 
 public class DeferredEmissionTest
 {
-    private const string Snapshot = "var x = 1\nlet y = work: do\n    defer => x = 2\n    exit to work: x\nif y == 1 and x == 2 => writeLine(\"ok\")";
+    private const string Snapshot = "var x = 1\nlet y = work: do\n    defer => x = 2\n    exit to work: x\nif y == 1 and x == 2 => Console.writeLine(\"ok\")";
 
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "DeferredOnly", "defer => writeLine(\"end\")", "end\n" },
-        { "DeferredEmpty", "defer => ()\nwriteLine(\"ok\")", "ok\n" },
-        { "DeferredOrder", "defer => writeLine(\"first\")\ndefer => writeLine(\"second\")\nwriteLine(\"body\")", "body\nsecond\nfirst\n" },
+        { "DeferredOnly", "defer => Console.writeLine(\"end\")", "end\n" },
+        { "DeferredEmpty", "defer => ()\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "DeferredOrder", "defer => Console.writeLine(\"first\")\ndefer => Console.writeLine(\"second\")\nConsole.writeLine(\"body\")", "body\nsecond\nfirst\n" },
         { "DeferredSnapshot", Snapshot, "ok\n" },
-        { "DeferredRead", "var x = 1\ndefer\n    if x == 2 => writeLine(\"ok\")\nx = 2", "ok\n" },
-        { "DeferredBranch", "if true => defer => writeLine(\"branch\")\nif false => defer => writeLine(\"bad\")\nwriteLine(\"end\")", "branch\nend\n" },
-        { "DeferredNested", "defer => writeLine(\"last\")\ndefer\n    defer => writeLine(\"inner\")\n    writeLine(\"outer\")", "outer\ninner\nlast\n" },
-        { "DeferredSelfExit", "defer => writeLine(\"last\")\ndefer\n    defer => writeLine(\"inner\")\n    if true => exit\n    writeLine(\"bad\")", "inner\nlast\n" },
-        { "DeferredInnerLoop", "defer\n    var x = 0\n    loop\n        x += 1\n        if x == 1 => continue\n        exit\n    if x == 2 => writeLine(\"ok\")", "ok\n" },
-        { "DeferredContinue", "var x = 0\nwhile x < 3\n    defer => writeLine(\"iteration\")\n    x += 1\n    if x < 3 => continue\n    exit\nwriteLine(\"end\")", "iteration\niteration\niteration\nend\n" },
-        { "DeferredUnregistered", "loop\n    exit\n    defer => writeLine(\"bad\")\nwriteLine(\"ok\")", "ok\n" },
-        { "DeferredYield", "var x = 1\nlet y = choice: if true\n    defer => x = 2\n    loop => yield to choice: x\nelse => 3\nif y == 1 and x == 2 => writeLine(\"ok\")", "ok\n" },
-        { "DeferredResultInside", "defer\n    var c = true\n    let x = if c => 1 + 2 else => 4\n    if x == 3 => writeLine(\"ok\")", "ok\n" },
-        { "DeferredOperandTransfer", "let x = outer: do\n    defer => writeLine(\"outer\")\n    let y = work: do\n        defer => writeLine(\"work\")\n        exit to work: (if false => 1 else => exit to outer: 2)\n    exit to outer: y\nif x == 2 => writeLine(\"ok\")", "work\nouter\nok\n" },
-        { "DeferredUnitExit", "defer => writeLine(\"end\")\ndefer => exit ()", "end\n" },
-        { "DeferredMillion", "var x = 0\nwhile x < 1000000\n    defer => x += 1\n    continue\nif x == 1000000 => writeLine(\"ok\")", "ok\n" },
-        { "DeferredPartialDelivery", "var c = true\nlet x = if c => 1 else\n    defer => loop => ()\n    yield 2\nif x == 1 => writeLine(\"ok\")", "ok\n" },
-        { "DeferredDirective", "var x = 0\n#if true\n    defer\n        if x == 1 => writeLine(\"ok\")\nx = 1", "ok\n" },
-        { "DeferredSwitch", "var x = 0\nloop\n    #switch\n        #case true\n            defer => x = 1\n            exit\n        #case _\n            defer => x = 2\n    writeLine(\"bad\")\nif x == 1 => writeLine(\"ok\")", "ok\n" },
-        { "DeferredSelectedLocal", "#if true\n    var x = 0\n    defer\n        if x == 1 => writeLine(\"ok\")\nx = 1", "ok\n" },
-        { "DeferredBooleanResult", "var c = true\nlet x = work: do\n    defer => c = false\n    exit to work: c\nif x and not c => writeLine(\"ok\")", "ok\n" },
-        { "DeferredMultiExit", "var x = 0\nlet y = work: do\n    defer\n        defer => x += 10\n        if true => exit\n        if false => exit\n        x += 100\n    defer => x += 1\n    exit to work: x\nif y == 0 and x == 11 => writeLine(\"ok\")", "ok\n" },
+        { "DeferredRead", "var x = 1\ndefer\n    if x == 2 => Console.writeLine(\"ok\")\nx = 2", "ok\n" },
+        { "DeferredBranch", "if true => defer => Console.writeLine(\"branch\")\nif false => defer => Console.writeLine(\"bad\")\nConsole.writeLine(\"end\")", "branch\nend\n" },
+        { "DeferredNested", "defer => Console.writeLine(\"last\")\ndefer\n    defer => Console.writeLine(\"inner\")\n    Console.writeLine(\"outer\")", "outer\ninner\nlast\n" },
+        { "DeferredSelfExit", "defer => Console.writeLine(\"last\")\ndefer\n    defer => Console.writeLine(\"inner\")\n    if true => exit\n    Console.writeLine(\"bad\")", "inner\nlast\n" },
+        { "DeferredInnerLoop", "defer\n    var x = 0\n    loop\n        x += 1\n        if x == 1 => continue\n        exit\n    if x == 2 => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredContinue", "var x = 0\nwhile x < 3\n    defer => Console.writeLine(\"iteration\")\n    x += 1\n    if x < 3 => continue\n    exit\nConsole.writeLine(\"end\")", "iteration\niteration\niteration\nend\n" },
+        { "DeferredUnregistered", "loop\n    exit\n    defer => Console.writeLine(\"bad\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "DeferredYield", "var x = 1\nlet y = choice: if true\n    defer => x = 2\n    loop => yield to choice: x\nelse => 3\nif y == 1 and x == 2 => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredResultInside", "defer\n    var c = true\n    let x = if c => 1 + 2 else => 4\n    if x == 3 => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredOperandTransfer", "let x = outer: do\n    defer => Console.writeLine(\"outer\")\n    let y = work: do\n        defer => Console.writeLine(\"work\")\n        exit to work: (if false => 1 else => exit to outer: 2)\n    exit to outer: y\nif x == 2 => Console.writeLine(\"ok\")", "work\nouter\nok\n" },
+        { "DeferredUnitExit", "defer => Console.writeLine(\"end\")\ndefer => exit ()", "end\n" },
+        { "DeferredMillion", "var x = 0\nwhile x < 1000000\n    defer => x += 1\n    continue\nif x == 1000000 => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredPartialDelivery", "var c = true\nlet x = if c => 1 else\n    defer => loop => ()\n    yield 2\nif x == 1 => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredDirective", "var x = 0\n#if true\n    defer\n        if x == 1 => Console.writeLine(\"ok\")\nx = 1", "ok\n" },
+        { "DeferredSwitch", "var x = 0\nloop\n    #switch\n        #case true\n            defer => x = 1\n            exit\n        #case _\n            defer => x = 2\n    Console.writeLine(\"bad\")\nif x == 1 => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredSelectedLocal", "#if true\n    var x = 0\n    defer\n        if x == 1 => Console.writeLine(\"ok\")\nx = 1", "ok\n" },
+        { "DeferredBooleanResult", "var c = true\nlet x = work: do\n    defer => c = false\n    exit to work: c\nif x and not c => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredMultiExit", "var x = 0\nlet y = work: do\n    defer\n        defer => x += 10\n        if true => exit\n        if false => exit\n        x += 100\n    defer => x += 1\n    exit to work: x\nif y == 0 and x == 11 => Console.writeLine(\"ok\")", "ok\n" },
     };
 
     [Theory]
@@ -43,8 +43,8 @@ public class DeferredEmissionTest
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
     [Theory]
-    [InlineData("DeferredOperandOverflow", "var x = 2147483647\nlet y = work: do\n    defer => writeLine(\"bad\")\n    exit to work: x + 1\nwriteLine(\"bad\")", "", 4, 19)]
-    [InlineData("DeferredBodyOverflow", "var x = 2147483647\ndefer => writeLine(\"bad\")\ndefer\n    writeLine(\"begin\")\n    x += 1\n    writeLine(\"bad\")", "begin\n", 5, 5)]
+    [InlineData("DeferredOperandOverflow", "var x = 2147483647\nlet y = work: do\n    defer => Console.writeLine(\"bad\")\n    exit to work: x + 1\nConsole.writeLine(\"bad\")", "", 4, 19)]
+    [InlineData("DeferredBodyOverflow", "var x = 2147483647\ndefer => Console.writeLine(\"bad\")\ndefer\n    Console.writeLine(\"begin\")\n    x += 1\n    Console.writeLine(\"bad\")", "begin\n", 5, 5)]
     public void OverflowStopsCleanupAndDelivery(string name, string source, string stdout, int line, int column)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
 
@@ -73,7 +73,7 @@ public class DeferredEmissionTest
     [Fact]
     public void RepeatedExpansionReusesLocalStorage()
     {
-        var c = MinimalEmissionTest.Analyze("var c = true\nloop\n    defer\n        var x = 1\n        x += 1\n        if x == 2 => writeLine(\"ok\")\n    if c => exit\n    continue");
+        var c = MinimalEmissionTest.Analyze("var c = true\nloop\n    defer\n        var x = 1\n        x += 1\n        if x == 2 => Console.writeLine(\"ok\")\n    if c => exit\n    continue");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies[0];
         Assert.Equal(2, body.Places.Count(x => x.Kind == OwnershipPlaceKind.Local));
@@ -118,7 +118,7 @@ public class DeferredEmissionTest
     [Fact]
     public void DivergentCleanupHasNoRuntimeDeliveryOrPhi()
     {
-        var c = MinimalEmissionTest.Analyze("let x = work: do\n    defer => loop => ()\n    exit to work: 1\nwriteLine(\"bad\")");
+        var c = MinimalEmissionTest.Analyze("let x = work: do\n    defer => loop => ()\n    exit to work: 1\nConsole.writeLine(\"bad\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies[0];
         Assert.Contains(body.DeferredPlans, plan => body.IsReachable(plan.Entry) && !body.IsReachable(plan.Continuation));
@@ -132,7 +132,7 @@ public class DeferredEmissionTest
     [Fact]
     public void DivergentCleanupChecksRemainingBodiesAndRunsUntilKilled()
     {
-        const string Source = "var x = 1\ndefer\n    x = 2\n    writeLine(\"bad\")\ndefer => loop => ()\nwriteLine(\"begin\")";
+        const string Source = "var x = 1\ndefer\n    x = 2\n    Console.writeLine(\"bad\")\ndefer => loop => ()\nConsole.writeLine(\"begin\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var body = c.Ownership.Bodies[0];
@@ -245,6 +245,6 @@ public class DeferredEmissionTest
             source.Append(' ', (i + 2) * 4).Append("()\n");
         }
 
-        return source.Append("    n += 1\n    if n == 1 => continue\n    if n == 2 => continue\n    exit\nwriteLine(\"ok\")").ToString();
+        return source.Append("    n += 1\n    if n == 1 => continue\n    if n == 2 => continue\n    exit\nConsole.writeLine(\"ok\")").ToString();
     }
 }

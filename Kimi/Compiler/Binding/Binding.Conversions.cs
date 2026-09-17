@@ -93,6 +93,23 @@ public sealed partial class Binding
                 return Complete(conversion, actual);
             }
 
+            if (IsObjectSemantics(actual.Semantics) && pattern.Origin is null &&
+                this.TryPayloadProjection(conversion.Left, pattern, actual, scope, out var payload))
+            {
+                Complete(conversion.Right, payload);
+                conversion.ConversionBinding = ConversionBinding.PayloadBorrow;
+                return Complete(conversion, payload);
+            }
+
+            if (pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
+                this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
+            {
+                var storage = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.PlaceOrigin(conversion.Left));
+                Complete(conversion.Right, storage);
+                conversion.ConversionBinding = ConversionBinding.Borrow;
+                return Complete(conversion, storage);
+            }
+
             if (!this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out var adapted, out _, out _) ||
                 !FitsType(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))

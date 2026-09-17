@@ -3,10 +3,10 @@
 `Hello.kimi` contains exactly one source line:
 
 ```kimi
-::Core.writeLine("Hello, world!")
+::Kimi.Console.writeLine("Hello, world!")
 ```
 
-The current emitter supports this literal-output slice of SPEC, including empty strings and UTF-8/NUL contents. Other selected implementation bodies and executable operations receive unsupported diagnostics. It is a partial compiler, not a complete Core library or the broader first-executable subset.
+The current emitter supports this literal-output slice of SPEC, including empty strings and UTF-8/NUL contents. Other selected implementation bodies and executable operations receive unsupported diagnostics. It is a partial compiler, not a complete Kimi library or the broader first-executable subset.
 
 ## Configure
 

@@ -21,7 +21,7 @@ public class LogicalTerminalContinuationTest
     [InlineData("Both", "truth(stop()) and truth(stop())", true, true)]
     [InlineData("Nested", "(truth(stop()) and c) or c", true, true)]
     public void AbsentOperandsNeverCreateRuntimeResults(string name, string expression, bool condition, bool abort)
-        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + name, Source("var x = 1", expression, "return", "let y = x", condition) + "\nwriteLine(\"done\")" + Helpers, abort ? string.Empty : "done\n", abort ? 1 : 0, abort ? "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n" : string.Empty);
+        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + name, Source("var x = 1", expression, "return", "let y = x", condition) + "\nConsole.writeLine(\"done\")" + Helpers, abort ? string.Empty : "done\n", abort ? 1 : 0, abort ? "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n" : string.Empty);
 
     [Theory]
     [InlineData("AndReturn", "c and (return)", true, "done\n")]
@@ -29,15 +29,15 @@ public class LogicalTerminalContinuationTest
     [InlineData("OrReturn", "c or (return)", false, "done\n")]
     [InlineData("OrSkipReturn", "c or (return)", true, "tail\ndone\n")]
     public void RightTransferOnlyRunsOnTheEvaluatedPath(string name, string expression, bool condition, string stdout)
-        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + name, Source("var x = 1", expression, "writeLine(\"tail\")\n        return", "let y = x", condition) + "\nwriteLine(\"done\")", stdout);
+        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + name, Source("var x = 1", expression, "Console.writeLine(\"tail\")\n        return", "let y = x", condition) + "\nConsole.writeLine(\"done\")", stdout);
 
     [Theory]
     [InlineData("var x: i32", "truth(stop()) and effect(x = 2)", "return", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "truth(stop()) or effect(x = 2)", "return", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x: i32", "truth(stop()) and effect(x = 2)", "return", "x = 3", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"", "truth(stop()) and take(s)", "return", "writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "c and truth(stopTake(s))", "return", "writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "c or truth(stopTake(s))", "return", "writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "truth(stop()) and take(s)", "return", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "c and truth(stopTake(s))", "return", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "c or truth(stopTake(s))", "return", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("var x: i32", "c and (return)", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "c or (return)", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "c and (choice: do\n            if c => return\n            exit to choice: true\n        )", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
@@ -65,7 +65,7 @@ public class LogicalTerminalContinuationTest
     [InlineData("and")]
     [InlineData("or")]
     public void DefaultLogicalDivergenceChecksAndNeverReturns(string op)
-        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + "Default" + op, "func value(c: bool, x?: i32 = (do\n    var n = 1\n    do\n        let b = (if (loop => continue) => true else => false) " + op + " c\n        loop => continue\n    n\n)) -> i32 => x\nwriteLine(\"begin\")\nvalue(true)", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + "Default" + op, "func value(c: bool, x?: i32 = (do\n    var n = 1\n    do\n        let b = (if (loop => continue) => true else => false) " + op + " c\n        loop => continue\n    n\n)) -> i32 => x\nConsole.writeLine(\"begin\")\nvalue(true)", "begin\n", timeoutMilliseconds: 200);
 
     [Fact]
     public void ReloadedLogicalTerminalCheckingAllocatesNothingWhenWarm()

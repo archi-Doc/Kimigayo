@@ -19,6 +19,7 @@ internal enum EmissionOpcode : byte
     Sequence,
     StoreScalar,
     StoreElement,
+    SwapScalars,
     Scalar,
     Convert,
     Phi,

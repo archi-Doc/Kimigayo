@@ -12,21 +12,21 @@ namespace XunitTest;
 public class OwnershipAnalysisTest
 {
     [Theory]
-    [InlineData("writeLine(\"Hello world\")")]
-    [InlineData("public func main()\n    let message = \"Hello world\"\n    writeLine(message)")]
+    [InlineData("Console.writeLine(\"Hello world\")")]
+    [InlineData("public func main()\n    let message = \"Hello world\"\n    Console.writeLine(message)")]
     [InlineData("let x: i32\nx = 1\nlet y = x\nlet z = x")]
-    [InlineData("var s = \"a\"\nwriteLine(s)\ns = \"b\"\nwriteLine(s)")]
-    [InlineData("func echo(x: string) -> string => x\nwriteLine(echo(\"x\"))")]
-    [InlineData("func echo(x: string) -> string\n    return x\nwriteLine(echo(\"x\"))")]
-    [InlineData("func f(c: bool)\n    let s: string\n    if c\n        s = \"a\"\n    else\n        s = \"b\"\n    writeLine(s)")]
-    [InlineData("func f(c: bool)\n    while c\n        let s = \"a\"\n        writeLine(s)")]
+    [InlineData("var s = \"a\"\nConsole.writeLine(s)\ns = \"b\"\nConsole.writeLine(s)")]
+    [InlineData("func echo(x: string) -> string => x\nConsole.writeLine(echo(\"x\"))")]
+    [InlineData("func echo(x: string) -> string\n    return x\nConsole.writeLine(echo(\"x\"))")]
+    [InlineData("func f(c: bool)\n    let s: string\n    if c\n        s = \"a\"\n    else\n        s = \"b\"\n    Console.writeLine(s)")]
+    [InlineData("func f(c: bool)\n    while c\n        let s = \"a\"\n        Console.writeLine(s)")]
     [InlineData("func f(c: bool)\n    while c\n        let s = \"a\"\n        continue")]
     [InlineData("func f()\n    while true\n        let s = \"a\"\n        exit")]
     [InlineData("func f()\n    while true\n        ()")]
-    [InlineData("let s = \"a\"\nif s == \"a\"\n    writeLine(s)")]
-    [InlineData("#if false\nfunc excluded()\n    defer => writeLine(\"later\")\nwriteLine(\"selected\")")]
+    [InlineData("let s = \"a\"\nif s == \"a\"\n    Console.writeLine(s)")]
+    [InlineData("#if false\nfunc excluded()\n    defer => Console.writeLine(\"later\")\nConsole.writeLine(\"selected\")")]
     [InlineData("func sink<T>(x: T) => ()\nfunc twice<T>(x: T)\n    T is Copy\n    sink(x)\n    sink(x)")]
-    [InlineData("defer => writeLine(\"later\")")]
+    [InlineData("defer => Console.writeLine(\"later\")")]
     public void SupportedProgramsVerify(string source)
     {
         var c = Parse(source);
@@ -34,17 +34,17 @@ public class OwnershipAnalysisTest
     }
 
     [Theory]
-    [InlineData("let s: string\nwriteLine(s)", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"a\"\nwriteLine(s)\nwriteLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"a\"\nwriteLine(s)\nif s == \"x\"\n    ()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s: string\nConsole.writeLine(s)", OwnershipFailure.UninitializedUse)]
+    [InlineData("let s = \"a\"\nConsole.writeLine(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"a\"\nConsole.writeLine(s)\nif s == \"x\"\n    ()", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let s = \"a\"\ns = \"b\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"a\"\nwriteLine(s)\ns = \"b\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    writeLine(s)", OwnershipFailure.UninitializedUse)]
-    [InlineData("func f(c: bool)\n    let s = \"a\"\n    if c\n        writeLine(s)\n    writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"a\"\nConsole.writeLine(s)\ns = \"b\"", OwnershipFailure.ReassignedLet)]
+    [InlineData("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    Console.writeLine(s)", OwnershipFailure.UninitializedUse)]
+    [InlineData("func f(c: bool)\n    let s = \"a\"\n    if c\n        Console.writeLine(s)\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(c: bool)\n    let s: string\n    if c\n        s = \"a\"\n    s = \"b\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("func f(c: bool)\n    let s = \"a\"\n    while c\n        writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(c: bool)\n    let s = \"a\"\n    while c\n        Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(c: bool)\n    let s: string\n    while c\n        s = \"a\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s: string\nif true\n    s = \"a\"\nwriteLine(s)", OwnershipFailure.UninitializedUse)]
+    [InlineData("let s: string\nif true\n    s = \"a\"\nConsole.writeLine(s)", OwnershipFailure.UninitializedUse)]
     public void StateErrorsAreDiagnosedAfterConvergence(string source, OwnershipFailure failure)
     {
         var c = Parse(source);
@@ -70,7 +70,7 @@ public class OwnershipAnalysisTest
     [Fact]
     public void ImplicitBorrowIsRecordedAndChecksMovedState()
     {
-        var c = Parse("func show(s: ref/string) => ()\nlet s = \"a\"\nwriteLine(s)\nshow(s)");
+        var c = Parse("func show(s: ref/string) => ()\nlet s = \"a\"\nConsole.writeLine(s)\nshow(s)");
         c.Ownership.Analyze();
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
         Assert.Contains(Body(c).Operations, x => x.Use == PlaceUseKind.Borrow);
@@ -110,7 +110,7 @@ public class OwnershipAnalysisTest
     [Fact]
     public void ExitCleanupFollowsDeclarationOrderAndSkipsMovedValues()
     {
-        var c = Parse("func f(first: string, second: string)\n    let a = \"a\"\n    let b: string\n    b = \"b\"\n    writeLine(a)\n    return");
+        var c = Parse("func f(first: string, second: string)\n    let a = \"a\"\n    let b: string\n    b = \"b\"\n    Console.writeLine(a)\n    return");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var plan = body.CleanupPlans.First(x => x.Reason == CleanupReason.Return && x.Edge >= 0 && body.IsReachable(body.Edges[x.Edge].From));
@@ -166,10 +166,10 @@ public class OwnershipAnalysisTest
     [Fact]
     public void RebindInvalidatesAllVerification()
     {
-        var c = Parse("let s = \"a\"\nwriteLine(s)");
+        var c = Parse("let s = \"a\"\nConsole.writeLine(s)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var old = Body(c);
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let other: string\nwriteLine(other)");
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let other: string\nConsole.writeLine(other)");
         c.Bind();
         Assert.False(c.Ownership.Result.IsVerified);
         Assert.False(old.IsVerified);
@@ -190,7 +190,7 @@ public class OwnershipAnalysisTest
     [Fact]
     public void BodylessRequirementsAreNotOwnershipBodies()
     {
-        var c = Parse("contract Named\n    func name(self: ref/Self) -> i32\nwriteLine(\"x\")");
+        var c = Parse("contract Named\n    func name(self: ref/Self) -> i32\nConsole.writeLine(\"x\")");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         Assert.DoesNotContain(c.Ownership.Bodies, x => x.Function.IsRequirement);
     }
@@ -198,7 +198,7 @@ public class OwnershipAnalysisTest
     [Fact]
     public void InputStatesReplayWithinBlocks()
     {
-        var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        writeLine(s)\n    let t = 1");
+        var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        Console.writeLine(s)\n    let t = 1");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var s = body.Places.Single(x => x.Source is FieldKoto { NameKoto.IdentifierName: "s" }).Id;
@@ -218,7 +218,7 @@ public class OwnershipAnalysisTest
         var source = new System.Text.StringBuilder("func f(c: bool)\n");
         for (var i = 0; i < count; i++)
         {
-            source.Append("    var s").Append(i).Append(" = \"a\"\n    if c\n        writeLine(s").Append(i).Append(")\n");
+            source.Append("    var s").Append(i).Append(" = \"a\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n");
         }
 
         var c = Parse(source.ToString());
@@ -247,10 +247,10 @@ public class OwnershipAnalysisTest
     [Theory]
     [InlineData("let x: i32\nx = 1", true)]
     [InlineData("let x = 1\nx = 2", false)]
-    [InlineData("let s: string\nwriteLine(s)", false)]
-    [InlineData("let s = \"a\"\nwriteLine(s)\nwriteLine(s)", false)]
+    [InlineData("let s: string\nConsole.writeLine(s)", false)]
+    [InlineData("let s = \"a\"\nConsole.writeLine(s)\nConsole.writeLine(s)", false)]
     [InlineData("let s = \"a\" + \"b\"", false)]
-    [InlineData("writeLine(missing)", false)]
+    [InlineData("Console.writeLine(missing)", false)]
     public async Task ProjectBuildRequiresOwnershipVerification(string source, bool expected)
     {
         var c = Compilation.CreateForTest();
@@ -285,7 +285,7 @@ public class OwnershipAnalysisTest
     [Fact]
     public void BranchMoveMakesExitCleanupConditional()
     {
-        var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        writeLine(s)");
+        var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        Console.writeLine(s)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var local = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Local);
@@ -306,7 +306,7 @@ public class OwnershipAnalysisTest
     [Fact]
     public void LoopTransferCleansInnerLocalAndKeepsOuterLocal()
     {
-        var c = Parse("func f(c: bool)\n    let outer = \"a\"\n    while c\n        let inner = \"b\"\n        continue\n    writeLine(outer)");
+        var c = Parse("func f(c: bool)\n    let outer = \"a\"\n    while c\n        let inner = \"b\"\n        continue\n    Console.writeLine(outer)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var plan = Assert.Single(body.CleanupPlans, x => x.Reason == CleanupReason.LoopTransfer);

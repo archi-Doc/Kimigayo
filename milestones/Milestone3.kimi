@@ -1,6 +1,6 @@
 // Milestone 3: function arguments/results, return, and deferred cleanup.
 func sumTo(limit: i32) -> i32
-    defer => ::Core.writeLine("Leaving sumTo.")
+    defer => ::Kimi.Console.writeLine("Leaving sumTo.")
     if limit < 0
         $abort("Limit must be nonnegative")
 
@@ -12,8 +12,8 @@ func sumTo(limit: i32) -> i32
     return total
 
 public func main()
-    defer => ::Core.writeLine("Leaving main.")
+    defer => ::Kimi.Console.writeLine("Leaving main.")
     let total = sumTo(10) // Change to -1 to observe Abort without cleanup.
     if total != 55
         $abort("Unexpected sum")
-    ::Core.writeLine("Sum is 55.")
+    ::Kimi.Console.writeLine("Sum is 55.")

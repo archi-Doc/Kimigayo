@@ -8,33 +8,33 @@ namespace XunitTest;
 
 public class StringResultEmissionTest
 {
-    private const string Choice = "var c = true\nlet result = if c => \"a\" else => \"b\"\nwriteLine(result)";
-    private const string SelfChoice = "var c = true\nvar text = \"old\"\ntext = if c => text else => \"new\"\nwriteLine(text)";
-    private const string Deferred = "var i = 0\nloop\n    defer\n        let result = if i == 1 => \"first\" else => \"later\"\n        writeLine(result)\n    i += 1\n    if i == 3 => exit\n    continue";
+    private const string Choice = "var c = true\nlet result = if c => \"a\" else => \"b\"\nConsole.writeLine(result)";
+    private const string SelfChoice = "var c = true\nvar text = \"old\"\ntext = if c => text else => \"new\"\nConsole.writeLine(text)";
+    private const string Deferred = "var i = 0\nloop\n    defer\n        let result = if i == 1 => \"first\" else => \"later\"\n        Console.writeLine(result)\n    i += 1\n    if i == 3 => exit\n    continue";
 
     public static TheoryData<string, string, string, string> Fixtures => new()
     {
         { "StringResultTrue", Choice, "a\n", "a=1;b=0" },
         { "StringResultFalse", Choice.Replace("true", "false"), "b\n", "a=0;b=1" },
-        { "StringResultEmpty", "writeLine(if true => \"\" else => \"unused\")", "\n", "=1;unused=0" },
-        { "StringResultDirectCall", "writeLine(if false => \"a\" else => \"b\")", "b\n", "a=0;b=1" },
-        { "StringResultNested", "let result = if true => (if false => \"a\" else => \"b\") else => \"c\"\nwriteLine(result)", "b\n", "a=0;b=1;c=0" },
-        { "StringResultDo", "let text = work: do\n    exit to work: \"a\"\nwriteLine(text)", "a\n", "a=1" },
-        { "StringResultTrailing", "let text = do => \"a\"\nwriteLine(text)", "a\n", "a=1" },
-        { "StringResultElseIf", "var n = 2\nlet text = if n == 1 => \"a\" else if n == 2 => \"b\" else => \"c\"\nwriteLine(text)", "b\n", "a=0;b=1;c=0" },
-        { "StringResultYield", "let text = choice: if true\n    loop => yield to choice: \"a\"\nelse => \"b\"\nwriteLine(text)", "a\n", "a=1;b=0" },
-        { "StringResultLoop", "var i = 0\nlet text = loop\n    i += 1\n    if i < 3 => continue\n    exit \"a\"\nwriteLine(text)", "a\n", "a=1" },
-        { "StringResultRepeated", "var i = 0\nwhile i < 3\n    let text = if i == 0 => \"first\" else => \"later\"\n    writeLine(text)\n    i += 1", "first\nlater\nlater\n", "first=1;later=2" },
+        { "StringResultEmpty", "Console.writeLine(if true => \"\" else => \"unused\")", "\n", "=1;unused=0" },
+        { "StringResultDirectCall", "Console.writeLine(if false => \"a\" else => \"b\")", "b\n", "a=0;b=1" },
+        { "StringResultNested", "let result = if true => (if false => \"a\" else => \"b\") else => \"c\"\nConsole.writeLine(result)", "b\n", "a=0;b=1;c=0" },
+        { "StringResultDo", "let text = work: do\n    exit to work: \"a\"\nConsole.writeLine(text)", "a\n", "a=1" },
+        { "StringResultTrailing", "let text = do => \"a\"\nConsole.writeLine(text)", "a\n", "a=1" },
+        { "StringResultElseIf", "var n = 2\nlet text = if n == 1 => \"a\" else if n == 2 => \"b\" else => \"c\"\nConsole.writeLine(text)", "b\n", "a=0;b=1;c=0" },
+        { "StringResultYield", "let text = choice: if true\n    loop => yield to choice: \"a\"\nelse => \"b\"\nConsole.writeLine(text)", "a\n", "a=1;b=0" },
+        { "StringResultLoop", "var i = 0\nlet text = loop\n    i += 1\n    if i < 3 => continue\n    exit \"a\"\nConsole.writeLine(text)", "a\n", "a=1" },
+        { "StringResultRepeated", "var i = 0\nwhile i < 3\n    let text = if i == 0 => \"first\" else => \"later\"\n    Console.writeLine(text)\n    i += 1", "first\nlater\nlater\n", "first=1;later=2" },
         { "StringResultSelfTrue", SelfChoice, "old\n", "old=1;new=0" },
         { "StringResultSelfFalse", SelfChoice.Replace("true", "false"), "new\n", "old=1;new=1" },
-        { "StringResultSnapshot", "var text = \"old\"\nlet result = work: do\n    defer => text = \"new\"\n    exit to work: text\nwriteLine(result)\nwriteLine(text)", "old\nnew\n", "old=1;new=1" },
-        { "StringResultLocalMove", "var text = \"local\"\nlet result = if true => text else => \"other\"\nwriteLine(result)", "local\n", "local=1;other=0" },
+        { "StringResultSnapshot", "var text = \"old\"\nlet result = work: do\n    defer => text = \"new\"\n    exit to work: text\nConsole.writeLine(result)\nConsole.writeLine(text)", "old\nnew\n", "old=1;new=1" },
+        { "StringResultLocalMove", "var text = \"local\"\nlet result = if true => text else => \"other\"\nConsole.writeLine(result)", "local\n", "local=1;other=0" },
         { "StringResultDeferred", Deferred, "first\nlater\nlater\n", "first=1;later=2" },
         { "StringResultDrop", "let text = if true => \"a\" else => \"b\"", string.Empty, "a=1;b=0" },
-        { "StringResultDead", "if false\n    let text = if true => \"a\" else => \"b\"\nwriteLine(\"ok\")", "ok\n", "a=0;b=0;ok=1" },
-        { "StringResultOutward", "let text = outer: do\n    let result = work: do\n        exit to work: (if false => \"a\" else => exit to outer: \"b\")\n    exit to outer: result\nwriteLine(text)", "b\n", "a=0;b=1" },
-        { "StringResultReplacementOrder", "var text = \"old\"\ntext = work: do\n    defer => writeLine(\"cleanup\")\n    exit to work: \"new\"\nwriteLine(text)", "cleanup\nnew\n", "old=1;new=1;cleanup=1" },
-        { "StringResultPartialDivergence", "let text = if true => \"a\" else\n    defer => loop => ()\n    yield \"b\"\nwriteLine(text)", "a\n", "a=1;b=0" },
+        { "StringResultDead", "if false\n    let text = if true => \"a\" else => \"b\"\nConsole.writeLine(\"ok\")", "ok\n", "a=0;b=0;ok=1" },
+        { "StringResultOutward", "let text = outer: do\n    let result = work: do\n        exit to work: (if false => \"a\" else => exit to outer: \"b\")\n    exit to outer: result\nConsole.writeLine(text)", "b\n", "a=0;b=1" },
+        { "StringResultReplacementOrder", "var text = \"old\"\ntext = work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work: \"new\"\nConsole.writeLine(text)", "cleanup\nnew\n", "old=1;new=1;cleanup=1" },
+        { "StringResultPartialDivergence", "let text = if true => \"a\" else\n    defer => loop => ()\n    yield \"b\"\nConsole.writeLine(text)", "a\n", "a=1;b=0" },
     };
 
     [Theory]
@@ -127,7 +127,7 @@ public class StringResultEmissionTest
     [Fact]
     public void LoopBackedgesKeepTheResultUninitializedWithoutFlags()
     {
-        var c = MinimalEmissionTest.Analyze("var i = 0\nlet text = loop\n    i += 1\n    if i < 3 => continue\n    exit \"a\"\nwriteLine(text)");
+        var c = MinimalEmissionTest.Analyze("var i = 0\nlet text = loop\n    i += 1\n    if i < 3 => continue\n    exit \"a\"\nConsole.writeLine(text)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[0];
         var result = Assert.Single(body.SlotResults);
@@ -226,8 +226,8 @@ public class StringResultEmissionTest
     [Theory]
     [InlineData("let text = if true => \"a\"")]
     [InlineData("if false\n    let text = if true => \"a\"")]
-    [InlineData("func f() -> string => if true => \"a\" else => " + MinimalEmissionTest.FloatExpression + "\nwriteLine(\"ok\")")]
-    [InlineData("let text = if true => \"a\" else => \"b\"\nwriteLine(text)\nwriteLine(text)")]
+    [InlineData("func f() -> string => if true => \"a\" else => " + MinimalEmissionTest.FloatExpression + "\nConsole.writeLine(\"ok\")")]
+    [InlineData("let text = if true => \"a\" else => \"b\"\nConsole.writeLine(text)\nConsole.writeLine(text)")]
     public void InvalidAndOutOfScopeResultsPublishNoIr(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

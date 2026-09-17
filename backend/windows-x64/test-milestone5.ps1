@@ -97,11 +97,11 @@ foreach ($level in @('O0', 'O2')) {
                 $program = @'
 struct Item
     public var value: i32 = 3
-    deinit => ::Core.writeLine("drop")
+    deinit => ::Kimi.Console.writeLine("drop")
 func borrow(item: ref/Item) -> ref/Item from item => item
 let value = borrow(Item.init()).value
 if value != 3 => $abort("Unexpected value")
-::Core.writeLine("ok")
+::Kimi.Console.writeLine("ok")
 '@
                 [IO.File]::WriteAllText($copy, $program, $utf8)
             }
@@ -130,7 +130,7 @@ $invalid = [ordered]@{
     MissingStoredOrigin = $original.Replace('let counter: ref/Counter from source', 'let counter: ref/Counter')
     WrongArgument = $original.Replace('Counter.init()', 'Counter.init(true)')
     WrongReferent = $original.Replace('borrowCounter(counter@ref)', 'borrowCounter(1)')
-    MovedRead = $original.Replace('::Core.writeLine("Done.")', "let invalid = counter.value`n    ::Core.writeLine(`"Done.`")")
+    MovedRead = $original.Replace('::Kimi.Console.writeLine("Done.")', "let invalid = counter.value`n    ::Kimi.Console.writeLine(`"Done.`")")
     TemporaryEscape = $original.Replace('CounterView.init(borrowCounter(counter@ref))', 'CounterView.init(borrowCounter(Counter.init()))')
     DoubleExclusive = "struct S`n    public var value: i32 = 0`nfunc both(a: uniq/S, b: uniq/S) => ()`nvar s = S.init()`nboth(s@uniq, s@uniq)"
     ParentDuringReborrow = "struct S`n    public var value: i32 = 0`nfunc bad(s: uniq/S)`n    let r = s@ref`n    s.value = 9`n    let n = r.value`nvar s = S.init()`nbad(s@uniq)"

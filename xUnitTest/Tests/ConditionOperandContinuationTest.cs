@@ -14,8 +14,8 @@ public class ConditionOperandContinuationTest
     [Theory]
     [InlineData("var x: i32", "x = 1", "()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "()", "x = 1", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "writeLine(x)", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "()", "writeLine(x)", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "Console.writeLine(x)", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "()", "Console.writeLine(x)", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "x = 1", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     public void SourceBranchesContributeFactsAfterTheMissingCondition(string declaration, string yes, string no, string tail, OwnershipFailure failure)
     {
@@ -28,7 +28,7 @@ public class ConditionOperandContinuationTest
     [Theory]
     [InlineData("BothWrite", "var x: i32", "x = 1", "x = 2", "let y = x")]
     [InlineData("Initialized", "let x = 1", "()", "()", "let y = x")]
-    [InlineData("Repair", "var x = \"s\"", "writeLine(x)", "()", "x = \"new\"\n    writeLine(x)")]
+    [InlineData("Repair", "var x = \"s\"", "Console.writeLine(x)", "()", "x = \"new\"\n    Console.writeLine(x)")]
     [InlineData("Transfers", "var x: i32", "return\n        x = 1", "return\n        x = 2", "let y = x")]
     public void CheckingBranchesHaveNoRuntimeExecution(string name, string declaration, string yes, string no, string tail)
         => ScalarEmissionTest.EmitFixture("NeverCondition" + Configuration + name, Source(declaration, yes, no, tail), string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -37,7 +37,7 @@ public class ConditionOperandContinuationTest
     public void NoncompletingDefaultConditionRetainsCallerState()
         => ScalarEmissionTest.EmitFixture(
             "NeverCondition" + Configuration + "Default",
-            "func value(y?: i32 = (if (loop => continue) => 1 else => 2)) -> i32 => y\nvar x = 1\nwriteLine(\"begin\")\nvalue()\nlet z = x",
+            "func value(y?: i32 = (if (loop => continue) => 1 else => 2)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue()\nlet z = x",
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -54,7 +54,7 @@ public class ConditionOperandContinuationTest
     public void MissingConditionRetainsOuterBorrowUntilAcquisitionEnds()
         => ScalarEmissionTest.EmitFixture(
             "NeverCondition" + Configuration + "Borrow",
-            Stop + "func inspect(s: ref/string, ready: bool) => ()\nvar s = \"s\"\ninspect(s, if stop() => true else => false)\ns = \"new\"\nwriteLine(s)",
+            Stop + "func inspect(s: ref/string, ready: bool) => ()\nvar s = \"s\"\ninspect(s, if stop() => true else => false)\ns = \"new\"\nConsole.writeLine(s)",
             string.Empty,
             1,
             "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -79,7 +79,7 @@ public class ConditionOperandContinuationTest
     [Fact]
     public void APartiallyTerminatingSourceBranchRetainsTheGuard()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, x: string)\n    if stop()\n        if c\n            writeLine(x)\n            return\n    else => ()\n    writeLine(x)\nf(true, \"s\")");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, x: string)\n    if stop()\n        if c\n            Console.writeLine(x)\n            return\n    else => ()\n    Console.writeLine(x)\nf(true, \"s\")");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }

@@ -21,14 +21,14 @@ public class TerminalBranchReplayTest
     [InlineData("Nested", "return", "if c\n                if c\n                    x = 3\n                    return\n                else\n                    x = 4\n                    exit\n            else\n                x = 5\n                return", true)]
     [InlineData("Chain", "return", "if c\n                x = 3\n                return\n            else\n                x = 4\n                return\n            x = 5\n            return", true)]
     public void TerminalBranchesReplayEachOriginalTarget(string name, string early, string dead, bool condition)
-        => ScalarEmissionTest.EmitFixture("NeverTerminalBranch" + Configuration + name, Source("var x: i32", early, dead, "x = 2", "let y = x", condition) + "\nwriteLine(\"done\")", condition ? "done\n" : string.Empty, condition ? 0 : 1, condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
+        => ScalarEmissionTest.EmitFixture("NeverTerminalBranch" + Configuration + name, Source("var x: i32", early, dead, "x = 2", "let y = x", condition) + "\nConsole.writeLine(\"done\")", condition ? "done\n" : string.Empty, condition ? 0 : 1, condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Theory]
     [InlineData("var x: i32", "return", "if c\n                x = 3\n                return\n            else => return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "if c => return else\n                x = 3\n                return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "if c\n                x = 3\n                return\n            else\n                x = 4\n                return", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "return", "if c\n                writeLine(s)\n                return\n            else => return", "()", "writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "return", "if c => return else\n                writeLine(s)\n                exit", "()", "writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "return", "if c\n                Console.writeLine(s)\n                return\n            else => return", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "return", "if c => return else\n                Console.writeLine(s)\n                exit", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "return", "if c\n                x = 3\n                return\n            else => return", "()", "x = 4", OwnershipFailure.ReassignedLet)]
     public void EveryBranchMustSupportTheCommonGuarantee(string declaration, string early, string dead, string tail, string use, OwnershipFailure failure)
     {

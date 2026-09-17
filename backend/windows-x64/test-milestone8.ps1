@@ -117,7 +117,7 @@ $invalid = [ordered]@{
     MixedChoices = $original.Replace('Box<string>.init("Unused item.")', 'Box<bool>.init(true)')
     MissingArgument = $original.Replace('.init("Chosen item.")', '.init()')
     DuplicateArgument = $original.Replace('.init("Chosen item.")', '.init("Chosen item.", "extra")')
-    MovedSelected = $original.Replace('let numbers =', "::Core.writeLine(selected.take())`n    let numbers =")
+    MovedSelected = $original.Replace('let numbers =', "::Kimi.Console.writeLine(selected.take())`n    let numbers =")
     MovedNumbers = $original.Replace('var total: i32 = 0', "let again = numbers.take()`n    var total: i32 = 0")
     UnprovenCopy = $original.Replace('return if useFirst', "let firstCopy = first`n            return if useFirst")
     DeinitExtraction = $original.Replace('public func take(self: Self)', "deinit => ()`n`n            public func take(self: Self)")

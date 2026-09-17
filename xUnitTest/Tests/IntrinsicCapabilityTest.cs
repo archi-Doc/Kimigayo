@@ -253,19 +253,19 @@ public class IntrinsicCapabilityTest
     public void CoreIdentityCanBeReadBeforePreparation()
     {
         var c = Compilation.CreateForTest();
-        var copy = c.Core.Copy;
+        var copy = c.Library.Copy;
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        Assert.Same(copy, c.Core.Copy);
-        Assert.Same(c.Core.Kotonoha, copy.Declaration.CodeContext.Kotonoha);
+        Assert.Same(copy, c.Library.Copy);
+        Assert.Same(c.Library.Kotonoha, copy.Declaration.CodeContext.Kotonoha);
     }
 
     [Fact]
     public void IncompatibleCompilerCoreCannotPassBinding()
     {
         var c = Parse("func inspect(x: i32) => ()");
-        c.Core.Kotonoha.CreateCodeContext().Parse((ContractKoto)c.Core.Copy.Declaration, "func userCode() -> i32");
+        c.Library.Kotonoha.CreateCodeContext().Parse((ContractKoto)c.Library.Copy.Declaration, "func userCode() -> i32");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidCoreIntrinsics_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
     }
 
     [Fact]
@@ -351,7 +351,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void IntrinsicCallsUseOrdinaryConstraintApplicability()
     {
-        var c = Parse("func copy<T>(x: T) -> T\n    T is ::Core.Copy and Core.Owned\n    return x\nlet x = copy(1)");
+        var c = Parse("func copy<T>(x: T) -> T\n    T is ::Kimi.Copy and Kimi.Owned\n    return x\nlet x = copy(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var bad = Parse("func copy<T>(x: T) -> T\n    T is Copy\n    return x\nlet x = copy(\"text\")");
         Assert.False(bad.Bind().IsComplete);
@@ -360,12 +360,12 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void QualifiedIntrinsicIdentitySurvivesLocalShadowingAndAliasLookup()
     {
-        var c = Parse("alias Core\ncontract Copy\ngroup Core\n    public contract Copy\nfunc f<T>(x: T)\n    T is ::Core.Copy\n    ()\nf(1)");
+        var c = Parse("alias Core\ncontract Copy\ngroup Core\n    public contract Copy\nfunc f<T>(x: T)\n    T is ::Kimi.Copy\n    ()\nf(1)");
         c.Bind();
         var f = Function(c, "f");
-        Assert.Same(c.Core.Copy, ((IsKoto)f.TypeConstraints[0]).BoundConstraint!.Contract);
+        Assert.Same(c.Library.Copy, ((IsKoto)f.TypeConstraints[0]).BoundConstraint!.Contract);
         Assert.Equal(IntrinsicKind.None, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Copy").BoundSymbol!.Intrinsic);
-        Assert.False(c.Core.IsCompleteLibrary);
+        Assert.False(c.Library.IsCompleteLibrary);
     }
 
     [Fact]
@@ -373,11 +373,11 @@ public class IntrinsicCapabilityTest
     {
         var c = Parse("struct S\n    Self is Copy\n    let x: i32\nfunc inspect(x: S) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var core = c.Core.Copy;
+        var core = c.Library.Copy;
         var s = c.Kotonoha.RootKoto.NestedContainers.Single();
         c.Kotonoha.CreateCodeContext().Parse(s, "let text: string");
         Assert.False(c.Bind().IsComplete);
-        Assert.Same(core, c.Core.Copy);
+        Assert.Same(core, c.Library.Copy);
     }
 
     [Theory]

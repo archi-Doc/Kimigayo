@@ -24,7 +24,7 @@ public class MixedTargetContinuationTest
     public void MixedTargetsReachTheirOwnExtents(string name, string body, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedTarget" + Configuration + name,
-            Source("var x: i32", body, "x = 2", "let y = x\n    writeLine(\"bad\")", condition) + "\nwriteLine(\"done\")",
+            Source("var x: i32", body, "x = 2", "let y = x\n    Console.writeLine(\"bad\")", condition) + "\nConsole.writeLine(\"done\")",
             name == "LoopExit" ? string.Empty : "done\n",
             name == "LoopExit" ? 1 : 0,
             name == "LoopExit" ? "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n" : string.Empty);
@@ -32,8 +32,8 @@ public class MixedTargetContinuationTest
     [Theory]
     [InlineData("var x: i32", "return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "x = 1\n                return", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "writeLine(x)\n                return", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "return", "writeLine(x)", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "Console.writeLine(x)\n                return", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "Console.writeLine(x)", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "x = 1\n                return", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "return", "x = 1", "x = 2", OwnershipFailure.ReassignedLet)]
     public void EscapingFactsAreNotReplacedByTheMergedState(string declaration, string early, string tail, string use, OwnershipFailure failure)
@@ -64,14 +64,14 @@ public class MixedTargetContinuationTest
     public void BareTransfersKeepOriginalTargets(string name, string dead, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedBare" + Configuration + name,
-            Source("var x: i32", "loop\n            if c\n                x = 1\n                return\n            else => exit\n            " + dead, "x = 2", "let y = x", condition) + "\nwriteLine(\"done\")",
+            Source("var x: i32", "loop\n            if c\n                x = 1\n                return\n            else => exit\n            " + dead, "x = 2", "let y = x", condition) + "\nConsole.writeLine(\"done\")",
             condition ? "done\n" : string.Empty,
             condition ? 0 : 1,
             condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Theory]
     [InlineData("var x: i32", "return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "writeLine(x)\n                return", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "Console.writeLine(x)\n                return", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "x = 1\n                return", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     public void BareTransfersDoNotEraseEarlierHistory(string declaration, string early, string tail, string use, OwnershipFailure failure)
     {
@@ -94,14 +94,14 @@ public class MixedTargetContinuationTest
     [InlineData("AbortExit", "var x: i32", "x = 3\n            stop()", "x = 2", "let y = x", false)]
     [InlineData("Divergence", "var x: i32", "x = 3\n            loop => continue", "x = 2", "let y = x", true)]
     [InlineData("DivergenceExit", "var x: i32", "x = 3\n            loop => continue", "x = 2", "let y = x", false)]
-    [InlineData("Move", "var x = \"old\"", "writeLine(x)\n            x = \"new\"", "()", "writeLine(x)", true)]
-    [InlineData("MoveExit", "var x = \"old\"", "writeLine(x)\n            x = \"new\"", "()", "writeLine(x)", false)]
-    [InlineData("Borrow", "var x = \"old\"", "inspect(x)\n            writeLine(x)\n            x = \"new\"", "()", "writeLine(x)", true)]
-    [InlineData("BorrowExit", "var x = \"old\"", "inspect(x)\n            writeLine(x)\n            x = \"new\"", "()", "writeLine(x)", false)]
+    [InlineData("Move", "var x = \"old\"", "Console.writeLine(x)\n            x = \"new\"", "()", "Console.writeLine(x)", true)]
+    [InlineData("MoveExit", "var x = \"old\"", "Console.writeLine(x)\n            x = \"new\"", "()", "Console.writeLine(x)", false)]
+    [InlineData("Borrow", "var x = \"old\"", "inspect(x)\n            Console.writeLine(x)\n            x = \"new\"", "()", "Console.writeLine(x)", true)]
+    [InlineData("BorrowExit", "var x = \"old\"", "inspect(x)\n            Console.writeLine(x)\n            x = \"new\"", "()", "Console.writeLine(x)", false)]
     public void LinearEffectsRetainSeparateTargets(string name, string declaration, string dead, string tail, string use, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedEffect" + Configuration + name,
-            Source(declaration, "loop\n            if c => return\n            else => exit\n            " + dead, tail, use, condition) + "\nwriteLine(\"done\")\nfunc inspect(x: ref/string) => ()",
+            Source(declaration, "loop\n            if c => return\n            else => exit\n            " + dead, tail, use, condition) + "\nConsole.writeLine(\"done\")\nfunc inspect(x: ref/string) => ()",
             condition ? "done\n" : string.Empty,
             condition ? 0 : 1,
             condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -109,8 +109,8 @@ public class MixedTargetContinuationTest
     [Theory]
     [InlineData("var x: i32", "return", "let n = 3", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "x = 3", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "return", "writeLine(x)", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "writeLine(x)\n                return", "let n = 3", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "Console.writeLine(x)", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "Console.writeLine(x)\n                return", "let n = 3", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "return", "x = 3", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "return", "x = 3\n            return\n            exit", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "x = 1\n                return", "x = 3", "()", "()", OwnershipFailure.ReassignedLet)]
@@ -132,7 +132,7 @@ public class MixedTargetContinuationTest
     public void EffectsSurviveEnclosingTargetFiltering(string name, string body, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedEffect" + Configuration + name,
-            Source("var x: i32", body, "x = 2", "let y = x", condition) + "\nwriteLine(\"done\")",
+            Source("var x: i32", body, "x = 2", "let y = x", condition) + "\nConsole.writeLine(\"done\")",
             "done\n");
 
     [Fact]
@@ -186,7 +186,7 @@ public class MixedTargetContinuationTest
     public void LastStoredLoanUseBeforeReplayAllowsMutation(bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedLoan" + Configuration + condition,
-            Source("var counter = Counter.init()\n    let r = counter@ref\n    let n = r.value", "loop\n            if c => return\n            else => exit\n            counter.value = 9", "()", "()", condition) + "\nwriteLine(\"done\")\nstruct Counter\n    public var value: i32 = 0",
+            Source("var counter = Counter.init()\n    let r = counter@ref\n    let n = r.value", "loop\n            if c => return\n            else => exit\n            counter.value = 9", "()", "()", condition) + "\nConsole.writeLine(\"done\")\nstruct Counter\n    public var value: i32 = 0",
             condition ? "done\n" : string.Empty,
             condition ? 0 : 1,
             condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");

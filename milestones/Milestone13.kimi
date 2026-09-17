@@ -35,14 +35,14 @@ public func main()
                 total = total + item.value
             .None => exit
     require total == 6 and first.value == 1 else => $abort("Iterator loan failed")
-    ::Core.writeLine("Even sample total is 6; first is still 1.")
+    ::Kimi.Console.writeLine("Even sample total is 6; first is still 1.")
 
     match cursor.next()
         .Some(_) => $abort("Exhausted iterator restarted")
-        .None => ::Core.writeLine("Iterator remains exhausted.")
+        .None => ::Kimi.Console.writeLine("Iterator remains exhausted.")
 
     var middle: i32 = 0
     for item in samples[1..3]
         middle = middle + item.value
     require middle == 5 else => $abort("Slice iteration failed")
-    ::Core.writeLine("Middle slice total is 5.")
+    ::Kimi.Console.writeLine("Middle slice total is 5.")

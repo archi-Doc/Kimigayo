@@ -1,4 +1,4 @@
-// Milestone 14: Slice/Iterator processing with a closure borrowing an obj payload.
+// Milestone 14: Slice/Iterator processing with a closure borrowing a Sealed payload.
 group Pipeline
     public struct Job
         public let amount: i32
@@ -9,7 +9,7 @@ group Pipeline
         public func add(self: uniq/Self, amount: i32)
             self.total = self.total + amount
         public func read(self: ref/Self) -> i32 => self.total
-        deinit => ::Core.writeLine("Accumulator destroyed.")
+        deinit => ::Kimi.Console.writeLine("Accumulator destroyed.")
 
     public func run<T, F> origin source(items: Slice<T> from source, visit: uniq/F, limit: isize) -> isize
         F is Callable<uniq, (ref/T) -> bool>
@@ -27,7 +27,7 @@ group Pipeline
 
     public func finish(value: obj/Accumulator)
         require value.read() == 12 else => $abort("Unexpected object total")
-        ::Core.writeLine("Object total is 12.")
+        ::Kimi.Console.writeLine("Object total is 12.")
         // This owned handle destroys the payload and releases object storage.
 
 public func main()
@@ -35,18 +35,24 @@ public func main()
         Pipeline.Job.init(2), Pipeline.Job.init(-1), Pipeline.Job.init(4),
         Pipeline.Job.init(6), Pipeline.Job.init(100),
     ]
-    var accumulator = ::Core.makeObj<Pipeline.Accumulator>(Pipeline.Accumulator.init())
+    var accumulator = ::Kimi.makeObj<Pipeline.Accumulator>(Pipeline.Accumulator.init())
     do
-        let target = accumulator@objuniq
+        let target = accumulator@uniq/Pipeline.Accumulator
         var visit = func [target] (job: ref/Pipeline.Job) -> bool
             require job.amount > 0 else => return false
             target.add(job.amount)
             return true
         let accepted = Pipeline.run(jobs[..], visit@uniq, 3)
         require accepted == 3 else => $abort("Unexpected accepted count")
-        ::Core.writeLine("Accepted three jobs.")
+        ::Kimi.Console.writeLine("Accepted three jobs.")
     // The closure and its exclusive object Loan end before shared access resumes.
     require accumulator.read() == 12 else => $abort("Object borrow did not end")
+    // Exchange contents while preserving object Identity, allocation, and Dynamic Type.
+    // The returned old payload has a separate destruction responsibility.
+    do
+        let old = Kimi.exchange(accumulator@uniq/Pipeline.Accumulator, with: Pipeline.Accumulator.init())
+        require old.read() == 12 else => $abort("Exchange lost the old payload")
+        accumulator.add(old.read())
     let complete = func [accumulator] () => Pipeline.finish(accumulator)
     complete() // Consumes the closure and transfers its obj handle to finish.
-    ::Core.writeLine("Pipeline finished.")
+    ::Kimi.Console.writeLine("Pipeline finished.")

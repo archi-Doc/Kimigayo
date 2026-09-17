@@ -9,34 +9,34 @@ public class ElementMoveEmissionTest
 {
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "Let", "let a = (\"first\", \"last\")\nlet taken = a.0\nwriteLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "Repair", "var a = (\"first\", \"last\")\nlet taken = a.0\na.0 = \"new\"\nlet whole = a\nwriteLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
-        { "Self", "var a = (\"first\", 42)\na.0 = a.0\nlet whole = a\nwriteLine(\"ok\")", "first=1;ok=1" },
-        { "Sibling", "var a: [2 of string] = [\"first\", \"last\"]\na[0] = a[1]\nwriteLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "ArrayGap", "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]\nwriteLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;ok=1" },
-        { "Nested", "var a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0\nlet other = a.1.1\na.1.0 = \"newFirst\"\na.1.1 = \"newLast\"\nlet whole = a\nwriteLine(\"ok\")", "sibling=1;first=1;last=1;newFirst=1;newLast=1;ok=1" },
-        { "Aggregate", "let a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0\nwriteLine(\"ok\")", "first=1;last=1;sibling=1;ok=1" },
-        { "ReplacePartial", "var a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0.0\na.0 = (\"newFirst\", \"newLast\")\nlet whole = a\nwriteLine(\"ok\")", "first=1;last=1;sibling=1;newFirst=1;newLast=1;ok=1" },
-        { "ReplaceRoot", "var a = (\"first\", \"last\")\nlet taken = a.0\na = (\"newFirst\", \"newLast\")\nwriteLine(\"ok\")", "first=1;last=1;newFirst=1;newLast=1;ok=1" },
-        { "Branch", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0\nf(true)\nf(false)\nwriteLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "BranchRepair", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    if take\n        let taken = a.0\n    a.0 = \"new\"\n    let whole = a\nf(true)\nf(false)\nwriteLine(\"ok\")", "first=2;last=2;new=2;ok=1" },
-        { "BranchParent", "func f(take: bool)\n    var a = ((\"first\", \"last\"), \"sibling\")\n    if take\n        let taken = a.0\n    else\n        let taken = a.0.0\n    a.0 = (\"newFirst\", \"newLast\")\n    let whole = a\nf(true)\nf(false)\nwriteLine(\"ok\")", "first=2;last=2;sibling=2;newFirst=2;newLast=2;ok=1" },
-        { "Loop", "var a = (\"first\", \"last\")\nvar i = 0\nloop\n    let taken = a.0\n    a.0 = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nwriteLine(\"ok\")", "first=1;last=1;new=3;ok=1" },
-        { "Defer", "var a = (\"first\", \"last\")\nwork: do\n    defer => a.0 = \"new\"\n    let taken = a.0\n    exit to work\nlet whole = a\nwriteLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
-        { "Return", "func f() -> string\n    let a = (\"first\", \"last\")\n    return a.0\nlet taken = f()\nwriteLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "DynamicSibling", "var a: (string, [1 of i32]) = (\"first\", [40])\nlet taken = a.0\nvar i: isize = 0\na.1[i] += 2\nif a.1[i] == 42 => writeLine(\"ok\")", "first=1;ok=1" },
-        { "LiteralIdentity", "var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[(0x0)]\na[0b0] = \"new\"\nlet whole = a\nwriteLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
-        { "ZeroSize", "var a: ([0 of string], i32) = ([], 42)\nlet taken = a.0\na.0 = []\nlet whole = a\nwriteLine(\"ok\")", "ok=1" },
-        { "ExclusiveSibling", "var a = (40, \"first\")\na.0 += work: do\n    let taken = a.1\n    exit to work: 2\nif a.0 == 42 => writeLine(\"ok\")", "first=1;ok=1" },
-        { "CoveredArm", "var a = (\"first\", \"last\")\nmatch true\n    _ => ()\n    true => (work: do\n        let taken = a.0\n    )\nwriteLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "BranchSwapHoles", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0\n    else\n        let taken = a.1\nf(true)\nf(false)\nwriteLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "Dead", "func f()\n    return\n    var a = (\"first\", 0)\n    let taken = a.0\n    a.0 = \"new\"\n    let whole = a\nf()\nwriteLine(\"ok\")", "ok=1" },
-        { "LoopLifetime", "var i = 0\nloop\n    let a = (\"first\", \"last\")\n    if i == 0\n        let taken = a.0\n    i += 1\n    if i < 3 => continue\n    exit\nwriteLine(\"ok\")", "first=3;last=3;ok=1" },
-        { "ConditionalWhole", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let whole = a\n    else\n        let taken = a.0\nf(true)\nf(false)\nwriteLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "BranchPhi", "func f(take: bool) -> i32\n    return if take => (work: do\n        let a = (\"first\", \"last\")\n        if take\n            let taken = a.0\n        exit to work: 40\n    ) else => 2\nif f(true) + f(false) == 42 => writeLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "NestedArray", "var a: [2 of (string, [2 of string])] = [(\"a\", [\"b\", \"c\"]), (\"d\", [\"e\", \"f\"])]\nlet taken = a[0].1[1]\na[0].1[1] = \"new\"\nlet whole = a[0]\nwriteLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;f=1;new=1;ok=1" },
-        { "DynamicReplacement", "var a: (string, [2 of string]) = (\"first\", [\"old\", \"last\"])\nlet taken = a.0\nvar i: isize = 0\na.1[i] = \"new\"\nwriteLine(\"ok\")", "first=1;old=1;last=1;new=1;ok=1" },
-        { "ConditionalSelf", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    a.0 = if take => a.0 else => \"new\"\n    let whole = a\nf(true)\nf(false)\nwriteLine(\"ok\")", "first=2;last=2;new=1;ok=1" },
+        { "Let", "let a = (\"first\", \"last\")\nlet taken = a.0\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "Repair", "var a = (\"first\", \"last\")\nlet taken = a.0\na.0 = \"new\"\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
+        { "Self", "var a = (\"first\", 42)\na.0 = a.0\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;ok=1" },
+        { "Sibling", "var a: [2 of string] = [\"first\", \"last\"]\na[0] = a[1]\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "ArrayGap", "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;ok=1" },
+        { "Nested", "var a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0\nlet other = a.1.1\na.1.0 = \"newFirst\"\na.1.1 = \"newLast\"\nlet whole = a\nConsole.writeLine(\"ok\")", "sibling=1;first=1;last=1;newFirst=1;newLast=1;ok=1" },
+        { "Aggregate", "let a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0\nConsole.writeLine(\"ok\")", "first=1;last=1;sibling=1;ok=1" },
+        { "ReplacePartial", "var a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0.0\na.0 = (\"newFirst\", \"newLast\")\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;last=1;sibling=1;newFirst=1;newLast=1;ok=1" },
+        { "ReplaceRoot", "var a = (\"first\", \"last\")\nlet taken = a.0\na = (\"newFirst\", \"newLast\")\nConsole.writeLine(\"ok\")", "first=1;last=1;newFirst=1;newLast=1;ok=1" },
+        { "Branch", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
+        { "BranchRepair", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    if take\n        let taken = a.0\n    a.0 = \"new\"\n    let whole = a\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=2;ok=1" },
+        { "BranchParent", "func f(take: bool)\n    var a = ((\"first\", \"last\"), \"sibling\")\n    if take\n        let taken = a.0\n    else\n        let taken = a.0.0\n    a.0 = (\"newFirst\", \"newLast\")\n    let whole = a\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;sibling=2;newFirst=2;newLast=2;ok=1" },
+        { "Loop", "var a = (\"first\", \"last\")\nvar i = 0\nloop\n    let taken = a.0\n    a.0 = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=1;last=1;new=3;ok=1" },
+        { "Defer", "var a = (\"first\", \"last\")\nwork: do\n    defer => a.0 = \"new\"\n    let taken = a.0\n    exit to work\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
+        { "Return", "func f() -> string\n    let a = (\"first\", \"last\")\n    return a.0\nlet taken = f()\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "DynamicSibling", "var a: (string, [1 of i32]) = (\"first\", [40])\nlet taken = a.0\nvar i: isize = 0\na.1[i] += 2\nif a.1[i] == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
+        { "LiteralIdentity", "var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[(0x0)]\na[0b0] = \"new\"\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
+        { "ZeroSize", "var a: ([0 of string], i32) = ([], 42)\nlet taken = a.0\na.0 = []\nlet whole = a\nConsole.writeLine(\"ok\")", "ok=1" },
+        { "ExclusiveSibling", "var a = (40, \"first\")\na.0 += work: do\n    let taken = a.1\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
+        { "CoveredArm", "var a = (\"first\", \"last\")\nmatch true\n    _ => ()\n    true => (work: do\n        let taken = a.0\n    )\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "BranchSwapHoles", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0\n    else\n        let taken = a.1\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
+        { "Dead", "func f()\n    return\n    var a = (\"first\", 0)\n    let taken = a.0\n    a.0 = \"new\"\n    let whole = a\nf()\nConsole.writeLine(\"ok\")", "ok=1" },
+        { "LoopLifetime", "var i = 0\nloop\n    let a = (\"first\", \"last\")\n    if i == 0\n        let taken = a.0\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=3;last=3;ok=1" },
+        { "ConditionalWhole", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let whole = a\n    else\n        let taken = a.0\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
+        { "BranchPhi", "func f(take: bool) -> i32\n    return if take => (work: do\n        let a = (\"first\", \"last\")\n        if take\n            let taken = a.0\n        exit to work: 40\n    ) else => 2\nif f(true) + f(false) == 42 => Console.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "NestedArray", "var a: [2 of (string, [2 of string])] = [(\"a\", [\"b\", \"c\"]), (\"d\", [\"e\", \"f\"])]\nlet taken = a[0].1[1]\na[0].1[1] = \"new\"\nlet whole = a[0]\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;f=1;new=1;ok=1" },
+        { "DynamicReplacement", "var a: (string, [2 of string]) = (\"first\", [\"old\", \"last\"])\nlet taken = a.0\nvar i: isize = 0\na.1[i] = \"new\"\nConsole.writeLine(\"ok\")", "first=1;old=1;last=1;new=1;ok=1" },
+        { "ConditionalSelf", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    a.0 = if take => a.0 else => \"new\"\n    let whole = a\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=1;ok=1" },
     };
 
     [Theory]
@@ -76,7 +76,7 @@ public class ElementMoveEmissionTest
     [Fact]
     public void RemainingPartsFollowReverseLogicalOrder()
     {
-        const string Source = "let a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0\nwriteLine(\"ok\")";
+        const string Source = "let a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0\nConsole.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveOrder", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementMoveOrder", Source, ir, "ok\n", "sibling=1;first=1;last=1;ok=1", order: [3, 1, 2, 0]);
     }
@@ -84,7 +84,7 @@ public class ElementMoveEmissionTest
     [Fact]
     public void ArrayGapsAndMovedResultKeepDestructionOrder()
     {
-        const string Source = "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]\nwriteLine(\"ok\")";
+        const string Source = "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]\nConsole.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveArrayOrder", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementMoveArrayOrder", Source, ir, "ok\n", "a=1;b=1;c=1;d=1;e=1;ok=1", order: [5, 2, 4, 3, 1, 0]);
     }
@@ -215,7 +215,7 @@ public class ElementMoveEmissionTest
     [Fact]
     public void IndexTransferCleansPartialParentAfterSecuringTheResult()
     {
-        const string Source = "func f() -> i32\n    var a: (string, [1 of i32]) = (\"first\", [0])\n    let taken = a.0\n    a.1[(return 42)] = 0\n    return 0\nif f() == 42 => writeLine(\"ok\")";
+        const string Source = "func f() -> i32\n    var a: (string, [1 of i32]) = (\"first\", [0])\n    let taken = a.0\n    a.1[(return 42)] = 0\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveIndexTransfer", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementMoveIndexTransfer", Source, ir, "ok\n", "first=1;ok=1", order: [0, 1]);
     }

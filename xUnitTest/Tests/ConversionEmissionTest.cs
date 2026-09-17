@@ -11,7 +11,7 @@ namespace XunitTest;
 public class ConversionEmissionTest
 {
     private const string Reason = "KIMI_E_INT_CONVERSION: Integer conversion out of range";
-    private const string Consumers = "func id(x: u32) -> u32 => x\nfunc convert(x: i32) -> u32\n    var y = x\n    defer => y = -1\n    return y@u32\nvar x: i32 = 42\nvar y: u32 = x@u32\nlet z = if true => x@u32 else => 1@u32\ny = x@u32\nif y == z and id(x@u32) == 42 and convert(x) == 42 and (x@u32 > 0) => writeLine(\"ok\")";
+    private const string Consumers = "func id(x: u32) -> u32 => x\nfunc convert(x: i32) -> u32\n    var y = x\n    defer => y = -1\n    return y@u32\nvar x: i32 = 42\nvar y: u32 = x@u32\nlet z = if true => x@u32 else => 1@u32\ny = x@u32\nif y == z and id(x@u32) == 42 and convert(x) == 42 and (x@u32 > 0) => Console.writeLine(\"ok\")";
 
     public static IEnumerable<object[]> Pairs()
     {
@@ -34,7 +34,7 @@ public class ConversionEmissionTest
         var low = BigInteger.Max(sourceMin, targetMin).ToString(CultureInfo.InvariantCulture);
         var high = BigInteger.Min(sourceMax, targetMax).ToString(CultureInfo.InvariantCulture);
         var header = $"func convert(x: {source}) -> {target} => x@{target}\n";
-        var program = header + $"if convert({low}) == {low} and convert({high}) == {high} => writeLine(\"ok\")";
+        var program = header + $"if convert({low}) == {low} and convert({high}) == {high} => Console.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(program);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var conversions = Enumerable.Range(0, module.FunctionCount).SelectMany(i => module.GetFunction(i).Instructions).Where(x => x.Opcode == EmissionOpcode.Convert).ToArray();
@@ -58,30 +58,30 @@ public class ConversionEmissionTest
         var column = header.IndexOf("x@", StringComparison.Ordinal) + 1;
         if (sourceMin < targetMin)
         {
-            Abort($"ConversionLower{source}{target}", header + $"convert({(targetMin - 1).ToString(CultureInfo.InvariantCulture)})\nwriteLine(\"bad\")", 1, column);
+            Abort($"ConversionLower{source}{target}", header + $"convert({(targetMin - 1).ToString(CultureInfo.InvariantCulture)})\nConsole.writeLine(\"bad\")", 1, column);
         }
 
         if (sourceMax > targetMax)
         {
-            Abort($"ConversionUpper{source}{target}", header + $"convert({(targetMax + 1).ToString(CultureInfo.InvariantCulture)})\nwriteLine(\"bad\")", 1, column);
+            Abort($"ConversionUpper{source}{target}", header + $"convert({(targetMax + 1).ToString(CultureInfo.InvariantCulture)})\nConsole.writeLine(\"bad\")", 1, column);
         }
     }
 
     [Theory]
     [InlineData("ConversionConsumers", Consumers, "ok\n")]
-    [InlineData("ConversionLiteral", "let x = ((-128))@i8\nlet y = 18446744073709551615@u64\nlet z = 255@(u8)\nif x == -128 and y == 18446744073709551615 and z == 255 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionSignedParentheses", "if -(128)@i8 == -128 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionWideNegative", "let x: i8 = -128\nif x@i64 == -128 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionUnsignedHigh", "let x: u8 = 200\nif x@i64 == 200 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionTypedOverload", "func f(x: u8) -> i32 => 1\nfunc f(x: i32) -> i32 => 2\nif f(1@u8) == 1 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionEvaluateOnce", "var x = 1\nlet y = (x++)@u8\nif y == 1 and x == 2 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionSkipped", "var x = -1\nif true or x@u8 == 0 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionExit", "loop\n    (exit)@u8\nwriteLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionReturn", "func f() -> i32\n    (return 42)@u8\nif f() == 42 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionNeverEvidence", "func f() -> i32\n    let x = if false => (return 42)@u8 else => 300\n    return x\nif f() == 300 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionLoopEvidence", "let x = if false => (loop => ())@u8 else => 300\nif x == 300 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionNeverCallEvidence", "func stop() -> Never => loop => ()\nlet x = if false => stop()@u8 else => 300\nif x == 300 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionAfterReturn", "func f() -> i32\n    return 42\n    let x = 300\n    x@u8\nif f() == 42 => writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionLiteral", "let x = ((-128))@i8\nlet y = 18446744073709551615@u64\nlet z = 255@(u8)\nif x == -128 and y == 18446744073709551615 and z == 255 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionSignedParentheses", "if -(128)@i8 == -128 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionWideNegative", "let x: i8 = -128\nif x@i64 == -128 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionUnsignedHigh", "let x: u8 = 200\nif x@i64 == 200 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionTypedOverload", "func f(x: u8) -> i32 => 1\nfunc f(x: i32) -> i32 => 2\nif f(1@u8) == 1 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionEvaluateOnce", "var x = 1\nlet y = (x++)@u8\nif y == 1 and x == 2 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionSkipped", "var x = -1\nif true or x@u8 == 0 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionExit", "loop\n    (exit)@u8\nConsole.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionReturn", "func f() -> i32\n    (return 42)@u8\nif f() == 42 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionNeverEvidence", "func f() -> i32\n    let x = if false => (return 42)@u8 else => 300\n    return x\nif f() == 300 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionLoopEvidence", "let x = if false => (loop => ())@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionNeverCallEvidence", "func stop() -> Never => loop => ()\nlet x = if false => stop()@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionAfterReturn", "func f() -> i32\n    return 42\n    let x = 300\n    x@u8\nif f() == 42 => Console.writeLine(\"ok\")", "ok\n")]
     public void SourceOrderAndConsumersUseTheSecuredValue(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
@@ -90,8 +90,8 @@ public class ConversionEmissionTest
     [InlineData("ConversionParenthesizedSign", "-(128)@u8", 1, 1)]
     [InlineData("ConversionChainFirst", "let x = 65536\nx@u16@u8", 2, 1)]
     [InlineData("ConversionChainSecond", "let x = 256\nx@u16@u8", 2, 1)]
-    [InlineData("ConversionBeforeCleanup", "func f() -> u8\n    defer => writeLine(\"bad\")\n    let x = 256\n    return x@u8\nf()", 4, 12)]
-    [InlineData("ConversionDuringCleanup", "defer => writeLine(\"bad\")\ndefer\n    let x = -1\n    x@u8", 4, 5)]
+    [InlineData("ConversionBeforeCleanup", "func f() -> u8\n    defer => Console.writeLine(\"bad\")\n    let x = 256\n    return x@u8\nf()", 4, 12)]
+    [InlineData("ConversionDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    let x = -1\n    x@u8", 4, 5)]
     public void InvalidConversionsAbortWithoutCleanup(string name, string source, int line, int column)
         => Abort(name, source, line, column);
 
@@ -260,7 +260,7 @@ public class ConversionEmissionTest
     [InlineData("stop()@u16@i16")]
     public void NestedNoncompletingOperandsDoNotConstrainOtherBranches(string operand)
     {
-        var c = MinimalEmissionTest.Analyze($"func stop() -> Never => loop => ()\nlet x = if false => ({operand})@u8 else => 300\nif x == 300 => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze($"func stop() -> Never => loop => ()\nlet x = if false => ({operand})@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var field = All(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");

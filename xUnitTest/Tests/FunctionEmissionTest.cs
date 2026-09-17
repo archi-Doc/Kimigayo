@@ -8,30 +8,30 @@ namespace XunitTest;
 
 public class FunctionEmissionTest
 {
-    private const string Snapshot = "func result() -> i32\n    var x = 1\n    defer => x = 2\n    return x\nif result() == 1 => writeLine(\"ok\")";
+    private const string Snapshot = "func result() -> i32\n    var x = 1\n    defer => x = 2\n    return x\nif result() == 1 => Console.writeLine(\"ok\")";
 
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "FunctionSimple", "func add(a: i32, b: i32) -> i32 => a + b\nif add(1, 2) == 3 => writeLine(\"ok\")", "ok\n" },
-        { "FunctionMain", "public func main() -> ()\n    defer => writeLine(\"end\")\n    writeLine(\"body\")\n    return\n    writeLine(\"bad\")", "body\nend\n" },
-        { "FunctionLocal", "public func main()\n    func twice(x: i32) -> i32 => x * 2\n    if twice(3) == 6 => writeLine(\"ok\")", "ok\n" },
-        { "FunctionNamed", "func pair(left => v3: i32, right => p3: i32) -> i32 => v3 * 10 + p3\nvar x = 1\nif pair(right: x++, left: x++) == 21 and x == 3 => writeLine(\"ok\")", "ok\n" },
-        { "FunctionNested", "func add(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = add(x++, add(x++, x++))\nif y == 6 and x == 4 => writeLine(\"ok\")", "ok\n" },
-        { "FunctionRecursion", "func fact(n: i32) -> i32\n    if n == 0 => return 1\n    return n * fact(n - 1)\nif fact(6) == 720 => writeLine(\"ok\")", "ok\n" },
-        { "FunctionMutual", "func even(n: i32) -> bool => if n == 0 => true else => odd(n - 1)\nfunc odd(n: i32) -> bool => if n == 0 => false else => even(n - 1)\nif even(10) and odd(9) => writeLine(\"ok\")", "ok\n" },
+        { "FunctionSimple", "func add(a: i32, b: i32) -> i32 => a + b\nif add(1, 2) == 3 => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionMain", "public func main() -> ()\n    defer => Console.writeLine(\"end\")\n    Console.writeLine(\"body\")\n    return\n    Console.writeLine(\"bad\")", "body\nend\n" },
+        { "FunctionLocal", "public func main()\n    func twice(x: i32) -> i32 => x * 2\n    if twice(3) == 6 => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionNamed", "func pair(left => v3: i32, right => p3: i32) -> i32 => v3 * 10 + p3\nvar x = 1\nif pair(right: x++, left: x++) == 21 and x == 3 => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionNested", "func add(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = add(x++, add(x++, x++))\nif y == 6 and x == 4 => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionRecursion", "func fact(n: i32) -> i32\n    if n == 0 => return 1\n    return n * fact(n - 1)\nif fact(6) == 720 => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionMutual", "func even(n: i32) -> bool => if n == 0 => true else => odd(n - 1)\nfunc odd(n: i32) -> bool => if n == 0 => false else => even(n - 1)\nif even(10) and odd(9) => Console.writeLine(\"ok\")", "ok\n" },
         { "FunctionSnapshot", Snapshot, "ok\n" },
-        { "FunctionUnit", "func f(a: (), b: i32, c: ()) -> i32 => b\nif f(writeLine(\"first\"), 7, writeLine(\"last\")) == 7 => writeLine(\"ok\")", "first\nlast\nok\n" },
-        { "FunctionBool", "func opposite(b3: bool) -> bool => not b3\nvar x = opposite(false)\nif opposite(opposite(x)) => writeLine(\"ok\")", "ok\n" },
-        { "FunctionReturnIf", "func choose(c: bool) -> i32\n    defer => writeLine(\"end\")\n    return if c => 21 / 2 else => 3 % 2\nif choose(true) == 10 and choose(false) == 1 => writeLine(\"ok\")", "end\nend\nok\n" },
-        { "FunctionOverload", "func f(x: i32) -> i32 => x\nfunc f(x: bool) -> bool => x\nif f(1) == 1 and f(true) => writeLine(\"ok\")", "ok\n" },
-        { "FunctionUnused", "func unused() => 123\npublic func main() => writeLine(\"ok\")", "ok\n" },
-        { "FunctionSkipped", "func zero() -> i32 => 1 / 0\nif false => zero()\nif true or zero() == 0 => writeLine(\"ok\")", "ok\n" },
-        { "FunctionTransferArgument", "func add(a: i32, b: i32) -> i32 => a + b\nlet x = outer: do\n    defer => writeLine(\"end\")\n    add(1, (inner: do => exit to outer: 7))\nif x == 7 => writeLine(\"ok\")", "end\nok\n" },
-        { "FunctionReturnOperand", "func f() -> i32\n    defer => writeLine(\"end\")\n    return (inner: do => return 7)\nif f() == 7 => writeLine(\"ok\")", "end\nok\n" },
-        { "FunctionNames", "func 日本語(v3: i32, p3: i32, b3: bool, checked3: i32, a0: i32) -> i32 => if b3 => v3 + p3 + checked3 + a0 else => 0\nif 日本語(1, 2, true, 3, 4) == 10 => writeLine(\"ok\")", "ok\n" },
-        { "FunctionDeferredCalls", "func tick() => writeLine(\"tick\")\nfunc f(x: i32) -> i32\n    defer => tick()\n    if x == 1 => return x\n    return 2\nif f(1) + f(0) == 3 => writeLine(\"ok\")", "tick\ntick\nok\n" },
-        { "FunctionConditionalTransfer", "func f(a: i32, b: i32) -> i32 => a + b\nlet x = outer: do\n    defer => writeLine(\"end\")\n    exit to outer: f(2, (if false => exit to outer: 9 else => 3))\nif x == 5 => writeLine(\"ok\")", "end\nok\n" },
-        { "FunctionTransferThenArgument", "func f(a: i32, b: i32) -> i32 => a + b\nfunc side() -> i32\n    writeLine(\"bad\")\n    return 1\nlet x = outer: do\n    f((inner: do => exit to outer: 7), side())\nif x == 7 => writeLine(\"ok\")", "ok\n" },
+        { "FunctionUnit", "func f(a: (), b: i32, c: ()) -> i32 => b\nif f(Console.writeLine(\"first\"), 7, Console.writeLine(\"last\")) == 7 => Console.writeLine(\"ok\")", "first\nlast\nok\n" },
+        { "FunctionBool", "func opposite(b3: bool) -> bool => not b3\nvar x = opposite(false)\nif opposite(opposite(x)) => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionReturnIf", "func choose(c: bool) -> i32\n    defer => Console.writeLine(\"end\")\n    return if c => 21 / 2 else => 3 % 2\nif choose(true) == 10 and choose(false) == 1 => Console.writeLine(\"ok\")", "end\nend\nok\n" },
+        { "FunctionOverload", "func f(x: i32) -> i32 => x\nfunc f(x: bool) -> bool => x\nif f(1) == 1 and f(true) => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionUnused", "func unused() => 123\npublic func main() => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionSkipped", "func zero() -> i32 => 1 / 0\nif false => zero()\nif true or zero() == 0 => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionTransferArgument", "func add(a: i32, b: i32) -> i32 => a + b\nlet x = outer: do\n    defer => Console.writeLine(\"end\")\n    add(1, (inner: do => exit to outer: 7))\nif x == 7 => Console.writeLine(\"ok\")", "end\nok\n" },
+        { "FunctionReturnOperand", "func f() -> i32\n    defer => Console.writeLine(\"end\")\n    return (inner: do => return 7)\nif f() == 7 => Console.writeLine(\"ok\")", "end\nok\n" },
+        { "FunctionNames", "func 日本語(v3: i32, p3: i32, b3: bool, checked3: i32, a0: i32) -> i32 => if b3 => v3 + p3 + checked3 + a0 else => 0\nif 日本語(1, 2, true, 3, 4) == 10 => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionDeferredCalls", "func tick() => Console.writeLine(\"tick\")\nfunc f(x: i32) -> i32\n    defer => tick()\n    if x == 1 => return x\n    return 2\nif f(1) + f(0) == 3 => Console.writeLine(\"ok\")", "tick\ntick\nok\n" },
+        { "FunctionConditionalTransfer", "func f(a: i32, b: i32) -> i32 => a + b\nlet x = outer: do\n    defer => Console.writeLine(\"end\")\n    exit to outer: f(2, (if false => exit to outer: 9 else => 3))\nif x == 5 => Console.writeLine(\"ok\")", "end\nok\n" },
+        { "FunctionTransferThenArgument", "func f(a: i32, b: i32) -> i32 => a + b\nfunc side() -> i32\n    Console.writeLine(\"bad\")\n    return 1\nlet x = outer: do\n    f((inner: do => exit to outer: 7), side())\nif x == 7 => Console.writeLine(\"ok\")", "ok\n" },
     };
 
     [Theory]
@@ -40,18 +40,18 @@ public class FunctionEmissionTest
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
     [Theory]
-    [InlineData("FunctionAbort", "func divide(x: i32) -> i32 => 1 / x\npublic func main()\n    defer => writeLine(\"bad\")\n    divide(0)", "", 1, 31)]
-    [InlineData("FunctionArgumentAbort", "func f(x: i32) => writeLine(\"bad\")\ndefer => writeLine(\"bad\")\nf(1 / 0)", "", 3, 3)]
-    [InlineData("FunctionDeferredAbort", "func f() -> i32\n    defer => writeLine(\"bad\")\n    defer => 1 / 0\n    return 7\nf()\nwriteLine(\"bad\")", "", 3, 14)]
+    [InlineData("FunctionAbort", "func divide(x: i32) -> i32 => 1 / x\npublic func main()\n    defer => Console.writeLine(\"bad\")\n    divide(0)", "", 1, 31)]
+    [InlineData("FunctionArgumentAbort", "func f(x: i32) => Console.writeLine(\"bad\")\ndefer => Console.writeLine(\"bad\")\nf(1 / 0)", "", 3, 3)]
+    [InlineData("FunctionDeferredAbort", "func f() -> i32\n    defer => Console.writeLine(\"bad\")\n    defer => 1 / 0\n    return 7\nf()\nConsole.writeLine(\"bad\")", "", 3, 14)]
     public void AbortDoesNotReturnOrUnwind(string name, string source, string stdout, int line, int column)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_DIV_ZERO: Integer division or remainder by zero\n");
 
     [Theory]
-    [InlineData("FunctionNever", "func spin() -> Never => loop => ()\npublic func main()\n    writeLine(\"begin\")\n    spin()\n    writeLine(\"bad\")")]
-    [InlineData("FunctionNeverArgument", "func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => writeLine(\"bad\")\nwriteLine(\"begin\")\nf(1, spin())")]
-    [InlineData("FunctionDivergentReturn", "func f() -> i32\n    defer => loop => ()\n    return 1\nwriteLine(\"begin\")\nf()\nwriteLine(\"bad\")")]
-    [InlineData("FunctionNeverFirstArgument", "func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => writeLine(\"bad\")\nfunc side() -> i32\n    writeLine(\"bad\")\n    return 1\nwriteLine(\"begin\")\nf(spin(), side())")]
-    [InlineData("FunctionNeverExpression", "func spin() -> Never => loop => ()\nfunc f() -> i32 => spin()\nwriteLine(\"begin\")\nf()")]
+    [InlineData("FunctionNever", "func spin() -> Never => loop => ()\npublic func main()\n    Console.writeLine(\"begin\")\n    spin()\n    Console.writeLine(\"bad\")")]
+    [InlineData("FunctionNeverArgument", "func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf(1, spin())")]
+    [InlineData("FunctionDivergentReturn", "func f() -> i32\n    defer => loop => ()\n    return 1\nConsole.writeLine(\"begin\")\nf()\nConsole.writeLine(\"bad\")")]
+    [InlineData("FunctionNeverFirstArgument", "func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => Console.writeLine(\"bad\")\nfunc side() -> i32\n    Console.writeLine(\"bad\")\n    return 1\nConsole.writeLine(\"begin\")\nf(spin(), side())")]
+    [InlineData("FunctionNeverExpression", "func spin() -> Never => loop => ()\nfunc f() -> i32 => spin()\nConsole.writeLine(\"begin\")\nf()")]
     public void NonterminationHasNoFabricatedReturn(string name, string source)
     {
         var ir = ScalarEmissionTest.EmitFixture(name, source, "begin\n", timeoutMilliseconds: 200);
@@ -80,7 +80,7 @@ public class FunctionEmissionTest
     [Fact]
     public void ParametersUseSsaAndOnlyMainIsCalledAtStartup()
     {
-        var c = MinimalEmissionTest.Analyze("func f(v3: i32, ignored: (), checked3: bool) -> i32 => if checked3 => v3 else => 0\npublic func main()\n    if f(3, (), true) == 3 => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("func f(v3: i32, ignored: (), checked3: bool) -> i32 => if checked3 => v3 else => 0\npublic func main()\n    if f(3, (), true) == 3 => Console.writeLine(\"ok\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Equal(3, module.FunctionCount);
         var f = module.GetFunction(0);
@@ -95,7 +95,7 @@ public class FunctionEmissionTest
     [Fact]
     public void NeverCallsAndDivergentCleanupHaveNoReturnDelivery()
     {
-        var c = MinimalEmissionTest.Analyze("func spin() -> Never => loop => ()\nfunc take(x: i32) -> i32 => x\npublic func main()\n    take(spin())\n    writeLine(\"bad\")");
+        var c = MinimalEmissionTest.Analyze("func spin() -> Never => loop => ()\nfunc take(x: i32) -> i32 => x\npublic func main()\n    take(spin())\n    Console.writeLine(\"bad\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var main = module.GetFunction(2);
         var call = Assert.Single(main.Instructions, x => x.Opcode == EmissionOpcode.Call);
@@ -126,7 +126,7 @@ public class FunctionEmissionTest
     [InlineData("mapping")]
     public void MalformedFunctionPlansFailBeforeWritingAndRecover(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32) -> i32\n    var y = x\n    defer => y = 9\n    return y\nif f(3) == 3 => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("func f(x: i32) -> i32\n    var y = x\n    defer => y = 9\n    return y\nif f(3) == 3 => Console.writeLine(\"ok\")");
         Assert.True(c.Emission.Validate(out var error), error);
         var f = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
         var caller = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);

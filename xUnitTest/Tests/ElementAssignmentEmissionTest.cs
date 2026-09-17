@@ -9,32 +9,32 @@ public class ElementAssignmentEmissionTest
 {
     public static TheoryData<string, string> Fixtures => new()
     {
-        { "Tuple", "var a = (1, 2)\na.1 = 42\nif a.0 == 1 and a.1 == 42 => writeLine(\"ok\")" },
-        { "Array", "var a: [3 of i32] = [1, 2, 3]\nlet i: isize = 1\na[i] = 42\nif a[0] == 1 and a[1] == 42 and a[2] == 3 => writeLine(\"ok\")" },
-        { "Nested", "var a: [2 of [2 of i32]] = [[1, 2], [3, 4]]\na[1][0] = 42\nif a[1][0] == 42 and a[0][0] == 1 and a[1][1] == 4 => writeLine(\"ok\")" },
-        { "Mixed", "var a: (string, [2 of i32]) = (\"held\", [1, 2])\n(a.1)[0] = 42\nif a.1[0] == 42 => writeLine(\"ok\")" },
-        { "Aggregate", "var a = ((1, false), \"held\")\na.0 = (42, true)\nif a.0.0 == 42 and a.0.1 => writeLine(\"ok\")" },
-        { "ArrayAggregate", "var a: [2 of [2 of i32]] = [[1, 2], [3, 4]]\na[0] = a[1]\nif a[0][0] == 3 and a[0][1] == 4 => writeLine(\"ok\")" },
-        { "Self", "var a = ((42, true), 1)\na.0 = a.0\na.1 = a.1\nif a.0.0 == 42 and a.0.1 and a.1 == 1 => writeLine(\"ok\")" },
-        { "Boolean", "var a: [2 of bool] = [false, true]\na[0] = a[1]\na[1] = false\nif a[0] and not a[1] => writeLine(\"ok\")" },
-        { "Unit", "var a: [1 of ()] = [()]\nlet done: () = (a[0] = ())\nwriteLine(\"ok\")" },
-        { "Empty", "var a: ([0 of i32], i32) = ([], 42)\na.0 = []\nif a.1 == 42 => writeLine(\"ok\")" },
-        { "Call", "func make() -> (i32, bool) => (42, true)\nvar a = ((1, false), 2)\na.0 = make()\nif a.0.0 == 42 and a.0.1 => writeLine(\"ok\")" },
-        { "Result", "var a = ((1, false), 2)\na.0 = if true => (42, true) else => (0, false)\nif a.0.0 == 42 and a.0.1 => writeLine(\"ok\")" },
-        { "Loop", "var a: [3 of i32] = [0, 0, 0]\nvar i: isize = 0\nwhile i < 3\n    a[i] = 14\n    i += 1\nif a[0] + a[1] + a[2] == 42 => writeLine(\"ok\")" },
-        { "Deferred", "var a = (0, true)\nvar i = 0\nloop\n    defer => a.0 = a.0 + 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    var a = (1, 2)\n    a.0 = 42\nf()\nwriteLine(\"ok\")" },
-        { "DeadArm", "var a = (0, true)\nmatch true\n    _ => a.0 = 42\n    true => a.0 = 1\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "ReadIndex", "var a: [2 of isize] = [1, 0]\na[a[0]] = 42\nif a[1] == 42 => writeLine(\"ok\")" },
-        { "Snapshot", "var a: [1 of i32] = [40]\nvar i: isize = 0\na[(work: do\n    i = 1\n    exit to work: 0\n)] = i@i32 + 42\nif a[0] == 42 and i == 1 => writeLine(\"ok\")" },
-        { "RestoreRhs", "var a: (string, i32) = (\"old\", 0)\na.1 = (work: do\n    a = (\"new\", 1)\n    exit to work: 42\n)\nif a.1 == 42 => writeLine(\"ok\")" },
-        { "TransferIndex", "func f() -> i32\n    var a: [1 of i32] = [0]\n    defer => a[0] = 1\n    a[(return 42)] = 2\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "TransferRhs", "func index() -> isize\n    writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of i32] = [0]\n    a[index()] = (return 42)\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "NestedTransfer", "func index() -> isize\n    writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of [1 of i32]] = [[0]]\n    a[(return 42)][index()] = 2\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 1)] = (return 42)\n    return 0\nif f() == 42 => writeLine(\"ok\")" },
-        { "TransferBoundary", "func f() -> i32\n    var a: [1 of i32] = [0]\n    let result = work: loop\n        a[(return 1)] = (exit to work: 42)\n    return result\nif f() == 42 => writeLine(\"ok\")" },
-        { "DeferredAggregate", "var a = ((0, false), \"held\")\nvar i = 0\nloop\n    defer => a.0 = if true => (42, true) else => (0, false)\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0.0 == 42 and a.0.1 => writeLine(\"ok\")" },
-        { "UnitEffects", "func unit()\n    writeLine(\"ok\")\nvar a: [1 of ()] = [()]\na[0] = unit()" },
+        { "Tuple", "var a = (1, 2)\na.1 = 42\nif a.0 == 1 and a.1 == 42 => Console.writeLine(\"ok\")" },
+        { "Array", "var a: [3 of i32] = [1, 2, 3]\nlet i: isize = 1\na[i] = 42\nif a[0] == 1 and a[1] == 42 and a[2] == 3 => Console.writeLine(\"ok\")" },
+        { "Nested", "var a: [2 of [2 of i32]] = [[1, 2], [3, 4]]\na[1][0] = 42\nif a[1][0] == 42 and a[0][0] == 1 and a[1][1] == 4 => Console.writeLine(\"ok\")" },
+        { "Mixed", "var a: (string, [2 of i32]) = (\"held\", [1, 2])\n(a.1)[0] = 42\nif a.1[0] == 42 => Console.writeLine(\"ok\")" },
+        { "Aggregate", "var a = ((1, false), \"held\")\na.0 = (42, true)\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
+        { "ArrayAggregate", "var a: [2 of [2 of i32]] = [[1, 2], [3, 4]]\na[0] = a[1]\nif a[0][0] == 3 and a[0][1] == 4 => Console.writeLine(\"ok\")" },
+        { "Self", "var a = ((42, true), 1)\na.0 = a.0\na.1 = a.1\nif a.0.0 == 42 and a.0.1 and a.1 == 1 => Console.writeLine(\"ok\")" },
+        { "Boolean", "var a: [2 of bool] = [false, true]\na[0] = a[1]\na[1] = false\nif a[0] and not a[1] => Console.writeLine(\"ok\")" },
+        { "Unit", "var a: [1 of ()] = [()]\nlet done: () = (a[0] = ())\nConsole.writeLine(\"ok\")" },
+        { "Empty", "var a: ([0 of i32], i32) = ([], 42)\na.0 = []\nif a.1 == 42 => Console.writeLine(\"ok\")" },
+        { "Call", "func make() -> (i32, bool) => (42, true)\nvar a = ((1, false), 2)\na.0 = make()\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
+        { "Result", "var a = ((1, false), 2)\na.0 = if true => (42, true) else => (0, false)\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
+        { "Loop", "var a: [3 of i32] = [0, 0, 0]\nvar i: isize = 0\nwhile i < 3\n    a[i] = 14\n    i += 1\nif a[0] + a[1] + a[2] == 42 => Console.writeLine(\"ok\")" },
+        { "Deferred", "var a = (0, true)\nvar i = 0\nloop\n    defer => a.0 = a.0 + 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "Dead", "func f()\n    return\n    var a = (1, 2)\n    a.0 = 42\nf()\nConsole.writeLine(\"ok\")" },
+        { "DeadArm", "var a = (0, true)\nmatch true\n    _ => a.0 = 42\n    true => a.0 = 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "ReadIndex", "var a: [2 of isize] = [1, 0]\na[a[0]] = 42\nif a[1] == 42 => Console.writeLine(\"ok\")" },
+        { "Snapshot", "var a: [1 of i32] = [40]\nvar i: isize = 0\na[(work: do\n    i = 1\n    exit to work: 0\n)] = i@i32 + 42\nif a[0] == 42 and i == 1 => Console.writeLine(\"ok\")" },
+        { "RestoreRhs", "var a: (string, i32) = (\"old\", 0)\na.1 = (work: do\n    a = (\"new\", 1)\n    exit to work: 42\n)\nif a.1 == 42 => Console.writeLine(\"ok\")" },
+        { "TransferIndex", "func f() -> i32\n    var a: [1 of i32] = [0]\n    defer => a[0] = 1\n    a[(return 42)] = 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "TransferRhs", "func index() -> isize\n    Console.writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of i32] = [0]\n    a[index()] = (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "NestedTransfer", "func index() -> isize\n    Console.writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of [1 of i32]] = [[0]]\n    a[(return 42)][index()] = 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 1)] = (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "TransferBoundary", "func f() -> i32\n    var a: [1 of i32] = [0]\n    let result = work: loop\n        a[(return 1)] = (exit to work: 42)\n    return result\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "DeferredAggregate", "var a = ((0, false), \"held\")\nvar i = 0\nloop\n    defer => a.0 = if true => (42, true) else => (0, false)\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
+        { "UnitEffects", "func unit()\n    Console.writeLine(\"ok\")\nvar a: [1 of ()] = [()]\na[0] = unit()" },
     };
 
     [Theory]
@@ -64,7 +64,7 @@ public class ElementAssignmentEmissionTest
     [Fact]
     public void RightSideAndEachIndexExecuteOnceInOrder()
     {
-        const string Source = "func value() -> i32\n    writeLine(\"value\")\n    return 42\nfunc outer() -> isize\n    writeLine(\"outer\")\n    return 0\nfunc inner() -> isize\n    writeLine(\"inner\")\n    return 0\nvar a: [1 of [1 of i32]] = [[0]]\na[outer()][inner()] = value()\nif a[0][0] == 42 => writeLine(\"ok\")";
+        const string Source = "func value() -> i32\n    Console.writeLine(\"value\")\n    return 42\nfunc outer() -> isize\n    Console.writeLine(\"outer\")\n    return 0\nfunc inner() -> isize\n    Console.writeLine(\"inner\")\n    return 0\nvar a: [1 of [1 of i32]] = [[0]]\na[outer()][inner()] = value()\nif a[0][0] == 42 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementAssignmentOrder", Source, "value\nouter\ninner\nok\n");
     }
 
@@ -87,7 +87,7 @@ public class ElementAssignmentEmissionTest
     public void StoresUseTheExactScalarRepresentation(string type, string value)
     {
         var initial = type == "char" ? "'a'" : type is "f32" or "f64" ? "0.0" : "0";
-        var source = $"var a: [1 of {type}] = [{initial}]\na[0] = {value}\nif a[0] == {value} => writeLine(\"ok\")";
+        var source = $"var a: [1 of {type}] = [{initial}]\na[0] = {value}\nif a[0] == {value} => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementAssignment" + type, source, "ok\n");
     }
 
@@ -98,14 +98,14 @@ public class ElementAssignmentEmissionTest
     [InlineData("Empty", "0", 0, "[]")]
     public void BoundsAbortAfterTheRightSide(string name, string index, int length, string initial)
     {
-        var source = $"func value() -> i32\n    writeLine(\"value\")\n    return 42\nvar a: [{length} of i32] = {initial}\ndefer => writeLine(\"bad\")\na[{index}] = value()\nwriteLine(\"bad\")";
+        var source = $"func value() -> i32\n    Console.writeLine(\"value\")\n    return 42\nvar a: [{length} of i32] = {initial}\ndefer => Console.writeLine(\"bad\")\na[{index}] = value()\nConsole.writeLine(\"bad\")";
         ScalarEmissionTest.EmitFixture("ElementAssignmentBounds" + name, source, "value\n", 1, "Hello.kimi:6:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
     }
 
     [Fact]
     public void ZeroByteBoundsAndEarlierIndicesStillAbort()
     {
-        const string Source = "func index() -> isize\n    writeLine(\"bad\")\n    return 0\nvar a: [0 of [1 of ()]] = []\na[0][index()] = ()";
+        const string Source = "func index() -> isize\n    Console.writeLine(\"bad\")\n    return 0\nvar a: [0 of [1 of ()]] = []\na[0][index()] = ()";
         ScalarEmissionTest.EmitFixture("ElementAssignmentZeroBounds", Source, string.Empty, 1, "Hello.kimi:5:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
     }
 
@@ -126,14 +126,14 @@ public class ElementAssignmentEmissionTest
     [Fact]
     public void CopyingAnAggregateSecuresAnIndependentSnapshot()
     {
-        const string Source = "var source: [2 of i32] = [40, 2]\nvar target: [1 of [2 of i32]] = [[0, 0]]\ntarget[(work: do\n    source = [0, 0]\n    exit to work: 0\n)] = source\nif target[0][0] == 40 and target[0][1] == 2 and source[0] == 0 => writeLine(\"ok\")";
+        const string Source = "var source: [2 of i32] = [40, 2]\nvar target: [1 of [2 of i32]] = [[0, 0]]\ntarget[(work: do\n    source = [0, 0]\n    exit to work: 0\n)] = source\nif target[0][0] == 40 and target[0][1] == 2 and source[0] == 0 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementAssignmentAggregateSnapshot", Source, "ok\n");
     }
 
     [Fact]
     public void ParentResponsibilityAndResultCleanupArePreserved()
     {
-        const string Source = "var a = (\"first\", (0, false), \"last\")\na.1 = (work: do\n    defer => writeLine(\"cleanup\")\n    exit to work: (42, true)\n)\nif a.1.0 == 42 and a.1.1 => writeLine(\"ok\")";
+        const string Source = "var a = (\"first\", (0, false), \"last\")\na.1 = (work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work: (42, true)\n)\nif a.1.0 == 42 and a.1.1 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementAssignmentLifetime", Source, "cleanup\nok\n");
         StringEmissionTest.WriteAuditedFixture("ElementAssignmentLifetime", Source, ir, "cleanup\nok\n", "first=1;last=1;cleanup=1;ok=1", order: [2, 3, 1, 0]);
     }
@@ -141,7 +141,7 @@ public class ElementAssignmentEmissionTest
     [Fact]
     public void AbortedLocationDoesNotDestroyTheParentOrStartCleanup()
     {
-        const string Source = "var a: (string, [0 of i32]) = (\"held\", [])\ndefer => writeLine(\"bad\")\na.1[0] = 42";
+        const string Source = "var a: (string, [0 of i32]) = (\"held\", [])\ndefer => Console.writeLine(\"bad\")\na.1[0] = 42";
         const string Error = "Hello.kimi:3:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementAssignmentAbortLifetime", Source, string.Empty, 1, Error);
         StringEmissionTest.WriteAuditedFixture("ElementAssignmentAbortLifetime", Source, ir, string.Empty, "held=0;bad=0", 1, Error);
@@ -209,7 +209,7 @@ public class ElementAssignmentEmissionTest
     [Fact]
     public void WarmElementWritesAllocateNothing()
     {
-        const string Source = "func make() -> (i32, bool) => (42, true)\nvar a: (string, [2 of (i32, bool)]) = (\"held\", [(0, false), (0, false)])\nvar i = 0\nloop\n    defer => a.1[0] = if true => make() else => (0, false)\n    a.1[1] = a.1[0]\n    i += 1\n    if i < 3 => continue\n    exit\nif a.1[0].0 == 42 => writeLine(\"ok\")";
+        const string Source = "func make() -> (i32, bool) => (42, true)\nvar a: (string, [2 of (i32, bool)]) = (\"held\", [(0, false), (0, false)])\nvar i = 0\nloop\n    defer => a.1[0] = if true => make() else => (0, false)\n    a.1[1] = a.1[0]\n    i += 1\n    if i < 3 => continue\n    exit\nif a.1[0].0 == 42 => Console.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(Source);
         for (var i = 0; i < 100; i++)
         {

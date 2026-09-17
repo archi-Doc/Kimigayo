@@ -16,7 +16,7 @@ public class AggregateFunctionEmissionTest
         { "Nested", Echo + "echo(echo((\"a\", 1)))", string.Empty, "a=1" },
         { "Replace", Echo + "var pair = (\"a\", 1)\npair = echo(pair)\npair = echo((\"b\", 2))", string.Empty, "a=1;b=1" },
         { "Loop", Echo + "var i = 0\nwhile i < 3\n    echo((\"a\", i))\n    i += 1", string.Empty, "a=3" },
-        { "Forward", Echo + "func forward(value: (string, i32)) -> (string, i32)\n    defer => writeLine(\"cleanup\")\n    return echo(value)\nforward((\"a\", 1))", "cleanup\n", "a=1;cleanup=1" },
+        { "Forward", Echo + "func forward(value: (string, i32)) -> (string, i32)\n    defer => Console.writeLine(\"cleanup\")\n    return echo(value)\nforward((\"a\", 1))", "cleanup\n", "a=1;cleanup=1" },
         { "Conditional", Echo + "func maybe(value: (string, i32), flag: bool)\n    if flag => echo(value)\nmaybe((\"a\", 1), true)\nmaybe((\"b\", 2), false)", string.Empty, "a=1;b=1" },
         { "Recursion", "func repeat(value: (string, i32), n: i32) -> (string, i32)\n    if n == 0 => return value\n    return repeat(value, n - 1)\nrepeat((\"a\", 1), 3)", string.Empty, "a=1" },
         { "Selection", "func choose(a: (string, i32), b: (string, i32), flag: bool) -> (string, i32)\n    return if flag => a else => b\nchoose((\"a\", 1), (\"b\", 2), true)\nchoose((\"a\", 1), (\"b\", 2), false)", string.Empty, "a=2;b=2" },
@@ -25,10 +25,10 @@ public class AggregateFunctionEmissionTest
         { "Copy", "func echo(value: (i128, u8, f64, char)) -> (i128, u8, f64, char) => value\nlet value: (i128, u8, f64, char) = (42, 200, 2.5, 'a')\necho(value)\necho(value)", string.Empty, string.Empty },
         { "Zero", "func echo(value: [0 of string]) -> [0 of string] => value\nlet empty: [0 of string] = []\necho(echo(empty))", string.Empty, string.Empty },
         { "UnitArray", "func echo(value: [2 of ()]) -> [2 of ()] => value\nlet value: [2 of ()] = [(), ()]\necho(value)\necho(value)", string.Empty, string.Empty },
-        { "Mixed", "func choose(first => a: (string, i32), gap: (), z: [0 of string], last => b: (string, i32), n: i8) -> (string, i32)\n    if n == -7 => return b\n    return a\nlet empty: [0 of string] = []\nchoose(last: (\"b\", 2), n: -7, z: empty, gap: writeLine(\"gap\"), first: (\"a\", 1))", "gap\n", "a=1;b=1;gap=1" },
-        { "Shared", "func choose(text: ref/string, other: ref/string, value: (string, i32)) -> (string, i32)\n    if text == other => return value\n    return (\"bad\", 0)\nlet text = \"test\"\nchoose(text, text, (\"a\", 1))\nwriteLine(text)", "test\n", "a=1;bad=0;test=1" },
+        { "Mixed", "func choose(first => a: (string, i32), gap: (), z: [0 of string], last => b: (string, i32), n: i8) -> (string, i32)\n    if n == -7 => return b\n    return a\nlet empty: [0 of string] = []\nchoose(last: (\"b\", 2), n: -7, z: empty, gap: Console.writeLine(\"gap\"), first: (\"a\", 1))", "gap\n", "a=1;b=1;gap=1" },
+        { "Shared", "func choose(text: ref/string, other: ref/string, value: (string, i32)) -> (string, i32)\n    if text == other => return value\n    return (\"bad\", 0)\nlet text = \"test\"\nchoose(text, text, (\"a\", 1))\nConsole.writeLine(text)", "test\n", "a=1;bad=0;test=1" },
         { "Abandoned", Echo + "func take(value: (string, i32), gap: ()) => ()\nfunc f()\n    take(echo((\"a\", 1)), (return))\nf()", string.Empty, "a=1" },
-        { "NeverArgument", Echo + "func f()\n    echo((return))\nf()\nwriteLine(\"done\")", "done\n", "done=1" },
+        { "NeverArgument", Echo + "func f()\n    echo((return))\nf()\nConsole.writeLine(\"done\")", "done\n", "done=1" },
         { "Payload", Echo + "let nested = (echo((\"a\", 1)), \"b\")", string.Empty, "a=1;b=1" },
         { "Match", Echo + "func f() -> (string, i32)\n    return match true\n        _ => echo((\"a\", 1))\n        true => echo((\"b\", 2))\nf()", string.Empty, "a=1;b=0" },
         { "LoopResult", Echo + "func f() -> (string, i32)\n    return loop => exit echo((\"a\", 1))\nf()", string.Empty, "a=1" },
@@ -36,7 +36,7 @@ public class AggregateFunctionEmissionTest
         { "ArrayReturn", "func make() -> [2 of string] => [\"a\", \"b\"]\nlet value = make()", string.Empty, "a=1;b=1" },
         { "ZeroReturn", "func make() -> [0 of string] => []\nmake()", string.Empty, string.Empty },
         { "ParameterLoop", Echo + "func f(value: (string, i32), flag: bool)\n    var n = 0\n    loop\n        n += 1\n        if n < 3 => continue\n        if flag => echo(value)\n        exit\nf((\"a\", 1), true)\nf((\"b\", 2), false)", string.Empty, "a=1;b=1" },
-        { "Unused", Echo + "writeLine(\"done\")", "done\n", "done=1" },
+        { "Unused", Echo + "Console.writeLine(\"done\")", "done\n", "done=1" },
     };
 
     [Theory]

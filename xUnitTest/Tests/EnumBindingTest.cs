@@ -22,7 +22,7 @@ public class EnumBindingTest
     [InlineData("let x = Option.Some(1)")]
     [InlineData("let x: Result<i32, string> = .Ok(1)")]
     [InlineData("let x: Result<i32, string> = .Err(\"text\")")]
-    [InlineData("let x: ::Core.Option<i32> = ::Core.Option<i32>.Some(1)")]
+    [InlineData("let x: ::Kimi.Option<i32> = ::Kimi.Option<i32>.Some(1)")]
     [InlineData("let x: Option<Option<i32>> = .Some(.Some(1))")]
     public void ConstructsQualifiedAndExpectedCases(string source)
     {
@@ -126,7 +126,7 @@ public class EnumBindingTest
     [InlineData("enum E<T>\n    Both(T, T)\nvar b: i8\nlet x = E.Both(b, 1)")]
     [InlineData("enum E<T>\n    T is Copy\n    A(T)\nlet x = E.A(1)")]
     [InlineData("enum E\n    A\n    public func f() -> i32 => 1\nlet x = E.f()")]
-    [InlineData("enum Option<T>\n    Mine(T)\nlet x = Option<i32>.Mine(1)\nlet y: ::Core.Option<i32> = .Some(1)")]
+    [InlineData("enum Option<T>\n    Mine(T)\nlet x = Option<i32>.Mine(1)\nlet y: ::Kimi.Option<i32> = .Some(1)")]
     public void SharesInferenceConstraintsAndMemberLookup(string source)
     {
         var c = Parse(source);
@@ -147,17 +147,17 @@ public class EnumBindingTest
     }
 
     [Theory]
-    [InlineData(CoreDeclarationId.Option)]
-    [InlineData(CoreDeclarationId.Result)]
-    public void CoreShapeMutationIsRejected(CoreDeclarationId id)
+    [InlineData(KimiDeclarationId.Option)]
+    [InlineData(KimiDeclarationId.Result)]
+    public void CoreShapeMutationIsRejected(KimiDeclarationId id)
     {
         var c = Parse("let x: Option<i32> = .Some(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var symbol = c.Core.GetSymbol(id)!;
-        c.Core.Kotonoha.CreateCodeContext().Parse((EnumKoto)symbol.Declaration, "Extra");
+        var symbol = c.Library.GetSymbol(id)!;
+        c.Library.Kotonoha.CreateCodeContext().Parse((EnumKoto)symbol.Declaration, "Extra");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(CoreDeclarationState.Invalid, c.Core.Declarations[(int)id].State);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidCoreIntrinsics_Kd);
+        Assert.Equal(KimiDeclarationState.Invalid, c.Library.Declarations[(int)id].State);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
     }
 
     [Fact]
@@ -165,9 +165,9 @@ public class EnumBindingTest
     {
         var c = Parse("let x: Option<i32> = .Some(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        c.Core.Kotonoha.CreateCodeContext().Parse(c.Core.Kotonoha.RootKoto, "public enum Option<T>");
+        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public enum Option<T>");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(CoreDeclarationState.Invalid, c.Core.Declarations[(int)CoreDeclarationId.Option].State);
+        Assert.Equal(KimiDeclarationState.Invalid, c.Library.Declarations[(int)KimiDeclarationId.Option].State);
     }
 
     [Fact]

@@ -45,14 +45,14 @@ public class DefaultCompletionTest
     }
 
     [Theory]
-    [InlineData("If", "if f() => writeLine(\"bad\")")]
-    [InlineData("While", "while f() => writeLine(\"bad\")")]
+    [InlineData("If", "if f() => Console.writeLine(\"bad\")")]
+    [InlineData("While", "while f() => Console.writeLine(\"bad\")")]
     [InlineData("Require", "require f() else => $abort(\"bad\")")]
     [InlineData("Result", "let n = scope: do => exit to scope: f()")]
     public void NoncompletingDefaultConditionsHaveNoRuntimeSuccessor(string name, string use)
         => ScalarEmissionTest.EmitFixture(
             Prefix + name,
-            "func f(x?: i32 = (loop => continue)) -> bool => true\nwriteLine(\"begin\")\n" + use,
+            "func f(x?: i32 = (loop => continue)) -> bool => true\nConsole.writeLine(\"begin\")\n" + use,
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -60,7 +60,7 @@ public class DefaultCompletionTest
     public void SuppliedDefaultsAndRequireSuccessStillExecute()
         => ScalarEmissionTest.EmitFixture(
             Prefix + "Supplied",
-            "func f(x?: i32 = (loop => continue)) -> bool => true\nrequire true else => f()\nif f(3) => writeLine(\"ok\")",
+            "func f(x?: i32 = (loop => continue)) -> bool => true\nrequire true else => f()\nif f(3) => Console.writeLine(\"ok\")",
             "ok\n");
 
     [Fact]

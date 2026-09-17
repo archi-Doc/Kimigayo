@@ -16,7 +16,7 @@ The build model separates workspace orchestration, project configuration, source
 | SourceDocument | An immutable source snapshot, including its path and text. Replacing its text creates a new snapshot. |
 | Compilation | Compiles one Project under one fixed set of source, dependency, target, and build inputs. |
 
-A Solution discovers and loads Projects. A Project stores target triples, aliases, and [dependency declarations](18-modules-and-dependencies.md#184-dependency-configuration-and-resolution), and creates target-specific Compilations. Referenced modules retain their own definition environments.
+A Solution discovers and loads Projects. A Project stores target triples, aliases, and [dependency declarations](18-modules-and-dependencies.md#184-dependency-configuration-and-resolution), and creates target-specific Compilations. Referenced modules retain their own definition environments. The saved Alias setting contains only user additions; construct mandatory and additional defaults together under [§18.1.3](18-modules-and-dependencies.md#1813-effective-default-aliases), including for generated documents.
 
 ## 20.2. Build inputs
 
@@ -262,7 +262,7 @@ The windows-x64-v1 compiler produces one pre-optimization textual .ll and one .l
 | LlvmBin | Optional legacy LLVM-only override; omitted by normal projects using §20.8.8. A relative project value is project-relative; CLI --LlvmBin overrides it and is invocation-relative. emit records a project value without executing tools. Neither changes the target/version contract or the default backend location. |
 | EntrySource | Not an initial selection setting; use §22.2's unique-candidate rules |
 
-The first execution subset is ordinary functions, simple local bindings, Unit, string literals, required ownership/cleanup, and Core.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multiple-Kotonoha linking need not be included in this first execution test. Their language rules are not weakened; unsupported required operations fail. Layout computability, physical ABI support, and runtime availability are separate checks.
+The first execution subset is ordinary functions, simple local bindings, Unit, string literals, required ownership/cleanup, and Kimi.Console.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multiple-Kotonoha linking need not be included in this first execution test. Their language rules are not weakened; unsupported required operations fail. Layout computability, physical ABI support, and runtime availability are separate checks.
 
 Generation success certifies the matched IR/manifest pair, not LLVM acceptance, a linked executable, or successful execution. LLVM verification/object generation, linking, and execution are separately reported stages. Library `.ll` supports inspection/verification/object-generation experiments; source packages are separate rebuildable inputs, not a stable external machine ABI.
 
@@ -339,7 +339,7 @@ The compiler embeds the project-owned backend/windows-x64/kernel32.def. It conta
 
 Static libraries must not depend on CRT startup, automatic C/C++ dynamic initialization, custom TLS initialization/termination, or automatic atexit handlers. Zero-initialized and constant data are allowed. Code needing such startup/termination needs a supported adapter first. DLL initialization follows §22.2.3. These are supplier/user connection contracts: a .lib filename and /NODEFAULTLIB do not establish or perform initialization.
 
-Core/backend/kernel32 supplies occur once for the entire graph and cannot be replaced by arbitrary packages. Module loading order is not initialization order (§22.2.3).
+Kimi/backend/kernel32 supplies occur once for the entire graph and cannot be replaced by arbitrary packages. Module loading order is not initialization order (§22.2.3).
 
 Persist native member summaries/indexes by content hash, summary format, parser/interpretation-rule version, and COFF profile. Retain definitions, references, imports, weak/COMDAT records, relocations, and directives, including unused members. Recompute closure/conflicts for the current root objects, supply set, contracts, and linker options; never reuse another graph's resolution success. Changed content, incompatible formats, or corruption require reparsing. Unknown information is not an empty set. Share indexes and integer references instead of re-reading/reallocating every archive for each link.
 

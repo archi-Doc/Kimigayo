@@ -6,5 +6,5 @@ func choose(text: string, wanted: ref/string) -> string
         _ => "other"
 
 public func main() -> ()
-    writeLine(choose("hello", "hello"))
-    writeLine(choose("different", "hello"))
+    Console.writeLine(choose("hello", "hello"))
+    Console.writeLine(choose("different", "hello"))

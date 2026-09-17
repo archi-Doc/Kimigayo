@@ -10,10 +10,10 @@ func snapshot() -> i32
     return value / 2
 
 public func main() -> ()
-    defer => writeLine("done")
+    defer => Console.writeLine("done")
     var next = 1
     if pair(right: next++, left: next++) == 21 and next == 3
         if factorial(6) == 720 and snapshot() == 10
-            writeLine("ok")
+            Console.writeLine("ok")
             return
-    writeLine("unexpected")
+    Console.writeLine("unexpected")

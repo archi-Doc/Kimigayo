@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class BorrowStructEmissionTest
 {
-    private const string Counter = "struct Counter\n    public var value: i32 = 0\n    deinit => writeLine(\"drop\")\nfunc add(counter: uniq/Counter, amount: i32)\n    counter.value = counter.value + amount\nfunc borrow(counter: ref/Counter) -> ref/Counter from counter => counter\n";
+    private const string Counter = "struct Counter\n    public var value: i32 = 0\n    deinit => Console.writeLine(\"drop\")\nfunc add(counter: uniq/Counter, amount: i32)\n    counter.value = counter.value + amount\nfunc borrow(counter: ref/Counter) -> ref/Counter from counter => counter\n";
 
     [Fact]
     public void Milestone5()
@@ -21,9 +21,9 @@ public class BorrowStructEmissionTest
     }
 
     [Theory]
-    [InlineData("Default", "struct S\n    public var value: i32 = 7\n    deinit => writeLine(\"drop\")\nlet s = S.init()\nif s.value == 7 => writeLine(\"ok\")", "ok\ndrop\n")]
-    [InlineData("Empty", "struct S\n    deinit => writeLine(\"drop\")\nlet s = S.init()", "drop\n")]
-    [InlineData("Order", "struct S\n    let a: () = ::Core.writeLine(\"first\")\n    let b: () = ::Core.writeLine(\"second\")\nlet s = S.init()", "first\nsecond\n")]
+    [InlineData("Default", "struct S\n    public var value: i32 = 7\n    deinit => Console.writeLine(\"drop\")\nlet s = S.init()\nif s.value == 7 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
+    [InlineData("Empty", "struct S\n    deinit => Console.writeLine(\"drop\")\nlet s = S.init()", "drop\n")]
+    [InlineData("Order", "struct S\n    let a: () = ::Kimi.Console.writeLine(\"first\")\n    let b: () = ::Kimi.Console.writeLine(\"second\")\nlet s = S.init()", "first\nsecond\n")]
     public void SynthesizedConstruction(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -79,12 +79,12 @@ public class BorrowStructEmissionTest
     }
 
     [Theory]
-    [InlineData("Returned", "var c = Counter.init()\nadd(c@uniq, 7)\nlet r = borrow(c@ref)\nif r.value == 7 => writeLine(\"ok\")", "ok\ndrop\n")]
-    [InlineData("LastUse", "var c = Counter.init()\nlet r = borrow(c@ref)\nlet n = r.value\nadd(c@uniq, 7)\nif c.value == 7 => writeLine(\"ok\")", "ok\ndrop\n")]
-    [InlineData("SharedCopies", "var c = Counter.init()\nlet r = borrow(c@ref)\nlet s = r\nif s.value == r.value => writeLine(\"ok\")", "ok\ndrop\n")]
-    [InlineData("Reborrow", "func forward(c: uniq/Counter)\n    add(c, 7)\n    add(c, 1)\nvar c = Counter.init()\nforward(c@uniq)\nif c.value == 8 => writeLine(\"ok\")", "ok\ndrop\n")]
-    [InlineData("OwnerArgument", "func inspect(c: Counter)\n    let r = borrow(c@ref)\n    if r.value == 0 => writeLine(\"ok\")\ninspect(Counter.init())", "ok\ndrop\n")]
-    [InlineData("ExclusiveLocal", "var c = Counter.init()\nlet u = c@uniq\nadd(u@uniq, 7)\nadd(u@uniq, 1)\nif u.value == 8 => writeLine(\"ok\")", "ok\ndrop\n")]
+    [InlineData("Returned", "var c = Counter.init()\nadd(c@uniq, 7)\nlet r = borrow(c@ref)\nif r.value == 7 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
+    [InlineData("LastUse", "var c = Counter.init()\nlet r = borrow(c@ref)\nlet n = r.value\nadd(c@uniq, 7)\nif c.value == 7 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
+    [InlineData("SharedCopies", "var c = Counter.init()\nlet r = borrow(c@ref)\nlet s = r\nif s.value == r.value => Console.writeLine(\"ok\")", "ok\ndrop\n")]
+    [InlineData("Reborrow", "func forward(c: uniq/Counter)\n    add(c, 7)\n    add(c, 1)\nvar c = Counter.init()\nforward(c@uniq)\nif c.value == 8 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
+    [InlineData("OwnerArgument", "func inspect(c: Counter)\n    let r = borrow(c@ref)\n    if r.value == 0 => Console.writeLine(\"ok\")\ninspect(Counter.init())", "ok\ndrop\n")]
+    [InlineData("ExclusiveLocal", "var c = Counter.init()\nlet u = c@uniq\nadd(u@uniq, 7)\nadd(u@uniq, 1)\nif u.value == 8 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
     public void ExecutesBorrow(string name, string body, string stdout)
         => ScalarEmissionTest.EmitFixture("BorrowStruct" + name, Counter + body, stdout);
 

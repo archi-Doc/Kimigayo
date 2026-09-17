@@ -10,14 +10,14 @@ public class IdentityAcquisitionEmissionTest
 {
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "Bool", "let flag = true\nif flag@bool and flag => writeLine(\"ok\")", "ok\n" },
-        { "Char", "let value = 'a'\nif value@char == value => writeLine(\"ok\")", "ok\n" },
-        { "String", "let source = \"value\"\nlet value = source@string\nwriteLine(value)", "value\n" },
-        { "Tuple", "let source = (\"value\", 42)\nlet value = source@(string, i32)\nwriteLine(value.0)", "value\n" },
-        { "Array", "let source: [1 of string] = [\"value\"]\nlet value = source@[1 of string]\nwriteLine(value[0])", "value\n" },
-        { "Owner", "let source = \"value\"\nlet value = source@owner\nwriteLine(value)", "value\n" },
-        { "ExplicitOwner", "let source = \"value\"\nlet value = source@owner/string\nwriteLine(value)", "value\n" },
-        { "OwnerNumeric", "let source: i32 = 42\nif source@owner/u8 == 42 and 5000000000@owner/f64 == 5000000000.0 => writeLine(\"ok\")", "ok\n" },
+        { "Bool", "let flag = true\nif flag@bool and flag => Console.writeLine(\"ok\")", "ok\n" },
+        { "Char", "let value = 'a'\nif value@char == value => Console.writeLine(\"ok\")", "ok\n" },
+        { "String", "let source = \"value\"\nlet value = source@string\nConsole.writeLine(value)", "value\n" },
+        { "Tuple", "let source = (\"value\", 42)\nlet value = source@(string, i32)\nConsole.writeLine(value.0)", "value\n" },
+        { "Array", "let source: [1 of string] = [\"value\"]\nlet value = source@[1 of string]\nConsole.writeLine(value[0])", "value\n" },
+        { "Owner", "let source = \"value\"\nlet value = source@owner\nConsole.writeLine(value)", "value\n" },
+        { "ExplicitOwner", "let source = \"value\"\nlet value = source@owner/string\nConsole.writeLine(value)", "value\n" },
+        { "OwnerNumeric", "let source: i32 = 42\nif source@owner/u8 == 42 and 5000000000@owner/f64 == 5000000000.0 => Console.writeLine(\"ok\")", "ok\n" },
     };
 
     [Theory]
@@ -57,14 +57,14 @@ public class IdentityAcquisitionEmissionTest
     }
 
     [Theory]
-    [InlineData("Unit", "let value = ()@owner@()\nwriteLine(\"ok\")")]
-    [InlineData("Empty", "let value: [0 of string] = []\nlet taken = value@owner@[0 of string]\nwriteLine(\"ok\")")]
-    [InlineData("CopyArray", "let value: [2 of i32] = [1, 2]\nlet copy = value@owner\nif copy[0] == value[0] => writeLine(\"ok\")")]
-    [InlineData("Snapshot", "var value: i32 = 1\nlet sum = value@owner + value++\nif sum == 2 and value == 2 => writeLine(\"ok\")")]
-    [InlineData("Once", "func get() -> string\n    writeLine(\"ok\")\n    return \"value\"\nlet value = get()@owner@string")]
-    [InlineData("Selection", "let value = if true => \"ok\"@owner else => \"bad\"@owner\nwriteLine(value)")]
-    [InlineData("Abrupt", "func get() -> string\n    (return \"ok\")@owner\nwriteLine(get())")]
-    [InlineData("Grouped", "let text = \"ok\"\nwriteLine(text@((owner))@((string)))")]
+    [InlineData("Unit", "let value = ()@owner@()\nConsole.writeLine(\"ok\")")]
+    [InlineData("Empty", "let value: [0 of string] = []\nlet taken = value@owner@[0 of string]\nConsole.writeLine(\"ok\")")]
+    [InlineData("CopyArray", "let value: [2 of i32] = [1, 2]\nlet copy = value@owner\nif copy[0] == value[0] => Console.writeLine(\"ok\")")]
+    [InlineData("Snapshot", "var value: i32 = 1\nlet sum = value@owner + value++\nif sum == 2 and value == 2 => Console.writeLine(\"ok\")")]
+    [InlineData("Once", "func get() -> string\n    Console.writeLine(\"ok\")\n    return \"value\"\nlet value = get()@owner@string")]
+    [InlineData("Selection", "let value = if true => \"ok\"@owner else => \"bad\"@owner\nConsole.writeLine(value)")]
+    [InlineData("Abrupt", "func get() -> string\n    (return \"ok\")@owner\nConsole.writeLine(get())")]
+    [InlineData("Grouped", "let text = \"ok\"\nConsole.writeLine(text@((owner))@((string)))")]
     public void BoundariesAndEvaluationOrderExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture("IdentityAcquisition" + name, source, "ok\n");
 
@@ -103,7 +103,7 @@ public class IdentityAcquisitionEmissionTest
     [Fact]
     public void RebindingAndReloadPreserveIdentityAcquisition()
     {
-        var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@owner\nlet pair = (\"ok\", 42)\nwriteLine(take(pair@(string, i32)))");
+        var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@owner\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@(string, i32)))");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
         c.Bind();
@@ -131,7 +131,7 @@ public class IdentityAcquisitionEmissionTest
     [Fact]
     public void WarmIdentityAnalysisAndWritingAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@owner\nlet pair = (\"ok\", 42)\nwriteLine(take(pair@(string, i32)))");
+        var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@owner\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@(string, i32)))");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);

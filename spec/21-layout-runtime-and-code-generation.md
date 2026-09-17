@@ -200,6 +200,8 @@ An extension that introduces runtime implementation selection defines its own ad
 
 ### 21.2.2. Value metadata and object descriptors
 
+For a Sealed object View Target, Dynamic Type equals that target. Whole payload updates preserve the Descriptor, header, allocation, and Identity. A content-destruction operation such as destroyValues must not free or final-release the containing object (§15.7.3).
+
 The following immutable, module-local records belong to windows-x64-v1. They define storage and entry contracts, not a stable external calling convention; all physical signatures use §21.4.2's FunctionAbi. Instance counts, allocation state, initialization state and Loans do not belong in shared metadata.
 
 **Type keys.** Value metadata uses ArgKey of the full normalized Type, recursively erasing Origins only and retaining all Semantics. Object payload metadata uses CoreId(D) of the complete Dynamic Type D; this equals ArgKey(owner/D). It is independent of the handle mode and static View Target. Assign distinct nonzero u64 tokens deterministically within the final generation unit. Check hash collisions against original keys. Artifacts retain those keys and dependencies; integration may retokenize all references. Tokens have no public numeric, persistence or dynamic-linking contract. Multiple records for one key are allowed; shared code/layout does not merge Type identities, and equal tokens prove no static Type, Origin, Loan or code-sharing judgment.
@@ -294,6 +296,8 @@ The strong-release guarantee must survive inline-to-table migration. These oblig
 On CAS failure, recheck the latest representation. A failure that discovers a table pointer still needs an Acquire observation before accessing the table. Inline decrement uses control CAS; table decrement may use fetch_sub. LLVM spells Relaxed as monotonic; compare-exchange orderings must meet its verifier constraints, including no release/acq_rel failure ordering. Alternative implementations must prove the normative arrows. Validate weak-memory behavior, not just possible interleavings, and verify generated IR/native count protocols separately. Allocation and destructors have no lock-free guarantee.
 
 ### 21.2.4. Value-borrow storage
+
+A proven Sealed payload projection uses the ordinary ref/uniq ABI and points to the payload address in §21.2.3, not the object header. Its completeness proof is static. Add no mode, count operation, header field, generation counter, or runtime Loan representation; retain ownership dependencies in the existing analysis facts.
 
 ref/V and uniq/V point to the storage of the **immediate complete V**, without implicit dereference. On windows-x64-v1 each is one nonnull address-space-0 pointer, size/alignment/stride 8/8/8, aligned for V. It contains no metadata, length, count, Origin or Loan ID. A borrow of Array or Slice points to its complete handle. ref/(rc/T) points to a handle slot; objref/T points to the original object header. uniq/(rc/T) grants exclusive handle-slot access, not unique payload ownership. Nested dependencies stay distinct; ordinary @ref on an existing shared borrow copies it rather than adding a layer.
 
@@ -396,6 +400,8 @@ A body may omit concrete Types handled wholly by context or helpers. Embedded si
 [Appendix B.7.1](appendices/B-reference-models.md#b71-plan-keys-and-generation-order) separates semantic, body, entry and context keys for the initial compiler. These are in-memory generation roles, not a persistent object-cache format. Persistence follows §21.3.4.
 
 ### 21.3.3. Shared operations and Type policies
+
+Use a common checked target/acquisition/transfer plan for whole-value updates, carrying complete Type, Loan, Origin, and destruction-responsibility evidence. Sealed proves completeness but does not identify a concrete entry in shared generic code. Devirtualize only when a concrete generation entry is known. Reuse validated summary/cache dependencies and invalidate plans when Type formation, openness, effects, or specialization changes.
 
 #### 21.3.3.1. Requirements and fixed facts
 
@@ -632,15 +638,15 @@ Share stable Identities without cloning the syntax tree. Compute and reuse these
 
 Unresolved Types/obligations, missing cleanup, or unsupported selected operations fail generation. Zero, undef, poison, unreachable, and freeze are not substitutes for unresolved language semantics.
 
-Plan selected product implementations, startup, required concrete generic implementations, dependencies, Core, cleanup, and runtime helpers under normal-output roots. Foreign imports have no emitted body. Use a worklist keyed by declaration Identity, concrete arguments, and selected implementation. Ordinary recursion reuses a declaration; unbounded distinct instantiations receive a resource diagnostic. After required verification and planning, omit unneeded machine code/metadata; test emission follows §21.3.7 without reallocating product budgets.
+Plan selected product implementations, startup, required concrete generic implementations, dependencies, Kimi, cleanup, and runtime helpers under normal-output roots. Foreign imports have no emitted body. Use a worklist keyed by declaration Identity, concrete arguments, and selected implementation. Ordinary recursion reuses a declaration; unbounded distinct instantiations receive a resource diagnostic. After required verification and planning, omit unneeded machine code/metadata; test emission follows §21.3.7 without reallocating product budgets.
 
 Unused nongeneric bodies and unexecuted branches within generated bodies still receive required semantic and unsupported-feature diagnostics; code omission cannot hide them. Excluded syntax is outside this set. Verification of uninstantiated generic bodies is unchanged. Unsupported sharing/metadata must not silently select another implementation. Code may be omitted or removed only after required checks.
 
 ### 21.4.2. Physical function signatures
 
-The internal function ABI is compiler-controlled within a final generation and deliberately unfixed. Source dependencies may participate in that common generation; no external ABI is needed between their separately verified semantic plans. The ABI applies to user functions, Core, and private runtime helpers in Application and Library inspection output. No physical calling convention, parameter/result representation or ordering, hidden-context position, symbol spelling, or stable ABI version is a language guarantee. The compiler may choose different physical signatures across builds, targets and generated functions without a language-version change, subject to language and external contracts. Within a scheme, generic callers use §21.3.6's entry contracts: optional budgets change implementations, not caller-facing entry ABI. Independently generated modules or compiler builds have no promised binary compatibility.
+The internal function ABI is compiler-controlled within a final generation and deliberately unfixed. Source dependencies may participate in that common generation; no external ABI is needed between their separately verified semantic plans. The ABI applies to user functions, Kimi, and private runtime helpers in Application and Library inspection output. No physical calling convention, parameter/result representation or ordering, hidden-context position, symbol spelling, or stable ABI version is a language guarantee. The compiler may choose different physical signatures across builds, targets and generated functions without a language-version change, subject to language and external contracts. Within a scheme, generic callers use §21.3.6's entry contracts: optional budgets change implementations, not caller-facing entry ABI. Independently generated modules or compiler builds have no promised binary compatibility.
 
-Within the entry rules of §21.3.6, direct or indirect passing, aggregate splitting/coercion, result storage, omitted slots, calling conventions such as LLVM ccc or fastcc, and ABI attributes such as byval or sret are compiler choices. Storage layouts defined elsewhere do not fix function passing: this includes scalars, string, object handles, and Core.Weak<S>. Unit still has its logical value/effects, and Never still has no normal result or return edge. Every emitted representation requires an implemented ValueLowering and its complete validity, ownership, and cleanup operations; implementation freedom does not permit guessing an unsupported representation.
+Within the entry rules of §21.3.6, direct or indirect passing, aggregate splitting/coercion, result storage, omitted slots, calling conventions such as LLVM ccc or fastcc, and ABI attributes such as byval or sret are compiler choices. Storage layouts defined elsewhere do not fix function passing: this includes scalars, string, object handles, and Kimi.Weak<S>. Unit still has its logical value/effects, and Never still has no normal result or return edge. Every emitted representation requires an implemented ValueLowering and its complete validity, ownership, and cleanup operations; implementation freedom does not permit guessing an unsupported representation.
 
 Derive definitions and all calls, including indirect entries and adapters when supported, from the same FunctionAbi contract. Physical rearrangement must preserve the mapping to logical parameters and results. Evaluate and acquire explicit arguments once in source order. A value receiver is evaluated once before explicit arguments (§7.3); a Type-qualified unbound call supplies self in ordinary argument order. Physical slot order does not determine evaluation order. Select ABI attributes according to the actual backend contract and prove any additional validity or optimization premises; a calling convention or attribute cannot grant source-level Copy, Move, or alias permissions.
 
@@ -722,6 +728,8 @@ The result slot may contain secured bytes while cleanup runs, but consumers of t
 
 ### 21.4.5. Cleanup and physical transfer
 
+For `replace`, destruction occurs at the old location before placement. Rewriting it as exchange followed by destruction is valid only when location, order, dependencies, observable effects, Abort, and divergence are equivalent; exclusivity alone is insufficient. Exchange/swap transfers must keep their internal empty state unobservable and invoke no user code. Payload swap is O(payload size), not an automatic handle swap. Eliminate redundant copies, scratch, and cleanup only while preserving the checked update plan (§15.7).
+
 Tuple and fixed-array construction may place components directly in their final subslots. Each completed placement retains its own cleanup responsibility until whole-value completion transfers those responsibilities to the aggregate; completion need not copy bytes again. Physical offsets follow TypeLayout, while acquisition and cleanup keep their logical order. This optimization does not publish a partially constructed whole value.
 
 Each scope-leaving edge secures its result, performs exactly the cleanup of scopes left, then delivers the result/transfer. Follow §16.2's inner-to-outer, reverse lexical order of locals and defer; process only registered defer and initialized parts still owned. Use edge-known state directly; introduce runtime flags only where paths must remain distinguishable after a join. Equal cleanup sequences may share code when state and destination match. A heap stack or closure per defer is not required. Never infer partial construction/Move/base state from value bits or addresses, reorder cleanup by physical offsets, or move destruction to last use.
@@ -801,11 +809,11 @@ Use LLVM for inlining, constant propagation, dead-code elimination, SROA, mem2re
 
 ### 21.5.2. Module, symbols, and caches
 
-One project/target emits one .ll with target information, private constants, required external declarations, internal runtime/Core/user/cleanup definitions, and Application entry (§22.2). Source public visibility is not native export.
+One project/target emits one .ll with target information, private constants, required external declarations, internal runtime/Kimi/user/cleanup definitions, and Application entry (§22.2). Source public visibility is not native export.
 
 | Symbol | Linkage |
 | --- | --- |
-| User functions, public main, implicit body, Core, cleanup, runtime helpers | internal definitions in both output kinds |
+| User functions, public main, implicit body, Kimi, cleanup, runtime helpers | internal definitions in both output kinds |
 | Application __kimi_start | external definition; absent in Library |
 | Windows APIs / LibraryImport | external declarations; dllimport follows library kind (§20.8.2) |
 | Backend marker _fltused | Strong external data definition (§21.5.7) |
@@ -818,6 +826,8 @@ Use one final-module symbol table. Same-named external declarations share only i
 Deterministic generation records retain compiler/layout and generation-scheme identities, entry/body ABI contracts, target/DataLayout/codegen settings, backend package version/hash, selected fragments/generated sources, complete arguments and selected implementations, cleanup, callees and helper dependencies. Validate content identities without requiring a public internal ABI version. Under §21.3.4, persistent semantic plans validate their own dependencies; generation records and code are rebuilt under the current scheme, not restored from an object cache. Size/alignment alone is never a sufficient key. Do not depend on absolute working directories, host locale, enumeration order, or host CPU.
 
 ### 21.5.3. Checked instructions and raw pointers
+
+For proven complete payload targets, ordinary value-borrow addresses and load/store/transfer rules apply. Fold same-concrete-Type tests only while preserving operand evaluation, acquisition, Loans, and Origins. Content destruction does not end the containing allocation lifetime, and raw pointer optimization cannot erase required dependency checks (§15.7.3).
 
 Preserve existing arithmetic, conversion, indexing, and failure order. nsw/nuw, poison, or undefined behavior cannot implement a required Abort check.
 

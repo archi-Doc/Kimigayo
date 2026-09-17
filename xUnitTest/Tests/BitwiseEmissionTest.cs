@@ -9,23 +9,23 @@ namespace XunitTest;
 public class BitwiseEmissionTest
 {
     private const string Reason = "KIMI_E_INT_SHIFT_COUNT: Shift count out of range";
-    private const string Snapshot = "func result() -> i32\n    var x = 3\n    defer => x <<= 2\n    return x << 1\nif result() == 6 => writeLine(\"ok\")";
+    private const string Snapshot = "func result() -> i32\n    var x = 3\n    defer => x <<= 2\n    return x << 1\nif result() == 6 => Console.writeLine(\"ok\")";
 
     public static TheoryData<string, string> Fixtures => new()
     {
-        { "BitwiseMasks", "if (10 & 6) == 2 and (10 | 6) == 14 and (10 ^ 6) == 12 => writeLine(\"ok\")" },
-        { "BitwiseSigned", "if (-1 & -2147483648) == -2147483648 and (-2147483648 | 2147483647) == -1 and (-1 ^ 2147483647) == -2147483648 => writeLine(\"ok\")" },
-        { "BitwiseShiftLimits", "var x = -2147483648\nif (1 << 31) == x and (x << 1) == 0 and (-1 << 1) == -2 and (2147483647 << 1) == -2 and (x << 0) == x and (x >> 31) == -1 and (2147483647 >> 31) == 0 and (-3 >> 1) == -2 and (x >> 0) == x => writeLine(\"ok\")" },
-        { "BitwiseCompound", "var x = 10\nlet unit = (x &= 6)\nx |= 8\nx ^= 6\nx <<= 2\nx >>= 3\nif x == 6 => writeLine(\"ok\")" },
-        { "BitwiseOrder", "var x = 1\nlet y = x++ << x++\nlet z = x++ | x++\nlet a = x++ ^ x++\nlet b = x++ & x++\nif y == 4 and z == 7 and a == 3 and b == 0 and x == 9 => writeLine(\"ok\")" },
-        { "BitwiseCompoundOrder", "var x = 2\nx <<= x++\nvar y = 7\ny &= y++\nvar z = 1\nz |= z++\nvar a = 5\na ^= a++\nvar b = 8\nb >>= b++ - 6\nif x == 8 and y == 7 and z == 1 and a == 0 and b == 2 => writeLine(\"ok\")" },
-        { "BitwiseShortCircuit", "var n = 32\nif n < 32 and (1 << n) == 0 => writeLine(\"bad\")\nif true or (1 >> -1) == 0 => ()\nif false => 1 << 32\nloop\n    exit\n    1 >> -2147483648\nwriteLine(\"ok\")" },
-        { "BitwisePhi", "var c = true\nvar x = 3\nlet y = if c => x << 2 else => x >> 1\nlet z = if c\n    yield y | 1\nelse\n    yield 0\nif y == 12 and z == 13 => writeLine(\"ok\")" },
+        { "BitwiseMasks", "if (10 & 6) == 2 and (10 | 6) == 14 and (10 ^ 6) == 12 => Console.writeLine(\"ok\")" },
+        { "BitwiseSigned", "if (-1 & -2147483648) == -2147483648 and (-2147483648 | 2147483647) == -1 and (-1 ^ 2147483647) == -2147483648 => Console.writeLine(\"ok\")" },
+        { "BitwiseShiftLimits", "var x = -2147483648\nif (1 << 31) == x and (x << 1) == 0 and (-1 << 1) == -2 and (2147483647 << 1) == -2 and (x << 0) == x and (x >> 31) == -1 and (2147483647 >> 31) == 0 and (-3 >> 1) == -2 and (x >> 0) == x => Console.writeLine(\"ok\")" },
+        { "BitwiseCompound", "var x = 10\nlet unit = (x &= 6)\nx |= 8\nx ^= 6\nx <<= 2\nx >>= 3\nif x == 6 => Console.writeLine(\"ok\")" },
+        { "BitwiseOrder", "var x = 1\nlet y = x++ << x++\nlet z = x++ | x++\nlet a = x++ ^ x++\nlet b = x++ & x++\nif y == 4 and z == 7 and a == 3 and b == 0 and x == 9 => Console.writeLine(\"ok\")" },
+        { "BitwiseCompoundOrder", "var x = 2\nx <<= x++\nvar y = 7\ny &= y++\nvar z = 1\nz |= z++\nvar a = 5\na ^= a++\nvar b = 8\nb >>= b++ - 6\nif x == 8 and y == 7 and z == 1 and a == 0 and b == 2 => Console.writeLine(\"ok\")" },
+        { "BitwiseShortCircuit", "var n = 32\nif n < 32 and (1 << n) == 0 => Console.writeLine(\"bad\")\nif true or (1 >> -1) == 0 => ()\nif false => 1 << 32\nloop\n    exit\n    1 >> -2147483648\nConsole.writeLine(\"ok\")" },
+        { "BitwisePhi", "var c = true\nvar x = 3\nlet y = if c => x << 2 else => x >> 1\nlet z = if c\n    yield y | 1\nelse\n    yield 0\nif y == 12 and z == 13 => Console.writeLine(\"ok\")" },
         { "BitwiseSnapshot", Snapshot },
-        { "BitwiseDeferredLoop", "var x = 1\nloop\n    defer => x <<= 1\n    if x == 8 => exit\n    continue\nif x == 16 => writeLine(\"ok\")" },
-        { "BitwiseOperandTransfer", "var x = 3\nlet y = outer: do\n    x <<= (if true => exit to outer: 9 else => 32)\n    exit to outer: 0\nif x == 3 and y == 9 => writeLine(\"ok\")" },
-        { "BitwiseFunctions", "func left() -> i32\n    writeLine(\"ok\")\n    return 3\nfunc count() -> i32\n    writeLine(\"bad\")\n    return 1\npublic func main() -> ()\n    let n = left()\n    if n == 3 or count() == 1 => ()\n    if (n & 1) == 0 and count() == 1 => ()" },
-        { "BitwiseCallOrder", "func left() -> i32\n    writeLine(\"left\")\n    return 3\nfunc count() -> i32\n    writeLine(\"count\")\n    return 1\nif (left() << count()) == 6 => writeLine(\"ok\")" },
+        { "BitwiseDeferredLoop", "var x = 1\nloop\n    defer => x <<= 1\n    if x == 8 => exit\n    continue\nif x == 16 => Console.writeLine(\"ok\")" },
+        { "BitwiseOperandTransfer", "var x = 3\nlet y = outer: do\n    x <<= (if true => exit to outer: 9 else => 32)\n    exit to outer: 0\nif x == 3 and y == 9 => Console.writeLine(\"ok\")" },
+        { "BitwiseFunctions", "func left() -> i32\n    Console.writeLine(\"ok\")\n    return 3\nfunc count() -> i32\n    Console.writeLine(\"bad\")\n    return 1\npublic func main() -> ()\n    let n = left()\n    if n == 3 or count() == 1 => ()\n    if (n & 1) == 0 and count() == 1 => ()" },
+        { "BitwiseCallOrder", "func left() -> i32\n    Console.writeLine(\"left\")\n    return 3\nfunc count() -> i32\n    Console.writeLine(\"count\")\n    return 1\nif (left() << count()) == 6 => Console.writeLine(\"ok\")" },
     };
 
     [Theory]
@@ -58,17 +58,17 @@ public class BitwiseEmissionTest
         var compound = op.Length == 3;
         var number = count.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var prefix = variable ? $"var x = 1\nvar n = {number}\n" : compound ? "var x = 1\n" : string.Empty;
-        var source = prefix + $"{(variable || compound ? "x" : "1")} {op} {(variable ? "n" : number)}\nwriteLine(\"bad\")";
+        var source = prefix + $"{(variable || compound ? "x" : "1")} {op} {(variable ? "n" : number)}\nConsole.writeLine(\"bad\")";
         var name = $"BitwiseInvalid{(op[0] == '<' ? "Left" : "Right")}{(compound ? "Assign" : "Binary")}{number}{(variable ? "Variable" : "Literal")}";
         ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, $"Hello.kimi:{(variable ? 3 : compound ? 2 : 1)}:1: abort {Reason}\n");
     }
 
     [Theory]
-    [InlineData("BitwiseOperandOverflow", "var n = 2147483647\ndefer => writeLine(\"bad\")\n1 << (n + 1)", "", 3, 7, true)]
+    [InlineData("BitwiseOperandOverflow", "var n = 2147483647\ndefer => Console.writeLine(\"bad\")\n1 << (n + 1)", "", 3, 7, true)]
     [InlineData("BitwiseInnerFailure", "var x = 3\nx <<= 1 << 32", "", 2, 7, false)]
     [InlineData("BitwiseOuterFailure", "var x = 3\nx <<= 1 << 5", "", 2, 1, false)]
-    [InlineData("BitwiseBeforeCleanup", "func f() -> i32\n    defer => writeLine(\"bad\")\n    return 1 << -1\nf()", "", 3, 12, false)]
-    [InlineData("BitwiseDuringCleanup", "defer => writeLine(\"bad\")\ndefer\n    writeLine(\"begin\")\n    1 >> 32\n    writeLine(\"bad\")", "begin\n", 4, 5, false)]
+    [InlineData("BitwiseBeforeCleanup", "func f() -> i32\n    defer => Console.writeLine(\"bad\")\n    return 1 << -1\nf()", "", 3, 12, false)]
+    [InlineData("BitwiseDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    Console.writeLine(\"begin\")\n    1 >> 32\n    Console.writeLine(\"bad\")", "begin\n", 4, 5, false)]
     public void FailureStopsEvaluationAndCleanup(string name, string source, string stdout, int line, int column, bool overflow)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort {(overflow ? "KIMI_E_INT_OVERFLOW: Integer overflow" : Reason)}\n");
 

@@ -4,15 +4,15 @@ struct Counter
 
     public init()
         self.value = 0
-        ::Core.writeLine("Counter created.")
+        ::Kimi.Console.writeLine("Counter created.")
 
-    deinit => ::Core.writeLine("Counter destroyed.")
+    deinit => ::Kimi.Console.writeLine("Counter destroyed.")
 
 func finish(counter: Counter)
-    defer => ::Core.writeLine("Leaving finish.")
+    defer => ::Kimi.Console.writeLine("Leaving finish.")
     if counter.value != 55
         $abort("Unexpected sum")
-    ::Core.writeLine("Sum is 55.")
+    ::Kimi.Console.writeLine("Sum is 55.")
     // The owned parameter is destroyed after the deferred message.
 
 public func main()
@@ -24,4 +24,4 @@ public func main()
 
     finish(counter) // Moves ownership and destruction responsibility.
     // counter cannot be read or borrowed after this Move.
-    ::Core.writeLine("Done.")
+    ::Kimi.Console.writeLine("Done.")

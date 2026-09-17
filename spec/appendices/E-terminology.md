@@ -8,8 +8,9 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | --- | --- | --- |
 | Access Designator | A resolved access target, without a promise of storage or Consume permission. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
 | Adaptation Target | Core or object View Target and Semantics requested by `@`; result Origins are inferred. | [Explicit operations](../13-operators-and-assignment.md#1351-forms-and-adaptation-targets) |
+| Alias | A source-local resolved Container reference that opens direct members or introduces a named Qualifier. | [Source aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases) |
 | API signature | Exposed Types and requirements checked for accessibility, beyond overload identity. | [API signature accessibility](../09-names-signatures-and-access.md#932-api-signature-accessibility) |
-| Associated Type | Ordinarily a Core binding fixed by explicit Type-identity facts; Core iteration Element requirements have the explicit complete-Type exception in §22.1. | [Associated Types](../08-generics-constraints-and-contracts.md#843-associated-types) |
+| Associated Type | Ordinarily a Core binding fixed by explicit Type-identity facts; Kimi iteration Element requirements have the explicit complete-Type exception in §22.1. | [Associated Types](../08-generics-constraints-and-contracts.md#843-associated-types) |
 | Binding | Associating source names and operations with declarations and meanings. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |
 | Binding Identity / Value Instance | Resolved binding / its currently held value | [Stable bindings](../14-control-flow.md#14101-stable-bindings-and-effective-types) |
 | Body | A scoped single expression/statement after `=>`, or an indented sequence whose direct expression values are discarded. | [Body forms and results](../14-control-flow.md#142-blocks-and-evaluation-contexts) |
@@ -39,7 +40,6 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Contract refinement | Inheritance of all parent requirements and Constraints; conformance entails ancestor conformance. | [Refinement](../08-generics-constraints-and-contracts.md#842-refinement) |
 | Copy | Implicit value duplication that leaves its source initialized. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
 | Core | A Type's value kind, structure, and identity, distinct from its outer Semantics and Origins. | [Type composition](../03-types-and-values.md#3-types-and-values) |
-| Core Kotonoha | The compiler-compatible foundation module referenced as `Core`. | [Required declarations](../22-core-execution-and-foreign-functions.md#221-required-core-declarations) |
 | Declaration Container | A named declaration scope with members permitted by its kind. | [Containers](../06-declarations-and-containers.md#61-declaration-containers) |
 | Deferred Block | Cleanup code registered by `defer` for its containing scope's exit. | [Deferred Blocks](../16-scope-exit-and-destruction.md#161-deferred-blocks) |
 | Deferred Obligation | A legitimate dependent check retained with its evidence, environment, and deadline. | [Generic checking](../08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations) |
@@ -64,12 +64,16 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | ModuleInputId / DeclarationKey | Whole-module verification fast-path key / revision correspondence key, neither a replacement for actual Type identity. | [Verified information](../18-modules-and-dependencies.md#187-verified-information-and-reuse) |
 | Dependency lock / publication store | Project resolution state updated by restore / local release mappings updated by publish. | [Locks](../18-modules-and-dependencies.md#1851-resolution-state), [stores](../18-modules-and-dependencies.md#1864-user-cache-and-publication-stores) |
 | Mod / ModId | One registered source-generation step / its stable identity within a Compilation. | [Mods](../20-compilation-configuration.md#207-mods-source-generation) |
+| Kimi Kotonoha | The compiler-compatible foundation module referenced as `Kimi`. | [Required declarations](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
 | Loan | A borrowed place, access mode, and validity region. | [Borrow checking](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |
 | Move | Transfer of a value and responsibility or capability, marking its source Moved. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
 | Move Path | A statically tracked path with independent initialization state and destruction responsibility. | [Move Paths](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) |
 | ObjectCallCompatible | Public receiver-preservation guarantee for calls through object borrows or base-subobject projections, per call operation | [Object calls](../12-expressions.md#1244-object-receiver-compatibility) |
 | ObjectViewCompatible | Contract eligibility as an Object View Target with fixed associated Types, within the runtime Contract extension | [Runtime contracts](../08-generics-constraints-and-contracts.md#85-runtime-contracts) |
+| Sealed | Intrinsic evidence that the normalized outer Type is a valid owner Core other than Never or an open struct; independent of stored fields, Copy and Owned | [Sealed](../08-generics-constraints-and-contracts.md#8471-sealed) |
+| Whole-value update | Replacement or exchange of the complete contents of initialized authorized storage, preserving required dependencies | [Whole-value updates](../15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
+| Complete payload projection | A same-target Sealed object payload borrowed as ordinary ref/uniq with retained owner and referent dependencies | [Payload projection](../13-operators-and-assignment.md#13551-complete-object-payload-projection) |
 | Owned / OwnedOrigins | Lifetime independence from non-static dependencies / the conservative Origin closure proving it | [static and Owned](../15-ownership-and-lifetime-analysis.md#1523-static-and-owned) |
 | Origin | A set of program points where a borrow is guaranteed valid. | [Origin expressions](../15-ownership-and-lifetime-analysis.md#1521-origin-expressions) |
 | Partial Move | Transfer of an aggregate's part, leaving the aggregate incomplete. | [Move Paths](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) |

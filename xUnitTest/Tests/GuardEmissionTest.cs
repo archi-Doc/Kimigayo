@@ -10,29 +10,29 @@ public class GuardEmissionTest
 {
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "Candidate", "func f(n: i32) -> string\n    return match n\n        let x if x < 0 => \"negative\"\n        let x if x == 0 => \"zero\"\n        _ => \"positive\"\nwriteLine(f(-1))\nwriteLine(f(0))\nwriteLine(f(1))", "negative\nzero\npositive\n" },
-        { "Duplicate", "func test() -> bool\n    writeLine(\"guard\")\n    return false\nmatch 0\n    0 if test() => ()\n    0 => writeLine(\"ok\")\n    _ => ()", "guard\nok\n" },
-        { "Mismatch", "func test() -> bool\n    writeLine(\"bad\")\n    return true\nmatch 1\n    0 if test() => ()\n    _ => writeLine(\"ok\")", "ok\n" },
-        { "Mutation", "var state = 0\nmatch 1\n    _ if (check: do\n        state = 7\n        exit to check: false\n    ) => ()\n    _ => if state == 7 => writeLine(\"ok\")", "ok\n" },
-        { "Snapshot", "var value = 7\nmatch value\n    let n if (check: do\n        value = 9\n        exit to check: n == 7\n    ) => if n == 7 and value == 9 => writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "Unit", "match ()\n    let n if true => ()\n    () => ()\nwriteLine(\"ok\")", "ok\n" },
-        { "Boolean", "match false\n    true if true => ()\n    false if false => ()\n    true => ()\n    false => writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "Return", "func f() -> string\n    match 1\n        let n if (return \"ok\") => \"bad\"\n        _ => \"other\"\n    return \"after\"\nwriteLine(f())", "ok\n" },
-        { "StringCondition", "func echo(text: string) -> string => text\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "ShortCircuit", "func test() -> bool\n    writeLine(\"bad\")\n    return true\nmatch 1\n    _ if false and test() => ()\n    _ if true or test() => writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "BodyVar", "match 1\n    var n if n == 1\n        n += 1\n        if n == 2 => writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "Nested", "match 1\n    let n if (match n\n        let x if x == 1 => true\n        _ => false\n    ) => writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "Loop", "var n = 0\nwhile n < 3\n    n += 1\n    match n\n        let x if x == 1 => continue\n        let x if x == 2 => writeLine(\"two\")\n        _ => exit", "two\n" },
-        { "Covered", "match 1\n    _ => writeLine(\"ok\")\n    let x if x == 1 => writeLine(\"bad\")", "ok\n" },
-        { "OuterLoan", "let text = \"a\"\nif text == (match 1\n    let n if n == 1 => \"a\"\n    _ => \"b\"\n) => writeLine(text)", "a\n" },
-        { "Arguments", "func same(a: i32, b: i32) -> bool => a == b\nmatch 3\n    let n if same(n, if true => n else => n) => writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "Deferred", "defer\n    match 1\n        let x if x == 1 => writeLine(\"ok\")\n        _ => ()", "ok\n" },
-        { "DeferredSnapshot", "var flag = true\nmatch 1\n    _ if (check: do\n        defer => flag = false\n        exit to check: flag\n    ) => if not flag => writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "OuterYield", "let result = outer: match 0\n    _ => match 1\n        _ if (yield 7) => 1\n        _ => 2\nif result == 7 => writeLine(\"ok\")", "ok\n" },
-        { "ReturnCandidate", "func f() -> i32\n    match 7\n        let n if (return n) => ()\n        _ => ()\n    return 0\nif f() == 7 => writeLine(\"ok\")", "ok\n" },
-        { "GuardContinue", "var n = 0\nwhile n < 2\n    n += 1\n    match n\n        _ if (if n == 1 => continue else => true) => writeLine(\"ok\")\n        _ => ()", "ok\n" },
-        { "CheckedBody", "func f() -> i32\n    return match 7\n        let n if (return 9) => n\n        _ => 0\nif f() == 9 => writeLine(\"ok\")", "ok\n" },
-        { "ConditionalMove", "var text = \"a\"\nmatch 1\n    _ if (check: do\n        writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => ()\ntext = \"b\"\nwriteLine(text)", "a\nb\n" },
+        { "Candidate", "func f(n: i32) -> string\n    return match n\n        let x if x < 0 => \"negative\"\n        let x if x == 0 => \"zero\"\n        _ => \"positive\"\nConsole.writeLine(f(-1))\nConsole.writeLine(f(0))\nConsole.writeLine(f(1))", "negative\nzero\npositive\n" },
+        { "Duplicate", "func test() -> bool\n    Console.writeLine(\"guard\")\n    return false\nmatch 0\n    0 if test() => ()\n    0 => Console.writeLine(\"ok\")\n    _ => ()", "guard\nok\n" },
+        { "Mismatch", "func test() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch 1\n    0 if test() => ()\n    _ => Console.writeLine(\"ok\")", "ok\n" },
+        { "Mutation", "var state = 0\nmatch 1\n    _ if (check: do\n        state = 7\n        exit to check: false\n    ) => ()\n    _ => if state == 7 => Console.writeLine(\"ok\")", "ok\n" },
+        { "Snapshot", "var value = 7\nmatch value\n    let n if (check: do\n        value = 9\n        exit to check: n == 7\n    ) => if n == 7 and value == 9 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "Unit", "match ()\n    let n if true => ()\n    () => ()\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "Boolean", "match false\n    true if true => ()\n    false if false => ()\n    true => ()\n    false => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "Return", "func f() -> string\n    match 1\n        let n if (return \"ok\") => \"bad\"\n        _ => \"other\"\n    return \"after\"\nConsole.writeLine(f())", "ok\n" },
+        { "StringCondition", "func echo(text: string) -> string => text\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "ShortCircuit", "func test() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch 1\n    _ if false and test() => ()\n    _ if true or test() => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "BodyVar", "match 1\n    var n if n == 1\n        n += 1\n        if n == 2 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "Nested", "match 1\n    let n if (match n\n        let x if x == 1 => true\n        _ => false\n    ) => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "Loop", "var n = 0\nwhile n < 3\n    n += 1\n    match n\n        let x if x == 1 => continue\n        let x if x == 2 => Console.writeLine(\"two\")\n        _ => exit", "two\n" },
+        { "Covered", "match 1\n    _ => Console.writeLine(\"ok\")\n    let x if x == 1 => Console.writeLine(\"bad\")", "ok\n" },
+        { "OuterLoan", "let text = \"a\"\nif text == (match 1\n    let n if n == 1 => \"a\"\n    _ => \"b\"\n) => Console.writeLine(text)", "a\n" },
+        { "Arguments", "func same(a: i32, b: i32) -> bool => a == b\nmatch 3\n    let n if same(n, if true => n else => n) => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "Deferred", "defer\n    match 1\n        let x if x == 1 => Console.writeLine(\"ok\")\n        _ => ()", "ok\n" },
+        { "DeferredSnapshot", "var flag = true\nmatch 1\n    _ if (check: do\n        defer => flag = false\n        exit to check: flag\n    ) => if not flag => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "OuterYield", "let result = outer: match 0\n    _ => match 1\n        _ if (yield 7) => 1\n        _ => 2\nif result == 7 => Console.writeLine(\"ok\")", "ok\n" },
+        { "ReturnCandidate", "func f() -> i32\n    match 7\n        let n if (return n) => ()\n        _ => ()\n    return 0\nif f() == 7 => Console.writeLine(\"ok\")", "ok\n" },
+        { "GuardContinue", "var n = 0\nwhile n < 2\n    n += 1\n    match n\n        _ if (if n == 1 => continue else => true) => Console.writeLine(\"ok\")\n        _ => ()", "ok\n" },
+        { "CheckedBody", "func f() -> i32\n    return match 7\n        let n if (return 9) => n\n        _ => 0\nif f() == 9 => Console.writeLine(\"ok\")", "ok\n" },
+        { "ConditionalMove", "var text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => ()\ntext = \"b\"\nConsole.writeLine(text)", "a\nb\n" },
     };
 
     [Theory]
@@ -47,8 +47,8 @@ public class GuardEmissionTest
     [InlineData("match 1\n    _ => ()\n    _ if 1.0 + 2.0 > 0.0 => ()", true)]
     [InlineData("let result = work: match 1\n    _ if (yield to work: true) => true\n    _ => false")]
     [InlineData("match 1\n    var n if ++n == 2 => ()\n    _ => ()")]
-    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => writeLine(text)")]
-    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => ()\n    _ => writeLine(text)")]
+    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => Console.writeLine(text)")]
+    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => ()\n    _ => Console.writeLine(text)")]
     public void GuardSupportPreservesInvalidUseRejection(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -104,14 +104,14 @@ public class GuardEmissionTest
     [InlineData("isize", "-9223372036854775808")]
     [InlineData("usize", "18446744073709551615")]
     public void CandidateWidth(string type, string literal)
-        => ScalarEmissionTest.EmitFixture("GuardWidth" + type, $"func f(value: {type}) -> bool\n    return match value\n        let n if n == {literal} => true\n        _ => false\nif f({literal}) => writeLine(\"ok\")", "ok\n");
+        => ScalarEmissionTest.EmitFixture("GuardWidth" + type, $"func f(value: {type}) -> bool\n    return match value\n        let n if n == {literal} => true\n        _ => false\nif f({literal}) => Console.writeLine(\"ok\")", "ok\n");
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void GuardTemporaryCleanupPrecedesEitherContinuation(bool success)
     {
-        var source = "func echo(text: string) -> string => text\nmatch 1\n    _ if echo(\"a\") == \"" + (success ? "a" : "b") + "\" => writeLine(\"selected\")\n    _ => writeLine(\"fallback\")";
+        var source = "func echo(text: string) -> string => text\nmatch 1\n    _ if echo(\"a\") == \"" + (success ? "a" : "b") + "\" => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
         var stdout = success ? "selected\n" : "fallback\n";
         var name = "GuardCleanup" + success;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
@@ -185,14 +185,14 @@ public class GuardEmissionTest
     [Fact]
     public void AbortInGuardPreventsBodyAndFallback()
     {
-        const string Source = "match 1\n    _ if (check: do\n        var n = 2147483647\n        n += 1\n        exit to check: true\n    ) => writeLine(\"bad\")\n    _ => writeLine(\"after\")";
+        const string Source = "match 1\n    _ if (check: do\n        var n = 2147483647\n        n += 1\n        exit to check: true\n    ) => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"after\")";
         ScalarEmissionTest.EmitFixture("GuardAbort", Source, string.Empty, 1, "Hello.kimi:4:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
     [Fact]
     public void DivergentGuardHasNoSelectedBodyEdge()
     {
-        const string Source = "func stop() -> Never\n    loop => ()\nmatch 1\n    _ if stop() => writeLine(\"bad\")\n    _ => writeLine(\"after\")";
+        const string Source = "func stop() -> Never\n    loop => ()\nmatch 1\n    _ if stop() => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"after\")";
         var ir = ScalarEmissionTest.EmitFixture("GuardDivergent", Source, string.Empty, timeoutMilliseconds: 300);
         Assert.DoesNotContain("mustprogress", ir);
         var c = MinimalEmissionTest.Analyze(Source);
@@ -227,7 +227,7 @@ public class GuardEmissionTest
     [InlineData(true)]
     public void FalseGuardMoveReachesLaterCheckingState(bool covered)
     {
-        var source = "let text = \"a\"\nmatch 1\n    _ if (check: do\n        writeLine(text)\n        exit to check: false\n    ) => ()\n" + (covered ? "    _ => ()\n" : string.Empty) + "    _ => writeLine(text)";
+        var source = "let text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n" + (covered ? "    _ => ()\n" : string.Empty) + "    _ => Console.writeLine(text)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.False(c.Ownership.Result.IsVerified);
@@ -237,7 +237,7 @@ public class GuardEmissionTest
     [Fact]
     public void OuterComparisonLoanSurvivesGuardCleanup()
     {
-        const string Source = "let text = \"a\"\ntext == (match 1\n    _ if (check: do\n        defer => writeLine(text)\n        exit to check: true\n    ) => \"a\"\n    _ => \"b\"\n)";
+        const string Source = "let text = \"a\"\ntext == (match 1\n    _ if (check: do\n        defer => Console.writeLine(text)\n        exit to check: true\n    ) => \"a\"\n    _ => \"b\"\n)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);

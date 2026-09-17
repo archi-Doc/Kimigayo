@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
@@ -9,7 +11,7 @@ public sealed partial class OwnershipBody
         OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => place == borrowed && (mode == LoanRequirement.Uniq || acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove),
         OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.InitializeSubject => place == borrowed || input == borrowed,
         OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.Declare or OwnershipOperationKind.Produce => place == borrowed,
-        OwnershipOperationKind.Borrow => place == borrowed && (mode != LoanRequirement.Ref || access != LoanRequirement.Ref),
+        OwnershipOperationKind.Borrow or OwnershipOperationKind.UpdateTarget => place == borrowed && (mode != LoanRequirement.Ref || access != LoanRequirement.Ref),
         OwnershipOperationKind.Read => place == borrowed && mode == LoanRequirement.Uniq,
         _ => false,
     };
@@ -18,6 +20,12 @@ public sealed partial class OwnershipBody
     {
         var operation = this.Operations[id];
         var loan = this.ComparisonLoans[loanId];
+        if (loan.Call is { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap } &&
+            ReferenceEquals(operation.Source, loan.Call) && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Write)
+        {
+            return false; // The selected intrinsic operates through its acquired target Loan.
+        }
+
         if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow)
         {
             var access = this.Projections[operation.Projection];
@@ -215,6 +223,34 @@ public sealed partial class OwnershipBody
     private bool ValidElementWriteLoan(int id)
     {
         var loan = this.ComparisonLoans[id];
+        if (loan.Call is { BoundCall: { } call } syntax && loan.Mode == LoanRequirement.Uniq &&
+            call.Target.CompilerFunction is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap)
+        {
+            if (loan.Access || loan.Projection != -1 || loan.Guard != -1 || loan.Depth <= 0 ||
+                (uint)loan.Place >= (uint)this.Places.Count || (uint)loan.Read >= (uint)this.Operations.Count ||
+                loan.Parent < -1 || loan.Parent >= id || this.LoanStates[loan.Read] != id || this.LoanInputs[loan.Read] != loan.Parent ||
+                this.Operations[loan.Read] is not { Kind: OwnershipOperationKind.UpdateTarget, LoanMode: LoanRequirement.Uniq } operation ||
+                operation.Place != loan.Place || !this.Places[loan.Place].Mutable ||
+                (this.IsReachable(loan.Read) && (this.GetInputState(loan.Read, loan.Place) & PlaceState.MustInit) == 0))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < syntax.ArgumentNodes.Count; i++)
+            {
+                var argument = call.ArgumentOperations[i];
+                if (ReferenceEquals(syntax.ArgumentNodes[i], operation.Source) &&
+                    (argument.ParameterIndex == 0 || call.Target.CompilerFunction == CompilerFunctionKind.Swap) &&
+                    argument.ParameterType is { Semantics: SemanticsKind.Uniq, Components.Count: 1 } parameter &&
+                    ReferenceEquals(parameter.Components[0], this.Places[loan.Place].Type))
+                {
+                    return !this.ElementWriteLoanConflicts(id);
+                }
+            }
+
+            return false;
+        }
+
         if (loan.Mode != LoanRequirement.Uniq || !loan.Access || loan.Call is not null || loan.Guard != -1 ||
             (uint)loan.Projection >= (uint)this.Projections.Count)
         {

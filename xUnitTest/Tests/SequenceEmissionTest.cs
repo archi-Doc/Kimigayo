@@ -10,26 +10,26 @@ public class SequenceEmissionTest
 {
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "ArrayValues", "var a: [3 of i32] = [2, 4, 6]\nvar sum = 0\nfor value in a\n    a = [9, 9, 9]\n    sum += value\nrequire sum == 12 and a[0] == 9 else => $abort(\"snapshot\")\nwriteLine(\"ok\")", "ok\n" },
-        { "ArrayEmpty", "let a: [0 of bool] = []\nfor value in a => $abort(\"empty\")\nwriteLine(\"ok\")", "ok\n" },
-        { "ArrayOnce", "func make() -> [2 of f64]\n    writeLine(\"once\")\n    return [1.5, 2.5]\nvar sum: f64 = 0.0\nfor value in make() => sum += value\nrequire sum == 4.0 else => $abort(\"sum\")", "once\n" },
-        { "ArrayTransfer", "let a: [3 of i32] = [1, 2, 3]\nvar sum = 0\nouter: for value in a\n    defer => writeLine(\"step\")\n    for other in a\n        if value == 1 => continue to outer\n        sum += value + other\n        exit to outer\nrequire sum == 3 else => $abort(\"transfer\")", "step\nstep\n" },
-        { "Indices", "var a: [3 of i32] = [10, 20, 12]\nvar sum = 0\nfor i in a.indices\n    sum += a[i]\nrequire sum == 42 else => $abort(\"sum\")\nwriteLine(\"ok\")", "ok\n" },
-        { "Empty", "let a: [0 of i32] = []\nfor i in a.indices => $abort(\"iteration\")\nlet s = a[..]\nrequire s.isEmpty and s.length == 0 else => $abort(\"empty\")\nfor i in s.indices => $abort(\"slice iteration\")\nwriteLine(\"ok\")", "ok\n" },
-        { "Metadata", "let a: [2 of string] = [\"a\", \"b\"]\nlet r = a.indices\nlet copy = r\nrequire r.start == 0 and r.end == 2 and r.length == 2 and not r.isEmpty else => $abort(\"range\")\nrequire a.length == 2 else => $abort(\"length\")\nwriteLine(a[0])\nwriteLine(a[1])", "a\nb\n" },
-        { "Snapshot", "var a: [2 of i32] = [1, 2]\nlet r = a.indices\na = [20, 22]\nvar total = 0\nfor i in r\n    a[i] += 1\n    total += a[i]\nrequire total == 44 else => $abort(\"snapshot\")\nwriteLine(\"ok\")", "ok\n" },
-        { "Once", "func make() -> [2 of i32]\n    writeLine(\"once\")\n    return [1, 2]\nfor i in make().indices => writeLine(\"step\")", "once\nstep\nstep\n" },
-        { "Nested", "var a: [2 of [2 of i32]] = [[1, 2], [3, 4]]\nvar n: isize = 0\nouter: for i in a.indices\n    defer => writeLine(\"row\")\n    for j in a[i].indices\n        n += 1\n        if i == 0 => continue to outer\n        exit to outer\nrequire n == 2 else => $abort(\"count\")", "row\nrow\n" },
-        { "Return", "func f() -> i32\n    defer => writeLine(\"function\")\n    let a: [2 of i32] = [42, 0]\n    for i in a.indices\n        defer => writeLine(\"iteration\")\n        return a[i]\n    return 0\nrequire f() == 42 else => $abort(\"return\")", "iteration\nfunction\n" },
-        { "Yield", "let a: [2 of i32] = [42, 0]\nlet n = result: if true\n    for i in a.indices\n        defer => writeLine(\"iteration\")\n        yield to result: a[i]\n    yield 0\nelse => 0\nrequire n == 42 else => $abort(\"yield\")", "iteration\n" },
-        { "Slice", "var a: [3 of i32] = [10, 20, 12]\nlet s = a[..]\nlet copied = s\nlet again = copied[..]\nvar total = 0\nfor i in again.indices\n    total += again[i]\nrequire total == 42 and not s.isEmpty and s.length == 3 else => $abort(\"slice\")\na[0] = 99\nwriteLine(\"ok\")", "ok\n" },
-        { "NestedSlice", "let a: [2 of [2 of i32]] = [[1, 2], [20, 22]]\nlet s = a[1][..]\nrequire s[0] + s[1] == 42 else => $abort(\"nested\")\nwriteLine(\"ok\")", "ok\n" },
-        { "SliceIndexOnce", "func index() -> isize\n    writeLine(\"index\")\n    return 0\nlet a: [1 of i32] = [42]\nrequire a[..][index()] == 42 else => $abort(\"read\")", "index\n" },
-        { "ImmediateTemporary", "func make() -> [1 of i32] => [42]\nrequire make()[..][0] == 42 else => $abort(\"temporary\")\nwriteLine(\"ok\")", "ok\n" },
-        { "CopyScalars", "let a: [2 of bool] = [false, true]\nlet s = a[..]\nrequire not s[0] and s[1] else => $abort(\"bool\")\nlet b: [1 of f64] = [2.5]\nrequire b[..][0] == 2.5 else => $abort(\"float\")\nwriteLine(\"ok\")", "ok\n" },
-        { "Shadow", "let i = 42\nlet a: [1 of i32] = [0]\nfor i in a.indices => require i == 0 else => $abort(\"inner\")\nrequire i == 42 else => $abort(\"outer\")\nwriteLine(\"ok\")", "ok\n" },
-        { "MetadataEffects", "func index() -> isize\n    writeLine(\"index\")\n    return 0\nlet a: [1 of [1 of i32]] = [[42]]\nrequire a[index()].length == 1 else => $abort(\"length\")", "index\n" },
-        { "DisjointSlice", "var a: [2 of [1 of i32]] = [[42], [0]]\nlet s = a[0][..]\na[1][0] = 7\nrequire s[0] == 42 and a[1][0] == 7 else => $abort(\"disjoint\")\nwriteLine(\"ok\")", "ok\n" },
+        { "ArrayValues", "var a: [3 of i32] = [2, 4, 6]\nvar sum = 0\nfor value in a\n    a = [9, 9, 9]\n    sum += value\nrequire sum == 12 and a[0] == 9 else => $abort(\"snapshot\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "ArrayEmpty", "let a: [0 of bool] = []\nfor value in a => $abort(\"empty\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "ArrayOnce", "func make() -> [2 of f64]\n    Console.writeLine(\"once\")\n    return [1.5, 2.5]\nvar sum: f64 = 0.0\nfor value in make() => sum += value\nrequire sum == 4.0 else => $abort(\"sum\")", "once\n" },
+        { "ArrayTransfer", "let a: [3 of i32] = [1, 2, 3]\nvar sum = 0\nouter: for value in a\n    defer => Console.writeLine(\"step\")\n    for other in a\n        if value == 1 => continue to outer\n        sum += value + other\n        exit to outer\nrequire sum == 3 else => $abort(\"transfer\")", "step\nstep\n" },
+        { "Indices", "var a: [3 of i32] = [10, 20, 12]\nvar sum = 0\nfor i in a.indices\n    sum += a[i]\nrequire sum == 42 else => $abort(\"sum\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "Empty", "let a: [0 of i32] = []\nfor i in a.indices => $abort(\"iteration\")\nlet s = a[..]\nrequire s.isEmpty and s.length == 0 else => $abort(\"empty\")\nfor i in s.indices => $abort(\"slice iteration\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "Metadata", "let a: [2 of string] = [\"a\", \"b\"]\nlet r = a.indices\nlet copy = r\nrequire r.start == 0 and r.end == 2 and r.length == 2 and not r.isEmpty else => $abort(\"range\")\nrequire a.length == 2 else => $abort(\"length\")\nConsole.writeLine(a[0])\nConsole.writeLine(a[1])", "a\nb\n" },
+        { "Snapshot", "var a: [2 of i32] = [1, 2]\nlet r = a.indices\na = [20, 22]\nvar total = 0\nfor i in r\n    a[i] += 1\n    total += a[i]\nrequire total == 44 else => $abort(\"snapshot\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "Once", "func make() -> [2 of i32]\n    Console.writeLine(\"once\")\n    return [1, 2]\nfor i in make().indices => Console.writeLine(\"step\")", "once\nstep\nstep\n" },
+        { "Nested", "var a: [2 of [2 of i32]] = [[1, 2], [3, 4]]\nvar n: isize = 0\nouter: for i in a.indices\n    defer => Console.writeLine(\"row\")\n    for j in a[i].indices\n        n += 1\n        if i == 0 => continue to outer\n        exit to outer\nrequire n == 2 else => $abort(\"count\")", "row\nrow\n" },
+        { "Return", "func f() -> i32\n    defer => Console.writeLine(\"function\")\n    let a: [2 of i32] = [42, 0]\n    for i in a.indices\n        defer => Console.writeLine(\"iteration\")\n        return a[i]\n    return 0\nrequire f() == 42 else => $abort(\"return\")", "iteration\nfunction\n" },
+        { "Yield", "let a: [2 of i32] = [42, 0]\nlet n = result: if true\n    for i in a.indices\n        defer => Console.writeLine(\"iteration\")\n        yield to result: a[i]\n    yield 0\nelse => 0\nrequire n == 42 else => $abort(\"yield\")", "iteration\n" },
+        { "Slice", "var a: [3 of i32] = [10, 20, 12]\nlet s = a[..]\nlet copied = s\nlet again = copied[..]\nvar total = 0\nfor i in again.indices\n    total += again[i]\nrequire total == 42 and not s.isEmpty and s.length == 3 else => $abort(\"slice\")\na[0] = 99\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "NestedSlice", "let a: [2 of [2 of i32]] = [[1, 2], [20, 22]]\nlet s = a[1][..]\nrequire s[0] + s[1] == 42 else => $abort(\"nested\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "SliceIndexOnce", "func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nlet a: [1 of i32] = [42]\nrequire a[..][index()] == 42 else => $abort(\"read\")", "index\n" },
+        { "ImmediateTemporary", "func make() -> [1 of i32] => [42]\nrequire make()[..][0] == 42 else => $abort(\"temporary\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "CopyScalars", "let a: [2 of bool] = [false, true]\nlet s = a[..]\nrequire not s[0] and s[1] else => $abort(\"bool\")\nlet b: [1 of f64] = [2.5]\nrequire b[..][0] == 2.5 else => $abort(\"float\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "Shadow", "let i = 42\nlet a: [1 of i32] = [0]\nfor i in a.indices => require i == 0 else => $abort(\"inner\")\nrequire i == 42 else => $abort(\"outer\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "MetadataEffects", "func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nlet a: [1 of [1 of i32]] = [[42]]\nrequire a[index()].length == 1 else => $abort(\"length\")", "index\n" },
+        { "DisjointSlice", "var a: [2 of [1 of i32]] = [[42], [0]]\nlet s = a[0][..]\na[1][0] = 7\nrequire s[0] == 42 and a[1][0] == 7 else => $abort(\"disjoint\")\nConsole.writeLine(\"ok\")", "ok\n" },
     };
 
     [Theory]
@@ -44,7 +44,7 @@ public class SequenceEmissionTest
     public void SliceBoundsAbort(string index)
         => ScalarEmissionTest.EmitFixture(
             "SequenceBounds" + (index == "-1" ? "Negative" : index == "1" ? "Length" : "Maximum"),
-            "let a: [1 of i32] = [42]\nlet s = a[..]\nlet n = s[" + index + "]\nwriteLine(\"bad\")",
+            "let a: [1 of i32] = [42]\nlet s = a[..]\nlet n = s[" + index + "]\nConsole.writeLine(\"bad\")",
             string.Empty,
             1,
             "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
@@ -61,11 +61,11 @@ public class SequenceEmissionTest
     [InlineData("let a: [1 of i32] = [1]\nfor (i, i) in a.indices => ()")]
     [InlineData("let a: [1 of i32] = [1]\nfor i in a.indices => exit 1")]
     [InlineData("let a: [1 of i32]\na.indices")]
-    [InlineData("let a: [2 of string] = [\"a\", \"b\"]\nwriteLine(a[0])\na.indices")]
+    [InlineData("let a: [2 of string] = [\"a\", \"b\"]\nConsole.writeLine(a[0])\na.indices")]
     [InlineData("let a: [1 of i32] = [1]\nvar s = a[..]\ns[0] = 2")]
     [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\na[0] = 2\nlet n = s[0]")]
     [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\na = [2]\nlet n = s[0]")]
-    [InlineData("let a: [1 of string] = [\"a\"]\nlet s = a[..]\nwriteLine(a[0])\ns.length")]
+    [InlineData("let a: [1 of string] = [\"a\"]\nlet s = a[..]\nConsole.writeLine(a[0])\ns.length")]
     [InlineData("func make() -> [1 of i32] => [42]\nlet s = make()[..]\nlet n = s[0]")]
     [InlineData("let s = scope: do\n    let a: [1 of i32] = [1]\n    exit to scope: a[..]\nlet n = s[0]")]
     [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\nlet n = s[(work: do\n    a[0] = 2\n    exit to work: 0)]")]

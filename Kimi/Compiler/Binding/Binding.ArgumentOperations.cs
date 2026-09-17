@@ -21,6 +21,7 @@ public enum ArgumentOperationKind : byte
     Reborrow,
     BaseBorrow,
     StorageProjection,
+    PayloadProjection,
 }
 
 /// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it.</summary>
@@ -111,6 +112,13 @@ public sealed partial class Binding
         if (pattern.Kind != BoundTypeKind.Semantics || pattern.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq))
         {
             return !projected; // An owning receiver cannot acquire a sliced base.
+        }
+
+        if (!projected && declaringType is not null && this.TryPayloadProjection(source, pattern, actual, scope, out adapted))
+        {
+            quality = ArgumentAdaptation.CrossSemanticsBorrow;
+            kind = ArgumentOperationKind.PayloadProjection;
+            return true;
         }
 
         var target = pattern.Semantics;

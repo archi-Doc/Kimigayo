@@ -25,24 +25,28 @@ public sealed partial class Binding
     private Dictionary<Kotonoha, BindingSymbol>? moduleSymbols;
     private TestSyntaxVisitor? testSyntaxVisitor;
     private bool running;
-    private bool coreValid;
+    private bool kimiValid;
 
     internal Binding(Compilation compilation)
     {
         this.compilation = compilation;
         this.indexer = new(this);
         this.TypeSystem = new BindingControlFlowTypes(this);
-        this.Core = new(compilation);
-        this.symbols.Add(this.Core.WriteLine.Declaration, this.Core.WriteLine);
-        this.symbols.Add(this.Core.Option.Declaration, this.Core.Option);
-        this.symbols.Add(this.Core.Result.Declaration, this.Core.Result);
+        this.Library = new(compilation);
+        this.symbols.Add(this.Library.Console, this.Library.ConsoleSymbol);
+        this.symbols.Add(this.Library.WriteLine.Declaration, this.Library.WriteLine);
+        this.symbols.Add(this.Library.Option.Declaration, this.Library.Option);
+        this.symbols.Add(this.Library.Result.Declaration, this.Library.Result);
+        this.symbols.Add(this.Library.Replace.Declaration, this.Library.Replace);
+        this.symbols.Add(this.Library.Exchange.Declaration, this.Library.Exchange);
+        this.symbols.Add(this.Library.Swap.Declaration, this.Library.Swap);
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
     public BindingResult Result { get; private set; }
 
     /// <summary>Gets the compiler-designated requirement identities for this compilation.</summary>
-    public CoreIntrinsics Core { get; }
+    public KimiLibrary Library { get; }
 
     /// <summary>Gets final failures; provisional passes do not publish missing-name diagnostics.</summary>
     public IReadOnlyList<BindingIssue> Issues => this.issues;
@@ -95,6 +99,7 @@ public sealed partial class Binding
 
             this.nodes.Clear();
             this.aliases.Clear();
+            this.ResetAliases();
             this.obligations.Clear();
             this.obligationSet.Clear();
             this.ResetCapabilities(mode);
@@ -132,22 +137,28 @@ public sealed partial class Binding
 
             this.IndexModuleReferences();
             this.PrunePatternScopes();
-            this.Core.Restore();
-            this.coreValid = this.Core.IsValid;
-            if (!this.coreValid)
+            this.Library.Restore();
+            this.kimiValid = this.Library.IsValid;
+            if (!this.kimiValid)
             {
-                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidCore);
+                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
             }
 
-            this.scopes[this.Core.Kotonoha.RootKoto] = this.Core.Scope;
-            this.indexer.Scope = this.Core.Scope;
+            this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
+            this.indexer.Scope = this.Library.Scope;
             // These declarations use ordinary indexing, schemas, storage and constraints.
-            this.Core.Scope.Types.Remove("Option");
-            this.Core.Scope.Types.Remove("Result");
-            this.indexer.Visit(this.Core.Option.Declaration);
-            this.indexer.Visit(this.Core.Result.Declaration);
-            this.indexer.Visit(this.Core.WriteLine.Declaration);
+            this.Library.Scope.Types.Remove("Option");
+            this.Library.Scope.Types.Remove("Result");
+            this.indexer.Visit(this.Library.Option.Declaration);
+            this.indexer.Visit(this.Library.Result.Declaration);
+            this.indexer.Visit(this.Library.Replace.Declaration);
+            this.indexer.Visit(this.Library.Exchange.Declaration);
+            this.indexer.Visit(this.Library.Swap.Declaration);
+            this.scopes[this.Library.Console] = this.Library.ConsoleScope;
+            this.indexer.Scope = this.Library.ConsoleScope;
+            this.indexer.Visit(this.Library.WriteLine.Declaration);
             this.ValidateDefaultAliases();
+            this.PrepareAliases();
             this.BindSchemas();
             this.PrepareContracts();
             this.BindConstraints();
@@ -174,9 +185,12 @@ public sealed partial class Binding
                 this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
             }
 
-            this.BindNode(this.Core.WriteLine.Declaration, this.scopes[this.Core.WriteLine.Declaration]);
-            this.BindNode(this.Core.Option.Declaration, this.Core.Scope);
-            this.BindNode(this.Core.Result.Declaration, this.Core.Scope);
+            this.BindNode(this.Library.WriteLine.Declaration, this.scopes[this.Library.WriteLine.Declaration]);
+            this.BindNode(this.Library.Option.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.Result.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.Replace.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.Exchange.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.Swap.Declaration, this.Library.Scope);
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
             this.ComputeOriginRequirements();
@@ -202,6 +216,11 @@ public sealed partial class Binding
             this.ValidateExpressionProjectionInputs(mode);
             this.CompleteEnumAcquisitions();
             this.CompletePatternAcquisitions();
+            if (mode == BindingMode.Final)
+            {
+                this.CompleteAliasWarnings();
+            }
+
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -236,6 +255,11 @@ public sealed partial class Binding
 
         if (this.Result.Mode == BindingMode.Final)
         {
+            for (; this.reportedAliasWarnings < this.aliasWarnings.Count; this.reportedAliasWarnings++)
+            {
+                this.aliasWarnings[this.reportedAliasWarnings].AddDiagnostic(DiagnosticCode.HiddenNamedAlias_Kd);
+            }
+
             for (; this.reportedPatternWarnings < this.patternWarnings.Count; this.reportedPatternWarnings++)
             {
                 var warning = this.patternWarnings[this.reportedPatternWarnings];
@@ -437,7 +461,7 @@ public sealed partial class Binding
                     BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
                     BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
-                    BindingFailure.InvalidCore => DiagnosticCode.InvalidCoreIntrinsics_Kd,
+                    BindingFailure.InvalidKimi => DiagnosticCode.InvalidKimiLibrary_Kd,
                     BindingFailure.MissingImplementation => DiagnosticCode.MissingContractImplementation_Kd,
                     BindingFailure.IncompatibleImplementation => DiagnosticCode.IncompatibleContractImplementation_Kd,
                     BindingFailure.InvalidAssociatedType => DiagnosticCode.InvalidAssociatedType_Kd,

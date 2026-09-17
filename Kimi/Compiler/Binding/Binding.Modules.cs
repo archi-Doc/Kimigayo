@@ -9,19 +9,19 @@ public sealed partial class Binding
     private BindingScope ModuleScope(Koto node) => this.scopes[node.CodeContext.Kotonoha.RootKoto];
 
     private BindingSymbol? ModuleReference(Koto use, string name)
-        => this.compilation.FindReference(use.CodeContext.Kotonoha, name) is { } module ? this.moduleSymbols!.GetValueOrDefault(module) : null;
+        => name == "Kimi" ? this.Library.Module : this.compilation.FindReference(use.CodeContext.Kotonoha, name) is { } module ? this.moduleSymbols!.GetValueOrDefault(module) : null;
 
     private void IndexModuleReferences()
     {
-        if (this.compilation.SourceModules.Length == 1)
-        {
-            return;
-        }
-
         this.moduleSymbols ??= new();
         foreach (var module in this.compilation.SourceModules)
         {
             var scope = this.scopes[module.RootKoto];
+            if (scope.Types.TryGetValue("Kimi", out var reserved) || scope.Values.TryGetValue("Kimi", out reserved))
+            {
+                Fail(reserved.Declaration, BindingFailure.Duplicate);
+            }
+
             if (!this.moduleSymbols.TryGetValue(module, out var symbol) || !ReferenceEquals(symbol.Declaration, module.RootKoto))
             {
                 symbol = new(module.Name, BindingSymbolKind.Container, module.RootKoto, scope);

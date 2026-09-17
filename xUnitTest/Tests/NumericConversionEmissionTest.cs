@@ -22,12 +22,12 @@ public class NumericConversionEmissionTest
     }
 
     [Theory]
-    [InlineData("Narrow", "let x: f64 = 1.25\nif x@f32 == 1.25 => writeLine(\"ok\")")]
-    [InlineData("FromSigned", "let x: i64 = -42\nif x@f32 == -42.0 => writeLine(\"ok\")")]
-    [InlineData("FromUnsigned", "let x: u64 = 18446744073709551615\nif x@f64 == 18446744073709551616.0 => writeLine(\"ok\")")]
-    [InlineData("Literal", "if 5000000000@f64 == 5000000000.0 => writeLine(\"ok\")")]
-    [InlineData("ToSigned", "let x: f64 = 3.9\nif x@i32 == 3 => writeLine(\"ok\")")]
-    [InlineData("ToUnsigned", "let x: f32 = -0.9\nif x@u8 == 0 => writeLine(\"ok\")")]
+    [InlineData("Narrow", "let x: f64 = 1.25\nif x@f32 == 1.25 => Console.writeLine(\"ok\")")]
+    [InlineData("FromSigned", "let x: i64 = -42\nif x@f32 == -42.0 => Console.writeLine(\"ok\")")]
+    [InlineData("FromUnsigned", "let x: u64 = 18446744073709551615\nif x@f64 == 18446744073709551616.0 => Console.writeLine(\"ok\")")]
+    [InlineData("Literal", "if 5000000000@f64 == 5000000000.0 => Console.writeLine(\"ok\")")]
+    [InlineData("ToSigned", "let x: f64 = 3.9\nif x@i32 == 3 => Console.writeLine(\"ok\")")]
+    [InlineData("ToUnsigned", "let x: f32 = -0.9\nif x@u8 == 0 => Console.writeLine(\"ok\")")]
     public void NumericConversionsExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture("NumericConvert" + name, source, "ok\n");
 
@@ -67,12 +67,12 @@ public class NumericConversionEmissionTest
             else
             {
                 var error = $"Hello.kimi:1:{header.IndexOf("x@", StringComparison.Ordinal) + 1}: abort KIMI_E_INT_CONVERSION: Integer conversion out of range\n";
-                ScalarEmissionTest.EmitFixture(stem + "Reject" + i, header + $"defer => writeLine(\"bad\")\nconvert({argument})", string.Empty, 1, error);
+                ScalarEmissionTest.EmitFixture(stem + "Reject" + i, header + $"defer => Console.writeLine(\"bad\")\nconvert({argument})", string.Empty, 1, error);
             }
         }
 
         Assert.NotEmpty(positive);
-        ScalarEmissionTest.EmitFixture(stem + "Accept", header + "if " + string.Join(" and ", positive) + " => writeLine(\"ok\")", "ok\n");
+        ScalarEmissionTest.EmitFixture(stem + "Accept", header + "if " + string.Join(" and ", positive) + " => Console.writeLine(\"ok\")", "ok\n");
         foreach (var (name, expression) in new[] { ("NaN", "z / z"), ("PositiveInfinity", "one / z"), ("NegativeInfinity", "-one / z") })
         {
             var error = $"Hello.kimi:1:{header.IndexOf("x@", StringComparison.Ordinal) + 1}: abort KIMI_E_INT_CONVERSION: Integer conversion out of range\n";
@@ -92,18 +92,18 @@ public class NumericConversionEmissionTest
         string Expected(BigInteger value) => FloatText(floating == "f32"
             ? float.Parse(value.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture)
             : double.Parse(value.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture));
-        var source = $"func convert(x: {integer}) -> {floating} => x@{floating}\nif convert({minimum}) == {Expected(minimum)} and convert({maximum}) == {Expected(maximum)} and convert(0) == 0.0 => writeLine(\"ok\")";
+        var source = $"func convert(x: {integer}) -> {floating} => x@{floating}\nif convert({minimum}) == {Expected(minimum)} and convert({maximum}) == {Expected(maximum)} and convert(0) == 0.0 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("NumericConvertInteger" + floating + integer, source, "ok\n");
     }
 
     [Theory]
-    [InlineData("NarrowSpecial", "func narrow(x: f64) -> f32 => x@f32\nlet z = 0.0\nlet nan = narrow(z / z)\nif nan != nan and narrow(1.0 / z) > 0.0 and narrow(-1.0 / z) < 0.0 and 1.0 / narrow(-0.0) < 0.0 => writeLine(\"ok\")")]
-    [InlineData("NarrowUnderflow", "func narrow(x: f64) -> f32 => x@f32\nif narrow(1e-45) > 0.0 and narrow(-7e-46) == 0.0 and 1.0 / narrow(-7e-46) < 0.0 => writeLine(\"ok\")")]
-    [InlineData("NarrowTies", "func narrow(x: f64) -> f32 => x@f32\nif narrow(1.000000059604644775390625) == 1.0 and narrow(1.000000178813934326171875) == 1.0000002384185791015625 => writeLine(\"ok\")")]
-    [InlineData("IntegerLiteralBits", "if 0x20000000000001@f64 == 9007199254740992.0 and (-0)@f32 == 0.0 and 1.0 / (-0)@f32 > 0.0 and 18_014_399_583_223_809@f32 == 18014400656965632.0 => writeLine(\"ok\")")]
-    [InlineData("LiteralFraction", "if 3.9@i32 == 3 and -3.9@i32 == -3 => writeLine(\"ok\")")]
-    [InlineData("RoundingChain", "let x: f64 = 16777217.0\nif x@f32@f64 == 16777216.0 and x@f32@i32 == 16777216 => writeLine(\"ok\")")]
-    [InlineData("CheckedPhi", "func convert(x: f64, flag: bool) -> i32\n    var result: i32 = 0\n    defer => result = 0\n    result = if flag => x@f32@i32 else => (-x)@i32\n    return result\nif convert(1.9, true) == 1 and convert(1.9, false) == -1 => writeLine(\"ok\")")]
+    [InlineData("NarrowSpecial", "func narrow(x: f64) -> f32 => x@f32\nlet z = 0.0\nlet nan = narrow(z / z)\nif nan != nan and narrow(1.0 / z) > 0.0 and narrow(-1.0 / z) < 0.0 and 1.0 / narrow(-0.0) < 0.0 => Console.writeLine(\"ok\")")]
+    [InlineData("NarrowUnderflow", "func narrow(x: f64) -> f32 => x@f32\nif narrow(1e-45) > 0.0 and narrow(-7e-46) == 0.0 and 1.0 / narrow(-7e-46) < 0.0 => Console.writeLine(\"ok\")")]
+    [InlineData("NarrowTies", "func narrow(x: f64) -> f32 => x@f32\nif narrow(1.000000059604644775390625) == 1.0 and narrow(1.000000178813934326171875) == 1.0000002384185791015625 => Console.writeLine(\"ok\")")]
+    [InlineData("IntegerLiteralBits", "if 0x20000000000001@f64 == 9007199254740992.0 and (-0)@f32 == 0.0 and 1.0 / (-0)@f32 > 0.0 and 18_014_399_583_223_809@f32 == 18014400656965632.0 => Console.writeLine(\"ok\")")]
+    [InlineData("LiteralFraction", "if 3.9@i32 == 3 and -3.9@i32 == -3 => Console.writeLine(\"ok\")")]
+    [InlineData("RoundingChain", "let x: f64 = 16777217.0\nif x@f32@f64 == 16777216.0 and x@f32@i32 == 16777216 => Console.writeLine(\"ok\")")]
+    [InlineData("CheckedPhi", "func convert(x: f64, flag: bool) -> i32\n    var result: i32 = 0\n    defer => result = 0\n    result = if flag => x@f32@i32 else => (-x)@i32\n    return result\nif convert(1.9, true) == 1 and convert(1.9, false) == -1 => Console.writeLine(\"ok\")")]
     public void RoundingAndConsumersPreserveSemantics(string name, string source)
         => ScalarEmissionTest.EmitFixture("NumericConvert" + name, source, "ok\n");
 
@@ -137,11 +137,11 @@ public class NumericConversionEmissionTest
         const double Threshold = 3.40282356779733661637539395458142568448e38;
         const string Header = "func narrow(x: f64) -> f32 => x@f32\n";
         var valid = FloatText(double.BitDecrement(Threshold));
-        ScalarEmissionTest.EmitFixture("NumericConvertNarrowMaximum", Header + $"if narrow({valid}) == 3.4028234663852886e38 and narrow(-{valid}) == -3.4028234663852886e38 => writeLine(\"ok\")", "ok\n");
+        ScalarEmissionTest.EmitFixture("NumericConvertNarrowMaximum", Header + $"if narrow({valid}) == 3.4028234663852886e38 and narrow(-{valid}) == -3.4028234663852886e38 => Console.writeLine(\"ok\")", "ok\n");
         double[] invalid = [Threshold, -Threshold, double.BitIncrement(Threshold), -double.BitIncrement(Threshold), double.MaxValue, -double.MaxValue];
         for (var i = 0; i < invalid.Length; i++)
         {
-            ScalarEmissionTest.EmitFixture("NumericConvertNarrowOverflow" + i, Header + $"defer => writeLine(\"bad\")\nnarrow({FloatText(invalid[i])})", string.Empty, 1, "Hello.kimi:1:31: abort KIMI_E_FLOAT_CONVERSION: Floating conversion out of range\n");
+            ScalarEmissionTest.EmitFixture("NumericConvertNarrowOverflow" + i, Header + $"defer => Console.writeLine(\"bad\")\nnarrow({FloatText(invalid[i])})", string.Empty, 1, "Hello.kimi:1:31: abort KIMI_E_FLOAT_CONVERSION: Floating conversion out of range\n");
         }
     }
 
@@ -151,7 +151,7 @@ public class NumericConversionEmissionTest
     [InlineData("FromInteger", "u64", "f32", "16777217")]
     public void ConversionPlansAreRevalidatedAndSurviveReload(string name, string sourceType, string targetType, string value)
     {
-        var c = MinimalEmissionTest.Analyze($"let x: {sourceType} = {value}\nlet y = x@{targetType}\nwriteLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze($"let x: {sourceType} = {value}\nlet y = x@{targetType}\nConsole.writeLine(\"ok\")");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
         var body = c.Ownership.Bodies[0];
@@ -186,7 +186,7 @@ public class NumericConversionEmissionTest
     [Fact]
     public void WarmNumericAnalysisAndWritingAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("func convert(x: f64) -> u64 => x@f32@u64\nlet x = 5000000000@f64\nlet y = convert(x)@f32\nif y > 0.0 => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("func convert(x: f64) -> u64 => x@f32@u64\nlet x = 5000000000@f64\nlet y = convert(x)@f32\nif y > 0.0 => Console.writeLine(\"ok\")");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);

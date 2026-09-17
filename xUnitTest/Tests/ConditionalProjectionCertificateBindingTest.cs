@@ -73,7 +73,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var call = Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last());
         Assert.Equal(valid, call.BoundCall is not null);
-        var copy = c.Binding.GetConformanceDefinition(Type(c).BoundType!, c.Core.Copy)!;
+        var copy = c.Binding.GetConformanceDefinition(Type(c).BoundType!, c.Library.Copy)!;
         Assert.Equal(valid, copy.IsVerified);
     }
 

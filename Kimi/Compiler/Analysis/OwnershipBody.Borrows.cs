@@ -114,11 +114,11 @@ public sealed partial class OwnershipBody
 
                     var conflict = !external && ((BorrowState(op, root) & PlaceState.MustInit) == 0 || accessConflict);
                     var value = this.Values[op];
-                    if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.Address or OwnershipValueKind.Sequence && value.Count > 0)
+                    if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence && value.Count > 0)
                     {
                         var receiver = this.ValueOperands[value.Start];
                         var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
-                        var access = value.Kind == OwnershipValueKind.BorrowedFieldWrite ? LoanRequirement.Uniq
+                        var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
                             : value.Kind == OwnershipValueKind.Address ? operation.LoanMode : LoanRequirement.Ref;
                         if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
                             (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq || this.Places[sourcePlace].Type.Semantics == SemanticsKind.Uniq) && !this.IsBorrowAncestor(receiver, p))
@@ -182,7 +182,7 @@ public sealed partial class OwnershipBody
                 for (var root = 0; root < count; root++)
                 {
                     var candidate = this.Places[root];
-                    if (candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind == BoundTypeKind.FixedArray) &&
+                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind == BoundTypeKind.FixedArray) &&
                         ReferenceEquals(candidate.Source, origin.Binder))
                     {
                         Record(root);
@@ -201,6 +201,11 @@ public sealed partial class OwnershipBody
         bool Uses(int id, int place)
         {
             var operation = this.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
+            {
+                return this.Values[id].Constant == place || operation.Input == place;
+            }
+
             if (this.Values[id] is { Kind: OwnershipValueKind.Sequence, Constant: var sequence } && this.Sequences[(int)sequence].Receiver == place)
             {
                 return true;

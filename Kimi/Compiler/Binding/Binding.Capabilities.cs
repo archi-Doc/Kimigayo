@@ -19,18 +19,45 @@ public sealed partial class Binding
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result, without choosing any acquisition operation.</returns>
     public ConstraintProof ProveCopy(BoundType type, Koto context)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Core.Copy)), this.ConstraintScope(context));
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), this.ConstraintScope(context));
 
     /// <summary>Queries the recursive Owned guarantee, independently of heap/global borrow restrictions.</summary>
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result; unresolved Origins remain Unknown.</returns>
     public ConstraintProof ProveOwned(BoundType type, Koto context)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Core.Owned)), this.ConstraintScope(context));
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), this.ConstraintScope(context));
+
+    /// <summary>Queries complete owner Core evidence without inspecting stored fields.</summary>
+    /// <param name="type">The normalized complete Type.</param>
+    /// <param name="context">The use site providing assumptions.</param>
+    /// <returns>The four-valued Sealed proof.</returns>
+    public ConstraintProof ProveSealed(BoundType type, Koto context)
+        => this.RequestCapability(type, this.Library.Sealed, this.ConstraintScope(context));
 
     private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
+        if (kind == IntrinsicKind.Sealed)
+        {
+            if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
+            {
+                result = ConstraintProof.Error;
+                return true;
+            }
+
+            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            {
+                return false;
+            }
+
+            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) ||
+                type.Symbol?.Declaration is ContractKoto ||
+                (type.Symbol?.Declaration is StructKoto structure && (structure.Modifier & ModifierKind.Open) != 0)
+                ? ConstraintProof.Refuted : ConstraintProof.Proven;
+            return true;
+        }
+
         if (type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice)
         {
             result = kind == IntrinsicKind.Copy || type.Kind == BoundTypeKind.ResolvedRange ? ConstraintProof.Proven : ConstraintProof.Refuted;
@@ -107,7 +134,7 @@ public sealed partial class Binding
 
         if (!this.capabilitiesReady)
         {
-            if (this.running && this.coreValid && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
+            if (this.running && this.kimiValid && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
             {
                 return concrete;
             }
@@ -115,7 +142,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (!this.coreValid)
+        if (!this.kimiValid)
         {
             return ConstraintProof.Error;
         }
@@ -282,7 +309,7 @@ public sealed partial class Binding
         for (var i = 0; i < declarations.Count; i++)
         {
             var declaration = declarations[i];
-            var validation = this.RequestCapability(this.SelfType(container.BoundSymbol!), this.Core.Copy, declaration.Scope, derivation: true);
+            var validation = this.RequestCapability(this.SelfType(container.BoundSymbol!), this.Library.Copy, declaration.Scope, derivation: true);
             if (declaration.Clause.BindingState == BindingState.Invalid || validation is ConstraintProof.Error or ConstraintProof.Refuted)
             {
                 return ConstraintProof.Error;
@@ -379,7 +406,11 @@ public sealed partial class Binding
                     {
                         evidence = (fact.Mask & ~copy) == 0 ? ConstraintProof.Proven : (fact.Mask & ~nonCopy) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
                     }
-                    else if (fact.Mask == SemanticsMask.Unsafe)
+                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Sealed && (fact.Mask & SemanticsMask.Owner) == 0)
+                    {
+                        evidence = ConstraintProof.Refuted;
+                    }
+                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Unsafe)
                     {
                         evidence = ConstraintProof.Proven;
                     }

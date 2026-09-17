@@ -5,7 +5,7 @@ func choose(pair: (string, string), takeFirst: bool) -> string
 
 func middle(values: [3 of string]) -> string => values[1]
 
-writeLine(first(("first", "unused")))
-writeLine(choose(("unused", "last"), false))
+Console.writeLine(first(("first", "unused")))
+Console.writeLine(choose(("unused", "last"), false))
 let values: [3 of string] = ["left", "middle", "right"]
-writeLine(middle(values))
+Console.writeLine(middle(values))

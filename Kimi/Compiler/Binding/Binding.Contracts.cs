@@ -112,8 +112,9 @@ public sealed partial class Binding
 
     private void PrepareContracts()
     {
-        this.Core.Copy.Contract ??= new(this.Core.Copy) { State = 2 };
-        this.Core.Owned.Contract ??= new(this.Core.Owned) { State = 2 };
+        this.Library.Copy.Contract ??= new(this.Library.Copy) { State = 2 };
+        this.Library.Owned.Contract ??= new(this.Library.Owned) { State = 2 };
+        this.Library.Sealed.Contract ??= new(this.Library.Sealed) { State = 2 };
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not ContractKoto contract)
@@ -337,6 +338,10 @@ public sealed partial class Binding
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
             {
                 this.RegisterConformanceDeclaration(type, contract, use, this.scopes[type.Declaration], null);
+            }
+            else if (constraint.Contract?.Intrinsic == IntrinsicKind.Sealed)
+            {
+                Fail(use, BindingFailure.InvalidConstraint);
             }
         }
     }

@@ -14,7 +14,7 @@ public class WhileConditionContinuationTest
     [Theory]
     [InlineData("let x: i32\nwhile stop() => ()\nlet y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x = 1\nwhile stop() => ()\nx = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("func take(s: string) -> Never => stop()\nlet x = \"s\"\nwhile take(x) => ()\nwriteLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func take(s: string) -> Never => stop()\nlet x = \"s\"\nwhile take(x) => ()\nConsole.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("while stop()\n    var n: i32\n    let y = n", OwnershipFailure.UninitializedUse)]
     public void MissingWhileConditionRetainsAcquiredState(string source, OwnershipFailure failure)
     {
@@ -27,7 +27,7 @@ public class WhileConditionContinuationTest
     [Theory]
     [InlineData("Empty", "let x = 1\nwhile stop() => ()\nlet y = x")]
     [InlineData("Locals", "let x = 1\nwhile stop()\n    var n = 1\n    n += 1\nlet y = x")]
-    [InlineData("Borrow", "func inspect(s: ref/string) -> Never => stop()\nvar s = \"s\"\nwhile inspect(s) => ()\ns = \"new\"\nwriteLine(s)")]
+    [InlineData("Borrow", "func inspect(s: ref/string) -> Never => stop()\nvar s = \"s\"\nwhile inspect(s) => ()\ns = \"new\"\nConsole.writeLine(s)")]
     [InlineData("Scoped", "let x = 1\ndo => while stop() => ()\nlet y = x")]
     public void MissingWhileConditionHasNoBodyOrSuccessorExecution(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverWhileCondition" + Configuration + name, Stop + source, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -36,13 +36,13 @@ public class WhileConditionContinuationTest
     public void DefaultWhileConditionPreservesCallerState()
         => ScalarEmissionTest.EmitFixture(
             "NeverWhileCondition" + Configuration + "Default",
-            "func value(y?: () = (while (loop => continue) => ())) => ()\nvar x = 1\nwriteLine(\"begin\")\nvalue()\nlet y = x",
+            "func value(y?: () = (while (loop => continue) => ())) => ()\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue()\nlet y = x",
             "begin\n",
             timeoutMilliseconds: 200);
 
     [Theory]
     [InlineData("var x = 1\nwhile stop() => x = 2\nlet y = x")]
-    [InlineData("let x = \"s\"\nwhile stop() => writeLine(x)\nwriteLine(x)")]
+    [InlineData("let x = \"s\"\nwhile stop() => Console.writeLine(x)\nConsole.writeLine(x)")]
     public void BodyEffectsOutsideTheLoopStillRequireAJoin(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);

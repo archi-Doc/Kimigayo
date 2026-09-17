@@ -35,12 +35,12 @@ public class DefaultInitializationTest
         => AssertUninitialized(source);
 
     [Theory]
-    [InlineData("Supplied", "func f(x?: i32 = (scope: do\n    var n: i32\n    n = 1\n    exit to scope: n\n)) => ()\nf(3)\nwriteLine(\"ok\")")]
-    [InlineData("Sequential", "func f(x: i32, y?: i32 = (scope: do\n    var n: i32\n    n = x + 1\n    exit to scope: n\n)) -> i32 => y\nif f(2) == 3 and f(9, 4) == 4 => writeLine(\"ok\")")]
-    [InlineData("Branches", "func f(c: bool, y?: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    exit to scope: n\n)) -> i32 => y\nif f(true) == 1 and f(false) == 2 => writeLine(\"ok\")")]
-    [InlineData("Loop", "func f(y?: i32 = (loop\n    var n: i32\n    n = 7\n    exit n\n)) -> i32 => y\nif f() == 7 => writeLine(\"ok\")")]
-    [InlineData("Unit", "func f(y?: () = (scope: do\n    var n: ()\n    n = ()\n    exit to scope: n\n)) => writeLine(\"ok\")\nf()")]
-    [InlineData("SuppliedNever", "func f(y?: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 7\n    exit to scope: n\n)) -> i32 => y\nif f(3) == 3 => writeLine(\"ok\")")]
+    [InlineData("Supplied", "func f(x?: i32 = (scope: do\n    var n: i32\n    n = 1\n    exit to scope: n\n)) => ()\nf(3)\nConsole.writeLine(\"ok\")")]
+    [InlineData("Sequential", "func f(x: i32, y?: i32 = (scope: do\n    var n: i32\n    n = x + 1\n    exit to scope: n\n)) -> i32 => y\nif f(2) == 3 and f(9, 4) == 4 => Console.writeLine(\"ok\")")]
+    [InlineData("Branches", "func f(c: bool, y?: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    exit to scope: n\n)) -> i32 => y\nif f(true) == 1 and f(false) == 2 => Console.writeLine(\"ok\")")]
+    [InlineData("Loop", "func f(y?: i32 = (loop\n    var n: i32\n    n = 7\n    exit n\n)) -> i32 => y\nif f() == 7 => Console.writeLine(\"ok\")")]
+    [InlineData("Unit", "func f(y?: () = (scope: do\n    var n: ()\n    n = ()\n    exit to scope: n\n)) => Console.writeLine(\"ok\")\nf()")]
+    [InlineData("SuppliedNever", "func f(y?: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 7\n    exit to scope: n\n)) -> i32 => y\nif f(3) == 3 => Console.writeLine(\"ok\")")]
     public void EmitsInitializedDefaultLocals(string name, string source)
         => ScalarEmissionTest.EmitFixture(Prefix + name, source, "ok\n");
 
@@ -48,7 +48,7 @@ public class DefaultInitializationTest
     public void NeverInitializerCannotReachLaterDefaultsOrCallee()
         => ScalarEmissionTest.EmitFixture(
             Prefix + "Never",
-            "func f(y?: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 7\n    exit to scope: n\n), z?: i32 = (2147483647 + 1)) => writeLine(\"bad\")\nwriteLine(\"begin\")\nf()",
+            "func f(y?: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 7\n    exit to scope: n\n), z?: i32 = (2147483647 + 1)) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()",
             "begin\n",
             timeoutMilliseconds: 200);
 

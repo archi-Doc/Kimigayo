@@ -11,29 +11,29 @@ public class ElementBorrowEmissionTest
 
     public static TheoryData<string, string> Fixtures => new()
     {
-        { "Tuple", "let a = (\"first\", 42)\nif a.0 == \"first\" and a.0 != \"last\" => writeLine(\"ok\")\nlet whole = a" },
-        { "SameElement", "let a: [1 of string] = [\"first\"]\nif same(a[0], a[((0x0))]) => writeLine(\"ok\")\nlet whole = a" },
-        { "BothElements", "let a = (\"first\", \"first\")\nif same(a.0, a.1) and a.0 == a.1 => writeLine(\"ok\")\nlet whole = a" },
-        { "Nested", "let a: [1 of (string, [1 of string])] = [(\"first\", [\"first\"])]\nif same(a[0].0, a[0].1[0]) => writeLine(\"ok\")" },
-        { "Partial", "let a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0.1\nif same(a.0.0, a.0.0) => writeLine(\"ok\")" },
-        { "Repair", "var a = (\"first\", \"last\")\nlet taken = a.0\na.0 = \"new\"\nif same(a.0, a.0) => writeLine(\"ok\")\nlet whole = a" },
-        { "SiblingMove", "func inspect(left: ref/string, right: string) -> bool => left == left\nlet a = (\"first\", \"last\")\nif inspect(a.0, a.1) => writeLine(\"ok\")" },
-        { "SiblingReplace", "var a = (\"first\", \"last\")\nif a.0 == (work: do\n    a.1 = \"new\"\n    exit to work: \"first\"\n) => writeLine(\"ok\")" },
-        { "SiblingUpdate", "var a = (\"first\", 40)\na.1 += if a.0 == \"first\" => 2 else => 0\nif a.1 == 42 => writeLine(\"ok\")" },
-        { "DynamicSibling", "func inspect(left: ref/string, ignored: ()) -> bool => left == left\nvar a: (string, [1 of string]) = (\"first\", [\"last\"])\nvar i: isize = 0\nif inspect(a.0, a.1[i] = \"new\") => writeLine(\"ok\")" },
-        { "CallRelease", "var a = (\"first\", \"last\")\nlet equal = same(a.0, a.0)\na.0 = \"new\"\nlet whole = a\nif equal => writeLine(\"ok\")" },
-        { "CompareRelease", "var a = (\"first\", \"last\")\nlet equal = a.0 == \"first\"\na.0 = \"new\"\nlet whole = a\nif equal => writeLine(\"ok\")" },
-        { "NestedCall", "func identity(value: bool) -> bool => value\nlet a = (\"first\", \"last\")\nif identity(same(a.0, a.0)) and same(a.1, a.1) => writeLine(\"ok\")" },
-        { "Named", "let a = (\"first\", \"first\")\nif same(right: a.1, left: a.0) => writeLine(\"ok\")" },
-        { "MixedTemporary", "let a = (\"first\", 0)\nif same(a.0, (work: do\n    exit to work: \"first\"\n)) => writeLine(\"ok\")" },
-        { "Loop", "var a = (\"first\", \"last\")\nvar i = 0\nloop\n    if not same(a.0, a.0) => exit\n    a.0 = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nif i == 3 => writeLine(\"ok\")" },
-        { "Defer", "func f()\n    let a = (\"first\", \"last\")\n    defer\n        if same(a.0, a.0) => writeLine(\"ok\")\n    let taken = a.1\nf()" },
-        { "ConditionalPartial", "func f(take: bool) -> bool\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.1\n    return same(a.0, a.0)\nif f(true) and f(false) => writeLine(\"ok\")" },
-        { "AggregateResult", "func inspect(a: ref/string) -> (string, i32) => (\"new\", 42)\nvar a = (\"first\", 0)\nlet result = inspect(a.0)\na.0 = \"last\"\nif result.1 == 42 => writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    let a = (\"first\", 0)\n    let equal = same(a.0, a.0)\nf()\nwriteLine(\"ok\")" },
-        { "Covered", "let a = (\"first\", 0)\nmatch true\n    _ => ()\n    true => (work: do\n        let equal = same(a.0, a.0)\n    )\nwriteLine(\"ok\")" },
-        { "GuardCandidate", "let a = (\"first\", 0)\nmatch \"other\"\n    let s if same(a.0, s) => writeLine(\"bad\")\n    _ => writeLine(\"ok\")" },
-        { "NestedGuardCandidate", "func three(a: ref/string, b: ref/string, c: ref/string) -> bool => b == c\nlet a = (\"first\", 0)\nmatch \"other\"\n    let s if three(a.0, s, \"other\") => writeLine(\"ok\")\n    _ => writeLine(\"bad\")" },
+        { "Tuple", "let a = (\"first\", 42)\nif a.0 == \"first\" and a.0 != \"last\" => Console.writeLine(\"ok\")\nlet whole = a" },
+        { "SameElement", "let a: [1 of string] = [\"first\"]\nif same(a[0], a[((0x0))]) => Console.writeLine(\"ok\")\nlet whole = a" },
+        { "BothElements", "let a = (\"first\", \"first\")\nif same(a.0, a.1) and a.0 == a.1 => Console.writeLine(\"ok\")\nlet whole = a" },
+        { "Nested", "let a: [1 of (string, [1 of string])] = [(\"first\", [\"first\"])]\nif same(a[0].0, a[0].1[0]) => Console.writeLine(\"ok\")" },
+        { "Partial", "let a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0.1\nif same(a.0.0, a.0.0) => Console.writeLine(\"ok\")" },
+        { "Repair", "var a = (\"first\", \"last\")\nlet taken = a.0\na.0 = \"new\"\nif same(a.0, a.0) => Console.writeLine(\"ok\")\nlet whole = a" },
+        { "SiblingMove", "func inspect(left: ref/string, right: string) -> bool => left == left\nlet a = (\"first\", \"last\")\nif inspect(a.0, a.1) => Console.writeLine(\"ok\")" },
+        { "SiblingReplace", "var a = (\"first\", \"last\")\nif a.0 == (work: do\n    a.1 = \"new\"\n    exit to work: \"first\"\n) => Console.writeLine(\"ok\")" },
+        { "SiblingUpdate", "var a = (\"first\", 40)\na.1 += if a.0 == \"first\" => 2 else => 0\nif a.1 == 42 => Console.writeLine(\"ok\")" },
+        { "DynamicSibling", "func inspect(left: ref/string, ignored: ()) -> bool => left == left\nvar a: (string, [1 of string]) = (\"first\", [\"last\"])\nvar i: isize = 0\nif inspect(a.0, a.1[i] = \"new\") => Console.writeLine(\"ok\")" },
+        { "CallRelease", "var a = (\"first\", \"last\")\nlet equal = same(a.0, a.0)\na.0 = \"new\"\nlet whole = a\nif equal => Console.writeLine(\"ok\")" },
+        { "CompareRelease", "var a = (\"first\", \"last\")\nlet equal = a.0 == \"first\"\na.0 = \"new\"\nlet whole = a\nif equal => Console.writeLine(\"ok\")" },
+        { "NestedCall", "func identity(value: bool) -> bool => value\nlet a = (\"first\", \"last\")\nif identity(same(a.0, a.0)) and same(a.1, a.1) => Console.writeLine(\"ok\")" },
+        { "Named", "let a = (\"first\", \"first\")\nif same(right: a.1, left: a.0) => Console.writeLine(\"ok\")" },
+        { "MixedTemporary", "let a = (\"first\", 0)\nif same(a.0, (work: do\n    exit to work: \"first\"\n)) => Console.writeLine(\"ok\")" },
+        { "Loop", "var a = (\"first\", \"last\")\nvar i = 0\nloop\n    if not same(a.0, a.0) => exit\n    a.0 = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nif i == 3 => Console.writeLine(\"ok\")" },
+        { "Defer", "func f()\n    let a = (\"first\", \"last\")\n    defer\n        if same(a.0, a.0) => Console.writeLine(\"ok\")\n    let taken = a.1\nf()" },
+        { "ConditionalPartial", "func f(take: bool) -> bool\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.1\n    return same(a.0, a.0)\nif f(true) and f(false) => Console.writeLine(\"ok\")" },
+        { "AggregateResult", "func inspect(a: ref/string) -> (string, i32) => (\"new\", 42)\nvar a = (\"first\", 0)\nlet result = inspect(a.0)\na.0 = \"last\"\nif result.1 == 42 => Console.writeLine(\"ok\")" },
+        { "Dead", "func f()\n    return\n    let a = (\"first\", 0)\n    let equal = same(a.0, a.0)\nf()\nConsole.writeLine(\"ok\")" },
+        { "Covered", "let a = (\"first\", 0)\nmatch true\n    _ => ()\n    true => (work: do\n        let equal = same(a.0, a.0)\n    )\nConsole.writeLine(\"ok\")" },
+        { "GuardCandidate", "let a = (\"first\", 0)\nmatch \"other\"\n    let s if same(a.0, s) => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"ok\")" },
+        { "NestedGuardCandidate", "func three(a: ref/string, b: ref/string, c: ref/string) -> bool => b == c\nlet a = (\"first\", 0)\nmatch \"other\"\n    let s if three(a.0, s, \"other\") => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")" },
     };
 
     [Theory]
@@ -56,7 +56,7 @@ public class ElementBorrowEmissionTest
     [InlineData(">=", "last", false)]
     public void AllComparisonsInspectTheHandle(string op, string right, bool expected)
     {
-        var source = $"let a = (\"first\", \"{right}\")\nif (a.0 {op} a.1) == {(expected ? "true" : "false")} => writeLine(\"ok\")\nlet whole = a";
+        var source = $"let a = (\"first\", \"{right}\")\nif (a.0 {op} a.1) == {(expected ? "true" : "false")} => Console.writeLine(\"ok\")\nlet whole = a";
         ScalarEmissionTest.EmitFixture("ElementBorrowCompare" + Array.IndexOf(new[] { "==", "!=", "<", "<=", ">", ">=" }, op) + expected, source, "ok\n");
     }
 
@@ -97,9 +97,9 @@ public class ElementBorrowEmissionTest
         => Reject(Same + source, OwnershipFailure.Unsupported);
 
     [Theory]
-    [InlineData("Comparison", "func f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    a.0 == (return \"ok\")\n    return \"bad\"\nwriteLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
-    [InlineData("Argument", "func inspect(a: ref/string, b: bool) => ()\nfunc f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    inspect(a.0, (return \"ok\"))\n    return \"bad\"\nwriteLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
-    [InlineData("ReturnResult", "func inspect(a: ref/string) -> string\n    defer\n        if a == a => writeLine(\"cleanup\")\n    return \"ok\"\nlet a = (\"held\", \"sibling\")\nwriteLine(inspect(a.0))", "held=1;sibling=1;cleanup=1;ok=1", new[] { 2, 3, 1, 0 })]
+    [InlineData("Comparison", "func f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    a.0 == (return \"ok\")\n    return \"bad\"\nConsole.writeLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
+    [InlineData("Argument", "func inspect(a: ref/string, b: bool) => ()\nfunc f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    inspect(a.0, (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
+    [InlineData("ReturnResult", "func inspect(a: ref/string) -> string\n    defer\n        if a == a => Console.writeLine(\"cleanup\")\n    return \"ok\"\nlet a = (\"held\", \"sibling\")\nConsole.writeLine(inspect(a.0))", "held=1;sibling=1;cleanup=1;ok=1", new[] { 2, 3, 1, 0 })]
     public void CleanupRetainsResponsibilityAndOrdering(string name, string source, string destructions, int[] order)
     {
         var stdout = name == "ReturnResult" ? "cleanup\nok\n" : "ok\n";
@@ -125,7 +125,7 @@ public class ElementBorrowEmissionTest
     [Fact]
     public void ComparisonDoesNotAcquireOrDestroyItsElement()
     {
-        const string Source = "let a = (\"held\", \"sibling\")\nlet same = a.0 == a.0\nif same => writeLine(\"ok\")";
+        const string Source = "let a = (\"held\", \"sibling\")\nlet same = a.0 == a.0\nif same => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowResponsibility", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementBorrowResponsibility", Source, ir, "ok\n", "held=1;sibling=1;ok=1", order: [2, 1, 0]);
         var c = MinimalEmissionTest.Analyze(Source);
@@ -140,7 +140,7 @@ public class ElementBorrowEmissionTest
     [Fact]
     public void LaterBoundsAbortDoesNotRunCleanup()
     {
-        const string Source = "func inspect(a: ref/string, b: i32) => ()\nlet a = (\"held\", \"sibling\")\nlet empty: [0 of i32] = []\ndefer => writeLine(\"bad\")\ninspect(a.0, empty[0])";
+        const string Source = "func inspect(a: ref/string, b: i32) => ()\nlet a = (\"held\", \"sibling\")\nlet empty: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\ninspect(a.0, empty[0])";
         const string Error = "Hello.kimi:5:14: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowBounds", Source, string.Empty, 1, Error);
         StringEmissionTest.WriteAuditedFixture("ElementBorrowBounds", Source, ir, string.Empty, "held=0;sibling=0;bad=0", 1, Error);
@@ -148,7 +148,7 @@ public class ElementBorrowEmissionTest
 
     [Theory]
     [InlineData("Call", "func forever(a: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)")]
-    [InlineData("Cleanup", "func f() -> string\n    let a = (\"held\", 0)\n    defer => loop => ()\n    a.0 == (return \"ok\")\n    return \"bad\"\nwriteLine(f())")]
+    [InlineData("Cleanup", "func f() -> string\n    let a = (\"held\", 0)\n    defer => loop => ()\n    a.0 == (return \"ok\")\n    return \"bad\"\nConsole.writeLine(f())")]
     public void NonterminationCannotReleaseOrDeliverNormally(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
 

@@ -7,13 +7,30 @@ namespace Kimi.Compiler;
 
 public partial class Compilation
 {
+    private static readonly string[] RequiredAliases = ["Kimi"];
     private DependencyPartition? dependencyGraph;
     private Dictionary<Kotonoha, IReadOnlyDictionary<string, BasicValue>>? moduleVariables;
     private Dictionary<Kotonoha, Dictionary<string, Kotonoha>>? moduleReferences;
     private Dictionary<Kotonoha, string[]>? moduleAliases;
-    private string[] rootAliases = [];
+    private string[] rootAliases = RequiredAliases;
 
     internal Kotonoha[] SourceModules { get; private set; }
+
+    internal static string[] EffectiveAliases(string[] additions)
+    {
+        if (additions.Length == 0)
+        {
+            return RequiredAliases;
+        }
+
+        var paths = new HashSet<string>(StringComparer.Ordinal) { "Kimi" };
+        foreach (var path in additions)
+        {
+            paths.Add(path.StartsWith("::", StringComparison.Ordinal) ? path[2..] : path);
+        }
+
+        return paths.Count == 1 ? RequiredAliases : paths.Order(StringComparer.Ordinal).ToArray();
+    }
 
     internal bool Prepare(string target, DependencyPartition graph)
     {
@@ -38,11 +55,11 @@ public partial class Compilation
         => this.moduleReferences?.GetValueOrDefault(module);
 
     internal string[] DefaultAliases(Kotonoha module)
-        => ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? [];
+        => ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
 
     private bool PrepareModules()
     {
-        this.rootAliases = this.Project.ProjectFile.Alias.ToArray();
+        this.rootAliases = EffectiveAliases(this.Project.ProjectFile.Alias);
         if (this.dependencyGraph is not { } graph)
         {
             return true;
@@ -60,7 +77,7 @@ public partial class Compilation
             module.DiagnosticCollection.ClearDiagnostic();
             modules[i] = module;
             identities.Add(node.Key, module);
-            this.moduleAliases.Add(module, node.Input.Configuration.Alias.ToArray());
+            this.moduleAliases.Add(module, EffectiveAliases(node.Input.Configuration.Alias));
             if (i == 0)
             {
                 continue;

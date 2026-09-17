@@ -9,20 +9,20 @@ namespace XunitTest;
 public class ArrayInferenceEmissionTest
 {
     [Theory]
-    [InlineData("Integers", "let row: [2 of _] = [1, 2]\nif row[1] == 2 => writeLine(\"ok\")")]
-    [InlineData("Strings", "let row: [2 of _] = [\"first\", \"ok\"]\nwriteLine(row[1])")]
-    [InlineData("Typed", "let x: u8 = 2\nlet row: [2 of _] = [1, x]\nif row[1] == 2 => writeLine(\"ok\")")]
-    [InlineData("TypedFirst", "let x: u8 = 2\nlet row: [2 of _] = [x, 1]\nif row[0] == 2 => writeLine(\"ok\")")]
-    [InlineData("Nested", "let matrix: [2 of [1 of _]] = [[1], [2]]\nif matrix[1][0] == 2 => writeLine(\"ok\")")]
-    [InlineData("NestedEvidence", "let x: u8 = 2\nlet matrix: [2 of [1 of _]] = [[1], [x]]\nif matrix[1][0] == 2 => writeLine(\"ok\")")]
-    [InlineData("Existing", "let source: [1 of string] = [\"ok\"]\nlet row: [1 of _] = source\nwriteLine(row[0])")]
-    [InlineData("ExistingEmpty", "let source: [0 of string] = []\nlet row: [0 of _] = source\nwriteLine(\"ok\")")]
-    [InlineData("Tuple", "let row: [1 of _] = [(\"ok\", 1)]\nwriteLine(row[0].0)")]
-    [InlineData("Float", "let x: f32 = 2.0\nlet row: [2 of _] = [1.0, x]\nif row[1] == 2.0 => writeLine(\"ok\")")]
-    [InlineData("Wide", "let x: u128 = 1\nlet row: [2 of _] = [340282366920938463463374607431768211455, x]\nif row[0] > row[1] => writeLine(\"ok\")")]
-    [InlineData("Once", "func get() -> i32\n    writeLine(\"ok\")\n    return 1\nlet row: [1 of _] = [get()]")]
-    [InlineData("Selection", "let first: [1 of string] = [\"ok\"]\nlet second: [1 of string] = [\"bad\"]\nlet row: [1 of _] = if true => first else => second\nwriteLine(row[0])")]
-    [InlineData("Constants", "let N = 2\nlet row: [N of _] = [\"first\", \"ok\"]\nwriteLine(row[1])")]
+    [InlineData("Integers", "let row: [2 of _] = [1, 2]\nif row[1] == 2 => Console.writeLine(\"ok\")")]
+    [InlineData("Strings", "let row: [2 of _] = [\"first\", \"ok\"]\nConsole.writeLine(row[1])")]
+    [InlineData("Typed", "let x: u8 = 2\nlet row: [2 of _] = [1, x]\nif row[1] == 2 => Console.writeLine(\"ok\")")]
+    [InlineData("TypedFirst", "let x: u8 = 2\nlet row: [2 of _] = [x, 1]\nif row[0] == 2 => Console.writeLine(\"ok\")")]
+    [InlineData("Nested", "let matrix: [2 of [1 of _]] = [[1], [2]]\nif matrix[1][0] == 2 => Console.writeLine(\"ok\")")]
+    [InlineData("NestedEvidence", "let x: u8 = 2\nlet matrix: [2 of [1 of _]] = [[1], [x]]\nif matrix[1][0] == 2 => Console.writeLine(\"ok\")")]
+    [InlineData("Existing", "let source: [1 of string] = [\"ok\"]\nlet row: [1 of _] = source\nConsole.writeLine(row[0])")]
+    [InlineData("ExistingEmpty", "let source: [0 of string] = []\nlet row: [0 of _] = source\nConsole.writeLine(\"ok\")")]
+    [InlineData("Tuple", "let row: [1 of _] = [(\"ok\", 1)]\nConsole.writeLine(row[0].0)")]
+    [InlineData("Float", "let x: f32 = 2.0\nlet row: [2 of _] = [1.0, x]\nif row[1] == 2.0 => Console.writeLine(\"ok\")")]
+    [InlineData("Wide", "let x: u128 = 1\nlet row: [2 of _] = [340282366920938463463374607431768211455, x]\nif row[0] > row[1] => Console.writeLine(\"ok\")")]
+    [InlineData("Once", "func get() -> i32\n    Console.writeLine(\"ok\")\n    return 1\nlet row: [1 of _] = [get()]")]
+    [InlineData("Selection", "let first: [1 of string] = [\"ok\"]\nlet second: [1 of string] = [\"bad\"]\nlet row: [1 of _] = if true => first else => second\nConsole.writeLine(row[0])")]
+    [InlineData("Constants", "let N = 2\nlet row: [N of _] = [\"first\", \"ok\"]\nConsole.writeLine(row[1])")]
     public void LocalArrayAnnotationsInferOneCompleteElementType(string name, string source)
         => ScalarEmissionTest.EmitFixture("ArrayInference" + name, source, "ok\n");
 
@@ -66,7 +66,7 @@ public class ArrayInferenceEmissionTest
     [Fact]
     public void RebindingAndReloadRecomputeArrayInference()
     {
-        var c = MinimalEmissionTest.Analyze("let value: u8 = 2\nlet row: [2 of _] = [1, value]\nif row[0] == 1 => writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("let value: u8 = 2\nlet row: [2 of _] = [1, value]\nif row[0] == 1 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
         var variable = c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "row");

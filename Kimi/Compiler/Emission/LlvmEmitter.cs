@@ -102,7 +102,7 @@ public sealed class LlvmEmitter
                 }
 
                 var function = module.AddFunction(this.functions[body.Function], exported: false);
-                if (!this.lowering.Lower(c.Core, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
+                if (!this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
                 {
                     return false;
                 }
@@ -149,7 +149,7 @@ public sealed class LlvmEmitter
             return "Emission requires the verified windows-x64-v1 target and DataLayout.";
         }
 
-        if (!c.Binding.Result.IsComplete || !c.Ownership.SupportsOriginObligations() || !c.Core.IsValid ||
+        if (!c.Binding.Result.IsComplete || !c.Ownership.SupportsOriginObligations() || !c.Library.IsValid ||
             c.Kotonoha.HasSourceErrors || c.Kotonoha.DiagnosticCollection.HasErrors || !startup.IsComplete || !c.Ownership.Result.IsVerified)
         {
             return "Emission requires current final Binding, startup, control-flow and ownership verification without errors.";

@@ -22,7 +22,7 @@ public sealed partial class Binding
             return Complete(syntax, null);
         }
 
-        var target = this.Core.Abort;
+        var target = this.Library.Abort;
         call.Method.BoundSymbol = target;
         Complete(call.Method, BoundType.Never);
         call.BoundSymbol = target;

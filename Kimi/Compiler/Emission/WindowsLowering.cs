@@ -63,7 +63,7 @@ internal static partial class WindowsLowering
     internal static ValueLowering? GetValue(BoundType type)
         => ReferenceTypes.IsString(type) || ReferenceTypes.IsStorage(type) ? StringReference : Values.GetValueOrDefault(type);
 
-    /// <summary>Gets the physical implementation of a compiler-provided Core function.</summary>
+    /// <summary>Gets the physical implementation of a compiler-provided Kimi function.</summary>
     /// <param name="kind">The compiler function identity.</param>
     /// <returns>The implementation ABI, or null when no body is generated.</returns>
     internal static FunctionAbi? GetCompilerFunction(CompilerFunctionKind kind)

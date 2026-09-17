@@ -48,7 +48,7 @@ function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
 }
 
 Write-Project 'O2' ''
-'::Core.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
+'::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 $output = Invoke-Kimi @('build', $project)
 $output = Invoke-Kimi @('run', $project)
 if (-not $output.Contains('Hello, world!')) { throw "Automatic toolchain resolution failed: $output" }
@@ -68,7 +68,7 @@ Remove-Item -LiteralPath $badDirectory -Force
 Remove-Item -LiteralPath $missingRoot -Force
 $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot)
 Write-Project 'O2' 'missing LLVM directory'
-'::Core.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
+'::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 $ir = Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.ll'
 $recordPath = [IO.Path]::ChangeExtension($ir, '.link.build.json')
 $previousRecord = [IO.File]::ReadAllText($recordPath)
@@ -98,7 +98,7 @@ foreach ($level in @('O0', 'O2')) {
     $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin) 1
     $output = Invoke-Kimi @('run', $project) 1
     if ((Get-FileHash $exe).Hash -cne $hash) { throw 'Failed build overwrote the last executable' }
-    '::Core.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
+    '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 }
 if ($MismatchedLlvmBin) {
     $output = Invoke-Kimi @('build', $project, '--LlvmBin', $MismatchedLlvmBin) 1
@@ -156,7 +156,7 @@ New-Item -ItemType Directory -Path $singleDirectory | Out-Null
 $singleStem = Join-Path $singleDirectory 'Single'
 $singleSource = "$singleStem.kimi"
 $singleProject = "$singleStem.kimiproj"
-$singleText = '::Core.writeLine("Single source")'
+$singleText = '::Kimi.Console.writeLine("Single source")'
 $singleText | Set-Content -LiteralPath $singleSource -Encoding utf8
 'let broken =' | Set-Content -LiteralPath (Join-Path $singleDirectory 'BrokenSibling.kimi') -Encoding utf8
 $singleIr = Join-Path $singleDirectory 'bin/x86_64-pc-windows-msvc/Single.ll'

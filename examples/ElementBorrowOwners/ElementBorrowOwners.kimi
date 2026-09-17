@@ -9,15 +9,15 @@ func conditional(flag: bool) -> bool
     return flag and (if flag => make() else => ("other", 0)).0 == "held"
 
 if inspect(make())
-    writeLine("owned parameter")
+    Console.writeLine("owned parameter")
 
 if same(make().0, ("held", 0).0)
-    writeLine("temporary owners")
+    Console.writeLine("temporary owners")
 
 if conditional(true) and not conditional(false)
-    writeLine("conditional lifetime")
+    Console.writeLine("conditional lifetime")
 
 if (work: do
     exit to work: ("held", 0)
 ).0 == "held"
-    writeLine("delivered result")
+    Console.writeLine("delivered result")

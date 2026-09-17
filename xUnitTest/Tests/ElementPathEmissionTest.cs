@@ -9,24 +9,24 @@ public class ElementPathEmissionTest
 {
     public static TheoryData<string, string> Fixtures => new()
     {
-        { "Array", "var a: [2 of i32] = [40, 2]\na[0] += a[1]\nif a[0] == 42 => writeLine(\"ok\")" },
-        { "Tuple", "var a = (40, 2)\na.0 += a.1\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "Nested", "var a: [2 of [2 of i32]] = [[40, 0], [0, 2]]\na[0][0] += a[1][1]\nif a[0][0] == 42 => writeLine(\"ok\")" },
-        { "SameOuter", "var a: [1 of [2 of i32]] = [[40, 2]]\na[0][0] += a[0][1]\nif a[0][0] == 42 => writeLine(\"ok\")" },
-        { "NestedUpdate", "var a: [2 of i32] = [40, 2]\na[0] += a[1]++\nif a[0] == 42 and a[1] == 3 => writeLine(\"ok\")" },
-        { "NestedPrefix", "var a: [2 of i32] = [40, 1]\na[0] += ++a[1]\nif a[0] == 42 and a[1] == 2 => writeLine(\"ok\")" },
-        { "RhsStore", "var a: [2 of i32] = [40, 0]\na[0] += work: do\n    a[1] = 2\n    exit to work: a[1]\nif a[0] == 42 and a[1] == 2 => writeLine(\"ok\")" },
-        { "RhsCleanup", "var a: [2 of i32] = [40, 2]\na[0] += work: do\n    defer => a[1]++\n    exit to work: a[1]\nif a[0] == 42 and a[1] == 3 => writeLine(\"ok\")" },
-        { "Selection", "var a: [2 of i32] = [40, 2]\na[0] += if true => a[1] else => 0\nif a[0] == 42 => writeLine(\"ok\")" },
-        { "Snapshot", "var a: [2 of i32] = [40, 2]\na[0] += a[1] + (work: do\n    a[1] = 99\n    exit to work: 0\n)\nif a[0] == 42 and a[1] == 99 => writeLine(\"ok\")" },
-        { "DynamicPrefix", "var a: ([1 of i32], [1 of i32]) = ([40], [2])\nvar i: isize = 0\na.0[i] += a.1[i]++\nif a.0[0] == 42 and a.1[0] == 3 => writeLine(\"ok\")" },
-        { "DynamicDescendant", "var a: [2 of [1 of i32]] = [[40], [2]]\nvar i: isize = 0\na[0][i] += a[1][i]\nif a[0][0] == 42 => writeLine(\"ok\")" },
-        { "Literals", "var a: [2 of i32] = [40, 2]\na[((0x0))] += a[(0b0_1)]\nif a[0] == 42 => writeLine(\"ok\")" },
-        { "CopyAggregate", "func get(a: [1 of i32]) -> i32 => a[0]\nvar a: (i32, [1 of i32]) = (40, [2])\na.0 += get(a.1)\nif a.0 == 42 => writeLine(\"ok\")" },
-        { "ZeroSizeSibling", "func amount(unit: ()) -> i32 => 2\nvar a = ((), 40)\na.1 += amount(a.0)\nif a.1 == 42 => writeLine(\"ok\")" },
-        { "IndexRead", "var a: (i32, [1 of i32], isize) = (41, [1], 0)\na.0 += a.1[a.2]++\nif a.0 == 42 and a.1[0] == 2 => writeLine(\"ok\")" },
-        { "Transfer", "func f() -> i32\n    var a = (40, 2)\n    defer\n        if a.0 == 40 and a.1 == 3 => writeLine(\"ok\")\n    a.0 += (work: do\n        a.1++\n        return 42\n    )\n    return 0\nf()" },
-        { "Deferred", "var a: [2 of i32] = [0, 14]\nvar i = 0\nloop\n    defer => a[0] += a[1]\n    i += 1\n    if i < 3 => continue\n    exit\nif a[0] == 42 => writeLine(\"ok\")" },
+        { "Array", "var a: [2 of i32] = [40, 2]\na[0] += a[1]\nif a[0] == 42 => Console.writeLine(\"ok\")" },
+        { "Tuple", "var a = (40, 2)\na.0 += a.1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "Nested", "var a: [2 of [2 of i32]] = [[40, 0], [0, 2]]\na[0][0] += a[1][1]\nif a[0][0] == 42 => Console.writeLine(\"ok\")" },
+        { "SameOuter", "var a: [1 of [2 of i32]] = [[40, 2]]\na[0][0] += a[0][1]\nif a[0][0] == 42 => Console.writeLine(\"ok\")" },
+        { "NestedUpdate", "var a: [2 of i32] = [40, 2]\na[0] += a[1]++\nif a[0] == 42 and a[1] == 3 => Console.writeLine(\"ok\")" },
+        { "NestedPrefix", "var a: [2 of i32] = [40, 1]\na[0] += ++a[1]\nif a[0] == 42 and a[1] == 2 => Console.writeLine(\"ok\")" },
+        { "RhsStore", "var a: [2 of i32] = [40, 0]\na[0] += work: do\n    a[1] = 2\n    exit to work: a[1]\nif a[0] == 42 and a[1] == 2 => Console.writeLine(\"ok\")" },
+        { "RhsCleanup", "var a: [2 of i32] = [40, 2]\na[0] += work: do\n    defer => a[1]++\n    exit to work: a[1]\nif a[0] == 42 and a[1] == 3 => Console.writeLine(\"ok\")" },
+        { "Selection", "var a: [2 of i32] = [40, 2]\na[0] += if true => a[1] else => 0\nif a[0] == 42 => Console.writeLine(\"ok\")" },
+        { "Snapshot", "var a: [2 of i32] = [40, 2]\na[0] += a[1] + (work: do\n    a[1] = 99\n    exit to work: 0\n)\nif a[0] == 42 and a[1] == 99 => Console.writeLine(\"ok\")" },
+        { "DynamicPrefix", "var a: ([1 of i32], [1 of i32]) = ([40], [2])\nvar i: isize = 0\na.0[i] += a.1[i]++\nif a.0[0] == 42 and a.1[0] == 3 => Console.writeLine(\"ok\")" },
+        { "DynamicDescendant", "var a: [2 of [1 of i32]] = [[40], [2]]\nvar i: isize = 0\na[0][i] += a[1][i]\nif a[0][0] == 42 => Console.writeLine(\"ok\")" },
+        { "Literals", "var a: [2 of i32] = [40, 2]\na[((0x0))] += a[(0b0_1)]\nif a[0] == 42 => Console.writeLine(\"ok\")" },
+        { "CopyAggregate", "func get(a: [1 of i32]) -> i32 => a[0]\nvar a: (i32, [1 of i32]) = (40, [2])\na.0 += get(a.1)\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "ZeroSizeSibling", "func amount(unit: ()) -> i32 => 2\nvar a = ((), 40)\na.1 += amount(a.0)\nif a.1 == 42 => Console.writeLine(\"ok\")" },
+        { "IndexRead", "var a: (i32, [1 of i32], isize) = (41, [1], 0)\na.0 += a.1[a.2]++\nif a.0 == 42 and a.1[0] == 2 => Console.writeLine(\"ok\")" },
+        { "Transfer", "func f() -> i32\n    var a = (40, 2)\n    defer\n        if a.0 == 40 and a.1 == 3 => Console.writeLine(\"ok\")\n    a.0 += (work: do\n        a.1++\n        return 42\n    )\n    return 0\nf()" },
+        { "Deferred", "var a: [2 of i32] = [0, 14]\nvar i = 0\nloop\n    defer => a[0] += a[1]\n    i += 1\n    if i < 3 => continue\n    exit\nif a[0] == 42 => Console.writeLine(\"ok\")" },
     };
 
     [Theory]
@@ -35,8 +35,8 @@ public class ElementPathEmissionTest
         => ScalarEmissionTest.EmitFixture("ElementPath" + name, source, "ok\n");
 
     [Theory]
-    [InlineData("AggregateStore", "var a: (i32, [2 of i32]) = (40, [0, 0])\na.0 += work: do\n    a.1 = [1, 2]\n    exit to work: a.1[1]\nif a.0 == 42 and a.1[0] == 1 => writeLine(\"ok\")", "ok\n")]
-    [InlineData("UnitStore", "func mark() => writeLine(\"unit\")\nvar a = (40, ())\na.0 += work: do\n    a.1 = mark()\n    exit to work: 2\nif a.0 == 42 => writeLine(\"ok\")", "unit\nok\n")]
+    [InlineData("AggregateStore", "var a: (i32, [2 of i32]) = (40, [0, 0])\na.0 += work: do\n    a.1 = [1, 2]\n    exit to work: a.1[1]\nif a.0 == 42 and a.1[0] == 1 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("UnitStore", "func mark() => Console.writeLine(\"unit\")\nvar a = (40, ())\na.0 += work: do\n    a.1 = mark()\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "unit\nok\n")]
     public void DisjointCopyReplacementPreservesEvaluation(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ElementPathAdditional" + name, source, stdout);
 
@@ -47,7 +47,7 @@ public class ElementPathEmissionTest
     [Fact]
     public void DisjointUpdatesPreserveParentDestruction()
     {
-        const string Source = "var a = (\"first\", (40, 2), \"last\")\na.1.0 += a.1.1++\nif a.1.0 == 42 and a.1.1 == 3 => writeLine(\"ok\")";
+        const string Source = "var a = (\"first\", (40, 2), \"last\")\na.1.0 += a.1.1++\nif a.1.0 == 42 and a.1.1 == 3 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementPathLifetime", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementPathLifetime", Source, ir, "ok\n", "first=1;last=1;ok=1", order: [2, 1, 0]);
     }

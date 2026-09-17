@@ -122,7 +122,7 @@ internal static class DependencyConfiguration
     {
         foreach (var (name, reference) in references)
         {
-            if (!IdentifierHelper.IsValidIdentifier(name) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() || name == "Core")
+            if (!IdentifierHelper.IsValidIdentifier(name) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() || name == "Kimi")
             {
                 return $"Invalid or reserved dependency reference name: {name}";
             }

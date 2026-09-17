@@ -62,20 +62,20 @@ public group SpecTour
             var source = NumberSource.init()
             let first = readOne(source@ref)
             source.reset()
-            ::Core.writeLine("source=\(first), reset=\(readInt(source@ref)), count=\(source.count)")
+            ::Kimi.Console.writeLine("source=\(first), reset=\(readInt(source@ref)), count=\(source.count)")
 
             let small = Reading.init(10)
             let large = Reading.init(20)
             let selected = larger(small, large)
             let box = Box<Reading>.init(selected)
             let copied = box
-            ::Core.writeLine("original=\(box), copy=\(copied)")
+            ::Kimi.Console.writeLine("original=\(box), copy=\(copied)")
 
             let text = Box<string>.init("non-Copy contents")
             let moved = text
-            ::Core.writeLine("\(moved)")
+            ::Kimi.Console.writeLine("\(moved)")
 
             let number: i32 = 7
             let same = identity(number@ref)
             let borrowed = keepBorrow(number@ref)
-            ::Core.writeLine("\(same), \(borrowed), specialized=\(forward(number@ref))")
+            ::Kimi.Console.writeLine("\(same), \(borrowed), specialized=\(forward(number@ref))")

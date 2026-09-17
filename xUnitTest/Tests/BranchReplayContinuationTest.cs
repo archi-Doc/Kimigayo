@@ -21,8 +21,8 @@ public class BranchReplayContinuationTest
     [InlineData("Transfer", "var x: i32", "return", "if c => x = 3 else => x = 4\n            return", "x = 2", "let y = x", true)]
     [InlineData("Chain", "var x: i32", "return", "if c => x = 3 else => x = 4\n            return\n            if c => x = 5 else => x = 6\n            exit", "x = 2", "let y = x", true)]
     [InlineData("ChainExit", "var x: i32", "return", "if c => x = 3 else => x = 4\n            return\n            if c => x = 5 else => x = 6\n            exit", "x = 2", "let y = x", false)]
-    [InlineData("Move", "var x = \"old\"", "return", "if c => writeLine(x) else => ()\n            x = \"new\"", "()", "writeLine(x)", true)]
-    [InlineData("MoveExit", "var x = \"old\"", "return", "if c => writeLine(x) else => ()\n            x = \"new\"", "()", "writeLine(x)", false)]
+    [InlineData("Move", "var x = \"old\"", "return", "if c => Console.writeLine(x) else => ()\n            x = \"new\"", "()", "Console.writeLine(x)", true)]
+    [InlineData("MoveExit", "var x = \"old\"", "return", "if c => Console.writeLine(x) else => ()\n            x = \"new\"", "()", "Console.writeLine(x)", false)]
     [InlineData("While", "var x: i32", "x = 1\n                return", "while c => x = 3", "x = 2", "let y = x", true)]
     [InlineData("WhileExit", "var x: i32", "x = 1\n                return", "while c => x = 3", "x = 2", "let y = x", false)]
     [InlineData("WhileReinit", "var x: i32", "return", "while c => x = 3\n            x = 4", "x = 2", "let y = x", true)]
@@ -30,12 +30,12 @@ public class BranchReplayContinuationTest
     [InlineData("WhileNested", "var x: i32", "x = 1\n                return", "while c\n                while c => x = 3", "x = 2", "let y = x", true)]
     [InlineData("WhileBranch", "var x: i32", "x = 1\n                return", "while c\n                if c => x = 3 else => x = 4", "x = 2", "let y = x", true)]
     [InlineData("BranchWhile", "var x: i32", "x = 1\n                return", "if c\n                while c => x = 3\n            else => x = 4", "x = 2", "let y = x", true)]
-    [InlineData("WhileMove", "var x = \"old\"", "return", "while c\n                writeLine(x)\n                x = \"new\"", "()", "writeLine(x)", true)]
-    [InlineData("WhileMoveExit", "var x = \"old\"", "return", "while c\n                writeLine(x)\n                x = \"new\"", "()", "writeLine(x)", false)]
+    [InlineData("WhileMove", "var x = \"old\"", "return", "while c\n                Console.writeLine(x)\n                x = \"new\"", "()", "Console.writeLine(x)", true)]
+    [InlineData("WhileMoveExit", "var x = \"old\"", "return", "while c\n                Console.writeLine(x)\n                x = \"new\"", "()", "Console.writeLine(x)", false)]
     public void ClosedBranchReplayPreservesTargets(string name, string declaration, string early, string dead, string tail, string use, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverBranchReplay" + Configuration + name,
-            Source(declaration, early, dead, tail, use, condition) + "\nwriteLine(\"done\")",
+            Source(declaration, early, dead, tail, use, condition) + "\nConsole.writeLine(\"done\")",
             condition ? "done\n" : string.Empty,
             condition ? 0 : 1,
             condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -44,16 +44,16 @@ public class BranchReplayContinuationTest
     [InlineData("var x: i32", "return", "if c => x = 3", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "if c => () else => x = 3", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "if c => x = 3 else => x = 4", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "return", "if c => writeLine(x) else => ()", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "return", "if c => () else => writeLine(x)", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "if c => Console.writeLine(x) else => ()", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "if c => () else => Console.writeLine(x)", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "return", "if c => x = 3 else => ()", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "return", "if c => () else => x = 3\n            return\n            exit", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("var x: i32", "x = 1\n                return", "if c => x = 3\n            let n = x", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "while c => x = 3", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "while c => x = 3\n            let n = x", "x = 2", "()", OwnershipFailure.UninitializedUse)]
     [InlineData("let x: i32", "return", "while c => x = 3", "()", "()", OwnershipFailure.ReassignedLet)]
-    [InlineData("let x = \"s\"", "return", "while c => writeLine(x)", "()", "()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("var x = \"s\"", "return", "while c\n                if c => writeLine(x) else => ()", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "while c => Console.writeLine(x)", "()", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("var x = \"s\"", "return", "while c\n                if c => Console.writeLine(x) else => ()", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     public void BranchReplayKeepsOnlyCommonGuarantees(string declaration, string early, string dead, string tail, string use, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, early, dead, tail, use));

@@ -11,7 +11,7 @@ public class EmissionPlanTest
     [Fact]
     public void LinearBodyContainsOnlyPhysicalOperations()
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"Hello, world!\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"Hello, world!\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         Assert.Equal(2, module.FunctionCount);
         var entry = module.GetFunction(0);
@@ -47,7 +47,7 @@ public class EmissionPlanTest
     [InlineData("conditional-cleanup")]
     public void UnsupportedOrIncompleteLoweringNeverWritesFallbackIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"a\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         Assert.True(c.Emission.Validate(out _)); // Exercise reuse after a previously successful plan.
         var body = c.Ownership.Bodies[0];
         var firstEdge = body.EdgeHeads[0];
@@ -92,7 +92,7 @@ public class EmissionPlanTest
     [Fact]
     public void ReanalysisReusesThePlanWithoutDuplicatingSlotsOrInstructions()
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"日本語\\0\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"日本語\\0\")");
         Assert.True(c.Emission.TryPrepare(out var first, out _));
         using var before = new StringWriter();
         first.WriteIr(before);
@@ -110,7 +110,7 @@ public class EmissionPlanTest
     [Fact]
     public void RuntimeDefinitionsAndCallsUseThePreparedAbi()
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"a\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         using var output = new StringWriter();
         Assert.True(c.Emission.WriteIr(output, out var error), error);
         var ir = output.ToString();
@@ -164,7 +164,7 @@ public class EmissionPlanTest
     [Fact]
     public void SequentialLiteralCallsShareConstantsAndTransferEachArgument()
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"a\")\nwriteLine(\"a\")\nwriteLine(\"\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")\nConsole.writeLine(\"a\")\nConsole.writeLine(\"\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var entry = module.GetFunction(0);
         Assert.Equal(3, entry.Slots.Count);

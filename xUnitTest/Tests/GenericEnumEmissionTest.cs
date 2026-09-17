@@ -18,7 +18,7 @@ public class GenericEnumEmissionTest
 
     [Fact]
     public void DestroysOnlyActiveOwnedPayload()
-        => ScalarEmissionTest.EmitFixture("GenericEnumCleanup", "struct Token\n    deinit => writeLine(\"payload\")\nfunc wrap<T>(x: T) -> Option<T> => .Some(x)\nfunc empty<T>() -> Option<T> => .None\nlet a = wrap<Token>(Token.init())\nlet b = empty<Token>()\nwriteLine(\"body\")", "body\npayload\n");
+        => ScalarEmissionTest.EmitFixture("GenericEnumCleanup", "struct Token\n    deinit => Console.writeLine(\"payload\")\nfunc wrap<T>(x: T) -> Option<T> => .Some(x)\nfunc empty<T>() -> Option<T> => .None\nlet a = wrap<Token>(Token.init())\nlet b = empty<Token>()\nConsole.writeLine(\"body\")", "body\npayload\n");
 
     [Theory]
     [InlineData("func wrap<T>(x: T) -> Option<T>\n    let first: Option<T> = .Some(x)\n    return .Some(x)")]

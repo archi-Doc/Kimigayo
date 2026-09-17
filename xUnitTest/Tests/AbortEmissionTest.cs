@@ -15,16 +15,16 @@ public class AbortEmissionTest
         { "AbortEmpty", "$abort(\"\")", string.Empty, 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: \n" },
         { "AbortUnicode", "$abort(\"日本語\\0x\")", string.Empty, 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: 日本語\0x\n" },
         { "AbortOwned", "let text = \"owned\"\n$abort(text)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: owned\n" },
-        { "AbortShadow", "func abort(text: string) => writeLine(text)\n$abort(\"builtin\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: builtin\n" },
+        { "AbortShadow", "func abort(text: string) => Console.writeLine(text)\n$abort(\"builtin\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: builtin\n" },
         { "AbortNested", "$abort($abort(\"inner\"))", string.Empty, 1, "Hello.kimi:1:8: abort KIMI_E_ABORT: inner\n" },
-        { "AbortOnce", "$abort((message: do\n    writeLine(\"once\")\n    exit to message: \"message\"\n))", "once\n", 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: message\n" },
-        { "AbortSkipCleanup", "defer => writeLine(\"cleanup\")\n$abort(\"stop\")\nwriteLine(\"after\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },
-        { "AbortArgumentReturn", "func f()\n    defer => writeLine(\"cleanup\")\n    $abort((message: do\n        return\n        exit to message: \"unused\"\n    ))\nf()\nwriteLine(\"after\")", "cleanup\nafter\n", 0, string.Empty },
-        { "AbortCondition", "if $abort(\"condition\") => writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:4: abort KIMI_E_ABORT: condition\n" },
+        { "AbortOnce", "$abort((message: do\n    Console.writeLine(\"once\")\n    exit to message: \"message\"\n))", "once\n", 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: message\n" },
+        { "AbortSkipCleanup", "defer => Console.writeLine(\"cleanup\")\n$abort(\"stop\")\nConsole.writeLine(\"after\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },
+        { "AbortArgumentReturn", "func f()\n    defer => Console.writeLine(\"cleanup\")\n    $abort((message: do\n        return\n        exit to message: \"unused\"\n    ))\nf()\nConsole.writeLine(\"after\")", "cleanup\nafter\n", 0, string.Empty },
+        { "AbortCondition", "if $abort(\"condition\") => Console.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:4: abort KIMI_E_ABORT: condition\n" },
         { "AbortArgumentOverflow", "$abort((message: do\n    var x: i32 = 2147483647\n    x = x + 1\n    exit to message: \"outer\"\n))", string.Empty, 1, "Hello.kimi:3:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n" },
-        { "AbortUnreachableLocal", "let text = \"kept\"\n$abort(\"stop\")\nwriteLine(text)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },
-        { "AbortConditionalResult", "var flag = false\nlet text = if flag => $abort(\"bad\") else => \"ok\"\nwriteLine(text)", "ok\n", 0, string.Empty },
-        { "AbortWhileCondition", "while $abort(\"condition\") => writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:7: abort KIMI_E_ABORT: condition\n" },
+        { "AbortUnreachableLocal", "let text = \"kept\"\n$abort(\"stop\")\nConsole.writeLine(text)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },
+        { "AbortConditionalResult", "var flag = false\nlet text = if flag => $abort(\"bad\") else => \"ok\"\nConsole.writeLine(text)", "ok\n", 0, string.Empty },
+        { "AbortWhileCondition", "while $abort(\"condition\") => Console.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:7: abort KIMI_E_ABORT: condition\n" },
         { "AbortRequireCondition", "require $abort(\"condition\") else => $abort(\"bad\")", string.Empty, 1, "Hello.kimi:1:9: abort KIMI_E_ABORT: condition\n" },
     };
 
@@ -36,8 +36,8 @@ public class AbortEmissionTest
     [Theory]
     [InlineData("$abort(\"failed\")")]
     [InlineData("let message = \"failed\"\n$abort(message)")]
-    [InlineData("if false\n    $abort(\"failed\")\nwriteLine(\"ok\")")]
-    [InlineData("let value: i32 = if true => 1 else => $abort(\"failed\")\nif value == 1 => writeLine(\"ok\")")]
+    [InlineData("if false\n    $abort(\"failed\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("let value: i32 = if true => 1 else => $abort(\"failed\")\nif value == 1 => Console.writeLine(\"ok\")")]
     public void ExplicitAbortPassesEveryCompilerStage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -54,7 +54,7 @@ public class AbortEmissionTest
     [InlineData("$abort(missing)")]
     [InlineData("let x = \"text\"\n$abort(x@ref)")]
     [InlineData("abort(\"not declared\")")]
-    [InlineData("::Core.abort(\"not an API\")")]
+    [InlineData("::Kimi.abort(\"not an API\")")]
     [InlineData("$abort()")]
     [InlineData("$abort(\"a\", \"b\")")]
     [InlineData("$abort(text: \"a\")")]
@@ -69,8 +69,8 @@ public class AbortEmissionTest
 
     [Theory]
     [InlineData("let text: string\n$abort(text)", OwnershipFailure.UninitializedUse)]
-    [InlineData("let text = \"x\"\nwriteLine(text)\n$abort(text)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let text = \"x\"\n$abort(text)\nwriteLine(text)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let text = \"x\"\nConsole.writeLine(text)\n$abort(text)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let text = \"x\"\n$abort(text)\nConsole.writeLine(text)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", OwnershipFailure.UninitializedUse)]
     public void RejectsOwnershipViolationsIncludingUnreachableUses(string source, OwnershipFailure failure)
     {

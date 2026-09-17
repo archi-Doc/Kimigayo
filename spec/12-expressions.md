@@ -112,7 +112,7 @@ For control-flow results, collect all source constraints before defaulting, incl
 | `[a, b]`, `[]` | Array literal. |
 | `[key: value]`, `[:]` | Dictionary literal. |
 
-Tuples may have different Types at each position. An array has one element Type; a dictionary has one key Type and one value Type. Empty collection literals need an expected Type. Array and Dictionary literals use the [required Cores](22-core-execution-and-foreign-functions.md#221-required-core-declarations), with the expected fixed-array exception in [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); ambiguity does not fall back to a universal object Type.
+Tuples may have different Types at each position. An array has one element Type; a dictionary has one key Type and one value Type. Empty collection literals need an expected Type. Array and Dictionary literals use the [required Cores](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations), with the expected fixed-array exception in [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); ambiguity does not fall back to a universal object Type.
 
 ```kimi
 let pair = (10, "ten")
@@ -142,7 +142,7 @@ Names (including constant-readable let), arithmetic, conversions, Tuples, floats
 
 Equivalence follows dictionary key equality; matching hash values alone do not make keys duplicates.
 
-The Core Dictionary uses the Equatable mapping for key equality. An implementation may use linear search and requires no source Hash contract. If it uses hashing internally, equal keys must have equal hashes; hashing must not change which keys are equivalent. User-defined key equality must be an equivalence relation, in addition to the stability conditions below. The key Type must guarantee that the logical equality and hash value of a stored key remain unchanged while the dictionary holds it. Later literal entries never overwrite existing values. Mutation and indexed replacement have the distinct contracts in §4.7.
+The Kimi Dictionary uses the Equatable mapping for key equality. An implementation may use linear search and requires no source Hash contract. If it uses hashing internally, equal keys must have equal hashes; hashing must not change which keys are equivalent. User-defined key equality must be an equivalence relation, in addition to the stability conditions below. The key Type must guarantee that the logical equality and hash value of a stored key remain unchanged while the dictionary holds it. Later literal entries never overwrite existing values. Mutation and indexed replacement have the distinct contracts in §4.7.
 
 The intrinsic Equatable mapping for f32/f64 treats all NaN values of the same Type as equal and also treats signed zeros as equal. Other values follow numeric equality. This makes floating keys usable without changing the built-in IEEE `==`/`!=` operators or adding Comparable. Equatable mappings for shared borrows and Tuples compose these Contract mappings; their built-in comparison expressions still follow §13.4. Internal hashes, when used, must agree for all NaNs and for both zeros. Floating keys undergo runtime duplicate checking even when written as literals.
 
@@ -191,17 +191,9 @@ Shared object access admits shared members/getters. Exclusive access may share b
 
 ### 12.4.4. Object receiver compatibility
 
-Object borrows may mutate permitted state of the same complete object, but cannot Replace the entire object or base subobject, even with the same Type, or MoveOut a part leaving it incomplete. Field Replacement and initialization-preserving Exchange remain state mutation under normal permissions and Loan checks. Replacing an owning handle instead destroys the old object and owns a different one:
+A selected `ref/Self` or `uniq/Self` receiver may use the complete payload projection of §13.5.5 when the source View Target is exactly the same complete Sealed Type. This is an ordinary complete-value call and requires no additional ObjectCallCompatible proof. Keep any existing NotProven public status unchanged. Ordinary argument positions still require explicit projection.
 
-```kimi
-func celebrate(animal: objuniq/Animal) -> ()
-    animal.age = animal.age + 1
-
-var animal: obj/Animal = makeDog()@obj/Animal
-animal = makeCat()@obj/Animal // Destroy the old Dog, then own a separate Cat.
-```
-
-Owning-handle replacement retains normal borrowing/destruction conditions. Exclusive object access requires a writable Place or eligible temporary; rc/arc supply only shared access, even at count one. No general objuniq/T-to-uniq/T conversion or owning-receiver slicing is added.
+Every other object or base-subobject receiver path requires the published Proven guarantee below. Open Views and base subobjects cannot undergo whole-value replacement or incomplete MoveOut. Inherited Self remains the defining base Type; a sealed derived Core never grants whole-base replacement. Owning-handle replacement instead replaces the handle's object and retains ordinary borrowing/destruction conditions. rc/arc provide only shared access, even at count one.
 
 #### 12.4.4.1. Public status and use
 
@@ -212,11 +204,13 @@ Direct standard get/set remain Place operations, checked by acquisition and Prop
 | Published status | Call through a base-subobject projection or object borrow |
 | --- | --- |
 | Proven | Allowed if the ordinary call, access, Type, Origin, and Loan checks pass |
-| NotProven | Use-site error; calls on complete ordinary values remain subject to their normal rules |
+| NotProven | Error on protected object/base paths; ordinary complete-value calls, including proven Sealed payload projection, follow their normal rules |
 
 NotProven means absence of a common proof, not Refuted for every binding. Additional caller premises, favorable Type arguments, the exact Dynamic Type, or one selected specialization cannot strengthen this status. A failed use never causes overload reselection. Unknown is internal pending work, never a published status. Invalid bodies, missing mandatory artifact information, and unimplemented verification cannot be hidden as NotProven.
 
 #### 12.4.4.2. Effect verification
+
+Retain completeness evidence separately from storage relation. Payload projection does not turn Whole into Part or Separate. A legal complete-target update or borrow return is not itself a preservation failure. A formal ref/uniq parameter alone does not prove caller storage completeness: compose callee effects at each actual storage target and preserve unknown-call, unsafe, and specialization checks.
 
 Use resolved operations and acquisition plans before optimization. Under the declaration's Signature, Constraints, and conditional premises, verify every admitted Type/Origin binding using §8.7–§8.10. Do not infer hidden caller Constraints from a body. The following abstract rules determine the public result independently of analysis precision, optimization, and processing order; representations and worklist algorithms are implementation choices.
 
@@ -224,10 +218,10 @@ Summaries retain operation kinds and their relation to receiver/input roots, cap
 
 | Operation or dependency | Required summary/check |
 | --- | --- |
-| Replace, reconstruct, or acquire ownership of receiver Whole/Base | Receiver-preservation violation |
+| Replace, reconstruct, or acquire ownership of protected receiver Whole/Base | Receiver-preservation violation unless the actual target is independently proven complete and the operation is legal under §15.7 |
 | MoveOut from receiver storage leaving it incomplete | Violation; later restoration does not cancel it |
 | Completeness-preserving Part Replacement/Exchange, permitted reads/borrows | No preservation violation by itself; retain access, Loan, and cleanup checks |
-| Escape of unrestricted exclusive access capable of operating on receiver/base | Violation; include results, stores, and callee paths |
+| Escape of unrestricted exclusive access to protected receiver/base | Violation unless a legal complete-target borrow; include results, stores, callee paths, and all dependencies |
 | Borrowed result | Retain root/alias correspondence and verify return Origins, Loans, and authority |
 | Separate operation | No violation against the root from which separation is proven |
 | MayAlias or unverified unsafe/indirect effects that may violate receiver preservation | Unproven effect on every potentially affected root |

@@ -7,37 +7,37 @@ namespace XunitTest;
 
 public class StringEmissionTest
 {
-    private const string Conditional = "var c = true\nvar text = \"old\"\nif c => writeLine(text)\ntext = \"new\"\nwriteLine(text)";
-    private const string Loop = "var text = \"outer\"\nvar i = 0\nwhile i < 3\n    if i == 1 => writeLine(text)\n    text = \"next\"\n    i += 1\nwriteLine(text)";
+    private const string Conditional = "var c = true\nvar text = \"old\"\nif c => Console.writeLine(text)\ntext = \"new\"\nConsole.writeLine(text)";
+    private const string Loop = "var text = \"outer\"\nvar i = 0\nwhile i < 3\n    if i == 1 => Console.writeLine(text)\n    text = \"next\"\n    i += 1\nConsole.writeLine(text)";
 
     public static TheoryData<string, string, string, string> Fixtures => new()
     {
-        { "StringLocal", "let text = \"hello\"\nwriteLine(text)", "hello\n", "hello=1" },
-        { "StringMove", "let text = \"hello\"\nlet other = text\nwriteLine(other)", "hello\n", "hello=1" },
+        { "StringLocal", "let text = \"hello\"\nConsole.writeLine(text)", "hello\n", "hello=1" },
+        { "StringMove", "let text = \"hello\"\nlet other = text\nConsole.writeLine(other)", "hello\n", "hello=1" },
         { "StringDrop", "let text = \"drop\"", string.Empty, "drop=1" },
         { "StringDiscardMove", "let text = \"drop\"\ntext", string.Empty, "drop=1" },
-        { "StringEmpty", "var text = \"\"\ntext = text\nwriteLine(text)", "\n", "=1" },
-        { "StringUnicode", "let text = \"日本語\\0\"\nwriteLine(text)", "日本語\0\n", "日本語\0=1" },
-        { "StringReplace", "var text = \"old\"\ntext = \"new\"\nwriteLine(text)", "new\n", "old=1;new=1" },
-        { "StringSelf", "var text = \"self\"\ntext = text\nwriteLine(text)", "self\n", "self=1" },
-        { "StringReinitialize", "var text = \"old\"\nwriteLine(text)\ntext = \"new\"", "old\n", "old=1;new=1" },
+        { "StringEmpty", "var text = \"\"\ntext = text\nConsole.writeLine(text)", "\n", "=1" },
+        { "StringUnicode", "let text = \"日本語\\0\"\nConsole.writeLine(text)", "日本語\0\n", "日本語\0=1" },
+        { "StringReplace", "var text = \"old\"\ntext = \"new\"\nConsole.writeLine(text)", "new\n", "old=1;new=1" },
+        { "StringSelf", "var text = \"self\"\ntext = text\nConsole.writeLine(text)", "self\n", "self=1" },
+        { "StringReinitialize", "var text = \"old\"\nConsole.writeLine(text)\ntext = \"new\"", "old\n", "old=1;new=1" },
         { "StringConditionalTrue", Conditional, "old\nnew\n", "old=1;new=1" },
         { "StringConditionalFalse", Conditional.Replace("true", "false"), "new\n", "old=1;new=1" },
         { "StringPartialTrue", "var c = true\nvar text: string\nif c => text = \"partial\"", string.Empty, "partial=1" },
         { "StringPartialFalse", "var c = false\nvar text: string\nif c => text = \"partial\"", string.Empty, "partial=0" },
         { "StringLoop", Loop, "next\nnext\n", "outer=1;next=3" },
         { "StringLoopDeclare", "var i = 0\nwhile i < 3\n    var text: string\n    if i == 0 => text = \"once\"\n    i += 1\n    continue", string.Empty, "once=1" },
-        { "StringLoopExit", "var i = 0\nloop\n    var text = \"iteration\"\n    if i == 0 => writeLine(text)\n    i += 1\n    if i == 3 => exit\n    continue", "iteration\n", "iteration=3" },
-        { "StringDefer", "var text = \"old\"\ndefer => writeLine(text)\ntext = \"new\"", "new\n", "old=1;new=1" },
-        { "StringDeferLocal", "var i = 0\nloop\n    defer\n        var text = \"deferred\"\n        if i == 1 => writeLine(text)\n    i += 1\n    if i == 3 => exit\n    continue", "deferred\n", "deferred=3" },
-        { "StringReturn", "func f(c: bool) -> i32\n    var text = \"local\"\n    if c => writeLine(text)\n    return 42\nif f(true) == 42 and f(false) == 42 => writeLine(\"ok\")", "local\nok\n", "local=2;ok=1" },
-        { "StringPhi", "var c = true\nlet result = work: do\n    var text = \"local\"\n    if c => writeLine(text)\n    exit to work: 42\nif result == 42 => writeLine(\"ok\")", "local\nok\n", "local=1;ok=1" },
+        { "StringLoopExit", "var i = 0\nloop\n    var text = \"iteration\"\n    if i == 0 => Console.writeLine(text)\n    i += 1\n    if i == 3 => exit\n    continue", "iteration\n", "iteration=3" },
+        { "StringDefer", "var text = \"old\"\ndefer => Console.writeLine(text)\ntext = \"new\"", "new\n", "old=1;new=1" },
+        { "StringDeferLocal", "var i = 0\nloop\n    defer\n        var text = \"deferred\"\n        if i == 1 => Console.writeLine(text)\n    i += 1\n    if i == 3 => exit\n    continue", "deferred\n", "deferred=3" },
+        { "StringReturn", "func f(c: bool) -> i32\n    var text = \"local\"\n    if c => Console.writeLine(text)\n    return 42\nif f(true) == 42 and f(false) == 42 => Console.writeLine(\"ok\")", "local\nok\n", "local=2;ok=1" },
+        { "StringPhi", "var c = true\nlet result = work: do\n    var text = \"local\"\n    if c => Console.writeLine(text)\n    exit to work: 42\nif result == 42 => Console.writeLine(\"ok\")", "local\nok\n", "local=1;ok=1" },
         { "StringExitRhs", "loop\n    var text = \"old\"\n    text = (exit)", string.Empty, "old=1" },
-        { "StringReturnRhs", "func f() -> i32\n    var text = \"old\"\n    text = (return 42)\nif f() == 42 => writeLine(\"ok\")", "ok\n", "old=1;ok=1" },
-        { "StringSkipped", "if false\n    var text = \"skipped\"\n    text = text\nwriteLine(\"ok\")", "ok\n", "skipped=0;ok=1" },
-        { "StringPhiCleanup", "func choose(c: bool, move: bool) -> i32\n    let n = if c\n        var text = \"join\"\n        if move => writeLine(text)\n        yield 40 + 2\n    else => 7\n    return n\nif choose(true, true) == 42 and choose(true, false) == 42 and choose(false, true) == 7 => writeLine(\"ok\")", "join\nok\n", "join=2;ok=1" },
+        { "StringReturnRhs", "func f() -> i32\n    var text = \"old\"\n    text = (return 42)\nif f() == 42 => Console.writeLine(\"ok\")", "ok\n", "old=1;ok=1" },
+        { "StringSkipped", "if false\n    var text = \"skipped\"\n    text = text\nConsole.writeLine(\"ok\")", "ok\n", "skipped=0;ok=1" },
+        { "StringPhiCleanup", "func choose(c: bool, move: bool) -> i32\n    let n = if c\n        var text = \"join\"\n        if move => Console.writeLine(text)\n        yield 40 + 2\n    else => 7\n    return n\nif choose(true, true) == 42 and choose(true, false) == 42 and choose(false, true) == 7 => Console.writeLine(\"ok\")", "join\nok\n", "join=2;ok=1" },
         { "StringDiscardSelection", "if true => (if true => \"a\" else => \"b\")", string.Empty, "a=1;b=0" },
-        { "StringExplicitMain", "public func main()\n    var text = \"main\"\n    text = text\n    writeLine(text)", "main\n", "main=1" },
+        { "StringExplicitMain", "public func main()\n    var text = \"main\"\n    text = text\n    Console.writeLine(text)", "main\n", "main=1" },
     };
 
     [Theory]
@@ -61,11 +61,11 @@ public class StringEmissionTest
     }
 
     [Theory]
-    [InlineData("func unused() -> string => " + MinimalEmissionTest.FloatExpression + "\nwriteLine(\"ok\")")]
-    [InlineData("func unused(text: uniq/string) => ()\nwriteLine(\"ok\")")]
-    [InlineData("let text = \"a\"\ntext@string\nwriteLine(text)")]
-    [InlineData("let text = \"a\"\nwriteLine(text)\nwriteLine(text)")]
-    [InlineData("var text: string\nvar c = true\nif c => text = \"a\"\nwriteLine(text)")]
+    [InlineData("func unused() -> string => " + MinimalEmissionTest.FloatExpression + "\nConsole.writeLine(\"ok\")")]
+    [InlineData("func unused(text: uniq/string) => ()\nConsole.writeLine(\"ok\")")]
+    [InlineData("let text = \"a\"\ntext@string\nConsole.writeLine(text)")]
+    [InlineData("let text = \"a\"\nConsole.writeLine(text)\nConsole.writeLine(text)")]
+    [InlineData("var text: string\nvar c = true\nif c => text = \"a\"\nConsole.writeLine(text)")]
     public void UnsupportedResultsAndInvalidMovesPublishNoIr(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -128,7 +128,7 @@ public class StringEmissionTest
     [Fact]
     public void SelfAssignmentKeepsBothMovesAndNoOldValueDestruction()
     {
-        var c = MinimalEmissionTest.Analyze("var text = \"self\"\ntext = text\nwriteLine(text)");
+        var c = MinimalEmissionTest.Analyze("var text = \"self\"\ntext = text\nConsole.writeLine(text)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
         Assert.Equal(4, function.Instructions.Count(x => x.Opcode == EmissionOpcode.MoveString));
@@ -142,7 +142,7 @@ public class StringEmissionTest
     [InlineData("input")]
     public void InvalidStringPlansFailBeforeWritingAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("var text = \"old\"\ntext = \"new\"\nwriteLine(text)");
+        var c = MinimalEmissionTest.Analyze("var text = \"old\"\ntext = \"new\"\nConsole.writeLine(text)");
         var body = c.Ownership.Bodies[0];
         if (defect == "input")
         {
@@ -212,7 +212,7 @@ public class StringEmissionTest
     [Fact]
     public void AuditDetectsDoubleDestructionAndMissingDestruction()
     {
-        const string Source = "let text = \"single\"\nwriteLine(text)";
+        const string Source = "let text = \"single\"\nConsole.writeLine(text)";
         var ir = ScalarEmissionTest.EmitFixture("StringAuditControl", Source, "single\n");
         var duplicate = StringLifetimeAudit.Instrument(ir, [("__kimi_text", 6, 1)], duplicate: true);
         ScalarEmissionTest.WriteFixture("StringAuditDuplicate", duplicate, "single\n", 120, string.Empty);

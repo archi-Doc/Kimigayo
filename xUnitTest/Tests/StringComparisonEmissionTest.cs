@@ -11,23 +11,23 @@ public class StringComparisonEmissionTest
 
     public static TheoryData<string, string, string, string> Fixtures => new()
     {
-        { "Same", "let text = \"a\"\nif text == text => writeLine(\"ok\")\nwriteLine(text)", "ok\na\n", "a=1;ok=1" },
-        { "Nested", "let text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => writeLine(\"ok\")\nwriteLine(text)", "ok\na\n", "a=3;b=0;ok=1" },
-        { "Temporary", Echo + "if echo(\"a\") == \"a\" => writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
-        { "Ordering", "if \"a\" < \"ab\" and \"ab\" > \"a\" and \"a\" <= \"a\" and \"z\" >= \"a\" and \"a\" != \"b\" => writeLine(\"ok\")", "ok\n", "a=6;ab=2;z=1;b=1;ok=1" },
-        { "Empty", "if \"\" == \"\" and \"\" < \"a\" and \"a\" > \"\" and \"\" != \"a\" => writeLine(\"ok\")", "ok\n", "=5;a=3;ok=1" },
-        { "Unicode", "if \"z\" < \"日本語\" and \"a\\0b\" < \"a\\0c\" and \"a\\0\" != \"a\" => writeLine(\"ok\")", "ok\n", "z=1;日本語=1;a\0b=1;a\0c=1;a\0=1;a=1;ok=1" },
-        { "Parameter", "func equal(a: string, b: string) -> bool => a == b\nif equal(\"a\", \"a\") => writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
-        { "Loop", "let text = \"a\"\nvar n = 0\nwhile n < 3\n    if text == \"a\" => n += 1\nwriteLine(text)", "a\n", "a=4" },
-        { "ReturnLiteral", "func f() -> string\n    let text = \"a\"\n    text == (return \"x\")\n    return \"bad\"\nwriteLine(f())", "x\n", "a=1;x=1;bad=0" },
-        { "Defer", "var text = \"a\"\ndefer\n    if text == \"a\" => writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
-        { "BranchTransfer", "func f(c: bool) -> string\n    let text = \"a\"\n    if text == (if c => (return \"x\") else => \"a\") => return text\n    return \"bad\"\nwriteLine(f(false))\nwriteLine(f(true))", "a\nx\n", "a=3;x=1;bad=0" },
-        { "Skipped", Echo + "if false and echo(\"skip\") == \"skip\" => writeLine(\"bad\")\nif true or echo(\"skip\") == \"skip\" => writeLine(\"ok\")", "ok\n", "skip=0;bad=0;ok=1" },
-        { "RepeatedConditional", Echo + "var n = 0\nwhile n < 4\n    if n == 1 and echo(\"once\") == \"once\" => writeLine(\"ok\")\n    n += 1", "ok\n", "once=2;ok=1" },
-        { "LoopExit", "let text = \"a\"\nif text == (loop => exit \"a\") => writeLine(text)", "a\n", "a=2" },
-        { "AbandonedCleanup", "func f() -> string\n    var text = \"a\"\n    defer => text = \"b\"\n    text == (return \"x\")\n    return \"bad\"\nwriteLine(f())", "x\n", "a=1;b=1;x=1;bad=0" },
-        { "CheckingContinuation", Echo + "func f() -> string\n    let text = \"a\"\n    text == (work: do\n        return \"x\"\n        echo(text)\n        exit to work: \"a\"\n    )\n    return \"bad\"\nwriteLine(f())", "x\n", "a=1;x=1;bad=0" },
-        { "TwoReturns", "func f(c: bool) -> string\n    let text = \"a\"\n    text == (if c => (return \"x\") else => (return \"y\"))\n    return \"bad\"\nwriteLine(f(true))\nwriteLine(f(false))", "x\ny\n", "a=2;x=1;y=1;bad=0" },
+        { "Same", "let text = \"a\"\nif text == text => Console.writeLine(\"ok\")\nConsole.writeLine(text)", "ok\na\n", "a=1;ok=1" },
+        { "Nested", "let text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => Console.writeLine(\"ok\")\nConsole.writeLine(text)", "ok\na\n", "a=3;b=0;ok=1" },
+        { "Temporary", Echo + "if echo(\"a\") == \"a\" => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
+        { "Ordering", "if \"a\" < \"ab\" and \"ab\" > \"a\" and \"a\" <= \"a\" and \"z\" >= \"a\" and \"a\" != \"b\" => Console.writeLine(\"ok\")", "ok\n", "a=6;ab=2;z=1;b=1;ok=1" },
+        { "Empty", "if \"\" == \"\" and \"\" < \"a\" and \"a\" > \"\" and \"\" != \"a\" => Console.writeLine(\"ok\")", "ok\n", "=5;a=3;ok=1" },
+        { "Unicode", "if \"z\" < \"日本語\" and \"a\\0b\" < \"a\\0c\" and \"a\\0\" != \"a\" => Console.writeLine(\"ok\")", "ok\n", "z=1;日本語=1;a\0b=1;a\0c=1;a\0=1;a=1;ok=1" },
+        { "Parameter", "func equal(a: string, b: string) -> bool => a == b\nif equal(\"a\", \"a\") => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
+        { "Loop", "let text = \"a\"\nvar n = 0\nwhile n < 3\n    if text == \"a\" => n += 1\nConsole.writeLine(text)", "a\n", "a=4" },
+        { "ReturnLiteral", "func f() -> string\n    let text = \"a\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
+        { "Defer", "var text = \"a\"\ndefer\n    if text == \"a\" => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
+        { "BranchTransfer", "func f(c: bool) -> string\n    let text = \"a\"\n    if text == (if c => (return \"x\") else => \"a\") => return text\n    return \"bad\"\nConsole.writeLine(f(false))\nConsole.writeLine(f(true))", "a\nx\n", "a=3;x=1;bad=0" },
+        { "Skipped", Echo + "if false and echo(\"skip\") == \"skip\" => Console.writeLine(\"bad\")\nif true or echo(\"skip\") == \"skip\" => Console.writeLine(\"ok\")", "ok\n", "skip=0;bad=0;ok=1" },
+        { "RepeatedConditional", Echo + "var n = 0\nwhile n < 4\n    if n == 1 and echo(\"once\") == \"once\" => Console.writeLine(\"ok\")\n    n += 1", "ok\n", "once=2;ok=1" },
+        { "LoopExit", "let text = \"a\"\nif text == (loop => exit \"a\") => Console.writeLine(text)", "a\n", "a=2" },
+        { "AbandonedCleanup", "func f() -> string\n    var text = \"a\"\n    defer => text = \"b\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;b=1;x=1;bad=0" },
+        { "CheckingContinuation", Echo + "func f() -> string\n    let text = \"a\"\n    text == (work: do\n        return \"x\"\n        echo(text)\n        exit to work: \"a\"\n    )\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
+        { "TwoReturns", "func f(c: bool) -> string\n    let text = \"a\"\n    text == (if c => (return \"x\") else => (return \"y\"))\n    return \"bad\"\nConsole.writeLine(f(true))\nConsole.writeLine(f(false))", "x\ny\n", "a=2;x=1;y=1;bad=0" },
     };
 
     [Theory]
@@ -91,7 +91,7 @@ public class StringComparisonEmissionTest
     [Fact]
     public void ConditionSecuresBoolBeforeDestructionAndBranching()
     {
-        const string Source = Echo + "if echo(\"condition\") == \"literal\" => writeLine(\"bad\")\nwriteLine(\"after\")";
+        const string Source = Echo + "if echo(\"condition\") == \"literal\" => Console.writeLine(\"bad\")\nConsole.writeLine(\"after\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
@@ -105,7 +105,7 @@ public class StringComparisonEmissionTest
 
     [Theory]
     [InlineData("Operand", Echo + "func fail() -> string\n    var n = 2147483647\n    n += 1\n    return \"bad\"\nlet text = \"held\"\ntext == fail()", 4, 5, "held=0;bad=0")]
-    [InlineData("Cleanup", "func f() -> string\n    var text = \"held\"\n    defer\n        var n = 2147483647\n        n += 1\n    text == (return \"secured\")\n    return \"bad\"\nwriteLine(f())", 5, 9, "held=0;secured=0;bad=0")]
+    [InlineData("Cleanup", "func f() -> string\n    var text = \"held\"\n    defer\n        var n = 2147483647\n        n += 1\n    text == (return \"secured\")\n    return \"bad\"\nConsole.writeLine(f())", 5, 9, "held=0;secured=0;bad=0")]
     public void AbortStopsComparisonAndCleanup(string name, string source, int line, int column, string destructions)
     {
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
@@ -147,7 +147,7 @@ public class StringComparisonEmissionTest
     [Fact]
     public void HelpersCompareDistinctBuffersAndSkipUnneededReads()
     {
-        const string Source = "if \"a\" != \"b\" => writeLine(\"ok\")";
+        const string Source = "if \"a\" != \"b\" => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonHelperSource", Source, "ok\n");
         const string Entry = "define void @__kimi_start() noreturn #0 {\nentry:\n";
         Assert.Contains(Entry, ir);
@@ -189,7 +189,7 @@ public class StringComparisonEmissionTest
     [InlineData(true)]
     public void WarmComparisonAnalysisAndWritingAllocateNothing(bool conditional)
     {
-        var c = MinimalEmissionTest.Analyze(conditional ? "var n = 0\nwhile n < 3\n    if n == 1 and \"a\" == \"a\" => writeLine(\"ok\")\n    n += 1" : "func equal(a: string, b: string) -> bool => a == b\nlet text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => writeLine(text)");
+        var c = MinimalEmissionTest.Analyze(conditional ? "var n = 0\nwhile n < 3\n    if n == 1 and \"a\" == \"a\" => Console.writeLine(\"ok\")\n    n += 1" : "func equal(a: string, b: string) -> bool => a == b\nlet text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => Console.writeLine(text)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);

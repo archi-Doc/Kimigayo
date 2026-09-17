@@ -1,7 +1,7 @@
 // Milestone 5: exclusive/shared borrows, returned Origins, and Lifetime.
 struct Counter
     public var value: i32 = 0
-    deinit => ::Core.writeLine("Counter destroyed.")
+    deinit => ::Kimi.Console.writeLine("Counter destroyed.")
     // All fields have initializers, so a public init() is synthesized.
 
 struct CounterView origin source
@@ -16,7 +16,7 @@ struct CounterView origin source
         // The referent must remain alive and unchanged through this use.
         if self.counter.value != 55
             $abort("Borrowed counter changed")
-        ::Core.writeLine("View destroyed; counter is still 55.")
+        ::Kimi.Console.writeLine("View destroyed; counter is still 55.")
 
 func add(counter: uniq/Counter, amount: i32)
     counter.value = counter.value + amount
@@ -27,7 +27,7 @@ func borrowCounter(counter: ref/Counter) -> ref/Counter from counter
 func finish(counter: Counter)
     if counter.value != 56
         $abort("Unexpected final value")
-    ::Core.writeLine("Final value is 56.")
+    ::Kimi.Console.writeLine("Final value is 56.")
 
 public func main()
     var counter = Counter.init()
@@ -40,10 +40,10 @@ public func main()
         let view = CounterView.init(borrowCounter(counter@ref))
         if view.read() != 55
             $abort("Unexpected sum")
-        ::Core.writeLine("Borrowed sum is 55.")
+        ::Kimi.Console.writeLine("Borrowed sum is 55.")
         // Mutating or moving counter here would conflict with view's deinit.
     // view is destroyed and its shared Loan has ended.
 
     add(counter@uniq, 1)
     finish(counter) // Move is valid after all dependent borrows have ended.
-    ::Core.writeLine("Done.")
+    ::Kimi.Console.writeLine("Done.")

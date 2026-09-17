@@ -3,8 +3,8 @@
 alias SpecTour
 
 public func main() -> ()
-    ::Core.writeLine("Kimigayo specification tour")
-    defer => ::Core.writeLine("tour finished")
+    ::Kimi.Console.writeLine("Kimigayo specification tour")
+    defer => ::Kimi.Console.writeLine("tour finished")
 
     Basics.run()
     Sequences.run()

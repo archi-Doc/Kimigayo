@@ -73,7 +73,7 @@ internal sealed class DependencyResolver
         var y = b.Configuration;
         if ((x.LangVersion ?? languageVersion) != (y.LangVersion ?? languageVersion) || x.OutputKind != y.OutputKind ||
             x.CompileTimeSettings.Count != y.CompileTimeSettings.Count || x.Dependencies.Count != y.Dependencies.Count || a.Sources.Length != b.Sources.Length ||
-            !new HashSet<string>(x.Alias, StringComparer.Ordinal).SetEquals(y.Alias))
+            !new HashSet<string>(Compiler.Compilation.EffectiveAliases(x.Alias), StringComparer.Ordinal).SetEquals(Compiler.Compilation.EffectiveAliases(y.Alias)))
         {
             return false;
         }

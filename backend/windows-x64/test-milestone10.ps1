@@ -84,7 +84,7 @@ $variants = [ordered]@{
     Alternate = @{ source = $original.Replace('.Data((5, true))', '.Data((3, true))').Replace('answer == 12', 'answer == 10').Replace('total is 12.', 'total is 10.'); stdout = $expected.Replace('total is 12.', 'total is 10.') }
     Empty = @{ source = $empty.Replace('answer == 12', 'answer == 0').Replace('total is 12.', 'total is 0.'); stdout = $expected.Replace('total is 12.', 'total is 0.') }
     ImmediateStop = @{ source = $original.Replace('.Data((5, true))', '.Stop').Replace('answer == 12', 'answer == 0').Replace('total is 12.', 'total is 0.'); stdout = $expected.Replace('total is 12.', 'total is 0.') }
-    GuardCleanup = @{ source = "func accepts(value: i32) -> bool`n    defer => ::Core.writeLine(`"Guard cleaned.`")`n    return value > 0`n`n" + $original.Replace('if value > 0', 'if accepts(value)'); stdout = "Guard cleaned.`nGuard cleaned.`nGuard cleaned.`n" + $expected }
+    GuardCleanup = @{ source = "func accepts(value: i32) -> bool`n    defer => ::Kimi.Console.writeLine(`"Guard cleaned.`")`n    return value > 0`n`n" + $original.Replace('if value > 0', 'if accepts(value)'); stdout = "Guard cleaned.`nGuard cleaned.`nGuard cleaned.`n" + $expected }
     Abort = @{ source = $original.Replace('answer == 12', 'answer == 11'); stdout = ''; abort = '$abort("Unexpected command total")' }
 }
 foreach ($level in @('O0', 'O2')) {

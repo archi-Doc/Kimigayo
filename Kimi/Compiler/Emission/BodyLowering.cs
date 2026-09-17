@@ -31,7 +31,7 @@ internal sealed partial class BodyLowering
     private int pointerWidth;
     private bool eraseReceiver;
 
-    internal bool Lower(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
+    internal bool Lower(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
     {
         this.pointerWidth = pointerWidth;
         this.eraseReceiver = CanEraseReceiver(body);
@@ -74,7 +74,7 @@ internal sealed partial class BodyLowering
             return Fail("Cleanup lowering requires every cleanup operation in exactly one matching edge plan.", out failure);
         }
 
-        return this.LowerGraph(core, body, function, constants, projectDirectory, marks, out failure);
+        return this.LowerGraph(library, body, function, constants, projectDirectory, marks, out failure);
     }
 
     private static bool Fail(string message, out string? failure)
@@ -213,9 +213,24 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerOperation(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
+    private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
+        {
+            return this.LowerBorrowedUpdate(body, function, constants, projectDirectory, index, out failure);
+        }
+
+        if (operation.Kind == OwnershipOperationKind.UpdateTarget)
+        {
+            failure = null;
+            return operation.Place >= 0 && body.Places[operation.Place].Mutable &&
+                operation.LoanMode == LoanRequirement.Uniq && body.LoanStates[index] >= 0 &&
+                body.ComparisonLoans[body.LoanStates[index]].Read == index &&
+                (!body.IsReachable(index) || (body.GetInputState(index, operation.Place) & PlaceState.MustInit) != 0)
+                ? true : Fail("Whole-value target requires an initialized complete Place and exclusive Loan.", out failure);
+        }
+
         if (operation.Kind is OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.CheckReceiverField)
         {
             failure = null;
@@ -358,7 +373,7 @@ internal sealed partial class BodyLowering
                 break;
 
             case OwnershipOperationKind.Call:
-                return this.LowerCall(core, body, function, constants, projectDirectory, index, out failure);
+                return this.LowerCall(library, body, function, constants, projectDirectory, index, out failure);
 
             case OwnershipOperationKind.Cleanup:
                 var stepIndex = body.OperationSteps[index];

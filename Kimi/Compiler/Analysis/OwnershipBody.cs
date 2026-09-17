@@ -240,6 +240,10 @@ public sealed partial class OwnershipBody
         var state = this.State(operation.Place);
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.UpdateBorrowed:
+                this.CheckInitialized(operation, (int)this.Values[index].Constant, this.CompleteState((int)this.Values[index].Constant));
+                this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
+                break;
             case OwnershipOperationKind.WriteBorrowedField:
                 this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
                 this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
@@ -272,6 +276,7 @@ public sealed partial class OwnershipBody
                 break;
             case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
             case OwnershipOperationKind.CheckReceiverField:
+            case OwnershipOperationKind.UpdateTarget:
                 this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
                 break;
             case OwnershipOperationKind.Write:
@@ -374,6 +379,18 @@ public sealed partial class OwnershipBody
                 if (operation.Input >= 0)
                 {
                     this.Initialize(operation.Input);
+                }
+
+                break;
+            case OwnershipOperationKind.UpdateBorrowed:
+                if (operation.Source is Parsing.InvocationKoto { BoundCall.Target.CompilerFunction: not CompilerFunctionKind.Swap })
+                {
+                    this.Move(operation.Input);
+                }
+
+                if (operation.Source is Parsing.InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Exchange })
+                {
+                    this.Initialize(place);
                 }
 
                 break;

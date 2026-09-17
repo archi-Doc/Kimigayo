@@ -1,7 +1,7 @@
 // A let can supply a Move. Its remaining sibling is still usable.
 let original = ("taken", 40)
 let text = original.0
-if original.1 == 40 => writeLine(text)
+if original.1 == 40 => Console.writeLine(text)
 
 // A constructed var can repair a missing static element.
 var values: [2 of string] = ["first", "last"]
@@ -20,4 +20,4 @@ func replace(take: bool)
 
 replace(true)
 replace(false)
-writeLine("element moves complete")
+Console.writeLine("element moves complete")

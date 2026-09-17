@@ -20,10 +20,10 @@ public class GenericCallbackEmissionTest
             string.Empty);
 
     [Theory]
-    [InlineData("Twice", "func invoke<T>(x: T, f: (T) -> bool) -> bool\n    T is Copy\n    let first = f(x)\n    return f(x)\nlet f: (i32) -> bool = func (x: i32)\n    writeLine(\"called\")\n    return x == 7\nrequire invoke<i32>(7, f) else => $abort(\"value\")", "called\ncalled\n")]
+    [InlineData("Twice", "func invoke<T>(x: T, f: (T) -> bool) -> bool\n    T is Copy\n    let first = f(x)\n    return f(x)\nlet f: (i32) -> bool = func (x: i32)\n    Console.writeLine(\"called\")\n    return x == 7\nrequire invoke<i32>(7, f) else => $abort(\"value\")", "called\ncalled\n")]
     [InlineData("TwoArguments", "func invoke<T>(x: T, y: T, f: (T, T) -> bool) -> bool => f(x, y)\nrequire invoke<i32>(3, 7, func (x: i32, y: i32) => x == 3 and y == 7) else => $abort(\"order\")", "")]
     [InlineData("Isize", "func invoke<T>(x: T, f: (T) -> isize) -> isize => f(x)\nrequire invoke<i32>(7, func (x: i32) => 42) == 42 else => $abort(\"result\")", "")]
-    [InlineData("Unit", "func invoke<T>(x: T, f: (T) -> ()) => f(x)\ninvoke<i32>(7, func (x: i32) => writeLine(\"called\"))", "called\n")]
+    [InlineData("Unit", "func invoke<T>(x: T, f: (T) -> ()) => f(x)\ninvoke<i32>(7, func (x: i32) => Console.writeLine(\"called\"))", "called\n")]
     [InlineData("NoArguments", "func invoke<T>(x: T, f: () -> bool) -> bool => f()\nrequire invoke<i32>(7, func () => true) else => $abort(\"result\")", "")]
     public void SharedCallsPreserveBehavior(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericCallback" + name, source, stdout);

@@ -43,7 +43,7 @@ public class OwnershipAnalysisBenchmark
             }
             else
             {
-                source.Append(" = \"a\"\n    if c\n        writeLine(s").Append(i).Append(")\n");
+                source.Append(" = \"a\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n");
             }
 
             if (this.Unreachable)

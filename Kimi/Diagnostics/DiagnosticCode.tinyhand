@@ -7,6 +7,10 @@
     Fix="A suggested fix for the diagnostic"
     Note="Additional information about the diagnostic"
 
+  + Name="HiddenNamedAlias_Kd"
+    Severity="Warning"
+    Message="A project-root qualifier or direct reference hides this named alias; choose another name"
+
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
@@ -61,8 +65,8 @@
   + Name="UnsatisfiedConstraint_Kd"
     Message="The supplied Type arguments do not satisfy the declaration's Constraints"
 
-  + Name="InvalidCoreIntrinsics_Kd"
-    Message="The compiler-owned Core requirement declarations are missing, duplicated, or incompatible"
+  + Name="InvalidKimiLibrary_Kd"
+    Message="The compiler-owned Kimi requirement declarations are missing, duplicated, or incompatible"
 
   + Name="MissingContractImplementation_Kd"
     Message="No implementation matches the Contract requirement after Type substitution"

@@ -104,14 +104,16 @@ public sealed partial class Binding
 
         BindingSymbol? imported = null;
         var importedTypes = default(TypeCandidates);
-        for (var i = 0; i < this.aliases.Count; i++)
+        var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
+        if (type && use.CodeContext.SourceDocument is { } source &&
+            this.namedAliases.TryGetValue((source, name), out var named) && named.BindingState == BindingState.Resolved)
         {
-            var alias = this.aliases[i];
-            if (!ReferenceEquals(alias.CodeContext.SourceDocument, use.CodeContext.SourceDocument))
-            {
-                continue;
-            }
+            this.AddTypeCandidates(ref importedTypes, named.BoundSymbol, scope, core, arity);
+        }
 
+        for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
+        {
+            var alias = documentAliases[i];
             var target = this.AliasTarget(alias);
             if (target is null || !(type ? target.Types : target.Values).TryGetValue(name, out var candidate))
             {
@@ -172,20 +174,38 @@ public sealed partial class Binding
             return imported;
         }
 
-        return type ? name == "Core" ? this.Core.Module : this.SelectTypeCandidate(this.Core.Scope.Types.GetValueOrDefault(name), scope, use, core, arity) : this.Core.Scope.Values.GetValueOrDefault(name);
+        return null;
     }
 
     private BindingScope? AliasTarget(AliasKoto alias)
     {
+        if (this.aliasTargets.TryGetValue(alias, out var cached))
+        {
+            return alias.BindingState == BindingState.Invalid ? null : cached;
+        }
+
+        this.aliasTargets.Add(alias, null);
         var scope = this.ModuleScope(alias);
         var declarationScope = scope;
         for (var i = 0; i < alias.QualifiedName.Count; i++)
         {
             var name = alias.QualifiedName[i];
-            var symbol = i == 0 && name == "Core" ? this.Core.Module : this.SelectTypeCandidate(scope.Types.GetValueOrDefault(name), declarationScope, alias, false) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
+            var symbol = i == 0 && name == "Kimi" ? this.Library.Module : this.SelectTypeCandidate(scope.Types.GetValueOrDefault(name), declarationScope, alias, false) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
             if (symbol is null || !this.Accessible(symbol, declarationScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
             {
                 Fail(alias, BindingFailure.MissingName, true);
+                return null;
+            }
+
+            if (symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 } or DeclarationContainerKoto { OriginNames.Count: > 0 })
+            {
+                Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                return null;
+            }
+
+            if (symbol.Declaration is DeclarationContainerKoto { HasIncompatibleBindingHeader: true })
+            {
+                Fail(alias, BindingFailure.InvalidTypeFormation, true);
                 return null;
             }
 
@@ -193,7 +213,14 @@ public sealed partial class Binding
             scope = next;
         }
 
+        if (alias.QualifiedName.Count == 0 || (alias.Name is not null && scope.Owner is not GroupKoto))
+        {
+            Fail(alias, BindingFailure.InvalidTypeFormation, true);
+            return null;
+        }
+
         alias.BindingState = BindingState.Resolved;
+        this.aliasTargets[alias] = scope;
         return scope;
     }
 
@@ -259,9 +286,9 @@ public sealed partial class Binding
             return this.RootTypeName(generic.Identifier!, core, generic.TypeArguments.Count);
         }
 
-        if (TypeSpelling(syntax) == "Core")
+        if (TypeSpelling(syntax) == "Kimi")
         {
-            return this.Core.Module;
+            return this.Library.Module;
         }
 
         var scope = this.ModuleScope(syntax);
@@ -284,7 +311,7 @@ public sealed partial class Binding
 
         if (TypeSpelling(syntax) is { } name)
         {
-            var target = this.SelectTypeCandidate(scope.Types.GetValueOrDefault(name), scope, syntax, core, arity) ?? this.ModuleReference(syntax, name) ?? this.SelectTypeCandidate(this.Core.Scope.Types.GetValueOrDefault(name), scope, syntax, core, arity);
+            var target = this.SelectTypeCandidate(scope.Types.GetValueOrDefault(name), scope, syntax, core, arity) ?? this.ModuleReference(syntax, name);
             return target is not null && (!core || target.Kind != BindingSymbolKind.Container) && this.Accessible(target, scope) ? target : null;
         }
 
@@ -423,11 +450,11 @@ public sealed partial class Binding
                     var kind = semantics.SemanticsKind;
                     if (kind is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
                     {
-                        if (inner.Kind == BoundTypeKind.Parameter)
+                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
                         {
                             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, inner));
                         }
-                        else if (inner.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) || inner.Symbol?.Declaration is not StructKoto)
+                        else if (inner.Semantics != SemanticsKind.Owner || ReferenceEquals(inner, BoundType.Never) || inner.Symbol?.Declaration is ContractKoto)
                         {
                             return Fail(syntax, BindingFailure.InvalidTypeFormation);
                         }

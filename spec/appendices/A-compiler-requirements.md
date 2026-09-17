@@ -157,8 +157,8 @@ Verification must cover at least these boundaries; neither parsing nor optimizat
 | Named/single-Origin mapping and `View<T>.Some` | Equivalent mapping; reject the enum's own Origin annotation in the Case qualifier |
 | Unconditional Copy with unconstrained T / constrained T / only ref/T payloads | Declaration error / valid derivation / no referent Copy premise |
 | Conditional Copy when T is Copy | Type remains usable for non-Copy T; Copy is available only when its condition is Proven |
-| Core Option/Result conditional Copy | Check both Result payloads, nesting and complete Semantics; active Case does not change capability. Verify reuse versus Move, Unknown versus Refuted, and borrow dependencies after Copy |
-| Core condition-atom sets | Accept both orders, grouping, and duplicate atoms; reject missing/unconditional Copy, missing/extra atoms, and wrong Symbol Identity. Check generated and loaded definitions without spelling-based user-enum behavior |
+| Kimi Option/Result conditional Copy | Check both Result payloads, nesting and complete Semantics; active Case does not change capability. Verify reuse versus Move, Unknown versus Refuted, and borrow dependencies after Copy |
+| Kimi condition-atom sets | Accept both orders, grouping, and duplicate atoms; reject missing/unconditional Copy, missing/extra atoms, and wrong Symbol Identity. Check generated and loaded definitions without spelling-based user-enum behavior |
 | Shared reads of Copy Result payloads | Slice and ref-Pattern reads produce values; explicit element @ref retains storage/Origin and tryGet keeps its reference result. Generic head with plain s[0] fails definition checking; no borrow-binding selector is introduced |
 | Child structural Patterns, Grouping, `ref/ref/T`, `ref/uniq/T`, `uniq/T` payloads | One dereference per position; retain shared access; reject direct structural matching of remaining reference layers; allow binding then inner shared match |
 | Same Non-Copy payload Type on owned/shared paths | Body acquisition is Move/shared reading respectively; test string, object, and exclusive-reference payloads |
@@ -322,3 +322,45 @@ Implement the contracts in [Test definitions](../06-declarations-and-containers.
 | Performance | Debug/Release semantic agreement, successful checks without failure allocations/events, reusable buffers, one startup artifact validation with per-child ID matching; measure costs under §22.6.5 |
 
 Concrete formats/defaults are tracked in [Appendix D.4](D-deferred-features.md#d4-testing-profile-details-and-extensions) and must be settled before implementing their interfaces. Membership/discovery, serial verification/reporting, cleanup/recovery, then parallelism/external output are a possible implementation sequence, not reduced conformance requirements.
+
+## A.18. Kimi library and source aliases
+
+Verify the rules in §18.1, §9.4.1 and §22.1/22.4 across parsing, Binding, analysis and generation:
+
+| Area | Required checks |
+| --- | --- |
+| Library and output | Reserved Kimi, ordinary Core, no old forwarding names, Console's direct membership, identical function Identity through qualification/open/named aliases, function values, ownership, UTF-8/LF and Abort behavior. |
+| Environments and storage | Mandatory defaults in root/dependency/generated documents; explicit/default precedence; empty versus redundant Kimi additions; actual byte IDs versus normalized settings; source-package round trips. |
+| Resolution | Optional `::`, order independence, no alias chains even inside arguments, original declaration environments, invalid targets, all path access/formation/condition/Origin obligations. |
+| Lookup and diagnostics | Reference identity including bindings; duplicate/conflicting mappings, opened-member ambiguity, Type/Value paths, no fallback, root-hiding warnings and all warning exclusions. |
+| Boundaries and reuse | Document/fragment isolation, no re-export or added authority, pending obligations retained through sharing, final completion after generation, invalidation on changed inputs; identical results with caches enabled or disabled. |
+
+Index named aliases per document and reuse Container member indexes for opening aliases. Share fixed references and normalized bindings without conflating them with completed validation. Resolve paths once per valid Binding generation; share default environments by defining module. Preserve use-site checks and invalidate results when assumptions or dependencies change. Library implementation names should identify Kimi (for example, KimiLibrary); IntrinsicKind remains a property classifier, and processing names such as BuildCore are unrelated.
+
+## A.19. Complete payloads and whole-value updates
+
+Verify the intrinsic Sealed Identity, normalized outer owner Core, open/Never rejection,
+outer-only classification, and four-valued proof rules. Check generic signature
+formation before body generation; no missing capability or Origin proof may become
+a deferred layout obligation. Recheck both positive and negative evidence after
+openness, Type formation, effect, or specialization changes.
+
+Test every §13.5.5 payload projection, exact internal Type/Origin identity, outer
+lifetime shortening, owner retention, parent suspension, shared coexistence,
+count-one rc/arc rejection, and explicit versus implicit receiver paths. Preserve
+protected base calls, defining Self, Property permissions, witness Identity,
+ObjectViewCompatible, and public ObjectCallCompatible status.
+
+For `replace`, `exchange`, and `swap`, verify original declaration Identity, textual
+argument order including names, early target Loans, full initialization, exact
+Types, and structural disjointness. Test scalar and non-Copy contents, `let`
+fields, open ordinary owners, nested references, independent external dependencies,
+old-content dependencies, and returned destruction responsibilities. Verify
+destruction at the original location, Abort/divergence before placement, and
+absence of destruction during exchange/swap transfers.
+
+Payload tests must retain Identity, allocation, Dynamic Type, header, counts, and
+Descriptor; final release destroys the current contents once. Compare O0/O2 and
+shared/specialized generation, including old-content refinement invalidation.
+Lowering and Emit consume checked address/acquisition/transfer plans and reject
+stale or incomplete plans; never rediscover completeness from optimized code.

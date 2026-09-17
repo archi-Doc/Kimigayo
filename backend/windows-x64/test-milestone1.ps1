@@ -89,19 +89,19 @@ foreach ($level in @('O0', 'O2')) {
     Build-And-Run $project $directory 'Renamed' $level "Hello, world!`n"
 
     # General literal contents, embedded NUL, empty output, and owned local Move.
-    [IO.File]::WriteAllText($copy, "let text = `"日本語\0x`"`n::Core.writeLine(text)`n::Core.writeLine(`"`")`n", $utf8)
+    [IO.File]::WriteAllText($copy, "let text = `"日本語\0x`"`n::Kimi.Console.writeLine(text)`n::Kimi.Console.writeLine(`"`")`n", $utf8)
     Build-And-Run $project $directory 'Renamed' $level "日本語`0x`n`n" 'OwnedUnicode'
 }
 
 $invalid = [ordered]@{
-    WrongType = '::Core.writeLine(1)'
-    MissingArgument = '::Core.writeLine()'
-    ExtraArgument = '::Core.writeLine("a", "b")'
-    UnknownLabel = '::Core.writeLine(other: "a")'
-    BorrowedArgument = "let text = `"a`"`n::Core.writeLine(text@ref)"
-    UseAfterMove = "let text = `"a`"`n::Core.writeLine(text)`n::Core.writeLine(text)"
-    Uninitialized = "let text: string`n::Core.writeLine(text)"
-    MixedStartup = "public func main() => ()`n::Core.writeLine(`"a`")"
+    WrongType = '::Kimi.Console.writeLine(1)'
+    MissingArgument = '::Kimi.Console.writeLine()'
+    ExtraArgument = '::Kimi.Console.writeLine("a", "b")'
+    UnknownLabel = '::Kimi.Console.writeLine(other: "a")'
+    BorrowedArgument = "let text = `"a`"`n::Kimi.Console.writeLine(text@ref)"
+    UseAfterMove = "let text = `"a`"`n::Kimi.Console.writeLine(text)`n::Kimi.Console.writeLine(text)"
+    Uninitialized = "let text: string`n::Kimi.Console.writeLine(text)"
+    MixedStartup = "public func main() => ()`n::Kimi.Console.writeLine(`"a`")"
     MissingStartup = 'func helper() => ()'
     InvalidMain = 'public func main() -> i32 => 0'
 }

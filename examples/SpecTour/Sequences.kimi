@@ -24,8 +24,8 @@ public group SpecTour
             let inferred: [3 of _] = [2, 4, 6]
             let empty: [0 of i32] = []
             increment(values@uniq)
-            ::Core.writeLine("sum=\(sum(values@ref)), explicit=\(sum<3>(inferred@ref))")
-            ::Core.writeLine("cell=\(matrix[1][0]), empty=\(empty.length)")
+            ::Kimi.Console.writeLine("sum=\(sum(values@ref)), explicit=\(sum<3>(inferred@ref))")
+            ::Kimi.Console.writeLine("cell=\(matrix[1][0]), empty=\(empty.length)")
 
             // 内側のブロックで Slice と派生する借用の使用を完結させる。
             do
@@ -33,42 +33,42 @@ public group SpecTour
                 let parts = middle.splitAt(1)
                 let left = parts.0
                 let right = parts.1
-                ::Core.writeLine("middle=\(middle.length), left=\(left[0]), right=\(right[^1])")
+                ::Kimi.Console.writeLine("middle=\(middle.length), left=\(left[0]), right=\(right[^1])")
                 for element in middle
                     // Slice の for は Copy 要素でも ref/i32 を返す。
-                    ::Core.writeLine("borrowed element=\(element)")
+                    ::Kimi.Console.writeLine("borrowed element=\(element)")
                 match firstRef(middle)
-                    .Some(let value) => ::Core.writeLine("first=\(value)")
-                    .None => ::Core.writeLine("empty slice")
+                    .Some(let value) => ::Kimi.Console.writeLine("first=\(value)")
+                    .None => ::Kimi.Console.writeLine("empty slice")
                 match tail(middle)
-                    .Some(let rest) => ::Core.writeLine("tail length=\(rest.length)")
-                    .None => ::Core.writeLine("no tail")
+                    .Some(let rest) => ::Kimi.Console.writeLine("tail length=\(rest.length)")
+                    .None => ::Kimi.Console.writeLine("no tail")
                 match middle.tryGet(100)
-                    .Some(let value) => ::Core.writeLine("\(value)")
-                    .None => ::Core.writeLine("out of range handled as a value")
+                    .Some(let value) => ::Kimi.Console.writeLine("\(value)")
+                    .None => ::Kimi.Console.writeLine("out of range handled as a value")
 
             values[0] = 99
             let last: Index = ^1
             let inner: Range = 1..^1
             for i in inner.resolve(values.length)
-                ::Core.writeLine("index=\(i), value=\(values[i])")
-            ::Core.writeLine("last=\(values[last])")
+                ::Kimi.Console.writeLine("index=\(i), value=\(values[i])")
+            ::Kimi.Console.writeLine("last=\(values[last])")
 
             // 期待型のない配列リテラルは Array。借用で保持してから所有反復する。
             let dynamic = [3, 6, 9]
-            ::Core.writeLine("dynamic length=\(dynamic.length)")
-            for element in dynamic[..] => ::Core.writeLine("shared=\(element)")
-            for element in dynamic => ::Core.writeLine("owned=\(element)")
+            ::Kimi.Console.writeLine("dynamic length=\(dynamic.length)")
+            for element in dynamic[..] => ::Kimi.Console.writeLine("shared=\(element)")
+            for element in dynamic => ::Kimi.Console.writeLine("owned=\(element)")
 
             // Dictionary の同一キーは値を置換。反復順は最初の挿入順。
             let names = [1: "one", 2: "two", 1: "ONE"]
-            ::Core.writeLine("dictionary length=\(names.length)")
+            ::Kimi.Console.writeLine("dictionary length=\(names.length)")
             for (key, value) in names
-                ::Core.writeLine("\(key): \(value)")
+                ::Kimi.Console.writeLine("\(key): \(value)")
 
             // 非 Copy 要素の固定配列では静的な添字から部分 Move できる。
             var words: [2 of string] = ["first", "second"]
             let taken = words[0]
             words[0] = "replacement"
-            ::Core.writeLine(taken)
-            for word in words => ::Core.writeLine(word)
+            ::Kimi.Console.writeLine(taken)
+            for word in words => ::Kimi.Console.writeLine(word)

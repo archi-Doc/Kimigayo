@@ -14,10 +14,10 @@ public class CompletingScopeContinuationTest
     [Theory]
     [InlineData("var x: i32", "x = 1", "()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "()", "x = 1", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "writeLine(x)", "()", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "()", "writeLine(x)", "writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "Console.writeLine(x)", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "()", "Console.writeLine(x)", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "x = 1", "()", "x = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("var x = (\"s\", \"t\")", "writeLine(x.0)", "()", "writeLine(x.0)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("var x = (\"s\", \"t\")", "Console.writeLine(x.0)", "()", "Console.writeLine(x.0)", OwnershipFailure.PossiblyMovedUse)]
     public void CompletingBranchesRetainJoinedFacts(string declaration, string yes, string no, string tail, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, yes, no, tail));
@@ -28,8 +28,8 @@ public class CompletingScopeContinuationTest
 
     [Theory]
     [InlineData("BothWrite", "var x: i32", "x = 1", "x = 2", "let y = x", "")]
-    [InlineData("RemainingPart", "var x = (\"s\", \"t\")", "writeLine(x.0)", "()", "writeLine(x.1)", "s\n")]
-    [InlineData("Repair", "var x = (\"s\", \"t\")", "writeLine(x.0)", "()", "x.0 = \"new\"\n    let y = x", "s\n")]
+    [InlineData("RemainingPart", "var x = (\"s\", \"t\")", "Console.writeLine(x.0)", "()", "Console.writeLine(x.1)", "s\n")]
+    [InlineData("Repair", "var x = (\"s\", \"t\")", "Console.writeLine(x.0)", "()", "x.0 = \"new\"\n    let y = x", "s\n")]
     [InlineData("Nested", "var x: i32", "if c => x = 1 else => x = 2", "x = 3", "let y = x", "")]
     public void BranchEffectsExecuteButCheckingSuccessorsDoNot(string name, string declaration, string yes, string no, string tail, string stdout)
         => ScalarEmissionTest.EmitFixture("NeverCompletingScope" + Configuration + name, Source(declaration, yes, no, tail), stdout, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -38,7 +38,7 @@ public class CompletingScopeContinuationTest
     public void DefaultLocalBranchesPreserveCallerState()
         => ScalarEmissionTest.EmitFixture(
             "NeverCompletingScope" + Configuration + "Default",
-            "func value(c: bool, y?: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvar x = 1\nwriteLine(\"begin\")\nvalue(true)\nlet y = x",
+            "func value(c: bool, y?: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(true)\nlet y = x",
             "begin\n",
             timeoutMilliseconds: 200);
 

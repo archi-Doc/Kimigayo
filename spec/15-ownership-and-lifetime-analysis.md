@@ -88,7 +88,7 @@ Do not Move a non-Copy referent or subpart through `ref`, `uniq`, `objref`, or `
 
 User-defined `deinit` assumes a complete value. Reject Partial Move that invalidates this assumption for the aggregate itself or any enclosing ancestor, including nested paths, methods, and Destruction. A complete owned value whose own Type has `deinit` may move as a whole.
 
-Use [Exchange or Swap](#157-initialization-preserving-exchange), or a Type-specific operation, when ordinary extraction is forbidden. Exchange preserves initialization; Type-specific invariants remain the implementation's responsibility and may require restricted storage access. A Field path does not bypass an intervening computed getter.
+Use [Exchange or Swap](#157-whole-value-updates), or a Type-specific operation, when ordinary extraction is forbidden. Exchange preserves initialization; Type-specific invariants remain the implementation's responsibility and may require restricted storage access. A Field path does not bypass an intervening computed getter.
 
 ### 15.1.4. Consume verification and representation
 
@@ -721,54 +721,68 @@ struct Logger origin sink
 
 Here `observe` accepts `ref/Writer`; reading `self.out` shares the stored capability instead of extracting it. `sink` must remain valid during Destruction, even if the `deinit` body were replaced with `()`.
 
-## 15.7. Initialization-preserving exchange
+<a id="157-initialization-preserving-exchange"></a>
 
-| Operation | Old value | Placement | Result |
+## 15.7. Whole-value updates
+
+The following ordinary Kimi declarations have compiler-intrinsic implementations, selected by declaration Identity. A same-spelling user function has no intrinsic behavior. `T` is any valid complete value Type; these operations impose no `Sealed`, `Copy`, or `Owned` constraint.
+
+```kimi
+public func replace<T>(target: uniq/T, with => value: T) -> ()
+public func exchange<T>(target: uniq/T, with => value: T) -> T
+public func swap<T>(first: uniq/T, second: uniq/T) -> ()
+```
+
+Each target must be fully Initialized, exclusively writable, and permitted to undergo a whole-value update. Its complete Type must match the incoming value exactly, including generic arguments and internal Origins. Ordinary complete owner storage may contain an open Core. Object payload storage instead needs the complete-target proof in §13.5.5. Neither a base subobject nor an open object View qualifies.
+
+| Operation | Old contents | New contents | Result |
 | --- | --- | --- | --- |
-| Initialization | None | Fill empty storage | Unit for assignment |
-| Replacement (`=`) | Destroy remaining old parts | Place after destruction | Unit |
-| `Exchange` | Transfer without destruction | Keep target initialized | Old value |
-| `Swap` | Exchange both values without destruction | Keep both initialized | Unit |
+| `Kimi.replace` | Destroy at the original location | Install only after destruction completes | Unit |
+| `Kimi.exchange` | Transfer without destruction | Install the acquired value | Old value and its responsibilities |
+| `Kimi.swap` | Transfer both without destruction | Exchange contents and responsibilities | Unit |
 
-`Exchange(place, with: value)` and `Swap(placeA, placeB)` denote language-provided intrinsic exchange operations. Their semantic requirements are defined here; final API spellings and resolution remain separate. In examples, `place` denotes **authorized direct storage access**, not permission to bypass a Property getter or expose its private storage. Getter-result acquisition grants no access to backing storage.
+Owner Places use ordinary implicit exclusive borrowing; existing value borrows use ordinary Reborrow. Object payloads require explicit projection at ordinary argument positions. Borrow reference or handle *storage* with a fully specified target. If T is a borrow Type, transfer its reference value and capability, not ownership of its referent. Property access and hidden-storage permissions still apply.
+
+These operations cannot repair Uninitialized, Moved, or partially moved storage; `=` retains its existing repair rules. They do not permit incomplete MoveOut through a borrow, unrestricted construction/destruction receivers, or assignment to the immutable `self` binding. Whole-content replacement may replace values containing `let` fields without granting individual writes to those fields.
 
 ### 15.7.1. Evaluation and transfer
 
-- Each target is Initialized and permits exclusive writing. Values have identical complete Types, including Origins; conversions finish before exchange begins.
-- Evaluate targets and arguments left to right. A target's exclusive Loan begins when its borrow argument is formed and remains active during later argument evaluation and exchange, just as for an ordinary exclusive receiver call. There is no reservation or delayed-activation exception.
-- Exchange itself runs no user code, Destruction, Abort-producing work, or control transfer. Internal empty states cannot be observed by the program. This does not guarantee inter-thread atomicity.
-- If argument evaluation fails, do not exchange; apply normal temporary cleanup and preserve Origin/Loan dependencies.
+Evaluate explicit arguments in textual order, including named arguments, and defaults under ordinary call rules. Each target Loan begins at borrow formation and protects the target through the call, including later arguments. There is no two-phase borrowing exception. Finish argument acquisition and fitting before any update. Argument noncompletion performs no update; preserve earlier effects and apply ordinary cleanup/Abort rules.
 
-`Exchange` secures its replacement first, then transfers the old target value and responsibility to the result and the replacement's responsibility to the target. Preparing the replacement must not empty the target or create a conflicting borrow. `Swap` transfers both values and responsibilities while keeping both targets Initialized and returns Unit; static non-overlap is required.
-
-```text
-Before: target = old, replacement = new
-After:  target = new, result = old
-```
+`replace` destroys the complete old value in its original location using its normal deinit/field/base order. Abort or divergence during destruction prevents placement; no rollback is promised. Placement transfers the preconstructed new value without rerunning constructors, initializers, or setters. `exchange` and `swap` transfers execute no user code, destruction, or Abort-producing operation. Their internal empty state is unobservable; this promises no inter-thread atomicity.
 
 ```kimi
-// p denotes an authorized writable i32 place.
-Exchange(p, with: p + 1) // Error: later read conflicts with the target Loan.
+var p: i32 = 0
+// Kimi.replace(p, with: p + 1) // Error: target Loan conflicts with the later read.
 let next = p + 1
-Exchange(p, with: next)  // Valid: computed before borrowing the target.
-
-// x is a writable non-Copy owned value.
-x = x                   // Valid: RHS-first Move and reinitialization.
-Exchange(x, with: x)     // Error: replacement would empty the target.
+Kimi.replace(p, with: next)
+let old = Kimi.exchange(p, with: 5)
+p = p + 1                     // Valid: assignment evaluates its RHS first.
+var q: i32 = 9
+Kimi.swap(p, q)
+// Kimi.swap(p, p)             // Error: overlapping exclusive targets.
 ```
 
-A Type-specific operation with `uniq/Self` may use authorized field exchange to return the old owned field without leaving the receiver incomplete. It must preserve the Type's invariants and all dependencies.
+Diagnostics identify the borrow and conflicting use. For a later argument conflict, suggest precomputing that argument in a local only when its dependencies permit it. For non-Copy x, `x = x` can Move and reinitialize; `Kimi.exchange(x, with: x)` conflicts with the already active target Loan.
 
 ### 15.7.2. Static non-overlap
 
-Use the structural [place analysis](#1562-place-overlap-and-conflicts). Distinct independent roots, distinct inline fields/Tuple elements/constant fixed-array indices, and valid simultaneous exclusive borrows with distinct Loan anchors can prove non-overlap. Identical or containing places overlap. Follow Loan provenance for other dereferences; different raw pointers or shared-reference variables alone prove nothing.
+`swap` requires the structural proof in [place overlap](#1562-place-overlap-and-conflicts). Independent roots, distinct inline fields/Tuple elements/constant fixed-array indices, and valid simultaneous exclusive borrows with distinct Loan anchors can prove disjointness. Identical or containing Places overlap. Follow Loan provenance for dereferences; different shared references or raw pointers alone prove nothing. Reject unknown relationships, even when runtime comparisons or optimization suggest separation.
 
-```text
-Function parameters: a: uniq/T, b: uniq/T
-Swap(referent(a), referent(b)) // Conceptual storage notation: distinct live anchors.
+```kimi
+func swapValues<T>(a: uniq/T, b: uniq/T)
+    Kimi.swap(a, b) // Valid live exclusive inputs establish distinct anchors.
 ```
 
-Unknown relationships are rejected. Do not accept `Swap(a[i], a[j])` merely from `i != j`, arbitrary integer facts, or optimization. This bounds the required proof and the accepted programs, not just compiler effort.
+### 15.7.3. Storage update dependencies
+
+These rules apply to `=`, `replace`, `exchange`, and `swap`. Preparation, acquisition, movement, destruction, placement, and cleanup must preserve every Loan/Origin needed by incoming, returned, or surviving values. Moving contents can invalidate dependencies even when no destruction occurs. The lifetime of storage is distinct from the lifetime of its current contents.
+
+Preserve the operation's exclusive Loan and its parent chain. Reject updates that invalidate live borrows anchored to old contents. Placing a new value at the same address never restores revoked dependencies. A result borrowing data owned by the old destination cannot survive destruction of that data. Independent external dependencies may survive: copying a stored `ref/Data` may retain an external Data Loan, whereas borrowing that field's storage as `ref/(ref/Data)` depends on the field itself. Check actual anchors, not surface syntax.
+
+Updating a complete object payload preserves object Identity, allocation, Dynamic Type, Descriptor, header, and ownership mode. Payload destruction is not final object release: do not alter counts, transition the enclosing object's lifecycle state, or free its storage. Nested owning handles still follow ordinary destruction. Preserve the special receiver/reentry/view/resurrection rules during content destruction; never expose an empty or destroying payload through an ordinary view. Final release destroys the *current* payload once and frees the object. An exchanged old value carries a separate destruction obligation.
+
+Invalidate facts and projections about old contents, including `let` fields. Preserve valid storage access and object Identity/Dynamic Type refinements under §14.10.1. Handle replacement follows its separate rules. Unsafe code and optimization obey the same dependency and allocation-lifetime distinction; raw pointers cannot substitute for Loan evidence.
 
 ## 15.8. Captured and erased dependencies
 

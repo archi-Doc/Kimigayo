@@ -29,14 +29,14 @@ public class CallbackEmissionTest
     public void ReceiverAndArgumentsExecuteOnceInOrder()
         => ScalarEmissionTest.EmitFixture(
             "CallbackEvaluationOrder",
-            "func make() -> (i32) -> bool\n    writeLine(\"receiver\")\n    return func (n: i32)\n        writeLine(\"body\")\n        return n == 7\nfunc argument() -> i32\n    writeLine(\"argument\")\n    return 7\nrequire make()(argument()) else => $abort(\"order\")",
+            "func make() -> (i32) -> bool\n    Console.writeLine(\"receiver\")\n    return func (n: i32)\n        Console.writeLine(\"body\")\n        return n == 7\nfunc argument() -> i32\n    Console.writeLine(\"argument\")\n    return 7\nrequire make()(argument()) else => $abort(\"order\")",
             "receiver\nargument\nbody\n");
 
     [Fact]
     public void CreationDoesNotExecuteNeverBody()
         => ScalarEmissionTest.EmitFixture(
             "CallbackNeverCreation",
-            "let f: () -> Never = func () => $abort(\"not called\")\nwriteLine(\"created\")",
+            "let f: () -> Never = func () => $abort(\"not called\")\nConsole.writeLine(\"created\")",
             "created\n");
 
     [Theory]
