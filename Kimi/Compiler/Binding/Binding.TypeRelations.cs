@@ -177,9 +177,15 @@ public sealed partial class Binding
 
     private BoundType? SubstituteType(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default)
     {
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection && type.Symbol!.Scope.Owner == binder)
+        var slot = type.Symbol is { } parameter ? ContainerSlot(binder, parameter) : -1;
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection && slot >= 0)
         {
-            var whole = arguments[type.Symbol.Slot];
+            if ((uint)slot >= (uint)arguments.Length)
+            {
+                return null;
+            }
+
+            var whole = arguments[slot];
             if (whole is null)
             {
                 return null;
@@ -237,9 +243,14 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(substituted, type.Components[i]);
             }
 
-            if (type.Kind == BoundTypeKind.SemanticsApplication && type.Symbol!.Scope.Owner == binder)
+            if (type.Kind == BoundTypeKind.SemanticsApplication && slot >= 0)
             {
-                var whole = arguments[type.Symbol.Slot];
+                if ((uint)slot >= (uint)arguments.Length)
+                {
+                    return null;
+                }
+
+                var whole = arguments[slot];
                 if (whole is null)
                 {
                     return null;

@@ -19,16 +19,25 @@ public sealed class AliasKoto : DeclarationKoto
     /// <summary>Gets the optional source-local qualifier name.</summary>
     public string? Name { get; }
 
+    /// <summary>Gets a Container path requiring Type arguments or Origin bindings.</summary>
+    public Koto? TargetSyntax { get; }
+
     /// <summary>Initializes a new instance of the <see cref="AliasKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="alias">The qualified name segments.</param>
     /// <param name="name">The optional qualifier name.</param>
     /// <param name="span">The declaration location.</param>
-    public AliasKoto(ref TokenReader reader, List<string> alias, string? name = null, SourceSpan span = default)
+    /// <param name="targetSyntax">The optional bound Container path.</param>
+    public AliasKoto(ref TokenReader reader, List<string> alias, string? name = null, SourceSpan span = default, Koto? targetSyntax = null)
         : base(ref reader, span)
     {
         this.QualifiedName = alias;
         this.Name = name;
+        this.TargetSyntax = targetSyntax;
+        if (targetSyntax is not null)
+        {
+            targetSyntax.Parent = this;
+        }
     }
 
     /// <inheritdoc/>
@@ -46,6 +55,12 @@ public sealed class AliasKoto : DeclarationKoto
             builder.Append(" => ");
         }
 
+        if (this.TargetSyntax is { } target)
+        {
+            target.WriteTo(ref builder);
+            return;
+        }
+
         for (var i = 0; i < this.QualifiedName.Count; i++)
         {
             if (i > 0)
@@ -54,6 +69,28 @@ public sealed class AliasKoto : DeclarationKoto
             }
 
             builder.Append(this.QualifiedName[i]);
+        }
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        base.VisitChildrenCore(visitor);
+        if (this.TargetSyntax is { } target)
+        {
+            visitor.Visit(target);
+        }
+    }
+
+    protected override IEnumerable<Koto> GetChildNodes()
+    {
+        foreach (var child in base.GetChildNodes())
+        {
+            yield return child;
+        }
+
+        if (this.TargetSyntax is { } target)
+        {
+            yield return target;
         }
     }
 }

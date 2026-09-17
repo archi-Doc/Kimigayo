@@ -98,7 +98,12 @@ LengthUnary          := ("+" | "-") LengthUnary | IntegerLiteral
                       | ConstantName | "(" LengthExpression ")"
 UnitType             := "(" ")"
 TupleType            := "(" Type "," TrailingList<Type>? ")"
-NamedType            := "::"? TypeSegment ("." TypeSegment)*
+PlainContainerPath   := "::"? TypeSegment ("." TypeSegment)*
+BoundContainerQualifier := "(" ContainerPath OriginAnnotation ")"
+ContainerPath        := ("::"? TypeSegment | BoundContainerQualifier)
+                        ("." TypeSegment | "." "(" ContractReference ")" "." Name)*
+ContainerReference   := ContainerPath OriginAnnotation?
+NamedType            := ContainerPath
 TypeSegment          := TypeName TypeArguments?
 TypeName             := Name | PrimitiveType | "Self"
 TypeArguments        := "<" TrailingList<GenericArgument> ">"
@@ -144,7 +149,8 @@ EnumItem             := EnumCase | AttributedFunctionDefinition | Specialization
 EnumCase             := Name ("(" TrailingList<Type> ")")?
 ContractDeclaration  := Access? "contract" Name ContractParentList? IndentedList<ContractItem>?
 ContractParentList   := ":" ContractReference ("," ContractReference)*
-ContractReference    := "::"? QualifiedName
+ContractReference    := ContainerReference
+ContractSelector     := ContainerPath | "(" ContractReference ")"
 ContractItem         := ContractRequirement | AssociatedTypeDeclaration
                       | ConstraintClause | Directive<ContractItem>
 ContractRequirement  := FunctionRequirement | PropertyRequirement
@@ -160,10 +166,10 @@ RequiredAccessor     := "get" | "set"
 RequiredSignature    := GetterSignature | SetterSignature
 AssociatedTypeDeclaration := "associate" Name ("is" IsRequirement)?
 AssociatedTypeSpecification := "associate" AssociatedTypeName "is" IsRequirement
-AssociatedTypeName   := Name | ContractReference "." Name
+AssociatedTypeName   := Name | ContractSelector "." Name
 AssociatedTypeReference := TypeQualifier "." Name
-                        | TypeQualifier "." ContractReference "." Name
-TypeQualifier        := NamedType
+                        | TypeQualifier "." ContractSelector "." Name
+TypeQualifier        := ContainerPath
 ConformanceClause    := "Self" "is" ContractReference
 ConditionalConformance := "Self" "is" ContractReference "when" ConformanceConditions
                           IndentedList<ConditionalImplementationItem>?
@@ -246,9 +252,9 @@ Contract requirements have no access modifiers, default/optional parameters, Pro
 
 `AssociatedTypeDeclaration` introduces a name only inside a Contract. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances; a bare `associate Element` is not a specification. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` instead occupies a member position only in generic struct/enum bodies (§8.4.8), has one target Contract, and introduces no namespace or generic binders. Its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations; all blocks reject storage, Cases, constructors, deinit, nested Types, and nested conformances. Intrinsics retain their own rules.
 
-Constraint subjects follow their declaration context: a Contract body constrains its own/inherited associated Types; a function constrains its generic parameters and projections rooted in them; a Type body uses its ordinary Constraints and conformance rules. These productions do not broaden `#if`/`#case` Conditions.
+Constraint subjects follow their declaration context. In a nested Contract, conditions on inherited arguments are reference inputs, conditions on conforming Self are implementation requirements, and closed conditions are declaration obligations (§6.1.3.1). Functions constrain their generic parameters and projections rooted in them; Types use their ordinary Constraints and conformance rules. These productions do not broaden `#if`/`#case` Conditions.
 
-`ContractReference` resolves a nongeneric user-defined Contract through normal qualification and aliases; built-in parameterized requirements have separate productions. `TypeQualifier` must resolve to a Core, parameter, `Self`, or associated-Type projection, not a value or Semantics-applied expression. The Parser distinguishes declarations, specifications, Type positions, and Constraints-only regions by context, preserving dotted paths. Binding resolves the Contract/associated-Type roles and rejects distinct successful interpretations; expected results and value-member fallback cannot disambiguate them. Apply the same rules after ordinary compile-time selection.
+`ContractReference` resolves a user-defined Contract with all inherited bindings; Contracts declare no parameters of their own. Built-in parameterized requirements have separate productions. `TypeQualifier` must resolve to a Core, parameter, `Self`, or associated-Type projection, not a value or Semantics-applied expression. The Parser preserves bound paths and distinguishes declarations, specifications, Type positions, and Constraints-only regions by context. Binding resolves the Contract/associated-Type roles and rejects distinct successful interpretations; expected results and value-member fallback cannot disambiguate them. Apply the same rules after ordinary compile-time selection.
 
 `ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructor Origin bindings come from the containing Type's Constraints. See [constructors](../06-declarations-and-containers.md#623-constructors) and [destruction declarations](../16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
 
@@ -289,6 +295,7 @@ Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--") Prefix
                       | Postfix
 Postfix              := Primary PostfixSuffix*
 PostfixSuffix        := "." (Name | DecimalTupleIndex)
+                      | "." "(" ContractReference ")" "." Name
                       | "(" TrailingList<Argument>? ")"
                       | AdjacentTypeArguments | "[" Expression "]" | "++" | "--"
 AdjacentTypeArguments := ? TypeArguments adjacent to an eligible Name, §12.4.2 ?
@@ -297,11 +304,12 @@ ConstantIndexExpression := IntegerLiteral | "(" ConstantIndexExpression ")"
 // Static fixed-array path recognition only, not a restriction on ordinary indexing (§15.1.3).
 Argument             := (Name ":")? Expression
 Primary              := "::"? Name | Literal | "(" Expression ")" | TupleExpression
+                      | BoundContainerQualifier
                       | ArrayExpression | DictionaryExpression | FunctionExpression
                       | IfExpression | MatchExpression | LabeledSelection | Iteration | DoExpression
                       | Transfer | CompositionRootExpression | ConstructionExpression
                       | InferredCaseExpression
-ConstructionExpression := NamedType "." "init"
+ConstructionExpression := ContainerPath "." "init"
                           "(" TrailingList<Argument>? ")"
 InferredCaseExpression := "." Name ("(" TrailingList<Expression> ")")?
 TupleExpression      := "(" Expression "," TrailingList<Expression>? ")"
@@ -360,7 +368,7 @@ MatchArm             := Pattern ("if" Expression)? ExecutableBody
 Pattern              := "_" | LiteralPattern | BindingPattern | CasePattern
                       | UnitPattern | TuplePattern | GroupedPattern
 BindingPattern       := ("let" | "var") Name
-CaseReference        := NamedType "." Name | "." Name
+CaseReference        := PlainContainerPath "." Name | "." Name
 CasePattern          := CaseReference ("(" TrailingList<Pattern> ")")?
 UnitPattern          := "(" ")"
 TuplePattern         := "(" Pattern "," TrailingList<Pattern>? ")"
@@ -464,3 +472,5 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Complete payload and whole-value updates | Sealed uses ordinary requirement syntax. Fully specified `@ref/T` and `@uniq/T` may project a proven complete payload (§13.5.5); shorthand meanings are unchanged. Kimi.replace/exchange/swap use ordinary generic calls and named arguments (§15.7). No new keyword or operator is introduced. |
 | Function parameters | The combined optional/external-name form remains under [parameter design boundaries](../10-overload-resolution-and-inference.md#109-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
 | Re-export, special FFI layouts, and failure propagation | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports), [layout boundaries](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi), and [error policy](../17-failure-handling.md#171-error-policy). |
+
+Container placement follows §6.1.1, including nested groups/structs/enums/Contracts in structs, no children in enum/Contract bodies, and source-root-only rootgroup. Own arity excludes inherited slots; groups and Contracts declare no own arguments. BoundContainerQualifier is Type-side only and normalizes with ordinary grouped Type syntax. Contract and associated selectors use the same paths and full Origin bindings; each final role and intermediate qualifier is checked under §9.6.1. CaseReference remains a PlainContainerPath and excludes own/inherited explicit Origin annotations on its qualifier, while retaining Origins inside Type arguments.

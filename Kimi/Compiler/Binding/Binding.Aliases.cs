@@ -10,7 +10,9 @@ public sealed partial class Binding
     private readonly Dictionary<AliasKoto, BindingScope?> aliasTargets = new();
     private readonly Dictionary<(SourceDocument Document, string Name), AliasKoto> namedAliases = new();
     private readonly List<AliasKoto> aliasWarnings = new();
+    private readonly Dictionary<Koto, BoundType> importedContainerEnvironments = new(ReferenceEqualityComparer.Instance);
     private int reportedAliasWarnings;
+    private int aliasResolutionDepth;
 
     private void ResetAliases()
     {
@@ -20,6 +22,7 @@ public sealed partial class Binding
         }
 
         this.aliasTargets.Clear();
+        this.importedContainerEnvironments.Clear();
         this.defaultAliasTargets.Clear();
         this.namedAliases.Clear();
         this.aliasWarnings.Clear();
@@ -53,7 +56,7 @@ public sealed partial class Binding
 
             if (this.namedAliases.TryGetValue((document, name), out var previous))
             {
-                if (!ReferenceEquals(previous.BoundSymbol, alias.BoundSymbol) || previous.BindingState == BindingState.Invalid)
+                if (!ReferenceEquals(previous.BoundSymbol, alias.BoundSymbol) || !ReferenceEquals(previous.BoundType, alias.BoundType) || previous.BindingState == BindingState.Invalid)
                 {
                     Fail(previous, BindingFailure.Duplicate, true);
                     Fail(alias, BindingFailure.Duplicate, true);

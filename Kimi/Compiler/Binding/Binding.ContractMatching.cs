@@ -295,7 +295,7 @@ public sealed partial class Binding
             for (var i = 0; i < shape.Requirements.Count; i++)
             {
                 var requirement = shape.Requirements[i];
-                if (!ReferenceEquals(requirement.Scope.Owner.BoundSymbol, conformance.Contract))
+                if (!ReferenceEquals(requirement.Scope.Owner, conformance.Contract.Declaration))
                 {
                     var ancestor = this.conformancePaths[(conformance.Type, requirement.Scope.Owner.BoundSymbol!, conformance.Declaration, conformance.RootContract)];
                     if (ancestor.GetImplementation(requirement) is { } inherited)
@@ -566,6 +566,17 @@ public sealed partial class Binding
             {
                 var target = pattern.Kind == OriginKind.Parameter ? origins : inputs;
                 target[pattern.Slot] = target[pattern.Slot] is { } previous ? this.Meet(previous, actual) : actual;
+            }
+            else if (pattern.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto && binder.BoundSymbol?.Schema is { } schema)
+            {
+                for (var i = 0; i < schema.Origins.Count && i < origins.Length; i++)
+                {
+                    if (ReferenceEquals(schema.Origins[i].Origin, pattern))
+                    {
+                        origins[i] = origins[i] is { } previous ? this.Meet(previous, actual) : actual;
+                        break;
+                    }
+                }
             }
         }
     }

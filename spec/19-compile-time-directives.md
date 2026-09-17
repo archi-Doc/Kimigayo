@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+After directive selection and source generation, validate the final declaration tree against §6.1.1. A selected rootgroup remains legal only at the source root. Eligibility checks for tests, specializations and foreign declarations include inherited Type/Semantics/Origin parameters, even through groups and when unused.
+
 Compile-time directives choose source syntax without runtime branching. The following terms are used in this chapter:
 
 | Term | Meaning |

@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+Container qualifiers are resolved and bound under §9.6.1 before call inference. Infer only a function's own arguments under this chapter; do not infer an omitted outer Container environment from call arguments or an expected result. Candidate identity includes the retained environment, and failed later constraints do not reopen qualifier lookup.
+
 Use the distinct relations in [Type relations and expression operations](03-types-and-values.md#38-type-relations-and-expression-operations): argument adaptation, expected-result compatibility, and acquisition legality are separate judgments. A successful subtype proof does not select or authorize a value operation.
 
 ## 10.1. Candidate applicability

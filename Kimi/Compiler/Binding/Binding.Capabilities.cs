@@ -342,6 +342,20 @@ public sealed partial class Binding
     private ConstraintProof StoredCapability(CapabilityWork work, StorageShape shape)
     {
         var result = ConstraintProof.Proven;
+        if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Symbol?.Declaration is DeclarationContainerKoto declaration)
+        {
+            // Enclosing arguments are retained by the nested Type even without storage.
+            for (var i = declaration.GenericParameterNodes.Count; i < work.Type.Components.Count; i++)
+            {
+                result = CombineProof(result, this.RequestCapability(work.Type.Components[i], work.Intrinsic, work.Scope), true);
+            }
+
+            for (var i = declaration.OriginNames.Count; i < work.Type.OriginArguments.Count; i++)
+            {
+                result = CombineProof(result, work.Type.OriginArguments[i]?.Kind == OriginKind.Static ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+            }
+        }
+
         for (var i = 0; i < shape.Types.Count; i++)
         {
             var type = this.StoredType(shape.Types[i], work.Type);

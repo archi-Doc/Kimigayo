@@ -187,7 +187,7 @@ public sealed partial class Binding
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.GenericParameterNodes.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract } || premises.Operands.Length == 0)
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract } || premises.Operands.Length == 0)
                 {
                     Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
@@ -233,7 +233,8 @@ public sealed partial class Binding
                         subject = subject.Components[0];
                     }
 
-                    valid &= condition.BoundConstraint is { } requirement && PositiveRequirement(requirement) && ReferenceEquals(subject?.Symbol?.Scope, outer);
+                    valid &= condition.BoundConstraint is { } requirement && PositiveRequirement(requirement) &&
+                        subject?.Symbol is { } parameter && ContainerSlot(container, parameter) >= 0;
                 }
 
                 this.ExpandScopeContractPremises(scope);
@@ -273,7 +274,21 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        if (!this.conformances.TryGetValue((symbol, contract), out var identity) || identity.PathStorage.Count == 0)
+        this.conformances.TryGetValue((symbol, contract), out var identity);
+        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.conformancesByType.TryGetValue(symbol, out var bindings))
+        {
+            foreach (var candidate in bindings)
+            {
+                if (ReferenceEquals(candidate.Contract.Declaration, contract.Declaration) && candidate.Contract.Type is { } formal &&
+                    ReferenceEquals(this.StoredType(formal, type), contractReference))
+                {
+                    identity = candidate;
+                    break;
+                }
+            }
+        }
+
+        if (identity is null || identity.PathStorage.Count == 0)
         {
             return !DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
@@ -305,9 +320,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (result == ConstraintProof.Proven && symbol.Declaration is DeclarationContainerKoto container && container.GenericParameterNodes.Count != 0)
+            if (result == ConstraintProof.Proven && symbol.Declaration is DeclarationContainerKoto && symbol.Schema is { GenericSlots.Count: > 0 })
             {
-                result = CombineProof(result, type.Components.Count == container.GenericParameterNodes.Count ? this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope) : ConstraintProof.Unknown, true);
+                result = CombineProof(result, type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown, true);
             }
 
             if (result != ConstraintProof.Proven)

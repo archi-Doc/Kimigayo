@@ -372,6 +372,11 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case IsKoto { BoundConstraint: not null }:
+                // A declaration constraint has no runtime evaluation. Its bound
+                // Container path is checked by Binding, including every qualifier.
+                flow = new(true, ControlFlowType.Unit);
+                break;
             case not InvocationKoto when this.types.IsBoundConstruction(node):
                 flow = new(true, this.types.GetExpressionType(node));
                 break;

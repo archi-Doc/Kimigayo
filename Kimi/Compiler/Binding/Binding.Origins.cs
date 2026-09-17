@@ -237,6 +237,12 @@ public sealed partial class Binding
             }
             else if (node is DeclarationContainerKoto { IsRoot: false } container)
             {
+                if (container.Parent is not (GroupKoto or StructKoto) &&
+                    container.Parent is not CodeBlockKoto { DeclarationContext: Lexing.TokenKind.Group or Lexing.TokenKind.Struct })
+                {
+                    Fail(node, BindingFailure.InvalidTypeFormation);
+                }
+
                 if (container.HasIncompatibleBindingHeader)
                 {
                     Fail(node, BindingFailure.Duplicate);
@@ -252,20 +258,35 @@ public sealed partial class Binding
 
             var symbol = node.BoundSymbol!;
             var scope = this.scopes[node];
+            var inherited = node is DeclarationContainerKoto && node.Parent is DeclarationContainerKoto parent ? parent.BoundSymbol?.Schema : null;
+            var genericCount = parameters.Count + (inherited?.GenericSlots.Count ?? 0);
+            var originCount = origins.Count + (inherited?.Origins.Count ?? 0);
             var schema = symbol.Schema;
-            if (schema is null || schema.GenericSlots.Count != parameters.Count || schema.Origins.Count != origins.Count)
+            if (schema is null || schema.GenericSlots.Count != genericCount || schema.Origins.Count != originCount)
             {
-                var slots = parameters.Count == 0 ? Array.Empty<GenericSlot>() : new GenericSlot[parameters.Count];
+                var slots = genericCount == 0 ? Array.Empty<GenericSlot>() : new GenericSlot[genericCount];
                 for (var i = 0; i < parameters.Count; i++)
                 {
                     var parameter = this.symbols[parameters[i]];
                     slots[i] = new(parameters[i] is LengthParameterKoto ? GenericSlotKind.Length : parameter.Pair is not null ? GenericSlotKind.Pair : GenericSlotKind.Type, parameter, parameter.Pair);
                 }
 
-                var bindings = origins.Count == 0 ? Array.Empty<OriginParameter>() : new OriginParameter[origins.Count];
+                for (var i = 0; inherited is not null && i < inherited.GenericSlots.Count; i++)
+                {
+                    var outer = inherited.GenericSlots[i];
+                    slots[parameters.Count + i] = new(outer.Kind, outer.Symbol, outer.Semantics);
+                }
+
+                var bindings = originCount == 0 ? Array.Empty<OriginParameter>() : new OriginParameter[originCount];
                 for (var i = 0; i < origins.Count; i++)
                 {
                     bindings[i] = new(origins[i], i, this.OriginAtom(node, OriginKind.Parameter, i, origins[i]), origins is OriginNameList locations && i < locations.Spans.Count ? locations.Spans[i] : node.Span);
+                }
+
+                for (var i = 0; inherited is not null && i < inherited.Origins.Count; i++)
+                {
+                    var outer = inherited.Origins[i];
+                    bindings[origins.Count + i] = new(outer.Name, outer.Slot, outer.Origin, outer.Span) { Bound = outer.Bound };
                 }
 
                 symbol.Schema = schema = new(slots, bindings);
@@ -273,8 +294,13 @@ public sealed partial class Binding
 
             for (var i = 0; i < schema.GenericSlots.Count; i++)
             {
+                schema.GenericSlots[i].OriginVariance = i < parameters.Count ? OriginVariance.Unused : OriginVariance.Covariant;
+                if (i >= parameters.Count)
+                {
+                    continue;
+                }
+
                 schema.GenericSlots[i].Symbol.Slot = i;
-                schema.GenericSlots[i].OriginVariance = OriginVariance.Unused;
                 if (schema.GenericSlots[i].Semantics is { } semantics)
                 {
                     semantics.Slot = i;
@@ -284,8 +310,8 @@ public sealed partial class Binding
             for (var i = 0; i < schema.Origins.Count; i++)
             {
                 var origin = schema.Origins[i];
-                origin.Variance = OriginVariance.Unused;
-                origin.LoanRequirement = LoanRequirement.None;
+                origin.Variance = i < origins.Count ? OriginVariance.Unused : OriginVariance.Covariant;
+                origin.LoanRequirement = i < origins.Count ? LoanRequirement.None : LoanRequirement.Ref;
                 scope.Origins ??= new(StringComparer.Ordinal);
                 if (!scope.Origins.TryAdd(origin.Name, origin.Origin))
                 {
@@ -294,7 +320,7 @@ public sealed partial class Binding
             }
 
             // Bind the whole list before resolving `name : target`; targets are static or visible abstract Origins.
-            for (var i = 0; i < schema.Origins.Count; i++)
+            for (var i = 0; i < origins.Count; i++)
             {
                 var origin = schema.Origins[i];
                 origin.Bound = null;

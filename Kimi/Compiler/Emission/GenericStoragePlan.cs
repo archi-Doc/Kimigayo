@@ -61,7 +61,7 @@ internal sealed class GenericStoragePlan
     internal IReadOnlyDictionary<BoundCall, CallEntry> Calls => this.calls;
 
     internal static bool IsGeneric(FunctionKoto function)
-        => !function.IsSpecialization && (function.GenericArguments.Count != 0 || (!function.IsDestructor && function.BoundSymbol?.Scope.Owner is StructKoto { GenericArguments.Count: > 0 }));
+        => !function.IsSpecialization && (function.GenericArguments.Count != 0 || (!function.IsDestructor && function.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 }));
 
     internal void Clear()
     {
@@ -464,7 +464,7 @@ internal sealed class GenericStoragePlan
                             !ReferenceTypes.CallTypeMatches(binding.InstantiateStorageType(directTarget.BoundSymbol!.Type!, direct), direct.ReturnType, direct) ||
                             !ReferenceEquals(body.Places[op.Place].Type, direct.ReturnType) || !ReferenceEquals(directSyntax.BoundType, direct.ReturnType) || count > 1)
                         {
-                            return Fail("Shared direct call requires a checked generic function and explicit arguments.", out failure);
+                            return Fail($"Shared direct call to '{direct.Target.Name}' requires a checked generic function and explicit arguments.", out failure);
                         }
 
                         var slots = new int[arguments.Count];
@@ -851,7 +851,8 @@ internal sealed class GenericStoragePlan
         {
             if (type.Kind == BoundTypeKind.Parameter)
             {
-                return (ReferenceEquals(type.Symbol!.Scope.Owner, function) ? "function:" : "container:") + type.Symbol.Slot;
+                return ReferenceEquals(type.Symbol!.Scope.Owner, function) ? "function:" + type.Symbol.Slot
+                    : "container:" + Binding.ContainerSlot(function.BoundSymbol!.Scope.Owner, type.Symbol);
             }
 
             return type.Kind + ":" + type.Name + ":" + (type.LengthExpression is { } length ? LengthKey(length) : type.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)) + "<" + string.Join(",", type.Components.Select(TypeKey)) + ">";

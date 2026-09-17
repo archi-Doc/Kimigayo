@@ -113,7 +113,8 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 }
 
                 reader.TryConsume(TokenKind.ColonColon);
-                var qualifiedName = KotoHelper.ParseQualifiedNameSegments(ref reader);
+                var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseContainerReference(ref reader) : null;
+                var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
                 if (hasNonAliasDeclaration)
                 {
                     reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
@@ -126,7 +127,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                         reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
                     }
 
-                    this.AddLast(new AliasKoto(ref reader, qualifiedName, aliasName, token.Span));
+                    this.AddLast(new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax));
                 }
 
                 continue;

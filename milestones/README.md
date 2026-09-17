@@ -19,7 +19,7 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone5](Milestone5.kimi) | `uniq`/`ref`, returned borrow, `origin`/`from`, scope and destruction lifetimes |
 | [Milestone6](Milestone6.kimi) | Value-producing `loop`, guarded `match`, `continue`, named `exit`, `yield`, `require` |
 | [Milestone7](Milestone7.kimi) | Two-dimensional fixed arrays, nested `for`, cross-loop transfers, Slice reads |
-| [Milestone8](Milestone8.kimi) | Nested `group` containers, generic struct/function, generic Copy/Move acquisition |
+| [Milestone8](Milestone8.kimi) | Groups nested in a struct, generic struct/function, generic Copy/Move acquisition |
 | [Milestone9](Milestone9.kimi) | Length/type parameters, Copy constraint, callbacks/capture, generic enum, borrowed storage |
 | [Milestone10](Milestone10.kimi) | Generic enum/Tuple patterns, guards, value-producing loop/match/if, cross-loop transfers |
 | [Milestone11](Milestone11.kimi) | Immutable static member, multiple type/length instantiations, generic forwarding, explicit specialization, sharing invariants |
@@ -341,10 +341,10 @@ or all specified Kimi sequence APIs. Those remain separate implementation work.
 
 ## Milestone 8: nested containers and generic ownership
 
-`Toolkit.Storage` contains `Box<T>`, while its sibling `Toolkit.Selection`
-contains `choose<T>`. These are declaration scopes, not runtime objects;
-structs are placed inside groups because this specification does not permit
-nested declaration containers inside struct bodies.
+The Toolkit struct contains two static groups. `Toolkit.Storage` contains
+`Box<T>`, while its sibling `Toolkit.Selection` contains `choose<T>`. These
+declarations add no Toolkit instance or implicit receiver. Both groups and
+structs can contain further declaration containers.
 
 ```text
 Chosen item.

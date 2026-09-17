@@ -77,5 +77,5 @@ public sealed class StructKoto : DeclarationContainerKoto
 
     /// <inheritdoc/>
     public override void Parse(ref TokenReader reader)
-        => this.ParseMembers(ref reader, parseTypeConstraints: true, parseDeclarationContainers: false);
+        => this.ParseMembers(ref reader, parseTypeConstraints: true, parseDeclarationContainers: true);
 }

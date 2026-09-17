@@ -81,6 +81,16 @@ public sealed partial class Binding
 
     private bool ValidateInheritedNames(StructKoto structure, BoundType baseType, BindingScope scope)
     {
+        foreach (var nested in structure.NestedContainers)
+        {
+            if (this.LookupTypeMember(baseType, nested.Name, scope, typeRole: true).Member is not null)
+            {
+                Fail(nested, BindingFailure.Duplicate);
+                Fail(structure, BindingFailure.Duplicate);
+                return false;
+            }
+        }
+
         foreach (var entry in scope.Values)
         {
             var member = entry.Value;

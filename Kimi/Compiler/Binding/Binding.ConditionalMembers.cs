@@ -20,7 +20,8 @@ public sealed partial class Binding
 
     private BoundType? CallDeclaringType(Koto callee, BindingSymbol member)
         => callee is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType
-            : member.Scope.Owner is StructKoto or EnumKoto ? this.SelfType(member.Scope.Owner.BoundSymbol!) : null;
+            : this.ImportedEnvironment(callee) is { } environment ? environment
+            : member.Scope.Owner is StructKoto or EnumKoto || member.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } ? this.SelfType(member.Scope.Owner.BoundSymbol!) : null;
 
     private ConstraintProof ProveMemberConditions(BindingSymbol member, BoundType? declaringType, BindingScope scope)
     {

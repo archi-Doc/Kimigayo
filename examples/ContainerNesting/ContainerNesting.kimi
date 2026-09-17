@@ -1,0 +1,30 @@
+alias IntTools => Family<i32>.Helpers
+
+struct Family<T>
+    public struct Cell
+        public let value: T
+
+        public init(value: T)
+            self.value = value
+
+    public enum Result
+        Value(T)
+
+    public group Helpers
+        public func identity(value: T) -> T => value
+
+    public contract Sink
+        func put(value: T)
+
+struct IntegerSink
+    Self is Family<i32>.Sink
+    public func put(value: i32) => ()
+
+public func main()
+    let cell = Family<i32>.Cell.init(42)
+    IntegerSink.put(cell.value)
+    let result = Family<i32>.Result.Value(IntTools.identity(cell.value))
+    match result
+        .Value(let value)
+            require value == 42 else => $abort("Wrong nested binding")
+            Kimi.Console.writeLine("Nested bindings preserved.")

@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+A nested Type retains the normalized outer bindings even when it stores no fields. [Declaration references](06-declarations-and-containers.md#613-inherited-environments-and-declaration-references) distinguish full Type/Contract evidence from Origin-erased runtime and implementation identities; declaration nesting adds no implicit outer instance.
+
 An ordinary **Type** combines Semantics, a Core, and any required Origins. Its single-layer form is:
 
 ```text

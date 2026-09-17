@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+Test discovery and identity retain the complete declaring Container environment. Existing non-generic test eligibility includes inherited parameters; a nested group cannot hide them. Apply placement after directive selection and source generation (§6.1.1).
+
 A Compilation processes one Project for fixed source, dependency, target, and configuration inputs. The source-language rules determine meaning; this chapter defines compilation invariants with implementation requirements and reference algorithms in separate appendices.
 
 ## 20.1. Build units

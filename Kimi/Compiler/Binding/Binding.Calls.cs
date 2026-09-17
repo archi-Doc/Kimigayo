@@ -155,6 +155,18 @@ public sealed partial class Binding
                 typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName, scope);
                 typeMember = typeSelection.Member ?? typeMember;
             }
+            else if (qualifier.Declaration is GroupKoto { IsRoot: false } &&
+                this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is { } groupType)
+            {
+                if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
+                {
+                    Fail(member.Left, BindingFailure.InvalidOrigin);
+                    return null;
+                }
+
+                typeSelection = this.LookupTypeMember(groupType, right.IdentifierName, scope);
+                typeMember = typeSelection.Member;
+            }
             else if (typeScope.Values.TryGetValue(right.IdentifierName, out var candidate))
             {
                 typeMember = candidate;
@@ -224,6 +236,11 @@ public sealed partial class Binding
 
     private bool MayBeValueQualifier(Koto node, BindingScope scope)
     {
+        if (node is TypeKoto)
+        {
+            return false;
+        }
+
         if (node is IdentifierNameKoto name)
         {
             return this.Lookup(name.IdentifierName, scope, node, false) is not null;
@@ -1069,9 +1086,13 @@ public sealed partial class Binding
             return true;
         }
 
-        if (pattern.Kind == BoundTypeKind.Parameter && pattern.Symbol!.Scope.Owner == function)
+        if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
         {
-            var slot = pattern.Symbol.Slot;
+            if ((uint)slot >= (uint)arguments.Length)
+            {
+                return false;
+            }
+
             if (arguments[slot] is { } previous)
             {
                 return ReferenceEquals(previous, actual);

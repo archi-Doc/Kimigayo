@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+Type-side qualifiers and construction paths use [bound Container paths](09-names-signatures-and-access.md#961-bound-container-paths), including arguments at each segment and (Path from (...)).member. They create no runtime value. Reserved .init(...) remains construction and cannot fall back to an ordinary value-member call.
+
 Expressions produce values or transfer control. This chapter defines their syntax, Type rules, and evaluation.
 
 ## 12.1. Classification and contexts

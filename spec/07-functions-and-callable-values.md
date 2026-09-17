@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+A group nested inside a Type still declares static functions. Its lexical Self names the nearest outer Self context without creating a receiver. Inherited parameters participate in generic eligibility and definition checking (§6.1.3); outer arguments at a qualified call must already be bound (§9.6.1).
+
 A function begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters, and a parenthesized parameter list. A result Type follows `->`; omitting it in a named function means Unit (`()`), regardless of accessibility or body form. Definitions use the common Body forms (§7.1). Anonymous functions retain their separate [inference rules](#761-syntax-and-inference).
 
 The declared function Name is a single, unqualified Name. Its declaration belongs to the lexical Container or executable scope in which it appears. Declare a member inside the relevant Container body, including a permitted fragment; `func View.get(...)` and other qualified function declaration names are compile-time errors. A qualified declaration cannot attach a function to another Container, introduce an extension, or obtain that Container's private access or generic bindings. Qualified Names at use sites and explicit receivers remain governed by their existing rules.

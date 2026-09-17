@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+Nested declarations share one declaration tree, with interned normalized references and reusable parent bindings. Do not clone all children per instantiation or require the outer layout to resolve a child. Artifacts retain bindings, Constraint roles and origins, proof dependencies and selected declarations; outer changes invalidate dependent inner proofs/plans. Adding or widening an accessible Container name on an open base can break derived declarations and requires downstream revalidation (§9.6.1). Resource-limit diagnostics are distinct from failure of the specified proof rules.
+
 Physical representation and code sharing must preserve Type identity, ownership, evaluation and cleanup. This chapter separates language-wide requirements, Windows storage contracts and compiler-controlled function passing.
 
 The Windows storage and metadata contracts below are normative for this profile. They retain §7.6's capture/call restrictions and §21.4.2's compiler-controlled function passing. Specification adoption does not establish implementation coverage (STATUS.md).
@@ -532,6 +534,8 @@ arrayDestroy(first, count, arrayMetadata, location):
 ~~~
 
 A complete contiguous range may become one count * N element-destruction call only when metadata, range, reverse order and failure location agree. If that product exceeds the count width, retain the original loops without adding an Abort. Preserve all logical destruction effects even at zero stride.
+
+Inherited group static storage is another supplied operation: ensure initialization and reach the Field's normalized storage key (§22.2.4). Use a fixed operation or existing entry/context pair, preserving one mutable state per key and immutable operation context. Touching such a Field alone does not require separate machine-code bodies.
 
 ### 21.3.4. Artifacts, verification, and invalidation
 

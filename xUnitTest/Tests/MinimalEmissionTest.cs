@@ -39,7 +39,7 @@ public class MinimalEmissionTest
     [Theory]
     [InlineData("func unused() -> ()\n    " + FloatExpression + "\nConsole.writeLine(\"a\")", true)]
     [InlineData("func unused<T>() => ()\nConsole.writeLine(\"a\")", true)]
-    [InlineData("struct Empty\n    func unused() => ()\nConsole.writeLine(\"a\")")]
+    [InlineData("struct Empty\n    func unused() => ()\nConsole.writeLine(\"a\")", true)]
     [InlineData("public func main(x: i32) => Console.writeLine(\"a\")")]
     [InlineData("if false => " + FloatExpression, true)]
     [InlineData("let x: string\nConsole.writeLine(x)")]

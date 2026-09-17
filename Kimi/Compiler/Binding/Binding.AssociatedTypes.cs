@@ -412,7 +412,8 @@ public sealed partial class Binding
     /// <summary>Substitutes Contract Self and normalizes explicit associated identities without member inference.</summary>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
     {
-        if (type.Symbol?.Declaration is ContractKoto && type.Kind == BoundTypeKind.Nominal)
+        type = this.ApplyContractEnvironment(type, scope);
+        if (type.Symbol?.Declaration is ContractKoto && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed)
         {
             return self ?? EnclosingContractSelf(scope) ?? type;
         }

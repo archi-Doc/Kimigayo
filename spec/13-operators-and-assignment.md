@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+The extended Container path syntax (§9.6.1) does not relax adaptation-target Origin restrictions or permit groups/Contracts as value Types. Parenthesized qualifiers retain intermediate validation obligations.
+
 ## 13.1. Precedence and associativity
 
 Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a op b) op c`; right associativity groups it as `a op (b op c)`. Grouping does not guarantee type correctness or change evaluation order.

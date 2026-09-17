@@ -15,7 +15,7 @@ operations use the specified Kimi identities.
 | [Main.kimi](Main.kimi) | Explicit main, document aliases, root names, defer | Chapters 9, 18, 22 |
 | [Basics.kimi](Basics.kimi) | Literals, interpolation, Tuples, overloads, named/default arguments, Copy, constructors, Properties | Chapters 2–3, 6–13, 19 |
 | [Sequences.kimi](Sequences.kimi) | Fixed/dynamic arrays, length parameters, Index/Range/Slice, Dictionary, iteration, partial Move | Chapters 4, 12, 14–15 |
-| [Generics.kimi](Generics.kimi) | Static Contracts, refinement, associated Types, witnesses, conditional conformance, specialization | Chapters 8–10 |
+| [Generics.kimi](Generics.kimi) | Nested containers and inherited bindings, static Contracts, refinement, associated Types, witnesses, conditional conformance, specialization | Chapters 6, 8–10 |
 | [Lifetimes.kimi](Lifetimes.kimi) | Origins, stored/returned borrows, reborrowing, consumption, reinitialization, deinit | Chapters 3, 15–16 |
 | [Callables.kimi](Callables.kimi) | Function Items, Closures, captures, Shared/Exclusive/Consuming calls, Callable, Owned | Chapters 7–8, 15 |
 | [ControlFlow.kimi](ControlFlow.kimi) | Enums, match/guards, Option/Result, require, loops, labels, iterators, Abort | Chapters 6, 14, 16–17, 22 |

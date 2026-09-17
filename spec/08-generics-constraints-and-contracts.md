@@ -135,7 +135,7 @@ contract SizedSource: Source, Sized
     func reset(self: uniq/Self) -> ()
 ```
 
-This revision defines static conformance checking and generic use. User-defined Contracts have no generic or contract-level Origin parameters and cannot capture an enclosing declaration's generic parameters. Ordinary generic Types/functions and separately specified built-in requirements such as `Callable<...>` are unaffected. Runtime Contract Views remain a [future extension](#85-runtime-contracts).
+This revision defines static conformance checking and generic use. User-defined Contracts declare no own generic or Origin parameters. They inherit the enclosing environment under §6.1.3, including unused Type/Semantics and Origin bindings. Ordinary generic Types/functions and separately specified built-in requirements such as `Callable<...>` are unaffected. Runtime Contract Views remain a [future extension](#85-runtime-contracts).
 
 ### 8.4.1. Function requirements
 
@@ -155,7 +155,7 @@ Property requirements use `has`; their selection and compatibility rules are def
 
 ### 8.4.2. Refinement
 
-`contract C: A, B` refines every listed parent Contract. Resolve parents as Contract Names, without generic arguments. Inherit all requirements, associated Types, and Constraints. Parent order gives no priority; direct or indirect cycles are errors. Do not use `Self is C` to declare refinement inside a Contract.
+`contract C: A, B` refines every listed parent Contract. Resolve parents as bound Contract references (§9.6.1), permitting arguments on outer segments but not on the Contract itself. Inherit all requirements, associated Types, and Constraints. Parent order gives no priority; direct or indirect cycles are errors. Do not use `Self is C` to declare refinement inside a Contract.
 
 ```text
 Source                 Sized
@@ -167,7 +167,7 @@ Source                 Sized
 
 Conformance to a child entails conformance to every ancestor. Inherited `Self` still denotes the final conforming Type. A child may add requirements or Constraints but cannot remove or weaken inherited ones.
 
-Paths to the same ancestor declaration introduce one Requirement Identity or associated-Type Identity. Independent declarations from different parents remain distinct even when their names match; one compatible implementation may satisfy several requirements.
+Paths to the same ancestor declaration with the same normalized bindings introduce one Requirement Identity or associated-Type Identity. Retain distinct bindings as distinct requirements and preserve all path conditions and validation obligations (§8.4.9). Independent declarations from different parents remain distinct even when their names match; one compatible implementation may satisfy several requirements.
 
 Reject a refinement when its requirements cannot coexist as separate implementations under ordinary declaration rules and are provably impossible to satisfy with one implementation. Use both the [implementation-identification key](#845-implementation-matching) and ordinary [Signature](09-names-signatures-and-access.md#91-signatures) rules: labels affect matching but cannot independently distinguish overloads. Different result Types alone do not prove a conflict; apply defined result compatibility, including the existing subtype and Never rules. Retain genuinely dependent checks until their prerequisites resolve; unknown is not a proof of contradiction.
 
@@ -436,6 +436,41 @@ A Child conformance must satisfy its ancestor Contracts under its own conditions
 `Self is Copy when P` requests compiler-derived Copy under D and P. Check every complete own Field/payload Type and direct base under §3.5; user-defined Copy bodies remain forbidden. Deriving Copy for a `ref/T` component needs no T-is-Copy premise, but an explicitly written T-is-Copy condition is still required and cannot be weakened. Unconditional `Self is Copy` keeps its all-bindings guarantee. Unknown Copy follows the verified conditional acquisition plans of §8.9/§8.10, never an assumption of non-Copy.
 
 This feature defines static conformance and generic use. It adds no external registration, extension declarations, partial Type specialization, condition-based implementation replacement, or new runtime Contract View feature.
+
+### 8.4.9. Bound Contracts, collisions, and proof paths
+
+Identify conformance by the conforming full Type and bound Contract reference. Identify a requirement or associated Type by its defining declaration and the bindings of its defining Contract. Substitute bindings along refinement and use the final conforming Type for Self. Carry inherited input conditions into the child's public inputs without converting declaration obligations into assumptions or implementation requirements. Full Origin bindings remain part of evidence.
+
+#### 8.4.9.1. Direct conformance collisions
+
+Use one collision test for direct conformances and merging proof paths:
+
+1. Group by Contract declaration; different declarations do not collide. Normalize bindings with established Type equalities, associated specifications and Origin rules.
+2. Unify parameters and fixed free-term structure (nominal Types, Tuples, Function Types) with variable kinds and an occurs-check. The same binder/slot on both sides is one variable. Alpha-normalize local function binders; do not unify them as outer input slots.
+3. A provable fixed-structure mismatch establishes non-collision. Otherwise retain the substitution and equalities as collision conditions.
+4. Keep unresolved associated projections, Semantics applications, length expressions, Origin intersections/order and other non-free terms as residual conditions. Syntactic differences alone do not prove non-collision. Unresolved residuals mean possible collision. In particular, A.Item and B.Item need not differ when A and B differ.
+
+Under the Type's ordinary input conditions, every pair of direct conformances must be proved non-colliding at definition time. Duplicate equal references and possible collisions are errors. Exclusive when conditions do not exempt direct conformances. This finite check adds no call-site inference, implementation priority, automatic merge or selection after instantiation.
+
+```kimi
+struct Family<T>
+    public contract Marker
+
+struct Good
+    Self is Family<i32>.Marker
+    Self is Family<string>.Marker
+
+// Invalid: A and B can become equal.
+struct Bad<A, B>
+    Self is Family<A>.Marker
+    Self is Family<B>.Marker
+```
+
+#### 8.4.9.2. Merging paths and cycles
+
+For other combinations of direct conformance, refinement and effective base conformance, add each path's availability conditions to the collision conditions. When paths may simultaneously meet, prove consistent associated bindings and requirements, and also consistent implementation mappings for conformance definitions. If meeting cannot be excluded and consistency cannot be proved, reject the definition. Equal references may share structure but never lose assumptions or obligations. For example, Family<A>.C and Family<B>.C cannot specify one associated Type as i32 and string when A = B remains possible.
+
+Reject a refinement path that revisits a Contract declaration even with different arguments, including Outer<T>.C to Outer<List<T>>.C. Distinct instantiations on separate paths are not cyclic for that reason alone. Track processed references separately from declarations on the current path. Contract-owned parameters, defaults, external conformance, implementation priority and runtime Contract Views remain outside this change.
 
 ## 8.5. Runtime contracts
 

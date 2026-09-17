@@ -3269,7 +3269,9 @@ ProcessPrefix:
                     var operatorRange = reader.CurrentTokenRange;
                     reader.Advance();
 
-                    var accessor = ParseMemberName(ref reader);
+                    var accessor = reader.CurrentTokenKind == TokenKind.OpenParenthesis
+                        ? ParseDeclarationType(ref reader, parseFunctionType: false, parseContainerSuffix: false)
+                        : ParseMemberName(ref reader);
                     left = new MemberAccessKoto(
                         ref reader,
                         SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
@@ -3608,7 +3610,9 @@ Loop:
                 return ParseJumpExpression(ref reader);
 
             case TokenKind.OpenParenthesis:
-                return ParseParenthesizedExpression(ref reader);
+                return IsBoundContainerQualifier(ref reader)
+                    ? ParseDeclarationType(ref reader, parseFunctionType: false, parseContainerSuffix: false)
+                    : ParseParenthesizedExpression(ref reader);
 
             case TokenKind.OpenBracket:
                 return ParseCollectionLiteral(ref reader);
@@ -4000,7 +4004,7 @@ Loop:
         return ParseExpression(ref reader, RangeRightBindingPower);
     }
 
-    private static Koto ParseDeclarationType(ref TokenReader reader, bool parseOrigin = true, bool parseFunctionType = true, bool allowNestedOrigins = true)
+    private static Koto ParseDeclarationType(ref TokenReader reader, bool parseOrigin = true, bool parseFunctionType = true, bool allowNestedOrigins = true, bool parseContainerSuffix = true)
     {
         Koto type;
         var parameterList = false;
@@ -4049,6 +4053,12 @@ Loop:
                 ? new ParenthesizedTypeKoto(ref reader, range, firstElement!)
                 : new TupleTypeKoto(ref reader, range, elements.ToArray());
             parameterList = true;
+            if (parseContainerSuffix && reader.CurrentTokenKind == TokenKind.Dot)
+            {
+                type = ParseGroupedContainerSuffix(ref reader, type, allowNestedOrigins);
+                parameterList = false;
+            }
+
             if (parseOrigin)
             {
                 var annotated = ParseTypeOrigin(ref reader, type);

@@ -50,7 +50,10 @@ public sealed partial class Binding
             return ConstraintAccessCovers(constraint.Left!, contract, intersection) && (constraint.Right is null || ConstraintAccessCovers(constraint.Right, contract, intersection));
         }
 
-        return (constraint.Contract is null || AccessCovers(constraint.Contract, contract, intersection ?? contract)) && (constraint.RequiredType is null || TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
+        return (constraint.Contract is null ||
+            (AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
+             (constraint.Contract.Type is not { } reference || TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
+            (constraint.RequiredType is null || TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
     }
 
     private static bool IsRefinementName(Koto syntax)
@@ -65,6 +68,11 @@ public sealed partial class Binding
 
     private void ResetContracts()
     {
+        foreach (var bound in this.boundContracts.Values)
+        {
+            bound.Contract!.State = 0;
+        }
+
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.activeConformancePaths.Clear();
@@ -348,6 +356,20 @@ public sealed partial class Binding
 
     private void RegisterConformanceDeclaration(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
+        if (this.conformancesByType.TryGetValue(type, out var previousBindings))
+        {
+            foreach (var identity in previousBindings)
+            {
+                if (!ReferenceEquals(identity.Contract, contract) && identity.DirectClause is { } clause &&
+                    this.ContractBindingsMayCollide(identity.Contract, contract, scope))
+                {
+                    identity.Invalid = true;
+                    Fail(clause, BindingFailure.Duplicate);
+                    Fail(use, BindingFailure.Duplicate);
+                }
+            }
+        }
+
         var direct = this.RegisterConformance(type, contract, contract, use, scope, premises);
         if (direct.Identity.DirectClause is { } previous)
         {

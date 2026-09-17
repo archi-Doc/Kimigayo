@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+Properties directly in a nested group remain static. Their storage identity, initialization, sharing and cleanup follow [§22.2.4](22-core-execution-and-foreign-functions.md#2224-static-storage-in-inherited-environments); declaring the group inside a struct adds no instance Field.
+
 A concrete Property is `let`, `var`, or `computed`. A Contract uses `property` to require operations.
 
 ```text

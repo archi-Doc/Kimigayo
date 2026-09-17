@@ -264,12 +264,13 @@ public class ContractBindingTest
     }
 
     [Fact]
-    public void ARequirementCannotCaptureEnclosingTypeParameters()
+    public void ARequirementInheritsEnclosingTypeParameters()
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct Outer<T>\n    contract C\n        func f(x: T)");
-        Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.True(c.Bind().IsComplete);
     }
 
     [Theory]

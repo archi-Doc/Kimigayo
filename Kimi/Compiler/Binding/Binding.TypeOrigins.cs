@@ -102,7 +102,7 @@ public sealed partial class Binding
                 return Fail(use, BindingFailure.InvalidOrigin);
             }
 
-            if (count != 0 && (written || (!context.SuppressOuter && target.OriginArguments.Count != count)))
+            if (count != 0 && (written || (!context.SuppressOuter && (target.OriginArguments.Count != count || target.OriginArguments.Contains(null!)))))
             {
                 var arguments = this.originScratch.Rent(count);
                 Array.Clear(arguments, 0, count);
@@ -132,7 +132,7 @@ public sealed partial class Binding
                                     }
                                 }
 
-                                if (slot < 0 || seen[slot])
+                                if (slot < 0 || seen[slot] || arguments[slot] is not null)
                                 {
                                     Fail(use, BindingFailure.InvalidOrigin);
                                     return null;
@@ -155,7 +155,7 @@ public sealed partial class Binding
                     }
                     else if (written)
                     {
-                        if (count != 1)
+                        if (count != 1 || arguments[0] is not null)
                         {
                             return Fail(use, BindingFailure.InvalidOrigin);
                         }
@@ -355,6 +355,12 @@ public sealed partial class Binding
 
             if (node is PropertyKoto property && IsStoredVariable(property) && this.symbols[property].Scope.Owner is GroupKoto)
             {
+                if (this.symbols[property].Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+                {
+                    // Check the stored value under the inherited premises, not the enclosing Type.
+                    this.RequireConstraint(property, this.ProveOwned(type, property), this.capabilityMode);
+                }
+
                 this.borrowVisiting.Clear();
                 if (this.RetainsBorrow(type, this.borrowVisiting))
                 {

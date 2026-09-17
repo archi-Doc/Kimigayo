@@ -1,5 +1,5 @@
 // Milestone 8: nested declaration containers and generic ownership transfer.
-group Toolkit
+struct Toolkit
     public group Storage
         public struct Box<T>
             let value: T

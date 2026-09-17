@@ -22,11 +22,11 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 
 | Declaration Container kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
-| `group` | No | Accepts Fields, computed members, functions, and nested Declaration Container declarations. All members are static. Generic parameters and Origins are not supported. |
-| `struct` | Yes | Accepts Fields, computed members, functions, conditional conformance declarations, associated-Type specifications, constructors, and at most one selected `deinit`. Generic parameters, Origins, and Constraints are supported. Sealed by default; `open struct` permits derivation. |
+| `group` | No | Accepts Fields, computed members, functions, and nested Declaration Container declarations. All members are static. It declares no parameters of its own and inherits the enclosing generic and Origin environment. |
+| `struct` | Yes | Accepts nested groups, structs, enums and Contracts, Fields, computed members, functions, conditional conformance declarations, associated-Type specifications, constructors, and at most one selected `deinit`. Generic parameters, Origins, and Constraints are supported. Sealed by default; `open struct` permits derivation. |
 | `enum` | Yes | Closed sum Type with Cases, positional payloads, functions, conditional conformance declarations, and Constraints; see [enums](#63-enums). No fragments or inheritance. |
 | `extension` (future) | No | Not introduced; see this section’s extension boundary. |
-| `contract` | No | Declares function/Property requirements, associated Types, and Constraints; supports multiple-parent refinement. No implementations, storage, generic parameters, or contract-level Origins. See [Contracts](08-generics-constraints-and-contracts.md#84-static-contracts). |
+| `contract` | No | Declares function/Property requirements, associated Types, and Constraints; supports multiple-parent refinement. No implementations, storage, or parameters of its own; enclosing generic and Origin bindings are inherited. See [Contracts](08-generics-constraints-and-contracts.md#84-static-contracts). |
 
 ### 6.1.1. Root and nested containers
 
@@ -37,7 +37,29 @@ rootgroup A.B
     var value = 1
 ```
 
-creates the nested group path `A.B`. Ordinary `group` bodies accept nested Declaration Container declarations. In this revision, `struct` bodies do not accept nested Declaration Containers.
+creates the nested group path `A.B`. rootgroup is allowed only directly at the source root, including selected root directive items. Its path creates groups, never synthesizes or redefines an intermediate struct.
+
+| Declaration site | Allowed nested Containers |
+| --- | --- |
+| Project root, group, struct | group, struct, enum, contract |
+| enum, contract | None |
+| Executable Block or conditional-conformance implementation Block | None |
+
+Nesting is recursive, with no fixed language depth limit. Implementation limits require resource diagnostics. Membership adds no storage, implicit outer instance or receiver, inheritance, Copy, ownership, or conformance.
+
+```kimi
+struct Parser
+    public enum Result
+        Success
+        Failure
+
+    private struct State
+        var position: i32 = 0
+
+    public group Diagnostics
+        public struct Location
+            var line: i32 = 0
+```
 
 Aliases follow [source-local import rules](18-modules-and-dependencies.md#181-external-references-and-aliases). Synthesized intermediate groups in a `rootgroup` path use an explicit group declaration's accessibility when present, otherwise `private`; synthesis is not an independent header fragment. Public paths require explicitly accessible groups.
 
@@ -51,7 +73,7 @@ Matching fragments must agree on generic parameter count/kinds/order/names, Orig
 
 For structures, `open` must agree across all fragments. At most one fragment supplies the base clause; the other fragments share that base without repeating it. Resolve the base in that fragment's source environment, then validate the complete merged inheritance relationship.
 
-After compile-time selection and merging, reject duplicate Field/computed Names, duplicate function Signatures, and namespace conflicts. Selected fragments may contribute Fields, including generated ones, under [split-structure storage order](#621-split-structures-and-storage-order); C layout requires a single storage-bearing fragment (§21.1.2). Do not require a primary fragment. Enums cannot be split: after selection and generation, multiple declarations with the same enum Identity are errors. Contracts likewise cannot be split: after directive selection and source generation, multiple declarations with the same Contract Identity (originating Kotonoha, parent Symbol, name, and contract kind) are declaration errors, even when their contents are identical. User Contracts are nongeneric; no arity distinguishes same-named declarations. Mutually excluded declarations are allowed only when at most one remains. Different Contracts may refine a shared parent, but refinement is not declaration merging.
+After compile-time selection and merging, reject duplicate Field/computed Names, duplicate function Signatures, and namespace conflicts. Selected fragments may contribute Fields, including generated ones, under [split-structure storage order](#621-split-structures-and-storage-order); C layout requires a single storage-bearing fragment (§21.1.2). Do not require a primary fragment. Enums cannot be split: after selection and generation, multiple declarations with the same enum Identity are errors. Contracts likewise cannot be split: after directive selection and source generation, multiple declarations with the same Contract Identity (originating Kotonoha, parent Symbol, name, and contract kind) are declaration errors, even when their contents are identical. User Contracts declare no own generic slots; inherited bindings do not distinguish declaration fragments. Mutually excluded declarations are allowed only when at most one remains. Different Contracts may refine a shared parent, but refinement is not declaration merging.
 
 Constructor Signatures must also be unique across the selected fragments. At most one selected `deinit` body may belong to a merged structure, including generated fragments. Do not concatenate destruction bodies or choose one by source order; duplicates are declaration errors. Mutually excluded bodies may coexist in source only when selection leaves at most one in each fixed target/configuration environment.
 
@@ -68,6 +90,56 @@ struct Box<T>
 ```
 
 **Future design:** Contract fragments are not introduced; any future fragment facility needs explicit contents and merging rules. Extension identity/public names remain separately specified. Static initialization and startup selection are defined under [program startup](22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization).
+
+### 6.1.3. Inherited environments and declaration references
+
+Every nested Container, including a Contract and a group, inherits the enclosing generic environment. A group does not stop inheritance. Runtime variables, values and receivers are not inherited. Check an inner declaration as generic whenever any enclosing parameter exists, even if unused.
+
+Keep three kinds of context separate:
+
+| Context | Contents | Part of reference bindings? |
+| --- | --- | --- |
+| Argument bindings | Type/Semantics arguments, Origins inside Types, explicit Origin arguments | Yes |
+| Proof context | Input conditions, Origin bounds, obligations, evidence and dependencies | No |
+| Lookup context | Definition-site lexical scope, each fragment's aliases, access context | No |
+
+A **declaration reference** is the original declaration Identity plus normalized argument bindings. Identity uses the originating Kotonoha, merged parent declaration, name, kind and own arity. A concrete parent's arguments belong to bindings, not declaration Identity. Retain outer arguments even when unused; own arity excludes inherited slots. Identify every slot by its declaring binder and ordinal, never by spelling alone.
+
+```kimi
+struct Outer<T>
+    public struct Inner<U>
+        var first: T
+        var second: U
+
+    public struct Tag
+
+    public contract Sink
+        func write(self: ref/Self, value: T) -> ()
+```
+
+Outer<i32>.Inner<string> and Outer<i64>.Inner<string> are distinct Types. The corresponding empty Tag Types and bound Sink references also differ. Full Types and conformance evidence retain Origins; an Origin-erased runtime or generation key proves neither equal evidence nor permission to share code.
+
+Merge group/struct fragments recursively under the merged parent Identity before applying bindings. Repeat only each fragment's own header. Preserve each fragment's source environment; never select or merge fragments separately for each instantiation. Layout completion of the outer Type is not a prerequisite for resolving a child declaration.
+
+#### 6.1.3.1. Constraint roles and definition checking
+
+Preserve each Constraint's original binder, declaration and role. Caller-supplied input conditions are assumptions during definition checking. Declaration obligations, including an outer struct's Self conformance and closed conditions, require independent proof. Inner declarations may use the outer input conditions and valid proved evidence, but cannot turn obligations into assumptions or reinterpret outer Self as inner Self. Additional inner input conditions do not propagate outward.
+
+For a Contract, a condition depending only on inherited arguments is a reference input condition; one depending on conforming Self is an implementation requirement; a closed condition is a declaration obligation. Existing restrictions on function Constraint subjects still apply. Collect declarations and resolve references before completing proofs: a struct may implement its nested Contract without a containment-induced proof cycle. A conformance being checked cannot prove itself. Retain actual evidence dependencies and discharge every obligation by its existing deadline for all admitted bindings, not just favorable instantiations.
+
+#### 6.1.3.2. Self and member ownership
+
+Self denotes the innermost struct/enum with all its bindings, or the conforming Type inside a Contract. A group creates no Self context; it can refer to the nearest outer Self as a Type name. Use an explicit path for any further outer Type. Group functions and Properties are static and cannot use receiver shorthand. An explicitly typed ordinary parameter named self remains valid (§7.3).
+
+```kimi
+struct Parser
+    group Helpers
+        func identity(value: Self) -> Self => value // Parser
+        struct State
+            func identity(value: Self) -> Self => value // State
+```
+
+Neither function has an implicit receiver. A group body cannot directly contain a Constraint Clause, conformance declaration or associated-Type specification. Its own functions and nested Types retain their permitted Constraints.
 
 ## 6.2. Structure declarations
 

@@ -165,6 +165,9 @@ public sealed partial class Binding
                 Complete(enumeration.Operands[0], BoundType.Unit);
                 Complete(payload, BoundType.Unit);
                 return Complete(enumeration, BoundType.Unit);
+            case ParenthesizedTypeKoto:
+                // Grouped Types are bound by Type/qualifier entry points, never as runtime values.
+                return Fail(node, BindingFailure.InvalidTypeFormation);
             case TypeKoto:
                 return this.BindType(node, scope);
             case DeclarationContainerKoto container:

@@ -232,6 +232,13 @@ public sealed partial class Binding
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
+            if (this.nodes[i].BoundSymbol is { Scope.Owner: GroupKoto } groupMember &&
+                ReferenceEquals(groupMember.Declaration, this.nodes[i]) &&
+                DeclarationAccess(groupMember) is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal)
+            {
+                Fail(this.nodes[i], BindingFailure.Access);
+            }
+
             if (this.nodes[i] is FunctionKoto or PropertyKoto && this.nodes[i].BoundSymbol is { ConditionalDeclaration: { } conditional } member)
             {
                 var premises = (SyntaxFormKoto)conditional.Operands[1];

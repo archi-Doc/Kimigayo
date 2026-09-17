@@ -217,7 +217,7 @@ public class KotoHierarchyTest
             structure.Members,
             member => Assert.IsType<PropertyKoto>(member),
             member => Assert.IsType<FunctionKoto>(member));
-        Assert.Empty(structure.NestedDeclarationContainers);
+        Assert.IsType<GroupKoto>(Assert.Single(structure.NestedDeclarationContainers));
 
         var enumeration = Assert.IsType<EnumKoto>(GetDeclarationContainer(root, "Choice"));
         Assert.Empty(enumeration.Members);
@@ -234,7 +234,7 @@ public class KotoHierarchyTest
         var generatedBody = Assert.IsType<CodeBlockKoto>(compilation.Kotonoha.GeneratedFunction?.Body);
         Assert.IsType<FieldKoto>(Assert.Single(generatedBody.Items));
         var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
-        Assert.Equal(5, diagnostics.Length);
+        Assert.Equal(4, diagnostics.Length);
         Assert.All(
             diagnostics,
             diagnostic => Assert.Contains(diagnostic.Entry.Name, new[] { nameof(DiagnosticCode.UnexpectedToken_Kd), nameof(DiagnosticCode.IncompleteSyntax_Kd) }));

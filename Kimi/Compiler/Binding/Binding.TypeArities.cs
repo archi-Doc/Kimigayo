@@ -20,7 +20,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private static BindingSymbol? SelectTypeCandidate(TypeCandidates candidates, Koto use)
+    private BindingSymbol? SelectTypeCandidate(TypeCandidates candidates, Koto use)
     {
         if (candidates.Ambiguous)
         {
@@ -30,6 +30,11 @@ public sealed partial class Binding
 
         // Retain a mismatching declaration for the existing formation/arity diagnostic.
         // A populated nearer stage must never fall through to an outer or default stage.
+        if (candidates.Environment is { } environment)
+        {
+            this.importedContainerEnvironments[use] = environment;
+        }
+
         return candidates.Match ?? candidates.First;
     }
 
@@ -39,9 +44,10 @@ public sealed partial class Binding
         internal BindingSymbol? First;
         internal BindingSymbol? Match;
         internal bool Ambiguous;
+        internal BoundType? Environment;
     }
 
-    private void AddTypeCandidates(ref TypeCandidates result, BindingSymbol? head, BindingScope scope, bool core, int arity)
+    private void AddTypeCandidates(ref TypeCandidates result, BindingSymbol? head, BindingScope scope, bool core, int arity, BoundType? environment = null)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
@@ -57,12 +63,13 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (result.Match is not null && !ReferenceEquals(result.Match, candidate))
+            if (result.Match is not null && (!ReferenceEquals(result.Match, candidate) || !ReferenceEquals(result.Environment, environment)))
             {
                 result.Ambiguous = true;
             }
 
             result.Match = candidate;
+            result.Environment = environment;
         }
     }
 
@@ -70,6 +77,6 @@ public sealed partial class Binding
     {
         var candidates = default(TypeCandidates);
         this.AddTypeCandidates(ref candidates, head, scope, core, arity);
-        return SelectTypeCandidate(candidates, use);
+        return this.SelectTypeCandidate(candidates, use);
     }
 }

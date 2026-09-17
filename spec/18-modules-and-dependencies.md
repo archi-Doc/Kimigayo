@@ -57,6 +57,20 @@ Reference identity and validation completion are separate. Equal fixed reference
 
 Aliases apply only to their SourceDocument. They do not propagate to other files, merged fragments, generated documents, or callers. They are not re-exported and create no root member addressable as `Project.A` or `::A`. Public Signatures still require access, direct dependencies and Name Reachability for the original Types. See §9.4.1 for collision and warning rules.
 
+An alias may retain a fully bound nested Container, such as alias Family<i32>.Helpers or alias H => Family<i32>.Helpers. Its reference is fixed at declaration; uses never infer arguments again. Opening aliases import only direct members, not formal parameters, Origins or Self. Deduplicate only equal declarations with equal full bindings. Opening Family<i32>.Helpers and Family<string>.Helpers leaves two candidates for an inner Token even when Token is empty; ordinary same-name/same-arity ambiguity applies. This is Container lookup, not transparent Type-alias syntax.
+
+```kimi
+// Definitions.kimi
+struct Family<T>
+    public group Helpers
+        public struct Token
+
+// Use.kimi, in the same Kotonoha
+alias Family<i32>.Helpers
+group Use
+    func make() -> Token => Token.init()
+```
+
 ### 18.1.3. Effective default aliases
 
 The effective defaults combine the language version's mandatory aliases with the defining module's configured additions. This revision requires an alias opening the reserved Kimi Kotonoha in every document, including dependency and generated sources. Configuration cannot remove it or replace its target.

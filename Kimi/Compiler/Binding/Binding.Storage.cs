@@ -181,6 +181,17 @@ public sealed partial class Binding
             return argument;
         }
 
+        if (origin.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto && binder.BoundSymbol?.Schema is { } schema)
+        {
+            for (var i = 0; i < schema.Origins.Count && i < arguments.Length; i++)
+            {
+                if (ReferenceEquals(schema.Origins[i].Origin, origin) && arguments[i] is { } inherited)
+                {
+                    return inherited;
+                }
+            }
+        }
+
         if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && origin.Slot < inputs.Length && inputs[origin.Slot] is { } input)
         {
             return input;

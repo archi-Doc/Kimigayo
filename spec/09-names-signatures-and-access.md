@@ -323,3 +323,39 @@ Projection is confined to this member operation. It adds no standalone base-view
 After committing lookup, filter Type candidates by the number and kinds of explicit type arguments. Resolve the arguments themselves in the use-site context. Select exactly one candidate; zero means type-argument mismatch and several mean ambiguity. Check the selected Type's Constraints afterward, without trying another Type if they fail.
 
 For example, `Box<i32>` selects `Box<T>` from a stage containing `Box<T>` and `Box<T,U>`. A nearer stage containing only `Box<T,U>` blocks an outer `Box<T>`. Different same-arity Types imported at one stage remain ambiguous. Legitimate unresolved argument kinds defer selection with its stage fixed; malformed arguments or unknown Names are errors. Omitted type arguments use only the inference permitted by their construct.
+
+### 9.6.1. Bound container paths
+
+Use the same Container-reference rules for Types, Contracts, refinement parents, Constraints, associated-Type selectors and aliases. Resolve the declaration path, namespace, role, access and each segment's own arity first; bind its Type/Origin arguments and compose lexical or base substitutions second; validate access, formation, input conditions and Origins for every qualifier and final target third. A committed lookup layer is not reopened after a failed argument or Constraint check.
+
+Outer Type arguments may be omitted only when supplied by the lexical or already-resolved environment. Inside Outer<T>, Inner<i32> means Outer<T>.Inner<i32>. Outside it, require Outer<i32>.Inner<string> or Factory<i32>.make(...); do not infer missing outer arguments from expected Types or call inputs. Function-local generic inference is unchanged. A group make<T>(...) can expose an API that infers T.
+
+Inherited lookup retains the defining declaration and substituted base environment. With open struct Base<T> containing public struct Node, and Derived : Base<i32>, Derived.Node is Base<i32>.Node. Do not reparent Node or alter its Self. A directly declared Container conflicts with an accessible ancestor Container of the same Type-namespace name, regardless of arity. Inaccessible ancestor names and same spellings in different namespaces follow ordinary rules; inherited declarations are never merged.
+
+#### 9.6.1.1. Origins on paths
+
+The effective explicit Origin list combines inherited and own slots. Reject redeclaring an inherited Origin name. Origins inside Type arguments stay inside those Types and are not added again. One trailing from (...) binds final effective slots by resolved binder Identity. Reject unknown, duplicate or already-bound slots; from a is shorthand only when there is one effective slot.
+
+```kimi
+struct View<T> origin source
+    let value: ref/T from source
+    public struct Tag
+    public contract Source
+        func read(self: ref/Self) -> ref/T from source
+
+func inspect<T> origin a(value: View<T>.Tag from (source => a)) => ()
+```
+
+View<T>.Source from (source => a) retains the same inherited binding. An inner origin local is supplied in the same trailing list. Ordinary Type annotations use position-specific Origin omission rules. Contract references, aliases and standalone Container qualifiers must explicitly supply any unbound Origins; do not invent static or modify a lexical Self environment.
+
+Use (ContainerPath from (...)).member to bind an intermediate qualifier. Parentheses normalize to the same Type-side reference and create no runtime value or duplicate candidate. Defer missing-Origin rejection until a trailing annotation can bind its slots. If an Origin of an inherited qualifier is absent from the final target, bind it on that intermediate qualifier, as in (Derived from (...)).Node. Final-reference normalization never removes intermediate validation obligations.
+
+ref/(View<T>.Tag from (source => a)) from r keeps the Container Origin a separate from the outer borrow r. Explicit associated projection is X.(ContractPath from (...)).Element; an associated specification is associate (ContractPath from (...)).Element is T. Origin-free forms remain valid. Parentheses cannot bypass restrictions on Origins, values, adaptation targets, Cases or runtime Contract Views.
+
+#### 9.6.1.2. Access and ambiguity
+
+Inner declarations may access outer private declarations; instance operations still need an explicit receiver. Parents have no privilege to access a child's private members. Merged fragments share their declaration's access rights. Effective reference/API access includes parent Containers and concrete outer arguments; conformance access is the intersection of the conforming Type and bound Contract reference.
+
+Protected Containers may be declared directly in structs; protected access is forbidden on declarations directly in groups. Non-instance declarations have no protected receiver restriction. Type parameters conflict with nested declarations in the same declaration namespace; ordinary ancestor shadowing does not remove inherited slots. Origin names occupy a separate namespace.
+
+A nested Type is not an associated Type and adds no conformance or specification. If T.Element resolves both ways, diagnose ambiguity. T.(C).Element explicitly selects a Contract; the older T.C.Element remains valid but ambiguous successful interpretations are errors. Deduplicate associated candidates only by defining declaration plus bound defining Contract reference. Distinct bindings remain separate even when their resulting Types coincide; explicit selection must still leave one candidate.

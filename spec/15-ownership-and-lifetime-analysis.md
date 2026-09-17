@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+OwnedOrigins of nested Types include inherited explicit Origins and unused outer Type arguments (§6.1.3). An empty Outer<ref/i32 from local>.Tag is therefore not Owned. These Type-level dependencies do not imply a retained outer instance or an actual Loan. Static storage uses the shared key in §22.2.4 without erasing full-reference lifetime checks.
+
 ## 15.1. Initialization and consume analysis
 
 This section checks the initialization, completeness, and Consume legality of values defined by [Values, places, and storage](03-types-and-values.md#34-values-places-and-storage).
@@ -845,7 +847,7 @@ Loan validity includes later uses, results, and dependencies observed by destruc
 
 This revision does not define:
 
-- abstract Origin parameters on contracts or trait-like abstractions (the [Property getter receiver/result contracts](11-properties.md#1122-computed-properties) do not introduce contract-level Origin parameters);
+- own abstract Origin parameters on contracts or trait-like abstractions; static Contracts may inherit outer Origins under §6.1.3 (the [Property getter receiver/result contracts](11-properties.md#1122-computed-properties) do not introduce contract-level Origin parameters);
 - existential object views that hide non-static payload dependencies;
 - general higher-ranked Origins beyond the direct-input quantification of Callable constraints;
 - Origin expressions naming static Places, such as a function result bounded by a mutable static Field; use direct access, an input-bounded result (§11.3.2), a scoped callback, or immutable static storage instead;

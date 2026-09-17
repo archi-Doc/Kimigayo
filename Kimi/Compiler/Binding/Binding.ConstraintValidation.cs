@@ -87,9 +87,12 @@ public sealed partial class Binding
             proof = CombineProof(proof, this.CheckTypeConstraints(type.Components[i], scope), true);
         }
 
-        if (type is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container } && container.ConstraintNodes.Count != 0)
+        if (type is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container })
         {
-            proof = CombineProof(proof, this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope), true);
+            for (var parent = container; parent is not null && !parent.IsRoot; parent = parent.Parent as DeclarationContainerKoto)
+            {
+                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, container, (BoundType[])type.Components, scope), true);
+            }
         }
 
         return proof;

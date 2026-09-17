@@ -74,7 +74,7 @@ public sealed partial class Binding
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var type = ((MemberAccessKoto)call.Method).Left.BoundType!;
-        var count = owner.OriginNames.Count;
+        var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)
         {
             return type;
@@ -84,6 +84,11 @@ public sealed partial class Binding
         var used = this.flagScratch.Rent(function.Parameters.Count);
         Array.Clear(origins, 0, count);
         Array.Clear(used, 0, function.Parameters.Count);
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            origins[i] = type.OriginArguments[i];
+        }
+
         try
         {
             var next = 0;
@@ -120,7 +125,7 @@ public sealed partial class Binding
                 if (function.Parameters[slot].Type.BoundType is { } pattern && call.ArgumentNodes[i].BoundType is { } actual &&
                     this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _))
                 {
-                    this.MatchInputOrigins(pattern, adapted, owner, origins, []);
+                    this.MatchInputOrigins(this.StoredType(pattern, type)!, adapted, owner, origins, []);
                 }
             }
 

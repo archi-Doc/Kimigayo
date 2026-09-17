@@ -1,4 +1,14 @@
 public group SpecTour
+    // A nested Contract inherits the same static environment as a nested Type.
+    public struct Family<T>
+        public struct Tag
+
+        public contract Sink
+            func write(value: T)
+
+        public group Helpers
+            public func identity(value: T) -> T => value
+
     public contract Source
         associate Element
         func read(self: ref/Self) -> Element

@@ -180,7 +180,11 @@ public sealed partial class Binding
     private BoundType? EnumQualifierType(Koto qualifier, BindingSymbol symbol, BindingScope scope, BoundType? expected)
     {
         BoundType? type;
-        if (qualifier is GenericsKoto || (qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto))
+        if (qualifier is ParenthesizedTypeKoto or TypeSemanticsKoto { Type: not null })
+        {
+            type = this.BindType(qualifier, scope, this.TypeContext(qualifier, scope) with { SuppressOuter = true });
+        }
+        else if (qualifier is GenericsKoto || (qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto))
         {
             // Only nested complete Type arguments carry annotations here. Enum Origin slots
             // are determined by the construction's expected Type and payloads.
@@ -192,7 +196,9 @@ public sealed partial class Binding
         }
         else
         {
-            type = expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type;
+            type = symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
+                ? this.BindContainerReference(qualifier, symbol, scope, this.TypeContext(qualifier, scope), [])
+                : expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type;
         }
 
         qualifier.BoundSymbol = symbol;
@@ -232,8 +238,8 @@ public sealed partial class Binding
         }
 
         var owner = reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : expected;
-        var slots = declaration.GenericParameterNodes.Count;
-        var originCount = declaration.OriginNames.Count;
+        var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
+        var originCount = declaration.BoundSymbol.Schema.Origins.Count;
         var arguments = this.typeScratch.Rent(slots);
         var origins = this.originScratch.Rent(originCount);
         var operations = this.argumentOperationScratch.Rent(count);

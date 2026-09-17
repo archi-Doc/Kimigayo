@@ -364,3 +364,18 @@ Descriptor; final release destroys the current contents once. Compare O0/O2 and
 shared/specialized generation, including old-content refinement invalidation.
 Lowering and Emit consume checked address/acquisition/transfer plans and reject
 stale or incomplete plans; never rediscover completeness from optimized code.
+
+## A.20. Declaration Container nesting
+
+Verify the following after directive selection and generation, including serialization/rebinding and dependency invalidation:
+
+| Area | Required checks |
+| --- | --- |
+| Placement and names | Recursive nesting, prohibited bodies, rootgroup, fragments, nearest Self, explicit receivers, namespaces/access, fixed outer arguments |
+| References and Origins | Unused binding identity, trailing/intermediate mappings, parenthesized Contract selectors, construction/Cases, OwnedOrigins, retained intermediate checks |
+| Constraints and Contracts | Input/obligation/implementation roles, parent/child evidence, kind-preserving occurs-check, residual possible collisions, conditional merging including bases, declaration-path cycles |
+| Inheritance and aliases | Original declaration identity and substitutions, inherited-name conflicts, fixed alias bindings, equal-reference deduplication and distinct-binding ambiguity |
+| Static storage and generation | Origin-erased key, uniform validated plan independent of first access, entry/context reachability, lazy initialization/cycle Abort, Loans, reverse cleanup |
+| Resources and reuse | Shared declaration trees and normalized references, deep nesting, converging paths, outer-change invalidation, resource diagnostics without changing proof acceptance |
+
+Exercise both accepted and rejected programs. Parsing or reference interning alone is not evidence of lifetime, conformance, static-storage or executable support.

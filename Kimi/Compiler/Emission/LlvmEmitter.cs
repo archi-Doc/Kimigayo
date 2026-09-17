@@ -186,7 +186,7 @@ public sealed class LlvmEmitter
             }
 
             if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor &&
-                (function.BoundSymbol.ReceiverIndex < 0 || !ReferenceTypes.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType)))
+                function.BoundSymbol.ReceiverIndex >= 0 && !ReferenceTypes.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType))
             {
                 return "Ordinary structure methods need receiver/call lowering outside this subset.";
             }
@@ -221,7 +221,7 @@ public sealed class LlvmEmitter
         for (var i = 0; i < container.NestedContainers.Count; i++)
         {
             var nested = container.NestedContainers[i];
-            if (nested is not (StructKoto or GroupKoto or EnumKoto) || !this.SupportedContainers(nested))
+            if (nested is not (StructKoto or GroupKoto or EnumKoto or ContractKoto) || !this.SupportedContainers(nested))
             {
                 return false;
             }

@@ -434,6 +434,12 @@ public sealed partial class Binding
                     var target = this.TypeName(node, scope, false);
                     if (target?.Declaration is ContractKoto)
                     {
+                        target = this.BindContractReference(node, target, scope);
+                        if (target is null)
+                        {
+                            return this.InternConstraint(new(ConstraintKind.Error));
+                        }
+
                         node.BoundSymbol = target;
                         result = target.Intrinsic == IntrinsicKind.Callable ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.Contract, subject, contract: target));
                     }
@@ -634,7 +640,13 @@ public sealed partial class Binding
 
         var subject = this.SubstituteType(constraint.Subject, binder, arguments, lengths);
         var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments, lengths);
-        return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
+        var contract = constraint.Contract;
+        if (contract?.Type is { } reference && !ReferenceEquals(reference.Symbol, contract) && this.SubstituteType(reference, binder, arguments, lengths) is { } substituted)
+        {
+            contract = this.BoundContractReference(substituted);
+        }
+
+        return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
     }
 
     private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default)

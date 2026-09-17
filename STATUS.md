@@ -1,5 +1,65 @@
 # Kimigayo Implementation Status
 
+Declaration Container nesting adoption (2026-09-18): the 2026-09-17 change is
+integrated into SPEC.md, Chapters 3, 6–15 and 18–22, and Appendices A, D and F.
+Placement and inherited environments are defined in §6.1; bound paths and access
+in §9.6.1; bound Contract collisions in §8.4.9; static storage in §22.2.4.
+Examples and cross-references replace the earlier restrictions. The draft is
+unchanged. Specification adoption is complete; implementation is partial.
+
+Implemented and tested:
+
+- Recursive group/struct/enum/Contract declarations in groups and structs,
+  merged fragments, nearest Self, access boundaries and inherited-name conflicts.
+  Enum, Contract, executable and conditional implementation bodies reject nested
+  containers. rootgroup remains restricted to source roots.
+- Shared declaration trees and interned references retain unused outer Type,
+  Semantics and explicit Origin bindings. Own arity is unchanged. Substitution
+  identifies slots by their original binder, including through groups and base
+  Types. Child variance/Loan summaries do not mutate the parent's analysis state.
+- Generic outer paths, intermediate parenthesized Origin mappings, effective
+  trailing mappings, construction and enum Cases. Rebinding an Origin, supplying
+  a grouped Type as a value, and inferring missing outer arguments are rejected.
+  No new tokens or reserved keywords are required.
+- Opening and named aliases retain fully bound environments, use root lookup,
+  deduplicate identical references and diagnose distinct-binding ambiguity.
+- Bound marker/function Contracts use distinct references, substitute outer
+  arguments in requirements, and reject duplicate or possibly colliding direct
+  conformances. Generic conformance lookup and conditional conformance under
+  inherited Type parameters retain the selected bindings and premises.
+- Binding validates enclosing input conditions, concrete-argument access and
+  retained borrow dependencies. Static Fields in inherited environments require
+  the stored value to prove Owned under the declaration's premises.
+- Flow analysis treats declaration Constraints as non-executable. Common generic
+  storage planning retains inherited slots for nested functions and constructors;
+  LLVM emits supported nested construction, Cases, static functions and bound
+  alias calls. Serialization/rebinding and 64-level nesting have regression tests.
+
+Remaining implementation work: bound Contracts with associated requirements or
+refinement ancestors are rejected rather than reusing declaration-only evidence.
+Full bound requirement identity, conditional refinement-path merging, inherited
+conformance composition and declaration-path cycle checks remain incomplete.
+The existing abstract Origin-bound proof limit also applies here. Origin-erased
+mutable static-storage keys, uniform initializer/destructor certificates, shared
+initialize-and-address operations and their lazy lifetime protocol are specified
+but not implemented. General generic aggregate forwarding and some borrowed
+generation paths retain existing lowering limits. Cache/artifact tests do not yet
+establish every outer-edit invalidation requirement in Appendix A.20.
+
+[ContainerNesting](examples/ContainerNesting/README.md) executes nested Types,
+an inherited generic group function, a bound named alias and a static Contract
+implementation. Milestone 8 now places its groups inside Toolkit; the specification
+tour also illustrates a generic family's nested Types, Contract and helpers.
+These programs do not imply coverage of the remaining requirements above.
+
+Validation: Debug and Release each pass all 8,305 managed tests, including 68
+ContainerNestingTest cases, with no build warnings or errors. The five new
+executable fixtures pass 10 native executions across O0/O2. Milestone 8 passes
+46 Release integration checks. Parser regressions cover all 57 example and
+Milestone Kimi files. Local links and anchors pass in the 28 specification
+Markdown files and three updated example/Milestone guides; git diff --check
+passes. NativeAOT tests were not run.
+
 Whole-value replacement adoption (2026-09-17): the change is integrated into
 SPEC.md and its Type, constraint, expression, ownership, destruction, artifact,
 and generation chapters. Section 15.7 owns the three APIs and shared storage
@@ -63,8 +123,8 @@ not the remaining object runtime and generic execution requirements.
 
 Kimi library and named aliases (2026-09-17): the adopted change is integrated into
 SPEC.md, Chapters 3, 9, 18, 20 and 22, their library references, and Appendices A,
-E and F. Core remains the Type component. The separate Container nesting proposal
-is not adopted. The existing Chapter 22 file path remains stable for draft links.
+E and F. Core remains the Type component. Container nesting was adopted in the
+later entry above. The existing Chapter 22 file path remains stable for draft links.
 
 The compiler exposes its designated library as Kimi and places the existing output
 function in its ordinary public Console group. KimiLibrary and KimiDeclaration

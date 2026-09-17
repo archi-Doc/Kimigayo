@@ -2,6 +2,8 @@
 
 [Specification index](../SPEC.md)
 
+Enum Case qualifiers use plain Container paths. Omit the enum's own and inherited explicit Origin arguments on those qualifiers; bind them from the constructed expected Type/payload or matched Type. Outer Type arguments must already be known (§9.6.1). Complete Types inside generic arguments retain their Origins; parenthesized bound qualifiers cannot bypass Case restrictions.
+
 Control-flow expressions are `if`, `match`, `for`, `while`, `loop`, `do`, and the transfers `return`, `exit`, `continue`, and `yield`. `unsafe`, `defer`, and `require` are statements; they cannot be initializers, arguments, or expression operands.
 
 Test-only bodies additionally admit the standalone verification items `$expect` and `$require` under [§17.5](17-failure-handling.md#175-test-verification-operations). Their placement and outward-message-transfer restrictions apply before ordinary control-flow checking. A failed `$expect` records failure and continues; a failed `$require` records failure and initiates Abort after condition/message temporary cleanup. The latter has no failure-path normal continuation or return target and performs no ordinary Scope Exit once Abort starts. Both operations retain a normal continuation when the condition is true.

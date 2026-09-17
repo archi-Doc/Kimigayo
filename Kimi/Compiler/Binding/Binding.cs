@@ -158,8 +158,8 @@ public sealed partial class Binding
             this.indexer.Scope = this.Library.ConsoleScope;
             this.indexer.Visit(this.Library.WriteLine.Declaration);
             this.ValidateDefaultAliases();
-            this.PrepareAliases();
             this.BindSchemas();
+            this.PrepareAliases();
             this.PrepareContracts();
             this.BindConstraints();
             for (var i = 0; i < this.nodes.Count; i++)
