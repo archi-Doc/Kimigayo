@@ -1,5 +1,7 @@
 # Kimigayo Implementation Status
 
+Whole-value replacement proposal (2026-09-17): Finalized the Japanese [specification change proposal](draft/Changes/2026-09-17%20Whole%20Value%20Replacement.md), consolidating its rules and adding usage examples. Final review clarified Sealed formation evidence, propagation of complete-target evidence, exchange results for arbitrary complete Types, and payload destruction without final object release. The proposal retains common dependency rules, conditional optimizations, and a clause-by-clause integration map. This is documentation only; no compiler/runtime implementation, builds, or executable tests were performed, and no new execution support is claimed.
+
 Milestone 9 continuation (2026-09-17, incomplete target): checked common-function
 invocation and direct anonymous-function conversion now support scalar/Unit snapshot
 captures in the inline 8-byte environment. Owned function handles move and clean
