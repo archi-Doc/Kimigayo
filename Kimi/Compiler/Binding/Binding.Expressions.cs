@@ -262,6 +262,11 @@ public sealed partial class Binding
             case MemberAccessKoto { Right: NumberLiteralKoto } tupleElement:
                 return this.BindElement(tupleElement, scope);
             case MemberAccessKoto member:
+                if (this.BindSequenceMember(member, scope, out var sequenceType))
+                {
+                    return sequenceType;
+                }
+
                 var memberSymbol = this.Member(member, scope, expected);
                 if (memberSymbol is null)
                 {
@@ -300,6 +305,8 @@ public sealed partial class Binding
                 var scopedResult = this.BeginResult(scoped, scope, expected);
                 this.BindNode(scoped.Body, scope, scopedResult.Expected);
                 return this.FinishResult(scoped, scopedResult);
+            case ForKoto iteration:
+                return this.BindIteration(iteration, scope);
             case WhileKoto loop:
                 var whileResult = this.BeginResult(loop, scope, BoundType.Unit);
                 this.RequireType(loop.Condition, scope, BoundType.Boolean);

@@ -1,0 +1,27 @@
+// Milestone 11: shared generic generation and explicit specialization selection.
+group Weights
+    public func weight<T>(value: ref/T) -> i32 => 1
+    specialize func weight<i32>(value: ref/i32) -> i32 => 2
+
+    // A generic forwarding call must retain the selected specialization.
+    public func forward<T>(value: ref/T) -> i32 => weight<T>(value)
+
+    public func total<length N, T>(values: ref/[N of T]) -> i32
+        var result: i32 = 0
+        for index in values.indices
+            result = result + forward<T>(values[index]@ref/T)
+        return result
+
+public func main()
+    let integers: [3 of i32] = [10, 20, 30]
+    let wide: [3 of i64] = [10, 20, 30]
+    let flags: [2 of bool] = [true, false]
+    let actual = (
+        Weights.total<3, i32>(integers@ref),
+        Weights.total<3, i64>(wide@ref),
+        Weights.total<2, bool>(flags@ref),
+    )
+    match actual
+        (6, 3, 2) => ::Core.writeLine("Generic weights are 6, 3, 2.")
+        _ => $abort("Generic implementation selection changed")
+    // Sharing/automatic specialization may change code shape, never this result.

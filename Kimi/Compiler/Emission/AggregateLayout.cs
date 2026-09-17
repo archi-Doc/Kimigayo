@@ -43,8 +43,9 @@ internal sealed class AggregateLayoutPool
         }
 
         var structure = StructStorage.IsStruct(type);
-        if (depth == 64 || (!structure && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray)) ||
-            type.Semantics != SemanticsKind.Owner || type.Origin is not null || (!structure && type.OriginArguments.Count != 0) ||
+        var sequence = type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice;
+        if (depth == 64 || (!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray)) ||
+            type.Semantics != SemanticsKind.Owner || (!sequence && type.Origin is not null) || (!structure && type.OriginArguments.Count != 0) ||
             (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Length > int.MaxValue || type.Components.Count != 1)))
         {
             return null;
@@ -52,16 +53,16 @@ internal sealed class AggregateLayoutPool
 
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
-        var fieldCount = structure ? StructStorage.Count(type) : type.Components.Count;
+        var fieldCount = sequence ? 2 : structure ? StructStorage.Count(type) : type.Components.Count;
         var count = array ? (int)type.Length : fieldCount;
         var destructor = StructStorage.Destructor(type) is { } body ? this.destructors.GetValueOrDefault(body, -1) : -1;
         try
         {
             for (var i = 0; i < fieldCount; i++)
             {
-                var component = structure ? StructStorage.Field(type, i).BoundType! : type.Components[i];
+                var component = sequence ? BoundType.ISize : structure ? StructStorage.Field(type, i).BoundType! : type.Components[i];
                 var child = this.Get(component, depth + 1);
-                var value = child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
+                var value = type.Kind == BoundTypeKind.Slice && i == 0 ? WindowsLowering.StringReference : child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
                 if (value is null)
                 {
                     this.resolved[type] = null;

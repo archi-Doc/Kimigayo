@@ -1,11 +1,13 @@
 # Language milestones
 
-Nine short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestones 1–6 are verified through
-native execution (2026-09-17); Milestones 7–9 are specification targets, and their
+Fourteen short, independent programs based on the current [SPEC](../SPEC.md).
+They are staged compiler implementation targets. Milestones 1–7 are verified through
+native execution (2026-09-17); Milestones 8–14 are specification targets, and their
 outputs below are specification expectations rather than execution claims.
 Milestones 6–9 were originally added without compiler capability checks, builds,
 or execution; subsequent verification is documented per program below.
+Milestones 10–14 were added from the specification without compiler capability
+checks, builds, or execution.
 
 | Program | Added concepts |
 | --- | --- |
@@ -18,6 +20,11 @@ or execution; subsequent verification is documented per program below.
 | [Milestone7](Milestone7.kimi) | Two-dimensional fixed arrays, nested `for`, cross-loop transfers, Slice reads |
 | [Milestone8](Milestone8.kimi) | Nested `group` containers, generic struct/function, generic Copy/Move acquisition |
 | [Milestone9](Milestone9.kimi) | Length/type parameters, Copy constraint, callbacks/capture, generic enum, borrowed storage |
+| [Milestone10](Milestone10.kimi) | Generic enum/Tuple patterns, guards, value-producing loop/match/if, cross-loop transfers |
+| [Milestone11](Milestone11.kimi) | Multiple type/length instantiations, generic forwarding, explicit specialization, sharing invariants |
+| [Milestone12](Milestone12.kimi) | Mutable/nested/Move captures, exclusive Callable, concrete and common function values |
+| [Milestone13](Milestone13.kimi) | Generic Iterator conformance, Slice storage, external Origins, retained element borrows |
+| [Milestone14](Milestone14.kimi) | Generic Slice pipeline, Iterator, exclusive borrowed capture, obj creation/Move/destruction |
 
 Each file is a separate Application; do not combine them into one project.
 Under [single-source input rules](../spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
@@ -308,6 +315,29 @@ Focus: [arrays](../spec/04-arrays-indexing-and-slices.md),
 [iteration acquisition](../spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
 and [transfer cleanup](../spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
 
+Milestone 7 is verified through native execution. Reproduce with the pinned
+Windows x64 toolchain:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+./backend/windows-x64/test-milestone7.ps1 -Configuration Release
+```
+
+The script performs 52 checks per configuration, covering the unchanged program,
+byte-identical renamed O0/O2 copies, alternate arithmetic, outer exit instead of
+continue, normal exhaustion, matrix/Slice bounds Abort, and thirteen invalid
+inputs rejected before emission. It checks LLVM verification, linking, exact native
+stdout/stderr and exit codes, plus both CLI `run` forms. Successful output is the
+five lines above, stderr is empty and exit is 0. Bounds failures report the exact
+source position and `KIMI_E_INDEX_BOUNDS`, then exit 1. Reports and source/compiler/
+build identities are retained under `bin/milestone7/<configuration>/<run-id>/`.
+Debug is supported; NativeAOT is not used.
+
+The current executable subset supports the `indices` ResolvedRange adapter and
+inferred full Slice views with scalar indexed reads. It does not establish the
+broader PLAN.md M8 stage, general user-defined iteration, direct Slice iteration,
+or all specified Core sequence APIs. Those remain separate implementation work.
+
 ## Milestone 8: nested containers and generic ownership
 
 `Toolkit.Storage` contains `Box<T>`, while its sibling `Toolkit.Selection`
@@ -369,6 +399,147 @@ Focus: [function length parameters](../spec/04-arrays-indexing-and-slices.md#44-
 [function expressions](../spec/07-functions-and-callable-values.md#76-function-expressions),
 [enum results](../spec/06-declarations-and-containers.md#63-enums), and
 [Origins](../spec/15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts).
+
+## Milestone 10: patterns inside result-producing control flow
+
+A fixed array contains generic enum commands whose Data payload is a Tuple.
+The guarded `.Data((let value, true))` arm accepts only positive enabled values;
+an unguarded Data arm covers every remaining payload. Skip and rejected Data
+commands continue the inner for. Stop exits the labeled outer loop with the
+running total, so the trailing 100 is never processed. Exhaustion has its own
+result exit. Finally an indented if combines require with yield.
+
+```text
+Accepted total is 12.
+Pattern run finished.
+```
+
+The conditional Copy declaration makes the command array Copy for this Tuple
+instantiation. As separate exercises, remove the unguarded Data arm to produce
+a coverage error, or replace the array's Stop input with Skip to reach 112 and
+the final Abort.
+On Abort the main defer does not run.
+
+Focus: [patterns and matching](../spec/14-control-flow.md#148-match-expressions-and-patterns),
+[transfer targets](../spec/14-control-flow.md#1452-target-lookup), and
+[conditional conformance](../spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
+
+## Milestone 11: generic sharing and implementation selection
+
+The same total/forward definitions process i32, i64, and bool arrays, with lengths
+3 and 2. Borrowed element access needs no Copy constraint or per-element owned
+temporary. The default weight is 1; the explicit i32 specialization returns 2.
+The generic forwarding call must preserve that selection.
+
+```text
+Generic weights are 6, 3, 2.
+```
+
+This is a code-generation target, not a promise that the source forces one
+machine-code body. The compiler establishes a correct baseline sharing plan and
+may apply bounded automatic specialization or other permitted optimization.
+The result must stay identical across sharing/specialization budget choices;
+an automatic specialization budget of zero must still select the explicit i32
+implementation. Ordinary output alone cannot prove physical code sharing.
+Future generation verification should inspect emitted body/context identities
+and call targets, accounting for permitted inlining, merging, and elimination.
+
+As a source exercise, remove the explicit specialization and change the expected
+Tuple to `(3, 3, 2)`. Do not add a specialization directive: `specialize func`
+selects a source implementation, while baseline sharing is a compiler policy.
+
+Focus: [full specialization](../spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
+and [generic code generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+
+## Milestone 12: capture acquisition and call requirements
+
+`next` owns a mutable snapshot of count; two exclusive calls produce 11 and 13
+while the outer count stays zero. `applyTwice` expresses the receiver requirement
+with `Callable<uniq, ...>` and accepts the concrete closure without erasing it.
+The nested factory copies offset through both capture environments. Its returned
+Shared, Owned, Copy closure can also convert to a common function value while
+the concrete source remains usable. The common value itself is Non-Copy.
+
+```text
+Stateful result is 13.
+Nested capture result is 18.
+Captured message.
+Closure run finished.
+```
+
+The final closure explicitly Moves its string capture and consumes it during
+the call. As separate rejection exercises, call send twice, change next's
+binding to let while keeping its exclusive call, or convert next to a common
+`(i32) -> i32` value: common function values admit only Shared call requirements.
+Removing offset from the outer factory's explicit capture list must also fail;
+the inner closure cannot bypass the enclosing capture boundary.
+
+Focus: [captures and calls](../spec/07-functions-and-callable-values.md#76-function-expressions),
+[Callable constraints](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
+and [closure generation](../spec/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
+
+## Milestone 13: a Slice-backed Iterator
+
+Cursor implements the Core Iterator Contract and explicitly binds its Element
+to `ref/T from source`. It stores a borrowed Slice and a position; it owns no
+Sample elements. Its next method yields a borrow of external backing storage,
+not of the Cursor or next's exclusive receiver. This makes it non-lending:
+the first reference remains valid while later calls advance the iterator.
+
+```text
+Even sample total is 6; first is still 1.
+Iterator remains exhausted.
+Middle slice total is 5.
+```
+
+The first sample is secured separately, then Option matching and require/continue
+select 2 and 4. Repeated next calls after exhaustion return None. The final for
+uses Slice's built-in Iterable/Iterator conformance over the half-open range
+`1..3`, yielding shared Sample references for values 2 and 3. Field reads Copy
+i32 values; no conversion from a safe scalar reference to an owned integer is
+assumed. The fixed backing array, Slice, and Cursor need no separate heap buffer.
+
+As separate rejection exercises, declare the associated Element as i32 without
+changing next's result, or Move samples while first still has a later use.
+Changing the next result Origin to self would break the advertised external
+Element contract and the retained-reference use case.
+
+Focus: [Core iteration contracts](../spec/22-core-execution-and-foreign-functions.md#221-required-core-declarations),
+[associated Types](../spec/08-generics-constraints-and-contracts.md#843-associated-types),
+and [Slice iteration](../spec/04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
+
+## Milestone 14: an object-backed processing pipeline
+
+The generic run function uses a Slice's iterator and an exclusive Callable,
+stopping after three accepted jobs or exhaustion. Its callback rejects -1,
+adds 2, 4, and 6, and stops before 100. Core.makeObj acquires a fully initialized
+Accumulator into a new exclusive object without repeating construction.
+Its methods read or update fields while preserving whole-object completeness.
+
+```text
+Accepted three jobs.
+Object total is 12.
+Accumulator destroyed.
+Pipeline finished.
+```
+
+An explicit objuniq local is Moved into the callback's environment using an
+ordinary capture. The callback remains concrete: its external borrow and
+Exclusive call requirement cannot be erased into a common function value.
+The do scope ends its Loan before the owning handle is read or Moved again.
+A consuming closure then transfers that handle to finish; normal parameter
+cleanup destroys the payload once and releases its object storage. Neither
+object borrowing nor moving the handle creates another object.
+
+As separate rejection exercises, read accumulator inside the do before the
+callback's final use, reuse accumulator after capture into complete, or call
+complete twice. Change the acceptance limit from 3 to 4 to process 100 as well:
+the accepted-count check then Aborts and skips ordinary cleanup.
+
+Focus: [object creation](../spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
+[object calls](../spec/12-expressions.md#1243-object-member-calls),
+[Callable contracts](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
+and [destruction](../spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining

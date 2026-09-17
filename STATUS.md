@@ -1,5 +1,7 @@
 # Kimigayo Implementation Status
 
+Specification programs 10–14 (2026-09-17): Added [Milestone10–14](milestones/README.md#milestone-10-patterns-inside-result-producing-control-flow) combining nested enum/Tuple patterns and transfers, type/length-generic forwarding and explicit specialization, mutable/nested/consuming captures, a generic Slice-backed Iterator, and a callback pipeline with Core.makeObj and scoped object borrowing. README records expected outputs, rejection/Abort exercises, and the distinction between semantic output and evidence of physical generic code sharing. These additions are specification targets only; no compiler capability checks, builds, execution, or tests (including NativeAOT) were performed. Language rules are unchanged; SPEC.md links to the expanded series.
+
 Ownership checking continuations (2026-09-17): noncompleting do scopes,
 if conditions and terminal branches preserve source initialization, Move history
 and Borrow state without adding runtime successors or fabricated results. Separate
@@ -255,6 +257,52 @@ regenerated scalar fixtures are byte-identical to the pre-change set. The
 former sibling-clause and field cascade after one unresolved conformance name
 is resolved as described above. The location regression now uses contradictory
 input premises to retain an independently required container-header diagnostic.
+
+Program Milestone 7 complete (2026-09-17): the unchanged
+`milestones/Milestone7.kimi` passes Binding, ownership, LLVM verification, linking
+and ordinary Windows x64 native execution. Fixed arrays and full Slice views
+provide independent `indices` snapshots; the built-in ResolvedRange iteration
+path acquires its range once and supplies immutable isize bindings. Nested for
+loops reuse the existing transfer and cleanup CFG. Full Slice handles preserve
+backing Origins through Copy, check scalar reads against their stored length,
+reject overlapping mutation/Move while needed, and permit statically disjoint
+row writes. Slice lifetime checks include index evaluation and temporary-owner
+expiry. No intermediate inner-array Copy or heap allocation for view storage is
+introduced. Range/Slice handles have two-word physical layouts.
+
+Exact stdout is `Row finished.\nRow finished.\nRow finished.\nMatrix total is 42.\nBorrowed row total is 20.\n`,
+with empty stderr and exit 0. `test-milestone7.ps1` checks the original and
+byte-identical renamed O0/O2 inputs through native execution and both CLI run
+forms, alternative arithmetic, outer exit and exhaustion paths, matrix/Slice
+bounds Abort with exact diagnostics and exit 1, and thirteen rejected inputs.
+The checked-in milestone sources are unchanged.
+
+Debug/Release solution builds pass with zero warnings/errors; both full managed
+suites pass 7,527 tests each with no failures/skips. Forty added sequence
+tests cover empty/nonempty/nested arrays, single receiver/index evaluation,
+metadata and handle copies, NLL, lifetime and write/Move rejection, disjoint
+storage, transfer cleanup, scalar representations, reanalysis, and malformed
+generation plans. The milestone script passes all 52 checks per configuration;
+completed Milestones 1–6 pass 226 checks per configuration. Native regression
+passes LLVM verification and 1,106 O0/O2 runs across 19 Sequence, 466 Element,
+18 Struct and 50 Reference fixtures. All 2,765 fixture/expectation files from the
+final Release suite match the saved Debug/native input hashes. Logs and source/
+fixture identities are retained under `bin/milestone7-work/`. Program-7 reports:
+`bin/milestone7/Debug/dabe834f49cf46f1aea7b8b66c29c4c9/verification.json` and
+`bin/milestone7/Release/602c33a1a4694ec0897c46e9377e418d/verification.json`.
+No required verification remains blocked or unverified. No new throughput
+benchmark was performed.
+
+This is the program-7 subset, not completion of PLAN.md's M8/I19/I20. General
+Core sequence declarations and explicit Type APIs, Index/from-end/bounded Range
+operations, general user Iterable/Iterator dispatch, direct array/Slice iteration,
+tuple iteration bindings and generic sequence ABI remain unimplemented. The
+supported Slice reads are scalar Copy reads; other element-result forms remain
+guarded. Mixed Slice provenance conservatively widens its static footprint.
+Programs 8–9 were read for dependencies and not implemented. This task does not
+change the language rules or drafts; NativeAOT is not run. Concurrent additions
+of Milestones 10–14 and their SPEC/README index entries were preserved and were
+not implemented or verified by this task.
 
 Program Milestone 6 complete (2026-09-17): the unchanged
 `milestones/Milestone6.kimi` passes Binding, ownership, LLVM verification, native

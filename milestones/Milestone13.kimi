@@ -1,0 +1,48 @@
+// Milestone 13: a generic, non-lending Iterator over externally owned Slice data.
+struct Sample
+    public let value: i32
+    public init(value: i32) => self.value = value
+
+struct Cursor<T> origin source
+    Self is Iterator
+    associate Iterator.Element is ref/T from source
+    let values: Slice<T> from source
+    var position: isize = 0
+
+    public init(values: Slice<T> from source)
+        self.values = values
+
+    public func next(self: uniq/Self) -> Option<ref/T from source>
+        require self.position < self.values.length else => return .None
+        let index = self.position
+        self.position = self.position + 1
+        return .Some(self.values[index]@ref/T)
+
+public func main()
+    let samples: [4 of Sample] = [
+        Sample.init(1), Sample.init(2), Sample.init(3), Sample.init(4),
+    ]
+    var cursor = Cursor<Sample>.init(samples[..])
+    let first: ref/Sample = match cursor.next()
+        .Some(let item) => item
+        .None => $abort("Expected a first sample")
+
+    var total: i32 = 0
+    loop
+        match cursor.next()
+            .Some(let item)
+                require item.value % 2 == 0 else => continue
+                total = total + item.value
+            .None => exit
+    require total == 6 and first.value == 1 else => $abort("Iterator loan failed")
+    ::Core.writeLine("Even sample total is 6; first is still 1.")
+
+    match cursor.next()
+        .Some(_) => $abort("Exhausted iterator restarted")
+        .None => ::Core.writeLine("Iterator remains exhausted.")
+
+    var middle: i32 = 0
+    for item in samples[1..3]
+        middle = middle + item.value
+    require middle == 5 else => $abort("Slice iteration failed")
+    ::Core.writeLine("Middle slice total is 5.")

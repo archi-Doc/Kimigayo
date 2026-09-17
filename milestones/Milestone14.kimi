@@ -1,0 +1,52 @@
+// Milestone 14: Slice/Iterator processing with a closure borrowing an obj payload.
+group Pipeline
+    public struct Job
+        public let amount: i32
+        public init(amount: i32) => self.amount = amount
+
+    public struct Accumulator
+        var total: i32 = 0
+        public func add(self: uniq/Self, amount: i32)
+            self.total = self.total + amount
+        public func read(self: ref/Self) -> i32 => self.total
+        deinit => ::Core.writeLine("Accumulator destroyed.")
+
+    public func run<T, F> origin source(items: Slice<T> from source, visit: uniq/F, limit: isize) -> isize
+        F is Callable<uniq, (ref/T) -> bool>
+        require limit > 0 else => return 0
+        var iterator = items.iterate()
+        var accepted: isize = 0
+        loop
+            require accepted < limit else => exit
+            match iterator.next()
+                .Some(let item)
+                    if visit(item)
+                        accepted = accepted + 1
+                .None => exit
+        return accepted
+
+    public func finish(value: obj/Accumulator)
+        require value.read() == 12 else => $abort("Unexpected object total")
+        ::Core.writeLine("Object total is 12.")
+        // This owned handle destroys the payload and releases object storage.
+
+public func main()
+    let jobs: [5 of Pipeline.Job] = [
+        Pipeline.Job.init(2), Pipeline.Job.init(-1), Pipeline.Job.init(4),
+        Pipeline.Job.init(6), Pipeline.Job.init(100),
+    ]
+    var accumulator = ::Core.makeObj<Pipeline.Accumulator>(Pipeline.Accumulator.init())
+    do
+        let target = accumulator@objuniq
+        var visit = func [target] (job: ref/Pipeline.Job) -> bool
+            require job.amount > 0 else => return false
+            target.add(job.amount)
+            return true
+        let accepted = Pipeline.run(jobs[..], visit@uniq, 3)
+        require accepted == 3 else => $abort("Unexpected accepted count")
+        ::Core.writeLine("Accepted three jobs.")
+    // The closure and its exclusive object Loan end before shared access resumes.
+    require accumulator.read() == 12 else => $abort("Object borrow did not end")
+    let complete = func [accumulator] () => Pipeline.finish(accumulator)
+    complete() // Consumes the closure and transfers its obj handle to finish.
+    ::Core.writeLine("Pipeline finished.")

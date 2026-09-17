@@ -11,6 +11,18 @@ public sealed partial class Binding
         var receiver = this.BindNode(source.Left, scope);
         if (source is IndexKoto)
         {
+            if (receiver?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice && source.Right is RangeKoto { IsFull: true } range)
+            {
+                Complete(range, BoundType.Range);
+                return Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [receiver.Components[0]], origin: this.PlaceOrigin(source.Left)));
+            }
+
+            if (receiver?.Kind == BoundTypeKind.Slice)
+            {
+                this.RequireType(source.Right, scope, BoundType.ISize);
+                return Complete(source, receiver.Components[0]);
+            }
+
             if (receiver is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !ReferenceEquals(receiver, BoundType.Never))
             {
                 this.BindNode(source.Right, scope);

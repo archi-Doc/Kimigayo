@@ -31,6 +31,12 @@ public sealed partial class Binding
     private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
+        if (type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice)
+        {
+            result = kind == IntrinsicKind.Copy || type.Kind == BoundTypeKind.ResolvedRange ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            return true;
+        }
+
         if (ReferenceEquals(type, BoundType.Never))
         {
             return true;

@@ -749,6 +749,17 @@ public sealed partial class Binding
 
             switch (node)
             {
+                case ForKoto iteration:
+                    this.Visit(iteration.Iterable);
+                    this.Scope = binding.GetScope(iteration.Body, this.Scope);
+                    foreach (var name in iteration.Bindings)
+                    {
+                        binding.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, this.Scope);
+                    }
+
+                    this.Visit(iteration.Body);
+                    this.Scope = previous;
+                    return;
                 case MatchKoto match:
                     binding.IndexMatch(match);
                     this.Visit(match.Expression);
@@ -863,7 +874,7 @@ public sealed partial class Binding
                     binding.IndexAccessor(accessor, this.Scope);
                     break;
                 case CodeBlockKoto:
-                    if (node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
+                    if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
                         (node.Parent is MatchKoto && binding.patternNodes.Contains(this.Scope.Owner)))
                     {
                         binding.scopes[node] = this.Scope;

@@ -155,6 +155,9 @@ internal static partial class LlvmModuleWriter
                 case EmissionOpcode.InitializeLiveFlag:
                     WriteString(output, constants, function, instruction, function.GetOperands(instruction));
                     break;
+                case EmissionOpcode.Sequence:
+                    WriteSequence(output, constants, function, instruction);
+                    break;
                 case EmissionOpcode.ElementAddress:
                     WriteElementAddress(output, constants, function, instruction);
                     break;

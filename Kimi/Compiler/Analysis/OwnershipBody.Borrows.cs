@@ -8,6 +8,7 @@ public sealed partial class OwnershipBody
 {
     private bool[] borrowLive = [];
     private LoanRequirement[] borrowDependencies = [];
+    private int[] slicePaths = [];
 
     // Borrow validity follows CFG uses, including the implicit use by deinit.
     // Types retain Origin identity through Copy, Move, calls and field storage.
@@ -38,6 +39,8 @@ public sealed partial class OwnershipBody
             return;
         }
 
+        this.PrepareSlicePaths();
+
         Grow(ref this.borrowLive, checked(count * this.Operations.Count));
         this.borrowLive.AsSpan(0, count * this.Operations.Count).Clear();
         bool changed;
@@ -48,7 +51,7 @@ public sealed partial class OwnershipBody
             {
                 for (var p = 0; p < count; p++)
                 {
-                    var live = Uses(this.Operations[op], p);
+                    var live = Uses(op, p);
                     if (!Kills(this.Operations[op], p))
                     {
                         for (var e = this.EdgeHeads[op]; e >= 0 && !live; e = this.Edges[e].Next)
@@ -90,8 +93,18 @@ public sealed partial class OwnershipBody
                     }
 
                     var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && ReferenceTypes.IsStruct(this.Places[root].Type);
-                    var conflict = !external && ((BorrowState(op, root) & PlaceState.MustInit) == 0 ||
-                        ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, operation.LoanMode));
+                    var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, operation.LoanMode);
+                    if (this.Places[p].Type.Kind == BoundTypeKind.Slice && operation.Projection >= 0 && this.Projections[operation.Projection].Root == root)
+                    {
+                        var modifies = operation.Kind == OwnershipOperationKind.WriteElement ||
+                            (operation.Kind == OwnershipOperationKind.Produce && operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove);
+                        if (modifies)
+                        {
+                            accessConflict = this.slicePaths[p] < 0 || this.ElementPathsOverlap(operation.Projection, this.slicePaths[p]);
+                        }
+                    }
+
+                    var conflict = !external && ((BorrowState(op, root) & PlaceState.MustInit) == 0 || accessConflict);
                     var value = this.Values[op];
                     if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.Address && value.Count > 0)
                     {
@@ -161,7 +174,7 @@ public sealed partial class OwnershipBody
                 for (var root = 0; root < count; root++)
                 {
                     var candidate = this.Places[root];
-                    if (candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && StructStorage.IsStruct(candidate.Type) &&
+                    if (candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind == BoundTypeKind.FixedArray) &&
                         ReferenceEquals(candidate.Source, origin.Binder))
                     {
                         Record(root);
@@ -177,8 +190,14 @@ public sealed partial class OwnershipBody
             }
         }
 
-        bool Uses(OwnershipOperation operation, int place)
+        bool Uses(int id, int place)
         {
+            var operation = this.Operations[id];
+            if (this.Values[id] is { Kind: OwnershipValueKind.Sequence, Constant: var sequence } && this.Sequences[(int)sequence].Receiver == place)
+            {
+                return true;
+            }
+
             if (operation.Input == place && operation.Kind is OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.WriteBorrowedField or OwnershipOperationKind.PayloadPlacement)
             {
                 return true;
@@ -272,6 +291,49 @@ public sealed partial class OwnershipBody
     }
 
     private static int ValuePlaceForBorrow(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
+
+    private void PrepareSlicePaths()
+    {
+        Grow(ref this.slicePaths, this.Places.Count);
+        this.slicePaths.AsSpan(0, this.Places.Count).Fill(-2);
+        bool changed;
+        do
+        {
+            changed = false;
+            for (var id = 0; id < this.Operations.Count; id++)
+            {
+                var operation = this.Operations[id];
+                if (this.Values[id] is { Kind: OwnershipValueKind.Sequence, Constant: var sequence } && this.Sequences[(int)sequence] is { Kind: SequenceOperation.Slice } plan)
+                {
+                    Merge(operation.Place, this.Places[plan.Receiver].Type.Kind == BoundTypeKind.Slice ? this.slicePaths[plan.Receiver] : plan.Projection);
+                }
+                else if (operation.Place >= 0 && operation.Input >= 0 && this.Places[operation.Place].Type.Kind == BoundTypeKind.Slice)
+                {
+                    if (operation.Kind == OwnershipOperationKind.Consume)
+                    {
+                        Merge(operation.Input, this.slicePaths[operation.Place]);
+                    }
+                    else if (operation.Kind == OwnershipOperationKind.Write)
+                    {
+                        Merge(operation.Place, this.slicePaths[operation.Input]);
+                    }
+                }
+            }
+        }
+        while (changed);
+
+        void Merge(int place, int path)
+        {
+            if (path == -2 || this.slicePaths[place] == path || this.slicePaths[place] == -1)
+            {
+                return;
+            }
+
+            var previous = this.slicePaths[place];
+            this.slicePaths[place] = previous == -2 ? path : -1;
+            changed = true;
+        }
+    }
 
     private bool IsBorrowAncestor(int value, int place)
     {

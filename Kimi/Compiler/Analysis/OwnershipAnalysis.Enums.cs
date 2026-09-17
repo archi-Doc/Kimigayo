@@ -50,6 +50,11 @@ public sealed partial class OwnershipAnalysis
             return true;
         }
 
+        if (type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice)
+        {
+            return true;
+        }
+
         if (type.Kind == BoundTypeKind.Primitive)
         {
             return !ReferenceEquals(type, BoundType.Never);

@@ -10,7 +10,7 @@ The dependency and artifact specification is integrated into [Chapter 18](spec/1
 
 For a broad, non-normative source walkthrough, see the [specification tour](examples/SpecTour/README.md). It illustrates specified language features beyond current executable support and identifies features whose source APIs remain undefined.
 
-For progressively more demanding, independent programs, see [Milestone1–9](milestones/README.md). They progress from Hello World through ownership/lifetimes to combined control flow, arrays, nested declaration containers, and generic search. Expected behavior follows the specification; verified implementation coverage is recorded separately.
+For progressively more demanding, independent programs, see [Milestone1–14](milestones/README.md). They progress from Hello World through ownership/lifetimes to combined control flow and patterns, arrays, nested declaration containers, generic sharing/specialization, closures/captures, Slice/Iterator contracts, and exclusive object creation. Expected behavior follows the specification; verified implementation coverage is recorded separately.
 
 Composition Root Entry/Provider declarations and final selection remain unsettled following withdrawal of the design. [§13.8](spec/13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax) defines the reserved root and independently specified built-ins; it does not redirect Core.writeLine or introduce composition Bindings. [Appendix D](spec/appendices/D-deferred-features.md) tracks this boundary.
 

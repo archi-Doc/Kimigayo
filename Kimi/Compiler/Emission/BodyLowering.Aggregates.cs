@@ -53,7 +53,7 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray) && !StructStorage.IsStruct(place.Type))
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice) && !StructStorage.IsStruct(place.Type))
             {
                 continue;
             }

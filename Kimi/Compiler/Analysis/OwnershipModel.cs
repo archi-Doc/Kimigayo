@@ -177,6 +177,7 @@ public sealed partial class OwnershipBody
     internal readonly List<int> IncomingEdges = new();
     internal readonly List<int> OperationSteps = new();
     internal readonly List<OwnershipValue> Values = new();
+    internal readonly List<OwnershipSequence> Sequences = new();
     internal readonly List<int> ValueOperands = new();
     internal readonly List<OwnershipPhiInput> PhiInputs = new();
     internal readonly List<OwnershipSlotResult> SlotResults = new();
@@ -259,6 +260,7 @@ public sealed partial class OwnershipBody
         this.IncomingEdges.Clear();
         this.OperationSteps.Clear();
         this.Values.Clear();
+        this.Sequences.Clear();
         this.Identities?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
@@ -328,7 +330,21 @@ internal enum OwnershipValueKind : byte
     Address,
     BorrowedField,
     BorrowedFieldWrite,
+    Sequence,
 }
+
+internal enum SequenceOperation : byte
+{
+    Indices,
+    Length,
+    Start,
+    End,
+    IsEmpty,
+    Slice,
+    Read,
+}
+
+internal readonly record struct OwnershipSequence(int Operation, SequenceOperation Kind, int Receiver, int Projection = -1, int Index = -1);
 
 // Start/Count address PhiInputs for Phi, otherwise ValueOperands.
 // Constant holds the signed-extended N-bit integer payload, or the logical index for Parameter.

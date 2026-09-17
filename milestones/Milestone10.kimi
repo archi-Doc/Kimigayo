@@ -1,0 +1,29 @@
+// Milestone 10: nested payload patterns and transfers across selections/loops.
+enum Command<T>
+    Self is Copy when T is Copy
+    Data(T)
+    Skip
+    Stop
+
+public func main()
+    defer => ::Core.writeLine("Pattern run finished.")
+    let commands: [7 of Command<(i32, bool)>] = [
+        .Data((5, true)), .Data((99, false)), .Skip,
+        .Data((-1, true)), .Data((7, true)), .Stop, .Data((100, true)),
+    ]
+    var total: i32 = 0
+    let answer: i32 = scan: loop
+        for command in commands
+            let amount: i32 = match command
+                .Data((let value, true)) if value > 0 => value
+                .Data(_) => continue
+                .Skip => continue
+                .Stop => exit to scan: total
+            total = total + amount
+        exit total // Exhaustion also supplies the loop result.
+
+    let message: string = if answer == 12
+        require total == answer else => $abort("Result transfer failed")
+        yield "Accepted total is 12."
+    else => $abort("Unexpected command total")
+    ::Core.writeLine(message)

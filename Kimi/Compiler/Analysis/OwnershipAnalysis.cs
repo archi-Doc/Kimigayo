@@ -534,8 +534,14 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 return this.ConversionValue(conversion);
+            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice:
+                return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType):
                 return this.ReadBorrowedField(member);
+            case IndexKoto slice when slice.BoundType?.Kind == BoundTypeKind.Slice && slice.Right is RangeKoto:
+                return this.CreateSlice(slice);
+            case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Slice:
+                return this.ReadSlice(element);
             case BinaryKoto element when ElementAccess.IsSyntax(element):
                 return this.ElementValue(element, use);
             case BinaryKoto binary:
@@ -552,6 +558,9 @@ public sealed partial class OwnershipAnalysis
                 return this.Repeat(repeat);
             case RequireKoto require:
                 return this.Require(require);
+            case ForKoto iteration:
+                this.Iterate(iteration);
+                return this.Temporary(node);
             case WhileKoto loop:
                 this.Loop(loop);
                 if (!this.flow!.Nodes[loop].CanCompleteNormally)

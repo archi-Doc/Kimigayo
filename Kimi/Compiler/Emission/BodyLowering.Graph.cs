@@ -89,6 +89,14 @@ internal sealed partial class BodyLowering
             return false;
         }
 
+        foreach (var sequence in body.Sequences)
+        {
+            if (sequence.Kind == SequenceOperation.Read && (uint)sequence.Operation < (uint)count)
+            {
+                this.continuations[sequence.Operation] = count + sequence.Operation;
+            }
+        }
+
         this.PreparePartDestruction(body, function);
         if (!this.PrepareReceiverFields(body, function, out failure))
         {
