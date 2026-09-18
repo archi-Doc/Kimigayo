@@ -537,7 +537,9 @@ public static partial class Parser
         }
 
         var tuple = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, end), KotoKind.EnumCase, payload ? "(" : string.Empty, fields.ToArray(), suffix: payload ? ")" : string.Empty);
-        return new SyntaxFormKoto(ref reader, tuple.Span, KotoKind.EnumCase, string.Empty, [name, tuple], separator: string.Empty);
+        var declaration = new SyntaxFormKoto(ref reader, tuple.Span, KotoKind.EnumCase, string.Empty, [name, tuple], separator: string.Empty);
+        reader.Document(declaration, tuple.Span);
+        return declaration;
     }
 
     private static Koto ParseRequire(ref TokenReader reader)

@@ -33,6 +33,9 @@ public sealed class CodeContext
     /// <summary>Gets the immutable source snapshot, or null for a source-less parsing entry point.</summary>
     public SourceDocument? SourceDocument { get; }
 
+    /// <summary>Gets optional documentation for this source snapshot.</summary>
+    public Documentation.DocumentationSource? Documentation { get; internal set; }
+
     /// <summary>
     /// Gets the current compilation.
     /// </summary>
@@ -82,14 +85,22 @@ public sealed class CodeContext
     /// </summary>
     /// <param name="parentKoto">The Declaration Container that receives the parsed nodes.</param>
     /// <param name="sourceDocument">The source document to parse.</param>
+    /// <param name="producingModId">The producing Mod ID for generated source, or null for ordinary source.</param>
+    /// <param name="additionOrder">The source addition order within the producing Mod.</param>
     /// <remarks>Documents parsed into the root are retained for Kotonoha serialization.</remarks>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
     /// <exception cref="InvalidOperationException">This context already belongs to a source snapshot.</exception>
-    public void Parse(DeclarationContainerKoto parentKoto, SourceDocument sourceDocument)
+    public void Parse(DeclarationContainerKoto parentKoto, SourceDocument sourceDocument, string? producingModId = null, int additionOrder = 0)
     {
         ArgumentNullException.ThrowIfNull(parentKoto);
         ArgumentNullException.ThrowIfNull(sourceDocument);
+        ArgumentOutOfRangeException.ThrowIfNegative(additionOrder);
+        if (producingModId is { Length: 0 })
+        {
+            throw new ArgumentException("A producing Mod ID cannot be empty.", nameof(producingModId));
+        }
+
         if (this.SourceDocument is not null)
         {
             throw new InvalidOperationException("Use a source-less parsing entry point to create a fresh context for each parse.");
@@ -104,19 +115,22 @@ public sealed class CodeContext
 
         if (ReferenceEquals(parentKoto, this.RootKoto))
         {
-            this.Kotonoha.RecordSource(sourceDocument);
+            this.Kotonoha.RecordSource(sourceDocument, producingModId, additionOrder);
         }
 
         this.Compilation.BeginSourceParsing();
         var errorVersion = this.DiagnosticCollection.ErrorVersion;
-        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument);
+        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
         try
         {
             tokenizer.ReadAll();
             // Nodes retain this immutable snapshot context; the source-less entry point can be reused.
-            var sourceContext = new CodeContext(this.Kotonoha, this.DiagnosticCollection, sourceDocument);
+            var sourceContext = new CodeContext(this.Kotonoha, this.DiagnosticCollection, sourceDocument) { Documentation = tokenizer.Documentation };
             var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
+            sourceContext.Documentation?.SetLocation(this.Compilation.Project.Directory, producingModId, additionOrder);
+            sourceContext.Documentation?.Finish(this.DiagnosticCollection.ErrorVersion != errorVersion);
+            this.Kotonoha.RecordDocumentation(sourceContext.Documentation);
             this.Kotonoha.RecordSourceErrors(this.DiagnosticCollection, errorVersion);
         }
         finally

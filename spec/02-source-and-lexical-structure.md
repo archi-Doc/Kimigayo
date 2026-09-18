@@ -100,6 +100,141 @@ func example()
 
 `total` is `3`. Both `work()` and `finish()` belong to the body of `example`. Blank and comment-only lines do not supply an executable body; see the [nonempty Block rule](14-control-flow.md#1421-nonempty-executable-blocks).
 
+### 2.3.1. Documentation text
+
+A **Documentation Comment** is Markdown associated with a declaration. It describes purpose, usage and obligations, without changing name resolution, Type checking or execution. Source-reading tools and Mods may observe its bytes (§18.7.4). Ordinary compilation may discard documentation metadata; enabled documentation tooling follows the rules below.
+
+A lexically recognized line comment is documentation when only U+0020 spaces precede its `///` on the physical line and the following character is not `/`. `///Text` and `/// Text` are both accepted. `////`, trailing `///` and `/** ... */` remain ordinary comments. Literal/block-comment contents cannot introduce documentation. Normal encoding/token/layout validation still applies; documentation creates no executable item or layout event.
+
+Consecutive documentation lines at the same indentation form one **documentation block**. Remove the indentation and `///` from each line, then at most one U+0020. Preserve remaining characters, including trailing spaces; join lines with LF, normalizing LF/CRLF/CR, without adding a final newline. A bare `///` contributes an empty line. Ordinary blank lines/comments end the block without entering its text. An attached empty block differs from absent documentation.
+
+```kimi
+/// Returns a shared reference to the first element.
+///
+/// - Abort: `values` is empty.
+func first<T>(values: ref/Array<T>) -> ref/T from values
+    return values[0]@ref
+```
+
+### 2.3.2. Declaration association
+
+A **declaration prelude** is the sequence of the declaration's Attributes, blank lines and comments before its header. Treat each Attribute as one syntax unit: comments inside its arguments or the declaration header are not prelude candidates. Unrelated syntax, directives, actual scope boundaries and document boundaries end the prelude. Comment indentation alone does not end it. This terminology does not change §6.5 Attribute placement/targets, including same-line Attributes.
+
+Each syntactic declaration has at most one documentation block: the closest candidate in its prelude, provided its indentation equals the header baseline. Other candidates are unattached. Never fall back to an earlier candidate when the closest is empty or misindented. Attributes may precede, separate or follow documentation; prefer documentation, Attributes, declaration. Never skip an ineligible item to find a target. During syntax recovery, defer uncertain associations and their derived unattached diagnostics.
+
+```kimi
+/// Earlier block: unattached.
+// func old() => ()
+/// Checks that the sample can be invoked.
+#Test
+func sample() => ()
+```
+
+Eligible targets are declaration items directly in declaration/executable lists, including directive-controlled lists; ordinary grammar still determines permitted placement:
+
+| Target | Included forms |
+| --- | --- |
+| Containers | group, rootgroup, struct, enum, contract |
+| Functions | Named functions and requirements, explicit specializations, init, deinit |
+| Properties/bindings | let/var/computed Properties, Contract property requirements, local let/var |
+| Cases | Each enum Case, including its payload description |
+| Associated Types | Contract associate declarations and implementation-side specifications |
+
+Public main is a named-function target. `rootgroup A.B` documents the written B fragment, not synthesized intermediate groups. Field denotes a Property's storage slot, not another target. Explain parameters, generic/Origin parameters, payloads and accessors in their containing declaration. Pattern bindings, expressions, aliases, Constraints, directives and Attributes are not independent targets. Use a group or separate Markdown document for broader prose; no file/module documentation delimiter is added.
+
+### 2.3.3. Selection and related declarations
+
+Associate only where §19.5 requires ordinary declaration grammar, using original source positions. False #if interiors receive no association/documentation diagnostics. Reached #switch arms are parsed except nested False #if interiors; unselected syntax requires no additional semantic checks or link resolution. Documentation must not increase parsing obligations or migrate to a surviving declaration. Place it after the directive inside its controlled region, including the same-indentation form:
+
+```kimi
+#if windows
+/// Returns the platform name.
+func platformName() -> string => "windows"
+```
+
+Publish only selected declarations. Multi-configuration tools parse/select for each configuration and distinguish the results. For merged group/struct fragments, retain independent blocks with provenance in §20.7.4 logical declaration order; never concatenate Markdown scopes or overwrite fragments. Generated sources follow the same rules.
+
+Documentation belongs to its syntactic declaration. Related declarations—an inherited member, implemented requirement or specialization source—may be shown by reference, not implicit text copying/inheritance/merging. Do not expand text from a declaration outside the publication scope. Overloads are independent. Call documentation uses the declaration defining the call contract. Specialization documentation is an implementation note: it may describe §8.8's permitted result/side-effect differences but cannot replace inherited call/Safety obligations.
+
+### 2.3.4. Markdown and links
+
+Use **CommonMark 0.31.2 with raw HTML block and inline recognition disabled**. HTML-looking text is ordinary text and must be escaped in HTML output. A line containing `<T>` must not stop following Markdown parsing. Other CommonMark rules, including autolinks, remain. Interpret extension-looking text using this profile, without tool-specific table, footnote or tag semantics. No dedicated XML markup is recognized.
+
+Heading levels are relative inside each block; display them below the declaration heading while preserving hierarchy. Reference-link definitions are block-local. Fence language `kimi` is a highlighting hint, not a request to compile/execute. Inline code names are not automatically resolved as declarations; no `kimi:` link convention is introduced.
+
+````kimi
+/// Adds two integers.
+///
+/// # Example
+///
+/// ```kimi
+/// let total = add(2, 3)
+/// ```
+public func add(left: i32, right: i32) -> i32 => left + right
+````
+
+Resolve relative-path links against the parent of the ordinary source's §20.7.4 logical source name within its project. Generated sources have no such base; these links remain unresolved. Output rewriting, anchor IDs and permitted URL schemes belong to the rendering tool and must be deterministic for identical inputs/settings. Retain link text when its target is unavailable.
+
+### 2.3.5. Writing and extracting items
+
+Recommend a short opening paragraph explaining purpose; if the first Markdown block is a paragraph, it may be used as the summary. No inferred summary is required. Avoid mechanical repetition of displayed Types, Semantics, Origins and Ownership. Explain meaning, boundaries, effects, ordering, complexity and safety; mention language rules where useful. Documentation does not automatically prove obligations or override declarations. No Description Attribute or standardized deprecation item is introduced; deprecation metadata requires separate Attribute design.
+
+Parameter items use an inline-code external argument name followed by `:`. Generic Type/Semantics/constant and Origin parameters use their declared names. External labels remain stable across requirement matching and specialization when internal names differ. Explain the receiver in prose or Safety rather than an ordinary parameter item. Describe unnamed Case payloads by position/meaning, or use an existing struct payload for named structure. Not every parameter needs prose. Same-spelled parameters in different namespaces can be clarified with prose/free headings without renaming them.
+
+```kimi
+/// Scales a value.
+///
+/// - `value`: Input value.
+/// - `by`: Scale factor, named `factor` inside the body.
+func scale(value: i32, by => factor: i32) -> i32 => value * factor
+```
+
+| Standard label | Purpose |
+| --- | --- |
+| Returns | Result meaning, ordering or rounding |
+| Abort | API-specific Abort conditions |
+| Safety | Unsafe API memory-safety obligations and their duration (§7.5) |
+| Note | Additional information |
+| Warning | Important restrictions or likely misuse |
+| Example | Usage examples |
+
+Use a list item for short text and a heading for a longer section; both use the same labels. These are documentation conventions, not language keywords. Unknown labels, free headings and any prose language remain ordinary Markdown.
+
+```kimi
+/// Divides the dividend by the divisor.
+///
+/// - `left`: Dividend.
+/// - `right`: Divisor.
+/// - Returns: The quotient, truncated toward zero.
+/// - Abort: `right` is zero, or `left` is -2147483648
+///   and `right` is -1.
+func divide(left: i32, right: i32) -> i32 => left / right
+```
+
+Abort prose need not repeat common language/runtime failures; absence or an incomplete list is no guarantee that other Aborts are impossible. Safety prose records the existing unsafe contract; its label's presence/absence changes neither unsafe designation nor caller obligations.
+
+Item-extracting tools inspect only root-level lists/headings in the Markdown tree. Recognize a list item's first paragraph beginning with (a) an unformatted standard label plus ASCII `:`, or (b) an inline-code single name plus `:` as a parameter candidate; also recognize an unformatted heading exactly matching a standard label. Match case-sensitively; after the list colon require U+0020, tab, newline or paragraph end. Do not extract from code, quotes or nested lists.
+
+Descriptions start after the label/delimiter and end with the list item, or at the next same-or-higher heading/block EOF. Return references to the original tree, retaining order, duplicates and containment without reconstructing/overwriting text. Map a parameter candidate only when its declared-name match is unique. Free headings do not infer namespaces. Unknown/ambiguous items retain text and may receive documentation diagnostics.
+
+### 2.3.6. Tooling and diagnostics
+
+Select documentation processing by use:
+
+| Use | Processing |
+| --- | --- |
+| Ordinary compilation (default) | Skip `///` like ordinary line comments. Do not collect documentation ranges, extract text, associate declarations or parse Markdown. |
+| LSP, documentation generation or documentation checking | Enable range collection in the Tokenizer, separate from ordinary tokens. The Parser associates ranges with declaration fragments; extract text and parse Markdown only on demand. |
+| Source-reading Mods | Read the original SourceDocument independently of documentation collection. Documentation edits count as source dependency changes under §18.7.4 and §20.7.5. |
+
+Documentation metadata may be omitted from the Parser's executable syntax tree; Type checking, Analysis, Lowering and Emit do not require it. This does not remove comment text from the original SourceDocument available to source-reading consumers.
+
+When documentation processing is enabled, retain the target fragment and original SourceDocument/range. Publication scope is configurable; public output follows effective accessibility. Optional documentation diagnostics cover unattached/ignored documentation, missing/ambiguous items, missing unsafe Safety prose and unresolved links. Diagnose ignored `///` only where lexing identified an actual line comment, respecting §2.3.3 exclusions. Documentation diagnostics never affect ordinary language validity, although a separate CI gate may fail. Do not downgrade existing encoding/layout/syntax errors to lint.
+
+Canonical formatting uses `/// ` for nonempty lines and `///` for empty ones, preserving extracted text. Moving blocks before Attributes must preserve every block's association and text. No new formatter or command syntax is required.
+
+Disabled collection adds no documentation-specific allocations or retained text/Markdown trees; no candidates means no dedicated candidate buffer. Enabled processing uses source-ordered ranges and original-source mappings without whole-file rescans per declaration or runtime metadata. Never retain disposed tokenizer buffers. Snapshot-local caches include observed source/configuration/selection/rendering inputs; replacement/removal invalidates generated-document associations. Structured documentation queries alone cannot narrow raw-source Mod dependencies. See Appendix A.21 for required verification.
+
 ## 2.4. Tokens, separators, and punctuation
 
 A token's spelling is contiguous. Adjacent spellings must be separated when their concatenation would form a different token. Names, keywords, literals, punctuation and operators follow their own token rules; recognizing a token does not make it a permitted expression. `$` and `#` are separate punctuation tokens: `$abort` is `$` followed by the Name `abort`, and `#if` is `#` followed by the keyword `if`.

@@ -1,5 +1,14 @@
 # Kimigayo Implementation Status
 
+The **2026-09-18 Documentation Comments integration** implements optional source
+collection, declaration association, lazy source-mapped text, Markdown rendering
+and item extraction, and Binding-backed publication queries. Debug/Release builds
+have zero warnings/errors; all **8,792 managed tests** pass per configuration,
+including 84 documentation cases. Collected/uncollected compilation emits identical
+IR, and the documented fixture passes LLVM verification and native O0/O2 execution.
+[Evidence and boundaries](PLAN_HISTORY.md#documentation-comments-integration).
+NativeAOT NOT_RUN.
+
 The **2026-09-18 program Milestone 15 implementation** passes Binding, ownership,
 checked LLVM generation, LLVM verification, linking and native O0/O2 execution.
 Matching borrowed result Types retain both incoming Origins; existing CFG and
@@ -27,7 +36,7 @@ itself added no compiler feature.
 source hashes from earlier combined-program evidence. Debug, the full managed
 suite and NativeAOT were not run for this restructuring.
 
-Updated for program Milestone 15 on **2026-09-18**, starting from clean HEAD `9a6352b9a2a7fbb3152ac81afb8bc0db1d1b7d29`. [SPEC.md](SPEC.md) and its normative chapters define required behavior; implementation restrictions below do not weaken them. [PLAN.md §2](PLAN.md#2-execution-state) owns current work states and next actions. [PLAN_HISTORY.md](PLAN_HISTORY.md) owns dated execution, verification and decision records.
+Updated for Documentation Comments on **2026-09-18**, starting from clean HEAD `29f438c50fa51b21347a28ec7da81c8ca701353a`. [SPEC.md](SPEC.md) and its normative chapters define required behavior; implementation restrictions below do not weaken them. [PLAN.md §2](PLAN.md#2-execution-state) owns current work states and next actions. [PLAN_HISTORY.md](PLAN_HISTORY.md) owns dated execution, verification and decision records.
 
 Support is partial across the compiler. Parsing, final Binding, ownership/control-flow analysis, checked LLVM generation, LLVM verification and native execution are distinct stages. A declaration certificate or successfully parsed specification example does not establish runtime support. The coverage below summarizes implemented subsets and their limits, backed by the named code/tests and recorded runs; comprehensive clause conformance remains unfinished.
 
@@ -53,6 +62,7 @@ The earlier program-14 implementation audit established end-to-end coverage plus
 
 | Implemented scope | Limits / evidence |
 | --- | --- |
+| Optional `///` documentation: all declaration targets, fragment/source identity, directive selection, generated provenance, source mappings, Markdown/items and effective public access | Set `Compilation.CollectDocumentation` before parsing; query `Kotonoha.DocumentationSources` or `Binding.GetDocumentation`. `DocumentationMarkdown` uses pinned Markdig 1.3.2 with raw HTML parsing disabled, escaped output and filtered/resolved links. Diagnostics are separate from language errors. No CLI, LSP server, dedicated Mod query or doctest runner is added. Recovery conservatively defers associations for a source with syntax errors. Snapshot replacement/reparse rebuilds metadata; executable IR carries none. |
 | Immutable UTF-8 source snapshots, original diagnostic positions, Unicode 15.0/NFC identifiers, indentation/brackets/continuations, literal escapes and parse recovery | `SourceDocument`, `Tokenizer`, SourceEncodingTest, UnicodeIdentifierTest and ParserRegressionTest. Source validity survives diagnostic clearing and duplicate-location reports; warnings or earlier Binding errors alone do not invalidate newly parsed source. |
 | Koto syntax for Types, Semantics, Origins, generic/length arguments, declarations/accessors, captures, collections, expressions and transfers; parse/write/parse and reload | FrontEndSyntax, PropertyRevisionParse, NestedTypeParse and KotonohaSerialization tests. Capture/collection syntax is broader than executable support. `$expect`/`$require` statement syntax remains unimplemented. |
 | Exact numeric magnitude/spelling and target-precision floating literal fitting; metadata-preserving numeric replacement keeps diagnostic location | NumberLiteralHelper, FloatingTypes, NumberLiteral/CharLiteralParse/StringLiteralParse and NumericReplacementTest. Ordinary literals borrow source text; relocated numeric nodes materialize spelling. This does not add Mod APIs or edited-tree persistence. |

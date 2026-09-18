@@ -359,6 +359,10 @@ NextParameter:
         functionKoto.IsConstructor = constructor;
         functionKoto.IsSpecialization = specialization;
         functionKoto.SetCaptures(captures);
+        if (!anonymous)
+        {
+            reader.Document(functionKoto, functionKoto.Span, context.AttributeKoto);
+        }
 
         if (constructor && reader.TryConsume(TokenKind.Colon))
         {
@@ -601,6 +605,7 @@ Exit:
         reader.RestoreContext(variableContext);
 
         var fieldKoto = new FieldKoto(ref reader, token, nameKoto, typeKoto, initializerKoto);
+        reader.Document(fieldKoto, SourceSpan.FromBounds(token.Span.Start, nameToken.Span.End), variableContext.AttributeKoto);
         if (inferredArrayElement && initializerKoto is null)
         {
             fieldKoto.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
@@ -656,6 +661,7 @@ Exit:
 
         reader.RestoreContext(propertyContext);
         var property = new PropertyKoto(ref reader, token, nameKoto, typeKoto, initializerKoto, hasInlineAccessors);
+        reader.Document(property, SourceSpan.FromBounds(token.Span.Start, nameToken.Span.End), propertyContext.AttributeKoto);
 
         if (property.Modifier != property.Modifier.ExtractAccessibilityModifiers())
         {
@@ -1617,6 +1623,7 @@ CloseParameters:
             SourceSpan.FromBounds(attributeToken.Span.Start, Math.Max(attributeToken.Span.End, operand.Span.End)),
             operand);
         reader.PushAttribute(attributeKoto);
+        reader.CodeContext.Documentation?.Suppress(attributeKoto.Span);
         return attributeKoto;
     }
 
@@ -1649,6 +1656,7 @@ CloseParameters:
         if (invalidHeader || result != CompileTimeConditionResult.True)
         {
             reader.IsExcluded = true;
+            reader.DocumentationExcludedStart = condition.Span.End;
         }
     }
 
@@ -1760,6 +1768,11 @@ CloseParameters:
             var body = declarationContext is null || declarationContext.IsRoot
                 ? ParseRequiredBlock(ref reader)
                 : ParseDeclarationDirectiveBody(ref reader, declarationContext);
+            if (selectedIndex >= 0 || result != CompileTimeConditionResult.True)
+            {
+                reader.CodeContext.Documentation?.Exclude(sharp.Span.Start, reader.PreviousSyntaxEnd, reader.CurrentTokenRange.Start);
+            }
+
             arms.Add(new CompileTimeCaseArmKoto(condition, body));
             invalidCondition |= result == CompileTimeConditionResult.Error;
             if (selectedIndex < 0 && result == CompileTimeConditionResult.True)
@@ -1845,6 +1858,7 @@ CloseParameters:
     {
         var source = reader;
         SkipExcludedSyntaxCore(ref reader);
+        reader.CodeContext.Documentation?.Exclude(source.DocumentationExcludedStart, reader.PreviousSyntaxEnd, reader.CurrentTokenRange.Start);
         ValidateExcludedBodyStructure(ref source, reader.Position, executableContext, HasLibraryImport(source.AttributeKoto));
     }
 
@@ -3669,10 +3683,25 @@ Loop:
                 break;
             }
 
-            var tokenizer = new Tokenizer(reader.Diagnostic, reader.Diagnostic.SourceDocument!, SourceSpan.FromBounds(token.Span.Start + open, token.Span.Start + close + 1));
+            var tokenizer = new Tokenizer(reader.Diagnostic, reader.Diagnostic.SourceDocument!, SourceSpan.FromBounds(token.Span.Start + open, token.Span.Start + close + 1))
+            {
+                CollectDocumentation = reader.CodeContext.Compilation.CollectDocumentation,
+            };
             try
             {
                 tokenizer.ReadAll();
+                if (tokenizer.Documentation is { } documentation)
+                {
+                    if (reader.CodeContext.Documentation is { } existing)
+                    {
+                        existing.Merge(documentation);
+                    }
+                    else
+                    {
+                        reader.CodeContext.Documentation = documentation;
+                    }
+                }
+
                 var nested = new TokenReader(reader.CodeContext, ref tokenizer);
                 nested.TryConsume(TokenKind.OpenParenthesis);
                 var expression = ParseRequiredExpression(ref nested);

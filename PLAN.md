@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The active request is to complete program `milestones/Milestone15.kimi` through checked native execution. Implement only its required common foundations; programs 16–21 inform design but are not implementation targets. NativeAOT and draft edits remain excluded.
+The active request is to integrate the finalized Documentation Comments design into the normative specification and implement its optional compiler/tooling path. Preserve ordinary compilation semantics and allocation behavior. NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,14 +31,14 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current request: **Program 15 ownership joins — DONE**. P15 identifies the executable program, not product milestone M15.
+Current request: **Documentation Comments — DONE**. The adopted 2026-09-17 design takes precedence. [Verification and limits](PLAN_HISTORY.md#documentation-comments-integration).
 
 | ID | State | Acceptance / exact next action |
 | --- | --- | --- |
-| P15-B | DONE | Matching borrowed result Types infer the intersection of incoming Origins, independently of arm order; explicit contracts and referent/mode mismatches remain checked. |
-| P15-O | DONE | Existing fixed-point CFG/liveness verifies branch initialization, normal/continue Move repair and both incoming Loan dependencies; tests reject missing initialization/repair, moved reads, live-owner writes and escaping local borrows. |
-| P15-G | DONE | Checked scalar pointer transfers require matching referents and proven Origin fitting. Unchanged target and variants pass LLVM verification and native O0/O2 with ordered defer/destruction. |
-| P15-V | DONE | Warning-free Debug/Release solution builds and 8,708 tests each pass. Target native/CLI and O0/O2 rejections pass, plus 84 Release O0/O2 regression checks for programs 1–14. [Evidence](PLAN_HISTORY.md#program15-completion). NativeAOT NOT_RUN. |
+| DOC-S | DONE | §2.3.1–6 owns the rules; Attribute, unsafe and directive chapters link to it. Appendix A.21 owns verification. Adopted draft unchanged. |
+| DOC-LP | DONE | Optional range collection, all declaration targets, interpolation, fragments and directive exclusions; source mappings and generated provenance survive reparse. |
+| DOC-M | DONE | Lazy text, pinned CommonMark profile, escaped rendering, relative links, item extraction, separate diagnostics and Binding-backed publication. |
+| DOC-V | DONE | Warning-free Debug/Release builds; 8,792 managed tests per configuration, including 84 documentation cases; identical collected/uncollected IR and two verified native O0/O2 executions. |
 
 The preceding P18-D/P19-D/P20-D/P21-D/P38-R/P38-S/P38-V checkpoint is preserved in
 [history](PLAN_HISTORY.md#kimi-intrinsics-placement). Programs 16–21 remain
@@ -47,8 +47,7 @@ bounded prior completion; no product M/I family is closed by this program checkp
 
 KI-S/KI-I/KI-V are complete; their evidence is retained in the linked history. Remaining ownership APIs retain their existing I24/I25 implementation scope.
 
-No next action remains for P15-B/O/G/V. Stop at program 15; no program 16 feature
-is authorized by this checkpoint. General product M3/I6 and M15 obligations stay open.
+P15-B/O/G/V remain complete; their scope and evidence are in [history](PLAN_HISTORY.md#program15-completion). No program 16 feature is authorized by this request. General product M3/I6 and M15 obligations stay open. No documentation-integration action remains; broader milestones and new documentation CLI/LSP/Mod interfaces require a separate request.
 
 ### Current milestone states
 

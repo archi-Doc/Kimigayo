@@ -367,6 +367,8 @@ A local's Type must be fixed at its declaration, even without an initializer. An
 
 ## 6.5. Attributes
 
+[Documentation association](02-source-and-lexical-structure.md#232-declaration-association) uses the declaration prelude without changing Attribute targets or placement. Attributes carry metadata; documentation remains explanatory Markdown.
+
 **Syntax.** `#Name` accepts an optional parenthesized, comma-separated argument list, with an optional trailing comma. `Name` must begin with an uppercase Unicode letter; lowercase forms other than the `if`/`switch`/`case` directives are errors. Attributes attach, in source order, to the next declaration at the same indentation, on its line or on preceding effective lines. Comments and blank lines may intervene; unrelated items and dedents may not. A dangling Attribute is an error.
 
 **Placement.** Attributes are accepted on ordinary Container, function, Field and computed declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements keep their prohibition on Attributes; expression statements, Patterns, arguments and accessor lists accept no Attribute prefixes. Excluded syntax follows §19.5: argument and declaration-placement grammar is checked only where ordinary parsing is required, and excluded Attributes undergo no semantic resolution.

@@ -100,6 +100,10 @@ internal ref struct Tokenizer
     /// </summary>
     public ReadOnlySpan<Token> Tokens => this.tokens.AsSpan(0, this.tokenCount);
 
+    internal bool CollectDocumentation { get; set; }
+
+    internal Documentation.DocumentationSource? Documentation { get; private set; }
+
     /// <summary>
     /// Gets the character following the current one, or NUL at the end of the source.
     /// </summary>
@@ -1342,6 +1346,12 @@ EndOfFile:
     private void ReadSingleLineComment()
     {// // Comment\n
         var idx = this.span.IndexOfAny('\r', '\n');
+        if (this.CollectDocumentation && this.span.Length >= 3 && this.span[2] == '/' && (this.span.Length == 3 || this.span[3] != '/'))
+        {
+            this.Documentation ??= new(this.sourceDocument);
+            this.Documentation.AddLine(this.position, this.position + (idx < 0 ? this.span.Length : idx));
+        }
+
         if (idx < 0)
         {
             this.Slice(this.span.Length);

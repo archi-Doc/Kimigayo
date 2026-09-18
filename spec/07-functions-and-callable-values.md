@@ -94,6 +94,8 @@ Every explicit or inferred generic argument at a call site must satisfy the clau
 
 ## 7.5. Unsafe functions
 
+Use the [Safety documentation item](02-source-and-lexical-structure.md#235-writing-and-extracting-items) to describe the conditions below. It adds no automatic proof or new calling permission.
+
 An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](14-control-flow.md#1433-unsafe-block), and violating its safety contract is undefined behavior. This runtime safety contract is distinct from Constraints.
 
 ```kimi
