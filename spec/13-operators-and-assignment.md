@@ -312,8 +312,8 @@ func borrowPayloadMut<T>(source: objuniq/T) -> uniq/T from source
     return source@uniq/T
 
 // a and b are writable obj/Cell<i32> Places; Cell is non-open.
-Kimi.swap(a@uniq/Cell<i32>, b@uniq/Cell<i32>)         // Exchange payload contents.
-Kimi.swap(a@uniq/obj/Cell<i32>, b@uniq/obj/Cell<i32>) // Exchange handle values.
+Kimi.Intrinsics.swap(a@uniq/Cell<i32>, b@uniq/Cell<i32>)         // Exchange payload contents.
+Kimi.Intrinsics.swap(a@uniq/obj/Cell<i32>, b@uniq/obj/Cell<i32>) // Exchange handle values.
 ```
 
 The shorthand operations of §13.5.5.2 keep their meaning: `@ref`/`@uniq` never select payload projection, and `@uniq/obj/T` borrows handle storage. No reverse conversion from value borrows to object borrows is introduced. A payload projection changes access to the complete payload, not its View Target; it is distinct from an upcast (§13.5.7) and never supplies base-subobject replacement permission.
@@ -424,16 +424,16 @@ A checked cast (§13.6.2) is needed when the source view cannot guarantee the ta
 
 ### 13.5.8. Object ownership creation and sharing
 
-These public Kimi intrinsics use ordinary inference and the argument labels `value` and `build`. `T` is a valid concrete object payload Core, and `S` a valid complete `rc`/`arc` handle Type. Eligibility is an intrinsic formation rule, not a user Contract, and does not extend the current object and runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
+These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. `T` is a valid concrete object payload Core, and `S` a valid complete `rc`/`arc` handle Type. Eligibility is an intrinsic formation rule, not a user Contract, and does not extend the current object and runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
 
 | API | Input -> result | Contract |
 | --- | --- | --- |
-| `Kimi.makeObj<T>(value)` | `T -> obj/T` | Store a complete value in a new exclusive object |
-| `Kimi.makeRc<T>(value)` | `T -> rc/T` | Create non-atomic strong ownership, initially one |
-| `Kimi.makeArc<T>(value)` | `T -> arc/T` | The same, with atomic counting |
-| `Kimi.clone<S>(value)` | `ref/S -> S` | Retain one more strong reference to the same object, view and mode |
-| `Kimi.makeRcCyclic<T, F>(build)` | `F -> rc/T` | Cyclic construction, below |
-| `Kimi.makeArcCyclic<T, F>(build)` | `F -> arc/T` | The corresponding `arc` construction |
+| `Kimi.Intrinsics.makeObj<T>(value)` | `T -> obj/T` | Store a complete value in a new exclusive object |
+| `Kimi.Intrinsics.makeRc<T>(value)` | `T -> rc/T` | Create non-atomic strong ownership, initially one |
+| `Kimi.Intrinsics.makeArc<T>(value)` | `T -> arc/T` | The same, with atomic counting |
+| `Kimi.Intrinsics.clone<S>(value)` | `ref/S -> S` | Retain one more strong reference to the same object, view and mode |
+| `Kimi.Intrinsics.makeRcCyclic<T, F>(build)` | `F -> rc/T` | Cyclic construction, below |
+| `Kimi.Intrinsics.makeArcCyclic<T, F>(build)` | `F -> arc/T` | The corresponding `arc` construction |
 
 Any valid complete owner Core other than Never may be the concrete payload, including open struct Cores; only projection to ordinary value borrows additionally requires Sealed (§13.5.5.1). Generic signatures must prove the target's validity from their declared constraints (§8.10).
 
@@ -458,9 +458,9 @@ A required allocation failure, or an increment at the count maximum, Aborts befo
 
 | API | Input -> result | Contract |
 | --- | --- | --- |
-| `Kimi.downgrade<S>(value)` | `ref/S -> Weak<S>` | Retain a weak responsibility for the same target; the strong count is unchanged |
-| `Kimi.upgrade<S>(value)` | `ref/Weak<S> -> Option<S>` | Retain a live strong and return `Some`; otherwise `None` |
-| `Kimi.clone<S>(value)` | `ref/Weak<S> -> Weak<S>` | Retain another responsibility for the same weak table |
+| `Kimi.Intrinsics.downgrade<S>(value)` | `ref/S -> Weak<S>` | Retain a weak responsibility for the same target; the strong count is unchanged |
+| `Kimi.Intrinsics.upgrade<S>(value)` | `ref/Weak<S> -> Option<S>` | Retain a live strong and return `Some`; otherwise `None` |
+| `Kimi.Intrinsics.clone<S>(value)` | `ref/Weak<S> -> Weak<S>` | Retain another responsibility for the same weak table |
 
 Inputs remain Initialized. `downgrade` accepts only a completed strong `rc`/`arc` handle, not `obj`, object borrows or raw pointers, and its first side table may require allocation; `upgrade` and `clone` do not allocate. Results keep the same object, view and mode. `upgrade` secures a live strong before reading the table's object pointer, and its race with a final `arc` release determines success (§21.2.3). `None` during Building may precede later publication, whereas failure after the final release is permanent. A maximum-count failure Aborts rather than returning `None`.
 
@@ -481,13 +481,13 @@ struct Item
         self.value = value
 
 func expired() -> Weak<rc/Item>
-    let strong = Kimi.makeRc(Item.init(7))
-    return Kimi.downgrade(strong@ref)
+    let strong = Kimi.Intrinsics.makeRc(Item.init(7))
+    return Kimi.Intrinsics.downgrade(strong@ref)
 
 let weak = expired() // Present Weak; the local strong has been destroyed.
 let absent: Option<Weak<rc/Item>> = .None // Absence is a different value.
-let result = Kimi.upgrade(weak) // None; no resurrection.
-let other = Kimi.clone(weak) // Shares the table, not the payload.
+let result = Kimi.Intrinsics.upgrade(weak) // None; no resurrection.
+let other = Kimi.Intrinsics.clone(weak) // Shares the table, not the payload.
 let moved = other // Move, with no count increment.
 ```
 
@@ -498,10 +498,10 @@ struct Node
         self.selfWeak = selfWeak
 
 let build = func [] (weak: Weak<rc/Node>) -> Node
-    let before = Kimi.upgrade(weak) // None while Building.
+    let before = Kimi.Intrinsics.upgrade(weak) // None while Building.
     return Node.init(weak)
-let node = Kimi.makeRcCyclic(build)
-let after = Kimi.upgrade(node.selfWeak@ref) // Some after publication.
+let node = Kimi.Intrinsics.makeRcCyclic(build)
+let after = Kimi.Intrinsics.upgrade(node.selfWeak@ref) // Some after publication.
 ```
 
 A stored Weak to a payload that keeps a local borrow cannot outlive that borrow merely because the strong is expected to expire. `upgrade` is required before payload access or view operations. No liveness-only API, implicit duplication, direct Weak view conversion, unsafe weak pointer, unowned reference or cycle collection is introduced. A future Weak upcast must define its Move and count effects; pointer equality grants no conversion. Atomic `arc` counting does not authorize source concurrency (Appendix D.2).

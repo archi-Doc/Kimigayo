@@ -59,9 +59,9 @@ public class WholeValueTest
     }
 
     [Theory]
-    [InlineData("Kimi.replace(x, with: 2)")]
-    [InlineData("let previous = Kimi.exchange(x, with: 2)")]
-    [InlineData("Kimi.swap(x, y)")]
+    [InlineData("Kimi.Intrinsics.replace(x, with: 2)")]
+    [InlineData("let previous = Kimi.Intrinsics.exchange(x, with: 2)")]
+    [InlineData("Kimi.Intrinsics.swap(x, y)")]
     public void UpdateSignaturesBindNormally(string expression)
     {
         var c = Parse("var x: i32 = 1\nvar y: i32 = 2\n" + expression);
@@ -69,10 +69,10 @@ public class WholeValueTest
     }
 
     [Theory]
-    [InlineData("Scalar", "var x: i32 = 1\nvar y: i32 = 9\nKimi.replace(x, with: 2)\nlet old = Kimi.exchange(x, with: 3)\nKimi.swap(x, y)\nif old == 2 and x == 9 and y == 3 => Console.writeLine(\"ok\")", "ok\n")]
-    [InlineData("String", "var x = \"old\"\nvar y = \"other\"\nlet old = Kimi.exchange(x, with: \"new\")\nKimi.swap(x, y)\nConsole.writeLine(old)\nConsole.writeLine(x)\nConsole.writeLine(y)", "old\nother\nnew\n")]
-    [InlineData("ReplaceDestroy", "struct S\n    let value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nKimi.replace(x, with: S.init(2))\nConsole.writeLine(\"placed\")", "drop 1\nplaced\ndrop 2\n")]
-    [InlineData("SwapDestroy", "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nvar y = S.init(2)\nKimi.swap(x, y)\nif x.value == 2 and y.value == 1 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
+    [InlineData("Scalar", "var x: i32 = 1\nvar y: i32 = 9\nKimi.Intrinsics.replace(x, with: 2)\nlet old = Kimi.Intrinsics.exchange(x, with: 3)\nKimi.Intrinsics.swap(x, y)\nif old == 2 and x == 9 and y == 3 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("String", "var x = \"old\"\nvar y = \"other\"\nlet old = Kimi.Intrinsics.exchange(x, with: \"new\")\nKimi.Intrinsics.swap(x, y)\nConsole.writeLine(old)\nConsole.writeLine(x)\nConsole.writeLine(y)", "old\nother\nnew\n")]
+    [InlineData("ReplaceDestroy", "struct S\n    let value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nKimi.Intrinsics.replace(x, with: S.init(2))\nConsole.writeLine(\"placed\")", "drop 1\nplaced\ndrop 2\n")]
+    [InlineData("SwapDestroy", "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nvar y = S.init(2)\nKimi.Intrinsics.swap(x, y)\nif x.value == 2 and y.value == 1 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
     public void EmitsWholeUpdates(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -83,9 +83,9 @@ public class WholeValueTest
     }
 
     [Theory]
-    [InlineData("Replace", "func update(x: uniq/S) => Kimi.replace(x, with: S.init(2))\nvar x = S.init(1)\nupdate(x)\nif x.value == 2 => Console.writeLine(\"ok\")", "drop 1\nok\ndrop 2\n")]
-    [InlineData("Exchange", "func update(x: uniq/S) -> S => Kimi.exchange(x, with: S.init(2))\nvar x = S.init(1)\nlet old = update(x)\nif old.value == 1 and x.value == 2 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
-    [InlineData("Swap", "func update(x: uniq/S, y: uniq/S) => Kimi.swap(x, y)\nvar x = S.init(1)\nvar y = S.init(2)\nupdate(x, y)\nif x.value == 2 and y.value == 1 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
+    [InlineData("Replace", "func update(x: uniq/S) => Kimi.Intrinsics.replace(x, with: S.init(2))\nvar x = S.init(1)\nupdate(x)\nif x.value == 2 => Console.writeLine(\"ok\")", "drop 1\nok\ndrop 2\n")]
+    [InlineData("Exchange", "func update(x: uniq/S) -> S => Kimi.Intrinsics.exchange(x, with: S.init(2))\nvar x = S.init(1)\nlet old = update(x)\nif old.value == 1 and x.value == 2 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
+    [InlineData("Swap", "func update(x: uniq/S, y: uniq/S) => Kimi.Intrinsics.swap(x, y)\nvar x = S.init(1)\nvar y = S.init(2)\nupdate(x, y)\nif x.value == 2 and y.value == 1 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
     public void EmitsBorrowedUpdates(string name, string body, string stdout)
     {
         const string declaration = "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\n";
@@ -94,15 +94,15 @@ public class WholeValueTest
 
     [Fact]
     public void ScalarBorrowedUpdates()
-        => this.EmitsWholeUpdates("BorrowedScalar", "func set(x: uniq/i32) => Kimi.replace(x, with: 2)\nfunc take(x: uniq/i32) -> i32 => Kimi.exchange(x, with: 3)\nfunc flip(x: uniq/i32, y: uniq/i32) => Kimi.swap(x, y)\nvar x: i32 = 1\nvar y: i32 = 9\nset(x)\nlet old = take(x)\nflip(x, y)\nif old == 2 and x == 9 and y == 3 => Console.writeLine(\"ok\")", "ok\n");
+        => this.EmitsWholeUpdates("BorrowedScalar", "func set(x: uniq/i32) => Kimi.Intrinsics.replace(x, with: 2)\nfunc take(x: uniq/i32) -> i32 => Kimi.Intrinsics.exchange(x, with: 3)\nfunc flip(x: uniq/i32, y: uniq/i32) => Kimi.Intrinsics.swap(x, y)\nvar x: i32 = 1\nvar y: i32 = 9\nset(x)\nlet old = take(x)\nflip(x, y)\nif old == 2 and x == 9 and y == 3 => Console.writeLine(\"ok\")", "ok\n");
 
     [Fact]
     public void LocalExclusiveBorrowUpdatesOriginalStorage()
-        => this.EmitsWholeUpdates("LocalBorrow", "var x: i32 = 1\nlet u = x@uniq/i32\nKimi.replace(u, with: 2)\nlet old = Kimi.exchange(u, with: 3)\nif old == 2 and x == 3 => Console.writeLine(\"ok\")", "ok\n");
+        => this.EmitsWholeUpdates("LocalBorrow", "var x: i32 = 1\nlet u = x@uniq/i32\nKimi.Intrinsics.replace(u, with: 2)\nlet old = Kimi.Intrinsics.exchange(u, with: 3)\nif old == 2 and x == 3 => Console.writeLine(\"ok\")", "ok\n");
 
     [Fact]
     public void OrdinaryOpenOwnerDoesNotRequireSealed()
-        => this.EmitsWholeUpdates("OpenOwner", "open struct S\n    public var value: i32 = 1\nvar x = S.init()\nx.value = 2\nKimi.replace(x, with: S.init())\nif x.value == 1 => Console.writeLine(\"ok\")", "ok\n");
+        => this.EmitsWholeUpdates("OpenOwner", "open struct S\n    public var value: i32 = 1\nvar x = S.init()\nx.value = 2\nKimi.Intrinsics.replace(x, with: S.init())\nif x.value == 1 => Console.writeLine(\"ok\")", "ok\n");
 
     [Theory]
     [InlineData("i32")]
@@ -126,11 +126,11 @@ public class WholeValueTest
     }
 
     [Theory]
-    [InlineData("var x: i32 = 1\nKimi.replace(x, with: x + 1)")]
-    [InlineData("var x: i32 = 1\nKimi.swap(x, x)")]
-    [InlineData("var x: i32\nKimi.replace(x, with: 2)")]
-    [InlineData("let x: i32 = 1\nKimi.replace(x, with: 2)")]
-    [InlineData("var x = \"old\"\nKimi.exchange(x, with: x)")]
+    [InlineData("var x: i32 = 1\nKimi.Intrinsics.replace(x, with: x + 1)")]
+    [InlineData("var x: i32 = 1\nKimi.Intrinsics.swap(x, x)")]
+    [InlineData("var x: i32\nKimi.Intrinsics.replace(x, with: 2)")]
+    [InlineData("let x: i32 = 1\nKimi.Intrinsics.replace(x, with: 2)")]
+    [InlineData("var x = \"old\"\nKimi.Intrinsics.exchange(x, with: x)")]
     public void RejectsConflictingOrIncompleteTargets(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -139,8 +139,8 @@ public class WholeValueTest
     }
 
     [Theory]
-    [InlineData("func f(x: uniq/S) => Kimi.swap(x, x)")]
-    [InlineData("func f(x: uniq/S) => Kimi.replace(x, with: S.init(x.value))")]
+    [InlineData("func f(x: uniq/S) => Kimi.Intrinsics.swap(x, x)")]
+    [InlineData("func f(x: uniq/S) => Kimi.Intrinsics.replace(x, with: S.init(x.value))")]
     public void BorrowedTargetsProtectLaterArguments(string function)
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public var value: i32 = 0\n    public init(value: i32) => self.value = value\n" + function + "\n()");
@@ -163,7 +163,7 @@ public class WholeValueTest
     [Fact]
     public void CompletePayloadReceiverUsesOrdinaryCallPath()
     {
-        var c = Parse("struct S\n    public func reset(self: uniq/Self) => Kimi.replace(self, with: S.init())\nfunc f(x: objuniq/S) => x.reset()");
+        var c = Parse("struct S\n    public func reset(self: uniq/Self) => Kimi.Intrinsics.replace(self, with: S.init())\nfunc f(x: objuniq/S) => x.reset()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "f");
         var call = Assert.IsType<InvocationKoto>(f.ExpressionBody);
@@ -172,7 +172,7 @@ public class WholeValueTest
 
     [Fact]
     public void NamedArgumentsUseTextualEvaluationOrder()
-        => this.EmitsWholeUpdates("NamedOrder", "var x: i32 = 1\nvar y: i32 = 9\nKimi.replace(with: x + 1, target: x)\nKimi.swap(second: y, first: x)\nif x == 9 and y == 2 => Console.writeLine(\"ok\")", "ok\n");
+        => this.EmitsWholeUpdates("NamedOrder", "var x: i32 = 1\nvar y: i32 = 9\nKimi.Intrinsics.replace(with: x + 1, target: x)\nKimi.Intrinsics.swap(second: y, first: x)\nif x == 9 and y == 2 => Console.writeLine(\"ok\")", "ok\n");
 
     [Fact]
     public void SameSpellingFunctionKeepsOrdinaryBehavior()
@@ -180,16 +180,31 @@ public class WholeValueTest
 
     [Fact]
     public void AliasRetainsIntrinsicIdentity()
-        => this.EmitsWholeUpdates("Alias", "alias Standard => Kimi\nvar x: i32 = 1\nStandard.replace(x, with: 2)\nif x == 2 => Console.writeLine(\"ok\")", "ok\n");
+        => this.EmitsWholeUpdates("Alias", "alias Standard => Kimi\nvar x: i32 = 1\nStandard.Intrinsics.replace(x, with: 2)\nif x == 2 => Console.writeLine(\"ok\")", "ok\n");
+
+    [Theory]
+    [InlineData("Named", "alias Memory => Kimi.Intrinsics\n", "Memory.")]
+    [InlineData("Opened", "alias Kimi.Intrinsics\n", "")]
+    public void IntrinsicsGroupAliasesExecute(string name, string alias, string qualifier)
+    {
+        var source = alias + "var x: i32 = 1\nvar y: i32 = 9\n" +
+            qualifier + "replace(x, with: 2)\nlet old = " + qualifier + "exchange(x, with: 3)\n" +
+            qualifier + "swap(x, y)\nif old == 2 and x == 9 and y == 3 => Console.writeLine(\"ok\")";
+        this.EmitsWholeUpdates("GroupAlias" + name, source, "ok\n");
+    }
+
+    [Fact]
+    public void SameSpellingGroupKeepsOrdinaryBehavior()
+        => this.EmitsWholeUpdates("UserGroup", "group Intrinsics\n    public func replace(x: i32, with => y: i32) -> i32 => x + y\nvar x: i32 = 1\nlet result = Intrinsics.replace(x, with: 2)\n::Kimi.Intrinsics.replace(x, with: 4)\nif result == 3 and x == 4 => Console.writeLine(\"ok\")", "ok\n");
 
     [Fact]
     public void ReplacementDestructionAbortPreventsPlacement()
-        => ScalarEmissionTest.EmitFixture("WholeValueDestructorAbort", "struct S\n    public init() => ()\n    deinit => $abort(\"drop\")\nvar x = S.init()\nKimi.replace(x, with: S.init())\nConsole.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:3:15: abort KIMI_E_ABORT: drop\n");
+        => ScalarEmissionTest.EmitFixture("WholeValueDestructorAbort", "struct S\n    public init() => ()\n    deinit => $abort(\"drop\")\nvar x = S.init()\nKimi.Intrinsics.replace(x, with: S.init())\nConsole.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:3:15: abort KIMI_E_ABORT: drop\n");
 
     [Fact]
     public void RebindingAndSerializationRetainUpdates()
     {
-        var c = Parse("var x: i32 = 1\nKimi.replace(x, with: 2)\nlet old = Kimi.exchange(x, with: 3)\n()");
+        var c = Parse("var x: i32 = 1\nKimi.Intrinsics.replace(x, with: 2)\nlet old = Kimi.Intrinsics.exchange(x, with: 3)\n()");
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
@@ -218,7 +233,7 @@ public class WholeValueTest
     [Fact]
     public void RequiredUpdateDeclarationShapeIsValidatedAgain()
     {
-        var c = Parse("var x: i32 = 1\nKimi.replace(x, with: 2)");
+        var c = Parse("var x: i32 = 1\nKimi.Intrinsics.replace(x, with: 2)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var function = (FunctionKoto)c.Library.Replace.Declaration;
         function.Parameters[1].Type = function.Parameters[0].Type;

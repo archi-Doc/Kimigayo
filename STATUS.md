@@ -1,5 +1,7 @@
 # Kimigayo Implementation Status
 
+The **2026-09-18 Kimi.Intrinsics relocation** is complete: warning-free Debug/Release test builds and 8,691 tests per configuration pass, together with 48 Release Milestone14 checks and 36 O0/O2 whole-value update executions. [Placement, coverage and limits](#kimi-library-and-whole-value-updates); [verification record](PLAN_HISTORY.md#kimi-intrinsics-placement). NativeAOT was NOT_RUN.
+
 The milestone roadmap now contains **38 programs**: 1–21 have source files and
 22–38 have planned verification scopes. Program 20 covers inference/defaults;
 21 separately covers explicit specialization. Programs 2–21 use Console.writeLine;
@@ -100,9 +102,27 @@ ContainerNestingTest covers declaration/rebind/serialization and 64-level nestin
 
 ### Kimi library and whole-value updates
 
+The public ownership functions now live in `Kimi.Intrinsics`. `Kimi.replace`,
+`Kimi.exchange`, `Kimi.swap`, and `Kimi.makeObj` are no longer lookup candidates;
+use `Kimi.Intrinsics.*`, `Intrinsics.*` through the default Kimi alias, or an
+explicit named/opening alias of the group. Ordinary shadowing, canonical compiler
+identities and rebind invalidation are preserved.
+
+| Current declaration placement | Implemented declaration / execution boundary |
+| --- | --- |
+| `Kimi.Copy`, `Owned`, `Callable`, `Sealed` | Intrinsic Contract identities; existing proof rules unchanged. |
+| `Kimi.Option<T>`, `Result<T,E>`, `Iterator`, `Slice<T>` | Existing enum/Contract/view declarations; bounded generation and protocol support below. |
+| `Kimi.SliceIterator<T>` | Compiler-supplied concrete helper with init/next; Slice.iterate uses it. This does not finalize a general public iterator-constructor API. |
+| `Kimi.Console.writeLine(text: string) -> ()` | Existing owned-string UTF-8 output. |
+| `Kimi.Intrinsics.replace<T>`, `exchange<T>`, `swap<T>` | Existing whole-value updates, with the storage limits below. |
+| `Kimi.Intrinsics.makeObj<T>(value: T) -> obj/T` | Existing concrete exclusive-object factory; see §4 exclusive objects. |
+| Remaining `Kimi.Intrinsics` ownership family | makeRc/makeArc, strong/Weak clone, downgrade/upgrade and cyclic factories are specified but unimplemented. |
+
+The placement/reference in [§22.1.1](spec/22-core-execution-and-foreign-functions.md#2211-declaration-placement-and-function-reference) is normative; this table describes implementation coverage. `$abort` remains a separate built-in.
+
 `KimiLibrary` currently has **22 catalog entries, 12 validated**: Copy, Owned, Callable, writeLine, Option, Result, Sealed, replace, exchange, swap, Iterator and Slice. Ten catalog slots remain missing. Iterator declares the ordinary static next requirement and its recognized Element may bind a complete Type with Semantics/Origin; the exception does not apply to arbitrary associated Types. Named Slice Types use the existing borrowed-view representation. Catalog shape/identity validation is distinct from complete API/runtime implementation; the required library is still incomplete. `Slice.iterate` and its ordinary non-lending SliceIterator body now execute in supported shared contexts. The concrete makeObj intrinsic is validated separately; the object ownership family remains incomplete, so the catalog stays at 12/22. CoreCatalogTest passed in the current Debug/Release suites. Required unimplemented APIs remain PLAN G4.
 
-`Kimi.Sealed` has intrinsic Identity and four-valued proof of the normalized outer Core, rejecting open structs, Never and non-owner Semantics without recursive field constraints. User conformance cannot manufacture evidence. `Kimi.replace/exchange/swap` are ordinary parsed generic declarations with trusted compiler implementation identities, normal name resolution/shadowing/inference and textual argument order. Compiler-owned signatures need no source bodies; ordinary source functions still do.
+`Kimi.Sealed` has intrinsic Identity and four-valued proof of the normalized outer Core, rejecting open structs, Never and non-owner Semantics without recursive field constraints. User conformance cannot manufacture evidence. `Kimi.Intrinsics.replace/exchange/swap` are ordinary parsed generic declarations with trusted compiler implementation identities, normal name resolution/shadowing/inference and textual argument order. Compiler-owned signatures need no source bodies; ordinary source functions still do.
 
 Binding distinguishes explicit Sealed payload projection, complete payload receivers, protected base projection and nested handle/reference storage layers. Payload projection binds but lacks object allocation/borrow runtime plans and payload retention, so it does **not** pass executable ownership/lowering. Generated accessor execution and full ObjectCallCompatible effects remain incomplete. SPEC.md explicitly defers ObjectCallCompatible inference/publication and release checking pending further instructions.
 

@@ -97,4 +97,59 @@ public class CoreCatalogTest
         }));
         Assert.Same(copy, c.Library.Copy);
     }
+
+    [Theory]
+    [InlineData("", "Kimi.Intrinsics.")]
+    [InlineData("", "::Kimi.Intrinsics.")]
+    [InlineData("", "Intrinsics.")]
+    [InlineData("alias Memory => Kimi.Intrinsics\n", "Memory.")]
+    [InlineData("alias Kimi.Intrinsics\n", "")]
+    [InlineData("let Intrinsics = 0\n", "::Kimi.Intrinsics.")]
+    public void OwnershipOperationsKeepIdentityThroughQualifiedAndAliasLookup(string prefix, string qualifier)
+    {
+        var c = Compilation.CreateForTest();
+        var source = prefix + "var x: i32 = 1\nvar y: i32 = 2\n" + qualifier + "replace(x, with: 3)\n" +
+            qualifier + "exchange(x, with: 4)\n" + qualifier + "swap(x, y)\n" + qualifier + "makeObj(5)";
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        var expected = new[] { c.Library.Replace, c.Library.Exchange, c.Library.Swap, c.Library.MakeObj };
+        for (var iteration = 0; iteration < 3; iteration++)
+        {
+            Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+            var calls = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<InvocationKoto>().ToArray();
+            Assert.Equal(expected.Length, calls.Length);
+            for (var i = 0; i < expected.Length; i++)
+            {
+                Assert.Same(expected[i], calls[i].BoundCall!.Target);
+                Assert.Equal("Intrinsics", Assert.IsType<GroupKoto>(expected[i].Declaration.Parent).Name);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("Kimi.replace(x, with: 2)")]
+    [InlineData("Kimi.exchange(x, with: 2)")]
+    [InlineData("Kimi.swap(x, y)")]
+    [InlineData("Kimi.makeObj(1)")]
+    [InlineData("replace(x, with: 2)")]
+    [InlineData("exchange(x, with: 2)")]
+    [InlineData("swap(x, y)")]
+    [InlineData("makeObj(1)")]
+    public void DefaultAliasDoesNotExposeOwnershipFunctionsAtTheRoot(string expression)
+    {
+        var c = Compilation.CreateForTest();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "var x: i32 = 1\nvar y: i32 = 2\n" + expression);
+        Assert.False(c.Bind().IsComplete);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
+    }
+
+    [Fact]
+    public void RebindRejectsChangedIntrinsicsContainer()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        var group = Assert.IsType<GroupKoto>(c.Library.Replace.Declaration.Parent);
+        c.Library.Kotonoha.CreateCodeContext().Parse(group, "public func extra() => ()");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
+    }
 }

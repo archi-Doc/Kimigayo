@@ -789,7 +789,7 @@ and [Slice iteration](../spec/04-arrays-indexing-and-slices.md#467-slice-iterati
 
 The generic run function uses a Slice's iterator and an exclusive Callable,
 stopping after three accepted jobs or exhaustion. Its callback rejects -1,
-adds 2, 4, and 6, and stops before 100. Kimi.makeObj acquires a fully initialized
+adds 2, 4, and 6, and stops before 100. Kimi.Intrinsics.makeObj acquires a fully initialized
 Accumulator into a new exclusive object without repeating construction.
 Its methods read or update fields while preserving whole-object completeness.
 

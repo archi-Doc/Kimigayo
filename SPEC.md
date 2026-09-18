@@ -77,9 +77,24 @@ Implementation coverage, verified support boundaries and the status of the execu
 
 ## Where to start
 
+- **Standard declarations and functions:** [Kimi declaration and function reference](#kimi-declaration-and-function-reference).
 - **First executable program:** [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output and native build](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution).
 - **Source commands:** [input resolution and implicit single-source projects](spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects); [lock files](spec/18-modules-and-dependencies.md#185-lock-files-and-input-records) for `restore` and `check --locked`.
 - **Milestone programs:** [Milestone1–21](milestones/README.md) are independent programs of increasing difficulty. They progress from Hello World through ownership and lifetimes, control flow and Patterns, arrays, nested Declaration Containers, generic sharing and specialization, closures and captures, Slice/Iterator Contracts, exclusive object creation, ownership joins, external Origin forwarding and ordered whole-value updates to composite generic values, associated-Type Contracts, and Type/length/Origin inference with full specialization. The same README defines a 38-program roadmap, summarizes creation/build/test status, and assigns separate semantic and implementation verification scopes to future programs 22–38. Program 20 covers inference/defaults; program 21 separately covers explicit specialization. Expected behavior follows this specification.
+
+## Kimi declaration and function reference
+
+This table indexes the required declarations in [§22.1](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). [§22.1.1](spec/22-core-execution-and-foreign-functions.md#2211-declaration-placement-and-function-reference) owns their placement and collects function signatures; the linked operation sections define behavior.
+
+| Declaration container | Declarations / functions | Reference |
+| --- | --- | --- |
+| `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees) |
+| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Stringify`, `Equatable`, `Comparable`, `Iterator`, `Iterable` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
+| `Kimi.Console` | `writeLine(text: string) -> ()` | [§22.4](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |
+| `Kimi.Intrinsics` | `replace`, `exchange`, `swap` | [§15.7 whole-value updates](spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
+| `Kimi.Intrinsics` | `makeObj`, `makeRc`, `makeArc`, strong/Weak `clone`, `downgrade`, `upgrade`, `makeRcCyclic`, `makeArcCyclic` | [§13.5.8–9](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) |
+
+These are specification requirements, not a list of completed compiler features. [STATUS.md](STATUS.md#kimi-library-and-whole-value-updates) lists current declarations, compiler-supplied helpers such as `SliceIterator`, and runtime limits. `$abort` is a separate language built-in, not a Kimi Function.
 
 ## Integrated design records
 

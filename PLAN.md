@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The active request is to restructure the roadmap into 38 programs, split the existing combined inference/specialization target, refine future verification scopes and use Console.writeLine in milestone sources except Hello World. Programs 1–21 have source files; 22–38 remain planned. This task does not require completing unsupported compiler features or authoring all future programs. Preserve existing uncommitted work; NativeAOT and draft edits remain excluded.
+The active request is to consolidate the Kimi declaration/function reference and relocate ownership operations to `Kimi.Intrinsics`. Migrate implemented functions, lookup/validation, tests and executable sources; place the remaining specified ownership family under the same group without claiming new runtime support. NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -23,7 +23,7 @@ This file owns the current plan. Its baseline must not be weakened to match impl
 5. Specifically include settled object/Weak operations (§13.5.8–9), collection mutation (§4.7), source packages/local publication (§18), and basic test semantics. Old implementation comments calling these unspecified do not supersede the specification.
 6. Exclude Composition Root Entry/Provider selection, runtime Contract Views, source concurrency, extra target profiles, stable external Kimigayo/DLL ABI, source transparent aliases, general user-defined arithmetic, extra generic/specialization forms, persistent generation/object-code caches, dynamic generic scratch allocation, and other Appendix D extensions.
 7. Exclude undefined raw-storage acquisition/allocation/reference-conversion APIs (§5.6), checked-cast/exact-test public spellings (§13.6.2), and string concatenation acquisition (§13.3). Preserve their settled constraints without inventing executable syntax. The mention of concatenation in §22.1 does not override §13.3's explicit executable-finalization prohibition. Interpolation and its Stringify contract are independently specified and included.
-8. `Kimi.Sealed` and `Kimi.replace/exchange/swap` are adopted requirements (§15.7); the earlier exclusion of exchange spelling is superseded. Declaration Container nesting is adopted under §6.1.1, §8.4.9, §9.6.1 and §22.2.4. R3/R5/R6/R7/R10/R11/R19/R23 and their existing I/T families cover these requirements, including Appendices A.18–A.20; implementation limits do not exclude them.
+8. `Kimi.Sealed` and `Kimi.Intrinsics.replace/exchange/swap` are adopted requirements (§15.7); the earlier exclusion of exchange spelling is superseded. Declaration Container nesting is adopted under §6.1.1, §8.4.9, §9.6.1 and §22.2.4. R3/R5/R6/R7/R10/R11/R19/R23 and their existing I/T families cover these requirements, including Appendices A.18–A.20; implementation limits do not exclude them.
 9. ObjectCallCompatible inference/publication and release checking remain explicitly deferred by [SPEC Appendix D.5.1](spec/appendices/D-deferred-features.md#objectcallcompatible) pending further instructions. Preserve the specified call rules; I7/I24 must not implement those deferred stages from an old execution instruction.
 10. Undefined Mod host interfaces/configuration and test profile interfaces are separate design work (G1–G2). Their settled semantic rules remain baseline requirements; dependent public integration cannot be declared complete by inventing interfaces. Dynamic collection/Slice internal representations may be proposed within settled contracts; a fixed public collection ABI is excluded (G3).
 
@@ -31,26 +31,21 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current request: **38-program restructuring — DONE**.
-[Program design/status](milestones/README.md#program-status) owns the catalog;
-[future verification scopes](milestones/README.md#verification-scopes-for-future-programs-2238)
-separate canonical sources, semantic variants and internal evidence.
+Current request: **Kimi.Intrinsics placement and declaration reference — DONE**.
 
-| ID | State | Outcome and dependencies |
+| ID | State | Acceptance / exact next action |
 | --- | --- | --- |
-| P18-D, P19-D | DONE | Existing generic value/Contract targets retain their subjects; output calls shortened. Product support remains bounded. |
-| P20-D | DONE, revised | Inference/defaults only; depends on I4 and Origin support. Former combined P20 scope is split, not dropped. |
-| P21-D | DONE | Independent full specialization/inherited-contract source; depends on I14/I15 and P20 capabilities. |
-| P38-R | DONE | 38-program catalog, old/new number mapping, prerequisites and verification scopes for future 22–38; compare before Dictionary. |
-| P38-S | DONE | Console.writeLine in programs 2–21 and companion script sources; program 1 unchanged. |
-| P38-V | DONE for restructuring | Warning-free Release build, 57 alias/syntax tests, 577 existing harness checks and two program-13 native runs PASS. O2 probes for 15–21 FAIL; native tests NOT_RUN. [Evidence](PLAN_HISTORY.md#programs38-restructure). |
+| KI-S | DONE | §22.1.1 owns placement and function reference; SPEC.md links it. Ownership APIs move under Intrinsics, intrinsic Contracts stay at Kimi, and output stays at Console. |
+| KI-I | DONE | replace/exchange/swap/makeObj declarations, scopes and validation moved; existing sources migrated; root compatibility names removed. |
+| KI-V | DONE | Warning-free Debug/Release test builds; 8,691 tests per configuration, 48 Release Milestone14 checks and 36 O0/O2 update executions pass. [Evidence](PLAN_HISTORY.md#kimi-intrinsics-placement). NativeAOT NOT_RUN. |
 
-P14-C/O/E/V retain their recorded target completion; former P18-20-V is historical
-[authoring evidence](PLAN_HISTORY.md#programs18-20-design) for the pre-split source.
-Programs 15–21 remain specification targets; 22–38 have no source files yet.
-Units 62–67 (T4n-at–ax, T12a) remain DONE for their bounded criteria after the
-[verification audit](PLAN_HISTORY.md#units62-67-verification); their parent
-I3/I6/I8/I12 families remain IN_PROGRESS. No product M/I family is closed here.
+The preceding P18-D/P19-D/P20-D/P21-D/P38-R/P38-S/P38-V checkpoint is preserved in
+[history](PLAN_HISTORY.md#kimi-intrinsics-placement). Programs 15–21 remain
+specification targets; 22–38 have no source files. P14 and units 62–67 retain their
+bounded prior completion; no product M/I family is closed by this relocation.
+
+No next action remains for KI-S/KI-I/KI-V. Remaining ownership APIs retain their
+existing I24/I25 implementation scope.
 
 ### Current milestone states
 

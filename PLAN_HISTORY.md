@@ -5095,3 +5095,47 @@ operations on dereferenced generic returned element borrows; 21 fails length
 specialization/inherited Origin Binding with cascading diagnostics. These are
 recorded limitations, not reasons to weaken the specified programs. Their
 expected outputs and proposed negative cases remain unverified natively.
+
+
+<a id="kimi-intrinsics-placement"></a>
+
+## Kimi.Intrinsics placement and reference (2026-09-18)
+
+The requested namespace relocation supersedes the root function placement in older design records. `draft/` and preceding historical evidence are unchanged. Public compiler identity follows the Intrinsics group; no root forwarding compatibility declarations are retained. Missing rc/arc/Weak operations remain implementation gaps.
+
+### Implementation and verification
+
+KI-S/KI-I/KI-V completed. Added the SPEC.md reference table and normative §22.1.1, migrated owning specification clauses and executable sources, and moved the four existing compiler functions into a validated public Intrinsics group with a reusable Binding scope. Catalog IDs and the 12/22 coverage count are unchanged. Tests cover qualified/default/named/opening alias lookup, root-name rejection, repeated Binding, container-shape validation, ordinary same-name shadowing and emission.
+
+- `dotnet test --project xUnitTest/xUnitTest.csproj -c Release --no-restore`: PASS, 8,691 tests, zero skipped; warning-free build.
+- The same command with `-c Debug`: PASS, 8,691 tests, zero skipped; warning-free build.
+- `backend/windows-x64/test-milestone14.ps1 -Configuration Release`: PASS, 48 checks (39 native/CLI execution checks across canonical O2 and O0/O2 variants, nine rejected variants). [Native report](bin/milestone14/Release/932614fcdf0644e7a198a774012c1177/verification.json).
+- `backend/windows-x64/test-scalars.ps1 -FixturePattern 'WholeValue*.ll' -OutputDirectory 'bin/intrinsics-verification/whole-value-native'`: PASS, 18 fixtures / 36 O0/O2 executions, including both Intrinsics group aliases, ordinary user-group shadowing, updates/destruction and the migrated example. Fixtures came from the final Debug managed run.
+- [Audit summary and source/binary hashes](bin/intrinsics-verification/verification.json). NativeAOT NOT_RUN; draft records unchanged. No new rc/arc/Weak runtime support is claimed.
+
+Intermediate fixes: the first focused run passed 79/89 tests; ten failures exposed old qualified calls immediately following escaped newlines, missed by an initial word-boundary replacement. Those calls were migrated, and the expanded focused run passed 107/107. Four formatting warnings in the added tests were fixed before both final full suites. Initial sandbox NuGet-config access failed; existing restore assets permitted `--no-restore`. LLVM execution required an approved sandbox escalation; the final native runs passed.
+
+### Superseded preceding plan checkpoint
+
+The active request is to restructure the roadmap into 38 programs, split the existing combined inference/specialization target, refine future verification scopes and use Console.writeLine in milestone sources except Hello World. Programs 1–21 have source files; 22–38 remain planned. This task does not require completing unsupported compiler features or authoring all future programs. Preserve existing uncommitted work; NativeAOT and draft edits remain excluded.
+
+Current request: **38-program restructuring — DONE**.
+[Program design/status](milestones/README.md#program-status) owns the catalog;
+[future verification scopes](milestones/README.md#verification-scopes-for-future-programs-2238)
+separate canonical sources, semantic variants and internal evidence.
+
+| ID | State | Outcome and dependencies |
+| --- | --- | --- |
+| P18-D, P19-D | DONE | Existing generic value/Contract targets retain their subjects; output calls shortened. Product support remains bounded. |
+| P20-D | DONE, revised | Inference/defaults only; depends on I4 and Origin support. Former combined P20 scope is split, not dropped. |
+| P21-D | DONE | Independent full specialization/inherited-contract source; depends on I14/I15 and P20 capabilities. |
+| P38-R | DONE | 38-program catalog, old/new number mapping, prerequisites and verification scopes for future 22–38; compare before Dictionary. |
+| P38-S | DONE | Console.writeLine in programs 2–21 and companion script sources; program 1 unchanged. |
+| P38-V | DONE for restructuring | Warning-free Release build, 57 alias/syntax tests, 577 existing harness checks and two program-13 native runs PASS. O2 probes for 15–21 FAIL; native tests NOT_RUN. [Evidence](PLAN_HISTORY.md#programs38-restructure). |
+
+P14-C/O/E/V retain their recorded target completion; former P18-20-V is historical
+[authoring evidence](PLAN_HISTORY.md#programs18-20-design) for the pre-split source.
+Programs 15–21 remain specification targets; 22–38 have no source files yet.
+Units 62–67 (T4n-at–ax, T12a) remain DONE for their bounded criteria after the
+[verification audit](PLAN_HISTORY.md#units62-67-verification); their parent
+I3/I6/I8/I12 families remain IN_PROGRESS. No product M/I family is closed here.

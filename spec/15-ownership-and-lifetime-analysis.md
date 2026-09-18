@@ -711,7 +711,7 @@ Here `observe` accepts `ref/Writer`, and reading `self.out` shares the stored ca
 
 ## 15.7. Whole-value updates
 
-The following ordinary Kimi declarations have compiler-intrinsic implementations selected by declaration identity; a same-spelled user function has no intrinsic behavior. `T` is any valid complete value Type; these operations impose no `Sealed`, `Copy` or `Owned` constraint.
+The following ordinary declarations belong to the public `Kimi.Intrinsics` group (§22.1.1) and have compiler-intrinsic implementations selected by declaration identity; a same-spelled user function has no intrinsic behavior. `T` is any valid complete value Type; these operations impose no `Sealed`, `Copy` or `Owned` constraint.
 
 ```kimi
 public func replace<T>(target: uniq/T, with => value: T) -> ()
@@ -723,9 +723,9 @@ Each target must be fully Initialized, exclusively writable and permitted to und
 
 | Operation | Old contents | New contents | Result |
 | --- | --- | --- | --- |
-| `Kimi.replace` | Destroyed at the original location | Installed only after destruction completes | Unit |
-| `Kimi.exchange` | Transferred without destruction | The acquired value is installed | The old value and its responsibilities |
-| `Kimi.swap` | Both transferred without destruction | Contents and responsibilities exchanged | Unit |
+| `Kimi.Intrinsics.replace` | Destroyed at the original location | Installed only after destruction completes | Unit |
+| `Kimi.Intrinsics.exchange` | Transferred without destruction | The acquired value is installed | The old value and its responsibilities |
+| `Kimi.Intrinsics.swap` | Both transferred without destruction | Contents and responsibilities exchanged | Unit |
 
 Owner Places use ordinary implicit exclusive borrowing, and existing value borrows use ordinary Reborrow. Object payloads require an explicit projection at ordinary argument positions. Reference or handle *storage* is borrowed with a fully specified target. If `T` is a borrow Type, the operations transfer its reference value and capability, not ownership of its referent. Property access and hidden-storage permissions still apply.
 
@@ -739,17 +739,17 @@ Explicit arguments, including named arguments, are evaluated in textual order, a
 
 ```kimi
 var p: i32 = 0
-// Kimi.replace(p, with: p + 1) // Error: target Loan conflicts with the later read.
+// Kimi.Intrinsics.replace(p, with: p + 1) // Error: target Loan conflicts with the later read.
 let next = p + 1
-Kimi.replace(p, with: next)
-let old = Kimi.exchange(p, with: 5)
+Kimi.Intrinsics.replace(p, with: next)
+let old = Kimi.Intrinsics.exchange(p, with: 5)
 p = p + 1                     // Valid: assignment evaluates its RHS first.
 var q: i32 = 9
-Kimi.swap(p, q)
-// Kimi.swap(p, p)             // Error: overlapping exclusive targets.
+Kimi.Intrinsics.swap(p, q)
+// Kimi.Intrinsics.swap(p, p)             // Error: overlapping exclusive targets.
 ```
 
-Diagnostics identify the borrow and the conflicting use. For a conflict with a later argument, they suggest precomputing that argument in a local only when its dependencies permit it. For a Non-Copy `x`, `x = x` can Move and reinitialize, whereas `Kimi.exchange(x, with: x)` conflicts with the already active target Loan.
+Diagnostics identify the borrow and the conflicting use. For a conflict with a later argument, they suggest precomputing that argument in a local only when its dependencies permit it. For a Non-Copy `x`, `x = x` can Move and reinitialize, whereas `Kimi.Intrinsics.exchange(x, with: x)` conflicts with the already active target Loan.
 
 ### 15.7.2. Static non-overlap
 
@@ -757,7 +757,7 @@ Diagnostics identify the borrow and the conflicting use. For a conflict with a l
 
 ```kimi
 func swapValues<T>(a: uniq/T, b: uniq/T)
-    Kimi.swap(a, b) // Valid live exclusive inputs establish distinct anchors.
+    Kimi.Intrinsics.swap(a, b) // Valid live exclusive inputs establish distinct anchors.
 ```
 
 ### 15.7.3. Storage update dependencies

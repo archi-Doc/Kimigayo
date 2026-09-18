@@ -35,7 +35,7 @@ public func main()
         Pipeline.Job.init(2), Pipeline.Job.init(-1), Pipeline.Job.init(4),
         Pipeline.Job.init(6), Pipeline.Job.init(100),
     ]
-    var accumulator = ::Kimi.makeObj<Pipeline.Accumulator>(Pipeline.Accumulator.init())
+    var accumulator = ::Kimi.Intrinsics.makeObj<Pipeline.Accumulator>(Pipeline.Accumulator.init())
     do
         let target = accumulator@uniq/Pipeline.Accumulator
         var visit = func [target] (job: ref/Pipeline.Job) -> bool
@@ -50,7 +50,7 @@ public func main()
     // Exchange contents while preserving object Identity, allocation, and Dynamic Type.
     // The returned old payload has a separate destruction responsibility.
     do
-        let old = Kimi.exchange(accumulator@uniq/Pipeline.Accumulator, with: Pipeline.Accumulator.init())
+        let old = Kimi.Intrinsics.exchange(accumulator@uniq/Pipeline.Accumulator, with: Pipeline.Accumulator.init())
         require old.read() == 12 else => $abort("Exchange lost the old payload")
         accumulator.add(old.read())
     let complete = func [accumulator] () => Pipeline.finish(accumulator)

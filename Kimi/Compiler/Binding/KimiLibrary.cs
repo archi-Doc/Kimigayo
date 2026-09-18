@@ -82,18 +82,6 @@ public sealed class KimiLibrary
         this.declarations[(int)KimiDeclarationId.Result] = this.declarations[(int)KimiDeclarationId.Result] with { Symbol = this.Create(4, IntrinsicKind.None) };
         this.Kotonoha.RootKoto.GetOrAddGroup("Sealed", TokenKind.Contract, context, default);
         this.declarations[(int)KimiDeclarationId.Sealed] = this.declarations[(int)KimiDeclarationId.Sealed] with { Symbol = this.Create(6, IntrinsicKind.Sealed) };
-        this.ParseDeclarations("public func replace<T>(target: uniq/T, with => value: T) -> ()\npublic func exchange<T>(target: uniq/T, with => value: T) -> T\npublic func swap<T>(first: uniq/T, second: uniq/T) -> ()");
-        for (var i = 0; i < 3; i++)
-        {
-            var declaration = (FunctionKoto)this.Kotonoha.RootKoto.Members[i];
-            var symbol = new BindingSymbol(declaration.Name, BindingSymbolKind.Function, declaration, this.Scope) { CompilerFunction = (CompilerFunctionKind)((int)CompilerFunctionKind.Replace + i) };
-            var id = (int)KimiDeclarationId.Replace + i;
-            this.declarations[id] = this.declarations[id] with { Symbol = symbol };
-        }
-
-        this.ParseDeclarations("public func makeObj<T>(value: T) -> obj/T");
-        var makeObj = (FunctionKoto)this.Kotonoha.RootKoto.Members[3];
-        this.MakeObj = new(makeObj.Name, BindingSymbolKind.Function, makeObj, this.Scope) { CompilerFunction = CompilerFunctionKind.MakeObj };
         this.ParseDeclarations("public contract Iterator\n    associate Element\n    func next(self: uniq/Self) -> Option<Self.Element>");
         this.declarations[(int)KimiDeclarationId.Iterator] = this.declarations[(int)KimiDeclarationId.Iterator] with { Symbol = this.Create(7, IntrinsicKind.None) };
         this.ParseDeclarations("""
@@ -115,6 +103,21 @@ public sealed class KimiLibrary
             """);
         this.declarations[(int)KimiDeclarationId.Slice] = this.declarations[(int)KimiDeclarationId.Slice] with { Symbol = this.Create(8, IntrinsicKind.None) };
         this.SliceIterator = this.Create(9, IntrinsicKind.None);
+        this.Intrinsics = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Intrinsics", TokenKind.Group, context, default);
+        this.IntrinsicsScope = new(this.Intrinsics) { Parent = this.Scope };
+        this.IntrinsicsSymbol = new("Intrinsics", BindingSymbolKind.Container, this.Intrinsics, this.Scope);
+        this.ParseDeclarations("public func replace<T>(target: uniq/T, with => value: T) -> ()\npublic func exchange<T>(target: uniq/T, with => value: T) -> T\npublic func swap<T>(first: uniq/T, second: uniq/T) -> ()", this.Intrinsics);
+        for (var i = 0; i < 3; i++)
+        {
+            var declaration = (FunctionKoto)this.Intrinsics.Members[i];
+            var symbol = new BindingSymbol(declaration.Name, BindingSymbolKind.Function, declaration, this.IntrinsicsScope) { CompilerFunction = (CompilerFunctionKind)((int)CompilerFunctionKind.Replace + i) };
+            var id = (int)KimiDeclarationId.Replace + i;
+            this.declarations[id] = this.declarations[id] with { Symbol = symbol };
+        }
+
+        this.ParseDeclarations("public func makeObj<T>(value: T) -> obj/T", this.Intrinsics);
+        var makeObj = (FunctionKoto)this.Intrinsics.Members[3];
+        this.MakeObj = new(makeObj.Name, BindingSymbolKind.Function, makeObj, this.IntrinsicsScope) { CompilerFunction = CompilerFunctionKind.MakeObj };
         this.Restore();
     }
 
@@ -167,6 +170,12 @@ public sealed class KimiLibrary
 
     internal GroupKoto Console { get; }
 
+    internal GroupKoto Intrinsics { get; }
+
+    internal BindingScope IntrinsicsScope { get; }
+
+    internal BindingSymbol IntrinsicsSymbol { get; }
+
     internal BindingScope ConsoleScope { get; }
 
     internal BindingSymbol ConsoleSymbol { get; }
@@ -178,8 +187,8 @@ public sealed class KimiLibrary
     {
         get
         {
-            var valid = this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 10 &&
-                this.Kotonoha.RootKoto.Members.Count == 4 && this.ValidMakeObj() &&
+            var valid = this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 11 &&
+                this.Kotonoha.RootKoto.Members.Count == 0 && this.ValidIntrinsics() && this.ValidMakeObj() &&
                 ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[5], this.Console) &&
                 this.Console is { Name: "Console", Modifier: ModifierKind.Public, AttributeChain: null, HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Members.Count: 1 } &&
                 ReferenceEquals(this.Console.Parent, this.Kotonoha.RootKoto) &&
@@ -225,6 +234,9 @@ public sealed class KimiLibrary
             }
         }
 
+        this.IntrinsicsScope.Reset();
+        this.Intrinsics.BoundSymbol = this.IntrinsicsSymbol;
+        this.Scope.Types.Add("Intrinsics", this.IntrinsicsSymbol);
         this.ConsoleScope.Reset();
         this.Console.BoundSymbol = this.ConsoleSymbol;
         this.Scope.Types.Add("Console", this.ConsoleSymbol);
@@ -256,7 +268,7 @@ public sealed class KimiLibrary
 
     private void CreateEnums() => this.ParseDeclarations("public enum Option<T>\n    Self is Copy when T is Copy\n    Some(T)\n    None\npublic enum Result<T, E>\n    Ok(T)\n    Err(E)");
 
-    private void ParseDeclarations(string text)
+    private void ParseDeclarations(string text, DeclarationContainerKoto? container = null)
     {
         var source = new SourceDocument("compiler://Kimi/declarations", text);
         var context = new CodeContext(this.Kotonoha, sourceDocument: source);
@@ -282,7 +294,7 @@ public sealed class KimiLibrary
                     var item = Parser.ParseFuncDeclaration(ref reader);
                     if (item is not null)
                     {
-                        this.Kotonoha.RootKoto.AddLast(item);
+                        (container ?? this.Kotonoha.RootKoto).AddLast(item);
                     }
                     else
                     {
@@ -380,9 +392,9 @@ public sealed class KimiLibrary
     {
         var index = (int)id - (int)KimiDeclarationId.Replace;
         var swap = id == KimiDeclarationId.Swap;
-        if ((uint)index >= (uint)this.Kotonoha.RootKoto.Members.Count || symbol.CompilerFunction != (CompilerFunctionKind)((int)CompilerFunctionKind.Replace + index) || !ReferenceEquals(symbol.Scope, this.Scope) ||
-            !ReferenceEquals(this.Kotonoha.RootKoto.Members[index], symbol.Declaration) ||
-            symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.Kotonoha.RootKoto) ||
+        if ((uint)index >= (uint)this.Intrinsics.Members.Count || symbol.CompilerFunction != (CompilerFunctionKind)((int)CompilerFunctionKind.Replace + index) || !ReferenceEquals(symbol.Scope, this.IntrinsicsScope) ||
+            !ReferenceEquals(this.Intrinsics.Members[index], symbol.Declaration) ||
+            symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.Intrinsics) ||
             function.Name != symbol.Name || function.Modifier != ModifierKind.Public || function.AttributeChain is not null ||
             function.GenericArguments.Count != 1 || function.GenericArguments[0] is not GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } ||
             function.Origins.Count != 0 || function.Parameters.Count != 2 || function.TypeConstraints.Count != 0 ||
@@ -443,9 +455,15 @@ public sealed class KimiLibrary
         ReferenceEquals(slice.Parent, this.Kotonoha.RootKoto) && slice.OriginNames[0] == "source" &&
         slice.GenericParameterNodes[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null };
 
+    private bool ValidIntrinsics()
+        => ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[10], this.Intrinsics) &&
+        ReferenceEquals(this.Intrinsics.Parent, this.Kotonoha.RootKoto) &&
+        this.Intrinsics is { Name: "Intrinsics", Modifier: ModifierKind.Public, AttributeChain: null, HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Members.Count: 4 };
+
     private bool ValidMakeObj()
-        => this.MakeObj.CompilerFunction == CompilerFunctionKind.MakeObj && ReferenceEquals(this.MakeObj.Scope, this.Scope) &&
-        ReferenceEquals(this.Kotonoha.RootKoto.Members[3], this.MakeObj.Declaration) &&
+        => this.MakeObj.CompilerFunction == CompilerFunctionKind.MakeObj && ReferenceEquals(this.MakeObj.Scope, this.IntrinsicsScope) &&
+        this.Intrinsics.Members.Count == 4 && ReferenceEquals(this.Intrinsics.Members[3], this.MakeObj.Declaration) &&
+        ReferenceEquals(this.MakeObj.Declaration.Parent, this.Intrinsics) &&
         this.MakeObj.Declaration is FunctionKoto { Name: "makeObj", Modifier: ModifierKind.Public, AttributeChain: null, GenericArguments.Count: 1, Parameters.Count: 1, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false } f &&
         f.GenericArguments[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
         f.Parameters[0] is { InternalName: "value", ExternalName: "value", IsOptional: false, DefaultValue: null, AttributeChain: null } p &&

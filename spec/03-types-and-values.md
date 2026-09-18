@@ -187,7 +187,7 @@ An empty environment or `func []` implies neither purity, a function-pointer ABI
 
 `Kimi.Weak<S>` is a compiler-managed Non-Copy struct Core. After normalization, `S` must be a complete `rc/T` or `arc/T` satisfying the object View Target rules. A generic definition needs the same evidence: for a pair `<s/T>`, `s` must be `rc` or `arc`. A bare payload Core, `obj`, an object borrow, or `Weak` itself is not a valid `S`.
 
-A Weak owns one responsibility for a particular weak management area; it never owns the payload strongly. Its outer Semantics is ordinary `owner`, and `ref/Weak<S>` borrows the Weak slot. Normal acquisition Moves a Weak, and `Kimi.clone` explicitly duplicates its weak responsibility. Users cannot replace its fields or `deinit`.
+A Weak owns one responsibility for a particular weak management area; it never owns the payload strongly. Its outer Semantics is ordinary `owner`, and `ref/Weak<S>` borrows the Weak slot. Normal acquisition Moves a Weak, and `Kimi.Intrinsics.clone` explicitly duplicates its weak responsibility. Users cannot replace its fields or `deinit`.
 
 Every Weak has a target management area. **There is no empty Weak and no zero-argument Weak constructor**; use `Option<Weak<S>>` with `None` for absence. An expired Weak is a present value whose target cannot be upgraded. Neither expiration nor construction state changes its Non-Copy classification. No niche or one-word Option representation is promised.
 
@@ -405,7 +405,7 @@ func duplicate<T>(value: T) -> (T, T)
 
 Unknown Copy capability follows [generic access effects](08-generics-constraints-and-contracts.md#89-generic-access-effects), which preserve conditional acquisition plans and separate shared element-read rules.
 
-Duplication that allocates, increments a reference count or duplicates a resource requires an explicit operation. `rc`/`arc` handles and Weak use [`Kimi.clone`](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing); no general duplication API is defined.
+Duplication that allocates, increments a reference count or duplicates a resource requires an explicit operation. `rc`/`arc` handles and Weak use [`Kimi.Intrinsics.clone`](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing); no general duplication API is defined.
 
 ### 3.5.2. Enum Copy
 

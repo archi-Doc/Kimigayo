@@ -1,7 +1,7 @@
 # Whole-value replacement
 
 [WholeValueReplacement.kimi](WholeValueReplacement.kimi) exercises ordinary
-Kimi calls, a borrowed complete struct, immutable fields, destruction order,
+Kimi.Intrinsics calls, a borrowed complete struct, immutable fields, destruction order,
 and scalar exchange/swap. Expected output:
 
 ```text

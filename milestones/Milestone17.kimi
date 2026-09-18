@@ -17,13 +17,13 @@ func prepare() -> [2 of Resource]
     require extracted.id == 1 else => $abort("Partial Move failed")
     items[0] = Resource.init(3) // Restore whole-array completeness.
     do
-        let old = Kimi.exchange(items[1]@uniq, with: Resource.init(4))
+        let old = Kimi.Intrinsics.exchange(items[1]@uniq, with: Resource.init(4))
         require old.id == 2 and items[1].id == 4 else => $abort("Exchange failed")
         defer => Console.writeLine("Exchange scope finished.")
         // old is destroyed after this scope's defer; exchange did not destroy it.
-    Kimi.swap(items[0]@uniq, items[1]@uniq)
+    Kimi.Intrinsics.swap(items[0]@uniq, items[1]@uniq)
     require items[0].id == 4 and items[1].id == 3 else => $abort("Swap failed")
-    Kimi.replace(items[1]@uniq, with: Resource.init(5))
+    Kimi.Intrinsics.replace(items[1]@uniq, with: Resource.init(5))
     require items[1].id == 5 else => $abort("Replacement failed")
     defer => Console.writeLine("Prepared result.")
     return items // Secure the array before defer and extracted's destruction.

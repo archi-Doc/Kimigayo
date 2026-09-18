@@ -8,7 +8,7 @@ struct Cell
         else => Output.writeLine("Destroyed 2.")
 
 func replaceCell(cell: uniq/Cell)
-    Kimi.replace(cell, with: Cell.init(2))
+    Kimi.Intrinsics.replace(cell, with: Cell.init(2))
 
 var cell = Cell.init(1)
 replaceCell(cell)
@@ -17,11 +17,11 @@ Output.writeLine("Replacement installed.")
 var first: i32 = 10
 var second: i32 = 30
 let next = first + 1 // Compute before the exclusive target Loan starts.
-Kimi.replace(first, with: next)
-let old = Kimi.exchange(first, with: 20)
-Kimi.swap(first, second)
+Kimi.Intrinsics.replace(first, with: next)
+let old = Kimi.Intrinsics.exchange(first, with: 20)
+Kimi.Intrinsics.swap(first, second)
 if old == 11 and first == 30 and second == 20
     Output.writeLine("Exchange and swap complete.")
 
-// Kimi.replace(first, with: first + 1) // Conflicting later read.
-// Kimi.swap(first, first)             // Overlapping targets.
+// Kimi.Intrinsics.replace(first, with: first + 1) // Conflicting later read.
+// Kimi.Intrinsics.swap(first, first)             // Overlapping targets.

@@ -195,10 +195,10 @@ A destruction receiver cannot become an owning or counting handle, be stored for
 
 ```text
 During deinit (conceptual storage operations):
-    Kimi.exchange(self, replacement)       // Error: whole-self replacement.
+    Kimi.Intrinsics.exchange(self, replacement)       // Error: whole-self replacement.
     self.reset()                     // Error if reset requires uniq/Self.
     observe(sharedBorrow(field))     // Allowed for an initialized field.
-    Kimi.exchange(field, with: newValue)   // Allowed with authorized field access.
+    Kimi.Intrinsics.exchange(field, with: newValue)   // Allowed with authorized field access.
 ```
 
 ### 16.3.2. Field cleanup

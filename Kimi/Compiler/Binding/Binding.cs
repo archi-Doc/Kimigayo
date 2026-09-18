@@ -33,6 +33,7 @@ public sealed partial class Binding
         this.indexer = new(this);
         this.TypeSystem = new BindingControlFlowTypes(this);
         this.Library = new(compilation);
+        this.symbols.Add(this.Library.Intrinsics, this.Library.IntrinsicsSymbol);
         this.symbols.Add(this.Library.Console, this.Library.ConsoleSymbol);
         this.symbols.Add(this.Library.WriteLine.Declaration, this.Library.WriteLine);
         this.symbols.Add(this.Library.Option.Declaration, this.Library.Option);
@@ -157,6 +158,8 @@ public sealed partial class Binding
             this.indexer.Visit(this.Library.Iterator.Declaration);
             this.indexer.Visit(this.Library.Slice.Declaration);
             this.indexer.Visit(this.Library.SliceIterator.Declaration);
+            this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
+            this.indexer.Scope = this.Library.IntrinsicsScope;
             this.indexer.Visit(this.Library.Replace.Declaration);
             this.indexer.Visit(this.Library.Exchange.Declaration);
             this.indexer.Visit(this.Library.Swap.Declaration);
@@ -198,10 +201,10 @@ public sealed partial class Binding
             this.BindNode(this.Library.Iterator.Declaration, this.Library.Scope);
             this.BindNode(this.Library.Slice.Declaration, this.Library.Scope);
             this.BindNode(this.Library.SliceIterator.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.Replace.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.Exchange.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.Swap.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.MakeObj.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.Replace.Declaration, this.Library.IntrinsicsScope);
+            this.BindNode(this.Library.Exchange.Declaration, this.Library.IntrinsicsScope);
+            this.BindNode(this.Library.Swap.Declaration, this.Library.IntrinsicsScope);
+            this.BindNode(this.Library.MakeObj.Declaration, this.Library.IntrinsicsScope);
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
             this.ComputeOriginRequirements();

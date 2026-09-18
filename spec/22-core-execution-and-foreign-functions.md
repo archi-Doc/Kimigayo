@@ -8,9 +8,9 @@ This chapter defines the required declarations of the Kimi Kotonoha, process sta
 
 ## 22.1. Required Kimi declarations
 
-The library also provides the intrinsic `Sealed` requirement (§8.4.7) and the ordinary generic declarations `replace`, `exchange`, and `swap` (§15.7). Recognition uses the original Kimi declaration Identity, not names or user conformance. Their generic signatures impose no Sealed requirement; completeness is checked at each actual storage target.
+The library also provides the intrinsic `Kimi.Sealed` requirement (§8.4.7) and the ordinary generic declarations `Kimi.Intrinsics.replace`, `Kimi.Intrinsics.exchange`, and `Kimi.Intrinsics.swap` (§15.7). Recognition uses the original Kimi declaration Identity, not names or user conformance. Their generic signatures impose no Sealed requirement; completeness is checked at each actual storage target.
 
-Every Compilation binds exactly one compiler-compatible **Kimi Kotonoha**, using the reserved direct reference name `Kimi`. User dependencies and project-root declarations cannot use that name. It is not a keyword; inner scopes follow normal shadowing. `::Kimi` bypasses locals and aliases. The declarations below are public at the library root, except `writeLine`, which belongs to the public `Console` group (§22.4). The mandatory default alias opens Kimi under §18.1.3. Qualified paths such as `::Kimi.Option<T>` identify them regardless of local shadowing. Compiler metadata records their originating Kotonoha/version and Symbol Identities; a same-spelled user declaration or replacement alias never receives their special behavior. Reject a missing, duplicate, or incompatible Kimi definition before finalization. The compiler may synthesize these definitions, but synthesized and loaded definitions must have the same language identities and contracts. Kimi itself is built with these identities designated by the compiler.
+Every Compilation binds exactly one compiler-compatible **Kimi Kotonoha**, using the reserved direct reference name `Kimi`. User dependencies and project-root declarations cannot use that name. It is not a keyword; inner scopes follow normal shadowing. `::Kimi` bypasses locals and aliases. The Types and Contracts below are public at the library root. Ownership operations belong to the public `Intrinsics` group (§22.1.1); `writeLine` belongs to the public `Console` group (§22.4). The mandatory default alias opens Kimi under §18.1.3. Qualified paths such as `::Kimi.Option<T>` identify them regardless of local shadowing. Compiler metadata records their originating Kotonoha/version and Symbol Identities; a same-spelled user declaration or replacement alias never receives their special behavior. Reject a missing, duplicate, or incompatible Kimi definition before finalization. The compiler may synthesize these definitions, but synthesized and loaded definitions must have the same language identities and contracts. Kimi itself is built with these identities designated by the compiler.
 
 This is the minimal set named by language rules, not a promise of a general standard library:
 
@@ -18,7 +18,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 | --- | --- |
 | `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Kimi.Copy} |
 | `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Kimi.Copy, E is Kimi.Copy} |
-| `Weak<S>` | Compiler-managed Non-Copy struct over a valid complete rc/arc S; always holds a target table, with no empty constructor. Kimi.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
+| `Weak<S>` | Compiler-managed Non-Copy struct over a valid complete rc/arc S; always holds a target table, with no empty constructor. Kimi.Intrinsics.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
 | `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; §4.6 indexing, §4.7 mutation/capacity APIs, literals and consuming Iterable conformance |
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
@@ -31,7 +31,8 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `Iterator` | `associate Element`; `func next(self: uniq/Self) -> Option<Self.Element>` |
 | `Iterable` | `associate Element`; `associate Iterator is ::Kimi.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
 | Copy, Owned, Callable, Sealed | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
-| Object ownership intrinsics | Kimi.makeObj / makeRc / makeArc, strong and Weak Kimi.clone, Kimi.downgrade / upgrade, Kimi.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
+| Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
+| Whole-value update intrinsics | `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts |
 | `Console.writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
 
 Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
@@ -45,6 +46,31 @@ For Option/Result Copy conditions, compare atom sets using §8.7's proposition i
 Option/Result Copy and Owned follow ordinary enum rules; no extra copying is introduced. A changed Kimi contract invalidates dependent capability, acquisition, and generation results under §21.3.4. Unchanged Case order and payload structure do not establish binary compatibility with older Kimi artifacts.
 
 Array/Dictionary contents, generic enum payloads, and fixed-array elements preserve complete Type/Origin/Loan dependencies under §15.4. Array's Owned classification follows T, Dictionary's follows K and V, independently of runtime contents; both remain Non-Copy. No container grants permission to hide dependencies or extend a referent's lifetime. Checked-cast designs use the required Kimi Option Identity despite deferred View syntax. Dictionary need not expose hashing. Dynamic mutation, allocation, ordering, retained dependencies, effects and complexity follow §4.7; further library APIs remain separate designs.
+
+### 22.1.1. Declaration placement and function reference
+
+`Kimi.Intrinsics` is a public, non-generic group with no Origin parameters. It contains the whole-value update and object ownership operations as one family. `Copy`, `Owned`, `Callable`, and `Sealed` remain directly under `Kimi`; `writeLine` remains under `Kimi.Console`. Neither group is opened recursively by the default Kimi alias: use `Intrinsics.replace(...)` / `Console.writeLine(...)`, a fully qualified path, or an explicit alias that opens the corresponding group. A named alias such as `alias Memory => Kimi.Intrinsics` preserves the original declarations' Identities. There are no root-level compatibility declarations such as `Kimi.replace` or `Kimi.makeObj`.
+
+The following reference collects the public function names. Types are abbreviated relative to `Kimi`; the linked sections own all constraints, overload requirements, Origins, acquisition and failure behavior.
+
+| Fully qualified function | Signature / input and result Types | Owning rules |
+| --- | --- | --- |
+| `Kimi.Console.writeLine` | `(text: string) -> ()` | §22.4 |
+| `Kimi.Intrinsics.replace<T>` | `(target: uniq/T, with => value: T) -> ()` | §15.7 |
+| `Kimi.Intrinsics.exchange<T>` | `(target: uniq/T, with => value: T) -> T` | §15.7 |
+| `Kimi.Intrinsics.swap<T>` | `(first: uniq/T, second: uniq/T) -> ()` | §15.7 |
+| `Kimi.Intrinsics.makeObj<T>` | `(value: T) -> obj/T` | §13.5.8 |
+| `Kimi.Intrinsics.makeRc<T>` | `(value: T) -> rc/T` | §13.5.8 |
+| `Kimi.Intrinsics.makeArc<T>` | `(value: T) -> arc/T` | §13.5.8 |
+| `Kimi.Intrinsics.clone<S>` | Strong: `ref/S -> S`; Weak: `ref/Weak<S> -> Weak<S>` | §13.5.8–9 |
+| `Kimi.Intrinsics.downgrade<S>` | `ref/S -> Weak<S>` | §13.5.9 |
+| `Kimi.Intrinsics.upgrade<S>` | `ref/Weak<S> -> Option<S>` | §13.5.9 |
+| `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
+| `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
+
+Container members stay with their owning Types and Contracts: `Iterator.next` and `Iterable.iterate` are listed in §22.1; collection, indexing, range and Slice APIs are defined in §4.6–7; comparison and Stringify requirements are listed in §22.1. `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` (§17.1) are not declarations in either group.
+
+This reference specifies required APIs, including unimplemented ones. [STATUS.md](../STATUS.md#kimi-library-and-whole-value-updates) records current declaration and runtime coverage separately.
 
 ## 22.2. Program startup and static initialization
 
