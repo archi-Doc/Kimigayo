@@ -64,10 +64,8 @@ public class BranchReplayContinuationTest
     }
 
     [Theory]
-    [InlineData("if c => return else => x = 3")]
     [InlineData("loop => x = 3")]
     [InlineData("while c => return")]
-    [InlineData("if c => stop() else => x = 3")]
     [InlineData("if c\n                defer => x = 3\n            else => x = 4")]
     public void EscapingDivergentAndDeferredPathsRemainGuarded(string dead)
     {

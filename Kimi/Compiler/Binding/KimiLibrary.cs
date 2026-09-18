@@ -225,7 +225,10 @@ public sealed class KimiLibrary
                         break;
                     }
 
-                    var item = Parser.ParseBlockItem(ref reader);
+                    // These signatures have compiler implementations, not source bodies.
+                    // Use the same signature parser without executable-body validation.
+                    reader.Advance(); // func
+                    var item = Parser.ParseFuncDeclaration(ref reader);
                     if (item is not null)
                     {
                         this.Kotonoha.RootKoto.AddLast(item);

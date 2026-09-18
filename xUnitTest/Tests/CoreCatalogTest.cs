@@ -10,6 +10,23 @@ namespace XunitTest;
 public class CoreCatalogTest
 {
     [Fact]
+    public void CompilerImplementedSignaturesHaveNoSourceBodyErrors()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.False(c.Library.Kotonoha.DiagnosticCollection.HasErrors);
+        Assert.True(c.Bind().IsComplete);
+        foreach (var symbol in new[] { c.Library.Replace, c.Library.Exchange, c.Library.Swap })
+        {
+            var declaration = Assert.IsType<FunctionKoto>(symbol.Declaration);
+            Assert.Null(declaration.Body);
+            Assert.Null(declaration.ExpressionBody);
+        }
+
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func missing() -> ()");
+        Assert.Contains(c.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
+    }
+
+    [Fact]
     public void CatalogDistinguishesAvailableDeclarationsFromMissingLibraryFeatures()
     {
         var c = Compilation.CreateForTest();

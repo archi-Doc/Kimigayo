@@ -51,11 +51,9 @@ public class TerminalBranchReplayTest
     }
 
     [Theory]
-    [InlineData("if c => return else => x = 3")]
-    [InlineData("if c => return")]
     [InlineData("if c => loop => x = 3 else => return")]
     [InlineData("if c\n                defer => x = 3\n                return\n            else => return")]
-    public void PartialDivergentAndDeferredBranchesRemainGuarded(string dead)
+    public void DivergentAndDeferredBranchesRemainGuarded(string dead)
     {
         var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1\n                return", dead, "x = 2", "let y = x"));
         Assert.True(c.Binding.Result.IsComplete);

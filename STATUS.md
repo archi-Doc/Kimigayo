@@ -1,5 +1,39 @@
 # Kimigayo Implementation Status
 
+Partial-terminal ownership continuations (2026-09-18): mixed-target selections
+retain separate normal branch tails and pending terminal histories, including
+missing else, nested branches and later effects. Proven partial-terminal logical
+RHS expressions preserve evaluated/skipped paths with either a completing or
+noncompleting left operand. Noncompleting conditional conditions retain checking
+branch histories, including partial-terminal branch bodies; an earlier normal
+branch remains the only normal arrival when a later condition terminates.
+Initialization, Move, immutable assignment and stored Loan diagnostics retain
+each path's effects. Normal tails include local
+cleanup; terminal histories retain original targets and pre-cleanup state.
+These checking joins introduce no runtime arrivals or missing-operand results.
+Ordinary and single-target joins also restore their original region, fixing a
+crash after a later noncompleting condition. Closed normal loop CFGs retain their
+existing replay path, and selection-local yield arrivals are not discarded.
+Completing scopes with partial-terminal branches retain their normal tails after
+local cleanup. Scope-caught transfers join their post-cleanup normal arrivals;
+their later dead source retains separate histories. This also supports scoped
+logical operands containing caught and escaping transfers. Transfers after a
+noncompleting condition do not create normal arrivals.
+Proven if selections also retain selection-local yield arrivals, including
+nested selection/scope targets and scalar results. Final native/integration
+verification of this latest extension is recorded in PLAN.md.
+
+Compiler-owned replace/exchange/swap signatures no longer emit erroneous
+missing-source-body diagnostics; ordinary source functions still require bodies.
+The latest clean Debug/Release builds pass 8,507 managed tests each. Final native
+verification passes all 861 fixtures at O0/O2 (1,722 executions), including 122
+new fixtures. Programs 1–11 pass all 984 integration checks across both
+configurations. PLAN.md records the matching source and artifact identities.
+Reload/warmed analysis and IR writing allocate zero bytes in the measured
+workloads. General iteration transfer replay, unequal Loan joins, deferred
+cleanup and general effectful divergence remain incomplete. PLAN.md records native/integration
+evidence, the exact next reproducer and the remaining compiler scope.
+
 Declaration Container nesting adoption (2026-09-18): the 2026-09-17 change is
 integrated into SPEC.md, Chapters 3, 6–15 and 18–22, and Appendices A, D and F.
 Placement and inherited environments are defined in §6.1; bound paths and access
@@ -194,9 +228,10 @@ Debug/Release suites pass 8,107 tests each; 136 new continuation fixtures pass O
 and all inputs of the 477 previously verified native fixtures still match.
 Programs 1–11 pass all 984 integration checks across Debug/Release, with all
 22 reports matching the final compiler and program identities.
-Reload/warmed zero-allocation checks pass. Mixed-target partial-terminal branches,
-partial logical operands, unequal Loan joins,
-deferred cleanup and general effectful divergence remain incomplete. Detailed
+Reload/warmed zero-allocation checks pass. Partial-terminal branches, logical
+operands and caught scope/selection continuations were extended in the 2026-09-18
+entry above. Unequal Loan joins, deferred cleanup and general effectful divergence
+remain incomplete. Detailed
 execution evidence and remaining compiler work are maintained in PLAN.md.
 
 ObjectCallCompatible implementation plan (2026-09-17): [SPEC.md](SPEC.md#objectcallcompatible)
@@ -405,8 +440,8 @@ supported scalar defaults and through do wrappers. Every default declaration sti
 requires independent checking, including when its argument is supplied.
 
 Current limits include outer-mutating or owned/effectful divergent loop bodies,
-effects after mixed-target continuation joins, deferred-cleanup joins, unequal active
-Loan joins, short-circuit conditions, recursive-default
+general iteration transfer replay, deferred-cleanup joins, unequal active
+Loan joins, recursive-default
 completion proofs and general owned/borrowed defaults. They remain guarded; M2/M3 are incomplete. PLAN.md units
 21–30 record the verified slices and the next resumption case.
 

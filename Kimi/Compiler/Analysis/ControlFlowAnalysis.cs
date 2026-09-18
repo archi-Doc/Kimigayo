@@ -64,6 +64,7 @@ public sealed class ControlFlowAnalysis
     private readonly List<Koto> childBuffer = new();
     private readonly ChildCollector childCollector;
     private readonly List<JumpKoto> arrivedTransfers = new();
+    private readonly HashSet<JumpKoto> normalTransferArrivals = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<List<ControlFlowResultSource>> candidateLists = new();
     private readonly Dictionary<string, ControlFlowType> pointeeTypes = new(StringComparer.Ordinal);
     private readonly List<ControlFlowNodeInfo> infoPool = new();
@@ -126,6 +127,7 @@ public sealed class ControlFlowAnalysis
         this.defaultCompletions.Clear();
         this.childBuffer.Clear();
         this.arrivedTransfers.Clear();
+        this.normalTransferArrivals.Clear();
         this.infoCursor = this.boundaryCursor = this.transferCursor = this.registrationCursor = 0;
         this.Visit(root, true);
     }
@@ -145,6 +147,10 @@ public sealed class ControlFlowAnalysis
     }
 
     internal void Append(Koto root) => this.Visit(root, true);
+
+    // Assumes entry to the resolved target, independently of its outer runtime
+    // reachability. Dead transfers still supply result Types, not normal arrivals.
+    internal bool ReachesTarget(JumpKoto jump) => this.normalTransferArrivals.Contains(jump);
 
     private static bool IsPointer(ControlFlowType? type)
         => type?.Name.StartsWith(PointerPrefix, StringComparison.Ordinal) == true;
@@ -1112,6 +1118,7 @@ public sealed class ControlFlowAnalysis
 
             foreach (var jump in arrived)
             {
+                this.normalTransferArrivals.Add(jump);
                 flow = flow with { Normal = flow.Normal || jump is not ContinueKoto };
                 transfers.Remove(jump);
             }

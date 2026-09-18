@@ -489,5 +489,5 @@ public sealed partial class OwnershipAnalysis
         return false;
     }
 
-    private readonly record struct SelectionFrame(Koto Source, int Result, int Join, int Locals, int Temporaries, int Comparisons);
+    private readonly record struct SelectionFrame(Koto Source, int Result, int Join, int Locals, int Temporaries, int Comparisons, bool Checking = false);
 }

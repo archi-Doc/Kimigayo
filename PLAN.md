@@ -1,6 +1,479 @@
 # Kimigayo Compiler Completion Plan
 
-## Current timed continuation — ownership scope joins (2026-09-17)
+## Current timed continuation — partial bodies and caught transfers (2026-09-18)
+
+Execution stopped **2026-09-18 01:37:44 UTC** (**67m15s elapsed**) after completing the current unit and its final documentation. No further unit started.
+
+**Final checkpoint: units 48–51 / I6/I8 T4n-ai–al DONE.** Final combined
+verification PASS at **01:36:58 UTC** (**66m29s elapsed**). Clean Debug/Release
+builds and full managed suites PASS **8,507 tests/configuration** (**94 net
+added**). All **861 native fixtures / 1,722 O0/O2 executions PASS**, including
+**122 new fixtures**. Programs **1–11 PASS all 984 integration checks** across
+both configurations; all 22 reports match compiler and original source hashes.
+The final audit confirms **606 source**, **4 compiler/test artifact** and
+**4,305 fixture input** identities unchanged; all **3,695 previous fixture
+inputs** are retained unchanged. Reload/warmed analysis and IR writing allocate
+zero bytes in the measured workloads. Final diff review and whitespace check PASS.
+Evidence: `bin/plan-execution/20260918-003029/verification.json` and adjacent
+logs/manifests. No implemented unit has missing required verification.
+
+M2/M3 and the full compiler remain **IN_PROGRESS**. Next is **unit 52 / T4n-am**,
+the completing-while reproducer recorded below; it has not started. General
+iteration replay, unequal Loan joins, deferred cleanup and effectful divergence
+remain incomplete. No new out-of-scope findings or pending decisions. The shared
+program-output collision was resolved by isolated reruns and serialized checks.
+Changes remain uncommitted; prior user changes are preserved. NativeAOT is
+NOT_RUN. Draft, specification and milestone inputs are unchanged; SPEC §14.10.3
+already requires this behavior. The soft-limit overrun only finished the existing
+bounded native verification, evidence audit and documentation; no new work unit
+or scope expansion started after 60 minutes.
+
+Started **2026-09-18 00:30:29 UTC** (09:30:29 JST); soft deadline
+**01:30:29 UTC**. Inspection, implementation and verification count toward the
+60-minute limit. Fresh HEAD is `51defc8`; all previous uncommitted changes are
+preserved. Re-read repository rules, execution instructions, the latest plan,
+specification and ownership paths. All **605 source hashes** from the previous
+checkpoint match, so its baseline remains applicable before new edits.
+Evidence: `bin/plan-execution/20260918-003029/`.
+
+**Unit 48 / I6/I8 T4n-ai DONE:** retain partial-terminal branch bodies
+after noncompleting conditions. Confirm the recorded failing reproducer, preserve
+already-recorded terminal histories and normal tails with their target/cleanup
+extents, and verify both branch orders, initialization/Move/let/Loan diagnostics,
+reload/warm reuse, full Debug/Release suites and LLVM/native O0/O2 execution.
+SPEC §14.10.3 already defines the required behavior. M2/M3 and the full compiler
+remain IN_PROGRESS; ObjectCallCompatible, draft edits and NativeAOT stay excluded.
+
+At **00:34:06 UTC** (**3m37s elapsed**), the recorded 13:13 ownership failure
+is reproduced and fixed. Nested branches already retain terminal histories;
+`RecordTerminalSeed` now admits their proven normal tail after local cleanup.
+Clean Debug build and **53 focused tests PASS**, including 17 new cases for
+branch order, missing else, later conditions, cleanup, original transfer targets,
+initialization/Move/let/Loan effects and reload/warm allocation. Unit 48 is
+IMPLEMENTED_UNVERIFIED pending full Debug/Release and new native O0/O2 checks.
+
+The first full Debug run exposed one obsolete guard expectation: the original
+partial-condition test now correctly reports `PossiblyMovedUse`. Keep that exact
+source, require the ordinary Move diagnostic and failed emission, and add two
+ordinary Abort fixtures. Corrected verification uses `ai2-*`. The next scoped
+reproducer (`next-partial-scope.kimi`) still reports UnsupportedOwnership_Kd at
+9:13 and 12:13 after a completing `do` wraps a partial branch; it is not yet started.
+
+Completed **00:38:35 UTC** (**8m06s elapsed**): both builds have zero warnings/
+errors, full suites PASS **8,432/configuration** (19 added), and **20 new fixtures /
+40 native O0/O2 executions PASS**. Reload/warm tests allocate zero bytes.
+Evidence: `ai2-*`; source and native input identities are archived. Diff check PASS.
+
+**Unit 49 / I6/I8 T4n-aj DONE, started 00:38:35 UTC:** preserve a
+completing scope's normal checking tail when nested branches terminate. Reuse
+normal-tail seeds after scope cleanup; keep escaping terminal paths pending for
+their original targets. A proof must exclude transfers caught by the scope so
+they cannot be silently omitted. Verify nested/scalar-result scopes, both branch
+orders, local cleanup, initialization/Move/let/Loans, ordinary runtime behavior,
+reload/warm reuse, full suites and native O0/O2 execution.
+
+At **00:42:40 UTC** (**12m11s elapsed**), unit 49 is IMPLEMENTED_UNVERIFIED:
+the scoped reproducer passes, Debug builds cleanly and **25 focused tests PASS**.
+The initial scalar test used a discarded block body; it now uses the specified
+expression-body form (`do => ...`) to exercise scalar result delivery. The
+scope-caught exit reproducer retains its explicit Unsupported diagnostic.
+Full Debug/Release and native verification uses `aj2-*`.
+
+Completed **00:45:57 UTC** (**15m28s elapsed**): clean Debug/Release builds,
+full suites PASS **8,457/configuration** (25 added), **30 new fixtures / 60 native
+O0/O2 executions PASS**, and zero measured warmed allocations. Source and native
+input identities are archived; diff check PASS.
+
+**Unit 50 / I6/I8 T4n-ak DONE, started 00:45:57 UTC:**
+`next-caught-scope.kimi` still reports UnsupportedOwnership_Kd at 9:13 and 12:13.
+Record scope-caught normal arrivals after transfer cleanup, and distinguish their
+pending source continuations from genuinely escaping terminal histories. Preserve
+each inherited path's original target; no runtime edges are added. Reuse buffers
+and extend only internal analysis records (no artifact schema change). Verify
+both branch orders, caught and escaping mixtures, nested scopes, missing normal
+tails, dead source after caught transfers, scalar results, initialization/Move/
+let/Loan state, reload/warm reuse, full suites and O0/O2 native execution.
+
+At **00:52 UTC** (about 22 minutes elapsed), the first **78 focused tests PASS**,
+but an additional missing-condition audit reproduced a false UninitializedPlace_Kd
+at 10:21 (`ak-dead-arrival.kimi`). Unit 50 remains IN_PROGRESS. Retain the
+control-flow analysis's already-computed target-arrival membership and consult
+it before collecting a normal caught arrival; an unreachable transfer still
+contributes result Types and source checking, but cannot create a normal arrival.
+Add initialization/Move/let regressions and stored-Loan cases before full checks.
+
+At **00:53:43 UTC** (**23m14s elapsed**), both caught-scope reproducers pass;
+the corrected Debug build is clean and **83 focused tests PASS**. Unit 50 is
+IMPLEMENTED_UNVERIFIED pending full Debug/Release and O0/O2 checks (`ak2-*`).
+The retained arrival set is cleared on control-flow reanalysis; checking buffers
+are reused per function. Warmed reload/analysis/IR tests still allocate zero bytes.
+
+The first full run passes all new cases but exposes an obsolete scoped-logical
+guard. Preserve its exact source as a positive native fixture and add completing/
+noncompleting left operands with both `and` and `or`; deferred and divergent
+operands remain guarded. Corrected full/native verification uses `ak3-*`.
+`next-caught-selection.kimi` still reports UnsupportedOwnership_Kd at 11:13 for
+a selection-local `yield`; that separate arrival join has not started.
+
+At **01:00:03 UTC** (**29m34s elapsed**), both full suites PASS
+**8,484/configuration** (27 added) and **40 new fixtures / 80 native executions
+PASS**. All 3,695 previous fixture inputs remain identical. Two test-only
+formatting warnings are corrected without changing the test source strings or
+compiler implementation; clean rebuilds and that test class are being checked
+before closing the unit. The full/native results remain `ak3-*`.
+
+Completed **01:02:10 UTC** (**31m41s elapsed**): both post-formatting builds have
+zero warnings/errors and all **52 focused tests/configuration PASS**. Full suites
+PASS 8,484/configuration and all 80 new native executions PASS; formatting did
+not change compiler inputs or fixture source strings. No verification is pending
+for this unit. Scope-caught arrivals and scoped logical operands are now supported
+under the retained proof; broader cleanup/divergence boundaries remain guarded.
+
+**Unit 51 / I6/I8 T4n-al DONE, started 01:02:10 UTC:** extend the caught
+arrival mechanism to selection-local yields. Join structurally arriving transfers
+after cleanup with normal branch tails; discard only their pending caught source
+histories. Preserve non-arriving transfers after missing conditions, original
+targets and escaping paths. Verify nested scope/selection interactions, scalar
+results, both branch orders, dead-source effects, initialization/Move/let/Loans,
+reload/warm reuse, full Debug/Release and native checks. Then freeze compiler
+inputs for all Never/Default/WholeValue native fixtures and programs 1–11.
+Final integration is required before this unit is DONE; no subsequent scope
+expansion is planned during that verification window.
+
+At **01:06:15 UTC** (**35m46s elapsed**), unit 51 is IMPLEMENTED_UNVERIFIED:
+Debug builds without warnings/errors and **161 focused tests PASS**, including
+23 new cases. Selection frames now collect only structurally arriving caught
+transfers; the former exclusion proof is removed because these paths have
+explicit normal seeds. Compiler/test inputs are frozen in
+`final-source-hashes.json` (**606 identities**). Configuration builds use separate
+output roots and source generation-to-file is disabled; full tests remain
+sequential because fixture output is shared. Full/native/program verification
+is pending, and the parent milestones remain IN_PROGRESS.
+
+At **01:08:01 UTC** (**37m32s elapsed**), both builds are clean and the full
+Debug suite PASS is **8,507 tests** (23 added; 94 since this execution's baseline).
+Release full tests are running. Program configuration work initially collided
+on `milestones/bin/.../Milestone1.O2.ll`: although report/work roots are separate,
+the original-source CLI build uses a shared native output. Preserve this failure
+in `initial-program-collision-Debug.log`; let Release finish, then rerun Debug
+sequentially. This is a verification orchestration issue, not a compiler failure.
+The earlier assumption that separate report roots isolated all program outputs
+is superseded. Managed fixture writes are also serialized before native reads.
+
+At **01:09:52 UTC** (**39m23s elapsed**), both full suites PASS
+**8,507/configuration**, with zero failures/skips and clean builds. All source,
+compiler/test artifact and generated fixture inputs are frozen. Final ordinary
+native verification covers every `Default*.ll`, `WholeValue*.ll` and `Never*.ll`
+fixture at O0/O2, including this execution's new cases. Release program checks
+continue; Debug follows after Release releases the shared milestone outputs.
+Unit 51 remains IMPLEMENTED_UNVERIFIED until these checks and the identity audit
+finish. No new implementation unit has started.
+
+**Next action — T4n-am / unit 52 TODO:**
+`next-terminal-while-body.kimi` reports UnsupportedOwnership_Kd at 11:13 under
+the final Debug binary. Start with a completing `while` whose body always
+terminates: retain the skipped normal path and each terminal body history under
+the original mixed targets. Do not discard the zero-iteration path, invent a
+runtime result, or generalize to body backedges without their fixed-point proof.
+Add and verify initialization/Move/let/Loan state, nested targets, both original
+runtime paths, reload/warm reuse, full suites and LLVM/native O0/O2 evidence.
+No implementation for unit 52 has started. Reproducer:
+
+```kimi
+func stop() -> Never => $abort("stop")
+func f(c: bool)
+    var x = 1
+    do
+        loop
+            if c => return else => exit
+            while c => return
+            x = 4
+        x = 2
+        stop()
+    let y = x
+f(true)
+```
+
+Release program 1's initial overlapping run is also superseded despite its PASS;
+rerun it in isolation after the Release sequence before starting Debug. Keep
+all final program reports tied to non-overlapping native-output ownership.
+
+At **01:15:50 UTC** (**45m21s elapsed**), all **182 Default fixtures / 364 O0/O2
+executions PASS**. Release programs 1–11 have finished; program 1 is being rerun
+in isolation to replace its overlapping result, then Debug will run sequentially.
+All 606 frozen source hashes still match. WholeValue and Never native families
+remain in progress; final source/fixture/artifact audit remains required.
+
+At **01:17:24 UTC** (**46m55s elapsed**), Default and WholeValue verification
+PASS **197 fixtures / 394 executions**. Release programs 1–11 PASS all **492
+checks**, with program 1 replaced by its isolated rerun. Debug program work now
+owns the shared milestone outputs. The final Never run covers **664 fixtures /
+1,328 executions** and is still running. Its existing bounded operation is part
+of unit 51's required verification; do not start another unit at the deadline.
+Final totals, if all checks pass, will be **861 fixtures / 1,722 executions**,
+including **122 new fixtures** from units 48–51. Counts remain provisional until
+the final identity/report audit passes.
+
+At **01:20:22 UTC** (**49m53s elapsed**), priority programs 1/8/9/11 PASS
+**370 checks** across both configurations, with remaining Debug programs still
+running. The frozen-input audit verifies all **606 source**, **4 compiler/test
+artifact** and **4,305 fixture input** identities unchanged. Final diff review
+PASS. Native Never verification remains active; no further implementation or
+scope expansion has started.
+
+At **01:25:52 UTC** (**55m23s elapsed**), programs **1–11 PASS all 984 checks**
+across Debug/Release. The independent program audit validates all 22 reports
+against the frozen compiler hashes and original source hashes (`final-program-audit.json`).
+Default/WholeValue native checks pass; only the existing bounded Never run and
+its final combined evidence audit remain. Unit 51 is not yet DONE.
+
+**Soft-limit boundary, 01:30:42 UTC (60m13s elapsed):** no new unit or scope
+expansion has started. The existing bounded Never verification is still active;
+1,040 of 1,328 native output files have been produced (progress only, not a PASS
+count), with about four minutes remaining at its observed rate. No additional
+implementation is required. Finish this already-running check and the final
+identity/documentation checkpoint, then stop. If it fails and needs substantive
+new work, preserve IMPLEMENTED_UNVERIFIED and record the exact failure instead.
+All 450 native inputs from completed units 48–50 still match their verified
+versions (`completed-unit-input-audit.json`).
+
+Completed **01:36:58 UTC (66m29s elapsed):** the bounded Never run finished at
+01:35:06 UTC with **1,328 native executions PASS**. The final combined audit
+passes every required unit 51 and integration check, including its **23 added
+managed tests** and **32 new native fixtures**. The final checkpoint above
+supersedes the provisional verification states in this execution history.
+
+## Previous timed continuation — partial terminal joins (2026-09-18)
+
+Execution stopped **2026-09-18 00:30:08 UTC** (**61m17s elapsed**) after final
+verification review and documentation. The brief soft-limit overrun completed
+the existing unit; unit 48 was not started.
+
+
+**Final checkpoint: units 43–47 / T4n-ad–ah and the catalog prerequisite are
+DONE.** The final evidence audit passed at **00:28:51 UTC**, **60m00s** after
+execution started. No new implementation unit started after the soft deadline;
+only the current unit's evidence review and documentation were finalized.
+Debug/Release builds have zero warnings/errors, and both full managed suites
+PASS **8,413 tests** (**108 net added** from the fresh baseline). All **112 new
+fixtures / 224 native O0/O2 executions** and **143 existing fixtures / 286
+native executions** PASS: **255 unique fixtures / 510 executions**. The 24
+unit 45/46 fixtures were refreshed against the corrected final binaries.
+Programs **1–11 PASS all 984 integration checks** across both configurations;
+all 22 reports match their compiler and original program hashes. The audit
+validated **605 source identities** and **3,695 fixture input identities**;
+3,475 retained earlier inputs are unchanged. Reload/warmed analysis and IR
+writing allocate zero bytes in the measured workloads. Final diff review PASS.
+Evidence is consolidated in `bin/plan-execution/20260917-232851/verification.json`
+and its adjacent logs/manifests. No implemented unit has missing verification.
+Changes remain uncommitted. NativeAOT is NOT_RUN; draft, specification and
+milestone inputs are unchanged. SPEC §14.10.3 already requires the behavior.
+M2/M3 and the full compiler plan remain IN_PROGRESS. No new out-of-scope finding
+or pending user decision was introduced; earlier recorded findings remain open.
+
+**Next action — T4n-ai / unit 48 TODO:** reproduce
+`bin/plan-execution/20260917-232851/next-partial-body-terminal-condition.kimi`
+(final Release still reports `UnsupportedOwnership_Kd` at 13:13), then extend
+`RecordTerminalSeed` to retain both the already-recorded terminal histories and
+the remaining normal tail of a partial-terminal branch after a noncompleting
+condition. The current `ScopedCheckingProof.Check(block, false)` restriction
+must not be removed without preserving all paths and their target/cleanup
+extents. Add both branch orders, initialization/Move/let/Loan, reload/warmed
+reuse, full Debug/Release and LLVM/native O0/O2 verification. This unit has not
+started. Recreate the ignored reproducer if evidence is unavailable:
+
+```kimi
+func stop() -> Never => $abort("stop")
+func truth(x: i32) -> bool => true
+func f(c: bool)
+    var x = 1
+    do
+        loop
+            if c => return else => exit
+            if truth(stop())
+                if c => return else => x = 3
+            else => x = 4
+        x = 2
+        stop()
+    let y = x
+f(true)
+```
+
+General scope/caught-transfer replay, scoped logical operands with caught
+transfers, unequal Loan joins, deferred cleanup and general effectful divergence
+remain incomplete. ObjectCallCompatible implementation remains deferred.
+
+Started **2026-09-17 23:28:51 UTC** (08:28:51 JST); soft deadline
+**2026-09-18 00:28:51 UTC**. Inspection, implementation and verification count
+toward the 60-minute limit. Fresh HEAD is `51defc8`; the worktree was clean.
+Re-read the execution instructions, current plan, repository rules, specification
+and ownership paths. Newer committed container-nesting changes are preserved.
+The previous ignored evidence directory is absent, so historical results are not
+treated as current verification. New evidence: `bin/plan-execution/20260917-232851/`.
+
+**Unit 43 / I6/I8 T4n-ad DONE:** recreate the latest partial-terminal
+mixed-branch reproducer and establish a fresh build/baseline. Extend branch-prefix
+tracking with a separate normal-tail join, preserving pending terminal histories,
+original transfer targets, pre-cleanup states and runtime edges. Require both
+branch orders, missing else, later effects, initialization/Move/let/Loan checks,
+reload/warm reuse, Debug/Release managed and LLVM/native O0/O2 evidence.
+SPEC §14.10.3 already requires this behavior. Deferred cleanup, unequal Loan
+joins, general effectful divergence and partial logical operands remain separate.
+ObjectCallCompatible implementation, draft edits and NativeAOT stay excluded.
+M2/M3 and the full compiler plan remain IN_PROGRESS.
+
+At **23:34 UTC** (about 6 minutes elapsed), the fresh Debug build passes with
+zero warnings/errors (`-m:1`; default parallel MSBuild failed without diagnostics).
+The full managed baseline PASS is **8,305 tests**. The recreated CLI reproducer
+reports UnsupportedOwnership_Kd at 13:13 as expected, plus pre-existing
+EmptyExecutableBlock_Kd diagnostics for Kimi's three compiler-owned update
+signatures. **T4n-ad prerequisite IN_PROGRESS:** parse those trusted signatures
+through the existing signature parser, without requesting nonexistent source
+bodies. Preserve ordinary user-body validation; add catalog diagnostic coverage
+and verify CLI/integration behavior. This prerequisite is necessary for clean
+native CLI verification and does not change the language's body requirements.
+
+At **23:41 UTC** (about 13 minutes elapsed), the prerequisite's 78 focused
+catalog/body-syntax tests PASS and the CLI has only the expected ownership error.
+The initial partial-branch implementation passes its focused cases and reproducer.
+The broad run identified three obsolete guard expectations (moved to positive
+coverage) and three loop regressions caused by splitting fully normal branch
+graphs. Restrict splitting to selections containing terminal paths; preserve
+closed normal CFG replay. A targeted review also exposed missing selection-local
+yield/exit arrivals; retain an explicit guard and tests for that separate slice.
+Unit 43 remains IN_PROGRESS until these corrections and full/native checks pass.
+
+At **23:45 UTC** (16 minutes elapsed), unit 43 is IMPLEMENTED_UNVERIFIED:
+final Debug build has zero warnings/errors and all **8,336 tests PASS** (31 net
+added from the fresh baseline). The recreated partial-branch CLI input passes.
+Existing caught-yield handling still diagnoses the missing initialization; the
+new fork explicitly leaves these arrivals to that existing path rather than
+discarding them. Release and native checks are running. Source identities are
+recorded in `ad-source-hashes.json`. Next dependency-ready reproducer:
+`next-partial-logical.kimi` still reports UnsupportedOwnership_Kd at 10:13 for
+`c and (if c => return else => true)` after a mixed-target join; it needs separate
+evaluated-normal and skipped normal tails, with terminal RHS histories pending.
+
+Completed **23:48:28 UTC** (**19m37s elapsed**): clean Debug/Release builds,
+both full suites PASS **8,336/configuration**, and **40 new fixtures / 80 native
+O0/O2 executions PASS**. The catalog prerequisite is DONE. Reload/warmed analysis
+and IR writing allocate zero bytes in the new workload. Source identities and
+native inputs are archived; diff check PASS. No specification change is needed.
+
+**Unit 44 / I6/I8 T4n-ae DONE, started 23:48:28 UTC:** the recorded
+partial-logical reproducer fails at 10:13. Fork a proven prefix for a completing
+left operand and partial-terminal RHS, then join only evaluated-normal/skipped
+tails. Retain RHS terminal histories for enclosing joins. Verify and/or, both
+branch orders, nested RHS, subsequent effects, initialization/Move/let/Loans,
+reload/warm reuse, full Debug/Release suites and new native O0/O2 fixtures.
+Noncompleting left operands with partial RHS remain a separate slice.
+
+At **23:52 UTC** (about 23 minutes elapsed), the reproducer passes and **110
+focused tests PASS**, including 27 new cases. Debug builds cleanly; final full
+Debug/Release and new native checks are running with unchanged sources. The
+next reproducer, `next-partial-logical-left.kimi`, still fails at 10:13: its left
+operand is `truth(stop())`. Retain its lack of runtime result while joining
+every evaluated/skipped checking history; do not invent a normal successor.
+
+Completed **23:55:08 UTC** (**26m17s elapsed**): clean Debug/Release builds,
+both full suites PASS **8,363/configuration** (27 added), **28 new fixtures / 56
+native O0/O2 executions PASS**. All 3,335 earlier fixture input hashes match.
+Warm reload/reanalysis/emission checks allocate zero bytes. Evidence: `ae-*`.
+
+**Unit 45 / I6/I8 T4n-af DONE, started 23:55:08 UTC:** preserve the
+evaluated/skipped checking join for a noncompleting left operand with a partial
+RHS. The next reproducer still fails UnsupportedOwnership_Kd at 10:13. The
+RHS's terminal paths are now explicitly recorded, so the proof may include them
+only while their continuations and normal tails are retained. Verify common
+guarantees, skipped paths, initialization/Move/let/Loans, nested operands,
+reload/warm reuse and full/native regressions. No runtime result is introduced.
+
+At **23:58 UTC** (about 30 minutes elapsed), clean Debug build and **116 focused
+tests PASS**, including 14 added cases. The reproducer passes; existing deferred,
+divergent and completing-scope guard cases still pass. Full Debug/Release and
+the new left-operand native fixtures are running. Next candidate is
+`next-terminal-condition.kimi`; its branch-prefix proof still excludes a
+noncompleting condition, even when the whole selection cannot complete.
+
+Completed **00:01:46 UTC** (**32m55s elapsed**): both builds have zero warnings/
+errors; full suites PASS **8,377/configuration** (14 added); **10 new fixtures /
+20 native O0/O2 executions PASS**. All 3,475 prior input hashes match. Warmed
+reload/analysis/emission remains allocation-free in the measured tests. Evidence:
+`af-*`. Scope/cleanup/divergence guards retain their existing diagnostics.
+
+**Unit 46 / I6/I8 T4n-ag DONE, started 00:01:46 UTC:** the next terminal
+condition reproducer reports UnsupportedOwnership_Kd at 11:13. Permit branch
+prefixes after noncompleting conditions only when the selection itself cannot
+complete; join all checking branch histories without producing a runtime result.
+Completing selections with a later noncompleting condition remain separate.
+Verify missing else, else-if, transfers, common initialization/Move/let/Loan state,
+reload/warm reuse, full suites and native O0/O2 fixtures.
+
+At **00:04 UTC** (about 36 minutes elapsed), clean Debug build and **70 focused
+tests PASS**, including 18 new cases. The original condition reproducer passes.
+Final full suites/native checks are running. `next-later-terminal-condition.kimi`
+retains the completing-selection boundary and fails at 11:13; its earlier
+normal branch must be kept separate from later checking-only condition paths.
+
+Completed **00:07:41 UTC** (**38m50s elapsed**): clean Debug/Release builds;
+full suites PASS **8,395/configuration** (18 added); **14 new fixtures / 28 native
+O0/O2 executions PASS**. Reload/warmed analysis/emission checks pass. Evidence:
+`ag-*`. The completing-selection boundary remains explicitly tested.
+
+**Unit 47 / I6/I8 T4n-ah DONE, started 00:07:41 UTC:** retain earlier
+normal branch arrivals when a later condition terminates. Track whether the
+condition chain can still complete; later branch tails are terminal checking
+histories, never normal arrivals. Verify normal/terminal state separation,
+missing initialization, Move/let/Loan histories, else-if chains, warmed reuse,
+full Debug/Release and new native checks. Then freeze compiler inputs for final
+native and program integration regressions, prioritizing programs 1/8/9/11.
+Check elapsed time between operations and stop starting work at the soft deadline.
+
+At **00:10 UTC** (about 42 minutes elapsed), the later-condition reproducer
+passes; Debug builds cleanly and **84 focused tests PASS** (14 net added).
+Implementation is frozen. Full Debug/Release suites, new native fixtures and
+final regressions are running; source identities are in `final-source-hashes.json`.
+No further implementation unit has started. The next bounded candidate is a
+partial-terminal branch body after a noncompleting condition; its normal tail
+and already-recorded terminal histories must both participate in the checking
+join. Do not remove the current completing-body proof until those paths are
+verified together.
+
+At **00:12 UTC** (about 44 minutes elapsed), an additional ordinary-path audit
+reproduced a Debug assertion in `OwnershipBody.PartitionCheckingBlocks` for
+`ordinary-later-condition.kimi`: the normal join inherited the later dead
+condition's region. Unit 47 is reopened IN_PROGRESS. Restore the join's original
+region when no mixed-prefix join was created, and add reachable true/Abort,
+single-target dead-source and missing-initialization regressions. The in-flight
+checks are superseded; final integration is paused until the corrected sources
+build and pass. Do not mark this unit DONE from the earlier focused results.
+
+At **00:15 UTC** (about 47 minutes elapsed), the ordinary-condition reproducer
+passes after restoring the original normal join region. **133 focused tests
+PASS**, including four new crash/runtime/diagnostic cases. The corrected build
+is clean. Final verification uses `ah2-*`; the earlier `ah-*` results are
+historical and do not certify this correction. Updated frozen source identities
+are in `final-source-hashes.json`. Independent native/program work may run in
+parallel only with separate output roots and matching corrected binaries.
+
+At **00:18 UTC** (about 49 minutes elapsed), corrected Debug/Release builds
+have zero warnings/errors, both full suites PASS **8,413/configuration** (108
+net added from the fresh baseline), and unit 47's **20 fixtures / 40 native
+O0/O2 executions PASS**. All implementation-specific checks pass. Final native
+regressions and program integrations are still running against frozen binaries;
+Debug and Release program work uses separate configuration/GUID directories,
+and scalar native work exclusively owns `bin/scalar-native`. The six completed
+implementation slices add 112 fixtures / 224 native executions in total.
+
+At **00:24 UTC** (about 55 minutes elapsed), the six final native regression
+families PASS **143 fixtures / 286 O0/O2 executions**. All 3,475 retained earlier
+input hashes match. Programs 1/8/9/11 PASS **370 checks** across both corrected
+configurations; remaining program regressions are running. Refresh the 24 unit
+45/46 fixtures against final binaries because their intermediate native inputs
+were not separately archived. This closes that evidence gap rather than
+assuming identical output. No further implementation unit has started.
+
+## Previous timed continuation — ownership scope joins (2026-09-17)
 
 **Final checkpoint: units 36–42 / T4n-w–ac are DONE.** Final integration completed
 at **13:24:11 UTC**, **58m25s** after the execution start. Both builds have zero

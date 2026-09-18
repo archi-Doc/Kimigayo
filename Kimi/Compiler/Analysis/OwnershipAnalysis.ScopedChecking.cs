@@ -6,6 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    private readonly List<CheckingContinuation> normalCheckingSeeds = new();
+    private readonly List<(Koto Target, CheckingContinuation Seed)> caughtCheckingSeeds = new();
     private ScopedCheckingProof? scopedCheckingProof;
 
     private int CheckingSeed()
@@ -18,7 +20,7 @@ public sealed partial class OwnershipAnalysis
         var region = this.body.CheckingRegions[this.checkingRegion];
         if (!region.MixedTargets)
         {
-            return new(this.CheckingSeed(), region.Target, Replay: region.Entry < 0 ? region.Replay : -1);
+            return new(this.CheckingSeed(), region.Target, Replay: region.Entry < 0 ? region.Replay : -1, CaughtTarget: region.CaughtTarget);
         }
 
         // Local diagnostics use the common state. Enclosing extents must apply
@@ -29,7 +31,7 @@ public sealed partial class OwnershipAnalysis
         return this.CanReplayChecking(region, seed, out var graph) ? new(seed, SeedStart: this.ReplayCheckingSeeds(region, seed, graph), SeedCount: region.SeedCount) : new(-1);
     }
 
-    private void BeginChecking(int seed, Koto? target = null, OwnershipCheckingRegion? previous = null)
+    private void BeginChecking(int seed, Koto? target = null, OwnershipCheckingRegion? previous = null, Koto? caughtTarget = null)
     {
         // A transfer in dead source cannot replace the extent of the path that
         // made it unreachable. Replay stops after operand acquisition, before
@@ -37,8 +39,8 @@ public sealed partial class OwnershipAnalysis
         var origin = previous ?? this.body.CheckingRegions[this.checkingRegion];
         var graph = false;
         var retained = origin.MixedTargets && this.CanReplayChecking(origin, seed, out graph);
-        var start = retained ? this.ReplayCheckingSeeds(origin, seed, graph) : 0;
-        this.body.CheckingRegions.Add(new(seed, -1, start, retained ? origin.SeedCount : 0, this.checkingRegion > 0 ? origin.Target : target, origin.MixedTargets, origin.Entry < 0 ? origin.Replay : -1));
+        var start = retained ? this.ReplayCheckingSeeds(origin, seed, graph, caughtTarget) : 0;
+        this.body.CheckingRegions.Add(new(seed, -1, start, retained ? origin.SeedCount : 0, this.checkingRegion > 0 ? origin.Target : target, origin.MixedTargets, origin.Entry < 0 ? origin.Replay : -1, origin.CaughtTarget ?? caughtTarget));
         this.checkingRegion = this.body.CheckingRegions.Count - 1;
     }
 
@@ -81,9 +83,10 @@ public sealed partial class OwnershipAnalysis
         return graph;
     }
 
-    private int ReplayCheckingSeeds(OwnershipCheckingRegion region, int end, bool graph)
+    private int ReplayCheckingSeeds(OwnershipCheckingRegion region, int end, bool graph, Koto? caughtTarget = null)
     {
-        if (region.Entry < 0 || end == region.Entry)
+        var needsReplay = region.Entry >= 0 && end != region.Entry;
+        if (!needsReplay && caughtTarget is null)
         {
             return region.SeedStart;
         }
@@ -92,9 +95,14 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < region.SeedCount; i++)
         {
             var seed = this.body.CheckingSeeds[region.SeedStart + i];
-            var replay = this.body.CheckingReplays.Count;
-            this.body.CheckingReplays.Add(new(region.Entry, end, seed.Replay, graph));
-            this.body.CheckingSeeds.Add(seed with { Replay = replay });
+            var replay = seed.Replay;
+            if (needsReplay)
+            {
+                replay = this.body.CheckingReplays.Count;
+                this.body.CheckingReplays.Add(new(region.Entry, end, seed.Replay, graph));
+            }
+
+            this.body.CheckingSeeds.Add(seed with { Replay = replay, CaughtTarget = seed.CaughtTarget ?? caughtTarget });
         }
 
         return start;
@@ -103,23 +111,19 @@ public sealed partial class OwnershipAnalysis
     private int CheckingLoanState(CheckingContinuation seed)
         => this.body.LoanStates[seed.Replay < 0 ? seed.Seed : this.body.CheckingReplays[seed.Replay].End];
 
-    private bool HasTerminalBranches(IfKoto source)
+    private bool CanForkCheckingBranches(IfKoto source)
     {
-        if (source.ElseBody is not { } otherwise || this.flow!.Nodes[otherwise].CanCompleteNormally)
-        {
-            return false;
-        }
-
+        var proof = this.scopedCheckingProof ??= new(this);
+        var terminal = source.ElseBody is { } otherwise && !proof.Check(otherwise, false);
         for (var i = 0; i < source.Branches.Count; i++)
         {
             var branch = source.Branches[i];
-            if (!this.flow.Nodes[branch.Condition].CanCompleteNormally || this.flow.Nodes[branch.Body].CanCompleteNormally)
-            {
-                return false;
-            }
+            var conditionCompletes = this.flow!.Nodes[branch.Condition].CanCompleteNormally;
+            terminal |= !conditionCompletes || !proof.Check(branch.Body, false);
         }
 
-        return true;
+        // Keep closed normal CFGs intact, including those on loop backedges.
+        return terminal && proof.Check(source);
     }
 
     private OwnershipCheckingRegion? ForkChecking(int seed)
@@ -132,7 +136,7 @@ public sealed partial class OwnershipAnalysis
 
         // Both branches start from the same proven prefix, but retain separate
         // constituent histories when a terminal operand changes checking region.
-        return new(seed, -1, this.ReplayCheckingSeeds(region, seed, graph), region.SeedCount, region.Target, true);
+        return new(seed, -1, this.ReplayCheckingSeeds(region, seed, graph), region.SeedCount, region.Target, true, CaughtTarget: region.CaughtTarget);
     }
 
     private void EnterCheckingBranch(int operation, OwnershipCheckingRegion? fork)
@@ -155,7 +159,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = mark; i < this.terminalSeeds.Count; i++)
         {
             var seed = this.terminalSeeds[i];
-            var target = seed.Target;
+            var target = seed.CaughtTarget ?? seed.Target;
             while (target is not null && !ReferenceEquals(target, source))
             {
                 target = target.Parent;
@@ -177,65 +181,132 @@ public sealed partial class OwnershipAnalysis
     private void JoinChecking(Koto source, int mark)
     {
         this.FilterTerminalSeeds(source, mark);
-        var end = this.terminalSeeds.Count;
+        this.CreateCheckingJoin(source, this.terminalSeeds, mark);
+    }
+
+    private void JoinNormalChecking(Koto source, int mark, int entry)
+    {
+        // Terminal histories remain pending for enclosing extents. Only normal
+        // tails seed this successor, after their branch-local cleanup.
+        if (!this.CreateCheckingJoin(source, this.normalCheckingSeeds, mark, entry))
+        {
+            this.checkingRegion = this.body.CheckingRegions.Count;
+            this.body.CheckingRegions.Add(new(-1, entry));
+        }
+
+        this.body.OperationRegions[entry] = this.checkingRegion;
+    }
+
+    private bool CreateCheckingJoin(Koto source, List<CheckingContinuation> seeds, int mark, int entry = -1)
+    {
+        var end = seeds.Count;
         var count = end - mark;
         if (count == 0)
         {
-            return;
+            return false;
         }
 
-        var first = this.terminalSeeds[mark];
+        var first = seeds[mark];
         var mixed = false;
         for (var i = mark; i < end; i++)
         {
-            var seed = this.terminalSeeds[i];
+            var seed = seeds[i];
             if (seed.Seed < 0 || (i > mark && this.body.LoanStates.Count > 0 && this.CheckingLoanState(seed) != this.CheckingLoanState(first)))
             {
-                this.terminalSeeds.RemoveRange(mark, end - mark);
-                return; // Different active Loan stacks need a separate lifetime join.
+                seeds.RemoveRange(mark, end - mark);
+                return false; // Different active Loan stacks need a separate lifetime join.
             }
 
-            mixed |= !ReferenceEquals(seed.Target, first.Target);
+            mixed |= !ReferenceEquals(seed.Target, first.Target) || !ReferenceEquals(seed.CaughtTarget, first.CaughtTarget);
         }
 
         this.checkingRegion = this.body.CheckingRegions.Count;
         if (count == 1)
         {
-            this.body.CheckingRegions.Add(new(first.Seed, -1, Target: first.Target, Replay: first.Replay));
+            this.body.CheckingRegions.Add(new(first.Seed, entry, Target: first.Target, Replay: first.Replay, CaughtTarget: first.CaughtTarget));
         }
         else
         {
             // A multi-seed region needs its entry now so that a nested continuation reads the join.
-            this.body.CheckingRegions.Add(new(first.Seed, -1, this.body.CheckingSeeds.Count, count, first.Target, mixed));
+            this.body.CheckingRegions.Add(new(first.Seed, entry, this.body.CheckingSeeds.Count, count, first.Target, mixed, CaughtTarget: first.CaughtTarget));
             for (var i = mark; i < end; i++)
             {
-                var seed = this.terminalSeeds[i];
-                this.body.CheckingSeeds.Add(new(seed.Seed, seed.Target, seed.Replay));
+                var seed = seeds[i];
+                this.body.CheckingSeeds.Add(new(seed.Seed, seed.Target, seed.Replay, seed.CaughtTarget));
             }
 
-            this.current = -1;
-            this.Emit(OwnershipOperationKind.Branch, source);
+            if (entry < 0)
+            {
+                this.current = -1;
+                this.Emit(OwnershipOperationKind.Branch, source);
+            }
         }
 
-        this.terminalSeeds.RemoveRange(mark, end - mark);
+        seeds.RemoveRange(mark, end - mark);
+        return true;
     }
 
     private void AddTerminalSeed(CheckingContinuation continuation)
+        => this.AddCheckingSeed(this.terminalSeeds, continuation);
+
+    private void AddCheckingSeed(List<CheckingContinuation> seeds, CheckingContinuation continuation)
     {
         if (continuation.SeedCount == 0)
         {
-            this.terminalSeeds.Add(continuation);
+            seeds.Add(continuation);
             return;
         }
 
         for (var i = 0; i < continuation.SeedCount; i++)
         {
             var seed = this.body.CheckingSeeds[continuation.SeedStart + i];
-            this.terminalSeeds.Add(new(seed.Operation, seed.Target, Replay: seed.Replay));
+            seeds.Add(new(seed.Operation, seed.Target, Replay: seed.Replay, CaughtTarget: seed.CaughtTarget));
         }
     }
 
-    private readonly record struct CheckingContinuation(int Seed, Koto? Target = null, int SeedStart = 0, int SeedCount = 0, int Replay = -1);
+    private void RecordCaughtChecking(Koto target)
+    {
+        var continuation = this.Continuation();
+        if (continuation.SeedCount == 0)
+        {
+            if (continuation.CaughtTarget is null)
+            {
+                this.caughtCheckingSeeds.Add((target, continuation));
+            }
+        }
+        else
+        {
+            for (var i = 0; i < continuation.SeedCount; i++)
+            {
+                var seed = this.body.CheckingSeeds[continuation.SeedStart + i];
+                if (seed.CaughtTarget is null)
+                {
+                    this.caughtCheckingSeeds.Add((target, new(seed.Operation, seed.Target, Replay: seed.Replay)));
+                }
+            }
+        }
+    }
+
+    private void CollectCaughtChecking(Koto target, int mark)
+    {
+        var write = mark;
+        for (var i = mark; i < this.caughtCheckingSeeds.Count; i++)
+        {
+            var arrival = this.caughtCheckingSeeds[i];
+            if (ReferenceEquals(arrival.Target, target))
+            {
+                this.AddCheckingSeed(this.normalCheckingSeeds, arrival.Seed);
+            }
+            else
+            {
+                this.caughtCheckingSeeds[write++] = arrival;
+            }
+        }
+
+        this.caughtCheckingSeeds.RemoveRange(write, this.caughtCheckingSeeds.Count - write);
+    }
+
+    private readonly record struct CheckingContinuation(int Seed, Koto? Target = null, int SeedStart = 0, int SeedCount = 0, int Replay = -1, Koto? CaughtTarget = null);
 
     // This is a bounded continuation proof, not an executable-syntax allowlist.
     // Terminal branches of every selection record their seeds, so selections are

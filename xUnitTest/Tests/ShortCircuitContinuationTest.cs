@@ -59,15 +59,25 @@ public class ShortCircuitContinuationTest
     }
 
     [Theory]
-    [InlineData("truth(stop()) and (choice: do\n                if c => return\n                exit to choice: true\n            )")]
     [InlineData("c and (do\n                loop => x = 3\n                true\n            )")]
     [InlineData("c or (do\n                defer => x = 3\n                return\n                true\n            )")]
-    public void NoncompletingOperandsRemainGuarded(string expression)
+    public void DivergentAndDeferredOperandsRemainGuarded(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1\n                return", "let b = " + expression, "x = 2", "let y = x") + Helpers);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }
+
+    [Theory]
+    [InlineData("And", "c and")]
+    [InlineData("Or", "c or")]
+    [InlineData("TerminalAnd", "truth(stop()) and")]
+    [InlineData("TerminalOr", "truth(stop()) or")]
+    public void ScopedOperandsRetainCaughtAndEscapingHistories(string name, string prefix)
+        => ScalarEmissionTest.EmitFixture(
+            "NeverPartialScoped" + Configuration + "CaughtLogical" + name,
+            Source("var x: i32", "x = 1\n                return", "let b = " + prefix + " (choice: do\n                if c => return\n                exit to choice: true\n            )", "x = 2", "let y = x") + "\nConsole.writeLine(\"done\")" + Helpers,
+            "done\n");
 
     [Theory]
     [InlineData("AbortAnd", "c and truth(stop())")]

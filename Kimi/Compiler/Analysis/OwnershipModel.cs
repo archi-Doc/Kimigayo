@@ -314,9 +314,11 @@ public sealed partial class OwnershipBody
 // converges; it never enters EdgeStorage or contributes a runtime predecessor.
 // Target is null for function-terminal paths. MixedTargets permits local checking;
 // constituent seeds retain their own effects when crossing an extent boundary.
-internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry, int SeedStart = 0, int SeedCount = 0, Koto? Target = null, bool MixedTargets = false, int Replay = -1);
+// CaughtTarget marks a source continuation after a transfer to a checking scope.
+// Its post-cleanup normal arrival is tracked separately; Target stays unchanged.
+internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry, int SeedStart = 0, int SeedCount = 0, Koto? Target = null, bool MixedTargets = false, int Replay = -1, Koto? CaughtTarget = null);
 
-internal readonly record struct OwnershipCheckingSeed(int Operation, Koto? Target, int Replay = -1);
+internal readonly record struct OwnershipCheckingSeed(int Operation, Koto? Target, int Replay = -1, Koto? CaughtTarget = null);
 
 // A proven closed checking path, applied to one constituent state before joining.
 // Previous links are strictly older; storage is reused across analysis passes.

@@ -198,6 +198,8 @@ public sealed partial class OwnershipAnalysis
         this.registrationSequence = 0;
         this.checkingRegion = 0;
         this.terminalSeeds.Clear();
+        this.normalCheckingSeeds.Clear();
+        this.caughtCheckingSeeds.Clear();
         this.deferredLoopBase = 0;
         this.deferredSelectionBase = 0;
         this.deferredDepth = 0;
@@ -414,7 +416,7 @@ public sealed partial class OwnershipAnalysis
     private int Block(CodeBlockKoto block, int destination = -1)
         => this.Block(block, out _, destination);
 
-    private int Block(CodeBlockKoto block, out CheckingContinuation continuation, int destination = -1)
+    private int Block(CodeBlockKoto block, out CheckingContinuation continuation, int destination = -1, bool retainCheckingRegion = false)
     {
         var region = this.checkingRegion;
         var result = -1;
@@ -450,7 +452,11 @@ public sealed partial class OwnershipAnalysis
         this.locals.RemoveRange(mark, this.locals.Count - mark);
         // A transfer's source continuation ends with this lexical body. It is not
         // a normal branch completion or a loop backedge, even inside dead source.
-        this.checkingRegion = region;
+        if (!retainCheckingRegion || !this.flow!.Nodes[block].CanCompleteNormally)
+        {
+            this.checkingRegion = region;
+        }
+
         return result;
     }
 
@@ -686,7 +692,10 @@ public sealed partial class OwnershipAnalysis
             }
 
             var terminalRight = !this.flow.Nodes[binary.Right].CanCompleteNormally;
-            var fork = !completes || terminalRight ? this.ForkChecking(branch) : null;
+            var partialRight = completes && !terminalRight && this.body.CheckingRegions[this.checkingRegion].MixedTargets &&
+                !(this.scopedCheckingProof ??= new(this)).Check(binary.Right, false) && this.scopedCheckingProof.Check(binary.Right);
+            var fork = !completes || terminalRight || partialRight ? this.ForkChecking(branch) : null;
+            var normalMark = this.normalCheckingSeeds.Count;
             var evaluate = this.New(OwnershipOperationKind.Branch, binary.Right);
             var skip = this.New(OwnershipOperationKind.Branch, binary);
             var join = this.ResultJoin(binary, output);
@@ -702,6 +711,10 @@ public sealed partial class OwnershipAnalysis
                 var produced = this.Emit(OwnershipOperationKind.Produce, binary, output);
                 this.SetValue(produced, OwnershipValueKind.Alias, [right]);
                 this.ConnectResult(join, produced);
+                if (partialRight && fork is not null)
+                {
+                    this.AddCheckingSeed(this.normalCheckingSeeds, this.Continuation());
+                }
             }
 
             if (terminalRight)
@@ -710,7 +723,9 @@ public sealed partial class OwnershipAnalysis
             }
             else if (!completes)
             {
-                this.AddTerminalSeed((this.scopedCheckingProof ??= new(this)).Check(binary.Right, false) ? this.Continuation() : new(-1));
+                // Partial RHS terminal paths are already pending; include its
+                // normal tail as well before joining with the skipped path.
+                this.AddTerminalSeed((this.scopedCheckingProof ??= new(this)).Check(binary.Right) ? this.Continuation() : new(-1));
             }
 
             this.checkingRegion = region;
@@ -718,7 +733,12 @@ public sealed partial class OwnershipAnalysis
             var skipped = this.Emit(OwnershipOperationKind.Produce, binary, output);
             this.SetValue(skipped, OwnershipValueKind.Constant, [], constant: evaluateWhen ? 0 : 1);
             this.ConnectResult(join, skipped);
-            if (fork is not null && completes)
+            if (partialRight && fork is not null)
+            {
+                this.AddCheckingSeed(this.normalCheckingSeeds, this.Continuation());
+                this.JoinNormalChecking(binary, normalMark, join);
+            }
+            else if (fork is not null && completes)
             {
                 // A terminal RHS contributes no normal result. Only the skipped
                 // branch reaches this checking join; its target facts stay separate.
@@ -772,15 +792,19 @@ public sealed partial class OwnershipAnalysis
     {
         var entry = this.current;
         var completes = this.flow!.Nodes[conditional].CanCompleteNormally;
-        var forkChecking = !completes && this.body.CheckingRegions[this.checkingRegion].MixedTargets && this.HasTerminalBranches(conditional);
+        var forkChecking = this.body.CheckingRegions[this.checkingRegion].MixedTargets && this.CanForkCheckingBranches(conditional);
+        var normalConditions = true;
+        var normalMark = this.normalCheckingSeeds.Count;
+        var caughtMark = this.caughtCheckingSeeds.Count;
         var mark = this.terminalSeeds.Count;
         var output = this.ResultPlace(conditional);
         var join = this.ResultJoin(conditional, output);
-        this.selections.Add(new(conditional, output, join, this.locals.Count, this.temporaries.Count, this.comparisonDepth));
+        this.selections.Add(new(conditional, output, join, this.locals.Count, this.temporaries.Count, this.comparisonDepth, forkChecking && completes));
         for (var i = 0; i < conditional.Branches.Count; i++)
         {
             var branch = conditional.Branches[i];
             var condition = this.Condition(branch.Condition);
+            normalConditions &= this.flow.Nodes[branch.Condition].CanCompleteNormally;
             var test = this.Emit(OwnershipOperationKind.Branch, branch.Condition);
             if (condition >= 0)
             {
@@ -794,8 +818,8 @@ public sealed partial class OwnershipAnalysis
             this.Connect(test, no, OwnershipEdgeKind.False);
 
             this.EnterCheckingBranch(yes, fork);
-            var result = this.Block(branch.Body, out var continuation, output);
-            this.RecordTerminalSeed(branch.Body, continuation, completes);
+            var result = this.Block(branch.Body, out var continuation, output, forkChecking);
+            this.RecordTerminalSeed(branch.Body, continuation, completes && normalConditions);
 
             if (ReferenceEquals(this.body.Places[output].Type, BoundType.Unit))
             {
@@ -803,14 +827,19 @@ public sealed partial class OwnershipAnalysis
             }
 
             this.ConnectResult(join, result);
+            if (forkChecking && completes && normalConditions && this.flow.Nodes[branch.Body].CanCompleteNormally)
+            {
+                this.AddCheckingSeed(this.normalCheckingSeeds, this.Continuation());
+            }
+
             this.EnterCheckingBranch(no, fork);
         }
 
         var otherwiseResult = -1;
         if (conditional.ElseBody is { } otherwise)
         {
-            otherwiseResult = this.Block(otherwise, out var continuation, output);
-            this.RecordTerminalSeed(otherwise, continuation, completes);
+            otherwiseResult = this.Block(otherwise, out var continuation, output, forkChecking);
+            this.RecordTerminalSeed(otherwise, continuation, completes && normalConditions);
 
             if (ReferenceEquals(this.body.Places[output].Type, BoundType.Unit))
             {
@@ -820,13 +849,30 @@ public sealed partial class OwnershipAnalysis
         else
         {
             this.Emit(OwnershipOperationKind.Produce, conditional, output);
-            if (!completes)
+            if (!completes || !normalConditions)
             {
                 this.AddTerminalSeed(this.Continuation());
             }
         }
 
         this.ConnectResult(join, otherwiseResult);
+        if (forkChecking && completes)
+        {
+            if (normalConditions && (conditional.ElseBody is null || this.flow.Nodes[conditional.ElseBody].CanCompleteNormally))
+            {
+                this.AddCheckingSeed(this.normalCheckingSeeds, this.Continuation());
+            }
+
+            this.CollectCaughtChecking(conditional, caughtMark);
+            this.JoinNormalChecking(conditional, normalMark, join);
+        }
+        else if (completes)
+        {
+            // A later terminal condition may have opened a checking region.
+            // Earlier normal arrivals still belong to the original join's region.
+            this.checkingRegion = this.body.OperationRegions[join];
+        }
+
         this.current = join;
         this.selections.RemoveAt(this.selections.Count - 1);
         this.body.RecordCompletion(entry, join, completes);
@@ -855,7 +901,9 @@ public sealed partial class OwnershipAnalysis
         }
         else if (!completes)
         {
-            this.AddTerminalSeed((this.scopedCheckingProof ??= new(this)).Check(block, false) ? this.Continuation() : new(-1));
+            // Nested terminal branches already retain their own histories. The
+            // remaining normal tail joins them after this body's local cleanup.
+            this.AddTerminalSeed((this.scopedCheckingProof ??= new(this)).Check(block) ? this.Continuation() : new(-1));
         }
     }
 
@@ -1034,21 +1082,37 @@ public sealed partial class OwnershipAnalysis
     private int ScopedBody(Koto owner, CodeBlockKoto block)
     {
         var entry = this.current;
+        var completes = this.flow!.Nodes[owner].CanCompleteNormally;
+        var retainNormal = completes && this.body.CheckingRegions[this.checkingRegion].MixedTargets &&
+            !(this.scopedCheckingProof ??= new(this)).Check(block, false) && this.scopedCheckingProof.Check(block);
         var mark = this.terminalSeeds.Count;
+        var normalMark = this.normalCheckingSeeds.Count;
+        var caughtMark = this.caughtCheckingSeeds.Count;
         var output = owner is DoKoto ? this.ResultPlace(owner) : -1;
         var join = this.ResultJoin(owner, output);
-        this.selections.Add(new(owner, output, join, this.locals.Count, this.temporaries.Count, this.comparisonDepth));
-        var result = this.Block(block, out var continuation, output);
+        this.selections.Add(new(owner, output, join, this.locals.Count, this.temporaries.Count, this.comparisonDepth, retainNormal));
+        var result = this.Block(block, out var continuation, output, retainNormal);
         if (output >= 0 && ReferenceEquals(this.body.Places[output].Type, BoundType.Unit))
         {
             this.Emit(OwnershipOperationKind.Produce, owner, output);
         }
 
         this.ConnectResult(join, result);
+        if (retainNormal)
+        {
+            if (this.flow.Nodes[block].CanCompleteNormally)
+            {
+                this.AddCheckingSeed(this.normalCheckingSeeds, this.Continuation());
+            }
+
+            this.CollectCaughtChecking(owner, caughtMark);
+            this.JoinNormalChecking(owner, normalMark, join);
+        }
+
         this.selections.RemoveAt(this.selections.Count - 1);
-        this.body.RecordCompletion(entry, join, this.flow!.Nodes[owner].CanCompleteNormally);
+        this.body.RecordCompletion(entry, join, completes);
         var completed = this.CompleteResult(owner, output, join);
-        if (!this.flow.Nodes[owner].CanCompleteNormally)
+        if (!completes)
         {
             // A completing scope leaves its pending terminal paths to the enclosing join.
             if (continuation.Seed >= 0 && (this.scopedCheckingProof ??= new(this)).Check(block))
@@ -1208,6 +1272,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var continuationRegion = this.body.CheckingRegions[this.checkingRegion];
+        Koto? caughtTarget = null;
         if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
         {
             var secured = this.WriteResult(jump, this.resultPlace, value);
@@ -1221,6 +1286,12 @@ public sealed partial class OwnershipAnalysis
             var result = selection.Result >= 0 ? this.WriteResult(jump, selection.Result, value) : -1;
 
             this.Cleanup(selection.Temporaries, selection.Locals, jump, CleanupReason.SelectionResult);
+            if (selection.Checking && this.flow.ReachesTarget(jump))
+            {
+                this.RecordCaughtChecking(selection.Source);
+                caughtTarget = selection.Source;
+            }
+
             this.ConnectResult(selection.Join, result);
         }
         else
@@ -1255,7 +1326,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.current = -1;
-        this.BeginChecking(seed, ReferenceEquals(target, this.body.Function) ? null : target, continuationRegion);
+        this.BeginChecking(seed, ReferenceEquals(target, this.body.Function) ? null : target, continuationRegion, caughtTarget);
         return -1;
     }
 

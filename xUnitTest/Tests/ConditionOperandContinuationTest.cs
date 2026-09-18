@@ -77,11 +77,13 @@ public class ConditionOperandContinuationTest
         => ScalarEmissionTest.EmitFixture("NeverCondition" + Configuration + name, Stop + source, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Fact]
-    public void APartiallyTerminatingSourceBranchRetainsTheGuard()
+    public void APartiallyTerminatingSourceBranchRetainsTheMove()
     {
         var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, x: string)\n    if stop()\n        if c\n            Console.writeLine(x)\n            return\n    else => ()\n    Console.writeLine(x)\nf(true, \"s\")");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Emission.Validate(out _));
     }
 
     [Fact]
