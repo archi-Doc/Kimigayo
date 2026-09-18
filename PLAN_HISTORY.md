@@ -5441,3 +5441,150 @@ The 60-minute duration expired during final verification/documentation; no new
 unit was started after the deadline. T4r/T6a/T6b/T6c are complete only for their
 stated slices. Remaining compiler scope and the exact next action T6d are
 maintained in PLAN.md §2. Final diff whitespace verification passes.
+
+<a id="general-compiler-20260918-153130"></a>
+
+## General compiler continuation (2026-09-18 15:31:30 UTC)
+
+Started from clean HEAD `f31d2badffad84524b0009c230fcf526780e3305` under the
+user's 60-minute general compiler authorization (Milestone Programs, NativeAOT
+and draft edits excluded). Evidence root: `bin/plan-execution/20260918-153130`.
+
+T6d (M3/I6, SPEC §15.2–15.4 returned Loans): three valid reproducers
+(`relay(p).value += 1` then `p.value += 1`, repeated relays, nested relays)
+failed with ComparisonLoanConflict at the call, projection and update
+(`t6d-baseline.xml`). Cause: `IsBorrowAncestor` stopped at the Call value, so
+a returned `uniq/Counter from p` could not be traced to the argument's reborrow
+of the still-suspended parent. The walk now continues from a Call to the one
+CallEntry named by the callee's declared `Input` result Origin, using the
+receiver/explicit-argument parameter mapping. Defaults, intersections, value
+calls and compiler functions return no ancestor (conservative rejection). No
+Origin-name equality grants permission; no new allocation is introduced.
+
+Verification PASS: warning-free Debug/Release builds; 11 new
+ReturnedBorrowAncestryTest cases (5 native positives including second-slot and
+named arguments and an immutable local; 5 negatives asserting complete Binding
+plus ComparisonLoanConflict; shared-to-exclusive escalation rejected in
+Binding). Full suites: 8,897 tests per configuration, no skips
+(`t6d-full-debug.xml`, `t6d-full-release.xml`). Fifty-two freshly archived
+ReturnedBorrowAncestry, BorrowedFieldUpdate, BorrowedTuple and BorrowStruct
+fixtures pass 104 LLVM/native O0/O2 runs (`t6d-native.log`); Release-generated
+ReturnedBorrowAncestry fixtures match the archived Debug bytes. Hashes:
+`t6d-fixture-hashes.txt`, `t6d-source-hashes.txt`. NativeAOT NOT_RUN.
+
+T6e (M3/I6, SPEC §15.6.2–15.6.3) completed at approximately 15:52 UTC.
+Probing borrowed projections found three valid programs rejected with
+ComparisonLoanConflict: disjoint `p.left@uniq`/`p.right@uniq` through a `uniq`
+parameter, the Tuple equivalent, and two `p.left@ref` borrows. The value-based
+check treated any access through a `uniq` source as conflicting with every live
+dependent. It now requires a Uniq side (dependent or access) and exempts
+proven-disjoint static paths: `IsDisjointProjection` walks single-definition
+immutable locals and Borrow temporaries to the same root and compares inline
+field/Tuple selectors (bounded depth 16, stackalloc; no heap allocation).
+Borrow destinations now also record their single definition.
+
+`BorrowedArrayEmissionTest.Rejects` contained
+`let b = a@uniq / let r = b@ref / let n = b[0] / let m = r[0]`, rejected only
+because of the removed blanket rule. Under §15.6.2 a Read is allowed against an
+existing `ref` Loan, and §4.6.5/§6.3 state that a reborrow suspends only
+conflicting parent access, so the case is valid; it is now the positive
+`DisjointBorrowedProjectionArrayParentRead` fixture. The Rejects slot keeps a
+conflict responsibility with `let c = b@uniq` while `r` lives, which reaches
+ComparisonLoanConflict. Seven negative cases assert complete Binding plus
+ComparisonLoanConflict (same-field uniq twice, ref then uniq, write through the
+parent while a shared child lives, whole-parent uniq and call while a child
+lives, Tuple element write).
+
+Verification PASS: warning-free Debug/Release builds; full suites 8,909 tests
+each, no skips (`t6e-full-debug.xml`, `t6e-full-release.xml`). Sixty-eight fresh
+DisjointBorrowedProjection, ReturnedBorrowAncestry, BorrowedArray,
+BorrowedFieldUpdate, BorrowedTuple and BorrowStruct fixtures pass 136 LLVM/native
+O0/O2 runs (`t6e-native.log`); Release DisjointBorrowedProjection fixtures match
+the archived Debug bytes. Hashes: `t6e-fixture-hashes.txt`,
+`t6e-source-hashes.txt`. Probing also found nested direct field access through a
+borrowed receiver (`p.left.value = 3`, `let x = p.right.value` with
+`p: uniq/Pair`) reported Unsupported in ownership; selected as T6f.
+
+T6f (M3/I6/I8, SPEC §15.6 Place projections) completed at approximately
+16:06 UTC. Reproducers: `p.left.value = 3`, `let x = p.right.value` and
+compound/increment forms with `p: uniq/Pair` were Unsupported in ownership.
+Binding types an intermediate `p.left` as the owned `Counter` Place, so the
+dispatch did not recognize a borrowed base. `ElementAccess.BorrowedPathRoot`
+now walks inline stored field/Tuple levels (via the existing `TryType`) to the
+reference-typed base; ownership reads/writes/updates use that base as the
+receiver and its Semantics for write permission. Lowering sums each level's
+`AggregateLayout.Offset` and validates each level's owner/element Types before
+the single `ElementAddress`. `IsDisjointProjection` records every nested level
+(an earlier leaf-only draft would have compared selectors of different
+aggregates and was corrected before testing). Tuple-in-Tuple compound updates
+(`p.0.1 += 2` with `p: uniq/((i32, i32), Counter)`) fail in Binding
+(InvalidCount 1); recorded as a separate Binding gap, not claimed here.
+
+Verification PASS: warning-free Debug/Release; 9 new cases (4 native nested
+positives, 4 overlap negatives asserting complete Binding plus
+ComparisonLoanConflict, 1 shared-base write rejection); full suites 8,918 tests
+each, no skips (`t6f-full-debug.xml`, `t6f-full-release.xml`). Sixty-one fresh
+DisjointBorrowedProjection, ReturnedBorrowAncestry, BorrowedFieldUpdate,
+BorrowedTuple and BorrowStruct fixtures pass 122 LLVM/native O0/O2 runs
+(`t6f-native.log`); Release nested fixtures match Debug bytes. Hashes:
+`t6f-fixture-hashes.txt`, `t6f-source-hashes.txt`. NativeAOT NOT_RUN.
+
+T6g (M2/I4-adjacent writability, M3/I6; SPEC §13.7 assignment targets and
+§15.6 Places) completed at approximately 16:11 UTC. The T6f Binding gap
+reproduced as InvalidCount 1 for `p.0.1 += 2`: `Writable` accepted a Tuple
+element only when its immediate Left was a Tuple reference. It now accepts a
+literal Tuple selector whose `BorrowedPathRoot` is a `uniq` base; ownership and
+lowering reuse the T6f nested path. Four new cases: a native nested Tuple
+positive (compound, assignment, postfix decrement, struct-in-Tuple write) and
+`ref`-base compound/assignment rejections. Verification PASS: warning-free
+Debug/Release; full suites 8,921 each, no skips (`t6g-full-debug.xml`,
+`t6g-full-release.xml`); 115 fresh DisjointBorrowedProjection,
+BorrowedFieldUpdate, BorrowedTuple and ElementUpdate fixtures pass 230 LLVM/native
+O0/O2 runs (`t6g-native.log`); Release fixture bytes match. Hashes:
+`t6g-fixture-hashes.txt`, `t6g-source-hashes.txt`.
+
+T6h (M3/I6, SPEC §15.6) completed at approximately 16:19 UTC. Reproducers
+`let a = p.inner.c@uniq` / `p.inner.c@ref` bound but were Unsupported at
+`p.inner`. `BorrowStruct` now uses `BorrowedPathRoot` for inline paths;
+lowering shares a `TryBorrowedPathOffset` helper (per-level owner/element Type
+validation, checked summed offset) between projected borrows and borrowed
+field access; `ProjectionPath` records every nested level of a Borrow source.
+Ten new NestedBorrowedProjectionTest cases: 4 native positives (exclusive,
+shared twice, nested siblings, Tuple siblings), 4 prefix-overlap negatives
+asserting complete Binding plus ComparisonLoanConflict, and `uniq` through a
+`ref` base rejected. The first draft of the exclusive positive used
+`p.tag += a.value`; it rejects because `UpdateBorrowedField` reborrows the whole
+receiver (existing single-level behavior, recorded as T6j rather than treated as
+a T6h regression), so that case uses plain assignment.
+
+Verification PASS: warning-free Debug/Release; full suites 8,930 tests each, no
+skips (`t6h-full-debug.xml`, `t6h-full-release.xml`); 66 fresh
+NestedBorrowedProjection, DisjointBorrowedProjection, ReturnedBorrowAncestry,
+BorrowedFieldUpdate, BorrowedTuple and BorrowStruct fixtures pass 132
+LLVM/native O0/O2 runs (`t6h-native.log`); Release nested fixtures match Debug
+bytes. Hashes: `t6h-fixture-hashes.txt`, `t6h-source-hashes.txt`.
+
+T6j (M3/I6, SPEC §15.6.2) completed at approximately 16:25 UTC. The
+receiver reborrow of `UpdateBorrowedField` covered the whole base, rejecting
+`p.tag += a.value` while `a = p.inner.c@uniq` lives. `ProjectionPath` now gives a
+receiver Borrow whose source is the base of an update target (compound Binary
+Left or increment/decrement Unary operand, found via `BorrowedPathRoot`) that
+target's inline selectors; no other Borrow changes footprint. Existing
+`KeepsTargetBorrowedAcrossRhs` same-field cases still reject. Four new cases
+(one native sibling-update positive; same-path update, parent `ref` plus nested
+sibling increment and same-field RHS negatives). Verification PASS:
+warning-free Debug/Release; full suites 8,934 tests each, no skips
+(`t6j-full-debug.xml`, `t6j-full-release.xml`); 130 fresh NestedBorrowedProjection,
+DisjointBorrowedProjection, BorrowedFieldUpdate, BorrowedTuple, BorrowStruct and
+ElementUpdate fixtures pass 260 LLVM/native O0/O2 runs (`t6j-native.log`);
+Release nested fixtures match Debug bytes. Hashes: `t6j-fixture-hashes.txt`,
+`t6j-source-hashes.txt`.
+
+Execution totals: 48 new managed cases (8,886 → 8,934 per configuration), one
+spec-incorrect rejection case corrected with its conflict responsibility kept.
+No Milestone Program, draft or NativeAOT work; the specification was not
+edited. An untracked user draft (`draft/Design/2026-09-19 Shared Ownership and
+Using Guards.md`) appeared during the run and was not read or modified.
+Stopped at 2026-09-18 16:25 UTC (about 54 minutes elapsed); the remaining time
+could not fit another unit with its required full Debug/Release and native
+verification. T6i is the next action in PLAN.md §2.

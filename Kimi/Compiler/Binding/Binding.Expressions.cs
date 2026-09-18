@@ -18,6 +18,12 @@ public sealed partial class Binding
             return false;
         }
 
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(nested.Left.BoundType) &&
+            ElementAccess.BorrowedPathRoot(nested) is { } root)
+        {
+            return root.BoundType!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
+        }
+
         if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType))
         {
             return tupleElement.Left.BoundType!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);

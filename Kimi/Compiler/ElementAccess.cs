@@ -86,6 +86,59 @@ internal static class ElementAccess
             SyntaxFormKoto { Akind: KotoKind.BindingPattern, IsMutablePattern: true } ? root : null;
     }
 
+    // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
+    // Tuple reference; nested levels must be inline stored parts. Returns the
+    // reference-typed base, or null for other forms.
+    internal static Koto? BorrowedPathRoot(MemberAccessKoto field)
+    {
+        for (var depth = 0; depth < 64; depth++)
+        {
+            if (ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType))
+            {
+                return field.Left;
+            }
+
+            if (field.Left is not MemberAccessKoto parent || !TryType(field, out _, out _))
+            {
+                return null;
+            }
+
+            field = parent;
+        }
+
+        return null;
+    }
+
+    // The stored position of one path level and the aggregate that contains it.
+    internal static int PathSelector(MemberAccessKoto field, out BoundType? owner, out BoundType? element)
+    {
+        var left = field.Left.BoundType;
+        element = null;
+        if (ReferenceTypes.IsTuple(left))
+        {
+            owner = left!.Components[0];
+            return TryBorrowedTupleElement(field, out element, out var index) ? index : -1;
+        }
+
+        if (ReferenceTypes.IsStruct(left))
+        {
+            owner = left!.Components[0];
+            for (var i = 0; i < StructStorage.Count(owner); i++)
+            {
+                if (ReferenceEquals(StructStorage.Field(owner, i).BoundSymbol, field.BoundSymbol))
+                {
+                    element = StructStorage.FieldType(owner, i);
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        owner = left;
+        return TryType(field, out element, out var position) ? position : -1;
+    }
+
     internal static bool TryBorrowedTupleElement(BinaryKoto source, out BoundType? element, out int position)
     {
         element = null;

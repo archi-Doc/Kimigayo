@@ -39,33 +39,11 @@ internal sealed partial class BodyLowering
             }
 
             if (operation.Source is MemberAccessKoto projected && !ReferenceTypes.IsStorage(projected.BoundType) &&
-                (ReferenceTypes.IsStruct(projected.Left.BoundType) || ReferenceTypes.IsTuple(projected.Left.BoundType)))
+                ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
             {
-                var projectedOwner = projected.Left.BoundType!.Components[0];
-                var projectedLayout = this.aggregateLayouts.Get(projectedOwner);
-                var projectedPosition = -1;
-                BoundType? projectedType = null;
-                if (ReferenceTypes.IsTuple(projected.Left.BoundType))
-                {
-                    ElementAccess.TryBorrowedTupleElement(projected, out projectedType, out projectedPosition);
-                }
-                else
-                {
-                    for (var i = 0; i < StructStorage.Count(projectedOwner); i++)
-                    {
-                        if (ReferenceEquals(StructStorage.Field(projectedOwner, i).BoundSymbol, projected.BoundSymbol))
-                        {
-                            projectedPosition = i;
-                            projectedType = StructStorage.FieldType(projectedOwner, i);
-                            break;
-                        }
-                    }
-                }
-
-                if (projectedLayout is null || projectedPosition < 0 || value.Count != 1 ||
-                    !ReferenceEquals(type, projected.Left.BoundType) ||
+                if (!this.TryBorrowedPathOffset(projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
+                    !ReferenceEquals(type, projectedRoot.BoundType) ||
                     !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
-                    !ReferenceEquals(projectedType, projected.BoundType) ||
                     !ReferenceEquals(projected.BoundType, output.Components[0]) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
                     (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
@@ -73,7 +51,7 @@ internal sealed partial class BodyLowering
                     return Fail("Projected borrow lacks a matching stored field and typed receiver.", out failure);
                 }
 
-                function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, projectedLayout.Offset(projectedPosition))]);
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, projectedOffset)]);
                 return true;
             }
 
@@ -109,42 +87,20 @@ internal sealed partial class BodyLowering
                 _ => null,
             };
         var receiver = Input(body, id, 0);
-        if (field is null || !(ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType)) ||
-            !ReferenceEquals(ValueType(body, receiver), field.Left.BoundType) || !ReferenceTypes.IsValue(field.BoundType) ||
+        var root = field is null ? null : ElementAccess.BorrowedPathRoot(field);
+        if (field is null || root is null || !ReferenceEquals(ValueType(body, receiver), root.BoundType) || !ReferenceTypes.IsValue(field.BoundType) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
             return Fail("Borrowed field access requires a dominating typed receiver.", out failure);
         }
 
-        var owner = field.Left.BoundType!.Components[0];
-        var layout = this.aggregateLayouts.Get(owner);
-        var position = -1;
-        if (ReferenceTypes.IsTuple(field.Left.BoundType))
+        if (!this.TryBorrowedPathOffset(field, root, out var offset))
         {
-            if (!ElementAccess.TryBorrowedTupleElement(field, out var elementType, out position) || !ReferenceEquals(elementType, field.BoundType))
-            {
-                return Fail("Borrowed tuple element does not match its selector and result Type.", out failure);
-            }
-        }
-        else
-        {
-            for (var i = 0; i < StructStorage.Count(owner); i++)
-            {
-                if (ReferenceEquals(StructStorage.Field(owner, i).BoundSymbol, field.BoundSymbol))
-                {
-                    position = i;
-                    break;
-                }
-            }
-        }
-
-        if (layout is null || position < 0)
-        {
-            return Fail("Borrowed field has no stored field layout.", out failure);
+            return Fail("Borrowed field path does not match its stored layout and Types.", out failure);
         }
 
         var representation = WindowsLowering.GetValue(field.BoundType!)!;
-        function.AddScalar(EmissionOpcode.ElementAddress, id, [this.PhysicalOperand(body, receiver), new(EmissionOperandKind.Integer, layout.Offset(position))], representation: representation);
+        function.AddScalar(EmissionOpcode.ElementAddress, id, [this.PhysicalOperand(body, receiver), new(EmissionOperandKind.Integer, offset)], representation: representation);
         if (value.Kind == OwnershipValueKind.BorrowedField)
         {
             if (operation.Kind != OwnershipOperationKind.Produce || !ReferenceEquals(ValueType(body, id), field.BoundType))
@@ -157,7 +113,7 @@ internal sealed partial class BodyLowering
         else
         {
             var input = Input(body, id, 1);
-            if (operation.Kind != OwnershipOperationKind.WriteBorrowedField || field.Left.BoundType.Semantics != SemanticsKind.Uniq ||
+            if (operation.Kind != OwnershipOperationKind.WriteBorrowedField || root.BoundType!.Semantics != SemanticsKind.Uniq ||
                 !ReferenceEquals(ValueType(body, input), field.BoundType) || (body.IsReachable(id) && !this.Dominates(input, id)))
             {
                 return Fail("Borrowed field write requires exclusive access and a matching secured value.", out failure);
@@ -167,5 +123,27 @@ internal sealed partial class BodyLowering
         }
 
         return true;
+    }
+
+    // Inline parts are contiguous in their containing layout: sum each
+    // validated level's stored offset from the borrowed base.
+    private bool TryBorrowedPathOffset(MemberAccessKoto field, Koto root, out int offset)
+    {
+        offset = 0;
+        for (var level = field; ; level = (MemberAccessKoto)level.Left)
+        {
+            var position = ElementAccess.PathSelector(level, out var owner, out var element);
+            var layout = owner is null ? null : this.aggregateLayouts.Get(owner);
+            if (layout is null || position < 0 || !ReferenceEquals(element, level.BoundType))
+            {
+                return false;
+            }
+
+            offset = checked(offset + layout.Offset(position));
+            if (ReferenceEquals(level.Left, root))
+            {
+                return true;
+            }
+        }
     }
 }

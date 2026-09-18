@@ -62,9 +62,9 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is MemberAccessKoto field && !ReferenceTypes.IsStorage(field.BoundType) &&
-            (ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType)))
+            ElementAccess.BorrowedPathRoot(field) is { } root)
         {
-            var receiver = this.Expression(field.Left, PlaceUseKind.Read);
+            var receiver = this.Expression(root, PlaceUseKind.Read);
             if (receiver < 0)
             {
                 return -1;
@@ -91,7 +91,7 @@ public sealed partial class OwnershipAnalysis
 
     private int ReadBorrowedField(MemberAccessKoto field)
     {
-        var receiver = this.Expression(field.Left, PlaceUseKind.Read);
+        var receiver = this.Expression(ElementAccess.BorrowedPathRoot(field)!, PlaceUseKind.Read);
         if (receiver < 0)
         {
             return -1;
@@ -115,7 +115,8 @@ public sealed partial class OwnershipAnalysis
             return this.UpdateBorrowedField(assignment, field);
         }
 
-        if (field.Left.BoundType?.Semantics != SemanticsKind.Uniq ||
+        var root = ElementAccess.BorrowedPathRoot(field)!;
+        if (root.BoundType?.Semantics != SemanticsKind.Uniq ||
             !ReferenceTypes.IsValue(field.BoundType))
         {
             this.Unsupported(assignment);
@@ -123,7 +124,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var input = this.Expression(assignment.Right);
-        var receiver = this.Expression(field.Left, PlaceUseKind.Read);
+        var receiver = this.Expression(root, PlaceUseKind.Read);
         if (input < 0 || receiver < 0)
         {
             return -1;
@@ -137,7 +138,8 @@ public sealed partial class OwnershipAnalysis
     private int UpdateBorrowedField(Koto source, MemberAccessKoto field)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
-        if (field.Left.BoundType?.Semantics != SemanticsKind.Uniq || field.BoundType?.IsNumeric != true || operation == KotoKind.Invalid)
+        var root = ElementAccess.BorrowedPathRoot(field)!;
+        if (root.BoundType?.Semantics != SemanticsKind.Uniq || field.BoundType?.IsNumeric != true || operation == KotoKind.Invalid)
         {
             this.Unsupported(source);
             return -1;
@@ -145,7 +147,7 @@ public sealed partial class OwnershipAnalysis
 
         // Secure the receiver and old value before evaluating the RHS. Keep the
         // original SSA receiver even if later evaluation reads the same Place.
-        var receiver = this.BorrowStruct(field.Left, field.Left.BoundType!);
+        var receiver = this.BorrowStruct(root, root.BoundType!);
         var receiverValue = this.Value(receiver);
         var previous = -1;
         if (receiver >= 0)

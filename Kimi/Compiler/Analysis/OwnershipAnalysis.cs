@@ -609,7 +609,8 @@ public sealed partial class OwnershipAnalysis
                 return this.ConversionValue(conversion);
             case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice || ReferenceTypes.IsArray(member.Left.BoundType):
                 return this.SequenceMember(member);
-            case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType):
+            case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) ||
+                (ReferenceTypes.IsValue(member.BoundType) && ElementAccess.BorrowedPathRoot(member) is not null):
                 return this.ReadBorrowedField(member);
             case IndexKoto slice when slice.BoundType?.Kind == BoundTypeKind.Slice && slice.Right is RangeKoto:
                 return this.CreateSlice(slice);
@@ -681,7 +682,7 @@ public sealed partial class OwnershipAnalysis
         if (assignment)
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
-            if (target is MemberAccessKoto borrowedField && (ReferenceTypes.IsStruct(borrowedField.Left.BoundType) || ReferenceTypes.IsTuple(borrowedField.Left.BoundType)))
+            if (target is MemberAccessKoto borrowedField && ElementAccess.BorrowedPathRoot(borrowedField) is not null)
             {
                 return this.WriteBorrowedField(binary, borrowedField);
             }

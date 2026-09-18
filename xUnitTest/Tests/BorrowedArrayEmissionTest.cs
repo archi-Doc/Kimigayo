@@ -29,7 +29,7 @@ public class BorrowedArrayEmissionTest
     [InlineData("let a: [1 of i32] = [1]\nlet b = a@ref/[2 of i32]")]
     [InlineData("let a: [1 of string] = [\"owned\"]\nlet b = a@ref\nConsole.writeLine(b[0])")]
     [InlineData("var a: [1 of i32] = [1]\nlet b = a@ref\nlet n = b[(work: do\n    a[0] = 2\n    exit to work: 0)]")]
-    [InlineData("var a: [1 of i32] = [1]\nlet b = a@uniq\nlet r = b@ref\nlet n = b[0]\nlet m = r[0]")]
+    [InlineData("var a: [1 of i32] = [1]\nlet b = a@uniq\nlet r = b@ref\nlet c = b@uniq\nlet m = r[0]")]
     [InlineData("func make() -> [1 of i32] => [42]\nlet b = make()@ref\nlet n = b[0]")]
     [InlineData("let a: [1 of i32]\nlet b = a@ref\nlet n = b[0]")]
     public void Rejects(string source)

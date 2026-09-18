@@ -48,9 +48,16 @@ public sealed partial class OwnershipBody
         this.borrowDefinitions.AsSpan(0, count).Fill(-1);
         for (var id = 0; id < this.Operations.Count; id++)
         {
-            if (this.Operations[id] is { Kind: OwnershipOperationKind.Write, Place: >= 0 } write)
+            var defined = this.Operations[id] switch
             {
-                ref var definition = ref this.borrowDefinitions[write.Place];
+                { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
+                { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
+                _ => -1,
+            };
+
+            if (defined >= 0)
+            {
+                ref var definition = ref this.borrowDefinitions[defined];
                 definition = definition == -1 ? id : -2;
             }
         }
@@ -132,7 +139,7 @@ public sealed partial class OwnershipBody
                         var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
                             : value.Kind == OwnershipValueKind.Address ? operation.LoanMode : LoanRequirement.Ref;
                         if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
-                            (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq || this.Places[sourcePlace].Type.Semantics == SemanticsKind.Uniq) && !this.IsBorrowAncestor(receiver, p))
+                            (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(op, p))
                         {
                             conflict = true;
                         }
@@ -344,6 +351,40 @@ public sealed partial class OwnershipBody
 
     private static int ValuePlaceForBorrow(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
 
+    private static int Selector(MemberAccessKoto field) => ElementAccess.PathSelector(field, out _, out _);
+
+    // A compound/increment update reborrows its base once; its footprint is the
+    // updated inline field path (SPEC 15.6.2), not the whole base.
+    private static MemberAccessKoto? UpdateTarget(Koto root)
+    {
+        var node = root.Parent;
+        while (node is MemberAccessKoto { Parent: MemberAccessKoto outer } && ReferenceEquals(ElementAccess.BorrowedPathRoot(outer), root))
+        {
+            node = outer;
+        }
+
+        return node is MemberAccessKoto field && ReferenceEquals(ElementAccess.BorrowedPathRoot(field), root) &&
+            ElementAccess.UpdateOperator(field.Parent?.Akind ?? KotoKind.Invalid) != KotoKind.Invalid &&
+            (field.Parent is BinaryKoto binary ? ReferenceEquals(KotoHelper.UnwrapParentheses(binary.Left), field) : field.Parent is UnaryKoto) ? field : null;
+    }
+
+    private static bool AddPath(MemberAccessKoto field, Koto root, Span<int> selectors, ref int depth)
+    {
+        for (var level = field; ; level = (MemberAccessKoto)level.Left)
+        {
+            if (depth == selectors.Length || Selector(level) is not (>= 0 and var selector))
+            {
+                return false;
+            }
+
+            selectors[depth++] = selector;
+            if (ReferenceEquals(level.Left, root))
+            {
+                return true;
+            }
+        }
+    }
+
     private void PrepareCheckingBorrowEdges()
     {
         Grow(ref this.checkingBorrowHeads, this.Operations.Count);
@@ -438,6 +479,14 @@ public sealed partial class OwnershipBody
             }
 
             var node = this.Values[value];
+            if (node.Kind == OwnershipValueKind.Call && operation.Kind == OwnershipOperationKind.Call)
+            {
+                // A returned reference descends from the one acquired argument
+                // its public result Origin names; any other contract stops here.
+                value = this.ResultArgument(value);
+                continue;
+            }
+
             if (node.Kind is not (OwnershipValueKind.Alias or OwnershipValueKind.Address) || node.Count != 1)
             {
                 // An immutable reference local retains the ancestry of its one
@@ -461,5 +510,179 @@ public sealed partial class OwnershipBody
         }
 
         return false;
+    }
+
+    // SPEC 15.6.2: distinct inline field/Tuple selectors under the same root
+    // designate disjoint places. Unknown steps, array subscripts and different
+    // roots conservatively overlap.
+    private bool IsDisjointProjection(int access, int place)
+    {
+        if (this.Places[place] is not { Kind: OwnershipPlaceKind.Local or OwnershipPlaceKind.Temporary, Mutable: false } || this.borrowDefinitions[place] < 0)
+        {
+            return false;
+        }
+
+        const int Limit = 16;
+        Span<int> left = stackalloc int[Limit];
+        Span<int> right = stackalloc int[Limit];
+        var leftDepth = 0;
+        var value = access;
+        var node = this.Values[access];
+        if (node.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate)
+        {
+            var source = KotoHelper.UnwrapParentheses(this.Operations[access].Source);
+            source = source switch
+            {
+                MemberAccessKoto => source,
+                BinaryKoto binary => KotoHelper.UnwrapParentheses(binary.Left),
+                UnaryKoto unary => KotoHelper.UnwrapParentheses(unary.Operand),
+                _ => source,
+            };
+
+            if (source is not MemberAccessKoto field || ElementAccess.BorrowedPathRoot(field) is not { } root)
+            {
+                return false;
+            }
+
+            // Record every inline level from the accessed field up to the borrowed base.
+            for (var level = field; ; level = (MemberAccessKoto)level.Left)
+            {
+                if (leftDepth == Limit || Selector(level) is not (>= 0 and var selector))
+                {
+                    return false;
+                }
+
+                left[leftDepth++] = selector;
+                if (ReferenceEquals(level.Left, root))
+                {
+                    break;
+                }
+            }
+
+            value = this.ValueOperands[node.Start];
+        }
+
+        var leftRoot = this.ProjectionPath(value, left, ref leftDepth);
+        var rightDepth = 0;
+        var rightRoot = this.ProjectionPath(this.borrowDefinitions[place], right, ref rightDepth);
+        if (leftRoot < 0 || leftRoot != rightRoot)
+        {
+            return false;
+        }
+
+        // Selectors were collected leaf first; compare from the shared root.
+        for (int l = leftDepth - 1, r = rightDepth - 1; l >= 0 && r >= 0; l--, r--)
+        {
+            if (left[l] != right[r])
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private int ProjectionPath(int value, Span<int> selectors, ref int depth)
+    {
+        for (var remaining = this.Values.Count; remaining > 0 && (uint)value < (uint)this.Values.Count; remaining--)
+        {
+            var operation = this.Operations[value];
+            var node = this.Values[value];
+            if (operation.Kind == OwnershipOperationKind.Borrow && node.Kind == OwnershipValueKind.Address)
+            {
+                if (node.Count == 0)
+                {
+                    return operation.Place;
+                }
+
+                if (node.Count != 1)
+                {
+                    return -1;
+                }
+
+                if (KotoHelper.UnwrapParentheses(operation.Source) is MemberAccessKoto field)
+                {
+                    // Only inline parts; a stored reference's referent is not part of this root.
+                    if (ReferenceTypes.IsStorage(field.BoundType) || ElementAccess.BorrowedPathRoot(field) is not { } root)
+                    {
+                        return -1;
+                    }
+
+                    if (!AddPath(field, root, selectors, ref depth))
+                    {
+                        return -1;
+                    }
+                }
+                else if (depth == 0 && UpdateTarget(operation.Source) is { } target && !AddPath(target, operation.Source, selectors, ref depth))
+                {
+                    return -1;
+                }
+
+                value = this.ValueOperands[node.Start];
+            }
+            else if (node.Kind == OwnershipValueKind.Alias && node.Count == 1)
+            {
+                value = this.ValueOperands[node.Start];
+            }
+            else if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0)
+            {
+                var definition = this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsStorage(local.Type)
+                    ? this.borrowDefinitions[operation.Place] : -1;
+                if (definition < 0 || definition >= value)
+                {
+                    return operation.Place;
+                }
+
+                value = definition;
+            }
+            else if (operation.Kind == OwnershipOperationKind.Produce && node.Kind == OwnershipValueKind.Parameter)
+            {
+                return operation.Place;
+            }
+            else
+            {
+                return -1;
+            }
+        }
+
+        return -1;
+    }
+
+    private int ResultArgument(int call)
+    {
+        if (this.Operations[call].Source is not InvocationKoto { BoundValueCall: null, BoundCall: { Target: { CompilerFunction: CompilerFunctionKind.None, Declaration: FunctionKoto target } } plan } ||
+            target.ReturnType?.BoundType is not { Kind: BoundTypeKind.Semantics, Origin: { Kind: OriginKind.Input } origin } || !ReferenceEquals(origin.Binder, target))
+        {
+            return -1;
+        }
+
+        // CallEntry operations immediately precede Call: receiver, explicit
+        // arguments in source order, then defaults. A default has no caller Loan.
+        var entries = 0;
+        while (entries < call && this.Operations[call - entries - 1] is { Kind: OwnershipOperationKind.CallEntry } entry && ReferenceEquals(entry.Source, this.Operations[call].Source))
+        {
+            entries++;
+        }
+
+        if (entries != target.Parameters.Count)
+        {
+            return -1;
+        }
+
+        var index = -1;
+        var offset = 0;
+        if (plan.Receiver is not null)
+        {
+            offset = 1;
+            index = plan.ReceiverOperation.ParameterIndex == origin.Slot ? 0 : -1;
+        }
+
+        var mapping = plan.ArgumentToParameter;
+        for (var i = 0; i < mapping.Length && index < 0; i++)
+        {
+            index = mapping[i] == origin.Slot ? offset + i : -1;
+        }
+
+        return index < 0 ? -1 : call - entries + index;
     }
 }
