@@ -8,7 +8,78 @@ public sealed partial class OwnershipAnalysis
 {
     private readonly List<CheckingContinuation> normalCheckingSeeds = new();
     private readonly List<(Koto Target, CheckingContinuation Seed)> caughtCheckingSeeds = new();
+    private readonly List<CheckingContinuation> groupedCheckingSeeds = new();
+    private readonly Dictionary<BoundType, bool> checkingPatternTypes = new(ReferenceEqualityComparer.Instance);
     private ScopedCheckingProof? scopedCheckingProof;
+    private MatchGuardCheckingProof? matchGuardCheckingProof;
+
+    private bool SupportsMatchChecking(MatchKoto match)
+    {
+        // Tuple/enum leaves have scalar or built-in string responsibility. Whole
+        // acquisition retains declared Copy/Move; no borrowed payload is admitted.
+        // String guard protection ends before the true/false histories fork;
+        // selected binding acquisition and Subject cleanup stay in each body.
+        if (!ReferenceEquals(match.Expression.BoundType, BoundType.String) && !this.SupportsCheckingPatternType(match.Expression.BoundType))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < match.Arms.Count; i++)
+        {
+            if (match.Arms[i].Guard is { } guard && !(this.matchGuardCheckingProof ??= new(this)).Check(guard))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool SupportsCheckingPatternType(BoundType? type)
+    {
+        if (ScalarDefaults.SupportsValue(type) || ReferenceEquals(type, BoundType.String))
+        {
+            return true;
+        }
+
+        if (type is not { Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0 })
+        {
+            return false;
+        }
+
+        if (this.checkingPatternTypes.TryGetValue(type, out var supported))
+        {
+            return supported;
+        }
+
+        // SupportsType rejects inline cycles/growing substitutions before this
+        // recursive shape proof. Check every Case, including unmatched payloads.
+        this.checkingPatternTypes[type] = false;
+        if (!this.SupportsType(type))
+        {
+            return false;
+        }
+
+        if (type.Kind == BoundTypeKind.Tuple)
+        {
+            supported = true;
+            for (var i = 0; i < type.Components.Count && supported; i++)
+            {
+                supported = this.SupportsCheckingPatternType(type.Components[i]);
+            }
+        }
+        else if (EnumStorage.IsEnum(type) && this.compilation.Binding.EnumStorage(type) is { } storage)
+        {
+            supported = true;
+            for (var i = 0; i < storage.Count && supported; i++)
+            {
+                supported = this.SupportsCheckingPatternType(this.compilation.Binding.StoredType(storage[i], type));
+            }
+        }
+
+        this.checkingPatternTypes[type] = supported;
+        return supported;
+    }
 
     private int CheckingSeed()
         => this.current >= 0 ? this.current :
@@ -126,6 +197,12 @@ public sealed partial class OwnershipAnalysis
         return terminal && proof.Check(source);
     }
 
+    private bool CanForkTerminalLoop(Koto loop, CodeBlockKoto block)
+        => this.body.CheckingRegions[this.checkingRegion].MixedTargets &&
+            this.flow!.Nodes[loop].CanCompleteNormally &&
+            !this.flow.Nodes[block].CanCompleteNormally &&
+            (this.scopedCheckingProof ??= new(this)).Check(block, backedgeTarget: loop);
+
     private OwnershipCheckingRegion? ForkChecking(int seed)
     {
         var region = this.body.CheckingRegions[this.checkingRegion];
@@ -185,10 +262,13 @@ public sealed partial class OwnershipAnalysis
     }
 
     private void JoinNormalChecking(Koto source, int mark, int entry)
+        => this.JoinCheckingAt(source, this.normalCheckingSeeds, mark, entry);
+
+    private void JoinCheckingAt(Koto source, List<CheckingContinuation> seeds, int mark, int entry)
     {
         // Terminal histories remain pending for enclosing extents. Only normal
         // tails seed this successor, after their branch-local cleanup.
-        if (!this.CreateCheckingJoin(source, this.normalCheckingSeeds, mark, entry))
+        if (!this.CreateCheckingJoin(source, seeds, mark, entry))
         {
             this.checkingRegion = this.body.CheckingRegions.Count;
             this.body.CheckingRegions.Add(new(-1, entry));
@@ -220,6 +300,14 @@ public sealed partial class OwnershipAnalysis
             mixed |= !ReferenceEquals(seed.Target, first.Target) || !ReferenceEquals(seed.CaughtTarget, first.CaughtTarget);
         }
 
+        if (mixed && count > 2)
+        {
+            this.CoalesceCheckingTargets(source, seeds, mark);
+            end = seeds.Count;
+            count = end - mark;
+            first = seeds[mark];
+        }
+
         this.checkingRegion = this.body.CheckingRegions.Count;
         if (count == 1)
         {
@@ -242,8 +330,78 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
+        this.SetCheckingEntryLoans(this.body.CheckingRegions[this.checkingRegion].Entry, first);
         seeds.RemoveRange(mark, end - mark);
         return true;
+    }
+
+    private void CoalesceCheckingTargets(Koto source, List<CheckingContinuation> seeds, int mark)
+    {
+        // Once histories share both transfer extents, their state join is enough
+        // for every later transfer. Bound repeated guard/branch forks by distinct
+        // targets instead of retaining every combination of earlier choices.
+        this.groupedCheckingSeeds.Clear();
+        for (var i = mark; i < seeds.Count; i++)
+        {
+            var first = seeds[i];
+            var seen = false;
+            for (var j = mark; j < i; j++)
+            {
+                if (ReferenceEquals(seeds[j].Target, first.Target) && ReferenceEquals(seeds[j].CaughtTarget, first.CaughtTarget))
+                {
+                    seen = true;
+                    break;
+                }
+            }
+
+            if (seen)
+            {
+                continue;
+            }
+
+            var start = this.body.CheckingSeeds.Count;
+            for (var j = i; j < seeds.Count; j++)
+            {
+                var candidate = seeds[j];
+                if (ReferenceEquals(candidate.Target, first.Target) && ReferenceEquals(candidate.CaughtTarget, first.CaughtTarget))
+                {
+                    this.body.CheckingSeeds.Add(new(candidate.Seed, candidate.Target, candidate.Replay, candidate.CaughtTarget));
+                }
+            }
+
+            var count = this.body.CheckingSeeds.Count - start;
+            if (count == 1)
+            {
+                this.body.CheckingSeeds.RemoveAt(start);
+                this.groupedCheckingSeeds.Add(first);
+                continue;
+            }
+
+            // This node has no runtime edges. Its region joins already-frozen
+            // seeds, and is solved before the mixed-target region that uses it.
+            var entry = this.New(OwnershipOperationKind.Branch, source);
+            this.body.OperationRegions[entry] = this.body.CheckingRegions.Count;
+            this.body.CheckingRegions.Add(new(first.Seed, entry, start, count, first.Target, CaughtTarget: first.CaughtTarget));
+            this.SetCheckingEntryLoans(entry, first);
+            this.groupedCheckingSeeds.Add(new(entry, first.Target, CaughtTarget: first.CaughtTarget));
+        }
+
+        seeds.RemoveRange(mark, seeds.Count - mark);
+        seeds.AddRange(this.groupedCheckingSeeds);
+        this.groupedCheckingSeeds.Clear();
+    }
+
+    private void SetCheckingEntryLoans(int entry, CheckingContinuation seed)
+    {
+        if (entry >= 0 && this.body.LoanStates.Count > 0)
+        {
+            // Seed replay may have ended a Loan since its original operation.
+            // A synthetic join inherits the proven common stack, never the
+            // construction cursor left by a different arm's cleanup.
+            var loans = this.CheckingLoanState(seed);
+            this.body.LoanInputs[entry] = loans;
+            this.body.LoanStates[entry] = loans;
+        }
     }
 
     private void AddTerminalSeed(CheckingContinuation continuation)
@@ -308,6 +466,66 @@ public sealed partial class OwnershipAnalysis
 
     private readonly record struct CheckingContinuation(int Seed, Koto? Target = null, int SeedStart = 0, int SeedCount = 0, int Replay = -1, Koto? CaughtTarget = null);
 
+    private sealed class MatchGuardCheckingProof(OwnershipAnalysis owner) : KotoVisitor
+    {
+        private bool supported;
+
+        public override void Visit(Koto node)
+        {
+            if (!this.supported || node is FunctionKoto or DeclarationContainerKoto)
+            {
+                return;
+            }
+
+            if (node is MacroKoto macro)
+            {
+                this.supported = macro.Operand is InvocationKoto call && ReferenceEquals(call.BoundCall?.Target, owner.compilation.Library.Abort);
+                if (this.supported)
+                {
+                    node.VisitChildren(this);
+                }
+
+                return;
+            }
+
+            if (node is LoopKoto && !owner.flow!.Nodes[node].CanCompleteNormally)
+            {
+                // Only loop-local effects may be omitted from a divergent
+                // guard's enclosing state. No runtime cleanup follows it.
+                this.supported = owner.IsStateNeutralDivergence(node);
+                return;
+            }
+
+            if (node is JumpKoto jump)
+            {
+                // Outward transfers abandon the guard. The arm builder retains
+                // their pre-cleanup source histories separately from selection.
+                // Continue needs a backedge proof before those histories can fork.
+                if (jump is not (ReturnKoto or ExitKoto or YieldKoto) || owner.flow!.Targets.GetValueOrDefault(jump) is null)
+                {
+                    this.supported = false;
+                    return;
+                }
+            }
+            else if (node is DeferredBlockKoto or ForKoto ||
+                (owner.flow!.Nodes.TryGetValue(node, out var info) && !info.CanCompleteNormally &&
+                node is not (CodeBlockKoto or IfKoto or DoKoto or MatchKoto or LabeledKoto or ParenthesizedKoto or InvocationKoto or NotKoto or AndKoto or OrKoto)))
+            {
+                this.supported = false;
+                return;
+            }
+
+            node.VisitChildren(this);
+        }
+
+        internal bool Check(Koto source)
+        {
+            this.supported = true;
+            this.Visit(source);
+            return this.supported;
+        }
+    }
+
     // This is a bounded continuation proof, not an executable-syntax allowlist.
     // Terminal branches of every selection record their seeds, so selections are
     // walked as ordinary children, as are completing loops. Divergent effects,
@@ -317,11 +535,20 @@ public sealed partial class OwnershipAnalysis
     {
         private bool supported;
         private bool allowTermination;
+        private Koto? backedgeTarget;
 
         public override void Visit(Koto node)
         {
             if (!this.supported || node is FunctionKoto or DeclarationContainerKoto)
             {
+                return;
+            }
+
+            if (node is ContinueKoto again && ReferenceEquals(owner.flow!.Targets.GetValueOrDefault(again), this.backedgeTarget))
+            {
+                // A terminal body can still continue this loop. Forking its first
+                // iteration would lose later histories; that needs a loop proof.
+                this.supported = false;
                 return;
             }
 
@@ -345,7 +572,7 @@ public sealed partial class OwnershipAnalysis
                 return;
             }
 
-            if (node is MatchKoto or ForKoto or DeferredBlockKoto)
+            if (node is ForKoto or DeferredBlockKoto || (node is MatchKoto match && !owner.SupportsMatchChecking(match)))
             {
                 this.supported = false;
                 return;
@@ -354,11 +581,13 @@ public sealed partial class OwnershipAnalysis
             node.VisitChildren(this);
         }
 
-        internal bool Check(Koto source, bool allowTermination = true)
+        internal bool Check(Koto source, bool allowTermination = true, Koto? backedgeTarget = null)
         {
             this.supported = true;
             this.allowTermination = allowTermination;
+            this.backedgeTarget = backedgeTarget;
             this.Visit(source);
+            this.backedgeTarget = null;
             return this.supported;
         }
     }

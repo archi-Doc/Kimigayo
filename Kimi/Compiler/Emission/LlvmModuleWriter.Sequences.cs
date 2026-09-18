@@ -11,9 +11,9 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
         var range = instruction.Representation == WindowsLowering.Unit;
-        if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead")
+        if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceAddress")
         {
-            var arrayRead = instruction.ScalarOperator != "Read";
+            var arrayRead = instruction.ScalarOperator is "ArrayRead" or "ArrayStorageRead";
             if (!arrayRead)
             {
                 Name(output, "  %seqbase", id);
@@ -64,7 +64,11 @@ internal static partial class LlvmModuleWriter
 
             Name(output, ", i64 %offset", id);
             output.Write('\n');
-            if (instruction.ScalarOperator != "ArrayStorageRead")
+            if (instruction.ScalarOperator == "SliceAddress")
+            {
+                output.Write($"  %v{id} = getelementptr i8, ptr %element{id}, i64 0\n");
+            }
+            else if (instruction.ScalarOperator != "ArrayStorageRead")
             {
                 WriteScalar(output, constants, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation.ComputationType }, []);
             }
@@ -91,7 +95,48 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        if (instruction.ScalarOperator is "indices" or "Slice")
+        if (instruction.ScalarOperator == "SliceRange")
+        {
+            output.Write($"  %slicestart{id} = or i64 0, ");
+            WriteOperand(output, operands[2]);
+            output.Write($"\n  %slicefinish{id} = or i64 0, ");
+            if (operands[4].Value != 0)
+            {
+                End();
+            }
+            else
+            {
+                WriteOperand(output, operands[3]);
+            }
+
+            output.Write($"\n  %reversed{id} = icmp ugt i64 %slicestart{id}, %slicefinish{id}\n  %pastend{id} = icmp ugt i64 %slicefinish{id}, ");
+            End();
+            output.Write($"\n  %invalid{id} = or i1 %reversed{id}, %pastend{id}\n");
+            WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid");
+            if (fixedLength < 0)
+            {
+                output.Write($"  %seqbase{id} = load ptr, ptr ");
+                Address();
+                output.Write(", align 8\n");
+            }
+
+            output.Write($"  %sliceoffset{id} = mul i64 %slicestart{id}, {instruction.Representation!.Layout.Stride}\n  %slicebase{id} = getelementptr i8, ptr ");
+            if (fixedLength < 0)
+            {
+                output.Write($"%seqbase{id}");
+            }
+            else
+            {
+                Address();
+            }
+
+            output.Write($", i64 %sliceoffset{id}\n  %slicelength{id} = sub i64 %slicefinish{id}, %slicestart{id}\n  store ptr %slicebase{id}, ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write($", align 8\n  %seqdest{id} = getelementptr i8, ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write($", i64 8\n  store i64 %slicelength{id}, ptr %seqdest{id}, align 8\n");
+        }
+        else if (instruction.ScalarOperator is "indices" or "Slice")
         {
             if (instruction.ScalarOperator == "Slice")
             {

@@ -76,7 +76,9 @@ public sealed partial class Binding
         var bits = type.Name is "isize" or "usize" ? pointerWidth : int.Parse(type.Name.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
         if (bits == 0)
         {
-            return false;
+            // A target-independent literal must fit even the smallest integer
+            // storage width. Larger native-sized literals still require a target.
+            bits = 8;
         }
 
         if (negative && !signed)
@@ -485,6 +487,24 @@ public sealed partial class Binding
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
         var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
         symbol.Resolving = false;
+        if (declared?.Origin is { Kind: OriginKind.Inference } pendingOrigin && inferred?.Origin is { } actualOrigin)
+        {
+            var completed = this.WithOrigins(declared, actualOrigin, (BoundOrigin[])declared.OriginArguments);
+            if (FitsType(inferred, completed))
+            {
+                declared = completed;
+                Complete(variable.TypeKoto!, completed);
+                for (var i = this.obligations.Count - 1; i >= 0; i--)
+                {
+                    if (this.obligations[i] is { Kind: BindingObligationKind.OriginInference } obligation && ReferenceEquals(obligation.Longer, pendingOrigin))
+                    {
+                        this.obligationSet.Remove(obligation);
+                        this.obligations.RemoveAt(i);
+                    }
+                }
+            }
+        }
+
         if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
         {
             Fail(variable, BindingFailure.TypeMismatch);
@@ -688,7 +708,7 @@ public sealed partial class Binding
         switch (unary.Akind)
         {
             case KotoKind.Not:
-                return ReferenceEquals(operand, BoundType.Boolean) ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+                return Compatible(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlus:
                 return operand.IsNumeric ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixMinus:
@@ -749,7 +769,7 @@ public sealed partial class Binding
                 left = ElementAccess.DestinationType(binary.Left, left);
             }
 
-            right = this.BindNode(binary.Right, scope, left);
+            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : left);
         }
 
         if (left is null || right is null)
@@ -776,6 +796,15 @@ public sealed partial class Binding
             return Complete(binary, BoundType.Boolean);
         }
 
+        if (logical)
+        {
+            // Both operands have a bool context, even when the left transfers.
+            // Never fitting does not waive checking of an unreachable right side.
+            return Compatible(left, BoundType.Boolean) && Compatible(right, BoundType.Boolean)
+                ? Complete(binary, BoundType.Boolean)
+                : Fail(binary, BindingFailure.TypeMismatch);
+        }
+
         if (!Compatible(right, left))
         {
             return Fail(binary, BindingFailure.TypeMismatch);
@@ -784,11 +813,6 @@ public sealed partial class Binding
         if (kind == KotoKind.Equals)
         {
             return Complete(binary, BoundType.Unit);
-        }
-
-        if (logical)
-        {
-            return ReferenceEquals(left, BoundType.Boolean) ? Complete(binary, BoundType.Boolean) : Fail(binary, BindingFailure.TypeMismatch);
         }
 
         // Only built-in primitive operations are decided here. User Types need Contract mappings or

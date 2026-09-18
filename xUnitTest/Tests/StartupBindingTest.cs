@@ -353,7 +353,9 @@ public class StartupBindingTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Empty(c.Binding.Obligations);
+        // The ordinary Slice iterator library body now retains its own Origin
+        // obligation. Console calls must still introduce no source obligations.
+        Assert.DoesNotContain(c.Binding.Obligations, x => !ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Library.Kotonoha));
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.True(flow.PendingBinding.Count == 0, string.Join("\n", flow.PendingBinding.Select(x => $"{x.Akind}: {x}, {x.BindingState}, {x.BoundType}")));
         Assert.Empty(flow.Issues);

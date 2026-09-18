@@ -74,7 +74,16 @@ internal static class ElementAccess
             source = KotoHelper.UnwrapParentheses(element.Left);
         }
 
-        return source is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { VariableKind: VariableKind.Var } } } root ? root : null;
+        // Pattern body bindings have their own local identity; a var pattern
+        // permits writes to its acquired value just like a var declaration.
+        // Guard candidates remain excluded by their distinct symbol kind.
+        if (source is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local } symbol } root)
+        {
+            return null;
+        }
+
+        return symbol.Declaration is VariableKoto { VariableKind: VariableKind.Var } or
+            SyntaxFormKoto { Akind: KotoKind.BindingPattern, IsMutablePattern: true } ? root : null;
     }
 
     internal static bool TryType(BinaryKoto source, out BoundType? element, out int position)

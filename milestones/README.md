@@ -1,9 +1,10 @@
 # Language milestones
 
-Fourteen short, independent programs based on the current [SPEC](../SPEC.md).
-They are staged compiler implementation targets. Milestones 1–10 have
-native execution evidence (2026-09-17); Milestones 11–14 remain specification
-targets, and their outputs below are expectations rather than execution claims.
+Seventeen short, independent programs based on the current [SPEC](../SPEC.md).
+They are staged compiler implementation targets. Execution evidence and support
+boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
+not an execution claim. Milestones 15–17 are specification targets added without
+compiler capability checks, builds, or execution.
 Milestones 6–9 were originally added without compiler capability checks, builds,
 or execution; subsequent verification is documented per program below.
 Milestones 10–14 were originally added from the specification without compiler
@@ -26,6 +27,9 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone12](Milestone12.kimi) | Mutable/nested/Move captures, exclusive Callable, concrete and common function values |
 | [Milestone13](Milestone13.kimi) | Generic Iterator conformance, Slice storage, external Origins, retained element borrows |
 | [Milestone14](Milestone14.kimi) | Generic Slice pipeline, Iterator, exclusive borrowed capture, obj creation/Move/destruction |
+| [Milestone15](Milestone15.kimi) | Initialization/Move/Loan joins, loop backedges, repair before continue |
+| [Milestone16](Milestone16.kimi) | Multiple external Origins, aggregate/enum forwarding, intersection, exclusive reborrow |
+| [Milestone17](Milestone17.kimi) | Partial Move repair, element exchange/swap/replace, secured results and destruction order |
 
 Each file is a separate Application; do not combine them into one project.
 Under [single-source input rules](../spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
@@ -38,7 +42,82 @@ kimi run milestones/Milestone1.kimi
 
 Replace `1` with the milestone number. `run` executes an existing build; it does
 not compile source. No separate project file is needed. Output uses fixed string
-literals so these milestones do not require numeric formatting or interpolation.
+literals so programs 1–17 do not require numeric formatting or interpolation.
+
+## Roadmap from program 15 to core completion
+
+Plan for approximately **20 additional programs, 15–34**. An eventual range of
+18–24 additional programs is reasonable if implementation reveals a need to
+split or combine targets; it is not an effort or completion-date estimate.
+Programs 15–17 are concrete below. Programs 18–34 are proposed design scopes,
+not source files or implemented capabilities. Passing programs 13/14 does not
+establish general Slice, Iterator, callable, or object support.
+
+Here, core completion means combining the finalized language features and basic
+collections in a useful single Application. Full Package distribution, Mod host
+integration, the test runner, and comprehensive FFI/platform integration are
+separate product work. Unintroduced/deferred features in
+[Appendix D](../spec/appendices/D-deferred-features.md) are excluded, including
+mutable-element Slice, lending iterators, virtual/override members and runtime
+Contract Views. "Complete generics" means the adopted specification, not future
+generic forms. ObjectCallCompatible inference/publication and release checking
+remain subject to the [explicit deferral](../SPEC.md#objectcallcompatible).
+
+| Program | Main subject | Intended coverage |
+| --- | --- | --- |
+| 15 | Ownership and control-flow joins | Initialization, Move and Loans across branches, backedges and continue |
+| 16 | General Origins | Multiple Origins, returned references, reborrowing and aggregate/enum dependencies |
+| 17 | Ownership, cleanup and updates | Partial Move, repair, defer/deinit, whole-value updates and call effects |
+| 18 | Generic value operations | Composite and Non-Copy arguments, results, temporaries and destruction |
+| 19 | Contracts and associated Types | Constraints, conditional conformance, associated Types and requirement calls |
+| 20 | Generic inference and specialization | Type/length/Origin inference, default function arguments, forwarding and full explicit specialization |
+| 21 | Generic generation | Shared bodies, compound ABI, fixed frames and finite generation budgets |
+| 22 | Properties | Standard/custom/computed access, Non-Copy setters and borrowed getter results |
+| 23 | Inheritance | Base storage, construction/destruction, inherited members and Properties |
+| 24 | General closures and Callable | Borrowed/composite/generic captures, function values, dependency retention and escape |
+| 25 | General Slice/Index/Range | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins |
+| 26 | General Iterator/Iterable | User protocols, owned/borrowed acquisition, early exit and cleanup |
+| 27 | Dynamic Array | Capacity, insertion/removal/replacement, Non-Copy elements and owning iteration |
+| 28 | Dictionary | Key comparison, mutation, iteration, Loans and allocation/complexity requirements |
+| 29 | Comparison and text | Comparison Contracts, Stringify and interpolation for user/generic Types |
+| 30 | General objects | Finalized obj/rc/arc operations, base views, identity and destruction |
+| 31 | Weak | Downgrade/upgrade, expiration, cyclic construction and final release |
+| 32 | General static storage | First initialization, effects, cycles, shutdown and inherited generic environment keys |
+| 33 | Integrated processing application | Collections, borrows, iteration and closures in one realistic workload |
+| 34 | Integrated core application | Properties, inheritance, objects and formatting combined with the preceding features |
+
+The dependency direction is ownership/Origins, then generic foundations, then
+general member/call/sequence operations, collections and runtime integration.
+Implement prerequisites needed by a target even if their broader program comes
+later; the ordering does not postpone correctness checks. Revisit generality
+after each group rather than accumulating program-specific special cases.
+
+Keep one main subject and one or two interactions per program, usually around
+80–180 lines when useful; a smaller focused program is preferable to padding.
+Integration programs may be larger. Programs remain independent Applications.
+
+Each implementation target needs three kinds of evidence:
+
+- **Successful execution:** exact output, exit status, values, evaluation order
+  and destruction responsibilities, with LLVM verification and native O0/O2
+  execution on the specified Windows x64 profile.
+- **Required rejection:** separate variants for invalid Moves, escaping Origins,
+  conflicting Loans and failed constraints. Do not edit the canonical program
+  to run a variant; reject invalid sources before artifact publication.
+- **Implementation contracts:** inspect shared generation/ABI and measure the
+  relevant allocation, complexity and resource bounds. Correct stdout alone
+  cannot prove these requirements. No NativeAOT verification is implied.
+
+Map evidence to the owning specification clauses. A representative program's
+success closes only its exercised slice, not an entire feature family. The
+programs and the exercises below define future targets; they are not an automated
+conformance suite. Companion fixtures and verification scripts belong to the
+subsequent implementation work.
+
+This README owns program design and expected behavior. [PLAN.md](../PLAN.md)
+continues to own active execution scope, acceptance tracking, dependencies,
+states and exact next actions; [PLAN_HISTORY.md](../PLAN_HISTORY.md) owns run
+history. This roadmap does not replace the active target or mark any work done.
 
 ## Milestone 1: Hello World
 
@@ -67,7 +146,7 @@ and ten rejected inputs. Results and build identities are retained under
 `bin/milestone1/<configuration>/<run-id>/`. Debug is also supported. The compiler
 must be built before running the script; it does not build or publish NativeAOT.
 
-The program numbers here are independent of PLAN.md's broader M1–M17 stages.
+The program numbers here are independent of PLAN.md's broader M stages.
 
 ## Milestone 2: control flow and Abort
 
@@ -608,6 +687,164 @@ Focus: [object creation](../spec/13-operators-and-assignment.md#1358-object-owne
 [object calls](../spec/12-expressions.md#1243-object-member-calls),
 [Callable contracts](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
 and [destruction](../spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+
+Verified program-14 reproduction (build the selected compiler configuration first):
+
+```powershell
+./backend/windows-x64/test-milestone14.ps1 -Configuration Release -ToolchainRoot ./toolchain
+```
+
+Debug is also supported. The script checks the unchanged target, O0/O2 copies,
+input/name/limit variants and rejected ownership/call variants. It writes reports
+under `bin/milestone14/<configuration>/<run-id>/` and does not run NativeAOT.
+[STATUS](../STATUS.md) and [execution evidence](../PLAN_HISTORY.md#program14-completion)
+record the verified source state and remaining object/generic boundaries.
+
+## Milestone 15: ownership across control-flow joins
+
+Both calls exercise the same function with different initialization branches.
+The first and third iterations select different shared Loan sources, then resume
+mutation of current after the selected reference's last use. The second iteration
+Moves current into consume, repairs it, and continues. The loop must reach a
+consistent usable state on both backedges; cleanup still runs on continue.
+
+Expected stdout (not execution evidence):
+
+```text
+Iteration finished.
+Item destroyed.
+Iteration finished.
+Iteration finished.
+Flow checked.
+Item destroyed.
+Item destroyed.
+Iteration finished.
+Item destroyed.
+Iteration finished.
+Iteration finished.
+Flow checked.
+Item destroyed.
+Item destroyed.
+Ownership joins finished.
+```
+
+For each call, totals are initial + 30 (40 and 42), and the repaired current ends
+at 21. Exactly three Items are destroyed: the consumed original, fallback, then
+the repaired current. Initialization on mutually exclusive paths must not cause
+double destruction or an uninitialized read.
+
+Separate rejection exercises:
+
+- Remove the else initialization: the following current.value read is invalid.
+- Remove repair before continue: a later iteration/final read can see Moved storage.
+- Read current immediately after consume and before repair.
+- Inside the selected scope, mutate current before the selected.value read;
+  one incoming Loan can still refer to current.
+
+Future verification should also reverse the selection condition with adjusted
+expected totals, exercise zero iterations with adjusted final checks, and vary
+the loop count to require additional backedge traversals. Check both acceptance
+and rejection at O0/O2 without optimizer-dependent ownership legality.
+
+Focus: [initialization and Move](../spec/15-ownership-and-lifetime-analysis.md#151-initialization-and-consume-analysis),
+[Loan conflicts](../spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts),
+and [scope-exit cleanup](../spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
+This target does not alone close arbitrary CFG, divergent cleanup or effect analysis.
+
+## Milestone 16: forwarding external Origins
+
+Pair stores two independently named Origins. choose returns an enum whose stored
+reference has their intersection, preserving both input dependencies. Moving and
+matching that enum forwards the external reference through a named exit from do.
+The Pair and enum Subject end before the selected reference is used; neither
+wrapper's storage is its referent. Both selection paths execute.
+
+Expected stdout (not execution evidence):
+
+```text
+External borrow survived.
+Both sources updated.
+External borrow survived.
+Both sources updated.
+Origin forwarding finished.
+```
+
+The selected values are 10 and 20 in the two calls. Once the retained borrow is
+finished, add exclusively reborrows each source, then resumes access through the
+parent parameter. Final values are 13 and 24. Copying the shared reference or
+destroying its wrappers never copies or destroys either Cell.
+
+Separate rejection exercises:
+
+- Replace choose's result Origin with static: the input sources cannot prove it.
+- Declare only self.left as the result Origin while keeping the right-source arm;
+  no outlives relation between the two abstract Origins is declared.
+- Construct first inside the result-producing do and attempt to return its borrow
+  to the existing outer use.
+- Mutate either source before selected's final read. The declared intersection
+  does not allow dropping the other input dependency based on the selected arm.
+- In add, access target between the child declaration and its final read/write.
+
+Future verification should add named Origin arguments, explicit outlives bounds,
+and a Missing-path variant handled without Abort. Those variants extend coverage;
+this program alone does not certify the full Origin solver, variance, recursive
+dependencies or universal-region checking.
+
+Focus: [Origin intersections](../spec/15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection),
+[abstract Origins](../spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins),
+[call propagation](../spec/15-ownership-and-lifetime-analysis.md#1564-calls-and-origin-propagation),
+and [reborrowing](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing).
+
+## Milestone 17: repair, replacement and ordered cleanup
+
+The fixed array has no user deinit. Moving its complete Resource element is
+permitted even though Resource itself has deinit; moving one of Resource's
+Non-Copy fields would be a different operation. Repair restores array completeness.
+Exchange transfers Resource 2 into old without destroying it, swap transfers
+Resources 3/4 without destruction, and replace destroys Resource 3 at its target.
+Literal indices 0 and 1 provide disjoint static paths for the simultaneous Loans.
+
+Expected stdout (not execution evidence):
+
+```text
+Exchange scope finished.
+Resource 2 destroyed.
+Resource 3 destroyed.
+Prepared result.
+Resource 1 destroyed.
+Result received.
+Resource 5 destroyed.
+Resource 4 destroyed.
+Cleanup finished.
+```
+
+The returned array contains Resources 4 and 5. Return secures it before the
+prepare defer and extracted's cleanup; items has no remaining destruction
+responsibility. Caller cleanup destroys array elements in reverse order. Each
+of the five constructed Resources is destroyed exactly once.
+
+Separate rejection exercises:
+
+- Remove items[0]'s repair: returning the incomplete array is forbidden.
+- Read items[0] between extraction and repair, or read old after its do ends.
+- Change swap's second target to items[0]: the exclusive targets overlap.
+- Pass items[1] itself as exchange's later replacement argument: the established
+  target Loan conflicts with acquiring that value.
+- Add a defer that reads items before return: deferred execution would read the
+  source after return has Moved it.
+
+Future verification should separately cover incomplete-array cleanup without
+repair/whole return (only remaining initialized elements are destroyed), cleanup
+through early transfer, and Abort during replacement destruction (no subsequent
+placement or ordinary cleanup). Resource ids and exact output detect duplicate,
+missing or reordered destruction; inspect generated updates to exclude extra
+element allocations. Borrowed-content updates, generic storage and general
+interprocedural effects remain broader requirements.
+
+Focus: [partial Move](../spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move),
+[whole-value updates](../spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates),
+[secured results](../spec/16-scope-exit-and-destruction.md#1622-results-and-transfers),
+and [aggregate cleanup](../spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining

@@ -374,6 +374,14 @@ public sealed partial class Binding
 
     private bool HasValueRole(BoundType type, BindingScope scope, bool objectTarget)
     {
+        if (objectTarget && type.Kind == BoundTypeKind.Parameter && type.Symbol is { Slot: 0 } parameter &&
+            ReferenceEquals(parameter.Scope.Owner, this.Library.MakeObj.Declaration))
+        {
+            // The intrinsic's declaration carries payload eligibility; each call
+            // must prove this rule for its inferred or explicit actual T.
+            return true;
+        }
+
         if (!objectTarget && type.Kind is not (BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection))
         {
             return true;

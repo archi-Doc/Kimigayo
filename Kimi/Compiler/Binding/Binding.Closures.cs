@@ -125,11 +125,12 @@ public sealed partial class Binding
             this.BindVariable(variable, source.Scope);
         }
 
-        // This initial executable conversion admits independent scalar snapshots.
-        // Richer environments retain their unsupported boundary, never lose Loans.
+        // Concrete environments preserve complete captured Types and dependencies.
+        // Common-function erasure retains its independent Owned requirement.
         if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture) ||
             source.Type is not { } type || !(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
-                (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Closure))))
+                (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Closure ||
+                    ReferenceTypes.IsStorage(type) || ObjectTypes.IsOwner(type)))))
         {
             return null;
         }
@@ -293,9 +294,12 @@ public sealed partial class Binding
                 var valueCall = use.Parent as InvocationKoto;
                 var called = valueCall?.BoundValueCall;
                 var receiver = called is not null && ReferenceEquals(called.Receiver, use);
+                var memberCall = use.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selected } } member &&
+                    ReferenceEquals(member.Left, use) && ReferenceEquals(selected.Receiver, use) ? selected : null;
+                var memberBorrow = memberCall?.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
-                    (receiver && called!.ReceiverKind == SemanticsKind.Uniq))
+                    (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberCall!.ReceiverOperation.ParameterType?.Semantics == SemanticsKind.Uniq))
                 {
                     if (plan.Receiver != SemanticsKind.Owner)
                     {
@@ -303,7 +307,7 @@ public sealed partial class Binding
                     }
                 }
                 else if (binding.ProveCopy(symbol.Type!, function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
-                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !InspectedString(use))
+                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !InspectedString(use))
                 {
                     plan.Receiver = SemanticsKind.Owner;
                 }

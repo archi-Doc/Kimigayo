@@ -27,7 +27,7 @@ internal sealed partial class BodyLowering
         var syntaxReceiver = operation.Source switch
         {
             BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
-            ForKoto loop when plan.Kind is SequenceOperation.Start or SequenceOperation.End or SequenceOperation.ArrayRead => ElementAccess.ValueSource(loop.Iterable),
+            ForKoto loop when plan.Kind is SequenceOperation.Start or SequenceOperation.End or SequenceOperation.ArrayRead or SequenceOperation.Borrow => ElementAccess.ValueSource(loop.Iterable),
             _ => null,
         };
         var receiverPlace = body.Places[plan.Receiver];
@@ -78,6 +78,23 @@ internal sealed partial class BodyLowering
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
         }
 
+        if (plan.Kind == SequenceOperation.Borrow)
+        {
+            var reference = ValueType(body, id);
+            if (receiver.Kind != BoundTypeKind.Slice || !ReferenceTypes.IsStorage(reference) || reference!.Semantics != SemanticsKind.Ref ||
+                !ReferenceEquals(reference.Components[0], receiver.Components[0]) || !ReferenceEquals(reference.Origin, receiver.Origin) ||
+                (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
+                (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
+                FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } element ||
+                !this.TryGetLocation(operation.Source, directory, constants, out var borrowLocation))
+            {
+                return Fail("Slice element borrow requires a checked index and matching backing Origin.", out failure);
+            }
+
+            function.AddScalar(EmissionOpcode.Sequence, id, [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, -1)], place: body.Operations.Count + id, location: borrowLocation, op: "SliceAddress", check: ArithmeticCheckKind.Bounds, representation: element);
+            return true;
+        }
+
         if (plan.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead)
         {
             var arrayRead = plan.Kind == SequenceOperation.ArrayRead || borrowedArray;
@@ -112,7 +129,7 @@ internal sealed partial class BodyLowering
 
         if (plan.Kind == SequenceOperation.Slice)
         {
-            if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) || operation.Source is not IndexKoto { Right: RangeKoto { IsFull: true } } source ||
+            if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) || operation.Source is not IndexKoto { Right: RangeKoto { IsInclusive: false } rangeSyntax } source ||
                 source.BoundType is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||
                 !ReferenceEquals(slice, ValueType(body, id)) || !ReferenceEquals(slice.Components[0], receiver.Components[0]))
             {
@@ -124,8 +141,23 @@ internal sealed partial class BodyLowering
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
-            function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1)], place: operation.Place, op: "Slice");
+            if (!Endpoint(rangeSyntax.Start, plan.Index) || !Endpoint(rangeSyntax.End, plan.End) ||
+                FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } sliceElement ||
+                !this.TryGetLocation(operation.Source, directory, constants, out var sliceLocation))
+            {
+                return Fail("Slice bounds must have matching evaluated isize endpoints.", out failure);
+            }
+
+            ReadOnlySpan<EmissionOperand> bounds = [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1),
+                plan.Index < 0 ? new(EmissionOperandKind.Integer, 0) : this.PhysicalOperand(body, plan.Index),
+                plan.End < 0 ? new(EmissionOperandKind.Integer, -1) : this.PhysicalOperand(body, plan.End), new(EmissionOperandKind.Integer, plan.End < 0 ? 1 : 0),
+                new(EmissionOperandKind.Integer, body.Operations.Count + id)];
+            function.AddScalar(EmissionOpcode.Sequence, id, bounds, place: operation.Place, location: sliceLocation, op: "SliceRange", check: ArithmeticCheckKind.Bounds, representation: sliceElement);
             return true;
+
+            bool Endpoint(Koto? syntax, int producer) => syntax is null ? producer == -1 :
+                (uint)producer < (uint)id && ReferenceEquals(body.Operations[producer].Source, syntax) &&
+                ReferenceEquals(ValueType(body, producer), BoundType.ISize) && (!body.IsReachable(id) || this.Dominates(producer, id));
         }
 
         var name = plan.Kind switch

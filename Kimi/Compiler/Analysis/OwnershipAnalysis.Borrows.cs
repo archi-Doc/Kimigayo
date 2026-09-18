@@ -37,6 +37,13 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (unwrapped is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice } slice && type.Semantics == SemanticsKind.Ref)
+        {
+            var handle = this.Expression(slice.Left);
+            var subscript = this.Value(this.Expression(slice.Right));
+            return handle < 0 || subscript < 0 ? -1 : this.SequenceValue(slice, type, SequenceOperation.Borrow, handle, index: subscript);
+        }
+
         if (unwrapped is IndexKoto index && ReferenceTypes.IsArray(index.Left.BoundType) &&
             index.Left.BoundType!.Semantics == SemanticsKind.Ref && type.Semantics == SemanticsKind.Ref)
         {
@@ -89,7 +96,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (!ReferenceTypes.IsValue(field.BoundType) || field.BoundType!.Semantics == SemanticsKind.Uniq)
+        if ((!ReferenceTypes.IsValue(field.BoundType) && field.BoundType?.Kind != BoundTypeKind.Slice) || field.BoundType!.Semantics == SemanticsKind.Uniq)
         {
             this.Unsupported(field); // Non-Copy fields require an explicit reborrow, never an implicit Move.
             return -1;

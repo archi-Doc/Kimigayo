@@ -72,6 +72,11 @@ public sealed partial class Binding
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
     {
         source = KotoHelper.UnwrapParentheses(source);
+        if (source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice })
+        {
+            return !exclusive;
+        }
+
         if (source.BoundSymbol?.Property is { } property)
         {
             if (!property.Getter.IsStandard || !this.Accessible(property.Symbol, scope, property.Getter.Access, (source as MemberAccessKoto)?.Left.BoundType))

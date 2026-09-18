@@ -14,10 +14,13 @@ internal sealed partial class BodyLowering
 
     internal IReadOnlyDictionary<BoundCall, GenericStoragePlan.CallEntry>? GenericCalls { get; set; }
 
+    internal IReadOnlyDictionary<BoundCall, ObjectCall>? ObjectCalls { get; set; }
+
     internal void ClearFunctionContext()
     {
         this.functions = null;
         this.GenericCalls = null;
+        this.ObjectCalls = null;
         this.flow = null;
         this.arguments.Clear();
         this.aggregateLayouts.Clear();
@@ -35,17 +38,18 @@ internal sealed partial class BodyLowering
         }
 
         var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) : null;
+        var creation = operation.Source is InvocationKoto { BoundCall: { } objectCall } ? this.ObjectCalls?.GetValueOrDefault(objectCall) : null;
         if (operation.Source is not InvocationKoto { AttributeChain: null, BoundCall: { } plan } call ||
-            (generic is null && plan.TypeArguments.Length != 0) || plan.Origins.Length != 0 ||
+            (generic is null && creation is null && (plan.TypeArguments.Length != 0 || plan.Origins.Length != 0)) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
-            !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceTypes.CallTypeMatches(generic?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), plan.ReturnType, plan))
+            !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceTypes.CallTypeMatches(generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), plan.ReturnType, plan))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
 
         var runtime = ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort);
-        var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : generic?.Physical.Abi ?? this.functions!.GetValueOrDefault(target);
+        var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Physical.Abi ?? this.functions!.GetValueOrDefault(target);
         if (callee is null)
         {
             return Fail("Call target has no selected implementation ABI.", out failure);
@@ -69,8 +73,8 @@ internal sealed partial class BodyLowering
                 !ReferenceEquals(acquisition.Source, sourceArgument) ||
                 (isDefault && (parameter <= previousDefault || !target.Parameters[parameter].IsOptional || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
                     !ReferenceEquals(omitted.Parameter.Scope.Owner, target) || !ScalarDefaults.SupportsValue(omitted.ParameterType))) ||
-                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || acquisition.ParameterIndex != parameter ||
-                !ReferenceTypes.CallTypeMatches(generic?.Parameters[parameter] ?? target.Parameters[parameter].Type.BoundType, acquisition.ParameterType, plan) ||
+                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection) || acquisition.ParameterIndex != parameter ||
+                !ReferenceTypes.CallTypeMatches(generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, acquisition.ParameterType, plan) ||
                 (acquisition.Kind != ArgumentOperationKind.Value && !ReferenceTypes.IsString(acquisition.ParameterType) && !ReferenceTypes.IsStorage(acquisition.ParameterType)))
             {
                 return Fail("Invalid call argument mapping or acquisition.", out failure);
@@ -182,7 +186,7 @@ internal sealed partial class BodyLowering
 
             if (physical.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
             {
-                if (!runtime || (location < 0 && !this.TryGetLocation(ReferenceEquals(plan.Target, library.Abort) ? call.Parent! : call, directory, constants, out location)))
+                if ((!runtime && creation is null) || (location < 0 && !this.TryGetLocation(ReferenceEquals(plan.Target, library.Abort) ? call.Parent! : call, directory, constants, out location)))
                 {
                     return Fail("A runtime call has no diagnostic source location.", out failure);
                 }
@@ -197,7 +201,7 @@ internal sealed partial class BodyLowering
             }
 
             var entry = this.parameterArguments[physical.LogicalIndex];
-            var type = generic?.Parameters[physical.LogicalIndex] ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
+            var type = generic?.Parameters[physical.LogicalIndex] ?? creation?.Payload ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
             if (physical.Kind == AbiParameterKind.Value && IsScalar(type))
             {
                 var value = Input(body, entry, 0);

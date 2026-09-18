@@ -15,6 +15,7 @@ public sealed class LlvmEmitter
     private readonly BodyLowering lowering = new();
     private readonly FunctionAbiPool signatures = new();
     private readonly GenericStoragePlan generics = new();
+    private readonly ObjectGenerationPlan objects = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
 
     internal LlvmEmitter(Compilation compilation)
@@ -92,6 +93,12 @@ public sealed class LlvmEmitter
             }
 
             this.lowering.GenericCalls = this.generics.Calls;
+            if (!this.objects.Prepare(c, module, this.lowering.AggregateLayouts, out failure))
+            {
+                return false;
+            }
+
+            this.lowering.ObjectCalls = this.objects.Calls;
 
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
@@ -129,6 +136,7 @@ public sealed class LlvmEmitter
             // Never retain a previous parse through the active declaration-to-ABI map.
             this.functions.Clear();
             this.generics.Clear();
+            this.objects.Clear();
             this.lowering.ClearFunctionContext();
             this.lowering.AggregateLayouts.ClearDestructors();
             if (!module.IsComplete)

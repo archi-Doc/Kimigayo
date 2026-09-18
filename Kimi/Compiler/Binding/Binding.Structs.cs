@@ -11,8 +11,12 @@ public sealed partial class Binding
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
 
     internal BoundType? InstantiateStorageType(BoundType type, BoundCall call)
-        => this.MemberType(type, call.DeclaringType) is { } member
-            ? this.SubstituteType(member, call.Target.Declaration, call.TypeArguments, call.LengthArguments) : null;
+    {
+        var result = this.MemberType(type, call.DeclaringType) is { } member &&
+            this.SubstituteType(member, call.Target.Declaration, call.TypeArguments, call.LengthArguments) is { } substituted
+            ? this.SubstituteStoredOrigins(substituted, call.Target.Declaration, call.Origins, call.InputOrigins) : null;
+        return result is not null && this.PrepareInstantiatedStorage(result, 0) ? result : null;
+    }
 
     private static bool IsSpecialField(Koto node, out FunctionKoto function)
     {
@@ -25,6 +29,68 @@ public sealed partial class Binding
 
         function = null!;
         return false;
+    }
+
+    // Complete physical field descriptions from already-bound declarations. This
+    // substitutes storage metadata only; it never rebinds or selects a body.
+    private bool PrepareInstantiatedStorage(BoundType type, int depth)
+    {
+        if (depth > 64)
+        {
+            return false;
+        }
+
+        if (StructStorage.IsStruct(type))
+        {
+            if (type.StoredFields is not null)
+            {
+                return true;
+            }
+
+            type.StoredFields = new BoundType[StructStorage.Count(type)];
+            for (var i = 0; i < type.StoredFields.Length; i++)
+            {
+                var field = this.StoredType(StructStorage.Field(type, i), type);
+                if (field is null || !this.PrepareInstantiatedStorage(field, depth + 1))
+                {
+                    type.StoredFields = null;
+                    return false;
+                }
+
+                type.StoredFields[i] = field;
+            }
+        }
+        else if (Compiler.EnumStorage.IsEnum(type))
+        {
+            if (type.StoredCases is not null)
+            {
+                return true;
+            }
+
+            if (!this.PrepareEnumCases(type))
+            {
+                return false;
+            }
+
+            foreach (var payload in type.StoredCases!)
+            {
+                if (!this.PrepareInstantiatedStorage(payload, depth + 1))
+                {
+                    type.StoredCases = null;
+                    return false;
+                }
+            }
+        }
+
+        foreach (var component in type.Components)
+        {
+            if (!this.PrepareInstantiatedStorage(component, depth + 1))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void IndexSpecialReceiver(FunctionKoto function, BindingScope scope)

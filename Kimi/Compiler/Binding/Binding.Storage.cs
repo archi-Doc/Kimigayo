@@ -171,7 +171,7 @@ public sealed partial class Binding
     {
         var binder = owner.Symbol!.Declaration;
         var substituted = this.SubstituteType(field, binder, (BoundType[])owner.Components);
-        return substituted is null ? null : this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
+        return substituted is null ? null : this.SubstituteStoredOrigins(substituted, binder, owner.Kind == BoundTypeKind.Slice && owner.Origin is { } origin ? [origin] : (BoundOrigin[])owner.OriginArguments);
     }
 
     private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default)

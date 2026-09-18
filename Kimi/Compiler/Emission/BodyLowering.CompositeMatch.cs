@@ -8,7 +8,8 @@ internal sealed partial class BodyLowering
 {
     private readonly List<PatternTestStep> compositeTests = new();
 
-    private bool IsCompositeSubject(BoundType type) => (type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type)) && this.aggregateLayouts.Get(type) is { NeedsDestruction: false };
+    private bool IsCompositeSubject(BoundType type) => (type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type)) &&
+        this.aggregateLayouts.Get(type) is { } layout && (!layout.NeedsDestruction || MatchTypes.SupportsOwnedPatternValue(type, this.ownedPatternTypes));
 
     private int PatternOffset(BoundMatch match, int position)
     {
@@ -102,7 +103,8 @@ internal sealed partial class BodyLowering
             }
             else if (node.End != i + 1 || node.Kind is not (BoundPatternKind.Wildcard or BoundPatternKind.Binding or BoundPatternKind.Unit or BoundPatternKind.Literal) ||
                 (node.Kind == BoundPatternKind.Unit && !ReferenceEquals(node.MatchedType, BoundType.Unit)) ||
-                (node.Kind == BoundPatternKind.Literal && !(ReferenceEquals(node.MatchedType, BoundType.Boolean) && node.Literal.Kind == PatternLiteralKind.Boolean && node.Literal.Magnitude <= 1) && !this.TryMatchNumber(node, out _)))
+                (node.Kind == BoundPatternKind.Literal && !(ReferenceEquals(node.MatchedType, BoundType.Boolean) && node.Literal.Kind == PatternLiteralKind.Boolean && node.Literal.Magnitude <= 1) &&
+                !(ReferenceEquals(node.MatchedType, BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is not null) && !this.TryMatchNumber(node, out _)))
             {
                 return false;
             }
@@ -218,7 +220,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerCompositeMatchOperation(OwnershipBody body, EmissionFunction function, int id, out string? failure)
+    private bool LowerCompositeMatchOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -241,16 +243,27 @@ internal sealed partial class BodyLowering
                 function.AddScalar(EmissionOpcode.PatternRead, id, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.Integer, 0)], representation.ComputationType, place: operation.Place, representation: representation);
                 function.AddScalar(EmissionOpcode.StoreScalar, id, [new(EmissionOperandKind.Value, id)], representation.ComputationType, place: operation.Input, representation: representation);
             }
+            else if (ReferenceEquals(type, BoundType.String))
+            {
+                if (operation.Acquisition != AcquisitionKind.Move)
+                {
+                    return Fail("Owned string Pattern binding must transfer responsibility.", out failure);
+                }
+
+                function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.SlotAddress, operation.Place)], place: operation.Input);
+            }
             else if (this.aggregateLayouts.Get(type) is { } layout && layout.Value.Layout.Size != 0)
             {
                 function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, operation.Input, operation.Place, Aggregate: layout));
             }
 
+            this.AddStringFlags(function, operation, id);
             return true;
         }
 
         if (operation.Kind == OwnershipOperationKind.InitializeSubject)
         {
+            this.AddStringFlags(function, operation, id);
             return (this.subjectInitializers[operation.Place] == id && (!body.IsReachable(id) ||
                 ((body.GetInputState(id, operation.Input) & PlaceState.MustInit) != 0 && (body.GetInputState(id, operation.Place) & PlaceState.MayInit) == 0))) || Fail("Composite Subject acquisition is not fresh.", out failure);
         }
@@ -287,6 +300,13 @@ internal sealed partial class BodyLowering
             }
             else if (node.Kind == BoundPatternKind.Literal)
             {
+                if (ReferenceEquals(node.MatchedType, BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is { } text)
+                {
+                    var constant = text.Length == 0 ? -1 : constants.Intern(text, LlvmConstantKind.Text);
+                    this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.String, 0, constant));
+                    continue;
+                }
+
                 var bits = (Int128)node.Literal.Magnitude;
                 if (!ReferenceEquals(node.MatchedType, BoundType.Boolean) && !this.TryMatchNumber(node, out bits))
                 {

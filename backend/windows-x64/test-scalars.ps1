@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string] $ToolchainRoot = '', [string] $LlvmBin = '',
-    [string] $FixturePattern = '*.ll'
+    [string] $FixturePattern = '*.ll',
+    [string] $FixtureDirectory = '',
+    [string] $OutputDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
@@ -9,8 +11,8 @@ $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$fixtures = Join-Path $repo 'bin/scalar-fixtures'
-$out = Join-Path $repo 'bin/scalar-native'
+$fixtures = if ($FixtureDirectory) { (Resolve-Path -LiteralPath $FixtureDirectory).Path } else { Join-Path $repo 'bin/scalar-fixtures' }
+$out = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory, (Get-Location).ProviderPath) } else { Join-Path $repo 'bin/scalar-native' }
 New-Item -ItemType Directory -Force $out | Out-Null
 $tools = @{}
 foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-dlltool', 'llvm-readobj', 'llvm-nm')) { $tools[$name] = Join-Path $LlvmBin "$name.exe" }
@@ -31,6 +33,7 @@ function Invoke-Tool([string] $exe, [string[]] $arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$exe failed ($LASTEXITCODE)" }
 }
 $runs = 0
+$executionEncoding = [Text.UTF8Encoding]::new($false, $true)
 foreach ($fixture in Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern) {
     $stem = [IO.Path]::Combine($fixtures, $fixture.BaseName)
     $expected = [IO.File]::ReadAllText("$stem.stdout")
@@ -60,6 +63,10 @@ foreach ($fixture in Get-ChildItem -LiteralPath $fixtures -Filter $FixturePatter
         $start.CreateNoWindow = $true
         $start.RedirectStandardOutput = $true
         $start.RedirectStandardError = $true
+        # Kimi writes UTF-8 bytes regardless of the invoking console's code page.
+        # A hidden verification worker can otherwise decode these as legacy text.
+        $start.StandardOutputEncoding = $executionEncoding
+        $start.StandardErrorEncoding = $executionEncoding
         $process = [Diagnostics.Process]::Start($start)
         try {
             $stdout = $process.StandardOutput.ReadToEndAsync()

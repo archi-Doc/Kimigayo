@@ -66,16 +66,21 @@ internal sealed partial class BodyLowering
         var place = body.Places[operation.Place];
         return ReferenceEquals(operation.Source.BoundType, place.Type) &&
             (operation.Source is IdentifierNameKoto identifier
-                ? identifier.BoundSymbol is { } symbol && ((body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id) || this.IsPreparedElementReceiver(body, id, symbol, place.Id))
+                ? identifier.BoundSymbol is { } symbol && ((body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id) || this.IsPreparedArgument(body, id, symbol, place.Id))
                 : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
             this.IsElementOwnerStorage(place) &&
             (!body.IsReachable(id) || (body.GetStorageState(id, place.Id) & PlaceState.MustInit) != 0);
     }
 
-    private bool IsPreparedElementReceiver(OwnershipBody body, int read, BindingSymbol symbol, int place)
+    private bool IsPreparedArgument(OwnershipBody body, int read, BindingSymbol symbol, int place)
     {
+        if (symbol.Kind != BindingSymbolKind.Parameter || (uint)read >= (uint)this.elementNextCalls.Length)
+        {
+            return false;
+        }
+
         var next = this.elementNextCalls[read];
-        if (symbol.Kind != BindingSymbolKind.Parameter || next < 0 ||
+        if (next < 0 ||
             body.Operations[next].Source is not InvocationKoto { BoundCall: { } plan } call ||
             plan.Target.Declaration is not FunctionKoto target || !ReferenceEquals(symbol.Scope.Owner, target))
         {
@@ -134,7 +139,7 @@ internal sealed partial class BodyLowering
         OwnershipPlaceKind.Local => true,
         OwnershipPlaceKind.Parameter => this.slotFunctionPlaces[place.Id] == 1,
         OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
-        OwnershipPlaceKind.Temporary => this.constructionOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] == 3,
+        OwnershipPlaceKind.Temporary => this.constructionOwners[place.Id] >= 0 || this.slotFunctionInitializations[place.Id] >= 0,
         _ => false,
     };
 
@@ -152,7 +157,23 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         this.hasElements = body.Projections.Count != 0;
+        var preparedCopies = false;
         if (!this.hasElements)
+        {
+            for (var i = 0; i < body.Operations.Count; i++)
+            {
+                var operation = body.Operations[i];
+                if (operation.Kind == OwnershipOperationKind.Consume && operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter &&
+                    (uint)operation.Place < (uint)body.Places.Count &&
+                    body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result, Type.Kind: BoundTypeKind.Tuple })
+                {
+                    preparedCopies = true;
+                    break;
+                }
+            }
+        }
+
+        if (!this.hasElements && !preparedCopies)
         {
             return body.ElementUpdates.Count == 0 || Fail("Element updates require projection plans.", out failure);
         }
@@ -168,6 +189,27 @@ internal sealed partial class BodyLowering
             {
                 nextCall = i;
             }
+
+            // Explicit aggregate arguments can be acquired from locals/parameters,
+            // not just literals or call results. Their Consume is independently
+            // validated by LowerAggregate; retain its identity for dominance checks.
+            var operation = body.Operations[i];
+            if (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition is AcquisitionKind.Copy or AcquisitionKind.Move &&
+                (uint)operation.Input < (uint)body.Places.Count &&
+                body.Places[operation.Input] is { Kind: OwnershipPlaceKind.Temporary, Type.Kind: BoundTypeKind.Tuple or BoundTypeKind.FixedArray } acquired)
+            {
+                if (this.slotFunctionInitializations[acquired.Id] >= 0 || this.constructionOwners[acquired.Id] >= 0 || this.slotFunctionPlaces[acquired.Id] != 0)
+                {
+                    return Fail("Acquired aggregate storage must have one initialization.", out failure);
+                }
+
+                this.slotFunctionInitializations[acquired.Id] = i;
+            }
+        }
+
+        if (!this.hasElements)
+        {
+            return body.ElementUpdates.Count == 0 || Fail("Element updates require projection plans.", out failure);
         }
 
         Grow(ref this.elementOperations, body.Operations.Count);

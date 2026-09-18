@@ -24,7 +24,7 @@ internal sealed partial class BodyLowering
 
                 var edge = body.Edges[edgeId];
                 if (edge.From != id || (uint)edge.To >= (uint)count ||
-                    edge.Kind is not (OwnershipEdgeKind.Normal or OwnershipEdgeKind.Return or OwnershipEdgeKind.Back or OwnershipEdgeKind.True or OwnershipEdgeKind.False or OwnershipEdgeKind.Abort))
+                    edge.Kind is not (OwnershipEdgeKind.Normal or OwnershipEdgeKind.Return or OwnershipEdgeKind.Back or OwnershipEdgeKind.True or OwnershipEdgeKind.False or OwnershipEdgeKind.Abort or OwnershipEdgeKind.MatchArm or OwnershipEdgeKind.Unmatched))
                 {
                     return false;
                 }

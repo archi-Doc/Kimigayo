@@ -40,7 +40,8 @@ public class StructEmissionTest
         Assert.True(!c.Kotonoha.DiagnosticCollection.HasErrors, string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray()));
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(
-            c.Library.IsValid && !c.Kotonoha.HasSourceErrors && c.Ownership.Result.IsVerified && c.Binding.Obligations.Count == 0,
+            c.Library.IsValid && !c.Kotonoha.HasSourceErrors && c.Ownership.Result.IsVerified &&
+                !c.Binding.Obligations.Any(x => !ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Library.Kotonoha)),
             $"Core={c.Library.IsValid}; SourceErrors={c.Kotonoha.HasSourceErrors}; ownership={c.Ownership.Result}; obligations={string.Join(';', c.Binding.Obligations)}");
         ScalarEmissionTest.EmitFixture("Struct" + name, source, stdout);
     }

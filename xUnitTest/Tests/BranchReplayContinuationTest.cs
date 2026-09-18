@@ -32,6 +32,8 @@ public class BranchReplayContinuationTest
     [InlineData("BranchWhile", "var x: i32", "x = 1\n                return", "if c\n                while c => x = 3\n            else => x = 4", "x = 2", "let y = x", true)]
     [InlineData("WhileMove", "var x = \"old\"", "return", "while c\n                Console.writeLine(x)\n                x = \"new\"", "()", "Console.writeLine(x)", true)]
     [InlineData("WhileMoveExit", "var x = \"old\"", "return", "while c\n                Console.writeLine(x)\n                x = \"new\"", "()", "Console.writeLine(x)", false)]
+    [InlineData("TerminalWhile", "var x: i32", "x = 1\n                return", "while c => return", "x = 2", "let y = x", true)]
+    [InlineData("TerminalWhileExit", "var x: i32", "x = 1\n                return", "while c => return", "x = 2", "let y = x", false)]
     public void ClosedBranchReplayPreservesTargets(string name, string declaration, string early, string dead, string tail, string use, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverBranchReplay" + Configuration + name,
@@ -65,7 +67,6 @@ public class BranchReplayContinuationTest
 
     [Theory]
     [InlineData("loop => x = 3")]
-    [InlineData("while c => return")]
     [InlineData("if c\n                defer => x = 3\n            else => x = 4")]
     public void EscapingDivergentAndDeferredPathsRemainGuarded(string dead)
     {

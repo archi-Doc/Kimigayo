@@ -83,6 +83,7 @@ internal static partial class LlvmModuleWriter
         }
 
         WriteSharedStorage(module, output);
+        WriteObjects(module, output);
 
         output.Write(Footer);
     }
@@ -107,7 +108,7 @@ internal static partial class LlvmModuleWriter
 
             if (instruction.Opcode == EmissionOpcode.CompositePattern)
             {
-                WriteCompositePatternHelper(output, function, instruction);
+                WriteCompositePatternHelper(output, constants, function, instruction);
             }
         }
 
@@ -234,6 +235,15 @@ internal static partial class LlvmModuleWriter
                     var borrowOperands = function.GetOperands(instruction);
                     output.Write(borrowOperands.Length == 2 ? (long)borrowOperands[1].Value : 0);
                     output.Write('\n');
+                    break;
+                case EmissionOpcode.ObjectPayload:
+                    Name(output, "  %objectHeader", instruction.Operation);
+                    output.Write(" = load ptr, ptr ");
+                    WriteStorageAddress(output, function, function.GetOperands(instruction)[0]);
+                    output.Write(", align 8\n");
+                    Name(output, "  %v", instruction.Operation);
+                    Name(output, " = getelementptr i8, ptr %objectHeader", instruction.Operation);
+                    output.Write(", i64 16\n");
                     break;
                 case EmissionOpcode.SwapScalars:
                     WriteScalarSwap(output, function, instruction);

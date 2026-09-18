@@ -476,7 +476,7 @@ internal sealed partial class BodyLowering
 
         if (this.IsCompositeSubject(type) || operation.Kind == OwnershipOperationKind.DecomposeCase || this.decompositionOwners[operation.Place] >= 0)
         {
-            return this.LowerCompositeMatchOperation(body, function, id, out failure);
+            return this.LowerCompositeMatchOperation(body, function, constants, id, out failure);
         }
 
         if (operation.Kind == OwnershipOperationKind.InitializeSubject)

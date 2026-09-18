@@ -308,7 +308,7 @@ public sealed partial class Binding
         for (var i = 0; i < binding.Candidates.Count; i++)
         {
             var type = this.ContractType(binding.Candidates[i], scope, self);
-            valid &= this.IsAssociatedCore(type, scope) && (result is null || ReferenceEquals(result, type));
+            valid &= (this.IsIteratorElement(associated) || this.IsAssociatedCore(type, scope)) && (result is null || ReferenceEquals(result, type));
             result = type;
         }
 
@@ -408,6 +408,9 @@ public sealed partial class Binding
 
         return type.Kind != BoundTypeKind.TargetProjection || this.HasValueRole(type, scope, false);
     }
+
+    private bool IsIteratorElement(BindingSymbol associated)
+        => associated.Name == "Element" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration);
 
     /// <summary>Substitutes Contract Self and normalizes explicit associated identities without member inference.</summary>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)

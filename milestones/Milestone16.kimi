@@ -1,0 +1,52 @@
+// Milestone 16: external Origins survive aggregate and enum result storage.
+struct Cell
+    public var value: i32
+    public init(value: i32) => self.value = value
+
+enum Selection origin source
+    Found(ref/Cell from source)
+    Missing
+
+struct Pair origin left, right
+    let first: ref/Cell from left
+    let second: ref/Cell from right
+
+    public init(first: ref/Cell from left, second: ref/Cell from right)
+        self.first = first
+        self.second = second
+
+    public func choose(self: ref/Self, useFirst: bool) -> Selection from self.left and self.right
+        if useFirst
+            return .Found(self.first)
+        return .Found(self.second)
+
+func add(target: uniq/Cell, amount: i32)
+    do
+        let child = target@uniq/Cell
+        child.value = child.value + amount
+        // The parent cannot be used while this child still requires its Loan.
+    target.value = target.value + 1 // Parent access resumes after reborrowing.
+
+func run(useFirst: bool)
+    var first = Cell.init(10)
+    var second = Cell.init(20)
+    do
+        let selected: ref/Cell = selection: do
+            let pair = Pair.init(first@ref, second@ref)
+            let result = pair.choose(useFirst)
+            exit to selection: match result
+                .Found(let value) => value
+                .Missing => $abort("Expected a selected Cell")
+        // pair and the enum Subject are gone; their external sources remain.
+        let expected: i32 = if useFirst => 10 else => 20
+        require selected.value == expected else => $abort("Origin forwarding failed")
+        ::Kimi.Console.writeLine("External borrow survived.")
+    add(first@uniq, 2)
+    add(second@uniq, 3)
+    require first.value == 13 and second.value == 24 else => $abort("Reborrow did not end")
+    ::Kimi.Console.writeLine("Both sources updated.")
+
+public func main()
+    run(true)
+    run(false)
+    ::Kimi.Console.writeLine("Origin forwarding finished.")

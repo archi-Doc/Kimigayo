@@ -173,7 +173,8 @@ public sealed partial class OwnershipBody
             {
                 foreach (var entry in this.SymbolPlaces)
                 {
-                    if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && entry.Key.Slot == origin.Slot)
+                    if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && entry.Key.Slot == origin.Slot &&
+                        (origin.Kind != OriginKind.Input || entry.Key.Kind == BindingSymbolKind.Parameter))
                     {
                         Record(entry.Value);
                     }
@@ -229,8 +230,13 @@ public sealed partial class OwnershipBody
                 (operation.Input == place && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow) ||
                 (operation.Place == place && operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition == AcquisitionKind.Move);
 
-        static bool Observes(BoundType type)
+        static bool Observes(BoundType type, int depth = 0)
         {
+            if (depth > 64)
+            {
+                return true; // Conservatively retain a dependency through recursive destruction.
+            }
+
             if (StructStorage.IsStruct(type))
             {
                 if (StructStorage.Destructor(type) is not null)
@@ -240,7 +246,29 @@ public sealed partial class OwnershipBody
 
                 for (var i = 0; i < StructStorage.Count(type); i++)
                 {
-                    if (Observes(StructStorage.FieldType(type, i)!))
+                    if (Observes(StructStorage.FieldType(type, i)!, depth + 1))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (ObjectTypes.IsOwner(type) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+            {
+                for (var i = 0; i < type.Components.Count; i++)
+                {
+                    if (Observes(type.Components[i], depth + 1))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (type.StoredCases is { } cases)
+            {
+                foreach (var payload in cases)
+                {
+                    if (Observes(payload, depth + 1))
                     {
                         return true;
                     }

@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 internal sealed partial class BodyLowering
 {
     private readonly AggregateLayoutPool aggregateLayouts = new();
+    private readonly Dictionary<BoundType, bool> ownedPatternTypes = new(ReferenceEqualityComparer.Instance);
 
     private AggregateLayout?[] aggregatePlaces = [];
     private int[] payloadOwners = [];
@@ -29,11 +30,13 @@ internal sealed partial class BodyLowering
         }
 
         this.aggregateLayouts.Clear(); // No bound Types survive into the physical module.
+        this.ownedPatternTypes.Clear();
     }
 
     private bool PrepareAggregates(OwnershipBody body, EmissionFunction function, out string? failure)
     {
         failure = null;
+        this.ownedPatternTypes.Clear();
         // Reuse the signature/parameter resolutions; RegisterAggregates clears bound keys after this body.
         if (this.aggregatePlaces.Length < body.Places.Count)
         {
@@ -61,7 +64,7 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type))
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && !ObjectTypes.IsOwner(place.Type))
             {
                 continue;
             }
@@ -142,10 +145,11 @@ internal sealed partial class BodyLowering
         for (var d = 0; d < body.Decompositions.Count; d++)
         {
             var plan = body.Decompositions[d];
-            if ((uint)plan.Place >= (uint)body.Places.Count || this.aggregatePlaces[plan.Place] is not { NeedsDestruction: false } owner ||
+            if ((uint)plan.Place >= (uint)body.Places.Count || this.aggregatePlaces[plan.Place] is not { } owner ||
+                (owner.NeedsDestruction && !MatchTypes.SupportsOwnedPatternValue(body.Places[plan.Place].Type, this.ownedPatternTypes)) ||
                 plan.PayloadStart <= plan.Place || plan.PayloadStart > body.Places.Count - plan.PayloadCount)
             {
-                return Fail("Pattern decomposition requires supported owned storage without destruction.", out failure);
+                return Fail("Pattern decomposition requires verified owned storage and cleanup.", out failure);
             }
 
             var type = body.Places[plan.Place].Type;
@@ -290,6 +294,7 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
+            case OwnershipOperationKind.Read when ObjectTypes.IsOwner(place.Type):
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
             case OwnershipOperationKind.Declare:
                 if (place.Kind == OwnershipPlaceKind.Result && this.slotResultDeclarations[id] == 0)
@@ -352,7 +357,8 @@ internal sealed partial class BodyLowering
                     (body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary && this.slotResultPlaces[operation.Input] == 0) ||
                     (operation.Kind == OwnershipOperationKind.PayloadPlacement && this.payloadOwners[place.Id] < 0) ||
                     (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.slotResultWrites[id] == 0 && this.slotFunctionPlaces[place.Id] != 2) ||
-                    (operation.Kind == OwnershipOperationKind.Consume && place.Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter)) ||
+                    (operation.Kind == OwnershipOperationKind.Consume && place.Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
+                    !this.IsPreparedAggregateCopy(body, id)) ||
                     (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition != place.Acquisition))
                 {
                     return Fail("Aggregate transfer requires distinct, Type-matched verified storage.", out failure);
@@ -424,5 +430,15 @@ internal sealed partial class BodyLowering
 
         this.AddStringFlags(function, operation, id);
         return true;
+    }
+
+    private bool IsPreparedAggregateCopy(OwnershipBody body, int id)
+    {
+        var operation = body.Operations[id];
+        var place = body.Places[operation.Place];
+        return place.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && operation.Acquisition == AcquisitionKind.Copy &&
+            ScalarDefaults.SupportsPatternValue(place.Type) && ReferenceEquals(operation.Source.BoundType, place.Type) &&
+            operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } &&
+            this.IsPreparedArgument(body, id, symbol, place.Id) && this.IsElementOwnerStorage(place) && this.ValidateElementOwner(body, id);
     }
 }

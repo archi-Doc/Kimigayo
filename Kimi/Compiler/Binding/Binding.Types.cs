@@ -538,15 +538,7 @@ public sealed partial class Binding
 
                 return this.BindTypeList(syntax, tuple.ElementNodes, scope, context.Nested, BoundTypeKind.Tuple);
             case FunctionTypeKoto function:
-                var parameters = this.BindType(function.Parameters, scope, context.Nested);
-                if (parameters is not null && function.Parameters is ParenthesizedTypeKoto)
-                {
-                    // A grouped parameter is one list element, even when its Type is Unit or a Tuple.
-                    parameters = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [parameters]);
-                }
-
-                var result = this.BindType(function.ReturnType, scope, context.Nested);
-                return parameters is null || result is null ? null : this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
+                return this.BindFunctionType(function, scope, context);
             case FixedArrayTypeKoto array:
                 var element = this.BindType(array.ElementType, scope, context.Nested);
                 var length = this.BindLength(array.Length, scope);
@@ -666,6 +658,17 @@ public sealed partial class Binding
 
     private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null)
     {
+        if (kind == BoundTypeKind.Slice || (symbol is not null && ReferenceEquals(symbol.Declaration, this.Library.Slice.Declaration)))
+        {
+            kind = BoundTypeKind.Slice;
+            symbol = this.Library.Slice.Declaration.BoundSymbol ?? this.Library.Slice;
+            if (originArguments.Length == 1)
+            {
+                origin ??= originArguments[0];
+                originArguments = default;
+            }
+        }
+
         var hash = default(HashCode);
         hash.Add(kind);
         hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));

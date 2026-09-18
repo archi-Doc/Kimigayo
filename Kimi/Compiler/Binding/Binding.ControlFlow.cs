@@ -44,6 +44,12 @@ public sealed partial class Binding
 
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
     {
+        if (expected?.Origin?.Kind == OriginKind.Inference)
+        {
+            // Infer the result's actual dependency before completing a local annotation.
+            expected = null;
+        }
+
         if (!KotoHelper.IsValueContext(target) || target is WhileKoto or ForKoto)
         {
             expected = BoundType.Unit;

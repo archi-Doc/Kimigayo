@@ -6,6 +6,8 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Bounded loop/match/default continuation (2026-09-18)](#bounded-continuation-20260918)
+
 - [Program Milestone 12 completion (2026-09-18)](#program12-completion)
 
 - [Current timed continuation — partial bodies and caught transfers (2026-09-18)](#execution-1)
@@ -4619,3 +4621,292 @@ This execution completed program 12 only. Current disposition and resumption rul
 All final verification passed against the hashes in `bin/milestone12-work-20260918/final-source-hashes.json` and `final-artifact-hashes.json`: 8,531 managed tests per configuration; 1,058 program checks across Debug/Release programs 1–12; 117 standalone fixtures and 234 native O0/O2 executions in the ConcreteClosure, Callback, Generic, Borrow and Struct families. The unchanged target and renamed copies, changed values/names, repeated exclusive calls and ten target-derived invalid programs are checked by `backend/windows-x64/test-milestone12.ps1`. Exact output/exit/stderr and build optimization/toolchain identity are recorded, not inferred from IR.
 
 See [verification.json](bin/milestone12-work-20260918/verification.json) for report paths, counts, hashes and final audit results; `final-tests-Debug.xml` / `final-tests-Release.xml` retain the managed cases. Native builds use LLVM verification before generation and O2 verification after optimization, followed by ordinary native linking/execution. No NativeAOT test was run. All required target checks were executable in this environment. No target blocker remains.
+
+<a id="bounded-continuation-20260918"></a>
+
+## Bounded loop/match/default continuation (2026-09-18)
+
+The user authorized 30 minutes from 03:05:39 UTC, with no new work after 03:35:39 UTC, no execution of existing tests, no builds/checks of existing examples or milestone programs, and minimal new tests. The working tree was clean at HEAD `d7e42915a73c6c06be1ac4b455187eb07608c99e`. This request superseded the completed program-12-only execution restriction. No draft, example, milestone, SPEC, package or dependency files were changed. The normative requirements were already correct; no specification relaxation was needed.
+
+Implemented slices:
+
+- **T4n-am / unit 52, I6/I8:** mixed-target checking forks a completing while's skipped path from its terminal body. Caught exits retain post-cleanup arrivals; escaped histories retain their original targets. Same-loop continue is excluded by a retained visitor proof, rather than dropping a backedge.
+- **T4n-an / unit 53, I6/I8:** the same proof admits completing loop bodies with no fall-through/self-continue, including scalar results and owned local cleanup. Existing seed/arrival buffers and LoopFrame records are reused.
+- **T4n-ao / unit 54, I6/I8:** unguarded scalar/Unit match Subjects retain normal arm tails, terminal histories and caught named yields. Guarded/owned Subject replay is not certified. All-normal matches keep their existing closed CFG; only mixed terminal arms require separate checking branches.
+- **T4o / unit 55, I4/I8:** the scalar-default certificate traverses unguarded scalar/Unit match Subjects and every arm in the declaration environment. Existing ownership, prepared argument storage and match lowering execute the selected default. Pattern-binding reads, guards and general owned defaults retain their guards.
+
+Only the newly authored `TerminalWhileContinuationTest` and `ScalarMatchContinuationTest` classes were selected. The old `CompletingLoopContinuationTest.MixedTargetPropagationRemainsGuarded` expectation was updated and renamed to describe newly supported behavior, but that existing test was **NOT_RUN**. New cases cover zero iterations, caught/escaping effects, Move/let history, stored Loan conflicts, local cleanup/results, same-loop-continue rejection, serialization/reanalysis, and omitted/explicit match defaults.
+
+Verification commands and artifacts (root `bin/plan-execution/20260918-030539/`):
+
+Final result: Debug/Release builds PASS with zero warnings/errors; **25 new managed cases per configuration PASS**, zero failures/skips; **six native builds and six O0/O2 executions PASS**. `verification.json` records the exact selected classes, reports, source/artifact hashes, native results and NOT_RUN boundaries.
+
+- Build compiler/test projects: `dotnet build xUnitTest/xUnitTest.csproj -c Debug --no-restore --nologo -v:minimal`, and the Release counterpart. Final build summaries are retained in the task's tool output; artifact hashes are in `verification.json`.
+- Run new cases only: `dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -class XunitTest.TerminalWhileContinuationTest -class XunitTest.ScalarMatchContinuationTest -parallelMode none -failSkips -result-xml bin/plan-execution/20260918-030539/final-debug.xml`, and the Release counterpart. Exact names/counts/results are retained in both XML files.
+- Build only the three new sources using `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build <new-source.kimi> --ToolchainRoot ./toolchain` (O2) and their isolated O0 projects. Six native builds validate LLVM and link with pinned LLVM 22.1.8; six bounded native runs pass. True prints `early\ndone\n` and exits 0; false prints `late\n`, reports the expected Abort site and exits 1; the default fixture validates both omitted branches and the explicit argument, prints `match defaults passed\n` and exits 0. See `build-*.log`, build manifests and `native-results.json`.
+
+Intermediate failures were in new test inputs: `exit: 3` was corrected to `exit 3` (§14.5.1), and an unlabeled yield in Discard Context was corrected to `yield to choice` (§14.5.2). Negative cases now also require no control-flow errors. A new static helper was moved to satisfy SA1204. An initial incompatible `dotnet test` wrapper invocation was stopped before any runner output/results; verification subsequently used the repository's direct filtered xUnit runner. These intermediate attempts are not PASS evidence.
+
+Full existing regressions, existing program builds, broader native coverage, allocation/performance measurement and NativeAOT were **NOT_RUN**. Thus all four slices remain **IMPLEMENTED_UNVERIFIED** against full acceptance, while M2/M3 and the full compiler remain IN_PROGRESS. Detailed current states and exact resumption actions remain only in PLAN.md §2.
+
+<a id="guarded-continuation-20260918"></a>
+
+## Guarded match and Copy-tuple defaults (2026-09-18)
+
+The next request dedicated 30 minutes to implementation, from **03:35:41 to 04:05:41 UTC**, followed by completion checks and documentation. New work stopped at that cutoff. Existing tests, including the preceding turn's two new classes, were not executed; existing examples/milestones were not built or checked. Baseline HEAD remained `d7e42915a73c6c06be1ac4b455187eb07608c99e`; the existing uncommitted implementation and documents were preserved. `bin/plan-execution/20260918-033541/baseline.patch`, `baseline-status.txt` and `baseline/` record the starting tracked changes/documents. No draft, example, milestone, dependency or normative specification files changed.
+
+Implemented bounded slices:
+
+- **T4p / unit 56, I4/I8:** default-expression eligibility now recognizes scalar guard candidates and distinct selected let/var bindings. Guard failure preserves effects; supplied arguments still bypass default evaluation while declaration checking remains independent.
+- **T4n-ap / unit 57, I6/I8:** each arm starts from the join of the preceding pattern failure and completed false guard. Selected bodies retain separate histories. Contained guard exit/yield is admitted by a retained visitor that excludes outward transfers and unsupported divergence/cleanup.
+- **T4n-aq / unit 58, I6/I8:** whole-string Subjects use that proof with existing guard protection, selected binding acquisition and Subject cleanup. No general owned aggregate decomposition was inferred from this slice.
+- **T4n-ar / unit 59, I6:** reusable scratch storage groups seeds sharing both original and caught targets, avoiding multiplicative retained alternatives across successive guards. Synthetic joins have no runtime edges. Construction and Loan validation use replay-end states, including ended guard protection.
+- **T4q / unit 60, I4/I8/I12:** scalar-only tuples may be prepared argument snapshots, literal/local Subjects or whole-pattern body values. Scalar-leaf reads and mutable local/body updates use existing projections. Checked generation now accepts a Copy from a prepared temporary only after validating declaration ownership, omitted-default extent, exact argument mapping, storage identity, initialization and dominance. Shared writable-root recognition admits var body patterns while excluding let and candidate symbols.
+- **T4n-as / unit 61, I6/I12:** nested scalar/Unit tuple decomposition retains candidate/body identities and original terminal targets during mixed-target checking.
+
+Failures and corrections were kept distinct from final evidence. The initial tuple checks passed ownership but failed generation with `Aggregate transfer requires distinct, Type-matched verified storage` (`tuple-initial-*.xml`); exact prepared-slot validation closed that path. A mutable whole-tuple body pattern exposed the Field-only writable-root gate (`mutable-initial.log`). A fresh scoped string guard exposed Loan validation comparing the original seed rather than the replay endpoint (`loan-initial.log`). Those were implementation gaps, not successful executions. SA1513 on the new pattern condition was corrected. An early filtered runner invocation before its build completed discovered zero new cases; it is not counted. Intermediate snapshots could contain different new-case counts while tests were being added; only final reports below certify the final source state.
+
+Final focused evidence in `bin/plan-execution/20260918-033541/`:
+
+- Debug/Release compiler/test builds PASS with **zero warnings/errors** (`debug-build.log`, `release-build.log`).
+- Only `XunitTest.GuardedDefaultContinuationTest` and `XunitTest.GuardedMatchContinuationTest` ran: **28 cases per configuration, zero failures/skips** (`final-debug.xml`, `final-release.xml`). Commands use the direct xUnit executable with both `-class` filters, `-parallelMode none`, `-failSkips` and `-result-xml`; no existing test class is selected.
+- New checks include false-guard Move/let/initialization history, caught yields, contained guard transfers, string cleanup, tuple decomposition/local updates, immutable binding rejection, independent default declaration checks and rejection of a changed prepared-argument identity. The 24-guard case passes checked IR and reports **zero allocated bytes for one warm ownership reanalysis after eight warmups**. No broader performance claim follows.
+- Two fresh sources build and execute at O0 and O2 with LLVM verification and native linking: **four builds and four runs PASS**. The defaults program checks repeated/default/supplied paths and tuple snapshots/updates, then prints `Guarded defaults and tuple snapshots passed.\n`. The continuation program prints `chosen\nGuarded continuation checking passed.\n`. Every run exits 0 with empty stderr; `native-results.json` records executable hashes and exact output.
+- `verification.json` binds the reports to final source/compiler/test/native hashes and build manifests. `git diff --check` passes. SPEC.md was unchanged because §§14.8.2–3, 14.10.3 and 15.1 already require these behaviors.
+
+Existing regression suites, existing source-program checks, full Loan/cleanup coverage, broad allocation/retention measurements and NativeAOT remain **NOT_RUN**. Units 56–61 therefore remain **IMPLEMENTED_UNVERIFIED** against full acceptance, while the relevant M2/M3/M5 families remain IN_PROGRESS. Current states, dependencies and exact next actions are maintained only in PLAN.md §2.
+
+<a id="continuation-verification-20260918"></a>
+
+## Verification of existing continuation slices (2026-09-18)
+
+The new request superseded the implementation-only windows: verify existing work, add missing tests, and fix relevant defects without starting new functionality. Existing suites and completed programs were authorized; unit 62, draft edits and NativeAOT remained outside scope. HEAD was `d7e42915a73c6c06be1ac4b455187eb07608c99e`. The prior uncommitted implementation was preserved; starting documents, tracked diff and milestone hashes are retained in `bin/plan-verification/20260918-041105/`.
+
+### Failures and corrections
+
+1. The baseline Debug suite executed **8,584 tests with one failure and no skips** (`baseline-debug.xml`). `BranchReplayContinuationTest` still expected a terminal `while` to be unsupported, contrary to implemented unit 52. The obsolete negative case was replaced by positive return/exit runtime fixtures; divergent and deferred cases still require rejection.
+2. A new regression using a local tuple as a named argument passed ownership but failed generation (`focused-debug.xml`). Prepared-default reads recognized literal and returned storage but omitted acquired copies of locals/parameters. Lowering now records each Copy-tuple acquisition in the existing initialization array, rejects competing initializers and checks dominance without adding a new cache allocation.
+3. Expanding the regression to an `if` result exposed the corresponding verified-result-storage omission (`storage-debug.xml`). Prepared Copy validation now admits an existing selection result only through its checked result lifetime and exact pending argument slot. Final default results remain scalar/Unit; no general aggregate default feature was added. Literal, local, returned, both selected branches, parameter forwarding, named order, repeated calls, snapshot preservation and projection-free tuple decomposition are covered.
+4. `ContinuationVerificationTest` ultimately adds 16 cases, including mixed string/tuple checking with no runtime execution of checking regions, scoped false-guard destruction counts/order, serialized reload and warm analysis/emission, rejection of invalid replay endpoints, 4/16/64-guard history growth, and forwarded Copy/Move aggregate inspection. Existing wrong-argument-identity and immutable-pattern tests remain active.
+5. The initial parallel solution build exited 1 with no build diagnostics (`build-debug.log`); serial MSBuild (`-m:1`) completed. Intermediate SA1117/SA1513 formatting warnings were corrected. Final Debug/Release solution builds report zero warnings/errors. Restore confirmed all projects were up to date; existing assets were used for the builds.
+6. The first evidence-copy wrapper formed a doubled dot using PowerShell's empty extension conversion. This stopped before native execution; the successful managed run and file-write inventory were retained, and copying resumed with `GetFileNameWithoutExtension`. No failed native attempt was counted as PASS.
+7. Reviewing the same initializer check exposed the pre-existing fixed-array variant: a typed local `[2 of i32]` passed final Binding/ownership but failed generation during default inspection (`array-default-before-typed.log`). The first reproducer lacked an explicit fixed-array Type and failed earlier Binding; that separate input error is retained in `array-default-before.log`. Initialization tracking now covers already-supported Copy/Move acquisitions of tuples and fixed arrays; whole-value copying inside defaults remains restricted to scalar/Unit tuples. New forwarded array, owned-tuple and owned-array cases include native destruction-count audits. The prior compiler/test identities and changed source files are preserved under `round1/`; subsequent final suites and program runs use the corrected compiler.
+
+### Verification method
+
+The direct xUnit runner uses `-parallelMode none -failSkips -result-xml`. The first full pass executed 8,598 tests per configuration; after the fixed-array correction, both final suites execute **8,601 tests with zero failures/skips** (`final/Debug/tests.xml`, `final/Release/tests.xml`). The earlier results remain separate records. Current source and compiler/test hashes are in `final/source-hashes.json` and `final/artifact-hashes.json`.
+
+A file-system write-event inventory identifies fixtures produced by each suite. Each selected IR and all output/exit/timeout oracles are copied and hashed into an isolated configuration directory before native use. `test-scalars.ps1 -FixtureDirectory` accepts those directories; native outputs still run serially. The selected families are CompositePattern, Default, Element, Guard, Match, Never, StringGuard, VerificationContinuation and WholeValue: **1,076 final fixtures per compiler configuration**.
+
+The first inventory passed **2,142 O0/O2 executions**. After the final fix, all 1,071 earlier IR/oracle sets remain byte-identical and five new sets pass **10 additional executions**, including owned aggregate destruction audits. All 1,076 final Release sets match the final Debug sets. `final/native-baseline-equivalence.json`, `final/native-release-equivalence.json` and `final/native-summary.json` record the mapping; identical inputs share native evidence and are not counted twice. Tool/backend hashes remain fixed. Programs 1–12 run sequentially across both configurations, in output directories separate from standalone fixtures. Every verification subprocess is bounded, and original milestone source/compiler identities are checked by the program scripts.
+
+The five dedicated programs from the two preceding implementation windows were also copied byte-for-byte into isolated directories and rebuilt with each final compiler at O0/O2. **All 20 final builds/executions passed** (`final/checkpoint-programs.json`), superseding the first compiler's 20 checks. These retain terminal true/false behavior and Abort diagnostics, omitted/supplied match defaults, false-guard effects, mutable tuple snapshots, repeated defaults and string guard effects. The dedicated programs close native coverage that the earlier managed-only continuation cases did not themselves generate. SPEC remained unchanged: §7.2 already requires prepared-slot inspection and snapshot isolation, and normal destruction remains governed by §16.
+
+The 4/16/64-guard workloads retain 115/367/1,375 seed/replay/region records in both configurations. Eight measured warm ownership analyses allocate **zero bytes** at each size; serialized reload followed by warm ownership/IR generation also passes a strict zero-byte check. The separate 64-analysis timing samples are recorded as observations under verification load, not statistically controlled throughput benchmarks. These results establish bounded workload coverage and stable record counts, not universal zero allocation, peak-memory bounds or full M15 performance closure.
+
+### Final disposition
+
+The [final audit](bin/plan-verification/20260918-041105/verification.json) passes: **8,601 managed tests per configuration, 2,152 standalone plus 20 dedicated native executions, and 1,058 completed-program checks across 24 Debug/Release reports**. Final program runs after the aggregate fix supersede the initial 1,058 checks. The audit rechecks 577 source/project/backend input identities, compiler/test and native-tool hashes, immutable fixture/oracle inventories, and all 14 original milestone source hashes. Debug/Release solution builds are warning-free. No draft/specification/dependency change or NativeAOT run was introduced.
+
+Units 52–61 are DONE for their bounded acceptance criteria. M2/M3/M5 and their broader I families remain IN_PROGRESS; unit 62 and general terminal guards, loop backedges, unequal Loan joins, deferred cleanup, enum/non-Copy aggregate replay and general defaults remain unfinished. Current states and exact next actions are maintained only in PLAN.md §2.
+
+<a id="terminal-owned-patterns-20260918"></a>
+## 60-minute implementation: terminal guards and owned Patterns (2026-09-18)
+
+The implementation window ran from **05:32:59 to 06:32:59 UTC** on HEAD `d7e42915a73c6c06be1ac4b455187eb07608c99e`, preserving the preceding uncommitted work. No new scope began after the cutoff; already-started checks and documentation were finalized afterward. Evidence: `bin/plan-execution/20260918-053259/`, including `baseline.patch`, original document/untracked-test copies, final artifact inventories and `verification.json`.
+
+### Implemented scope and decisions
+
+- **T4n-at / unit 62:** return/exit/enclosing-yield guards retain separate mixed source histories. Unselected bodies enter a frozen post-guard checking continuation, after ended protection and before runtime scope-exit cleanup. This avoids replacing those histories with the pre-guard fork.
+- **T4n-au / unit 63:** Never calls, recognized builtin Abort and proven state-neutral divergence retain checking without inventing runtime selection or cleanup. Partial terminal guard histories end abandoned comparison Loans in separate checking regions; pending regions read replay-end Loan state. Synthetic ends are outside the contiguous normal cleanup-to-branch range required by checked lowering.
+- **T4n-av / unit 64:** finite concrete enum/tuple scalar/Unit payloads retain mixed match histories. Whole enum acquisition follows explicit Copy declarations; an all-scalar enum is still Move without that declaration. Every Case participates in the bounded shape proof.
+- **T4n-aw / unit 65:** owned string leaves in finite tuples/enums use validated decomposition subslots, Move body acquisition and ordinary remaining-payload cleanup. Conditional consumption, replacement and result delivery update existing lifetime flags. Retained type-shape caches avoid repeated recursive proofs and are cleared at analysis/body boundaries. Borrowed payloads, composite string guard candidates and user destructors are not admitted by this extension.
+- **T12a / unit 66:** nested string literal Patterns compare exact UTF-8, including empty/NUL strings and distinct composed/decomposed sequences. Case tests dominate payload reads; literal comparison creates no owning handle. The physical Pattern plan retains a constant-pool index and uses the existing byte-comparison helper only when needed.
+- **T4n-ax / unit 67:** unary `not` and both logical operands independently accept Never fitting to bool. A terminal left operand does not execute its right operand. Invalid bool operands still produce TypeMismatch, including checking-only right operands.
+
+SPEC was not changed: §§3.1.5, 13, 14.8–14.10, 15.1.6 and 16 already require these semantics. Implementation limits remain limits rather than weakened language requirements.
+
+### Failures and fixes retained in evidence
+
+Early terminal-guard cases exposed an invalidated linear replay and active abandoned protection; frozen checking continuations and replay-end Loan normalization fixed them. Owned string subslots initially failed the local-only String Declare validation; lowering now accepts only validated decomposition payloads. The new logical guard cases initially failed Binding because Never was used as the right operand expectation; independent bool expectations fixed that behavior.
+
+Test corrections are distinguished from compiler fixes: an enclosing do is an exit target, so yield uses an enclosing selection; divergent ownership graphs conservatively retain Pattern-failure edges, so the test checks guard/body runtime exclusion instead of asserting that every graph cleanup is unreachable. The first nested-string audit omitted the owning `ok` output destruction; its oracle was corrected. A zero-test scalar-enum run and two stale intermediate logical test binaries are superseded by fresh nonzero final reports; neither is accepted as feature evidence. Final builds were completed before invoking their matching reports.
+
+### Final focused verification
+
+Only four test classes created during this window were executed: `TerminalGuardContinuationTest` (25 cases), `ScalarEnumContinuationTest` (6), `OwnedAggregateContinuationTest` (5), and `OwnedPatternLiteralTest` (1). **37 cases pass in each of Debug and Release**, without failures or skips. Both compiler/test-project builds have zero warnings/errors. `run-new.ps1` records the exact class filters and rejects zero-case reports; the final reports are under `final/Debug/` and `final/Release/`.
+
+The 11 newly generated fixture sets cover terminal return/Abort/divergence/logical guards, enum Copy acquisition, owned string cleanup/replacement/results and nested UTF-8 Pattern comparison. The pinned Windows script ran only the immutable new-fixture directory: **22 final O0/O2 executions PASS**, including exact stdout/stderr/exit, expected divergence timeout, and destruction count/order audits. All 55 IR/oracle files are byte-identical across Debug/Release, so the same native evidence is reused without counting another execution. Intermediate native runs are retained but excluded from final counts.
+
+Serialized owned-enum syntax reload, final rebinding, repeated ownership analysis and checked IR generation pass. After warming the new owned-pattern workload, measured ownership analysis allocates **zero bytes** in both configurations; this is workload-specific evidence, not a universal allocation or speed claim.
+
+**NOT_RUN by request:** all pre-existing tests, existing examples/milestones and their build checks. NativeAOT was not run. No draft, normative specification, existing example or milestone source was edited. Five pre-existing untracked tests retain identical hashes; original tracked changes remain preserved in the baseline patch. Units 62–67 are therefore IMPLEMENTED_UNVERIFIED pending omitted regression gates; broader M2/M3/M5/I families are not closed. Current states and exact next actions remain only in PLAN.md §2.
+
+## Program Milestone 13 baseline (2026-09-18)
+
+<a id="program13-baseline"></a>
+
+The new request authorizes program 13 implementation only. HEAD is `d7e42915a73c6c06be1ac4b455187eb07608c99e`. All 35 pre-existing modified/untracked files were copied with hashes under `bin/milestone13-work-20260918/baseline/`; the binary diff, status and milestone hashes are retained beside it. All 14 milestone programs were read (the request described five). Programs 1–12 provide prerequisites; program 14 object/capture additions remain outside scope.
+
+The fresh baseline Debug solution build passed without warnings. The focused SequenceEmission, ReferenceEmission, GenericBorrowedElement and CoreCatalog suites passed 134 cases. `initial-target.log` reproduces the first target failure: `UnresolvedBinding_Kd` at 7:13 on Iterator, followed by associated-Type/Slice failures and cascading errors. Ownership, generic ABI, borrowed Option results and Slice iteration gaps are initially anticipated, not observed later-stage failures.
+
+### Preserved preceding plan state (historical)
+
+## 2. Execution State
+
+**Units 62–67 are IMPLEMENTED_UNVERIFIED** for M2/M3/M5 and I3/I6/I8/I12: terminal guards, finite enum/owned-string decomposition, nested string literal Patterns and logical Never fitting. Focused new-case evidence does not close the omitted regression gates. Units 52–61 retain their historical verified baseline; shared paths changed by this window need regression reverification. Broader milestone and compiler families remain IN_PROGRESS.
+
+| Verified slice | State | Acceptance and current evidence |
+| --- | --- | --- |
+| T4n-at / unit 62 | IMPLEMENTED_UNVERIFIED | Return/exit/enclosing-yield guards preserve mixed source extents and pre-cleanup histories; unselected bodies use frozen post-guard continuations. |
+| T4n-au / unit 63 | IMPLEMENTED_UNVERIFIED | Never calls, recognized builtin Abort and proven state-neutral guard divergence preserve checking without runtime selection/unwinding. Partial terminal histories end abandoned guard protection separately; replay uses endpoint Loans. |
+| T4n-av / unit 64 | IMPLEMENTED_UNVERIFIED | Finite concrete enums/tuples with scalar/Unit leaves retain mixed histories, declared Copy versus Move and initialization failures. Every Case is checked. |
+| T4n-aw / unit 65 | IMPLEMENTED_UNVERIFIED | Finite owned string tuple/enum leaves have checked subslots, Move acquisition, remaining-payload cleanup, conditional binding lifetime/replacement and result delivery. Type-shape proofs reuse cached entries; serialized reload and zero measured warm ownership allocation pass on the new workload. Composite guard bindings remain scalar/Unit. |
+| T12a / unit 66 | IMPLEMENTED_UNVERIFIED | Nested string literal Patterns compare exact UTF-8 (empty, embedded NUL and distinct Unicode sequences), after dominating Case tests and without owning literal construction. |
+| T4n-ax / unit 67 | IMPLEMENTED_UNVERIFIED | Logical operands independently fit bool, including Never; `not (return)` and terminal left operands of `and`/`or` retain checking histories. Non-bool operands are rejected and abandoned operands are not executed. |
+| T4p / unit 56 | DONE | Depends on T4o. Candidate/body identities, false-guard effects, explicit-argument bypass and independent declaration checks pass managed and native regressions. |
+| T4n-ap / unit 57 | DONE | Depends on ao. Pattern failure and post-cleanup false-guard joins preserve selected, terminal and caught-yield histories, including contained do/match result transfers. Outward/noncompleting guards remain excluded. |
+| T4n-aq / unit 58 | DONE | Depends on ap. Whole-string Subject Move, guard protection and cleanup pass mixed-target checking, replay-end validation and native destruction-count/order audits. General owned decomposition remains outside this slice. |
+| T4n-ar / unit 59 | DONE | Equal original/caught targets coalesce with common replay-end Loans. Reload and invalid-endpoint checks pass; 4/16/64 guards retain 115/367/1,375 history records with zero measured warm analysis allocation. This is bounded workload evidence, not universal complexity/retention closure. |
+| T4q / unit 60 | DONE | Depends on p and retained storage. Scalar-tuple Copy/default local/body updates pass, including literal/local/returned/selected argument storage and exact slot validation. Adjacent prepared tuple/array inspection now recognizes verified Copy/Move initializers; owned cleanup audits pass. Immutable/candidate/parameter mutation remains rejected. |
+| T4n-as / unit 61 | DONE | Depends on ap/ar and I12. Nested scalar/Unit tuple candidates and body bindings preserve mixed-target histories. Enum/non-Copy aggregate replay remains outside this proof. |
+| T4n-am–ao, T4o / units 52–55 | DONE | Bounded terminal while, one-pass loop, unguarded scalar/Unit match and default slices pass existing regressions, dedicated O0/O2 programs, reload, Loan and cleanup checks. |
+
+Current focused evidence: warning-free Debug/Release compiler/test-project builds, **37 new managed cases per configuration**, **11 new fixture sets / 22 O0/O2 executions**, including destruction counts/order and expected Abort/divergence. All 55 IR/oracle files match across configurations; native reuse is not counted twice. The [execution audit](bin/plan-execution/20260918-053259/verification.json) records identities and reports. Existing suites, examples/milestones and NativeAOT are NOT_RUN. The preceding [8,601-case/configuration audit](bin/plan-verification/20260918-041105/verification.json) remains historical evidence for its own source state, not this changed compiler; [history](PLAN_HISTORY.md#continuation-verification-20260918) retains its native/program counts and findings.
+
+| ID | State | Completed target slice / evidence |
+| --- | --- | --- |
+| P12-B | DONE | Concrete environment identity/signature inference, mutable snapshot bindings, explicit nested captures, selected minimum receiver and bounded Callable constraints. |
+| P12-O | DONE | Depends on P12-B. Ordered capture acquisition, exclusive receiver protection through arguments, consuming cleanup and invalid acquisition/reuse rejection, including parenthesized immutable receivers. |
+| P12-G | DONE | Depends on P12-B/P12-O. Concrete aggregate storage/direct entries, nested result slots, acquired-value inline erasure, and a compile-time concrete witness for shared `Callable<uniq, S>` generation. |
+| P12-V | DONE | Depends on P12-B/P12-O/P12-G. Original completion evidence is preserved in history; both historical program-12 configurations passed 37 checks each in the preceding verification audit. |
+
+Program 12's original output, decisions, baseline preservation and verification remain in [its completion record](PLAN_HISTORY.md#program12-completion). That historical integration evidence does not close the broader I17/I18 closure requirements or certify every language rule.
+
+Use item states `TODO`, `IN_PROGRESS`, `IMPLEMENTED_UNVERIFIED`, `DONE`, `BLOCKED`, `NOT_APPLICABLE`; use verification results `PASS`, `FAIL`, `NOT_RUN`, `BLOCKED`. DONE requires the item's full acceptance evidence. A completed program or sub-unit does not close its broader I/M family. Missing older evidence is disclosed under G6; retained DONE records are historical dispositions, not newly certified clause closure.
+
+<a id="program13-completion"></a>
+
+## Program Milestone 13 completion — 2026-09-18
+
+This is historical execution evidence. [PLAN §2](PLAN.md#2-execution-state) owns the current state and next action. Program 13 is distinct from plan M13. No program-14 implementation was performed.
+
+### Scope and preserved inputs
+
+The active request superseded the earlier documentation-only/program-12 requests and authorized the unchanged `milestones/Milestone13.kimi`. The subsequent user instruction removed tests and existing-Milestone verification from this execution. After that instruction, no managed suite, dedicated negative exercise, earlier Milestone run or NativeAOT run was performed. The baseline's 134 focused cases preceded that instruction; their PASS is not a final-source regression result. All 14 programs were read for dependency context (the request referred to five, but this checkout contains fourteen); programs 1–12 supply the existing foundations, and program 14's object/borrowed-capture features were not implemented ahead of need.
+
+HEAD remained `d7e42915a73c6c06be1ac4b455187eb07608c99e`; final evidence applies to the modified working tree, not that commit alone. The [baseline record](#program13-baseline) retains the original 35 uncommitted files, including untracked files and both current documents, in `bin/milestone13-work-20260918/baseline/` with `baseline-hashes.json`, `baseline.patch`, `baseline-status.txt` and `baseline-head.txt`. All 35 backup hashes were checked after implementation. All 14 source programs still match `milestone-hashes.json`. These are migration/execution artifacts, not a fourth managed planning document. SPEC.md and draft were not edited by this implementation; unrelated changes already present or appearing in the workspace were left intact.
+
+### Failures, changes and decisions
+
+- [Initial target](bin/milestone13-work-20260918/initial-target.log): final Binding first failed on the missing recognized Iterator, followed by associated-Type/Slice failures. Downstream omissions were hypotheses until the subsequent attempts reached them.
+- [target1](bin/milestone13-work-20260918/target1.log) and [target2](bin/milestone13-work-20260918/target2.log): the ordinary Iterator declaration/complete Element binding exposed missing named Slice representation. Recognition now uses canonical declaration identity, because ordinary indexing recreates the symbol. Named and inferred Slices share one complete borrowed Type and backing Origin.
+- [target3](bin/milestone13-work-20260918/target3.log): the explicit local `ref/Sample` annotation retained an unresolved inferred Origin. Result selection now infers the actual dependency before completing an omitted local Origin; it does not discard the backing dependency or relax explicit Origin checks.
+- [target4](bin/milestone13-work-20260918/target4.log): Binding passed; ownership rejected copying `self.values` and indexing the generic Slice. Copying the two-word handle and explicit shared element borrowing now retain the external source Origin, independently of next's short unique receiver Loan. Option payloads and match results reuse the existing retained-reference machinery.
+- [target5](bin/milestone13-work-20260918/target5.log): ownership passed; generation rejected generic stored Slice fields. Shared generation now admits their checked complete Types, copies fields, writes scalar fields through unique receivers, and obtains concrete field offsets/element strides from the existing entry metadata. It does not rebind or clone the source body per Type argument.
+- [target6](bin/milestone13-work-20260918/target6.log): the shared body passed, but the concrete Slice parameter had no ABI representation. Slice is now admitted to the aggregate argument/result-slot path. Half-open view creation evaluates endpoints once and checks `0 <= start <= end <= length` before address calculation; reference iteration keeps the backing dependency. No element array allocation is introduced.
+- [target8](bin/milestone13-work-20260918/target8.log) reached LLVM verification, linking and O2 execution; [first-native.json](bin/milestone13-work-20260918/first-native.json) records the first exact native result. Subsequent declaration-shape checks validate Iterator's complete next signature and Slice's declaration. Style warnings from intermediate builds were corrected before the final builds. A build attempt with no output was interrupted; the later completed build/target logs, not that interrupted attempt, establish success. One redundant no-change build during that investigation is retained as an intermediate log, not counted as additional coverage.
+
+The recognized Iterator uses ordinary static conformance checking. The complete-Type associated exception is restricted to its canonical Element identity. Slice Copy does not require T to be Copy; yielding a reference does not Move T or borrow the iterator itself. General Iterable-based for dispatch, full Slice/Index/Range APIs and later-only features remain outside this target slice. CoreCatalogTest's declaration-count expectations were adjusted from 10 to 12, but that test was not run after the scope change.
+
+### Final required verification and exact state
+
+The final [Debug report](bin/milestone13-work-20260918/Debug/verification.json) and [Release report](bin/milestone13-work-20260918/Release/verification.json) both report PASS. Each includes the compiler source-input manifest, target/DLL/IR/executable hashes, build records and captured stdout/stderr/exit. The commands are retained in [capture-target.ps1](bin/milestone13-work-20260918/capture-target.ps1):
+
+```powershell
+& ./bin/milestone13-work-20260918/capture-target.ps1 -Configuration Debug
+& ./bin/milestone13-work-20260918/capture-target.ps1 -Configuration Release
+```
+
+Each performs `dotnet build Kimi/Kimi.csproj -c <configuration> --no-restore --disable-build-servers -p:EmitCompilerGeneratedFiles=false`, then normal target builds from byte-identical program copies with explicit O0/O2 project settings and the repository toolchain. Both compiler builds have zero warnings and zero errors. The build pipeline runs `opt -passes=verify -disable-output` on input IR and, at O2, on optimized IR before native object/link production; linked records confirm pinned LLVM 22.1.8 identities. The four ordinary native executions produced exactly:
+
+```text
+Even sample total is 6; first is still 1.
+Iterator remains exhausted.
+Middle slice total is 5.
+```
+
+Every line ends in LF; each run exits 0 with empty stderr. The target's own checks exercise retained first-reference validity, even-item accumulation, continued exhaustion and bounded Slice iteration. No additional filesystem side effect is specified. The source hash is `2EC749D95ABF0B457910A26BF4E4E80322A883537F02B0794B44A761D2DD611B`; final Debug DLL hash is `5C70220E95FA35348F5D235BBD9E13BDA2D4C253BF4B2C197A95E03108B7A6C1`, and Release DLL hash is `AC65F37A32747ECEF8D57F5E290339760F340154584B50588CDD5840EEB36B80`.
+
+### Unverified boundaries and information preservation
+
+No dedicated invalid-input/bounds/zero-size/aliasing exercises or regression suites were run for the final compiler, per the revised request. Those semantic requirements remain normative and are not claimed as verified. Historical units 62–67 remain IMPLEMENTED_UNVERIFIED for their full original acceptance; a target PASS does not close them or the broader I/M families. NativeAOT is NOT_RUN. The final target reports and linked build records exist; no missing artifact is being treated as present evidence. Earlier missing-evidence disclosures remain unchanged.
+
+<a id="program14-baseline"></a>
+
+## Program Milestone 14 baseline — 2026-09-18
+
+Historical checkpoint; [PLAN §2](PLAN.md#2-execution-state) owns current state and next work. HEAD `d7e42915a73c6c06be1ac4b455187eb07608c99e`; 59 modified/untracked files were copied byte-for-byte to `bin/milestone14-work-20260918/baseline/`, with hashes and binary working-tree/index patches. All 17 available programs were read; the request's reference to five does not match the checkout. No target source was simplified. Prior program 13 state follows below for traceability.
+
+The solution baseline attempt failed without compiler diagnostics (`baseline-build.log`); serial `dotnet build xUnitTest/xUnitTest.csproj --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false` passed warning-free (`baseline-project-build.log`). [Initial target](bin/milestone14-work-20260918/initial-target.log) fails final Binding at the borrowed Callable requirement before execution. Slice iterate/makeObj/capture diagnostics also occur; no later-stage PASS is inferred. A VSTest-style filter passed to the MTP dotnet-test runner selected zero cases and exited 5; this was a runner invocation failure, not a test PASS. The direct xUnit runner then passed all 178 cases in ConcreteClosureTest, SequenceEmissionTest, GenericStorageEmissionTest, WholeValueTest and CoreCatalogTest ([XML](bin/milestone14-work-20260918/baseline-tests.xml), `baseline-tests2.log`). SDK is 10.0.401. NativeAOT was not run.
+
+### Superseded program-13 execution state
+
+Program target: **`milestones/Milestone13.kimi` — DONE for the revised requested scope**. Program 13 is distinct from plan M13 (language tests). The unchanged target passes final Binding, ownership analysis, LLVM generation/verification, linking and native execution at O0/O2 from warning-free Debug/Release compiler builds. [Completion evidence and limitations](PLAN_HISTORY.md#program13-completion) identify the exact source/DLL state. Test-suite execution, negative exercises and existing Milestone checks were excluded by the subsequent user instruction; they are not certified by this completion.
+
+| ID | State | Scope and dependencies |
+| --- | --- | --- |
+| P13-B | DONE | Recognized Iterator contract, its complete-Type Element exception, named Slice Types/Origins and required selection/iteration Binding. |
+| P13-O | DONE | Depends on P13-B. The target preserves external backing dependencies through generic storage, Option payloads, matches and yielded references; next's exclusive receiver Loan ends independently. Invalid Origin/Move/mutation/escape must still reject; dedicated negative verification is NOT_RUN under the revised scope. |
+| P13-G | DONE | Depends on P13-B/P13-O. Shared generic Slice storage/indexing and borrowed Option ABI; bounded Slice formation and iteration with checked addresses and no element allocation. |
+| P13-V | DONE | Depends on P13-B/P13-O/P13-G. Unchanged target build, LLVM verification and native O0/O2 output, exit and effects. The subsequent user instruction excludes test-suite execution and existing Milestone checks; those are NOT_RUN after that instruction and are not completion gates for this execution. |
+
+Expected stdout: `Even sample total is 6; first is still 1.`, `Iterator remains exhausted.`, `Middle slice total is 5.` in order, each followed by LF. Exit code 0, empty stderr. The first borrowed Sample must survive later next calls; exhaustion must persist and Slice iteration must borrow elements.
+
+The original user changes and preceding state remain recoverable under `bin/milestone13-work-20260918/` and [history](PLAN_HISTORY.md#program13-baseline). Units 62–67 remain IMPLEMENTED_UNVERIFIED for their full original criteria; this target's verification does not automatically close unrelated requirements. P12-B/O/G/V remain historically DONE. Broader I/M families remain incomplete.
+
+
+<a id="program14-completion"></a>
+
+## Program Milestone 14 completion — 2026-09-18
+
+Historical execution record. [PLAN §2](PLAN.md#2-execution-state) owns current state and next actions. This run implemented program 14 only; all 17 available programs were read for dependencies and later boundaries. The request's “five programs” did not match the checkout. Earlier program-13 test exclusions were superseded by the new program-14 acceptance criteria. No NativeAOT, draft edit, target simplification or program-15 implementation was performed.
+
+### Implementation and failure sequence
+
+- P14-C: the first confirmed failure was borrowed Callable Binding (`InvalidConstraint_Kd`, `MissingOriginBinding_Kd`; [initial log](bin/milestone14-work-20260918/initial-target.log)). Function Type inputs now bind per-call input Origins and compare corresponding borrowed parameters; a stronger uniq or fixed-static input contract is rejected. Slice.iterate uses an ordinary source-defined SliceIterator with external backing Origin and non-lending next. Used library bodies enter ordinary flow/ownership checking. Target-independent 0/1 literals exposed an unset native-width problem; conservative target-independent integer fitting restored library-only Binding.
+- P14-C generation: shared loop/match/callback lowering required retained Match plans, closed storage descriptions, forwarded member/constructor calls, and complete-place addresses separate from field-leaf addresses. Origin substitutions carry dependencies without a runtime Origin representation. A zero-sized callback borrow initially emitted undefined `%p12`; address-required zero-sized storage now receives an address. Isolated Slice and pipeline native checks passed before object support; they did not certify the whole target. Evidence: `slice-isolated8.log`, `pipeline-initial.log`, `pipeline1.log`, `pipeline3.log`, `pipeline4.log`, `pipeline5.log` under this run's work directory.
+- P14-O: the compiler validates the concrete makeObj identity and payload eligibility, moves/acquires the complete payload once, allocates header plus payload, and publishes the owned handle after initialization. Immutable metadata keeps deterministic distinct Type keys, payload size/alignment/Copy/destruction, and descriptor destruction/free separation. Origin-erased identity retains nominal/module/package identity and Type structure; no hash-only equality is used. Sealed projection and member calls address header + 16. Payload exchange uses existing whole-value replacement responsibility and never frees the enclosing object; final owned cleanup destroys then frees the original header. rc/arc/Weak and broader views were not added.
+- P14-E: supported ref/uniq and obj captures keep their full Types and dependencies. Captured referent mutation requires an Exclusive call; moving an obj capture requires a Consuming call. Ownership initially confused a capture slot and an input-Origin slot with the same ordinal. Input-Origin matching now requires a Parameter symbol, and nested observable cleanup dependencies remain live. Binding/ownership then passed (`object-target4.log`), exposing missing object aggregate-place registration. Adding that physical storage connection produced the first complete target run (`object-target5.log`, `first-native.stdout`, `first-native.stderr`, `first-native.exit`).
+- P14-V hardening: malformed shared match dispatch/Subject initialization plans were initially accepted by the emitter ([reproduction](bin/milestone14-work-20260918/match-before.log)). Checked Subject acquisition, exact dispatch/arm identities, exhaustive coverage, pure tests, ordered continuations and payload acquisition now reject corruption before writing IR. The target remains a flat Copy enum Case subset; this does not claim guarded/nested shared Pattern support.
+- Regression correction: planning allocated even for inputs without objects, and a LINQ predicate over the aggregate HashSet boxed an enumerator. The no-object preparation path and direct HashSet enumeration restore existing measured zero-allocation workloads. Temporary allocation instrumentation was removed. Object call contexts are cleared after every emission to avoid retaining old syntax. Library-only Origin obligations required two legacy assertion scopes to distinguish source obligations from library obligations; TypeBindingTest's old inference-only expectation was updated to assert the fixed initializer-resolved Input Origin introduced in program 13, including rebind stability. No language check was disabled. Earlier failures are preserved in `regression-before.log` and `debug-final-tests.log`; final evidence below supersedes them.
+- Test-development corrections: a new fixture accidentally used previously unsupported borrowed-field `+=`; it was changed to ordinary assignment matching the target's intended coverage, and all negative cases were rerun against the valid fixture. A generic all-terminal Never match and a general `Option<T>` payload probe exposed unsupported paths and were not used as the positive baseline for match-plan mutation tests. These limitations are retained as P14-L1. An invalid xUnit wildcard invocation selected no tests; a build overlapping a running test process hit a DLL copy lock. Neither was counted as a PASS. Subsequent build/test artifact phases were separated.
+
+### Final verification and identities
+
+[Frozen audit](bin/milestone14-work-20260918/verification.json) validates 954 current build/test/backend inputs (including the adjacent Tinyhand dependency), the compiler DLLs, run reports and preserved files. Target source SHA-256: `EB87D485322EB7B6BC8C82E2B731CFC6479B5CB9A032BBBF5FCFF23F4AC25BCB`. HEAD remains `d7e42915a73c6c06be1ac4b455187eb07608c99e` with the pre-existing work and this implementation uncommitted.
+
+- Debug: [8670 managed tests](bin/milestone14-work-20260918/debug-final3-tests.xml), [build](bin/milestone14-work-20260918/debug-final3-build.log), [48 target checks](bin/milestone14/Debug/3a531c99392340e88fb5b6a48f72a2b9/verification.json), [26 completed-program native checks](bin/milestone14-work-20260918/regressions/Debug/aa4bc5fc814f4f048ed72b937e0a06d2/verification.json); compiler SHA-256 `6B5A785F61750D7BD676D9D84B9AC1D73ED9AC33A024417011882F6E37A49BD4`.
+- Release: [8670 managed tests](bin/milestone14-work-20260918/release-final3-tests.xml), [build](bin/milestone14-work-20260918/release-final3-build.log), [48 target checks](bin/milestone14/Release/360550b354a84a4a847933c3ab4ac61c/verification.json), [26 completed-program native checks](bin/milestone14-work-20260918/regressions/Release/328f118b6e9641b5b65f6788d1a8084b/verification.json); compiler SHA-256 `AB2C78C152D637A9F9846C4EA77950871C52E522313A432311323AFA16CCA5EB`.
+
+Build commands use `dotnet build xUnitTest/xUnitTest.csproj -c <configuration> --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false`; both final configurations report zero warnings/errors. Tests use the direct xUnit v3 runner with `-parallelMode none -result-xml <file>`, not a VSTest filter. All 8,670 tests pass per configuration, with no skips. Native checks use:
+
+```powershell
+./backend/windows-x64/test-milestone14.ps1 -Configuration Debug -ToolchainRoot ./toolchain
+./backend/windows-x64/test-milestone14.ps1 -Configuration Release -ToolchainRoot ./toolchain
+./bin/milestone14-work-20260918/regress-programs.ps1 -Configuration Debug
+./bin/milestone14-work-20260918/regress-programs.ps1 -Configuration Release
+./backend/windows-x64/test-scalars.ps1 -ToolchainRoot ./toolchain -FixtureDirectory bin/milestone14-work-20260918/Release-fixtures -OutputDirectory bin/milestone14-work-20260918/native-fixtures
+```
+
+The target harness checks the unchanged original source and byte-identical renamed copies, different identifiers/values, exhaustion, a zero limit and rejection of all jobs. Nine invalid variants reject before native artifacts, including `MovedPlace_Kd` for a second consuming call and `ComparisonLoanConflict_Kd` for owner access during a live captured Loan. Per configuration, 39 native/CLI execution checks plus 9 rejections total 48. Completed programs 1–13 each run natively at O0/O2 with exact output, empty stderr and exit 0; their sources are unchanged.
+
+The [Debug fixture hashes](bin/milestone14-work-20260918/Debug-fixture-hashes.json) and [Release fixture hashes](bin/milestone14-work-20260918/Release-fixture-hashes.json) match for 68 sets: Pipeline (8), SliceIterator (1), ConcreteClosure (8), WholeValue (15), Sequence (23), GenericStorage (13). [Native log](bin/milestone14-work-20260918/native-fixtures.log) records 136 O0/O2 executions after LLVM verification; this includes zero-sized payload destruction, repeated borrowed-capture calls, consuming/unused owned captures, exchange cleanup, and distinct same-layout object Types. These identical bytes are not double-counted across compiler configurations. Normal target builds verify input IR and optimized O2 IR with pinned LLVM 22.1.8 before linking.
+
+Exact program-14 stdout (LF after every line), exit 0, empty stderr:
+
+```text
+Accepted three jobs.
+Accumulator destroyed.
+Object total is 12.
+Accumulator destroyed.
+Pipeline finished.
+```
+
+The old exchanged payload and final object payload each destroy once. Final object cleanup invokes payload destruction before the descriptor's storage-release entry; exchange retains the header/descriptor. No filesystem side effect is required by the program.
+
+### Preservation and remaining boundaries
+
+The original 59 dirty/untracked files remain recoverable byte-for-byte under `bin/milestone14-work-20260918/baseline/`, with the original hash manifest and working-tree/index patches. All 17 milestone sources are unchanged; draft is unchanged. Relevant PLAN/STATUS updates and this history are English. SPEC was not changed by this run; its pre-existing change is retained. New evidence paths in this record exist. Earlier disclosures about missing historical artifacts remain valid.
+
+P14-C/O/E/V are DONE for this target, not for the entire language. P14-L1, full object/Weak/refinement and generic/capture boundaries remain documented; deferred ObjectCallCompatible stages were not implemented. Units 62–67 remain IMPLEMENTED_UNVERIFIED under their full original acceptance, despite the current broad managed regressions. No broader throughput, memory-exhaustion, full API, cross-module object ABI or NativeAOT claim is made.

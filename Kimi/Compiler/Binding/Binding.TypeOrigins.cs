@@ -43,7 +43,7 @@ public sealed partial class Binding
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
         var written = annotation is not null && (annotation.OriginName is not null || annotation.OriginExpression is not null || annotation.OriginArguments is not null);
-        if (IsBorrow(type.Semantics) || (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication && written))
+        if (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice || (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication && written))
         {
             if (annotation?.OriginArguments is not null)
             {

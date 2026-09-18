@@ -10,7 +10,11 @@ public sealed partial class OwnershipAnalysis
     {
         var depth = this.comparisonDepth++;
         var receiver = this.SequenceReceiver(source.Left, out var projection);
-        var result = receiver < 0 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection);
+        var range = (RangeKoto)source.Right;
+        var start = range.Start is { } begin ? this.Value(this.Expression(begin)) : -1;
+        var end = range.End is { } finish ? this.Value(this.Expression(finish)) : -1;
+        var result = receiver < 0 || (range.Start is not null && start < 0) || (range.End is not null && end < 0)
+            ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, start, end);
         this.EndComparisonLoans(depth, source);
         this.comparisonDepth = depth;
         return result;
@@ -38,12 +42,12 @@ public sealed partial class OwnershipAnalysis
         return this.SequenceValue(source, source.BoundType!, SequenceOperation.Read, receiver, index: index);
     }
 
-    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1)
+    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1)
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
         this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
-        this.body.Sequences.Add(new(op, kind, receiver, projection, index));
+        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end));
         return this.RegisterTemporary(result);
     }
 
@@ -101,7 +105,8 @@ public sealed partial class OwnershipAnalysis
     private void Iterate(ForKoto source)
     {
         var array = source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
-        var element = array ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
+        var slice = source.Iterable.BoundType?.Kind == BoundTypeKind.Slice;
+        var element = slice ? source.Bindings[0].BoundType! : array ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
         if (array && (!this.SupportsType(element) || this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven))
         {
             this.Unsupported(source);
@@ -143,6 +148,10 @@ public sealed partial class OwnershipAnalysis
         if (array)
         {
             item = this.SequenceValue(source, element, SequenceOperation.ArrayRead, iterable, index: this.Value(current));
+        }
+        else if (slice)
+        {
+            item = this.SequenceValue(source, element, SequenceOperation.Borrow, iterable, index: this.Value(current));
         }
         else
         {

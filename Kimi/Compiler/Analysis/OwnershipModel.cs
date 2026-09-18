@@ -352,6 +352,7 @@ internal enum OwnershipValueKind : byte
 
 internal enum SequenceOperation : byte
 {
+    Borrow,
     ArrayRead,
     Indices,
     Length,
@@ -362,7 +363,7 @@ internal enum SequenceOperation : byte
     Read,
 }
 
-internal readonly record struct OwnershipSequence(int Operation, SequenceOperation Kind, int Receiver, int Projection = -1, int Index = -1);
+internal readonly record struct OwnershipSequence(int Operation, SequenceOperation Kind, int Receiver, int Projection = -1, int Index = -1, int End = -1);
 
 // Start/Count address PhiInputs for Phi, otherwise ValueOperands.
 // Constant holds the signed-extended N-bit integer payload, or the logical index for Parameter.

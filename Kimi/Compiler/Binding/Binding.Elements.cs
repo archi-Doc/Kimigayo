@@ -17,8 +17,18 @@ public sealed partial class Binding
                 return Complete(source, receiver!.Components[0].Components[0]);
             }
 
-            if (receiver?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice && source.Right is RangeKoto { IsFull: true } range)
+            if (receiver?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice && source.Right is RangeKoto range && !range.IsInclusive)
             {
+                if (range.Start is { } start)
+                {
+                    this.RequireType(start, scope, BoundType.ISize);
+                }
+
+                if (range.End is { } end)
+                {
+                    this.RequireType(end, scope, BoundType.ISize);
+                }
+
                 Complete(range, BoundType.Range);
                 return Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [receiver.Components[0]], origin: this.PlaceOrigin(source.Left)));
             }

@@ -16,6 +16,29 @@ internal static class ScalarDefaults
 
     internal static bool SupportsValue(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit);
 
+    internal static bool SupportsPatternValue(BoundType? type)
+    {
+        if (SupportsValue(type))
+        {
+            return true;
+        }
+
+        if (type is not { Kind: BoundTypeKind.Tuple, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0 })
+        {
+            return false;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (!SupportsPatternValue(type.Components[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static bool SupportsExpression(Koto expression, FunctionKoto function, int parameterIndex)
     {
         if (expression.AttributeChain is not null || expression.BindingState != BindingState.Resolved ||
@@ -32,9 +55,12 @@ internal static class ScalarDefaults
                 ReferenceEquals(symbol.Scope.Owner, function) && symbol.Slot < parameterIndex,
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: FieldKoto local } } =>
                 IsInsideDefault(local, function, parameterIndex),
+            IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate, Declaration: SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern } } =>
+                IsInsideDefault(pattern, function, parameterIndex),
             BinaryKoto element when ElementAccess.IsSyntax(element) => SupportsPreparedStorage(element, function, parameterIndex),
             ParenthesizedKoto parentheses => SupportsExpression(parentheses.Operand, function, parameterIndex),
             IfKoto conditional => SupportsConditional(conditional, function, parameterIndex),
+            MatchKoto match => SupportsMatch(match, function, parameterIndex),
             RequireKoto require => SupportsExpression(require.Condition, function, parameterIndex) &&
                 (require.ElseBody is CodeBlockKoto failure ? SupportsBody(failure, function, parameterIndex) : SupportsExpression(require.ElseBody, function, parameterIndex)),
             DoKoto scoped => SupportsBody(scoped.Body, function, parameterIndex),
@@ -79,6 +105,62 @@ internal static class ScalarDefaults
         return true;
     }
 
+    private static bool SupportsMatch(MatchKoto match, FunctionKoto function, int parameterIndex)
+    {
+        if (!SupportsMatchSubject(match.Expression, function, parameterIndex))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < match.Arms.Count; i++)
+        {
+            var arm = match.Arms[i];
+            if ((arm.Guard is { } guard && !SupportsExpression(guard, function, parameterIndex)) || !(arm.Body is CodeBlockKoto block
+                ? SupportsBody(block, function, parameterIndex)
+                : SupportsExpression(arm.Body, function, parameterIndex)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool SupportsMatchSubject(Koto subject, FunctionKoto function, int parameterIndex)
+    {
+        if (SupportsValue(subject.BoundType) || ReferenceEquals(subject.BoundType, BoundType.Never))
+        {
+            return SupportsExpression(subject, function, parameterIndex);
+        }
+
+        if (subject.AttributeChain is not null || subject.BindingState != BindingState.Resolved || !SupportsPatternValue(subject.BoundType))
+        {
+            return false;
+        }
+
+        if (subject is ParenthesizedKoto parentheses)
+        {
+            return SupportsMatchSubject(parentheses.Operand, function, parameterIndex);
+        }
+
+        if (subject is TupleLiteralKoto tuple)
+        {
+            for (var i = 0; i < tuple.Elements.Count; i++)
+            {
+                if (!SupportsMatchSubject(tuple.Elements[i], function, parameterIndex))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Prepared scalar-only tuples are Copy. Acquiring the private Subject
+        // cannot consume an earlier argument or introduce owned cleanup.
+        return SupportsPreparedStorage(subject, function, parameterIndex);
+    }
+
     private static bool SupportsBody(CodeBlockKoto body, FunctionKoto function, int parameterIndex)
     {
         if (body.AttributeChain is not null)
@@ -92,8 +174,8 @@ internal static class ScalarDefaults
             if (item is FieldKoto local)
             {
                 if (local.AttributeChain is not null ||
-                    !SupportsValue(local.BoundType) ||
-                    (local.InitializerKoto is { } initializer && !SupportsExpression(initializer, function, parameterIndex)))
+                    !SupportsPatternValue(local.BoundType) ||
+                    (local.InitializerKoto is { } initializer && !SupportsMatchSubject(initializer, function, parameterIndex)))
                 {
                     return false;
                 }
@@ -115,8 +197,27 @@ internal static class ScalarDefaults
 
     private static bool SupportsWritableLocal(Koto target, FunctionKoto function, int parameterIndex)
     {
-        return KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: FieldKoto { VariableKind: VariableKind.Var } local } } &&
-            IsInsideDefault(local, function, parameterIndex) && SupportsExpression(target, function, parameterIndex);
+        var root = KotoHelper.UnwrapParentheses(target);
+        while (root is BinaryKoto element && ElementAccess.IsSyntax(element) && ElementAccess.TryType(element, out _, out _))
+        {
+            if (element.Left.BoundType?.Kind != BoundTypeKind.Tuple || !SupportsPatternValue(element.Left.BoundType))
+            {
+                return false;
+            }
+
+            root = KotoHelper.UnwrapParentheses(element.Left);
+        }
+
+        if (root is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local } symbol } ||
+            !IsInsideDefault(symbol.Declaration, function, parameterIndex) || !SupportsExpression(target, function, parameterIndex))
+        {
+            return false;
+        }
+
+        // Guard candidates are a distinct immutable identity. Only the selected
+        // body's var binding owns a writable local, just like a var declaration.
+        return symbol.Declaration is FieldKoto { VariableKind: VariableKind.Var } or
+            SyntaxFormKoto { Akind: KotoKind.BindingPattern, IsMutablePattern: true };
     }
 
     private static bool SupportsPreparedStorage(Koto source, FunctionKoto function, int parameterIndex)
@@ -131,6 +232,10 @@ internal static class ScalarDefaults
             ParenthesizedKoto parentheses => SupportsPreparedStorage(parentheses.Operand, function, parameterIndex),
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter } symbol } =>
                 ReferenceEquals(symbol.Scope.Owner, function) && symbol.Slot < parameterIndex,
+            IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: FieldKoto local } } =>
+                SupportsPatternValue(local.BoundType) && IsInsideDefault(local, function, parameterIndex),
+            IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern } } local =>
+                SupportsPatternValue(local.BoundType) && IsInsideDefault(pattern, function, parameterIndex),
             BinaryKoto element when ElementAccess.IsSyntax(element) && ElementAccess.TryType(element, out _, out _) =>
                 SupportsPreparedStorage(element.Left, function, parameterIndex) &&
                 (element is not IndexKoto || SupportsExpression(element.Right, function, parameterIndex)),

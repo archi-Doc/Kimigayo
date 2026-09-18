@@ -110,9 +110,13 @@ public class TypeBindingTest
         var c = Parse("func f(x: ref/i32)\n    var local: ref/i32 = x");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var local = Nodes(c).OfType<FieldKoto>().Single();
-        Assert.Equal(OriginKind.Inference, local.BoundType!.Origin!.Kind);
-        Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginInference);
-        Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginOutlives && ReferenceEquals(x.Shorter, local.BoundType.Origin));
+        var input = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters[0].Type.BoundType!;
+        // A matching initializer resolves the omitted Origin immediately; the
+        // completed local keeps that same fixed dependency through rebinding.
+        Assert.Equal(OriginKind.Input, local.BoundType!.Origin!.Kind);
+        Assert.Same(input.Origin, local.BoundType.Origin);
+        Assert.DoesNotContain(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginInference);
+        Assert.DoesNotContain(c.Binding.Obligations, x => ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Kotonoha));
         var origin = local.BoundType.Origin;
         var count = c.Binding.Obligations.Count;
         Assert.True(c.Bind().IsComplete, Describe(c));

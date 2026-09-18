@@ -171,6 +171,13 @@ internal static partial class LlvmModuleWriter
             output.Write($"  %p{i} = getelementptr i8, ptr {address}, i64 %off{i}\n");
         }
 
+        for (var i = 0; i < body.Addresses.Length; i++)
+        {
+            var place = body.Addresses[i];
+            var address = place.Result ? "%ret" : place.Parameter >= 0 ? "%a" + place.Parameter : "%scratch";
+            output.Write($"  %placeoffptr{i} = getelementptr i64, ptr %offsets, i64 {body.AddressOffset + i}\n  %placeoff{i} = load i64, ptr %placeoffptr{i}, align 8\n  %place{i} = getelementptr i8, ptr {address}, i64 %placeoff{i}\n");
+        }
+
         for (var i = 0; i < body.PolicyCount; i++)
         {
             output.Write($"  %meta{i} = getelementptr %kimi.shared.policy, ptr %policies, i64 {i}\n  %size{i} = load i64, ptr %meta{i}, align 8\n");
@@ -224,17 +231,39 @@ internal static partial class LlvmModuleWriter
 
                 switch (op.Kind)
                 {
+                    case SharedStorageOperation.StorageAddress:
+                        output.Write($"  store ptr %place{source}, ptr %p{dest}, align 8\n");
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.CaseTest:
+                        output.Write($"  %tag{id} = load i32, ptr %p{dest}, align 4\n  %v{id} = icmp eq i32 %tag{id}, {source}\n");
+                        break;
+                    case SharedStorageOperation.DecomposeEnum:
+                        var split = body.Constructions[source];
+                        for (var field = 0; field < split.Sources.Length; field++)
+                        {
+                            var payload = split.Sources[field];
+                            output.Write($"  %splitoffptr{id}_{field} = getelementptr i64, ptr %offsets, i64 {split.Offsets[field]}\n  %splitoff{id}_{field} = load i64, ptr %splitoffptr{id}_{field}, align 8\n  %split{id}_{field} = getelementptr i8, ptr %p{dest}, i64 %splitoff{id}_{field}\n");
+                            output.Write($"  call void @llvm.memcpy.p0.p0.i64(ptr %p{payload}, ptr %split{id}_{field}, i64 %size{body.Leaves[payload].Policy}, i1 false)\n");
+                            Live(payload, true);
+                        }
+
+                        Live(dest, false);
+                        break;
                     case SharedStorageOperation.DirectCall:
-                        output.Write($"  call void %directCall{op.Source}(ptr {(dest < 0 ? "null" : "%p" + dest)}");
+                        output.Write($"  call void %directCall{op.Source}(ptr {(dest < 0 ? "null" : "%place" + op.Index)}");
                         foreach (var argument in body.DirectArguments[op.Source])
                         {
-                            output.Write($", ptr %p{argument}");
+                            output.Write($", ptr %place{argument}");
                         }
 
                         output.Write(")\n");
                         if (dest >= 0)
                         {
-                            Live(dest, true);
+                            for (var field = 0; field < op.FieldOffset; field++)
+                            {
+                                Live(dest + field, true);
+                            }
                         }
 
                         break;
@@ -296,20 +325,40 @@ internal static partial class LlvmModuleWriter
                         output.Write($"  %receiver{id} = load ptr, ptr %p{source}, align 8\n  %field{id} = getelementptr i8, ptr %receiver{id}, i64 %fieldOffset{id}\n  store ptr %field{id}, ptr %p{dest}, align 8\n");
                         Live(dest, true);
                         break;
+                    case SharedStorageOperation.FieldRead:
+                    case SharedStorageOperation.FieldWrite:
+                        var writeField = op.Kind == SharedStorageOperation.FieldWrite;
+                        output.Write($"  %fieldOffsetPtr{id} = getelementptr i64, ptr %offsets, i64 {op.FieldOffset}\n  %fieldOffset{id} = load i64, ptr %fieldOffsetPtr{id}, align 8\n");
+                        output.Write($"  %receiver{id} = load ptr, ptr %p{(writeField ? dest : source)}, align 8\n  %field{id} = getelementptr i8, ptr %receiver{id}, i64 %fieldOffset{id}\n");
+                        output.Write(writeField
+                            ? $"  call void @llvm.memcpy.p0.p0.i64(ptr %field{id}, ptr %p{source}, i64 %size{body.Leaves[source].Policy}, i1 false)\n"
+                            : $"  call void @llvm.memcpy.p0.p0.i64(ptr %p{dest}, ptr %field{id}, i64 %size{body.Leaves[dest].Policy}, i1 false)\n");
+                        if (!writeField)
+                        {
+                            Live(dest, true);
+                        }
+
+                        break;
+                    case SharedStorageOperation.SliceAddress:
                     case SharedStorageOperation.ArrayRead:
                     case SharedStorageOperation.ArrayAddress:
                         var elementPolicy = body.Leaves[dest].Policy;
                         var readLocation = constants[op.Location];
-                        output.Write($"  %index{id} = or i64 0, %v{op.Index}\n  %outOfBounds{id} = icmp uge i64 %index{id}, %length{op.CopyPlace}\n");
+                        if (op.Kind == SharedStorageOperation.SliceAddress)
+                        {
+                            output.Write($"  %sliceLengthPtr{id} = getelementptr i8, ptr %p{source}, i64 8\n  %sliceLength{id} = load i64, ptr %sliceLengthPtr{id}, align 8\n");
+                        }
+
+                        output.Write($"  %index{id} = or i64 0, %v{op.Index}\n  %outOfBounds{id} = icmp uge i64 %index{id}, %{(op.Kind == SharedStorageOperation.SliceAddress ? "sliceLength" + id : "length" + op.CopyPlace)}\n");
                         output.Write($"  br i1 %outOfBounds{id}, label %boundsAbort{id}, label %elementRead{id}\nboundsAbort{id}:\n");
                         output.Write($"  call void @{WindowsLowering.Abort.Name}(i32 {WindowsLowering.IndexBoundsReason}, ptr @{readLocation.Name}, i64 {readLocation.ByteLength}, i64 -2)\n  unreachable\nelementRead{id}:\n");
-                        if (op.Kind == SharedStorageOperation.ArrayAddress)
+                        if (op.Kind is SharedStorageOperation.ArrayAddress or SharedStorageOperation.SliceAddress)
                         {
                             output.Write($"  %strideSlot{id} = getelementptr i64, ptr %offsets, i64 {op.FieldOffset}\n  %stride{id} = load i64, ptr %strideSlot{id}, align 8\n");
                         }
 
-                        output.Write($"  %array{id} = load ptr, ptr %p{source}, align 8\n  %byteOffset{id} = mul i64 %index{id}, %{(op.Kind == SharedStorageOperation.ArrayAddress ? "stride" + id : "size" + elementPolicy)}\n  %element{id} = getelementptr i8, ptr %array{id}, i64 %byteOffset{id}\n");
-                        output.Write(op.Kind == SharedStorageOperation.ArrayAddress ? $"  store ptr %element{id}, ptr %p{dest}, align 8\n" : $"  call void @llvm.memcpy.p0.p0.i64(ptr %p{dest}, ptr %element{id}, i64 %size{elementPolicy}, i1 false)\n");
+                        output.Write($"  %array{id} = load ptr, ptr %p{source}, align 8\n  %byteOffset{id} = mul i64 %index{id}, %{(op.Kind != SharedStorageOperation.ArrayRead ? "stride" + id : "size" + elementPolicy)}\n  %element{id} = getelementptr i8, ptr %array{id}, i64 %byteOffset{id}\n");
+                        output.Write(op.Kind != SharedStorageOperation.ArrayRead ? $"  store ptr %element{id}, ptr %p{dest}, align 8\n" : $"  call void @llvm.memcpy.p0.p0.i64(ptr %p{dest}, ptr %element{id}, i64 %size{elementPolicy}, i1 false)\n");
                         Live(dest, true);
                         break;
                     case SharedStorageOperation.ConstructEnum:
@@ -346,7 +395,7 @@ internal static partial class LlvmModuleWriter
                 }
                 else if (scalar.Kind == OwnershipValueKind.Binary)
                 {
-                    output.Write($"  %v{id} = icmp slt {(scalar.Operator == "slt32" ? "i32" : "i64")} %v{scalar.First}, %v{scalar.Second}\n");
+                    output.Write($"  %v{id} = icmp {scalar.Operator![..3]} {(scalar.Operator.EndsWith("32", StringComparison.Ordinal) ? "i32" : "i64")} %v{scalar.First}, %v{scalar.Second}\n");
                 }
                 else if (scalar.Type == "i1")
                 {

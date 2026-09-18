@@ -91,7 +91,7 @@ internal sealed partial class BodyLowering
 
         foreach (var sequence in body.Sequences)
         {
-            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead && (uint)sequence.Operation < (uint)count)
+            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead or SequenceOperation.Borrow or SequenceOperation.Slice && (uint)sequence.Operation < (uint)count)
             {
                 this.continuations[sequence.Operation] = count + sequence.Operation;
             }
@@ -267,7 +267,7 @@ internal sealed partial class BodyLowering
             }
 
             var addressRequired = false;
-            if (value.Layout.Size == 0 && place.Type.Kind == BoundTypeKind.FixedArray)
+            if (value.Layout.Size == 0)
             {
                 for (var i = 0; i < body.Operations.Count && !addressRequired; i++)
                 {
@@ -372,6 +372,13 @@ internal sealed partial class BodyLowering
                     function.Instructions.Add(instruction with { OperandStart = start });
                     function.NeedsStringComparison |= instruction.Opcode is EmissionOpcode.StringEquals or EmissionOpcode.StringCompare ||
                         (instruction.Opcode == EmissionOpcode.StringPattern && instruction.Constant >= 0);
+                    if (instruction.Opcode == EmissionOpcode.CompositePattern)
+                    {
+                        foreach (var test in instruction.Pattern!)
+                        {
+                            function.NeedsStringComparison |= test.Text >= 0;
+                        }
+                    }
                 }
 
                 if (body.Operations[cursor].Kind == OwnershipOperationKind.Deliver ||

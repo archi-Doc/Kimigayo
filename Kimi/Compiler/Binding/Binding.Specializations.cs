@@ -31,14 +31,36 @@ public sealed partial class Binding
         }
 
         var result = this.InstantiateStorageType(inner.ReturnType, outer);
-        if (result is null || inner.Receiver is not null || inner.DeclaringType is not null || inner.Origins.Length != 0 || inner.DefaultArguments.Length != 0)
+        var declaring = inner.DeclaringType is { } owner ? this.InstantiateStorageType(owner, outer) : null;
+        if (result is null || (inner.DeclaringType is not null && declaring is null) || inner.DefaultArguments.Length != 0)
         {
             return null;
         }
 
         var call = new BoundCall();
-        call.Set(inner.Target, result, null, inner.ArgumentToParameter, types, inputOrigins: inner.InputOrigins, operations: inner.ArgumentOperations, lengthArguments: lengths);
+        call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types, declaringType: declaring, origins: Origins(inner.Origins), inputOrigins: Origins(inner.InputOrigins), operations: inner.ArgumentOperations, receiverOperation: inner.ReceiverOperation, lengthArguments: lengths);
         return call;
+
+        BoundOrigin[] Origins(ReadOnlySpan<BoundOrigin> origins)
+        {
+            var values = origins.ToArray();
+            for (var i = 0; i < values.Length; i++)
+            {
+                if (values[i] is not { } origin)
+                {
+                    continue;
+                }
+
+                if (outer.DeclaringType is { Symbol: { } symbol } container)
+                {
+                    origin = this.SubstituteStoredOrigin(origin, symbol.Declaration, container.Kind == BoundTypeKind.Slice && container.Origin is { } source ? [source] : (BoundOrigin[])container.OriginArguments);
+                }
+
+                values[i] = this.SubstituteStoredOrigin(origin, outer.Target.Declaration, outer.Origins, outer.InputOrigins);
+            }
+
+            return values;
+        }
     }
 
     internal FunctionKoto? SelectSpecialization(BoundCall call)

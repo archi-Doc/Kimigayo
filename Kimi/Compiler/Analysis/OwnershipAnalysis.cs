@@ -12,6 +12,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<OwnershipBody> bodies = new();
     private readonly List<OwnershipBody> bodyPool = new();
     private readonly List<OwnershipIssue> issues = new();
+    private readonly List<FunctionKoto> libraryBodies = new();
     private readonly Collector collector;
     private readonly List<Registration> locals = new();
     private readonly List<Registration> temporaries = new();
@@ -57,6 +58,7 @@ public sealed partial class OwnershipAnalysis
 
         this.Invalidate();
         this.supportedTypes.Clear();
+        this.checkingPatternTypes.Clear();
         this.visitingTypes.Clear();
         var root = this.compilation.Kotonoha.RootKoto;
         if (this.flow is null)
@@ -81,6 +83,12 @@ public sealed partial class OwnershipAnalysis
         foreach (var module in this.compilation.SourceModules)
         {
             this.collector.Visit(module.RootKoto);
+        }
+
+        for (var i = 0; i < this.libraryBodies.Count; i++)
+        {
+            this.flow.Append(this.libraryBodies[i]);
+            this.collector.Visit(this.libraryBodies[i]);
         }
 
         var errors = 0;
@@ -138,6 +146,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.bodies.Clear();
+        this.libraryBodies.Clear();
         if (this.defaultBody is { } declaration)
         {
             declaration.IsVerified = false;
@@ -146,6 +155,7 @@ public sealed partial class OwnershipAnalysis
 
         this.issues.Clear();
         this.candidates.Clear();
+        this.unmatchedCheckingSeeds.Clear();
     }
 
     private void Build(FunctionKoto function, int declarationDefault = -1)
@@ -582,8 +592,12 @@ public sealed partial class OwnershipAnalysis
             case ConversionKoto conversion:
                 if (conversion.ConversionBinding == ConversionBinding.PayloadBorrow)
                 {
-                    this.Expression(conversion.Left, PlaceUseKind.Borrow);
-                    this.Unsupported(conversion); // Requires the object payload address and owner-Loan runtime plan.
+                    if (ObjectTypes.IsOwner(conversion.Left.BoundType) && ReferenceTypes.IsStorage(conversion.BoundType))
+                    {
+                        return this.BorrowStruct(conversion.Left, conversion.BoundType!);
+                    }
+
+                    this.Unsupported(conversion);
                     return -1;
                 }
 
@@ -950,12 +964,20 @@ public sealed partial class OwnershipAnalysis
             return this.WholeValueUpdate(call, plan);
         }
 
+        if (plan.Target.Declaration is FunctionKoto libraryBody &&
+            (ReferenceEquals(plan.Target.Scope.Owner, this.compilation.Library.Slice.Declaration) ||
+             ReferenceEquals(plan.Target.Scope.Owner, this.compilation.Library.SliceIterator.Declaration)) &&
+            !this.libraryBodies.Contains(libraryBody))
+        {
+            this.libraryBodies.Add(libraryBody);
+        }
+
         var mark = this.arguments.Count;
         var loanDepth = this.comparisonDepth++;
         var borrows = false;
         if (plan.Receiver is { } receiver)
         {
-            this.arguments.Add(ReferenceTypes.IsStorage(plan.ReceiverOperation.ParameterType) && plan.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
+            this.arguments.Add(ReferenceTypes.IsStorage(plan.ReceiverOperation.ParameterType) && plan.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection
                 ? this.BorrowStruct(receiver, plan.ReceiverOperation.ParameterType!) : this.Argument(receiver, plan.ReceiverOperation.Kind));
         }
 
@@ -1162,12 +1184,33 @@ public sealed partial class OwnershipAnalysis
         var output = this.ResultPlace(loop);
         var head = this.Emit(OwnershipOperationKind.Branch, loop);
         var exit = this.ResultJoin(loop, output);
-        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count, output, this.comparisonDepth));
+        var fork = this.CanForkTerminalLoop(loop, loop.Body) ? this.ForkChecking(head) : null;
+        var normalMark = this.normalCheckingSeeds.Count;
+        var caughtMark = this.caughtCheckingSeeds.Count;
+        if (fork is not null)
+        {
+            var enter = this.New(OwnershipOperationKind.Branch, loop.Body);
+            this.Connect(head, enter);
+            this.EnterCheckingBranch(enter, fork);
+        }
+
+        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count, output, this.comparisonDepth, fork is not null));
         var mark = this.terminalSeeds.Count;
         this.Block(loop.Body, out var continuation);
         this.RecordTerminalSeed(loop.Body, continuation);
         this.FilterTerminalSeeds(loop, mark);
-        this.Connect(this.current, head, OwnershipEdgeKind.Back);
+        if (fork is null)
+        {
+            this.Connect(this.current, head, OwnershipEdgeKind.Back);
+        }
+        else
+        {
+            // Every normal arrival is an explicit, post-cleanup exit. Return
+            // histories remain pending at their original enclosing extent.
+            this.CollectCaughtChecking(loop, caughtMark);
+            this.JoinNormalChecking(loop, normalMark, exit);
+        }
+
         this.loops.RemoveAt(this.loops.Count - 1);
         this.body.RecordCompletion(head, exit, this.flow!.Nodes[loop].CanCompleteNormally);
         var result = this.CompleteResult(loop, output, exit);
@@ -1231,17 +1274,35 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(test, OwnershipValueKind.Alias, [condition]);
         }
 
+        // A terminal body has no ordinary backedge. Keep its checking histories
+        // separate from zero iterations, including exits caught by this while.
+        var fork = this.CanForkTerminalLoop(loop, loop.Body) ? this.ForkChecking(test) : null;
+        var normalMark = this.normalCheckingSeeds.Count;
+        var caughtMark = this.caughtCheckingSeeds.Count;
         var enter = this.New(OwnershipOperationKind.Branch, loop.Body);
+        var skipped = fork is not null ? this.New(OwnershipOperationKind.Branch, loop) : exit;
         this.Connect(test, enter, OwnershipEdgeKind.True);
-        this.Connect(test, exit, OwnershipEdgeKind.False);
+        this.Connect(test, skipped, OwnershipEdgeKind.False);
 
-        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count, Comparisons: this.comparisonDepth));
-        this.current = enter;
+        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count, Comparisons: this.comparisonDepth, Checking: fork is not null));
+        this.EnterCheckingBranch(enter, fork);
         var seedMark = this.terminalSeeds.Count;
         this.Block(loop.Body, out var bodyContinuation);
         this.RecordTerminalSeed(loop.Body, bodyContinuation);
         this.FilterTerminalSeeds(loop, seedMark);
-        this.Connect(this.current, head, OwnershipEdgeKind.Back);
+        if (fork is null)
+        {
+            this.Connect(this.current, head, OwnershipEdgeKind.Back);
+        }
+        else
+        {
+            this.EnterCheckingBranch(skipped, fork);
+            this.AddCheckingSeed(this.normalCheckingSeeds, this.Continuation());
+            this.Connect(this.current, exit);
+            this.CollectCaughtChecking(loop, caughtMark);
+            this.JoinNormalChecking(loop, normalMark, exit);
+        }
+
         this.loops.RemoveAt(this.loops.Count - 1);
         this.current = exit;
         if (!this.flow!.Nodes[loop.Condition].CanCompleteNormally && continuation >= 0 &&
@@ -1336,6 +1397,12 @@ public sealed partial class OwnershipAnalysis
                     }
                     else
                     {
+                        if (loop.Checking && this.flow.ReachesTarget(jump))
+                        {
+                            this.RecordCaughtChecking(loop.Source);
+                            caughtTarget = loop.Source;
+                        }
+
                         this.ConnectResult(loop.Exit, result);
                     }
 
@@ -1456,7 +1523,7 @@ public sealed partial class OwnershipAnalysis
 
     private readonly record struct Registration(int Place, Koto Source, int Sequence, bool IsSubject = false);
 
-    private readonly record struct LoopFrame(Koto Source, int Head, int Exit, int Locals, int Temporaries, int Result = -1, int Comparisons = 0);
+    private readonly record struct LoopFrame(Koto Source, int Head, int Exit, int Locals, int Temporaries, int Result = -1, int Comparisons = 0, bool Checking = false);
 
     private sealed class Collector : KotoVisitor
     {

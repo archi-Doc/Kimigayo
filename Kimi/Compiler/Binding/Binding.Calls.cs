@@ -177,7 +177,7 @@ public sealed partial class Binding
         if (valuePossible)
         {
             var receiverType = this.BindNode(member.Left, scope);
-            if (receiverType?.Kind == BoundTypeKind.Semantics && IsBorrow(receiverType.Semantics))
+            if (receiverType?.Kind == BoundTypeKind.Semantics && (IsBorrow(receiverType.Semantics) || IsObjectSemantics(receiverType.Semantics)))
             {
                 receiverType = receiverType.Components[0];
             }
@@ -1023,6 +1023,11 @@ public sealed partial class Binding
         }
 
         var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType, lengths);
+        if (ReferenceEquals(function, this.Library.MakeObj.Declaration) && (arguments[0] is not { } payload || !this.HasValueRole(payload, scope, true)))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
         if (declaringType is not null)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);

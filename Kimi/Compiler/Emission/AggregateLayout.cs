@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1402 // Physical aggregate descriptors and their reusable pool.
 
 /// <summary>A syntax-free aggregate representation. Fields remain in logical acquisition/destruction order.</summary>
-internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false)
+internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 }
@@ -23,6 +23,7 @@ internal sealed class AggregateLayoutPool
     private readonly List<AggregateLayout?> children = new();
     private readonly Dictionary<FunctionKoto, int> destructors = new(ReferenceEqualityComparer.Instance);
     private AggregateLayout? functionHandle;
+    private AggregateLayout? objectHandle;
 
     internal void RegisterDestructor(FunctionKoto function, int ordinal) => this.destructors[function] = ordinal;
 
@@ -59,6 +60,17 @@ internal sealed class AggregateLayoutPool
             return this.resolved[type] = this.functionHandle;
         }
 
+        if (ObjectTypes.IsOwner(type))
+        {
+            if (this.objectHandle is null)
+            {
+                this.objectHandle = new(this.pool.Count, new(new("[8 x i8]", 8, 8, 8, ReadOnlyMemory<int>.Empty), "[8 x i8]", "ptr"), [], [], 0, false, true, ObjectHandle: true);
+                this.pool.Add(this.objectHandle);
+            }
+
+            return this.resolved[type] = this.objectHandle;
+        }
+
         var structure = StructStorage.IsStruct(type);
         var sequence = type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice;
         if (depth == 64 || (!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)) ||
@@ -92,7 +104,7 @@ internal sealed class AggregateLayoutPool
 
             foreach (var candidate in this.pool)
             {
-                if (candidate.FunctionHandle || candidate.Cases is not null || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor)
+                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor)
                 {
                     continue;
                 }

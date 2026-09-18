@@ -48,7 +48,8 @@ public sealed partial class Binding
     private BoundType? BindIteration(ForKoto source, BindingScope scope)
     {
         var iterable = this.BindNode(source.Iterable, scope);
-        var element = iterable?.Kind == BoundTypeKind.FixedArray ? iterable.Components[0] : BoundType.ISize;
+        var element = iterable?.Kind == BoundTypeKind.FixedArray ? iterable.Components[0] : iterable?.Kind == BoundTypeKind.Slice
+            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [iterable.Components[0]], origin: iterable.Origin) : BoundType.ISize;
         var result = this.BeginResult(source, scope, BoundType.Unit);
         for (var i = 0; i < source.Bindings.Count; i++)
         {
@@ -58,7 +59,7 @@ public sealed partial class Binding
         }
 
         this.BindNode(source.Body, scope);
-        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray) || source.IsTupleBinding || source.Bindings.Count != 1)
+        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice) || source.IsTupleBinding || source.Bindings.Count != 1)
         {
             return Fail(source, BindingFailure.Unsupported);
         }

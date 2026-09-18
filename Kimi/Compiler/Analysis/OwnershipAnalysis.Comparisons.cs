@@ -15,7 +15,20 @@ public sealed partial class OwnershipAnalysis
             var point = this.current;
             if (point < 0 && this.checkingRegion > 0)
             {
-                point = this.body.CheckingRegions[this.checkingRegion].Seed;
+                var region = this.body.CheckingRegions[this.checkingRegion];
+                var replay = region.Replay;
+                point = region.Seed;
+                if (region.SeedCount > 0)
+                {
+                    var seed = this.body.CheckingSeeds[region.SeedStart];
+                    point = seed.Operation;
+                    replay = seed.Replay;
+                }
+
+                if (replay >= 0)
+                {
+                    point = this.body.CheckingReplays[replay].End;
+                }
             }
 
             return (uint)point < (uint)this.body.LoanStates.Count ? this.body.LoanStates[point] : -1;

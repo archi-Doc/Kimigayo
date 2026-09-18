@@ -40,6 +40,7 @@ public sealed partial class Binding
         this.symbols.Add(this.Library.Replace.Declaration, this.Library.Replace);
         this.symbols.Add(this.Library.Exchange.Declaration, this.Library.Exchange);
         this.symbols.Add(this.Library.Swap.Declaration, this.Library.Swap);
+        this.symbols.Add(this.Library.MakeObj.Declaration, this.Library.MakeObj);
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
@@ -149,11 +150,17 @@ public sealed partial class Binding
             // These declarations use ordinary indexing, schemas, storage and constraints.
             this.Library.Scope.Types.Remove("Option");
             this.Library.Scope.Types.Remove("Result");
+            this.Library.Scope.Types.Remove("Iterator");
+            this.Library.Scope.Types.Remove("Slice");
             this.indexer.Visit(this.Library.Option.Declaration);
             this.indexer.Visit(this.Library.Result.Declaration);
+            this.indexer.Visit(this.Library.Iterator.Declaration);
+            this.indexer.Visit(this.Library.Slice.Declaration);
+            this.indexer.Visit(this.Library.SliceIterator.Declaration);
             this.indexer.Visit(this.Library.Replace.Declaration);
             this.indexer.Visit(this.Library.Exchange.Declaration);
             this.indexer.Visit(this.Library.Swap.Declaration);
+            this.indexer.Visit(this.Library.MakeObj.Declaration);
             this.scopes[this.Library.Console] = this.Library.ConsoleScope;
             this.indexer.Scope = this.Library.ConsoleScope;
             this.indexer.Visit(this.Library.WriteLine.Declaration);
@@ -188,9 +195,13 @@ public sealed partial class Binding
             this.BindNode(this.Library.WriteLine.Declaration, this.scopes[this.Library.WriteLine.Declaration]);
             this.BindNode(this.Library.Option.Declaration, this.Library.Scope);
             this.BindNode(this.Library.Result.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.Iterator.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.Slice.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.SliceIterator.Declaration, this.Library.Scope);
             this.BindNode(this.Library.Replace.Declaration, this.Library.Scope);
             this.BindNode(this.Library.Exchange.Declaration, this.Library.Scope);
             this.BindNode(this.Library.Swap.Declaration, this.Library.Scope);
+            this.BindNode(this.Library.MakeObj.Declaration, this.Library.Scope);
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
             this.ComputeOriginRequirements();

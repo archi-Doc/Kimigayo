@@ -61,7 +61,7 @@ public sealed partial class Binding
         }
 
         var signature = this.BindType(generic.TypeArguments[^1], scope);
-        if (signature?.Kind != BoundTypeKind.Function || HasDeclaredOrigins(signature))
+        if (signature?.Kind != BoundTypeKind.Function || !PerCallSignature(signature))
         {
             return this.InternConstraint(new(ConstraintKind.Error));
         }
@@ -147,14 +147,15 @@ public sealed partial class Binding
             return Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
-        // Public Origin substitution and borrowed callable receivers require their
-        // own retained Loan contracts; do not silently discard those dependencies.
-        if (HasDeclaredOrigins(signature))
+        // This slice supports independent results and fresh direct input Origins.
+        // Fixed external/result dependencies still need the full callable contract.
+        if (!PerCallSignature(signature))
         {
             return Fail(call, BindingFailure.Unsupported);
         }
 
         var operations = this.argumentOperationScratch.Rent(count);
+        var instantiated = this.RentTypes(count);
         try
         {
             for (var i = 0; i < count; i++)
@@ -173,15 +174,27 @@ public sealed partial class Binding
                     return Complete(call, null);
                 }
 
-                if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
-                    !this.CheckTypeUse(adapted, parameter, source))
+                if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind))
+                {
+                    return Fail(call, BindingFailure.NoApplicableCandidate);
+                }
+
+                if (parameter.Origin is { Kind: OriginKind.Input } && adapted.Origin is { } argumentOrigin)
+                {
+                    parameter = this.WithOrigins(parameter, argumentOrigin, (BoundOrigin[])parameter.OriginArguments);
+                }
+
+                if (!this.CheckTypeUse(adapted, parameter, source))
                 {
                     return Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
                 operations[i] = new(source, actual, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i);
+                instantiated[i] = parameter;
             }
 
+            var inputs = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, instantiated.AsSpan(0, count));
+            signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, signature.Components[1]]);
             call.ValueCallStorage ??= new();
             call.ValueCallStorage.Set(call.Method, signature, operations.AsSpan(0, count));
             call.ValueCallStorage.ReceiverKind = receiver;
@@ -191,6 +204,7 @@ public sealed partial class Binding
         finally
         {
             this.argumentOperationScratch.Return(operations, clearArray: true);
+            this.typeScratch.Return(instantiated, clearArray: true);
         }
     }
 }

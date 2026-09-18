@@ -1,0 +1,42 @@
+// Milestone 15: initialization, Move, and Loan joins across loop backedges.
+struct Item
+    public var value: i32
+    public init(value: i32) => self.value = value
+    deinit => ::Kimi.Console.writeLine("Item destroyed.")
+
+func consume(item: Item, expected: i32)
+    require item.value == expected else => $abort("Unexpected consumed value")
+
+func run(useFirst: bool)
+    var current: Item
+    if useFirst
+        current = Item.init(10)
+    else
+        current = Item.init(12)
+    let initial = current.value // Both incoming paths initialized current.
+    let fallback = Item.init(30)
+    var step: i32 = 0
+    var total: i32 = 0
+    while step < 3
+        step = step + 1
+        defer => ::Kimi.Console.writeLine("Iteration finished.")
+        if step == 2
+            consume(current, initial + 1)
+            current = Item.init(20) // Repair before the continue backedge.
+            continue
+        do
+            let selected: ref/Item = if step == 1
+                yield current@ref
+            else => fallback@ref
+            total = total + selected.value
+        // Neither incoming Loan remains needed after selected's last use.
+        current.value = current.value + 1
+    require total == initial + 30 else => $abort("Unexpected joined total")
+    require current.value == 21 else => $abort("Loop repair failed")
+    ::Kimi.Console.writeLine("Flow checked.")
+    // Reverse local order destroys fallback, then the repaired current.
+
+public func main()
+    run(true)
+    run(false)
+    ::Kimi.Console.writeLine("Ownership joins finished.")

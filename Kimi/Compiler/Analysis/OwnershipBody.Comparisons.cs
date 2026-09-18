@@ -213,14 +213,15 @@ public sealed partial class OwnershipBody
 
         foreach (var region in this.CheckingRegions)
         {
-            if (region.Seed >= 0 && region.Entry >= 0 && this.LoanStates[region.Seed] != this.LoanInputs[region.Entry])
+            if (region.Seed >= 0 && region.Entry >= 0 && region.SeedCount == 0 && !this.CheckingSeedLoansMatch(region.Seed, region.Replay, region.Entry))
             {
                 return false;
             }
 
             for (var i = 0; region.Entry >= 0 && i < region.SeedCount; i++)
             {
-                if (this.LoanStates[this.CheckingSeeds[region.SeedStart + i].Operation] != this.LoanInputs[region.Entry])
+                var seed = this.CheckingSeeds[region.SeedStart + i];
+                if (!this.CheckingSeedLoansMatch(seed.Operation, seed.Replay, region.Entry))
                 {
                     return false;
                 }
@@ -228,6 +229,20 @@ public sealed partial class OwnershipBody
         }
 
         return true;
+    }
+
+    private bool CheckingSeedLoansMatch(int operation, int replay, int entry)
+    {
+        if (replay < -1 || replay >= this.CheckingReplays.Count)
+        {
+            return false;
+        }
+
+        // Replay includes guard cleanup. The original seed can still carry a
+        // protection that was ended before this checking-only arrival.
+        var end = replay < 0 ? operation : this.CheckingReplays[replay].End;
+        return (uint)end < (uint)this.LoanStates.Count && (uint)entry < (uint)this.LoanInputs.Count &&
+            this.LoanStates[end] == this.LoanInputs[entry];
     }
 
     private bool ValidCallableLoan(int index)

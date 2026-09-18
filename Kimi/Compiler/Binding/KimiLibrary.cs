@@ -25,6 +25,7 @@ public enum CompilerFunctionKind : byte
     Replace,
     Exchange,
     Swap,
+    MakeObj,
 }
 
 /// <summary>The compiler-owned Kimi identities. This is not the complete runtime Kimi library.</summary>
@@ -49,7 +50,7 @@ public sealed class KimiLibrary
         new(KimiDeclarationId.Comparable, "Comparable", null, KimiDeclarationState.Missing),
         new(KimiDeclarationId.Iterator, "Iterator", null, KimiDeclarationState.Missing),
         new(KimiDeclarationId.Iterable, "Iterable", null, KimiDeclarationState.Missing),
-        // The specification defers the public spellings of this operation family.
+        // The broader object-ownership family is incomplete; makeObj is tracked separately.
         new(KimiDeclarationId.ObjectOwnership, string.Empty, null, KimiDeclarationState.Missing),
         new(KimiDeclarationId.Sealed, "Sealed", null, KimiDeclarationState.Missing),
         new(KimiDeclarationId.Replace, "replace", null, KimiDeclarationState.Missing),
@@ -90,6 +91,30 @@ public sealed class KimiLibrary
             this.declarations[id] = this.declarations[id] with { Symbol = symbol };
         }
 
+        this.ParseDeclarations("public func makeObj<T>(value: T) -> obj/T");
+        var makeObj = (FunctionKoto)this.Kotonoha.RootKoto.Members[3];
+        this.MakeObj = new(makeObj.Name, BindingSymbolKind.Function, makeObj, this.Scope) { CompilerFunction = CompilerFunctionKind.MakeObj };
+        this.ParseDeclarations("public contract Iterator\n    associate Element\n    func next(self: uniq/Self) -> Option<Self.Element>");
+        this.declarations[(int)KimiDeclarationId.Iterator] = this.declarations[(int)KimiDeclarationId.Iterator] with { Symbol = this.Create(7, IntrinsicKind.None) };
+        this.ParseDeclarations("""
+            public struct Slice<T> origin source
+                public func iterate(self: Self) -> SliceIterator<T> from source
+                    return SliceIterator<T>.init(self)
+            public struct SliceIterator<T> origin source
+                Self is Iterator
+                associate Iterator.Element is ref/T from source
+                let values: Slice<T> from source
+                var position: isize = 0
+                public init(values: Slice<T> from source)
+                    self.values = values
+                public func next(self: uniq/Self) -> Option<ref/T from source>
+                    require self.position < self.values.length else => return .None
+                    let index = self.position
+                    self.position = self.position + 1
+                    return .Some(self.values[index]@ref/T)
+            """);
+        this.declarations[(int)KimiDeclarationId.Slice] = this.declarations[(int)KimiDeclarationId.Slice] with { Symbol = this.Create(8, IntrinsicKind.None) };
+        this.SliceIterator = this.Create(9, IntrinsicKind.None);
         this.Restore();
     }
 
@@ -127,6 +152,17 @@ public sealed class KimiLibrary
 
     public BindingSymbol Result => this.declarations[(int)KimiDeclarationId.Result].Symbol!;
 
+    /// <summary>Gets the recognized static Iterator declaration.</summary>
+    public BindingSymbol Iterator => this.declarations[(int)KimiDeclarationId.Iterator].Symbol!;
+
+    /// <summary>Gets the recognized borrowed Slice Type declaration.</summary>
+    public BindingSymbol Slice => this.declarations[(int)KimiDeclarationId.Slice].Symbol!;
+
+    /// <summary>Gets the implemented concrete object factory, independently of the incomplete ownership family.</summary>
+    public BindingSymbol MakeObj { get; }
+
+    internal BindingSymbol SliceIterator { get; }
+
     internal BindingScope Scope { get; }
 
     internal GroupKoto Console { get; }
@@ -142,8 +178,8 @@ public sealed class KimiLibrary
     {
         get
         {
-            var valid = this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 7 &&
-                this.Kotonoha.RootKoto.Members.Count == 3 &&
+            var valid = this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 10 &&
+                this.Kotonoha.RootKoto.Members.Count == 4 && this.ValidMakeObj() &&
                 ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[5], this.Console) &&
                 this.Console is { Name: "Console", Modifier: ModifierKind.Public, AttributeChain: null, HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Members.Count: 1 } &&
                 ReferenceEquals(this.Console.Parent, this.Kotonoha.RootKoto) &&
@@ -160,6 +196,8 @@ public sealed class KimiLibrary
                         KimiDeclarationId.Sealed => this.Valid(symbol, 6),
                         KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap => this.ValidUpdate(symbol, entry.Id),
                         KimiDeclarationId.WriteLine => this.ValidWriteLine(),
+                        KimiDeclarationId.Iterator => this.ValidIterator(symbol),
+                        KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         _ => this.ValidEnum(symbol, entry.Id),
                     };
                     state = matches ? KimiDeclarationState.Validated : KimiDeclarationState.Invalid;
@@ -193,6 +231,19 @@ public sealed class KimiLibrary
         this.Kotonoha.RootKoto.BoundSymbol = this.Module;
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }
+
+    private static Koto? BareType(Koto? node)
+    {
+        while (node is TypeSemanticsKoto { Type: not null, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null } type)
+        {
+            node = type.Type;
+        }
+
+        return node;
+    }
+
+    private static bool BareName(Koto? node, string name) => BareType(node) is IdentifierNameKoto identifier ? identifier.IdentifierName == name :
+        BareType(node) is TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null } type && type.Identifier == name;
 
     private BindingSymbol Create(int index, IntrinsicKind kind)
     {
@@ -371,6 +422,34 @@ public sealed class KimiLibrary
             ExternalName: "text", InternalName: "text", IsOptional: false, DefaultValue: null, AttributeChain: null,
             Type: TypeSemanticsKoto { Type: null, Identifier: "string", SemanticsKind: SemanticsKind.Owner, OriginExpression: null, OriginName: null, OriginArguments: null },
         };
+
+    private bool ValidIterator(BindingSymbol symbol)
+        => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
+        this.Kotonoha.RootKoto.NestedContainers.Count > 7 &&
+        ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[7], symbol.Declaration) &&
+        symbol.Declaration is ContractKoto { Name: "Iterator", HasIncompatibleBindingHeader: false, Members.Count: 2, ConstraintNodes.Count: 0, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
+        declaration.Members[0] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1, AttributeChain: null } associated &&
+        associated.Operands[0] is IdentifierNameKoto { IdentifierName: "Element" } &&
+        declaration.Members[1] is FunctionKoto { Name: "next", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function &&
+        function.Parameters[0] is { InternalName: "self", ExternalName: "self", IsOptional: false, DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: TypeSemanticsKoto { Identifier: "Self", Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null } } } &&
+        BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") &&
+        BareType(option.TypeArguments[0]) is MemberAccessKoto element && BareName(element.Left, "Self") && BareName(element.Right, "Element");
+
+    private bool ValidSlice(BindingSymbol symbol)
+        => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) && this.Kotonoha.RootKoto.NestedContainers.Count > 8 &&
+        ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[8], symbol.Declaration) &&
+        symbol.Declaration is StructKoto { Name: "Slice", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 1, Members.Count: 1, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } slice &&
+        ReferenceEquals(slice.Parent, this.Kotonoha.RootKoto) && slice.OriginNames[0] == "source" &&
+        slice.GenericParameterNodes[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null };
+
+    private bool ValidMakeObj()
+        => this.MakeObj.CompilerFunction == CompilerFunctionKind.MakeObj && ReferenceEquals(this.MakeObj.Scope, this.Scope) &&
+        ReferenceEquals(this.Kotonoha.RootKoto.Members[3], this.MakeObj.Declaration) &&
+        this.MakeObj.Declaration is FunctionKoto { Name: "makeObj", Modifier: ModifierKind.Public, AttributeChain: null, GenericArguments.Count: 1, Parameters.Count: 1, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false } f &&
+        f.GenericArguments[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
+        f.Parameters[0] is { InternalName: "value", ExternalName: "value", IsOptional: false, DefaultValue: null, AttributeChain: null } p &&
+        BareName(p.Type, "T") && f.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: { } inner } && BareName(inner, "T");
 
     private bool Valid(BindingSymbol symbol, int index)
         => index < this.Kotonoha.RootKoto.NestedContainers.Count && ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[index], symbol.Declaration) &&

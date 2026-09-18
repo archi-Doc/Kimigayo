@@ -51,13 +51,12 @@ public class CompletingLoopContinuationTest
 
     [Theory]
     [InlineData("\n            while c => return")]
-    public void MixedTargetPropagationRemainsGuarded(string dead)
+    public void TerminalWhileBodyPreservesMixedTargetPropagation(string dead)
     {
         var loop = "loop\n            if c\n                x = 1\n                return\n            else => exit" + dead;
         var c = MinimalEmissionTest.Analyze(Source("var x: i32", loop, "x = 2", "let y = x"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
