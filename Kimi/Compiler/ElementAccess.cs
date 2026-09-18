@@ -86,6 +86,21 @@ internal static class ElementAccess
             SyntaxFormKoto { Akind: KotoKind.BindingPattern, IsMutablePattern: true } ? root : null;
     }
 
+    internal static bool TryBorrowedTupleElement(BinaryKoto source, out BoundType? element, out int position)
+    {
+        element = null;
+        position = -1;
+        if (ReferenceTypes.IsTuple(source.Left.BoundType) && source is MemberAccessKoto { Right: NumberLiteralKoto number } &&
+            number.IsInteger && number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)source.Left.BoundType!.Components[0].Components.Count)
+        {
+            position = (int)magnitude;
+            element = source.Left.BoundType.Components[0].Components[position];
+            return true;
+        }
+
+        return false;
+    }
+
     internal static bool TryType(BinaryKoto source, out BoundType? element, out int position)
     {
         element = null;

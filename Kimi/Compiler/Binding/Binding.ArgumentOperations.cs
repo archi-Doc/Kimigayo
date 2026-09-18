@@ -77,6 +77,12 @@ public sealed partial class Binding
             return !exclusive;
         }
 
+        if (source is MemberAccessKoto element && ReferenceTypes.IsTuple(element.Left.BoundType))
+        {
+            return ElementAccess.TryBorrowedTupleElement(element, out _, out _) &&
+                (!exclusive || element.Left.BoundType!.Semantics == SemanticsKind.Uniq);
+        }
+
         if (source.BoundSymbol?.Property is { } property)
         {
             if (!property.Getter.IsStandard || !this.Accessible(property.Symbol, scope, property.Getter.Access, (source as MemberAccessKoto)?.Left.BoundType))
@@ -146,6 +152,7 @@ public sealed partial class Binding
         }
         else if (actual.Semantics == SemanticsKind.Owner && (this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) ||
             ((source.BoundSymbol is null || KotoHelper.UnwrapParentheses(source) is InvocationKoto) &&
+                !(KotoHelper.UnwrapParentheses(source) is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
                 KotoHelper.UnwrapParentheses(source) is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never))))
         {
             referent = actual;

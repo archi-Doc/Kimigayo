@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The active request is to integrate the finalized Documentation Comments design into the normative specification and implement its optional compiler/tooling path. Preserve ordinary compilation semantics and allocation behavior. NativeAOT and draft edits remain excluded.
+The active request is timed general compiler implementation across unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. Milestone Programs are regression inputs, not implementation targets unless separately requested. Checkpoint-specific target restrictions are superseded. NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,7 +31,7 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current request: **Documentation Comments — DONE**. The adopted 2026-09-17 design takes precedence. [Verification and limits](PLAN_HISTORY.md#documentation-comments-integration).
+Last execution: **General compiler implementation — timed checkpoint**. The 60-minute execution started 2026-09-18 14:27:15 UTC and ended after completing verification/documentation of its final unit. T4r, T6a, T6b and T6c are DONE for their bounded criteria; the compiler Milestones remain incomplete. Resume with the next action below using a fresh repository inspection and execution start time. Documentation Comments retain their completed checkpoint and the adopted design's precedence. [Execution evidence and elapsed time](PLAN_HISTORY.md#general-compiler-20260918-142715).
 
 | ID | State | Acceptance / exact next action |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ bounded prior completion; no product M/I family is closed by this program checkp
 
 KI-S/KI-I/KI-V are complete; their evidence is retained in the linked history. Remaining ownership APIs retain their existing I24/I25 implementation scope.
 
-P15-B/O/G/V remain complete; their scope and evidence are in [history](PLAN_HISTORY.md#program15-completion). No program 16 feature is authorized by this request. General product M3/I6 and M15 obligations stay open. No documentation-integration action remains; broader milestones and new documentation CLI/LSP/Mod interfaces require a separate request.
+P15-B/O/G/V remain complete; their scope and evidence are in [history](PLAN_HISTORY.md#program15-completion). General unfinished M/I items are authorized by the current request. Milestone Program implementation and unspecified documentation CLI/LSP/Mod interfaces remain excluded.
 
 ### Current milestone states
 
@@ -78,9 +78,9 @@ M4/M5/M7 are reconciled from stale TODO labels to IN_PROGRESS because recorded c
 | I1 | M1 / R1–R28 | DONE | Historical baseline; [V1–V5 record](PLAN_HISTORY.md#units-1-32), original logs absent. |
 | I2 | M1 / R1–R28 | DONE | Historical Appendix A.1–A.17 mapping; [I2 record](PLAN_HISTORY.md#appendix-a-baseline). Extend clause audit for adopted A.18–A.20 under I33. |
 | I3 | M2 / R1–R3, R27 | IN_PROGRESS | Historical T1a, T3a, T5a/G9, T27a/T27b and T7a slices exist; T4n-ax adds logical Never fitting. Final clause/regression closure remains; the historical 250-block parse/SpecTour audit (SpecTour since removed) is not a current whole-spec certificate. |
-| I4 | M2 / R4 | IN_PROGRESS | Selected omitted-default plans and independent scalar/Unit declarations execute; T4o–q add match guards/bindings and Copy scalar-tuple intermediate storage. Exact prepared-slot validation is retained. General inference/calls, recursive defaults, owned/borrowed defaults and pending-slot cleanup remain. |
+| I4 | M2 / R4 | IN_PROGRESS | Selected omitted-default plans and independent scalar/Unit declarations execute; T4o–q add guarded/Copy-tuple defaults. T4r verifies candidate-local tuple/array literals, nested structural Type/length/Origin evidence, preserved ambiguity and shared temporary acquisition. Exact prepared-slot validation is retained. General contextual nested calls, recursive defaults, owned/borrowed defaults and pending-slot cleanup remain. |
 | I5 | M2 / R5, R19 | IN_PROGRESS | T5a/G9 resolved; 12/22 Kimi declarations validated, including Iterator and Slice identities; this does not certify their entire APIs. Remaining Contract/projection/certificates, bound associated/refinement composition and canonical library identities remain. |
-| I6 | M3 / R6–R7 | IN_PROGRESS | T4n-at–ax add bounded terminal/Abort/divergent guards and finite enum/owned-string mixed histories, ending abandoned protection at replay endpoints. Their regression gates pass; general backedges/continue, unequal Loan joins, deferred cleanup, effectful divergence and general Origins remain. |
+| I6 | M3 / R6–R7 | IN_PROGRESS | T4n-at–ax add bounded terminal/Abort/divergent guards and finite enum/owned-string mixed histories, ending abandoned protection at replay endpoints. T4r/T6a/T6b add tuple borrow lifetime roots, concrete scalar-field updates and stored aggregate projections with immutable-local ancestry. Their regression gates pass; general backedges/continue, unequal Loan joins, deferred cleanup, effectful divergence and general Origins remain. |
 | I7 | M3 / R7, R20 | TODO | Compute effect-family fixed points/public guarantees and dependent use checks. ObjectCallCompatible stages 2/3 remain deferred by SPEC.md; other settled effect work remains in scope. |
 | I8 | M3 / R8–R9, R27 | IN_PROGRESS | Bounded defaults retain the historical guarded-pattern/Copy-tuple scope. New terminal match guards preserve abandoned protection and selected binding lifetimes. General escaping-Borrow/capture/Copy proofs, owned defaults, refinement and effectful/deferred joins remain. |
 | I9 | M4 / R10 | IN_PROGRESS | Concrete construction/destruction, synthesized construction and borrowed receiver subset exist; complete inherited/base-layer layout, construction, destruction and receiver support. |
@@ -130,11 +130,17 @@ Programs 12–14 retain their recorded target completion; §2 separates the curr
 
 ### Current next action
 
-Resumption audit DONE: the stale restructuring next action is corrected and saved P15 evidence matches the current checkout. Rechecked at 2026-09-18 13:31 UTC; no implementation unit is open. [Audit record](PLAN_HISTORY.md#program15-resumption-audit).
+T4r (M2/I4 with M3/I6 borrowed-tuple reads) DONE for its bounded criteria: warning-free Debug/Release builds, 8,845 managed tests per configuration and 60 fresh regression fixtures / 120 O0/O2 executions. Shared/unique tuple scalar reads, caller temporaries, expression-end lifetime rejection, nested Origin evidence and one-time owned cleanup are verified. Broader M2/M3 criteria remain open. [Evidence](PLAN_HISTORY.md#general-compiler-20260918-142715).
 
-P15-B/O/G/V are complete. Await selection of the next implementation/source target; the current scope stops at program 15. Programs 16–21 and the remaining general I-family obligations are not authorized by this checkpoint. Authoring scopes for 22–38 are ready in the README. NativeAOT remains excluded.
+T6a (M3/I6/I8) DONE for concrete scalar borrowed-field updates: exclusive tuple assignment and tuple/struct numeric compound and integer prefix/postfix updates preserve evaluation order, RHS protection, checked arithmetic and transfer/Abort. Debug/Release each pass 8,866 tests; 103 fresh fixtures pass 206 O0/O2 executions. General shared generic bodies and returned-exclusive ancestry through a still-live borrowed parent remain incomplete. [Evidence](PLAN_HISTORY.md#general-compiler-20260918-142715).
 
-P14-L1 (nonblocking, deferred to the relevant I families): the shared match path covers flat Copy enum Cases with binding/wildcard payloads and no guards. General symbolic `Option<T>` payload matching and a shared all-terminal match with a Never result remain unsupported; concrete factory calls work, but makeObj inside a generic body is not lowered. Borrowed receiver-field compound assignment remains unsupported. These findings do not justify simplifying target programs or weakening the specification. Full object views, rc/arc/Weak, general capture/erasure and deferred ObjectCallCompatible stages remain outside this request.
+T6b (M3/I6/I8) DONE for stored aggregate projections through borrowed tuples and single-initialization immutable reference-local ancestry. Shared/exclusive permissions, parent lifetime, last use, returned shared projections and no implicit aggregate Moves are verified. Debug/Release each pass 8,882 tests; 45 fresh fixtures pass 90 O0/O2 runs. Warm ownership/emission adds zero allocated bytes. General disjoint projection paths and call-return ancestry remain incomplete.
+
+T6c (M3/I6) DONE: explicit reborrowing of a shared reference stored in a borrowed tuple reads the reference instead of borrowing its slot. The original Origin is retained, including use after the wrapper ends; shared-to-exclusive escalation and use after referent replacement reject. Final warning-free Debug/Release builds each pass all 8,886 managed tests with no skips. Forty-seven fresh fixtures pass 94 O0/O2 runs; Debug/Release fixture bytes match and final source/artifact hashes are unchanged. Evidence root: `bin/plan-execution/20260918-142715`.
+
+Next unit T6d (M3/I6) TODO: reproduce the remaining returned-exclusive ancestry rejection with `relay(p).value += 1` followed by another use of `p`, where `relay(p: uniq/Counter) -> uniq/Counter from p` returns its input. Trace the public result-Origin contract to the actual acquired argument value across CallEntry/Call; do not grant permission from equal Origin names alone. Preserve rejection of overlapping sibling/child Loans, escaped temporaries and shared escalation. Add focused managed/native coverage, then relevant regressions. General contextual nested calls/defaults, shared generic updates, disjoint borrowed projection paths and wider M/I criteria remain open; independent executable items remain authorized if this item is blocked.
+
+P14-L1 (nonblocking, assigned to the relevant I families): the shared match path covers flat Copy enum Cases with binding/wildcard payloads and no guards. General symbolic `Option<T>` payload matching and a shared all-terminal match with a Never result remain unsupported; concrete factory calls work, but makeObj inside a generic body is not lowered. T6a closes concrete borrowed scalar-field updates; shared generic receiver-field updates remain incomplete. These findings do not justify simplifying target programs or weakening the specification. Full object views, rc/arc/Weak and general capture/erasure remain unfinished compiler work; ObjectCallCompatible stages remain explicitly deferred by the specification.
 
 <a id="exact-next-unit-t4n-am--unit-52-todo"></a>
 Unit 52's [preserved criteria](PLAN_HISTORY.md#program12-baseline) are closed for its bounded scope by the preceding verification audit. The previous implementation-only deferrals remain historical records.

@@ -160,6 +160,13 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            KotoHelper.UnwrapParentheses(unary.Operand) is MemberAccessKoto field &&
+            (ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType)))
+        {
+            return this.UpdateBorrowedField(unary, field);
+        }
+
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
             KotoHelper.UnwrapParentheses(unary.Operand) is BinaryKoto element && ElementAccess.IsSyntax(element) && !this.SpecialField(element))
         {
             return this.UpdateElement(unary, element);

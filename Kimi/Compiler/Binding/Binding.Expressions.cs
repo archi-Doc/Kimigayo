@@ -18,6 +18,11 @@ public sealed partial class Binding
             return false;
         }
 
+        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType))
+        {
+            return tupleElement.Left.BoundType!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
+        }
+
         if (node.BoundSymbol is { Kind: BindingSymbolKind.Storage, Scope.Owner: PropertyAccessorKoto syntax })
         {
             var accessor = Accessor(syntax);

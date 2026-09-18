@@ -6,12 +6,42 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private static bool IsArrayArgument(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is ArrayLiteralKoto;
+    private static bool IsAggregateArgument(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is ArrayLiteralKoto or TupleLiteralKoto { Elements.Count: > 0 };
 
-    private bool InferArrayCall(BoundType pattern, Koto source, FunctionKoto function, BoundType?[] types, BoundLength?[] lengths, bool fitLiterals)
+    private bool InferAggregateCall(BoundType pattern, Koto source, FunctionKoto function, BoundType?[] types, BoundLength?[] lengths, BoundOrigin[] origins, BoundOrigin[] inputs, bool fitLiterals)
     {
         source = KotoHelper.UnwrapParentheses(source);
+        if (pattern.Kind == BoundTypeKind.Parameter)
+        {
+            if (this.SubstituteType(pattern, function, types, lengths) is { } fixedType)
+            {
+                pattern = fixedType;
+            }
+            else if (this.IndependentAggregateType(source, fitLiterals) is { } inferred)
+            {
+                return this.Infer(pattern, inferred, function, types, lengths: lengths);
+            }
+        }
+
+        if (source is TupleLiteralKoto tuple)
+        {
+            if (pattern.Kind != BoundTypeKind.Tuple || pattern.Components.Count != tuple.Elements.Count)
+            {
+                return true; // Probing reports a shape mismatch once the target is fixed.
+            }
+
+            for (var i = 0; i < tuple.Elements.Count; i++)
+            {
+                if (!this.InferAggregateCall(pattern.Components[i], tuple.Elements[i], function, types, lengths, origins, inputs, fitLiterals))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         if (source is ArrayLiteralKoto array)
         {
             if (pattern.Kind != BoundTypeKind.FixedArray)
@@ -32,7 +62,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < array.Elements.Count; i++)
             {
-                if (!this.InferArrayCall(pattern.Components[0], array.Elements[i], function, types, lengths, fitLiterals))
+                if (!this.InferAggregateCall(pattern.Components[0], array.Elements[i], function, types, lengths, origins, inputs, fitLiterals))
                 {
                     return false;
                 }
@@ -43,7 +73,9 @@ public sealed partial class Binding
 
         if (source.BoundType is { } actual)
         {
-            return this.Infer(pattern, actual, function, types, lengths: lengths);
+            this.MatchInputOrigins(pattern, actual, function, origins, inputs);
+            pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, function.Parameters.Count)));
+            return this.Infer(pattern, actual, function, types, true, lengths);
         }
 
         if (!fitLiterals || this.SubstituteType(pattern, function, types, lengths) is not null)
@@ -55,7 +87,44 @@ public sealed partial class Binding
         return literal is null || this.Infer(pattern, literal.IsInteger ? BoundType.I32 : BoundType.F64, function, types, lengths: lengths);
     }
 
-    private bool PrepareArrayArgument(Koto source, BindingScope scope)
+    // Obtain a tuple's independent Type without committing candidate-local
+    // numeric defaults to the syntax. Array literals still require a shape.
+    private BoundType? IndependentAggregateType(Koto source, bool fitLiterals)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        if (source.BoundType is { } actual)
+        {
+            return actual;
+        }
+
+        if (source is TupleLiteralKoto tuple)
+        {
+            var elements = this.RentTypes(tuple.Elements.Count);
+            try
+            {
+                for (var i = 0; i < tuple.Elements.Count; i++)
+                {
+                    if (this.IndependentAggregateType(tuple.Elements[i], fitLiterals) is not { } element)
+                    {
+                        return null;
+                    }
+
+                    elements[i] = element;
+                }
+
+                return this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements.AsSpan(0, tuple.Elements.Count));
+            }
+            finally
+            {
+                this.typeScratch.Return(elements, clearArray: true);
+            }
+        }
+
+        var literal = source is NumberLiteralKoto number ? number : source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : null;
+        return fitLiterals && literal is not null ? DefaultLiteralType(literal, null) : null;
+    }
+
+    private bool PrepareAggregateArgument(Koto source, BindingScope scope)
     {
         source = KotoHelper.UnwrapParentheses(source);
         var elements = source switch
@@ -72,7 +141,7 @@ public sealed partial class Binding
         var valid = true;
         for (var i = 0; i < elements.Count; i++)
         {
-            valid &= this.PrepareArrayArgument(elements[i], scope);
+            valid &= this.PrepareAggregateArgument(elements[i], scope);
         }
 
         return valid;
@@ -80,7 +149,7 @@ public sealed partial class Binding
 
     // Read-only candidate probing: bind only the winning literal's aggregate shape.
     // General element expressions already have independent Types and cannot be retried.
-    private CandidateApplicability ProbeArrayArgument(Koto source, BoundType expected, BindingScope scope)
+    private CandidateApplicability ProbeAggregateArgument(Koto source, BoundType expected, BindingScope scope)
     {
         source = KotoHelper.UnwrapParentheses(source);
         if (source is ArrayLiteralKoto array)
@@ -92,7 +161,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < array.Elements.Count; i++)
             {
-                var result = this.ProbeArrayArgument(array.Elements[i], expected.Components[0], scope);
+                var result = this.ProbeAggregateArgument(array.Elements[i], expected.Components[0], scope);
                 if (result != CandidateApplicability.Applicable)
                 {
                     return result;
@@ -111,7 +180,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
-                var result = this.ProbeArrayArgument(tuple.Elements[i], expected.Components[i], scope);
+                var result = this.ProbeAggregateArgument(tuple.Elements[i], expected.Components[i], scope);
                 if (result != CandidateApplicability.Applicable)
                 {
                     return result;

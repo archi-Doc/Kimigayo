@@ -540,42 +540,42 @@ public sealed partial class Binding
     {
         if (pattern.Origin is { } p && actual.Origin is { } a)
         {
-            Match(p, a);
+            this.MatchInputOrigin(p, a, binder, origins, inputs);
         }
 
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
-            Match(pattern.OriginArguments[i], actual.OriginArguments[i]);
+            this.MatchInputOrigin(pattern.OriginArguments[i], actual.OriginArguments[i], binder, origins, inputs);
         }
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
             this.MatchInputOrigins(pattern.Components[i], actual.Components[i], binder, origins, inputs);
         }
+    }
 
-        void Match(BoundOrigin pattern, BoundOrigin actual)
+    private void MatchInputOrigin(BoundOrigin pattern, BoundOrigin actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    {
+        if (pattern.Kind == OriginKind.Intersection)
         {
-            if (pattern.Kind == OriginKind.Intersection)
+            for (var i = 0; i < pattern.Operands.Count; i++)
             {
-                for (var i = 0; i < pattern.Operands.Count; i++)
-                {
-                    Match(pattern.Operands[i], actual);
-                }
+                this.MatchInputOrigin(pattern.Operands[i], actual, binder, origins, inputs);
             }
-            else if (ReferenceEquals(pattern.Binder, binder) && pattern.Kind is OriginKind.Parameter or OriginKind.Input)
+        }
+        else if (ReferenceEquals(pattern.Binder, binder) && pattern.Kind is OriginKind.Parameter or OriginKind.Input)
+        {
+            var target = pattern.Kind == OriginKind.Parameter ? origins : inputs;
+            target[pattern.Slot] = target[pattern.Slot] is { } previous ? this.Meet(previous, actual) : actual;
+        }
+        else if (pattern.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto && binder.BoundSymbol?.Schema is { } schema)
+        {
+            for (var i = 0; i < schema.Origins.Count && i < origins.Length; i++)
             {
-                var target = pattern.Kind == OriginKind.Parameter ? origins : inputs;
-                target[pattern.Slot] = target[pattern.Slot] is { } previous ? this.Meet(previous, actual) : actual;
-            }
-            else if (pattern.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto && binder.BoundSymbol?.Schema is { } schema)
-            {
-                for (var i = 0; i < schema.Origins.Count && i < origins.Length; i++)
+                if (ReferenceEquals(schema.Origins[i].Origin, pattern))
                 {
-                    if (ReferenceEquals(schema.Origins[i].Origin, pattern))
-                    {
-                        origins[i] = origins[i] is { } previous ? this.Meet(previous, actual) : actual;
-                        break;
-                    }
+                    origins[i] = origins[i] is { } previous ? this.Meet(previous, actual) : actual;
+                    break;
                 }
             }
         }

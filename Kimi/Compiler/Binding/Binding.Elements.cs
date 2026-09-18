@@ -51,6 +51,11 @@ public sealed partial class Binding
         {
             // A tuple selector is syntax, not a separately evaluated integer operand.
             Complete(source.Right, BoundType.ISize);
+            if (ReferenceTypes.IsTuple(receiver))
+            {
+                return ElementAccess.TryBorrowedTupleElement(source, out var borrowedElement, out _)
+                    ? Complete(source, borrowedElement) : Fail(source, BindingFailure.TypeMismatch);
+            }
         }
 
         if (ReferenceEquals(receiver, BoundType.Never) || ReferenceEquals(source.Right.BoundType, BoundType.Never))

@@ -319,9 +319,9 @@ public sealed partial class Binding
                 continue; // A common-function argument supplies its fixed signature after selection.
             }
 
-            if (IsArrayArgument(argument))
+            if (IsAggregateArgument(argument))
             {
-                unknownArgument |= !this.PrepareArrayArgument(argument, scope);
+                unknownArgument |= !this.PrepareAggregateArgument(argument, scope);
                 continue;
             }
 
@@ -562,7 +562,7 @@ public sealed partial class Binding
             {
                 if (call.ArgumentNodes[i].BoundType is null)
                 {
-                    this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].ParameterType);
+                    this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].SourceType ?? selectedOperations[i].ParameterType);
                     if (call.ArgumentNodes[i].BindingState != BindingState.Resolved)
                     {
                         return Complete(call, null);
@@ -842,7 +842,7 @@ public sealed partial class Binding
 
             used[slot] = true;
             mapping[i] = slot;
-            contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]) || IsArrayArgument(call.ArgumentNodes[i]);
+            contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]) || IsAggregateArgument(call.ArgumentNodes[i]);
             var type = function.Parameters[slot].Type.BoundType;
             if (type is null)
             {
@@ -868,27 +868,20 @@ public sealed partial class Binding
             defaultsUsed += used[i] ? 0 : 1;
         }
 
+        if (contextualInputs && !InferAggregateInputs(false))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
         // Established input types cannot change; expectations only fill unresolved slots.
         if (expected is not null && function.BoundSymbol?.Type is { } returnPattern)
         {
             this.Infer(this.MemberType(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), declaringType)!, expected, function, arguments, lengths: lengths);
         }
 
-        if (contextualInputs)
+        if (contextualInputs && !InferAggregateInputs(true))
         {
-            // Read established literal element Types first, then fit still-untyped
-            // numbers. Neither pass commits a candidate's aggregate Type to syntax.
-            for (var pass = 0; pass < 2; pass++)
-            {
-                for (var i = 0; i < call.ArgumentNodes.Count; i++)
-                {
-                    if (IsArrayArgument(call.ArgumentNodes[i]) &&
-                        !this.InferArrayCall(function.Parameters[mapping[i]].Type.BoundType!, call.ArgumentNodes[i], function, arguments, lengths, pass != 0))
-                    {
-                        return CandidateApplicability.Inapplicable;
-                    }
-                }
-            }
+            return CandidateApplicability.Inapplicable;
         }
 
         if (receiverSlot >= 0)
@@ -912,7 +905,7 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
-                if (contextualInputs && (NeedsEnumContext(argument) || IsArrayArgument(argument)) != (pass == 1))
+                if (contextualInputs && (NeedsEnumContext(argument) || IsAggregateArgument(argument)) != (pass == 1))
                 {
                     continue;
                 }
@@ -939,15 +932,23 @@ public sealed partial class Binding
                     }
                 }
 
-                if (IsArrayArgument(argument))
+                if (IsAggregateArgument(argument))
                 {
-                    var applicability = this.ProbeArrayArgument(argument, type, scope);
+                    var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
+                    var valueType = borrow ? type.Components[0] : type;
+                    var applicability = this.ProbeAggregateArgument(argument, valueType, scope);
                     if (applicability != CandidateApplicability.Applicable)
                     {
                         return applicability;
                     }
 
-                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                    operations[i] = new(
+                        call.ArgumentNodes[i],
+                        valueType,
+                        type,
+                        borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
+                        borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal,
+                        ParameterIndex: mapping[i]);
                     continue;
                 }
 
@@ -1052,6 +1053,40 @@ public sealed partial class Binding
             ConstraintProof.Error => CandidateApplicability.Error,
             _ => CandidateApplicability.Pending,
         };
+        bool InferAggregateInputs(bool fitLiterals)
+        {
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                if (!IsAggregateArgument(call.ArgumentNodes[i]))
+                {
+                    continue;
+                }
+
+                if (this.MemberType(function.Parameters[mapping[i]].Type.BoundType!, declaringType) is not { } pattern)
+                {
+                    return false;
+                }
+
+                pattern = this.ContractType(pattern, scope, self);
+                if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref })
+                {
+                    if (pattern.Origin is { } origin)
+                    {
+                        this.MatchInputOrigin(origin, this.PlaceOrigin(call.ArgumentNodes[i]), function, origins, inputs);
+                    }
+
+                    pattern = pattern.Components[0];
+                }
+
+                if (!this.InferAggregateCall(pattern, call.ArgumentNodes[i], function, arguments, lengths, origins, inputs, fitLiterals))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         bool InferInput(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null)
         {
             if (this.MemberType(pattern, declaringType) is not { } memberPattern)

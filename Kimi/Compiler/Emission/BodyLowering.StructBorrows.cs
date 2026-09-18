@@ -38,24 +38,34 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if (operation.Source is MemberAccessKoto projected && ReferenceTypes.IsStruct(projected.Left.BoundType))
+            if (operation.Source is MemberAccessKoto projected && !ReferenceTypes.IsStorage(projected.BoundType) &&
+                (ReferenceTypes.IsStruct(projected.Left.BoundType) || ReferenceTypes.IsTuple(projected.Left.BoundType)))
             {
                 var projectedOwner = projected.Left.BoundType!.Components[0];
                 var projectedLayout = this.aggregateLayouts.Get(projectedOwner);
                 var projectedPosition = -1;
-                for (var i = 0; i < StructStorage.Count(projectedOwner); i++)
+                BoundType? projectedType = null;
+                if (ReferenceTypes.IsTuple(projected.Left.BoundType))
                 {
-                    if (ReferenceEquals(StructStorage.Field(projectedOwner, i).BoundSymbol, projected.BoundSymbol))
+                    ElementAccess.TryBorrowedTupleElement(projected, out projectedType, out projectedPosition);
+                }
+                else
+                {
+                    for (var i = 0; i < StructStorage.Count(projectedOwner); i++)
                     {
-                        projectedPosition = i;
-                        break;
+                        if (ReferenceEquals(StructStorage.Field(projectedOwner, i).BoundSymbol, projected.BoundSymbol))
+                        {
+                            projectedPosition = i;
+                            projectedType = StructStorage.FieldType(projectedOwner, i);
+                            break;
+                        }
                     }
                 }
 
                 if (projectedLayout is null || projectedPosition < 0 || value.Count != 1 ||
                     !ReferenceEquals(type, projected.Left.BoundType) ||
                     !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
-                    !ReferenceEquals(StructStorage.FieldType(projectedOwner, projectedPosition), projected.BoundType) ||
+                    !ReferenceEquals(projectedType, projected.BoundType) ||
                     !ReferenceEquals(projected.BoundType, output.Components[0]) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
                     (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
@@ -92,9 +102,14 @@ internal sealed partial class BodyLowering
         }
 
         var field = value.Kind == OwnershipValueKind.BorrowedField ? operation.Source as MemberAccessKoto
-            : (operation.Source as BinaryKoto)?.Left as MemberAccessKoto;
+            : operation.Source switch
+            {
+                BinaryKoto binary => KotoHelper.UnwrapParentheses(binary.Left) as MemberAccessKoto,
+                UnaryKoto unary => KotoHelper.UnwrapParentheses(unary.Operand) as MemberAccessKoto,
+                _ => null,
+            };
         var receiver = Input(body, id, 0);
-        if (field is null || !ReferenceTypes.IsStruct(field.Left.BoundType) ||
+        if (field is null || !(ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType)) ||
             !ReferenceEquals(ValueType(body, receiver), field.Left.BoundType) || !ReferenceTypes.IsValue(field.BoundType) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
@@ -104,12 +119,22 @@ internal sealed partial class BodyLowering
         var owner = field.Left.BoundType!.Components[0];
         var layout = this.aggregateLayouts.Get(owner);
         var position = -1;
-        for (var i = 0; i < StructStorage.Count(owner); i++)
+        if (ReferenceTypes.IsTuple(field.Left.BoundType))
         {
-            if (ReferenceEquals(StructStorage.Field(owner, i).BoundSymbol, field.BoundSymbol))
+            if (!ElementAccess.TryBorrowedTupleElement(field, out var elementType, out position) || !ReferenceEquals(elementType, field.BoundType))
             {
-                position = i;
-                break;
+                return Fail("Borrowed tuple element does not match its selector and result Type.", out failure);
+            }
+        }
+        else
+        {
+            for (var i = 0; i < StructStorage.Count(owner); i++)
+            {
+                if (ReferenceEquals(StructStorage.Field(owner, i).BoundSymbol, field.BoundSymbol))
+                {
+                    position = i;
+                    break;
+                }
             }
         }
 

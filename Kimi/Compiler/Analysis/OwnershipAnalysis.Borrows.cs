@@ -61,7 +61,8 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(projected);
         }
 
-        if (unwrapped is MemberAccessKoto field && ReferenceTypes.IsStruct(field.Left.BoundType))
+        if (unwrapped is MemberAccessKoto field && !ReferenceTypes.IsStorage(field.BoundType) &&
+            (ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType)))
         {
             var receiver = this.Expression(field.Left, PlaceUseKind.Read);
             if (receiver < 0)
@@ -75,7 +76,7 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(projected);
         }
 
-        var place = (StructStorage.IsStruct(source.BoundType) || source.BoundType?.Kind == BoundTypeKind.FixedArray || ScalarTypes.Supports(source.BoundType)) && unwrapped is IdentifierNameKoto
+        var place = (StructStorage.IsStruct(source.BoundType) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple || ScalarTypes.Supports(source.BoundType)) && unwrapped is IdentifierNameKoto
             ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {
@@ -109,7 +110,12 @@ public sealed partial class OwnershipAnalysis
 
     private int WriteBorrowedField(BinaryKoto assignment, MemberAccessKoto field)
     {
-        if (assignment.Akind != KotoKind.Equals || field.Left.BoundType?.Semantics != SemanticsKind.Uniq ||
+        if (assignment.Akind != KotoKind.Equals)
+        {
+            return this.UpdateBorrowedField(assignment, field);
+        }
+
+        if (field.Left.BoundType?.Semantics != SemanticsKind.Uniq ||
             !ReferenceTypes.IsValue(field.BoundType))
         {
             this.Unsupported(assignment);
@@ -126,5 +132,38 @@ public sealed partial class OwnershipAnalysis
         var operation = this.Emit(OwnershipOperationKind.WriteBorrowedField, assignment, receiver, input);
         this.SetValue(operation, OwnershipValueKind.BorrowedFieldWrite, [this.Value(receiver), this.Value(input)]);
         return this.Temporary(assignment);
+    }
+
+    private int UpdateBorrowedField(Koto source, MemberAccessKoto field)
+    {
+        var operation = ElementAccess.UpdateOperator(source.Akind);
+        if (field.Left.BoundType?.Semantics != SemanticsKind.Uniq || field.BoundType?.IsNumeric != true || operation == KotoKind.Invalid)
+        {
+            this.Unsupported(source);
+            return -1;
+        }
+
+        // Secure the receiver and old value before evaluating the RHS. Keep the
+        // original SSA receiver even if later evaluation reads the same Place.
+        var receiver = this.BorrowStruct(field.Left, field.Left.BoundType!);
+        var receiverValue = this.Value(receiver);
+        var previous = -1;
+        if (receiver >= 0)
+        {
+            var read = this.Temporary(field);
+            previous = this.Value(read);
+            this.SetValue(previous, OwnershipValueKind.BorrowedField, [receiverValue]);
+        }
+
+        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : previous >= 0 ? this.IncrementOne(source) : -1;
+        if (previous < 0 || right < 0 || !this.flow!.Nodes[source].CanCompleteNormally)
+        {
+            return -1;
+        }
+
+        var updated = this.ComputeUpdate(source, field.BoundType, previous, right, operation);
+        var write = this.Emit(OwnershipOperationKind.WriteBorrowedField, source, receiver, updated);
+        this.SetValue(write, OwnershipValueKind.BorrowedFieldWrite, [receiverValue, this.Value(updated)]);
+        return this.UpdateResult(source, previous, updated);
     }
 }

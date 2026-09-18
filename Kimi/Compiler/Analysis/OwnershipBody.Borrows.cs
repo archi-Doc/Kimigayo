@@ -10,6 +10,7 @@ public sealed partial class OwnershipBody
     private bool[] borrowLive = [];
     private int[] checkingBorrowHeads = [];
     private LoanRequirement[] borrowDependencies = [];
+    private int[] borrowDefinitions = [];
     private int[] slicePaths = [];
 
     // Borrow validity follows CFG uses, including the implicit use by deinit.
@@ -43,6 +44,16 @@ public sealed partial class OwnershipBody
 
         this.PrepareSlicePaths();
         this.PrepareCheckingBorrowEdges();
+        Grow(ref this.borrowDefinitions, count);
+        this.borrowDefinitions.AsSpan(0, count).Fill(-1);
+        for (var id = 0; id < this.Operations.Count; id++)
+        {
+            if (this.Operations[id] is { Kind: OwnershipOperationKind.Write, Place: >= 0 } write)
+            {
+                ref var definition = ref this.borrowDefinitions[write.Place];
+                definition = definition == -1 ? id : -2;
+            }
+        }
 
         Grow(ref this.borrowLive, checked(count * this.Operations.Count));
         this.borrowLive.AsSpan(0, count * this.Operations.Count).Clear();
@@ -183,7 +194,7 @@ public sealed partial class OwnershipBody
                 for (var root = 0; root < count; root++)
                 {
                     var candidate = this.Places[root];
-                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind == BoundTypeKind.FixedArray) &&
+                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple) &&
                         ReferenceEquals(candidate.Source, origin.Binder))
                     {
                         Record(root);
@@ -417,7 +428,7 @@ public sealed partial class OwnershipBody
     {
         // Follow the actual value's reborrow chain; equal Origin names alone do
         // not authorize use of a parent while a sibling/child Loan is required.
-        while ((uint)value < (uint)this.Values.Count)
+        for (var remaining = this.Values.Count; remaining > 0 && (uint)value < (uint)this.Values.Count; remaining--)
         {
             var operation = this.Operations[value];
             if (ValuePlaceForBorrow(operation) == place ||
@@ -429,6 +440,20 @@ public sealed partial class OwnershipBody
             var node = this.Values[value];
             if (node.Kind is not (OwnershipValueKind.Alias or OwnershipValueKind.Address) || node.Count != 1)
             {
+                // An immutable reference local retains the ancestry of its one
+                // initialization. Follow the actual stored value, never merely
+                // a matching Origin (which could name a sibling Loan).
+                if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 &&
+                    this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsStorage(local.Type))
+                {
+                    var definition = this.borrowDefinitions[operation.Place];
+                    if (definition >= 0 && definition < value)
+                    {
+                        value = definition;
+                        continue;
+                    }
+                }
+
                 return false;
             }
 
