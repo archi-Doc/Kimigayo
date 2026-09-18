@@ -15,13 +15,13 @@ struct Toolkit
             return if useFirst => first else => second
 
 public func main()
-    defer => ::Kimi.Console.writeLine("Generic scope finished.")
+    defer => Console.writeLine("Generic scope finished.")
     let selected = Toolkit.Selection.choose(
         Toolkit.Storage.Box<string>.init("Chosen item."),
         Toolkit.Storage.Box<string>.init("Unused item."),
         true)
     // The unselected Box is destroyed in choose; selected is consumed here.
-    ::Kimi.Console.writeLine(selected.take())
+    Console.writeLine(selected.take())
 
     let numbers = Toolkit.Storage.Box<[3 of i32]>.init([2, 4, 6])
     let values = numbers.take()
@@ -29,4 +29,4 @@ public func main()
     for value in values
         total = total + value
     require total == 12 else => $abort("Unexpected boxed array total")
-    ::Kimi.Console.writeLine("Boxed array total is 12.")
+    Console.writeLine("Boxed array total is 12.")

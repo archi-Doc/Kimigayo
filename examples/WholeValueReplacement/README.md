@@ -12,5 +12,5 @@ Destroyed 2.
 ```
 
 See [whole-value updates](../../spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates).
-The [object tour](../SpecTour/Objects.kimi) and Milestone 14 additionally show
-Sealed payload projection; their object runtime remains outside current executable support.
+[Milestone 14](../../milestones/Milestone14.kimi) additionally shows Sealed payload projection
+and whole-value exchange on an owned object.

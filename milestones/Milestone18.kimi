@@ -1,0 +1,55 @@
+// Milestone 18: composite generic values retain one destruction responsibility.
+struct Resource
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit
+        match self.id
+            1 => Console.writeLine("Resource 1 destroyed.")
+            2 => Console.writeLine("Resource 2 destroyed.")
+            3 => Console.writeLine("Resource 3 destroyed.")
+            4 => Console.writeLine("Resource 4 destroyed.")
+            _ => $abort("Unexpected resource identity")
+
+struct Box<T>
+    let value: T
+    public init(value: T) => self.value = value
+    // No user deinit: an owned receiver may transfer its stored value.
+    public func take(self: Self) -> T => self.value
+
+enum Delivery<T>
+    Ready(T)
+    Missing
+
+func relay<T>(value: T) -> T
+    let pending: T = value
+    defer => Console.writeLine("Generic result secured.")
+    return pending
+
+func choose<T>(first: T, second: T, useFirst: bool) -> T
+    return if useFirst => first else => second
+
+func package<T>(value: T) -> Delivery<T> => .Ready(value)
+
+public func main()
+    do
+        // Both temporary Boxes own Non-Copy arrays. Only one leaves choose.
+        let selected = choose(
+            Box<[2 of Resource]>.init([Resource.init(1), Resource.init(2)]),
+            Box<[2 of Resource]>.init([Resource.init(3), Resource.init(4)]),
+            true)
+        let delivered = package(relay(selected.take()))
+        match delivered
+            .Ready(let items)
+                require items[0].id == 1 and items[1].id == 2 else => $abort("Composite transfer failed")
+                Console.writeLine("Resources received.")
+            .Missing => $abort("Missing resources")
+    do
+        // The same relay also accepts a nested tuple containing an owned string.
+        let message: (string, (i32, bool)) = relay(("Tuple received.", (7, true)))
+        match message
+            (let text, (7, true)) => Console.writeLine(text)
+            _ => $abort("Tuple transfer failed")
+    let original: [2 of i32] = [5, 8]
+    let copied = relay(original)
+    require original[0] == 5 and copied[1] == 8 else => $abort("Copy acquisition failed")
+    Console.writeLine("Generic values finished.")

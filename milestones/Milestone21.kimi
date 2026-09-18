@@ -1,0 +1,46 @@
+// Milestone 21: full specialization inherits defaults and universal Origins.
+func defaultIndex() -> isize
+    Console.writeLine("Default index evaluated.")
+    return 0
+
+func pick<length N, T> origin source(
+    values: ref/[N of T] from source, index?: isize = defaultIndex()) -> ref/T from source
+    return values[index]@ref/T
+
+// All generic slots are fixed. The Origin binder and default are inherited.
+specialize func pick<3, i32>(
+    values: ref/[3 of i32] from source, index: isize) -> ref/i32 from source
+    require index >= 0 and index < 3 else => $abort("Invalid specialized index")
+    return values[2 - index]@ref/i32
+
+func forward<length N, T> origin source(
+    values: ref/[N of T] from source) -> ref/T from source
+    // Selection must survive a dependent call; omission uses pick's default.
+    return pick<N, T>(values)
+
+public func main()
+    let numbers: [3 of i32] = [10, 20, 30]
+    do
+        let selected = pick<3, i32>(numbers@ref)
+        require *selected == 30 else => $abort("Specialization selection failed")
+        Console.writeLine("Specialized selection is 30.")
+    do
+        let explicit = pick<3, i32>(numbers@ref, index: 2)
+        require *explicit == 10 else => $abort("Explicit specialization failed")
+        Console.writeLine("Explicit selection is 10.")
+    do
+        let forwarded = forward<3, i32>(numbers@ref)
+        require *forwarded == 30 else => $abort("Forwarded specialization failed")
+        Console.writeLine("Forwarded selection is 30.")
+    do
+        let wide: [2 of i64] = [4, 5]
+        let ordinary = pick<2, i64>(wide@ref)
+        require *ordinary == 4 else => $abort("Ordinary implementation failed")
+        Console.writeLine("Ordinary selection is 4.")
+    do
+        // The same specialization must accept this independent, shorter Origin.
+        let local: [3 of i32] = [7, 8, 9]
+        let shortLived = forward<3, i32>(local@ref)
+        require *shortLived == 9 else => $abort("Inherited Origin contract failed")
+        Console.writeLine("Local selection is 9.")
+    Console.writeLine("Specialization finished.")

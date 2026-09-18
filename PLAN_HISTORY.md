@@ -2908,7 +2908,7 @@ execution evidence and remaining compiler work are maintained in PLAN.md.
 
 Historical record. Its states, instructions, deadlines, paths and scope refer only to the recorded execution. Later corrections are listed in the migration audit; resume from [PLAN.md §2](PLAN.md#2-execution-state).
 
-ObjectCallCompatible implementation plan (2026-09-17): [SPEC.md](SPEC.md#objectcallcompatible)
+ObjectCallCompatible implementation plan (2026-09-17): [SPEC.md](spec/appendices/D-deferred-features.md#objectcallcompatible)
 records three stages: document the plan, implement inference/public summaries and
 call checks, then detect guarantee loss across Package releases. The current stage
 is documentation only; stages 2 and 3 are deferred pending further instructions.
@@ -4910,3 +4910,188 @@ The old exchanged payload and final object payload each destroy once. Final obje
 The original 59 dirty/untracked files remain recoverable byte-for-byte under `bin/milestone14-work-20260918/baseline/`, with the original hash manifest and working-tree/index patches. All 17 milestone sources are unchanged; draft is unchanged. Relevant PLAN/STATUS updates and this history are English. SPEC was not changed by this run; its pre-existing change is retained. New evidence paths in this record exist. Earlier disclosures about missing historical artifacts remain valid.
 
 P14-C/O/E/V are DONE for this target, not for the entire language. P14-L1, full object/Weak/refinement and generic/capture boundaries remain documented; deferred ObjectCallCompatible stages were not implemented. Units 62–67 remain IMPLEMENTED_UNVERIFIED under their full original acceptance, despite the current broad managed regressions. No broader throughput, memory-exhaustion, full API, cross-module object ABI or NativeAOT claim is made.
+
+<a id="units62-67-verification"></a>
+
+## Verification audit: units 62–67 and current regressions — 2026-09-18
+
+Historical record; [PLAN §2](PLAN.md#2-execution-state) owns current state. The request was verification only: no new implementation, program 15 or NativeAOT. HEAD `dd8f239f8375c27accd96b94dbe7a5e35f00ce7b`, clean at start. Evidence is under `bin/verification-20260918-units62-67/` (reports, native shard logs, script logs, new fixtures, probe sources and final compiler hashes).
+
+### Gates run (all PASS)
+
+- Warning-free Debug/Release builds of `xUnitTest/xUnitTest.csproj` (`-m:1 --disable-build-servers`). Direct xUnit runner, `-parallelMode none`: 8,670 per configuration before the fix; **8,673 per configuration** after it, no skips.
+- Every generated scalar fixture: 3,147 sets (Debug ⊂ Release; all 13,530 common files byte-identical, 2,205 extra files are Release-named variants), split into 12 immutable shards and run by `test-scalars.ps1`: **6,294 O0/O2 executions**.
+- `test-milestone1–12` and `test-milestone14`, `test-emission` (68 each) and `test-cli`, for both configurations. Program 13, which has no script, was built from byte-identical copies at O0 and O2 with each compiler: exact three-line output, exit 0, empty stderr.
+- All 31 buildable `examples/` projects in scratch copies; outputs match their READMEs. SpecTour fails Binding as its README states.
+
+These are the regression gates omitted when units 62–67 were implemented, so T4n-at–ax and T12a are recorded DONE for their bounded scope. The Debug milestone/emission/CLI scripts ran on the compiler before the fix below; Release scripts, full suites and the new fixtures ran after it.
+
+### Defect fixed
+
+An arm whose guard is unsupported (for example a guard candidate over an owned composite `(string, i32)` Subject) marked its unbound guard/body syntax Resolved with Type Unit. Control-flow analysis then trusted that Type and added a false cascade, e.g. `Result of type () is incompatible with i32` for `if (return n)`. `Binding.Patterns` now marks such subtrees Unresolved without a failure, so only the enclosing Unsupported diagnostics remain; Pattern syntax still receives Unit. The limitation itself (composite guard candidates remain scalar/Unit) is unchanged.
+
+### Tests added
+
+`OwnedAggregateContinuationTest`: two cases asserting only Unsupported Binding issues and no control-flow issue for those guards; and `BodyExitsAndDeliveredBindingsDestroyEachOwnedLeafOnce`, an audited native fixture for early `return`, loop `exit`, delivered match results and `var` binding replacement over owned string leaves (4 O0/O2 executions PASS; identical across configurations).
+
+### Probes without defects
+
+Command-line probes (sources retained) confirmed: logical Never operands skip the abandoned operand; terminal guards keep Move/let/initialization diagnostics across loops and unselected bodies, while §14.10.3 checking continuations do not merge into reachable paths; declared Copy versus Move enums; Abort in guards; top-level and nested string literal Patterns, including exhaustiveness; object exchange destroys each payload once. Documented limits (borrowed receiver-field compound assignment, generic makeObj, composite guard candidates) still reject with diagnostics rather than miscompiling. The string-literal Pattern IR already compares lengths before `memcmp`; no speed change was justified.
+
+`examples/SpecTour` was removed at the user's request after this audit. It was a non-normative walkthrough that did not pass Binding; SPEC.md, STATUS.md and the WholeValueReplacement README no longer link to it. Earlier records mentioning it are historical.
+
+<a id="programs18-20-design"></a>
+
+## Programs 18–20: specification targets and status inventory — 2026-09-18
+
+The request was to read the milestone roadmap, create programs 18–20, update
+related documents, and summarize creation/build/test status. The actual directory
+is `milestones/`, not `milestone/`. Added three independent Applications without
+changing compiler implementation or weakening the specification to match its
+current support. Existing compiler/test/document edits from the units 62–67 audit
+were preserved; unrelated concurrent changes were not reverted. Draft and
+NativeAOT were excluded.
+
+- P18-D: composite and Non-Copy generic inputs/results, temporary Boxes, array,
+  enum and Tuple storage, per-Type Copy/Move acquisition, secured results and
+  exact destruction responsibilities (§8.10, §15.1, §16.2–3, §21.3).
+- P19-D: associated Core Types and equality proofs, requirement calls, conditional
+  and nested conformance, and storage independent of conformance (§8.4.3–5/8).
+- P20-D: Type/length/Origin inference, an effectful omitted default, explicit full
+  length/Type specialization with inherited Origins/defaults, and forwarding
+  (§4.4, §7.2, §8.8, §10.8, §15.3.4).
+
+The README records exact expected LF output, separate rejection exercises and
+future verification boundaries for each target. SPEC's example index now points
+to 1–20 and proposed 21–34; no normative language rule changed. PLAN owns current
+scope/next actions and STATUS distinguishes design from implemented support.
+The prior P14 execution scope/stop instruction is superseded by this authoring
+request; its P14-C/O/E/V outcomes and detailed evidence remain in the earlier
+program 14 record. No broader compiler implementation was attempted here.
+
+### Verification
+
+Evidence: [audit](bin/milestones18-20-design-20260918/verification.json), copied
+canonical sources, build logs, `syntax.log` and `syntax.xml` in the same directory.
+HEAD was `dd8f239f8375c27accd96b94dbe7a5e35f00ce7b` plus existing worktree changes.
+Release compiler SHA-256 was
+`220A13CACA36319D4487DF569EB91B70186B0584CCDFC666D7E1F4405B309F6B`;
+it was checked unchanged across the audit. Source SHA-256 values are in the report.
+
+```powershell
+dotnet build xUnitTest/xUnitTest.csproj -c Release --no-restore
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -method '*MigratedExamplesAndMilestonesRetainValidSyntax' -parallelMode none -failSkips -result-xml bin/milestones18-20-design-20260918/syntax.xml
+dotnet Kimi/bin/Release/net10.0/Kimi.dll build milestones/Milestone18.kimi --ToolchainRoot ./toolchain
+dotnet Kimi/bin/Release/net10.0/Kimi.dll build milestones/Milestone19.kimi --ToolchainRoot ./toolchain
+dotnet Kimi/bin/Release/net10.0/Kimi.dll build milestones/Milestone20.kimi --ToolchainRoot ./toolchain
+```
+
+| Gate | Result | Scope / diagnostic |
+| --- | --- | --- |
+| Release compiler/test-project build | PASS | Zero warnings/errors; not a native milestone build. |
+| Existing syntax-catalog test | PASS | 1 test, no failures/skips, scanning example/milestone sources including all 20 programs. |
+| Program 18 implicit Application/O2 build | FAIL, exit 1 | `GenerationFailed_Kd`: shared operation refers to invalid storage or projection. |
+| Program 19 implicit Application/O2 build | FAIL, exit 1 | `InvalidPattern_Kd` for concrete Patterns over associated-result Tuples; `UnprovenConstraint_Kd` for nested Wrapper associated equality. |
+| Program 20 implicit Application/O2 build | FAIL, exit 1 | `UnsupportedBinding_Kd` on the length specialization argument, `InvalidTypeFormation_Kd`, missing inherited Origin bindings and cascading unresolved/constraint diagnostics. |
+| Native output, rejection variants and generation/resource inspection | NOT_RUN | Builds did not produce executable targets; expected output is specification-derived. |
+| Debug, O0, full managed regressions, NativeAOT | NOT_RUN | No compiler feature changes were made in this task. |
+
+An initial `dotnet test ... --filter FullyQualifiedName~...` invocation selected
+zero tests and exited 5 under Microsoft.Testing.Platform. It is not PASS evidence;
+the repository's direct xUnit runner above subsequently selected and passed one
+test. Programs 1–14 retain their previous recorded build/native-test results;
+15–17 have no build/native-test result claimed here. The new README inventory
+separates those historical results, unattempted targets and failed current probes.
+
+<a id="programs38-restructure"></a>
+
+## 38-program restructuring and concise console calls — 2026-09-18
+
+The user accepted the 38-program review, authorized source restructuring and
+future verification-scope changes, and requested Console.writeLine except in
+Hello World. Programs 1–19 keep their numbers and subjects. Program 20 now covers
+ordinary inference/defaults without specialization; new program 21 isolates full
+specialization and inherited contracts, using explicit Type/length arguments at
+call sites. All remain independent Applications. Future programs 22–38 are design
+scopes, not newly created sources or implemented capabilities.
+
+The former 21 becomes 22; Properties 22 splits into 23/24; former 23–27 become
+25–29; comparison from former 29 becomes 30 before Dictionary (31); text becomes
+32; former objects 30 splits into 33/34; former 31–34 become 35–38. The README
+owns the complete number mapping and each future target's prerequisites,
+canonical scenario, separate negative/boundary inputs and internal verification.
+There is no minimum source line count or requirement to put every check into a
+canonical main. Generation limits, allocation/complexity, count/race protocols
+and static Abort cases have explicit companion-test responsibilities. Deferred
+ObjectCallCompatible, runtime Contract Views and source threading remain excluded.
+
+P18-D/P19-D remain the same subjects. The earlier P20-D/P18-20-V checkpoint refers
+to the combined source and is superseded for current program 20 by the split;
+its old source and failed-build evidence are retained in the prior authoring
+record. P21-D and P38-R/S/V identify this restructuring's new work. Current states
+and next actions are in PLAN, not in this historical checkpoint.
+
+### Source and harness changes
+
+- Programs 2–19 differ from their task-start copies only by replacing
+  `::Kimi.Console.writeLine` with `Console.writeLine`; byte/text checks confirmed
+  this. Program 1 is byte-identical. Programs 20/21 use the short spelling too.
+- Existing milestone scripts 4/5/6/8/9/10/12 use the same short spelling for
+  source mutation patterns and generated variants. In particular, the program-4
+  deinit guard and program-5 moved-read variant still match the canonical source.
+  Program-1 source and harness were not edited.
+- NamedAliasTest's syntax catalog still parses every non-bin source. Its obsolete
+  total >= 55 assertion failed after the separately performed SpecTour removal.
+  It now checks that each catalog is nonempty, avoiding a stale global inventory
+  count. No production/compiler code was changed by this task.
+- Existing compiler/test edits, staged SpecTour removal and concurrent normative
+  documentation edits were preserved. SPEC's milestone index, PLAN, STATUS and
+  the milestone README were updated for this request. Draft was not edited.
+
+### Verification and reproducibility
+
+Evidence root: `bin/milestones38-20260918-212937/`.
+[The manifest](bin/milestones38-20260918-212937/verification.json) records HEAD,
+compiler/test DLL hashes, all 21 final source hashes, individual harness reports
+and the failed build diagnostic codes. `baseline/` and `baseline-worktree.patch`
+retain task-start milestone/docs/script inputs; `sources/` retains final sources.
+Native verification checks that the compiler hash is unchanged across its run.
+
+| Gate | Result | Evidence / scope |
+| --- | --- | --- |
+| Release compiler/test-project build | PASS, zero warnings/errors | `final-managed-build.log` |
+| NamedAliasTest | 57 PASS, zero failures/skips | `final-aliases.log/xml`; includes default Console lookup/emission and the source-catalog test covering milestones 1–21 |
+| Existing program 1–12/14 harnesses | 577 PASS | Per-program logs and reports in the manifest; ordinary native build/LLVM verification, O0/O2 variants, CLI/output/exit and rejection checks |
+| Program 13 | 2 native executions PASS | Byte-identical copied source, O0 and O2; linked/version-verified manifests, exact UTF-8/LF stdout, empty stderr and exit 0 |
+| Programs 15–21 | Seven Release/O2 build probes FAIL, exit 1 | `Milestone15-build.log` through `Milestone21-build.log`; no native test claim |
+| New scope links and source invariants | PASS | New owning-spec links resolve; program 1 unchanged; only console spelling changes in 2–19; specialization absent in 20 and present in 21 |
+| Debug, full managed regressions, NativeAOT | NOT_RUN | Focused source/harness change verification, no compiler feature implementation |
+
+Per-program harness counts: 1=25, 2=21, 3=37, 4=33, 5=47, 6=63, 7=52, 8=46,
+9=59, 10=54, 11=55, 12=37, 14=48. Their sum is 577; program 13's two runs are
+separate, and 57 managed cases are not native executions.
+
+```powershell
+dotnet build xUnitTest/xUnitTest.csproj -c Release --no-restore
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -class XunitTest.NamedAliasTest -parallelMode none -failSkips -result-xml bin/milestones38-20260918-212937/final-aliases.xml
+pwsh -NoProfile -File bin/milestones38-20260918-212937/verify-native.ps1
+# Individual existing scripts accept -Configuration Release -ToolchainRoot ./toolchain.
+# Repeat for each n from 15 through 21; these commands currently fail:
+dotnet Kimi/bin/Release/net10.0/Kimi.dll build milestones/Milestone20.kimi --ToolchainRoot ./toolchain
+```
+
+Initial verification observations are not final PASS evidence: the old inventory
+assertion failed once; after the catalog fix all 57 tests pass. The first native
+attempt failed because sandboxed opt.exe execution returned permission denied;
+LLVM 22.1.8 and the native audit then ran successfully with the approved sandbox
+override. No toolchain integrity checks were disabled.
+
+The fresh failed probes distinguish the target boundaries: 15 has joined-borrow
+Type/control-flow diagnostics; 16 has unsupported ownership and dependent Loan/
+initialization diagnostics; 17 has unsupported element-update targets and Move/
+Loan diagnostics; 18 fails shared storage/projection generation; 19 fails
+associated-result Patterns/nested equality proof; 20 reaches unsupported
+operations on dereferenced generic returned element borrows; 21 fails length
+specialization/inherited Origin Binding with cascading diagnostics. These are
+recorded limitations, not reasons to weaken the specified programs. Their
+expected outputs and proposed negative cases remain unverified natively.

@@ -77,7 +77,7 @@ function Build-And-Run([string] $InputPath, [string] $Directory, [string] $Name,
 $expected = "Counter created.`nSum is 55.`nLeaving finish.`nCounter destroyed.`nDone.`n"
 Build-And-Run $source (Split-Path $source) 'Milestone4' 'O2' $expected
 $original = [IO.File]::ReadAllText($source)
-if (-not $original.Contains('while number <= 10') -or -not $original.Contains('deinit => ::Kimi.Console.writeLine("Counter destroyed.")')) {
+if (-not $original.Contains('while number <= 10') -or -not $original.Contains('deinit => Console.writeLine("Counter destroyed.")')) {
     throw 'Review the variants against the current source'
 }
 foreach ($level in @('O0', 'O2')) {
@@ -92,8 +92,8 @@ foreach ($level in @('O0', 'O2')) {
             }
             'AbortSum' { [IO.File]::WriteAllText($copy, $original.Replace('while number <= 10', 'while number <= 9'), $utf8) }
             'DeinitObserves' {
-                $body = "deinit`n        if self.value != 55`n            `$abort(`"Destroyed value changed`")`n        ::Kimi.Console.writeLine(`"Counter destroyed.`")"
-                [IO.File]::WriteAllText($copy, $original.Replace('deinit => ::Kimi.Console.writeLine("Counter destroyed.")', $body), $utf8)
+                $body = "deinit`n        if self.value != 55`n            `$abort(`"Destroyed value changed`")`n        Console.writeLine(`"Counter destroyed.`")"
+                [IO.File]::WriteAllText($copy, $original.Replace('deinit => Console.writeLine("Counter destroyed.")', $body), $utf8)
             }
         }
         $project = Join-Path $directory "$name.kimiproj"

@@ -1,0 +1,40 @@
+// Milestone 20: Type/length/Origin inference and ordinary default arguments.
+func defaultIndex() -> isize
+    Console.writeLine("Default index evaluated.")
+    return 0
+
+func pick<length N, T> origin source(
+    values: ref/[N of T] from source, index?: isize = defaultIndex()) -> ref/T from source
+    return values[index]@ref/T
+
+func forward<length N, T> origin source(
+    values: ref/[N of T] from source) -> ref/T from source
+    // Forward the inferred length/Type/Origin; omission evaluates pick's default.
+    return pick<N, T>(values)
+
+public func main()
+    let numbers: [3 of i32] = [10, 20, 30]
+    do
+        let inferred = pick(numbers@ref)
+        require *inferred == 10 else => $abort("Generic inference failed")
+        Console.writeLine("Inferred selection is 10.")
+    do
+        let explicit = pick<3, i32>(numbers@ref, index: 2)
+        require *explicit == 30 else => $abort("Explicit arguments failed")
+        Console.writeLine("Explicit selection is 30.")
+    do
+        let forwarded = forward(numbers@ref)
+        require *forwarded == 10 else => $abort("Generic forwarding failed")
+        Console.writeLine("Forwarded selection is 10.")
+    do
+        let wide: [2 of i64] = [4, 5]
+        let ordinary = pick(wide@ref)
+        require *ordinary == 4 else => $abort("Ordinary implementation failed")
+        Console.writeLine("Ordinary selection is 4.")
+    do
+        // Infer an independent, shorter source Origin for the same generic body.
+        let local: [3 of i32] = [7, 8, 9]
+        let shortLived = forward(local@ref)
+        require *shortLived == 7 else => $abort("Origin inference failed")
+        Console.writeLine("Local selection is 7.")
+    Console.writeLine("Inference and defaults finished.")

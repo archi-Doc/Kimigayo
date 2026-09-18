@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The active request authorizes completion of program Milestone 14, including positive/negative and regression verification. Preserve existing uncommitted changes; do not advance to program 15. NativeAOT and draft edits remain excluded. Earlier verification-only restrictions and execution deadlines are historical.
+The active request is to restructure the roadmap into 38 programs, split the existing combined inference/specialization target, refine future verification scopes and use Console.writeLine in milestone sources except Hello World. Programs 1–21 have source files; 22–38 remain planned. This task does not require completing unsupported compiler features or authoring all future programs. Preserve existing uncommitted work; NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -24,25 +24,33 @@ This file owns the current plan. Its baseline must not be weakened to match impl
 6. Exclude Composition Root Entry/Provider selection, runtime Contract Views, source concurrency, extra target profiles, stable external Kimigayo/DLL ABI, source transparent aliases, general user-defined arithmetic, extra generic/specialization forms, persistent generation/object-code caches, dynamic generic scratch allocation, and other Appendix D extensions.
 7. Exclude undefined raw-storage acquisition/allocation/reference-conversion APIs (§5.6), checked-cast/exact-test public spellings (§13.6.2), and string concatenation acquisition (§13.3). Preserve their settled constraints without inventing executable syntax. The mention of concatenation in §22.1 does not override §13.3's explicit executable-finalization prohibition. Interpolation and its Stringify contract are independently specified and included.
 8. `Kimi.Sealed` and `Kimi.replace/exchange/swap` are adopted requirements (§15.7); the earlier exclusion of exchange spelling is superseded. Declaration Container nesting is adopted under §6.1.1, §8.4.9, §9.6.1 and §22.2.4. R3/R5/R6/R7/R10/R11/R19/R23 and their existing I/T families cover these requirements, including Appendices A.18–A.20; implementation limits do not exclude them.
-9. ObjectCallCompatible inference/publication and release checking remain explicitly deferred by [SPEC.md](SPEC.md#objectcallcompatible) pending further instructions. Preserve the specified call rules; I7/I24 must not implement those deferred stages from an old execution instruction.
+9. ObjectCallCompatible inference/publication and release checking remain explicitly deferred by [SPEC Appendix D.5.1](spec/appendices/D-deferred-features.md#objectcallcompatible) pending further instructions. Preserve the specified call rules; I7/I24 must not implement those deferred stages from an old execution instruction.
 10. Undefined Mod host interfaces/configuration and test profile interfaces are separate design work (G1–G2). Their settled semantic rules remain baseline requirements; dependent public integration cannot be declared complete by inventing interfaces. Dynamic collection/Slice internal representations may be proposed within settled contracts; a fixed public collection ABI is excluded (G3).
 
 Performance is a first-class constraint: minimize allocations, avoid repeated work, bound graphs/worklists and retained memory, reuse established storage, and measure compile/runtime costs. Do not promise universal zero allocation or throughput improvements without evidence. Language-mandated allocation/complexity bounds are acceptance criteria (R18), not optional tuning.
 
 ## 2. Execution State
 
-Program target: **`milestones/Milestone14.kimi` — DONE for its target criteria**. Program 14 is distinct from plan M14 (Mods). The current request restores positive/negative tests and relevant/program regressions. Historical program-13 test exclusions do not apply to this execution.
+Current request: **38-program restructuring — DONE**.
+[Program design/status](milestones/README.md#program-status) owns the catalog;
+[future verification scopes](milestones/README.md#verification-scopes-for-future-programs-2238)
+separate canonical sources, semantic variants and internal evidence.
 
-| ID | State | Scope and dependencies |
+| ID | State | Outcome and dependencies |
 | --- | --- | --- |
-| P14-C | DONE | Per-call borrowed Callable inputs; named Slice iterator construction/next with external backing dependencies; generic loop/match/callback lowering. |
-| P14-O | DONE | makeObj acquisition/allocation, specified header/metadata, Sealed complete-payload projection, ordinary borrowed member calls, whole-value exchange, dynamic destruction then storage release. |
-| P14-E | DONE | Depends on P14-O. Concrete closure capture of an external uniq reference and an owned obj handle; infer Exclusive/Consuming requirements and preserve all dependencies through calls. |
-| P14-V | DONE | Depends on P14-C/O/E. Unchanged target build/LLVM verification/native O0/O2 output and destruction order; positive/negative cases, related Debug/Release regressions and completed programs 1–13. NativeAOT excluded. |
+| P18-D, P19-D | DONE | Existing generic value/Contract targets retain their subjects; output calls shortened. Product support remains bounded. |
+| P20-D | DONE, revised | Inference/defaults only; depends on I4 and Origin support. Former combined P20 scope is split, not dropped. |
+| P21-D | DONE | Independent full specialization/inherited-contract source; depends on I14/I15 and P20 capabilities. |
+| P38-R | DONE | 38-program catalog, old/new number mapping, prerequisites and verification scopes for future 22–38; compare before Dictionary. |
+| P38-S | DONE | Console.writeLine in programs 2–21 and companion script sources; program 1 unchanged. |
+| P38-V | DONE for restructuring | Warning-free Release build, 57 alias/syntax tests, 577 existing harness checks and two program-13 native runs PASS. O2 probes for 15–21 FAIL; native tests NOT_RUN. [Evidence](PLAN_HISTORY.md#programs38-restructure). |
 
-The unchanged target passes final Binding, ownership/control-flow verification, checked LLVM generation, LLVM verification, native linking and O0/O2 execution with Debug and Release compilers. All 8,670 managed tests pass per configuration; target/variant/rejection checks pass 48 per configuration, completed programs 1–13 pass 26 O0/O2 executions per configuration, and 68 identical related fixture sets pass 136 native O0/O2 executions. [Program 14 evidence](PLAN_HISTORY.md#program14-completion) identifies the exact source/DLL state and earlier failures. No target gate remains unverified; NativeAOT is excluded.
-
-Expected output: `Accepted three jobs.`, `Accumulator destroyed.`, `Object total is 12.`, `Accumulator destroyed.`, `Pipeline finished.`, each followed by LF; exit 0 and empty stderr. The exchanged old payload and the final object payload each destroy once, and object storage is released only after final payload destruction. Existing uncommitted work is preserved under `bin/milestone14-work-20260918/baseline/`. Programs 15–17 supply design context only; do not implement them now. Units 62–67 retain IMPLEMENTED_UNVERIFIED under their original full criteria.
+P14-C/O/E/V retain their recorded target completion; former P18-20-V is historical
+[authoring evidence](PLAN_HISTORY.md#programs18-20-design) for the pre-split source.
+Programs 15–21 remain specification targets; 22–38 have no source files yet.
+Units 62–67 (T4n-at–ax, T12a) remain DONE for their bounded criteria after the
+[verification audit](PLAN_HISTORY.md#units62-67-verification); their parent
+I3/I6/I8/I12 families remain IN_PROGRESS. No product M/I family is closed here.
 
 ### Current milestone states
 
@@ -72,10 +80,10 @@ M4/M5/M7 are reconciled from stale TODO labels to IN_PROGRESS because recorded c
 | --- | --- | --- | --- |
 | I1 | M1 / R1–R28 | DONE | Historical baseline; [V1–V5 record](PLAN_HISTORY.md#units-1-32), original logs absent. |
 | I2 | M1 / R1–R28 | DONE | Historical Appendix A.1–A.17 mapping; [I2 record](PLAN_HISTORY.md#appendix-a-baseline). Extend clause audit for adopted A.18–A.20 under I33. |
-| I3 | M2 / R1–R3, R27 | IN_PROGRESS | Historical T1a, T3a, T5a/G9, T27a/T27b and T7a slices exist; T4n-ax adds logical Never fitting. Final clause/regression closure remains; the historical 250-block parse/SpecTour audit is not a current whole-spec certificate. |
+| I3 | M2 / R1–R3, R27 | IN_PROGRESS | Historical T1a, T3a, T5a/G9, T27a/T27b and T7a slices exist; T4n-ax adds logical Never fitting. Final clause/regression closure remains; the historical 250-block parse/SpecTour audit (SpecTour since removed) is not a current whole-spec certificate. |
 | I4 | M2 / R4 | IN_PROGRESS | Selected omitted-default plans and independent scalar/Unit declarations execute; T4o–q add match guards/bindings and Copy scalar-tuple intermediate storage. Exact prepared-slot validation is retained. General inference/calls, recursive defaults, owned/borrowed defaults and pending-slot cleanup remain. |
 | I5 | M2 / R5, R19 | IN_PROGRESS | T5a/G9 resolved; 12/22 Kimi declarations validated, including Iterator and Slice identities; this does not certify their entire APIs. Remaining Contract/projection/certificates, bound associated/refinement composition and canonical library identities remain. |
-| I6 | M3 / R6–R7 | IN_PROGRESS | T4n-at–ax add bounded terminal/Abort/divergent guards and finite enum/owned-string mixed histories, ending abandoned protection at replay endpoints. New-case evidence exists; regression closure, general backedges/continue, unequal Loan joins, deferred cleanup, effectful divergence and general Origins remain. |
+| I6 | M3 / R6–R7 | IN_PROGRESS | T4n-at–ax add bounded terminal/Abort/divergent guards and finite enum/owned-string mixed histories, ending abandoned protection at replay endpoints. Their regression gates pass; general backedges/continue, unequal Loan joins, deferred cleanup, effectful divergence and general Origins remain. |
 | I7 | M3 / R7, R20 | TODO | Compute effect-family fixed points/public guarantees and dependent use checks. ObjectCallCompatible stages 2/3 remain deferred by SPEC.md; other settled effect work remains in scope. |
 | I8 | M3 / R8–R9, R27 | IN_PROGRESS | Bounded defaults retain the historical guarded-pattern/Copy-tuple scope. New terminal match guards preserve abandoned protection and selected binding lifetimes. General escaping-Borrow/capture/Copy proofs, owned defaults, refinement and effectful/deferred joins remain. |
 | I9 | M4 / R10 | IN_PROGRESS | Concrete construction/destruction, synthesized construction and borrowed receiver subset exist; complete inherited/base-layer layout, construction, destruction and receiver support. |
@@ -121,11 +129,11 @@ M4/M5/M7 are reconciled from stale TODO labels to IN_PROGRESS because recorded c
 | P10-1, P10-2, P10-3, P10-V | DONE for target criteria | [Program 10](PLAN_HISTORY.md#execution-8). |
 | P11-S, P11-G, P11-P, P11-F | DONE for target criteria | [Program 11](PLAN_HISTORY.md#execution-5). |
 
-Programs 12 and 13 retain their recorded target completion; program 14 completion is recorded in §2 above. Program numbers are independent of M1–M15; earlier references to M1–M17 are historical numbering errors, not two missing milestones.
+Programs 12–14 retain their recorded target completion; §2 separates the current authoring request from executable support. Program numbers are independent of M1–M15; earlier references to M1–M17 are historical numbering errors, not two missing milestones.
 
 ### Current next action
 
-The requested program is complete; stop here and await a new target selection. Do not advance to program 15. To reproduce program 14 after an implementation change, build `xUnitTest/xUnitTest.csproj` in Debug/Release and run `./backend/windows-x64/test-milestone14.ps1 -Configuration <configuration> -ToolchainRoot ./toolchain`; its original-source build and byte-identical O0/O2 copies retain exact output/exit/destruction checks.
+The restructuring and its verification are complete. Await selection of the next implementation/source target. Program 15 remains the first uncompleted native target; authoring scopes for 22–38 are ready in the README. Implement general I-family behavior without weakening the canonical targets; NativeAOT remains excluded.
 
 P14-L1 (nonblocking, deferred to the relevant I families): the shared match path covers flat Copy enum Cases with binding/wildcard payloads and no guards. General symbolic `Option<T>` payload matching and a shared all-terminal match with a Never result remain unsupported; concrete factory calls work, but makeObj inside a generic body is not lowered. Borrowed receiver-field compound assignment remains unsupported. These findings do not justify simplifying target programs or weakening the specification. Full object views, rc/arc/Weak, general capture/erasure and deferred ObjectCallCompatible stages remain outside this request.
 

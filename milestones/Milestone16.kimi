@@ -40,13 +40,13 @@ func run(useFirst: bool)
         // pair and the enum Subject are gone; their external sources remain.
         let expected: i32 = if useFirst => 10 else => 20
         require selected.value == expected else => $abort("Origin forwarding failed")
-        ::Kimi.Console.writeLine("External borrow survived.")
+        Console.writeLine("External borrow survived.")
     add(first@uniq, 2)
     add(second@uniq, 3)
     require first.value == 13 and second.value == 24 else => $abort("Reborrow did not end")
-    ::Kimi.Console.writeLine("Both sources updated.")
+    Console.writeLine("Both sources updated.")
 
 public func main()
     run(true)
     run(false)
-    ::Kimi.Console.writeLine("Origin forwarding finished.")
+    Console.writeLine("Origin forwarding finished.")

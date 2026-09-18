@@ -2,31 +2,33 @@
 
 [Specification index](../SPEC.md)
 
-`unsafe/T` is a non-owning raw pointer to storage for the complete immediate Referent Type `T`, which determines access and element-sized arithmetic. This includes reference or pointer values, such as `unsafe/ref/i32` and `unsafe/unsafe/i32`. Pointers are Copy regardless of `T`; copying or destroying one does not copy or destroy its pointee or free storage.
+`unsafe/T` is a non-owning raw pointer to storage for its complete immediate Referent Type `T`, which determines access and element-sized arithmetic. `T` may itself be a reference or pointer Type, as in `unsafe/ref/i32` and `unsafe/unsafe/i32`. Pointers are Copy regardless of `T`; copying or destroying a pointer neither copies nor destroys its pointee and frees no storage.
 
 ```kimi
 let first: unsafe/Foo = obtainPointer()
 let second = first // Copy the pointer, not Foo.
 ```
 
-A raw pointer guarantees neither pointee lifetime, initialization, alignment, nor access permission. Ownership, Loan, Origin, reference, aliasing, and data-race rules still govern the same storage. Unsafe context permits unverifiable operations without waiving these obligations.
+A raw pointer guarantees neither the pointee's lifetime, initialization or alignment, nor access permission. Ownership, Loan, Origin, reference, aliasing and data-race rules still govern the same storage. An unsafe context permits operations the compiler cannot verify; it does not waive these obligations.
 
-Missing required unsafe context, invalid Types, and unsupported operations are compile-time errors. Violating runtime memory-safety requirements is undefined behavior; detection and runtime checks are not guaranteed.
+A missing required unsafe context, an invalid Type and an unsupported operation are compile-time errors. Violating a runtime memory-safety requirement is undefined behavior; detection and runtime checks are not guaranteed.
 
-| Operation | Unsafe Block required |
+| Operation | Unsafe context required |
 | --- | --- |
-| Declare, hold, Copy, Move, pass, or destroy a raw pointer | No |
-| Explicit `@` acquisition of the same normalized raw pointer Type | No; operand evaluation may require it |
+| Declare, hold, Copy, Move, pass or destroy a raw pointer | No |
+| Explicit `@` acquisition of the same normalized raw pointer Type | No; evaluating the operand may require it |
 | Create a contextually typed `null` | No |
-| Equality of same-Type pointers, or a pointer and `null` | No |
+| Equality of same-Type pointers, or of a pointer and `null` | No |
 | Call an unsafe function | Yes |
 | Dereference or index a raw pointer | Yes |
 | Pointer arithmetic | Yes |
 | Conversion between distinct raw pointer Types, or between a raw pointer and an integer | Yes |
 
+None of the operations that need no unsafe context require the pointer to have access provenance.
+
 ## 5.1. Null and equality
 
-`unsafe/T` permits `null`, whose expected Type must determine `unsafe/T` or compilation fails. Safe references (`ref/T`, `uniq/T`, `objref/T`, `objuniq/T`) are non-null. Non-nullness alone does not validate a raw pointer.
+`unsafe/T` permits `null`; its expected Type must determine `unsafe/T`, or compilation fails. Safe references (`ref/T`, `uniq/T`, `objref/T`, `objuniq/T`) are non-null. Non-nullness alone does not make a raw pointer valid.
 
 ```kimi
 let pointer: unsafe/i32 = null
@@ -35,17 +37,15 @@ let unknown = null // Error: no pointer Type can be determined.
 let empty = pointer == null
 ```
 
-`==` and `!=` compare the addresses of two pointers with the same Type and return `bool`, without reading pointees. A comparison with `null` gives the literal the other operand's pointer Type. Null equals null and never equals a non-null pointer.
+`==` and `!=` compare the addresses of two pointers of the same Type and return `bool`, without reading the pointees. In a comparison with `null`, the literal takes the other operand's pointer Type. Null equals null and never equals a non-null pointer.
 
-Initialized pointers may be compared even if null or dangling. Equal addresses imply neither equal provenance nor ownership or access permission. Different pointer Types require an explicit unsafe conversion to a common Type. Pointer ordering comparisons are not defined.
+Initialized pointers may be compared even when null or dangling. Equal addresses imply neither equal provenance nor ownership or access permission. Pointers of different Types require an explicit unsafe conversion to a common Type. Pointer ordering comparisons are not defined.
 
 ## 5.2. Dereference and ownership
 
-Unsafe access obeys the storage/content lifetime distinction in §15.7.3. A payload update preserves its allocation but may invalidate old-content pointers and dependencies. Raw pointers supply no safe Loan, exclusivity, or completeness proof.
+`*pointer` denotes a memory Place of Type `T`. Forming it requires live storage covering the required range, valid alignment and provenance; null and one-past-the-end pointers cannot be dereferenced. **Provenance** records the allocation a pointer derives from and the basis for its accesses.
 
-`*pointer` denotes a memory place of Type `T`. Forming it requires live storage covering the required range, valid alignment, and provenance; null and one-past-the-end pointers cannot be dereferenced. **Provenance** records the allocation a pointer derives from and the basis for its accesses.
-
-Actual reads require initialized, valid `T` values and read permission. Writes require write permission and must obey initialization and replacement rules. All accesses must respect reference, aliasing, and data-race rules.
+An actual read requires an initialized, valid `T` value and read permission. A write requires write permission and obeys the initialization and replacement rules. Every access respects the reference, aliasing and data-race rules.
 
 ```kimi
 let pointer: unsafe/i32 = obtainPointer()
@@ -55,17 +55,19 @@ unsafe
 pointer = other // Error: the let binding cannot be reassigned.
 ```
 
-Binding mutability does not determine pointee write permission. Normal Copy, Move, and assignment rules apply. Moving a non-Copy pointee leaves storage uninitialized; the programmer must prevent later reads and double destruction through other pointers or the original owner. The compiler need not identify that owner or suppress its automatic destruction.
+Binding mutability does not determine pointee write permission. Normal Copy, Move and assignment rules apply. Moving a Non-Copy pointee leaves the storage Uninitialized; the programmer must prevent later reads and double destruction through other pointers or through the original owner. The compiler need not identify that owner or suppress its automatic destruction.
 
 ```kimi
-// Foo is non-Copy; pointer refers to an initialized Foo.
+// Foo is Non-Copy; pointer refers to an initialized Foo.
 unsafe
     let value = *pointer // Move Foo.
     use(value)
     // The programmer must prevent destruction of the moved source by its old owner.
 ```
 
-Replacing an initialized pointee uses normal destruction rules. Initializing uninitialized raw storage requires a separately specified operation; ordinary assignment is not a substitute.
+Replacing an initialized pointee uses the normal destruction rules. Initializing uninitialized raw storage requires a separate operation (§5.6); ordinary assignment is not a substitute.
+
+Unsafe access obeys the distinction between storage lifetime and content lifetime in §15.7.3: a payload update keeps the allocation but may invalidate pointers and dependencies into the old contents. Raw pointers supply no safe Loan, exclusivity or completeness proof.
 
 ## 5.3. Pointer arithmetic and indexing
 
@@ -75,15 +77,13 @@ For `p: unsafe/T` and `n: isize`, including negative `n`, only these arithmetic 
 | --- | --- |
 | `p + n` | Pointer displaced by `n * stride(T)` bytes. |
 | `p - n` | Pointer displaced by `-n * stride(T)` bytes. |
-| `p[n]` | The same memory place as `*(p + n)`. |
+| `p[n]` | The same memory Place as `*(p + n)`. |
 
-`p += n` and `p -= n` combine these displacements with [compound assignment](13-operators-and-assignment.md#1372-compound-assignment) and require the same unsafe conditions. Pointer increment and decrement are not supported.
+`p += n` and `p -= n` combine these displacements with [compound assignment](13-operators-and-assignment.md#1372-compound-assignment) under the same unsafe conditions. Pointer increment and decrement are not supported. Subtracting one pointer from another, integer-left addition and all other pointer arithmetic are forbidden.
 
-`stride(T)` is the complete element spacing, including padding, under §21.1; it is the same quantity used by fixed arrays and Slice. No source `sizeof` operator is introduced. Arithmetic requires known layout and positive stride. Mathematical displacement outside `isize`, or address wraparound, is undefined behavior.
+`stride(T)` is the complete element spacing, including padding (§21.1), the same quantity used by fixed arrays and Slice. There is no source `sizeof` operator. Arithmetic requires a known layout and a positive stride, so `unsafe/()` arithmetic and indexing are invalid, while holding, comparing and valid dereference remain separate operations. Zero displacement preserves the pointer, including null. Nonzero displacement requires live-allocation provenance, with both source and result inside the allocation or one past its end; the result keeps the provenance, and a matching address alone is insufficient. A mathematical displacement outside `isize`, or address wraparound, is undefined behavior.
 
-Zero displacement preserves the pointer, including null, but requires known layout and positive stride. Thus `unsafe/()` arithmetic and indexing are invalid; holding, comparing, and valid dereference are separate operations. Nonzero displacement requires live-allocation provenance, with both source and result inside or one past the allocation. The result retains provenance; a matching address alone is insufficient.
-
-Arithmetic alone requires neither pointee initialization nor alignment. One-past pointers may be held and used in permitted arithmetic, but not dereferenced. Pointer indexing has no length or implicit bounds check and must meet both arithmetic and dereference requirements.
+Arithmetic alone requires neither pointee initialization nor alignment. One-past pointers may be held and used in permitted arithmetic, but not dereferenced. Pointer indexing has no length and no implicit bounds check, and must meet both the arithmetic and the dereference requirements.
 
 ```kimi
 unsafe
@@ -94,11 +94,9 @@ unsafe
     pointer[0..4] // Error: no Range indexing.
 ```
 
-Pointer subtraction from another pointer, integer-left addition, and other pointer arithmetic are forbidden.
-
 ## 5.4. Pointer conversions
 
-When the complete raw pointer Types match after normalization, `@` performs ordinary same-Type acquisition. It copies the pointer, preserves address, provenance, and Origin information and constraints, and does not itself require unsafe context. Expand Type aliases for this comparison; matching size or memory layout alone is insufficient. It grants no new access permission or ownership. Unsafe operations in operand evaluation still require unsafe context.
+When two complete raw pointer Types match after normalization (with Type aliases expanded), `@` performs ordinary same-Type acquisition: it copies the pointer and preserves its address, provenance, and Origin information and constraints. It does not itself require an unsafe context, although unsafe operations in the operand still do. Matching size or memory layout alone does not make Types match. No new access permission or ownership is granted.
 
 ```kimi
 // pointer has Type unsafe/Node.
@@ -106,7 +104,7 @@ let a = pointer             // Copy; no unsafe context required.
 let b = pointer@unsafe/Node // Same-Type Copy; no unsafe context required.
 ```
 
-For distinct normalized raw pointer Types, `@` supports `unsafe/T -> unsafe/U` in unsafe context. `unsafe/T -> usize` and `usize -> unsafe/T` also require unsafe context. Fit integer literals used as pointer-cast inputs to `usize` before converting. Pointer casts within one address space preserve address and provenance without changing memory, initialization, or alignment, or granting access as `U`.
+For distinct normalized raw pointer Types, `@` supports `unsafe/T -> unsafe/U` in an unsafe context. `unsafe/T -> usize` and `usize -> unsafe/T` also require an unsafe context; an integer literal used as a pointer-cast input is first fitted to `usize`. Within one address space, a pointer cast preserves address and provenance; it changes no memory, initialization or alignment and grants no access as `U`.
 
 ```kimi
 unsafe
@@ -116,15 +114,15 @@ unsafe
     // Access through typed still requires i32 alignment and a valid i32.
 ```
 
-`unsafe/u8` permits byte-sized arithmetic, not reads of uninitialized memory. A cast itself does not read a pointee or require a valid, aligned value of the destination pointee Type; dereference and access do.
+`unsafe/u8` permits byte-sized arithmetic, not reads of uninitialized memory. A cast neither reads a pointee nor requires a valid, aligned value of the destination pointee Type; dereference and access do. Conversions create no provenance.
 
 ## 5.5. Target and round-trip guarantees
 
-Pointer/integer conversion initially requires a target whose ordinary data addresses fit losslessly in `usize`, whose pointer-address, address-index, `usize`, and `isize` widths agree, and which provides the guarantees below. Multiple address spaces and integer conversion of pointers carrying extra state (such as capabilities) are excluded. Unsupported conversions are compile-time errors; CPU/OS support is target-specific.
+Pointer/integer conversion initially requires a target whose ordinary data addresses fit losslessly in `usize`, whose pointer-address, address-index, `usize` and `isize` widths agree, and which provides the guarantees below. Multiple address spaces, and integer conversion of pointers carrying extra state such as capabilities, are excluded. An unsupported conversion is a compile-time error; CPU and OS support is target-specific.
 
-Null converts to integer zero, and integer zero converts to null, without requiring an all-zero internal pointer representation. These explicit conversions still require unsafe context.
+Null converts to integer zero, and integer zero converts to null, without requiring an all-zero internal pointer representation. These explicit conversions still require an unsafe context.
 
-Converting a pointer to `usize` guarantees its numeric address only. `usize` is not a language-level carrier of provenance; Copy, Move, argument passing, return, and storage follow ordinary integer rules. Converting the same numeric address back to the original pointer Type within the same execution guarantees address equality, but not preservation or recovery of provenance. Integer arithmetic or serialization cannot strengthen this guarantee.
+Converting a pointer to `usize` guarantees only its numeric address. `usize` is not a language-level carrier of provenance; Copy, Move, argument passing, return and storage follow the ordinary integer rules. Converting the same numeric address back to the original pointer Type within the same execution guarantees address equality, but neither preservation nor recovery of provenance. Integer arithmetic or serialization cannot strengthen this guarantee.
 
 ```kimi
 unsafe
@@ -134,10 +132,8 @@ unsafe
     // Preserves the address only; access validity is a separate requirement.
 ```
 
-Conversion extends no lifetime and restores no permissions. Supported targets allow arbitrary integer-to-pointer casts, but provenance-dependent use requires a documented Compiler/target guarantee plus normal lifetime, alignment, initialization, and access conditions. Unsafe context alone is insufficient. Retain the original pointer for portable provenance preservation. Addresses from another execution have no validity guarantee.
-
-A raw pointer need not have access provenance merely to be held, copied, moved, passed, destroyed, compared with the same pointer Type, or tested against null; these uses need no unsafe context. Pointer/usize and pointer-Type conversions still require supported-target and unsafe conditions and create no provenance. Arithmetic always requires unsafe context, known layout, and positive stride; nonzero displacement also requires live-allocation provenance and bounds. Dereference/indexing must satisfy place-formation conditions, and actual reads/writes require initialization and access permissions. Address equality proves no access validity.
+Conversion extends no lifetime and restores no permissions. Supported targets allow arbitrary integer-to-pointer casts, but a provenance-dependent use requires a documented compiler/target guarantee in addition to the normal lifetime, alignment, initialization and access conditions; an unsafe context alone is insufficient. Keep the original pointer for portable provenance preservation. Addresses from another execution have no validity guarantee, and address equality never proves access validity.
 
 ## 5.6. Raw pointer API design boundaries
 
-Raw pointer acquisition APIs, allocation and deallocation, initialization of raw storage, conversion to or from safe references, ownership acquisition, and Unsafe Function Types are specified separately. Example functions such as `obtainPointer` and `use` are illustrative, not standard API declarations.
+This revision does not specify raw pointer acquisition APIs, allocation and deallocation, initialization of raw storage, conversion to or from safe references, ownership acquisition, or Unsafe Function Types; they remain design work ([Appendix D](appendices/D-deferred-features.md)). Their absence adds no executable syntax, and the constraints of this chapter apply to any future design. Example functions such as `obtainPointer` and `use` are illustrative, not standard API declarations.

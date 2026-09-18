@@ -4,11 +4,11 @@ struct Resource
     public init(id: i32) => self.id = id
     deinit
         match self.id
-            1 => ::Kimi.Console.writeLine("Resource 1 destroyed.")
-            2 => ::Kimi.Console.writeLine("Resource 2 destroyed.")
-            3 => ::Kimi.Console.writeLine("Resource 3 destroyed.")
-            4 => ::Kimi.Console.writeLine("Resource 4 destroyed.")
-            5 => ::Kimi.Console.writeLine("Resource 5 destroyed.")
+            1 => Console.writeLine("Resource 1 destroyed.")
+            2 => Console.writeLine("Resource 2 destroyed.")
+            3 => Console.writeLine("Resource 3 destroyed.")
+            4 => Console.writeLine("Resource 4 destroyed.")
+            5 => Console.writeLine("Resource 5 destroyed.")
             _ => $abort("Unexpected resource identity")
 
 func prepare() -> [2 of Resource]
@@ -19,19 +19,19 @@ func prepare() -> [2 of Resource]
     do
         let old = Kimi.exchange(items[1]@uniq, with: Resource.init(4))
         require old.id == 2 and items[1].id == 4 else => $abort("Exchange failed")
-        defer => ::Kimi.Console.writeLine("Exchange scope finished.")
+        defer => Console.writeLine("Exchange scope finished.")
         // old is destroyed after this scope's defer; exchange did not destroy it.
     Kimi.swap(items[0]@uniq, items[1]@uniq)
     require items[0].id == 4 and items[1].id == 3 else => $abort("Swap failed")
     Kimi.replace(items[1]@uniq, with: Resource.init(5))
     require items[1].id == 5 else => $abort("Replacement failed")
-    defer => ::Kimi.Console.writeLine("Prepared result.")
+    defer => Console.writeLine("Prepared result.")
     return items // Secure the array before defer and extracted's destruction.
 
 public func main()
     do
         let result = prepare()
         require result[0].id == 4 and result[1].id == 5 else => $abort("Result transfer failed")
-        ::Kimi.Console.writeLine("Result received.")
+        Console.writeLine("Result received.")
         // Array cleanup destroys element 1 before element 0.
-    ::Kimi.Console.writeLine("Cleanup finished.")
+    Console.writeLine("Cleanup finished.")

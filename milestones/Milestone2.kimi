@@ -8,8 +8,8 @@ while number <= 10
     number = number + 1
 
 if total == expected
-    ::Kimi.Console.writeLine("Sum is 55.")
+    Console.writeLine("Sum is 55.")
 else
     $abort("Unexpected sum")
 
-::Kimi.Console.writeLine("Done.")
+Console.writeLine("Done.")

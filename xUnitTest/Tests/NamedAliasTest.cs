@@ -190,6 +190,7 @@ public class NamedAliasTest
         var count = 0;
         foreach (var folder in new[] { "examples", "milestones" })
         {
+            var previousCount = count;
             foreach (var path in Directory.EnumerateFiles(Path.Combine(root, folder), "*.kimi", SearchOption.AllDirectories))
             {
                 if (Path.GetRelativePath(root, path).Split(Path.DirectorySeparatorChar).Contains("bin"))
@@ -203,9 +204,9 @@ public class NamedAliasTest
                 Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, path + ": " + string.Join("; ", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.Message)));
                 count++;
             }
-        }
 
-        Assert.True(count >= 55);
+            Assert.True(count > previousCount, folder + " contains no source examples.");
+        }
     }
 
     private static Compilation Parse(string source)

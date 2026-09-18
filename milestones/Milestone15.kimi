@@ -2,7 +2,7 @@
 struct Item
     public var value: i32
     public init(value: i32) => self.value = value
-    deinit => ::Kimi.Console.writeLine("Item destroyed.")
+    deinit => Console.writeLine("Item destroyed.")
 
 func consume(item: Item, expected: i32)
     require item.value == expected else => $abort("Unexpected consumed value")
@@ -19,7 +19,7 @@ func run(useFirst: bool)
     var total: i32 = 0
     while step < 3
         step = step + 1
-        defer => ::Kimi.Console.writeLine("Iteration finished.")
+        defer => Console.writeLine("Iteration finished.")
         if step == 2
             consume(current, initial + 1)
             current = Item.init(20) // Repair before the continue backedge.
@@ -33,10 +33,10 @@ func run(useFirst: bool)
         current.value = current.value + 1
     require total == initial + 30 else => $abort("Unexpected joined total")
     require current.value == 21 else => $abort("Loop repair failed")
-    ::Kimi.Console.writeLine("Flow checked.")
+    Console.writeLine("Flow checked.")
     // Reverse local order destroys fallback, then the repaired current.
 
 public func main()
     run(true)
     run(false)
-    ::Kimi.Console.writeLine("Ownership joins finished.")
+    Console.writeLine("Ownership joins finished.")

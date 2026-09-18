@@ -1,0 +1,54 @@
+// Milestone 19: associated Types and conditional Contract requirement calls.
+contract Source
+    associate Element is Copy
+    func read(self: ref/Self) -> Element
+
+struct NumberSource
+    Self is Source
+    associate Source.Element is i32
+    let value: i32
+    public init(value: i32) => self.value = value
+    public func read(self: ref/Self) -> i32 => self.value
+
+struct FlagSource
+    Self is Source
+    associate Source.Element is bool
+    let value: bool
+    public init(value: bool) => self.value = value
+    public func read(self: ref/Self) -> bool => self.value
+
+struct Wrapper<T>
+    let value: T
+    public init(value: T) => self.value = value
+
+    // Storage is valid without this premise; the Source capability is conditional.
+    Self is Source when T is Source
+        associate Source.Element is T.Source.Element
+        public func read(self: ref/Self) -> T.Source.Element
+            return self.value.read()
+
+func readTwice<T>(source: ref/T) -> (T.Source.Element, T.Source.Element)
+    T is Source
+    let first: T.Source.Element = source.read()
+    return (first, source.read())
+
+func readNumber<T>(source: ref/T) -> i32
+    T is Source
+    T.Source.Element is i32
+    return source.read()
+
+public func main()
+    let number = Wrapper<NumberSource>.init(NumberSource.init(21))
+    match readTwice(number@ref)
+        (21, 21) => Console.writeLine("Associated numbers are 21, 21.")
+        _ => $abort("Number requirement call failed")
+    require readNumber(number@ref) == 21 else => $abort("Associated equality failed")
+    let flag = Wrapper<FlagSource>.init(FlagSource.init(true))
+    match readTwice(flag@ref)
+        (true, true) => Console.writeLine("Associated flags are true, true.")
+        _ => $abort("Flag requirement call failed")
+    let nested = Wrapper<Wrapper<NumberSource>>.init(number)
+    require readNumber(nested@ref) == 21 else => $abort("Nested conformance failed")
+    // i32 has no user Source conformance, but Wrapper<i32> storage remains legal.
+    let storageOnly = Wrapper<i32>.init(99)
+    Console.writeLine("Contract forwarding finished.")

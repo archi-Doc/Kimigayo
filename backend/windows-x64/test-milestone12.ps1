@@ -101,7 +101,7 @@ foreach ($level in @('O0', 'O2')) {
 }
 $invalid = [ordered]@{
     ConsumedClosure = $original + "`n    send()`n"
-    MovedCapture = $original + "`n    ::Kimi.Console.writeLine(message)`n"
+    MovedCapture = $original + "`n    Console.writeLine(message)`n"
     ImmutableReceiver = $original.Replace('var next =', 'let next =')
     ImmutableCapture = $original.Replace('[var count]', '[count]')
     SharedConstraint = $original.Replace('Callable<uniq,', 'Callable<ref,')

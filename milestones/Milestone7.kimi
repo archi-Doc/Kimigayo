@@ -7,7 +7,7 @@ public func main()
     ]
     var total: i32 = 0
     rows: for row in matrix.indices
-        defer => ::Kimi.Console.writeLine("Row finished.")
+        defer => Console.writeLine("Row finished.")
         for column in matrix[row].indices
             let value = matrix[row][column]
             if value == 0
@@ -20,7 +20,7 @@ public func main()
     require total == 42 else => $abort("Unexpected matrix total")
     require matrix[1][1] == 10 else => $abort("Skipped row was changed")
     require matrix[2][2] == 7 else => $abort("Stop cell was changed")
-    ::Kimi.Console.writeLine("Matrix total is 42.")
+    Console.writeLine("Matrix total is 42.")
 
     // The Slice borrows the first row; indexed reads Copy its i32 elements.
     let rowView = matrix[0][..]
@@ -28,4 +28,4 @@ public func main()
     for index in rowView.indices
         rowTotal = rowTotal + rowView[index]
     require rowTotal == 20 else => $abort("Unexpected slice total")
-    ::Kimi.Console.writeLine("Borrowed row total is 20.")
+    Console.writeLine("Borrowed row total is 20.")

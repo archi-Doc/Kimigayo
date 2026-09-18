@@ -128,7 +128,7 @@ GenericParameters and TypeArguments are nonempty and allow trailing commas. Name
 
 ## F.3. Declaration grammar
 
-[Containers](../06-declarations-and-containers.md#61-declaration-containers), [structures](../06-declarations-and-containers.md#62-structure-declarations), [enums](../06-declarations-and-containers.md#63-enums), [Constraints](../08-generics-constraints-and-contracts.md#82-constraints), [bindings](../06-declarations-and-containers.md#64-bindings), [functions](../07-functions-and-callable-values.md#7-functions-and-callable-values), [parameters](../07-functions-and-callable-values.md#72-parameter-names-and-defaults), [aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases).
+[Containers](../06-declarations-and-containers.md#61-declaration-containers), [structures](../06-declarations-and-containers.md#62-structure-declarations), [enums](../06-declarations-and-containers.md#63-enums), [Constraints](../08-generics-constraints-and-contracts.md#82-constraints), [bindings](../06-declarations-and-containers.md#64-bindings), [functions](../07-functions-and-callable-values.md#7-functions-and-callable-values), [parameters](../07-functions-and-callable-values.md#72-parameters-and-defaults), [aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases).
 
 ```ebnf
 QualifiedName        := Name ("." Name)*

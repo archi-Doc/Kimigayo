@@ -81,7 +81,7 @@ $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
     First = @{ source = $original.Replace('let target: i32 = 6', 'let target: i32 = 2').Replace('index == 3 and value == 6', 'index == 0 and value == 2').Replace('Found 6 at index 3.', 'Found 2 at index 0.'); stdout = $expected.Replace('Found 6 at index 3.', 'Found 2 at index 0.') }
     Last = @{ source = $original.Replace('let target: i32 = 6', 'let target: i32 = 8').Replace('index == 3 and value == 6', 'index == 4 and value == 8').Replace('Found 6 at index 3.', 'Found 8 at index 4.'); stdout = $expected.Replace('Found 6 at index 3.', 'Found 8 at index 4.') }
-    Absent = @{ source = $original.Replace('let target: i32 = 6', 'let target: i32 = 99').Replace('.Missing => $abort("Expected a match")', '.Missing => ::Kimi.Console.writeLine("No match.")'); stdout = $expected.Replace('Found 6 at index 3.', 'No match.') }
+    Absent = @{ source = $original.Replace('let target: i32 = 6', 'let target: i32 = 99').Replace('.Missing => $abort("Expected a match")', '.Missing => Console.writeLine("No match.")'); stdout = $expected.Replace('Found 6 at index 3.', 'No match.') }
     Singleton = @{ source = $original.Replace('[5 of i32]', '[1 of i32]').Replace('[2, 4, 5, 6, 8]', '[6]').Replace('find<5, i32>', 'find<1, i32>').Replace('index == 3', 'index == 0').Replace('Found 6 at index 3.', 'Found 6 at index 0.'); stdout = $expected.Replace('Found 6 at index 3.', 'Found 6 at index 0.') }
     Wide = @{ source = $original.Replace('i32', 'i64'); stdout = $expected }
     NonemptyMissing = @{ source = $original.Replace('let empty: [0 of i32] = []', 'let empty: [2 of i32] = [0, 1]').Replace('find<0, i32>', 'find<2, i32>'); stdout = $expected }

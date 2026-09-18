@@ -1,10 +1,12 @@
 # Language milestones
 
-Seventeen short, independent programs based on the current [SPEC](../SPEC.md).
+Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md).
+Programs 1–21 have source files; programs 22–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 15–17 are specification targets added without
-compiler capability checks, builds, or execution.
+not an execution claim. Milestones 15–21 are specification targets beyond current
+verified executable coverage; the status table below distinguishes untested
+programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
 or execution; subsequent verification is documented per program below.
 Milestones 10–14 were originally added from the specification without compiler
@@ -30,6 +32,73 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone15](Milestone15.kimi) | Initialization/Move/Loan joins, loop backedges, repair before continue |
 | [Milestone16](Milestone16.kimi) | Multiple external Origins, aggregate/enum forwarding, intersection, exclusive reborrow |
 | [Milestone17](Milestone17.kimi) | Partial Move repair, element exchange/swap/replace, secured results and destruction order |
+| [Milestone18](Milestone18.kimi) | Generic composite/Non-Copy arguments, results, temporaries, Copy acquisition and destruction |
+| [Milestone19](Milestone19.kimi) | Contract requirements, associated Types/equalities, conditional and nested conformance |
+| [Milestone20](Milestone20.kimi) | Type/length/Origin inference, ordinary defaults and generic forwarding |
+| [Milestone21](Milestone21.kimi) | Full length/Type specialization, inherited defaults/Origins and preserved implementation selection |
+
+## Program status
+
+As of **2026-09-18**, after the 38-program restructuring. Build means a native
+Application build including LLVM verification and linking; tests mean native
+output/exit checks and, where a harness exists, its variants/rejections. Parser
+coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
+
+| Program | Created | Build | Tests | Evidence / boundary |
+| --- | --- | --- | --- | --- |
+| 1 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 2 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 3 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 4 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 5 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 6 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 7 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 8 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 9 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 10 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 11 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 12 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 13 | YES | PASS (Release) | PASS (Release) | Exact copied source, O0/O2 output/exit checks |
+| 14 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
+| 15 | YES | FAIL (Release/O2) | NOT_RUN | TypeMismatch_Kd / ControlFlow_Kd at the joined borrow |
+| 16 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedOwnership_Kd and dependent Loan/initialization diagnostics |
+| 17 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedOwnership_Kd for element update targets; Move/Loan diagnostics |
+| 18 | YES | FAIL (Release/O2) | NOT_RUN | GenerationFailed_Kd: invalid shared storage/projection |
+| 19 | YES | FAIL (Release/O2) | NOT_RUN | InvalidPattern_Kd / UnprovenConstraint_Kd for associated results/nested conformance |
+| 20 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedBinding_Kd when dereferencing generic returned element borrows |
+| 21 | YES | FAIL (Release/O2) | NOT_RUN | Length specialization / inherited Origin Binding unsupported; cascading diagnostics |
+| 22 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 23 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 24 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 25 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 26 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 27 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 28 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 29 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 32 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 33 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 34 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 35 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 36 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 37 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 38 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+
+[Restructuring audit](../PLAN_HISTORY.md#programs38-restructure) records source/DLL
+identities and exact commands: Release compiler/test-project build PASS with zero
+warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
+program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
+The syntax-catalog test includes all 21 existing milestone sources. Programs
+15–21 fail before native execution; their expected output remains specification-derived.
+Programs 22–38 have no source files or executed tests yet. Debug, full managed
+regressions and NativeAOT were not run for this restructuring.
+
+Earlier [program 14 regressions](../PLAN_HISTORY.md#program14-completion),
+[units 62–67 audit](../PLAN_HISTORY.md#units62-67-verification) and
+[18–20 authoring probes](../PLAN_HISTORY.md#programs18-20-design) remain historical
+records of their own inputs. In particular, the old combined program-20 result
+is not evidence for new program 20 or 21. The current table uses the new audit.
 
 Each file is a separate Application; do not combine them into one project.
 Under [single-source input rules](../spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
@@ -42,15 +111,16 @@ kimi run milestones/Milestone1.kimi
 
 Replace `1` with the milestone number. `run` executes an existing build; it does
 not compile source. No separate project file is needed. Output uses fixed string
-literals so programs 1–17 do not require numeric formatting or interpolation.
+literals so programs 1–21 do not require numeric formatting or interpolation.
+Programs 2–21 use `Console.writeLine` through the default Kimi alias. Only the
+Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 
 ## Roadmap from program 15 to core completion
 
-Plan for approximately **20 additional programs, 15–34**. An eventual range of
-18–24 additional programs is reasonable if implementation reveals a need to
-split or combine targets; it is not an effort or completion-date estimate.
-Programs 15–17 are concrete below. Programs 18–34 are proposed design scopes,
-not source files or implemented capabilities. Passing programs 13/14 does not
+The current plan has **38 programs**, including **24 programs numbered 15–38**.
+Programs 15–21 are concrete below; 22–38 are future source targets, not implemented
+capabilities. This count is a decomposition of scope, not an effort or delivery
+estimate. Passing programs 13/14 does not
 establish general Slice, Iterator, callable, or object support.
 
 Here, core completion means combining the finalized language features and basic
@@ -61,7 +131,7 @@ separate product work. Unintroduced/deferred features in
 mutable-element Slice, lending iterators, virtual/override members and runtime
 Contract Views. "Complete generics" means the adopted specification, not future
 generic forms. ObjectCallCompatible inference/publication and release checking
-remain subject to the [explicit deferral](../SPEC.md#objectcallcompatible).
+remain subject to the [explicit deferral](../spec/appendices/D-deferred-features.md#objectcallcompatible).
 
 | Program | Main subject | Intended coverage |
 | --- | --- | --- |
@@ -70,21 +140,42 @@ remain subject to the [explicit deferral](../SPEC.md#objectcallcompatible).
 | 17 | Ownership, cleanup and updates | Partial Move, repair, defer/deinit, whole-value updates and call effects |
 | 18 | Generic value operations | Composite and Non-Copy arguments, results, temporaries and destruction |
 | 19 | Contracts and associated Types | Constraints, conditional conformance, associated Types and requirement calls |
-| 20 | Generic inference and specialization | Type/length/Origin inference, default function arguments, forwarding and full explicit specialization |
-| 21 | Generic generation | Shared bodies, compound ABI, fixed frames and finite generation budgets |
-| 22 | Properties | Standard/custom/computed access, Non-Copy setters and borrowed getter results |
-| 23 | Inheritance | Base storage, construction/destruction, inherited members and Properties |
-| 24 | General closures and Callable | Borrowed/composite/generic captures, function values, dependency retention and escape |
-| 25 | General Slice/Index/Range | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins |
-| 26 | General Iterator/Iterable | User protocols, owned/borrowed acquisition, early exit and cleanup |
-| 27 | Dynamic Array | Capacity, insertion/removal/replacement, Non-Copy elements and owning iteration |
-| 28 | Dictionary | Key comparison, mutation, iteration, Loans and allocation/complexity requirements |
-| 29 | Comparison and text | Comparison Contracts, Stringify and interpolation for user/generic Types |
-| 30 | General objects | Finalized obj/rc/arc operations, base views, identity and destruction |
-| 31 | Weak | Downgrade/upgrade, expiration, cyclic construction and final release |
-| 32 | General static storage | First initialization, effects, cycles, shutdown and inherited generic environment keys |
-| 33 | Integrated processing application | Collections, borrows, iteration and closures in one realistic workload |
-| 34 | Integrated core application | Properties, inheritance, objects and formatting combined with the preceding features |
+| 20 | Generic inference and defaults | Type/length/Origin inference, ordinary optional arguments and forwarding; no specialization |
+| 21 | Explicit full specialization | Closed Type/length selection, inherited default/Origin contracts and generic forwarding |
+| 22 | Generic generation | Shared bodies, compound ABI, fixed frames and finite generation limits; separate internal checks |
+| 23 | Basic Properties | Standard/custom/computed access over Copy values, permissions and evaluation order |
+| 24 | Ownership-bearing Properties | Non-Copy setters, owned/borrowed getter results, temporary lifetimes and Contract witnesses |
+| 25 | Inheritance | Base storage, construction/destruction, inherited members and already-verified Property operations |
+| 26 | General closures and Callable | Composite/generic captures, dependency retention, function values and permitted erasure |
+| 27 | General Slice/Index/Range | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins |
+| 28 | General Iterator/Iterable | User Iterable protocols, owned/borrowed elements, early exit and remaining-element cleanup |
+| 29 | Dynamic Array | Capacity, insertion/removal/replacement, Non-Copy elements and owning iteration |
+| 30 | Comparison Contracts | Equatable/Comparable, generic requirement calls and composed comparisons before Dictionary |
+| 31 | Dictionary | Key equality, mutation, insertion order, iteration, Loans and allocation/complexity requirements |
+| 32 | Stringify and interpolation | User/generic stringification, evaluation order, temporary cleanup and independent owned results |
+| 33 | Exclusive objects and views | obj, base views, runtime struct tests/refinement, identity and dynamic destruction |
+| 34 | Shared object ownership | rc/arc creation, explicit clone, Move, shared access and final strong release |
+| 35 | Weak | Downgrade/upgrade, expiration, cyclic construction and final weak-table release |
+| 36 | General static storage | First initialization, effects, cycles, shutdown and inherited generic environment keys |
+| 37 | Integrated processing application | Collections, borrows, iteration and closures in one realistic workload |
+| 38 | Integrated core application | Properties, inheritance, objects and formatting combined with established features |
+
+### Number migration from the 34-program plan
+
+Programs 1–19 retain their numbers and subjects. Former program 20 is split into
+20 (inference/defaults) and 21 (specialization); both source files are independent.
+Earlier program-20 build evidence describes the combined source, not either new
+target. Remaining changes affect planned scopes only:
+
+| Former number | Current number(s) | Change |
+| --- | --- | --- |
+| 21 | 22 | Generic generation |
+| 22 | 23, 24 | Separate basic access from ownership/borrow/witness behavior |
+| 23–27 | 25–29 | Inheritance, closures, Slice, Iterator, Array |
+| 28 | 31 | Dictionary follows comparison Contracts |
+| 29 | 30, 32 | Separate comparison from Stringify/interpolation |
+| 30 | 33, 34 | Separate exclusive objects/views from shared ownership |
+| 31–34 | 35–38 | Weak, static storage and the two integration targets |
 
 The dependency direction is ownership/Origins, then generic foundations, then
 general member/call/sequence operations, collections and runtime integration.
@@ -92,8 +183,10 @@ Implement prerequisites needed by a target even if their broader program comes
 later; the ordering does not postpone correctness checks. Revisit generality
 after each group rather than accumulating program-specific special cases.
 
-Keep one main subject and one or two interactions per program, usually around
-80–180 lines when useful; a smaller focused program is preferable to padding.
+Keep one main subject and one or two interactions per program. Existing programs
+are intentionally short; there is no minimum line count. Split independent
+mechanisms rather than compressing them into dense expressions. Do not pad a
+program to 80–180 lines or put every negative/performance case in its main body.
 Integration programs may be larger. Programs remain independent Applications.
 
 Each implementation target needs three kinds of evidence:
@@ -118,6 +211,47 @@ This README owns program design and expected behavior. [PLAN.md](../PLAN.md)
 continues to own active execution scope, acceptance tracking, dependencies,
 states and exact next actions; [PLAN_HISTORY.md](../PLAN_HISTORY.md) owns run
 history. This roadmap does not replace the active target or mark any work done.
+
+### Verification scopes for future programs 22–38
+
+Every row inherits the three evidence gates above. The canonical program is a
+small successful Application. Rejection/Abort cases use separate source copies;
+IR, allocation, runtime-state and complexity checks use companion tests or tools.
+Prerequisites name the main exercised capabilities, not permission to postpone
+required legality checks. Where public operations use static-effect summaries,
+verify those summaries before accepting calls even though the static-storage
+demonstration is program 36. ObjectCallCompatible's deferred stages stay deferred.
+
+| Program / main prerequisites | Canonical program | Separate semantic checks | Implementation evidence |
+| --- | --- | --- | --- |
+| 22 / 18–21 | Pass compound generic values through shared bodies and concrete entries; preserve different Type operations and selected specializations. | Different layouts and same-layout/different-destructor Types; finite recursive metadata, growing substitutions, invalid infinite layout; required-limit diagnostics versus optional-budget fallback. | Inspect entry/context ABI, operation dispatch, fixed scratch-frame reservations and reuse; compare budget-zero/bounded optimization semantics; measure warm allocations and deterministic logical plans. |
+| 23 / 4, 7 | Read/write stored standard, custom and computed Copy Properties with observable evaluation order. | Access permissions, differing setter inputs where permitted, single receiver/RHS/getter evaluation; reject writes or exclusive borrows into getter-result temporaries. | Distinguish direct Places from accessor calls; verify standard storage access and custom dispatch without invented get/set round trips. |
+| 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Owned getter results and legal receiver consumption, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
+| 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
+| 26 / 12, 14, 16, 18–22 | Capture a compound/generic value and an external borrow, then invoke through the required Callable mode; separately demonstrate permitted function-value erasure. | Shared/exclusive/consuming calls, nested captures, function items, moved closures, escaping dependencies and erasure without required Copy/Owned evidence. | Environment layout, direct versus common entries, capture destruction, no per-call environment allocation; optional erasure allocation accounted separately. |
+| 27 / 7, 13, 16 | Resolve Index/Range values and retain nested/sub-Slice views of external backing storage. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation. Mutable-element Slice remains excluded. |
+| 28 / 13, 18–19, 27 | Implement user Iterable/Iterator protocols, yield owned or externally borrowed elements, then stop early. | Exhaustion, continue/exit/return, correct associated Element/Iterator equality, retained previous borrowed results; reject lending results and missing capability proofs. | Receiver acquisition once, exact yielded/unyielded responsibilities and reverse remaining-element cleanup; no hidden element clone. |
+| 29 / 17–18, 27–28 | Grow, insert, replace and remove Non-Copy Array elements; consume an iterator and stop early. | Empty/pop/clear, directional indices, capacity/no-op paths, live and empty-Slice conflicts, retained borrowed contents, normal argument abandonment and Abort. | Count internal allocations; verify within-capacity/no-op/removal guarantees, reverse current-index cleanup, growth amortization and shrink failure preserving original placement. |
+| 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
+| 31 / 19, 28–30 | Insert/reject/replace/remove Dictionary entries with user-defined equal keys; inspect and iterate insertion order. | Result/Option ownership, duplicate literal diagnostics and runtime duplicates, stored-key preservation, missing-key assignment Abort, lookup/mutation Loans and dependency retention. | Equality effects and invocation order, value-before-key/reverse-insertion cleanup, allocation-free duplicate/lookup/replacement paths, churn reuse and specified management bounds. No public Hash requirement is added. |
+| 32 / 18–19, 26 | Interpolate user/generic values through Stringify, retaining the original Non-Copy values and independent resulting strings. | UTF-8/NUL/empty text, source-order evaluation, once-only stringification, temporary cleanup, missing conformance and Abort before later interpolation. | Verified Stringify calls, ownership of each produced string and cleanup, no retained source Loan in the combined result. Do not invent formatting options or deferred concatenation semantics. |
+| 33 / 14, 24–25 | Create an obj, use a base object view, perform specified struct `is` tests/refinement, preserve identity and destroy the complete Dynamic Type. | Sealed payload projection, borrow/reborrow, legal whole-payload updates, invalid view/acquisition/escape; test expression effects and refinement invalidation. | Header/view identity, dynamic destruction before original storage release, unchanged identity across updates. No runtime Contract View, checked-cast spelling or deferred ObjectCallCompatible inference. |
+| 34 / 33 | Create rc and arc values, explicitly clone strong handles, Move them and observe final strong release. | Shared-only access even at count one, no implicit clone, moved-handle rejection, external payload dependencies and separate count-overflow failure probes. | Exact retain/release counts, clone without allocation/payload copy, complete payload destruction once; inspect atomic arc ordering with internal tests. No source concurrency or obj/rc/arc conversion is added. |
+| 35 / 26, 34 | Downgrade, upgrade and expire Weak handles; then demonstrate a cyclic factory's Building-to-Alive transition. | Weak clone/Move, upgrade before publication and after final release, payload dependencies, factory Owned/Callable constraints and failed construction. | Separate payload/object/table lifetimes, allocation-free upgrade/clone, final table release; internally test arc upgrade/final-release races without introducing source threading. |
+| 36 / 19, 22, 24–25, 34 | Initialize static values on first access, distinguish enclosing generic keys and destroy in reverse successful-initialization order. | First write before replacement, unused storage, alias paths to one key, effects/reentry, non-Owned storage rejection; initialization cycles and invalid shutdown access in separate Abort inputs. | Per-key state/address/destruction identity, preserved keys across body sharing and Origin erasure, no initialization from untaken paths or effect summaries alone. |
+| 37 / 26–32 | One bounded processing workload using collections, borrowed views, iteration and closures with exact results and cleanup. | Empty input, alternate values, early stop, rejection/Abort paths and representative Loan violations derived from the workload. | Workload allocation/complexity observations and regressions of prerequisites; no new language mechanism introduced to make the application work. |
+| 38 / 24–25, 32–36; 37 as needed | A second application using Properties, inheritance, objects and formatted output with exact lifetime behavior. | Alternate object lifetimes, replacement, empty/expired states, shutdown and relevant rejected accesses. | Cross-feature identity/cleanup/ownership checks and prerequisite regressions. It need not repeat every program-37 collection operation; no new feature family is deferred to this final target. |
+
+Owning clauses: [Properties](../spec/11-properties.md),
+[generics and Contracts](../spec/08-generics-constraints-and-contracts.md),
+[sequences and collections](../spec/04-arrays-indexing-and-slices.md),
+[interpolation](../spec/12-expressions.md#1233-interpolation-stringification),
+[comparison and objects](../spec/13-operators-and-assignment.md),
+[generation/runtime representation](../spec/21-layout-runtime-and-code-generation.md),
+and [startup/static storage](../spec/22-core-execution-and-foreign-functions.md).
+These scopes partition work; neither source brevity nor one passing representative
+program certifies the full owning chapter. Package/Mod/test-runner/FFI integration
+remains separate product work, as defined above.
 
 ## Milestone 1: Hello World
 
@@ -845,6 +979,181 @@ Focus: [partial Move](../spec/15-ownership-and-lifetime-analysis.md#1513-move-pa
 [whole-value updates](../spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates),
 [secured results](../spec/16-scope-exit-and-destruction.md#1622-results-and-transfers),
 and [aggregate cleanup](../spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
+
+## Milestone 18: generic composite values and destruction
+
+`choose` accepts two temporary Boxes containing Non-Copy Resource arrays. It
+secures the selected result before destroying the unselected parameter. `take`,
+`relay` and `package` then forward the selected array through a generic field,
+local, result and enum payload. None of these transfers duplicates ownership.
+The same `relay` also accepts a nested owned-string Tuple and a Copy array; the
+Copy source remains usable. No generic function assumes that arbitrary T is Copy.
+
+Expected stdout (not execution evidence):
+
+```text
+Resource 4 destroyed.
+Resource 3 destroyed.
+Generic result secured.
+Resources received.
+Resource 2 destroyed.
+Resource 1 destroyed.
+Generic result secured.
+Tuple received.
+Generic result secured.
+Generic values finished.
+```
+
+Resources 3/4 are destroyed inside choose, and 1/2 after the receiving match arm.
+Each array destroys in reverse element order. The relay defer executes after
+securing its result; its moved local/parameter must not destroy the result again.
+
+Separate rejection exercises:
+
+- Use selected after selected.take(), or delivered after its consuming match.
+- Return `(value, value)` from an unconstrained generic duplicate function:
+  selected Copy instantiations cannot justify a universally invalid definition.
+- Add a Box deinit while retaining extraction of its Non-Copy field.
+- Add a deferred read of pending in relay: the return may Move that storage.
+
+Future verification should select the second Box with adjusted ids/output, route
+the owned array through an early return, and exercise unused Delivery cleanup.
+Inspect compound result storage, per-Type Copy/Move operations and destruction
+dispatch in addition to stdout; shared ABI/frame/resource guarantees belong to
+program 22's broader acceptance criteria.
+
+Focus: [generic body checking](../spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
+[generic generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation),
+and [secured results and cleanup](../spec/16-scope-exit-and-destruction.md#1622-results-and-transfers).
+
+## Milestone 19: Contracts, associated Types and conditional conformance
+
+Source requires a Copy Core Element and a shared read operation. NumberSource
+and FlagSource explicitly bind that associated Type. Wrapper has unconditional
+storage but fulfills Source only when its stored T does. The conditional block
+forwards both the associated identity and the verified requirement call.
+readTwice returns two associated values; readNumber additionally requires their
+Type to equal i32. Nested Wrappers must compose the same evidence. Wrapper<i32>
+is legal storage without gaining Source merely because a read member exists.
+
+Expected stdout (not execution evidence):
+
+```text
+Associated numbers are 21, 21.
+Associated flags are true, true.
+Contract forwarding finished.
+```
+
+Separate rejection exercises:
+
+- Call readNumber(flag@ref): bool does not satisfy the i32 equality.
+- Call readTwice(storageOnly@ref): the conditional Source premise is absent.
+- Remove a concrete associated-Type specification: method results do not infer it.
+- Change NumberSource.read to an exclusive receiver: it cannot implement a
+  requirement callable through a shared receiver.
+- Remove `T is Source` from readTwice: favorable concrete callers cannot provide
+  missing definition-side evidence.
+
+Future verification should use another numeric value, inspect retained
+requirement-to-member mappings, and reject contradictory associated bindings or
+duplicate conformances. No runtime Contract View or caller-side member search is
+introduced. Refinement diamonds, bound nested Contracts, ambiguity and conditional
+proof failures belong to program 19's companion tests, not its short canonical
+body. Contract Property requirements and operation witnesses belong to program 24;
+generation/ABI inspection belongs to program 22.
+
+Focus: [associated Types](../spec/08-generics-constraints-and-contracts.md#843-associated-types),
+[implementation matching](../spec/08-generics-constraints-and-contracts.md#845-implementation-matching),
+and [conditional conformance](../spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
+
+## Milestone 20: inference and ordinary defaults
+
+pick infers length, element Type and source Origin from a borrowed fixed array.
+There is no specialization in this file. An omitted index evaluates defaultIndex
+exactly once; an explicit index suppresses it. forward propagates length, Type
+and Origin through a dependent call. A second element Type/length and a shorter
+local lifetime exercise independent inference inputs without implementation selection.
+
+Expected stdout (not execution evidence):
+
+```text
+Default index evaluated.
+Inferred selection is 10.
+Explicit selection is 30.
+Default index evaluated.
+Forwarded selection is 10.
+Default index evaluated.
+Ordinary selection is 4.
+Default index evaluated.
+Local selection is 7.
+Inference and defaults finished.
+```
+
+Separate rejection exercises:
+
+- Supply `<2, i32>` with numbers: the fixed-array lengths disagree.
+- Supply only `<3>`: partial generic argument lists are not introduced.
+- Return the borrow of local outside its do scope, then use it.
+- Change pick's result Origin to static: its input supplies no such guarantee.
+- Add `func make<T>(value?: T = $abort("No value")) -> T => value` and call
+  `make()` without a result annotation: defaults cannot infer an unbound T.
+
+Companion verification covers conflicting Type/length/Semantics evidence,
+expected-result inference, Origin bounds/intersections and ambiguous inference;
+defaults inspected at declaration time; receiver/supplied/default evaluation order;
+prepared argument slots and cleanup when normal transfer abandons a call. Keep
+owned/default-result dependencies and rejected Move/retention cases in focused
+fixtures. Explicit specialization belongs to 21; generation budgets belong to 22.
+The canonical program does not attempt to close the entire inference/default family.
+
+Focus: [inference](../spec/10-overload-resolution-and-inference.md#108-generic-argument-inference),
+[Origin inference](../spec/15-ownership-and-lifetime-analysis.md#1534-generic-origin-inference),
+and [argument preparation](../spec/07-functions-and-callable-values.md#72-parameters-and-defaults).
+
+## Milestone 21: explicit full specialization and inherited contracts
+
+All calls supply explicit Type/length arguments to separate selection from
+program 20's inference target. The complete `<3, i32>` specialization reverses
+indexing. It inherits the original universal source Origin and default contract,
+without redeclaring an Origin binder or optional marker. Both the direct call
+and generic forward must retain that selection. A two-element i64 array selects
+the ordinary body; a shorter-lived i32 array uses the same specialization under
+another valid Origin binding. Omitted index evaluation still belongs to the
+original declaration; supplying it skips that evaluation.
+
+Expected stdout (not execution evidence):
+
+```text
+Default index evaluated.
+Specialized selection is 30.
+Explicit selection is 10.
+Default index evaluated.
+Forwarded selection is 30.
+Default index evaluated.
+Ordinary selection is 4.
+Default index evaluated.
+Local selection is 9.
+Specialization finished.
+```
+
+Separate rejection exercises:
+
+- Redeclare `index?` or a default on the specialization, or add an Origin binder.
+- Change its result Origin to static or otherwise narrow the inherited contract.
+- Mismatch its result Type, labels, parameter structure or receiver contract.
+- Declare a partial specialization, duplicate normalized selection key or an
+  ambiguous original target. Invalid ordinary generic bodies remain invalid.
+
+Companion verification covers constrained originals, receiver specializations,
+closed compound/pair arguments and inherited defaults/Origins, with positive and
+negative contract matching. Remove the specialization and adjust expected values
+to 10/30/10/4/7; supply every index to suppress default messages; vary source
+lifetimes without changing selection. Inspect direct and forwarded selected
+Member Identities. Program 22 separately checks shared entry ABI, fixed frames and
+budget invariance; this program introduces no partial/conditional specialization.
+
+Focus: [full specialization](../spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
+and [implementation selection and generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining

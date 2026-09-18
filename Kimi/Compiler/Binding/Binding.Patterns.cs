@@ -13,6 +13,7 @@ public sealed partial class Binding
     private readonly HashSet<Koto> candidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
+    private PatternMarker? unsupportedMarker;
     private int reportedPatternWarnings;
 
     /// <summary>Gets warnings without changing Binding validity.</summary>
@@ -111,7 +112,11 @@ public sealed partial class Binding
     }
 
     private void MarkPatternTree(Koto pattern)
-        => (this.patternMarker ??= new()).Visit(pattern);
+        => (this.patternMarker ??= new(false)).Visit(pattern);
+
+    /// <summary>Marks an unbound guard/body so later analyses see unknown Types instead of a fabricated Unit.</summary>
+    private void MarkUnsupportedTree(Koto node)
+        => (this.unsupportedMarker ??= new(true)).Visit(node);
 
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
     {
@@ -151,7 +156,7 @@ public sealed partial class Binding
             {
                 // Implicit shared inspection needs candidate/body Loan semantics before
                 // the ordinary expression binder may use these Pattern bindings.
-                this.MarkPatternTree(arm.Body);
+                this.MarkUnsupportedTree(arm.Body);
                 Fail(arm.Body, BindingFailure.Unsupported, true);
                 pendingBody = true;
                 continue;
@@ -161,8 +166,8 @@ public sealed partial class Binding
             {
                 if (plan.Pending || !MatchTypes.SupportsGuard(plan, plan.Arms[i].Pattern))
                 {
-                    this.MarkPatternTree(guard);
-                    this.MarkPatternTree(arm.Body);
+                    this.MarkUnsupportedTree(guard);
+                    this.MarkUnsupportedTree(arm.Body);
                     Fail(guard, BindingFailure.Unsupported, true);
                     Fail(arm.Body, BindingFailure.Unsupported, true);
                     pendingBody = true;
@@ -542,13 +547,21 @@ public sealed partial class Binding
         }
     }
 
-    private sealed class PatternMarker : KotoVisitor
+    private sealed class PatternMarker(bool unsupported) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
             if (node.BindingState == BindingState.Unvisited)
             {
-                Complete(node, BoundType.Unit);
+                if (unsupported)
+                {
+                    // Unknown, not failed: the enclosing guard/body reports the single Unsupported diagnostic.
+                    node.BindingState = BindingState.Unresolved;
+                }
+                else
+                {
+                    Complete(node, BoundType.Unit);
+                }
             }
 
             node.VisitChildren(this);
