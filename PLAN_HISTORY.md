@@ -5229,3 +5229,39 @@ it does not close general variance/Origin inference, unequal active acquisition
 stacks, deferred checking-history joins, arbitrary CFG/effects or product M15.
 No later milestone implementation was started. The current disposition and next
 actions remain solely in PLAN.md.
+
+<a id="program15-resumption-audit"></a>
+
+## Program 15 resumption audit (2026-09-18)
+
+Started at 13:24:57 UTC with a 60-minute elapsed-wall-clock soft limit, on clean
+HEAD `29f438c50fa51b21347a28ec7da81c8ca701353a`. Reread the execution prompt,
+AGENTS.md, current PLAN/SPEC/STATUS, HEAD changes and P15 implementation/tests.
+The latest scope explicitly stops at completed program 15; the restructuring-era
+next-action paragraph incorrectly still called it uncompleted. Corrected that
+paragraph without opening another implementation scope or changing item criteria.
+
+Verification: PASS for all 10 source/test/harness/DLL SHA-256 entries in
+`bin/milestone15-work/verification.json` and all 14 regression source hashes.
+Saved Debug/Release XML each reports 8,708 passed, zero failed/skipped; saved native
+reports contain 56 initial Debug, 10 final Debug rejection, 61 Release and 84
+program-regression checks, each report marked passed. These are inspected prior
+execution results, not new test runs. `git diff --check` passes. No compiler,
+specification, STATUS or draft change was needed; builds, managed/native execution
+and NativeAOT were NOT_RUN during this documentation-only audit.
+
+Elapsed time was checked after inspection and before completing the audit; the
+execution stopped after approximately 2 minutes because the authorized
+target was already complete. No implementation remained in progress, no new
+blocker or out-of-scope defect was found, and no product M/I family was closed.
+
+Repeat resumption on the same HEAD started at **13:31:06 UTC**, with a fresh
+60-minute soft limit. Preserved the existing PLAN/PLAN_HISTORY audit edits and
+reread the execution prompt, repository instructions, current scope and evidence.
+All 10 recorded source/test/harness/binary hashes still match; the four saved
+native reports remain marked passed, and both saved managed XML reports contain
+8,708 passed with zero failures/skips. These are evidence inspections, not reruns.
+`git diff --check` passes. At the boundary check at 13:31:30 UTC, 24 seconds had
+elapsed; stopped within one minute because no authorized implementation remains.
+No code changed and no build, test execution or NativeAOT run was necessary.
+The existing scope and next action remain unchanged in PLAN.md §2.

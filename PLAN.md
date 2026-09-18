@@ -131,7 +131,9 @@ Programs 12–14 retain their recorded target completion; §2 separates the curr
 
 ### Current next action
 
-The restructuring and its verification are complete. Await selection of the next implementation/source target. Program 15 remains the first uncompleted native target; authoring scopes for 22–38 are ready in the README. Implement general I-family behavior without weakening the canonical targets; NativeAOT remains excluded.
+Resumption audit DONE: the stale restructuring next action is corrected and saved P15 evidence matches the current checkout. Rechecked at 2026-09-18 13:31 UTC; no implementation unit is open. [Audit record](PLAN_HISTORY.md#program15-resumption-audit).
+
+P15-B/O/G/V are complete. Await selection of the next implementation/source target; the current scope stops at program 15. Programs 16–21 and the remaining general I-family obligations are not authorized by this checkpoint. Authoring scopes for 22–38 are ready in the README. NativeAOT remains excluded.
 
 P14-L1 (nonblocking, deferred to the relevant I families): the shared match path covers flat Copy enum Cases with binding/wildcard payloads and no guards. General symbolic `Option<T>` payload matching and a shared all-terminal match with a Never result remain unsupported; concrete factory calls work, but makeObj inside a generic body is not lowered. Borrowed receiver-field compound assignment remains unsupported. These findings do not justify simplifying target programs or weakening the specification. Full object views, rc/arc/Weak, general capture/erasure and deferred ObjectCallCompatible stages remain outside this request.
 
