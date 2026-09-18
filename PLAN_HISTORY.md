@@ -5230,38 +5230,73 @@ stacks, deferred checking-history joins, arbitrary CFG/effects or product M15.
 No later milestone implementation was started. The current disposition and next
 actions remain solely in PLAN.md.
 
-<a id="program15-resumption-audit"></a>
+<a id="documentation-comments-integration"></a>
 
-## Program 15 resumption audit (2026-09-18)
+## 2026-09-18 — Documentation Comments integration
 
-Started at 13:24:57 UTC with a 60-minute elapsed-wall-clock soft limit, on clean
-HEAD `29f438c50fa51b21347a28ec7da81c8ca701353a`. Reread the execution prompt,
-AGENTS.md, current PLAN/SPEC/STATUS, HEAD changes and P15 implementation/tests.
-The latest scope explicitly stops at completed program 15; the restructuring-era
-next-action paragraph incorrectly still called it uncompleted. Corrected that
-paragraph without opening another implementation scope or changing item criteria.
+Started from clean HEAD `29f438c50fa51b21347a28ec7da81c8ca701353a`.
+Integrated the authoritative `draft/Design/2026-09-17 Documentation Comments.md`
+into §2.3.1–6, the Attribute/unsafe/directive cross-references, syntax summary and
+Appendix A.21. The draft is unchanged (SHA-256
+`EEB6BF197C702C1B69237EF1EF72514575954E7AF4C3CE6045D78170599E755C`).
 
-Verification: PASS for all 10 source/test/harness/DLL SHA-256 entries in
-`bin/milestone15-work/verification.json` and all 14 regression source hashes.
-Saved Debug/Release XML each reports 8,708 passed, zero failed/skipped; saved native
-reports contain 56 initial Debug, 10 final Debug rejection, 61 Release and 84
-program-regression checks, each report marked passed. These are inspected prior
-execution results, not new test runs. `git diff --check` passes. No compiler,
-specification, STATUS or draft change was needed; builds, managed/native execution
-and NativeAOT were NOT_RUN during this documentation-only audit.
+DOC-S/LP/M/V implement an opt-in path: source ranges beside ordinary tokens;
+Parser association before selection/merging loses boundaries; lazy normalized
+text and original UTF-16 mappings; pinned Markdig 1.3.2 without HTML block/inline
+recognition; original-tree item references, escaped rendering and relative-link
+resolution; optional diagnostics; and Binding-backed identity/access/order queries.
+Specialization API queries use the original contract; implementation notes and
+associated-Type specifications retain their own text. Public publication respects
+Contract requirements and the implementing Type's visibility. Generated Mod ID
+and addition order survive source serialization; reparsing replaces associations.
 
-Elapsed time was checked after inspection and before completing the audit; the
-execution stopped after approximately 2 minutes because the authorized
-target was already complete. No implementation remained in progress, no new
-blocker or out-of-scope defect was found, and no product M/I family was closed.
+Analysis, Lowering and Emit consume the same executable tree and checked facts;
+they need no documentation-specific branches. Collection defaults to disabled,
+and documentation never enters runtime metadata. Consumers may read completed
+snapshots concurrently; exposed Markdown trees must be treated as read-only.
+Recovery defers all associations in a source with parse errors, keeping raw text.
+This supplies tooling APIs, not a new CLI, LSP server, formatter, public Mod host,
+incremental source-edit service or doctest runner. Source edits/generation changes
+are handled by rebuilding the source snapshot, retaining raw-source dependencies.
 
-Repeat resumption on the same HEAD started at **13:31:06 UTC**, with a fresh
-60-minute soft limit. Preserved the existing PLAN/PLAN_HISTORY audit edits and
-reread the execution prompt, repository instructions, current scope and evidence.
-All 10 recorded source/test/harness/binary hashes still match; the four saved
-native reports remain marked passed, and both saved managed XML reports contain
-8,708 passed with zero failures/skips. These are evidence inspections, not reruns.
-`git diff --check` passes. At the boundary check at 13:31:30 UTC, 24 seconds had
-elapsed; stopped within one minute because no authorized implementation remains.
-No code changed and no build, test execution or NativeAOT run was necessary.
-The existing scope and next action remain unchanged in PLAN.md §2.
+Verification commands:
+
+```powershell
+dotnet build Kimigayo.slnx --no-restore -c Debug -v:minimal
+dotnet build Kimigayo.slnx --no-restore -c Release -v:minimal
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -result-xml bin/documentation-comments-20260918/test-debug.xml
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -result-xml bin/documentation-comments-20260918/test-release.xml
+./backend/windows-x64/test-scalars.ps1 -ToolchainRoot ./toolchain -FixtureDirectory bin/scalar-fixtures -FixturePattern DocumentationComments.ll -OutputDirectory bin/documentation-comments-20260918/native
+```
+
+- Debug/Release solution builds: **zero warnings/errors**.
+  [Debug](bin/documentation-comments-20260918/build-debug.log),
+  [Release](bin/documentation-comments-20260918/build-release.log).
+- Full managed suites: **8,792 passed per configuration**, zero errors, failures,
+  skips or unrun tests. Includes **84 documentation cases** covering lexical,
+  association, selection, Markdown, access, generated sources, reparse and
+  executable-pipeline equivalence.
+  [Debug results](bin/documentation-comments-20260918/test-debug.xml),
+  [Release results](bin/documentation-comments-20260918/test-release.xml).
+- The documented fixture emits byte-identical IR with collection enabled/disabled.
+  LLVM verification, linking and **two native O0/O2 executions pass** with exact
+  `ok` plus LF stdout, empty stderr and exit 0.
+  [Native log](bin/documentation-comments-20260918/native.log).
+- Release allocation/time samples: 64 lexical passes over 256 declarations use
+  **6,144 bytes** both for ordinary comments and disabled documentation collection
+  (zero additional allocation; disabled 13.11 ms). Enabled collection uses
+  1,464,320 bytes / 35.76 ms. Thirty-two source parses without candidates use
+  **234,496 bytes** with either setting (0.52/0.55 ms). These are bounded samples,
+  not stable throughput guarantees; test XML retains both configuration samples.
+- Modified specification links resolve; `git diff --check` passes. No draft edit
+  or NativeAOT test was performed. [Artifact identities](bin/documentation-comments-20260918/verification.json).
+
+Intermediate tests exposed over-wide ranges at synthetic layout tokens, omitted
+excluded trailing comments, implicit Contract access, and associated-specification
+publication boundaries; final tests cover each fix. Early input fixtures used
+invalid enum/main/deinit/property spelling and were corrected to existing syntax.
+The allocation check initially required an allocation-free entire lexer; it now
+compares the existing lexical baseline with disabled documentation, as required.
+An incompatible VSTest filter selected zero tests; only successful xUnit runs are
+counted above. Sandboxed LLVM execution was denied; the authorized normal-permission
+rerun passed. None of these intermediate attempts is counted as PASS evidence.

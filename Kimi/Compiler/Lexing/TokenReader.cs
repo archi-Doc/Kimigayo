@@ -119,6 +119,27 @@ public ref struct TokenReader
 
     internal bool HasInferredArrayElement { get; set; }
 
+    internal int DocumentationExcludedStart { get; set; }
+
+    internal readonly int PreviousSyntaxEnd
+    {
+        get
+        {
+            for (var i = this.Position - 1; i >= 0; i--)
+            {
+                if (this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
+                {
+                    return this.tokens[i].Span.End;
+                }
+            }
+
+            return 0;
+        }
+    }
+
+    internal readonly void Document(Koto declaration, SourceSpan header, AttributeKoto? attributes = null)
+        => this.CodeContext.Documentation?.Associate(declaration, header, attributes, this.tokens);
+
     #endregion
 
     /// <summary>

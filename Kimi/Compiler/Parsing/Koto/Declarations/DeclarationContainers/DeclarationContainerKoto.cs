@@ -757,6 +757,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             supportsGenericHeader,
             tokenKind);
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
+        reader.Document(container, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
         container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
         container.SetBases(declaration.Bases);
 
@@ -811,6 +812,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 if (associated is not null)
                 {
                     associated.IsAssociatedConstraint = true;
+                    reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
                     if (this is ContractKoto)
                     {
                         this.AddTypeConstraint(associated);
@@ -831,7 +833,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
                 if (IdentifierNameKoto.TryCreate(ref reader, name, out var identifier))
                 {
-                    this.AddLast(new SyntaxFormKoto(ref reader, name.Span, KotoKind.AssociatedType, "associate ", [identifier]));
+                    var associated = new SyntaxFormKoto(ref reader, name.Span, KotoKind.AssociatedType, "associate ", [identifier]);
+                    reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, name.Span.End));
+                    this.AddLast(associated);
                 }
             }
 
@@ -891,6 +895,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             {
                 IsDestructor = true,
             };
+            reader.Document(destructor, token.Span, context.AttributeKoto);
 
             // deinit accepts a common Body, without modifiers or attributes (SPEC 16.3).
             if (context.ModifierKind != ModifierKind.NoModifier || context.AttributeKoto is not null)

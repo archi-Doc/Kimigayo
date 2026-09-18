@@ -28,6 +28,8 @@ NameStart            := "A".."Z" | "a".."z" | "_"
 NameContinue         := NameStart | "0".."9" | ? Unicode Mn, Mc, Nd, or Pc ?
 PhysicalNewline      := LF | CR LF | CR
 LineComment          := "//" ? text up to a physical newline or EOF ?
+// Eligible whole-line /// comments carry documentation under §2.3.1–6;
+// they add no executable tokens or declaration grammar productions.
 BlockComment         := "/*" ? text up to the first closing delimiter ? "*/"
 CharacterEscape      := "\0" | "\\" | "\e" | "\t" | "\n" | "\r"
                       | '\"' | "\'" | "\u(" HexDigits1To6 ")"

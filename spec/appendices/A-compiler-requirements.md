@@ -379,3 +379,41 @@ Verify the following after directive selection and generation, including seriali
 | Resources and reuse | Shared declaration trees and normalized references, deep nesting, converging paths, outer-change invalidation, resource diagnostics without changing proof acceptance |
 
 Exercise both accepted and rejected programs. Parsing or reference interning alone is not evidence of lifetime, conformance, static-storage or executable support.
+
+## A.21. Documentation Comments
+
+Implement the optional §2.3.1–6 path in five layers: lexical range collection,
+Parser association, lazy text/source mapping, Markdown rendering/extraction, and
+selection/access/provenance queries with separate documentation diagnostics.
+Use the ordinary lexer, including interpolation expression lexing; do not infer
+comment syntax with an independent regular-expression scanner. Keep executable
+tokens and language diagnostics identical with collection enabled or disabled.
+Binding supplies declaration identity, effective access and specialization facts;
+Analysis, Lowering and Emit require no documentation metadata.
+
+Keep source-ordered ranges per immutable SourceDocument, not per-line objects or
+extra tokens. Disabled collection adds no allocations; a source without candidates
+needs no documentation buffer. Avoid whole-file scans per declaration. Never retain
+pooled tokenizer storage after disposal. Text caches depend on the source snapshot;
+Markdown caches additionally depend on parser settings; publication caches depend
+on configuration and declaration inputs. Rebuild changed layers, discard removed
+generated-source associations, and permit concurrent reads only of completed
+snapshots. Structured documentation access does not narrow observable-source Mod
+dependencies (§18.7.4, §20.7.5).
+
+| Area | Required verification |
+| --- | --- |
+| Lexing and text | Recognized/ordinary/trailing comments, literals/interpolation/block comments, all line endings, EOF, empty text, whitespace, non-BMP text and original UTF-16 mappings |
+| Association | Every target, same-line/multiline Attributes and their interiors, nearest/empty/misindented candidates, headers, scope/file boundaries and syntax recovery |
+| Selection | Incomplete False #if syntax, reached #switch arms with nested exclusions, no migration to surviving declarations, no extra excluded-region parsing |
+| Markdown | Fixed CommonMark 0.31.2 examples plus disabled-HTML cases, following Markdown after `<T>`, autolinks, code/quotes, delimiters, duplicate/ambiguous items, hierarchy, escaping and permitted URLs |
+| Integration | Fragment order and provenance, rootgroup leaf, associated Types, overloads/specialization, effective access, generated sources, unresolved links and source-mapped diagnostics |
+| Reuse and performance | Edits, configuration changes, generated replacement/removal and serialization/reparse without stale results; zero disabled overhead allocations, token/diagnostic equality and measured time/allocation baselines |
+
+Run targeted tests and existing lexical, Parser, source, Attribute and directive
+regressions, followed by ordinary builds and the complete managed suite. Compare
+Binding, ownership, checked lowering and emitted output with collection on/off;
+documentation-only edits may change positions or source-observing Mod results,
+but otherwise preserve program meaning. NativeAOT requires an explicit request.
+No new CLI, formatter, dedicated Mod query, `kimi:` link or doctest facility is
+required. Formatting through an existing tool must preserve text and association.

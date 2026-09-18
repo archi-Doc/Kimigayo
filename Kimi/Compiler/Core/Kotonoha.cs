@@ -67,12 +67,29 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     public IReadOnlyList<SourceDocument> SourceDocuments => this.sourceDocuments;
 
+    private List<Documentation.DocumentationSource>? documentationSources;
+
+    /// <summary>Gets optional source-backed documentation, including generated source parses.</summary>
+    [IgnoreMember]
+    public IEnumerable<Documentation.DocumentationSource> DocumentationSources => this.documentationSources ?? Enumerable.Empty<Documentation.DocumentationSource>();
+
+    internal void RecordDocumentation(Documentation.DocumentationSource? documentation)
+    {
+        if (documentation is not null)
+        {
+            (this.documentationSources ??= new()).Add(documentation);
+        }
+    }
+
     // Source parsing uses a separate diagnostic collection for each file.
     [IgnoreMember]
     internal bool HasSourceErrors { get; private set; }
 
     [Key(3)]
     private List<SourceDocument> sourceDocuments = new();
+
+    [Key(4)]
+    private Dictionary<int, (string ModId, int AdditionOrder)>? generatedSourceLocations;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Kotonoha"/> class.
@@ -121,10 +138,12 @@ public sealed partial class Kotonoha
         this.Compilation = compilation;
         this.RootKoto = new(new CodeContext(this), default, default);
         this.GeneratedFunction = null;
+        this.documentationSources = null;
 
-        foreach (var sourceDocument in this.sourceDocuments)
+        for (var i = 0; i < this.sourceDocuments.Count; i++)
         {
-            this.ParseSource(sourceDocument);
+            var location = this.generatedSourceLocations?.GetValueOrDefault(i) ?? default;
+            this.ParseSource(this.sourceDocuments[i], location.ModId, location.AdditionOrder);
         }
     }
 
@@ -164,8 +183,17 @@ public sealed partial class Kotonoha
 
     /// <summary>Records a document parsed into the root for subsequent serialization.</summary>
     /// <param name="sourceDocument">The original source document.</param>
-    internal void RecordSource(SourceDocument sourceDocument)
-        => this.sourceDocuments.Add(sourceDocument);
+    /// <param name="modId">The generating Mod, or null.</param>
+    /// <param name="additionOrder">The addition order within the Mod.</param>
+    internal void RecordSource(SourceDocument sourceDocument, string? modId = null, int additionOrder = 0)
+    {
+        if (modId is not null)
+        {
+            (this.generatedSourceLocations ??= new()).Add(this.sourceDocuments.Count, (modId, additionOrder));
+        }
+
+        this.sourceDocuments.Add(sourceDocument);
+    }
 
     internal void RecordSourceErrors(DiagnosticCollection diagnostics, long previousErrorVersion)
         => this.HasSourceErrors |= diagnostics.ErrorVersion != previousErrorVersion;
@@ -189,7 +217,7 @@ public sealed partial class Kotonoha
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
 
-    private void ParseSource(SourceDocument sourceDocument)
+    private void ParseSource(SourceDocument sourceDocument, string? modId = null, int additionOrder = 0)
     {
         this.Compilation.BeginSourceParsing();
         var path = sourceDocument.Path;
@@ -202,15 +230,19 @@ public sealed partial class Kotonoha
         var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
         diagnosticCollection.ClearDiagnostic();
         var errorVersion = diagnosticCollection.ErrorVersion;
-        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
+        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
         var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 
         // Tokenize and parse
         try
         {
             tokenizer.ReadAll();
+            codeContext.Documentation = tokenizer.Documentation;
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
+            codeContext.Documentation?.SetLocation(this.Compilation.Project.Directory, modId, additionOrder);
+            codeContext.Documentation?.Finish(diagnosticCollection.ErrorVersion != errorVersion);
+            this.RecordDocumentation(codeContext.Documentation);
             this.RecordSourceErrors(diagnosticCollection, errorVersion);
         }
         finally

@@ -40,6 +40,9 @@ public partial class Compilation
     /// </summary>
     public Project Project { get; }
 
+    /// <summary>Gets or sets a value indicating whether subsequent parses collect optional documentation. Disabled by default.</summary>
+    public bool CollectDocumentation { get; set; }
+
     /// <summary>
     /// Gets the parsed target triple.
     /// </summary>

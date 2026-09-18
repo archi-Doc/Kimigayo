@@ -325,7 +325,7 @@ Old or corrupt local caches are discarded and the source reverified; missing inp
 
 Raw content IDs reflect source edits. Fine-grained comparisons may omit only information not observed by the consuming compiler judgment, Mod or generated artifact. Product token and indentation comparisons preserve literal contents, meaningful line breaks, membership and source order, plus all binding and environment dependencies.
 
-If Mods can observe comments or positions, their module input is compared as raw bytes and rerun on change, until complete observation tracking exists; token equality alone cannot reuse their output. After regeneration, unchanged semantic conclusions can still stop downstream invalidation.
+If Mods can observe comments (including [Documentation Comments](02-source-and-lexical-structure.md#236-tooling-and-diagnostics)) or positions, their module input is compared as raw bytes and rerun on change, until complete observation tracking exists; token equality alone cannot reuse their output. After regeneration, unchanged semantic conclusions can still stop downstream invalidation.
 
 Plans use token references within logical files and declarations; current-source mappings provide lines and columns, without letting added test tokens shift product references. Required lexical and syntax checks run on the current input, and uncertain mappings are rebuilt. Abort locations and Testing SiteId expression strings are bound to the current source during generation. Changed observable displays update the relevant generated artifacts, diagnostic tables and artifact IDs, even when meaning is reused.
 

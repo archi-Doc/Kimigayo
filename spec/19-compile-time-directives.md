@@ -147,6 +147,8 @@ The selected body of `example` is the same for every `T` in that Compilation. So
 
 ## 19.5. Diagnostics and excluded syntax
 
+[Documentation association](02-source-and-lexical-structure.md#233-selection-and-related-declarations) follows these parsing boundaries and cannot require ordinary grammar inside False #if interiors.
+
 **Excluded syntax.** Every SourceDocument is tokenized, and all encoding, token and indentation errors are diagnosed. Each reached `#if`'s complete Condition is validated before deciding which grammar checks apply to its target. In a False target, only balanced Blocks, required executable bodies, and `#switch`/`#case` structural placement and nonemptiness are checked; ordinary expression and declaration grammar is skipped, so an incomplete initializer is allowed there. Every reached `#switch` arm is parsed, with the same exception for nested False `#if` targets, and unselected arms skip ordinary semantic checking.
 
 Speculative parsing cannot change acceptance. Speculative ordinary-grammar errors are suppressed in confirmed False `#if` targets, while mandatory token, layout and structure errors are kept. Reached Conditions are validated immediately against the prepared environment; truth cannot hide invalid operands or missing Names. Unknown Names are Error, never False and never an instantiation dependency, regardless of caching or evaluation schedule.
