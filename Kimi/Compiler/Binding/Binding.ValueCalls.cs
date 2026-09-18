@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // The retained invocation plan accompanies its binder.
 
-/// <summary>A positional common-function invocation; the receiver is inspected, never acquired by Move.</summary>
+/// <summary>A positional callable invocation with retained signature and receiver acquisition.</summary>
 public sealed class BoundValueCall
 {
     private BoundArgumentOperation[] arguments = [];
@@ -16,6 +16,10 @@ public sealed class BoundValueCall
     public BoundType Signature { get; private set; } = null!;
 
     public BoundType ReturnType => this.Signature.Components[1];
+
+    public SemanticsKind ReceiverKind { get; internal set; } = SemanticsKind.Ref;
+
+    public BoundType ReceiverType => this.Receiver.BoundType!;
 
     public ReadOnlySpan<BoundArgumentOperation> Arguments => this.arguments;
 
@@ -34,8 +38,108 @@ public sealed class BoundValueCall
 
 public sealed partial class Binding
 {
-    private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature)
+    private BoundConstraint BindCallableRequirement(Koto node, BoundType subject, BindingScope scope, BindingSymbol target)
     {
+        var syntax = UnwrapTypeSyntax(node);
+        if (syntax is not GenericsKoto { TypeArguments.Count: 1 or 2 } generic)
+        {
+            return this.InternConstraint(new(ConstraintKind.Error));
+        }
+
+        var receiver = SemanticsMask.Ref;
+        if (generic.TypeArguments.Count == 2)
+        {
+            var access = UnwrapTypeSyntax(generic.TypeArguments[0]);
+            var name = access is TypeSemanticsKoto type ? type.Identifier : (access as IdentifierNameKoto)?.IdentifierName;
+            if (!SemanticsMaskHelper.TryParse(name, out receiver) || receiver is not (SemanticsMask.Ref or SemanticsMask.Uniq or SemanticsMask.Owner))
+            {
+                return this.InternConstraint(new(ConstraintKind.Error));
+            }
+
+            Complete(access, BoundType.Unit);
+            Complete(generic.TypeArguments[0], BoundType.Unit);
+        }
+
+        var signature = this.BindType(generic.TypeArguments[^1], scope);
+        if (signature?.Kind != BoundTypeKind.Function || HasDeclaredOrigins(signature))
+        {
+            return this.InternConstraint(new(ConstraintKind.Error));
+        }
+
+        generic.Identifier!.BoundSymbol = target;
+        Complete(generic.Identifier, BoundType.Unit);
+        Complete(generic, BoundType.Boolean);
+        return this.InternConstraint(new(ConstraintKind.Callable, subject, signature, mask: receiver));
+    }
+
+    private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver)
+    {
+        var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
+        if (owner.Kind == BoundTypeKind.Function)
+        {
+            signature = owner;
+            receiver = SemanticsKind.Ref;
+            return true;
+        }
+
+        if (owner.Kind == BoundTypeKind.Closure && owner.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure })
+        {
+            signature = closure.Signature;
+            receiver = closure.Receiver;
+            return true;
+        }
+
+        signature = null!;
+        receiver = SemanticsKind.Owner;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (fact.Kind != ConstraintKind.Callable || !ReferenceEquals(fact.Subject, owner) || !this.AvailableConstraintFact(environment, fact))
+                {
+                    continue;
+                }
+
+                if (signature is not null && !ReferenceEquals(signature, fact.RequiredType))
+                {
+                    return false; // Overloaded callable signatures need candidate selection.
+                }
+
+                signature = fact.RequiredType!;
+                if (fact.Mask == SemanticsMask.Ref)
+                {
+                    receiver = SemanticsKind.Ref;
+                }
+                else if (fact.Mask == SemanticsMask.Uniq && receiver == SemanticsKind.Owner)
+                {
+                    receiver = SemanticsKind.Uniq;
+                }
+            }
+        }
+
+        return signature is not null;
+    }
+
+    private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature, SemanticsKind receiver = SemanticsKind.Ref)
+    {
+        var receiverType = call.Method.BoundType!;
+        if (receiver == SemanticsKind.Uniq && (receiverType.Semantics == SemanticsKind.Ref ||
+            (receiverType.Semantics == SemanticsKind.Owner && KotoHelper.UnwrapParentheses(call.Method) is IdentifierNameKoto && !Writable(call.Method))))
+        {
+            return Fail(call, BindingFailure.InvalidAssignment);
+        }
+
+        if (receiver == SemanticsKind.Owner && receiverType.Kind == BoundTypeKind.Semantics &&
+            this.ProveCopy(receiverType.Components[0], call) != ConstraintProof.Proven)
+        {
+            return Fail(call, BindingFailure.InvalidAssignment);
+        }
+
         var parameters = signature.Components[0];
         var count = ReferenceEquals(parameters, BoundType.Unit) ? 0 : parameters.Components.Count;
         if (call.Method is GenericsKoto || count != call.ArgumentNodes.Count)
@@ -80,6 +184,7 @@ public sealed partial class Binding
 
             call.ValueCallStorage ??= new();
             call.ValueCallStorage.Set(call.Method, signature, operations.AsSpan(0, count));
+            call.ValueCallStorage.ReceiverKind = receiver;
             call.IsValueCall = true;
             return Complete(call, signature.Components[1]);
         }

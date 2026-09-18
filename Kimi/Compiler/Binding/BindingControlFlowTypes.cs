@@ -16,7 +16,7 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
         => expression.BindingState == BindingState.Resolved && expression.BoundType is { } type && binding.ProveCopy(type, expression) == ConstraintProof.Proven;
 
     public override ControlFlowType? GetExpressionType(Koto expression)
-        => expression.BindingState == BindingState.Resolved ? FlowType(expression.BoundType) : null;
+        => expression.BindingState == BindingState.Resolved ? FlowType(expression.ErasedFunctionType ?? expression.BoundType) : null;
 
     public override ControlFlowType? GetDeclaredType(Koto? syntax)
         => syntax?.BindingState == BindingState.Resolved ? FlowType(syntax.BoundType) : null;

@@ -249,10 +249,14 @@ public sealed partial class OwnershipAnalysis
             for (var i = 0; i < closure.Captures.Count; i++)
             {
                 var capture = closure.Captures[i].Environment;
-                var place = this.Place(function, capture.Type, OwnershipPlaceKind.Parameter, false);
+                var place = this.Place(function, capture.Type, closure.EnvironmentType is null ? OwnershipPlaceKind.Parameter : OwnershipPlaceKind.Local, capture.MutableCapture);
                 this.body.SymbolPlaces[capture] = place;
                 var initialized = this.Emit(OwnershipOperationKind.Produce, function, place);
                 this.SetValue(initialized, OwnershipValueKind.Capture, [], constant: i);
+                if (closure.EnvironmentType is not null && closure.Receiver == SemanticsKind.Owner)
+                {
+                    this.locals.Insert(i, new(place, function, i - closure.Captures.Count));
+                }
             }
         }
 
@@ -497,6 +501,27 @@ public sealed partial class OwnershipAnalysis
     }
 
     private int Expression(Koto node, PlaceUseKind use = PlaceUseKind.Consume, AcquisitionKind? acquisition = null)
+    {
+        if (node.ErasedFunctionType is { } erased)
+        {
+            var source = this.ExpressionCore(node, PlaceUseKind.Consume, acquisition);
+            if (source < 0)
+            {
+                return -1;
+            }
+
+            var acquired = this.Value(source);
+            this.Emit(OwnershipOperationKind.CallEntry, node, source);
+            var result = this.Place(node, erased, OwnershipPlaceKind.Temporary, false);
+            var create = this.Emit(OwnershipOperationKind.Produce, node, result);
+            this.SetValue(create, OwnershipValueKind.ClosureErasure, [acquired]);
+            return this.RegisterTemporary(result);
+        }
+
+        return this.ExpressionCore(node, use, acquisition);
+    }
+
+    private int ExpressionCore(Koto node, PlaceUseKind use, AcquisitionKind? acquisition)
     {
         if (node is IdentifierNameKoto or MemberAccessKoto && StaticScalar.TryGet(node.BoundSymbol?.Property, out var staticValue))
         {

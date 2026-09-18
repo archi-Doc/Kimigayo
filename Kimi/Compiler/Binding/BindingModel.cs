@@ -61,6 +61,7 @@ public enum BoundTypeKind : byte
     ResolvedRange,
     Slice,
     Range,
+    Closure,
 }
 
 internal enum BindingFailure : byte
@@ -149,6 +150,8 @@ public sealed class BindingSymbol
     internal bool HeaderBound { get; set; }
 
     internal int Slot { get; set; }
+
+    internal bool MutableCapture { get; set; }
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>

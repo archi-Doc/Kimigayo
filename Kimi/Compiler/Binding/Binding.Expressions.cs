@@ -27,7 +27,7 @@ public sealed partial class Binding
             }
         }
 
-        return node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true };
+        return node.BoundSymbol?.MutableCapture == true || node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true };
     }
 
     private static bool CanInitializeLocal(Koto node, BindingScope scope)
@@ -117,6 +117,20 @@ public sealed partial class Binding
     }
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
+    {
+        var actual = this.BindNodeCore(node, scope, expected);
+        if (expected?.Kind == BoundTypeKind.Function && actual?.Kind == BoundTypeKind.Closure &&
+            actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
+            FitsType(closure.Signature, expected) && this.ProveCopy(actual, node) == ConstraintProof.Proven && !HasDeclaredOrigins(actual))
+        {
+            node.ErasedFunctionType = expected;
+            return expected;
+        }
+
+        return node.ErasedFunctionType ?? actual;
+    }
+
+    private BoundType? BindNodeCore(Koto node, BindingScope scope, BoundType? expected)
     {
         if (this.patternNodes.Contains(node))
         {

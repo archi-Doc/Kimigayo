@@ -61,7 +61,7 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type))
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type))
             {
                 continue;
             }
@@ -273,6 +273,11 @@ internal sealed partial class BodyLowering
 
     private bool LowerAggregate(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure)
     {
+        if (body.Values[id].Kind == OwnershipValueKind.ClosureErasure)
+        {
+            return this.LowerClosureErasure(body, function, id, out failure);
+        }
+
         failure = null;
         var operation = body.Operations[id];
         var place = body.Places[operation.Place];
@@ -284,7 +289,7 @@ internal sealed partial class BodyLowering
 
         switch (operation.Kind)
         {
-            case OwnershipOperationKind.Read when place.Type.Kind == BoundTypeKind.Function:
+            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
             case OwnershipOperationKind.Declare:
                 if (place.Kind == OwnershipPlaceKind.Result && this.slotResultDeclarations[id] == 0)

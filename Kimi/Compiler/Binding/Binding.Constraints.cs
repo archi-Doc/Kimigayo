@@ -207,6 +207,22 @@ public sealed partial class Binding
             return DependentType(proposition.Subject!) || DependentType(proposition.RequiredType!) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
         }
 
+        if (proposition.Kind == ConstraintKind.Callable)
+        {
+            var subject = proposition.Subject!;
+            var closure = subject.Kind == BoundTypeKind.Closure ? (subject.Symbol?.Declaration as FunctionKoto)?.BoundClosure : null;
+            var signature = closure?.Signature ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
+            if (signature is null)
+            {
+                return DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
+            }
+
+            var receiver = closure?.Receiver ?? SemanticsKind.Ref;
+            return FitsType(signature, proposition.RequiredType!) &&
+                (receiver == SemanticsKind.Ref || proposition.Mask == SemanticsMask.Owner || (receiver == SemanticsKind.Uniq && proposition.Mask == SemanticsMask.Uniq))
+                ? ConstraintProof.Proven : ConstraintProof.Refuted;
+        }
+
         if (proposition.Kind == ConstraintKind.Semantics)
         {
             if (proposition.Subject!.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
@@ -434,6 +450,12 @@ public sealed partial class Binding
                     var target = this.TypeName(node, scope, false);
                     if (target?.Declaration is ContractKoto)
                     {
+                        if (target.Intrinsic == IntrinsicKind.Callable)
+                        {
+                            result = this.BindCallableRequirement(node, subject, scope, target);
+                            break;
+                        }
+
                         target = this.BindContractReference(node, target, scope);
                         if (target is null)
                         {

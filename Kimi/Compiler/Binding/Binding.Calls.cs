@@ -304,9 +304,9 @@ public sealed partial class Binding
         if (callee is InvocationKoto || group?.Kind != BindingSymbolKind.Function)
         {
             var callableType = callee is InvocationKoto || group is null ? callee.BoundType : this.BindReference(callee, group, scope);
-            if (callableType?.Kind == BoundTypeKind.Function)
+            if (callableType is not null && this.TryCallable(callableType, scope, out var signature, out var receiverKind))
             {
-                return this.BindValueCall(call, scope, callableType);
+                return this.BindValueCall(call, scope, signature, receiverKind);
             }
         }
 

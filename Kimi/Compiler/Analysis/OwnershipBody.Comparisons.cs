@@ -102,6 +102,16 @@ public sealed partial class OwnershipBody
         for (var i = 0; i < this.ComparisonLoans.Count; i++)
         {
             var loan = this.ComparisonLoans[i];
+            if (loan.Callable is not null)
+            {
+                if (!this.ValidCallableLoan(i))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
             if (loan.Mode == LoanRequirement.Uniq)
             {
                 if ((uint)loan.Read >= (uint)this.Operations.Count || !this.ValidElementWriteLoan(i))
@@ -175,7 +185,7 @@ public sealed partial class OwnershipBody
                     }
                 }
                 else if (output < 0 || this.ComparisonLoans[output].Read != id ||
-                    (this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementWriteLoan(output) :
+                    (this.ComparisonLoans[output].Callable is not null ? !this.ValidCallableLoan(output) : this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementWriteLoan(output) :
                         this.ComparisonLoans[output].Projection >= 0 ? !this.ValidElementBorrowLoan(output) : this.ComparisonLoans[output].Parent != input))
                 {
                     return false;
@@ -218,6 +228,21 @@ public sealed partial class OwnershipBody
         }
 
         return true;
+    }
+
+    private bool ValidCallableLoan(int index)
+    {
+        var loan = this.ComparisonLoans[index];
+        return loan.Callable is { BoundValueCall: { } plan } && plan.ReceiverKind is SemanticsKind.Ref or SemanticsKind.Uniq &&
+            loan.Mode == (plan.ReceiverKind == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref) &&
+            (uint)loan.Place < (uint)this.Places.Count && (uint)loan.Read < (uint)this.Operations.Count && loan.Parent < index && loan.Depth > 0 &&
+            loan.Call is null && loan.Guard == -1 && !loan.Access && loan.Projection == -1 &&
+            this.Operations[loan.Read].Kind == OwnershipOperationKind.Read && this.Operations[loan.Read].Place == loan.Place &&
+            ReferenceEquals(this.Operations[loan.Read].Source, plan.Receiver) && ReferenceEquals(this.Places[loan.Place].Type, plan.ReceiverType) &&
+            (loan.Mode != LoanRequirement.Uniq || this.Places[loan.Place].Type.Semantics == SemanticsKind.Uniq || this.Places[loan.Place].Mutable) &&
+            this.LoanInputs[loan.Read] == loan.Parent && this.LoanStates[loan.Read] == index &&
+            (loan.Parent < 0 || this.ComparisonLoans[loan.Parent].Depth <= loan.Depth) &&
+            (loan.Mode != LoanRequirement.Uniq || !this.ElementWriteLoanConflicts(index));
     }
 
     private bool ValidElementWriteLoan(int id)

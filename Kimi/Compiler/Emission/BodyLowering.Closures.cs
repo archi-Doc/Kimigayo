@@ -36,6 +36,30 @@ internal sealed partial class BodyLowering
         return offset;
     }
 
+    private bool LowerClosureErasure(OwnershipBody body, EmissionFunction function, int id, out string? failure)
+    {
+        failure = null;
+        var operation = body.Operations[id];
+        var input = Input(body, id, 0);
+        var source = ValueType(body, input);
+        if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||
+            source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
+            !ReferenceEquals(operation.Source.ErasedFunctionType, body.Places[operation.Place].Type) ||
+            !Binding.FitsType(closure.Signature, body.Places[operation.Place].Type) ||
+            this.aggregateLayouts.Get(source) is not { NeedsDestruction: false } layout || layout.Value.Layout.Size > 8 ||
+            this.functions?.GetValueOrDefault(definition) is not { ResultSlot: false } entry ||
+            (body.IsReachable(id) && !this.Dominates(input, id)))
+        {
+            return Fail("Erasure requires an acquired, Owned, Shared inline concrete environment and supported signature.", out failure);
+        }
+
+        var start = function.Operands.Count;
+        function.Operands.Add(new(EmissionOperandKind.SlotAddress, ValuePlace(body.Operations[input])));
+        function.Instructions.Add(new(EmissionOpcode.EraseClosure, id, operation.Place, Callee: entry, OperandStart: start, OperandCount: 1, Aggregate: layout));
+        this.AddStringFlags(function, operation, id);
+        return true;
+    }
+
     private bool LowerCapture(OwnershipBody body, EmissionFunction function, int id, out string? failure)
     {
         failure = null;
@@ -46,6 +70,11 @@ internal sealed partial class BodyLowering
             !body.SymbolPlaces.TryGetValue(closure.Captures[(int)value.Constant].Environment, out var place) || place != body.Operations[id].Place)
         {
             return Fail("Invalid closure capture parameter.", out failure);
+        }
+
+        if (closure.EnvironmentType is { } environment)
+        {
+            return (this.aggregateLayouts.Get(environment) is { } layout && layout.Count == closure.Captures.Count) || Fail("Capture environment layout is inconsistent.", out failure);
         }
 
         var offset = CaptureOffset(closure, (int)value.Constant);
@@ -66,7 +95,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (operation.Source is not FunctionKoto { BoundClosure: { } closure } source ||
             closure.Signature.Kind != BoundTypeKind.Function ||
-            !ReferenceEquals(body.Places[operation.Place].Type, closure.Signature) || value.Count != closure.Captures.Count ||
+            !ReferenceEquals(body.Places[operation.Place].Type, closure.EnvironmentType ?? closure.Signature) || value.Count != closure.Captures.Count ||
             this.functions?.GetValueOrDefault(source) is not { } callee ||
             (body.IsReachable(id) && (body.GetInputState(id, operation.Place) & PlaceState.MayInit) != 0))
         {
@@ -89,15 +118,21 @@ internal sealed partial class BodyLowering
         }
 
         var fields = new PatternTestStep[value.Count];
+        var environmentLayout = closure.EnvironmentType is { } environmentType ? this.aggregateLayouts.Get(environmentType) : null;
+        if (closure.EnvironmentType is not null && environmentLayout is null)
+        {
+            return Fail("Concrete environment has no storage layout.", out failure);
+        }
+
         var start = function.Operands.Count;
         for (var i = 0; i < value.Count; i++)
         {
             var input = Input(body, id, i);
             var capture = closure.Captures[i];
-            var representation = WindowsLowering.GetValue(capture.Environment.Type!);
-            var offset = CaptureOffset(closure, i);
-            if (representation is null || offset < 0 || offset + representation.Layout.Size > 8 ||
-                (uint)input >= (uint)id || body.Operations[input].Kind != OwnershipOperationKind.Read ||
+            var representation = environmentLayout?.Fields[i] ?? WindowsLowering.GetValue(capture.Environment.Type!);
+            var offset = environmentLayout?.Offset(i) ?? CaptureOffset(closure, i);
+            if (representation is null || offset < 0 || (environmentLayout is null && offset + representation.Layout.Size > 8) ||
+                (uint)input >= (uint)id || body.Operations[input].Kind != (environmentLayout is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Consume) ||
                 !body.SymbolPlaces.TryGetValue(capture.Source, out var place) || place != body.Operations[input].Place ||
                 !ReferenceEquals(body.Places[place].Type, capture.Environment.Type) ||
                 (body.IsReachable(id) && (!this.Dominates(input, id) || (body.GetInputState(input, place) & PlaceState.MustInit) == 0)))
@@ -106,10 +141,10 @@ internal sealed partial class BodyLowering
             }
 
             fields[i] = new(offset, representation, 0);
-            function.Operands.Add(this.PhysicalOperand(body, input));
+            function.Operands.Add(SlotTypes.IsResult(capture.Environment.Type) ? new(EmissionOperandKind.SlotAddress, body.Operations[input].Input) : this.PhysicalOperand(body, input));
         }
 
-        function.Instructions.Add(new(EmissionOpcode.CreateClosure, id, operation.Place, Callee: callee, OperandStart: start, OperandCount: value.Count, Pattern: fields));
+        function.Instructions.Add(new(EmissionOpcode.CreateClosure, id, operation.Place, Callee: callee, OperandStart: start, OperandCount: value.Count, Pattern: fields, Aggregate: environmentLayout));
         this.AddStringFlags(function, operation, id);
         return true;
     }
@@ -119,9 +154,9 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) ||
-            !ReferenceEquals(body.Places[operation.Input].Type, plan.Signature) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
+            !ReferenceEquals(body.Places[operation.Input].Type, plan.ReceiverType) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
             plan.Arguments.Length != call.ArgumentNodes.Count || this.arguments.Count != call.ArgumentNodes.Count ||
-            !(ScalarTypes.Supports(plan.ReturnType) || ReferenceEquals(plan.ReturnType, BoundType.Unit) || ReferenceEquals(plan.ReturnType, BoundType.Never)))
+            !(ScalarTypes.Supports(plan.ReturnType) || SlotTypes.IsResult(plan.ReturnType) || ReferenceEquals(plan.ReturnType, BoundType.Unit) || ReferenceEquals(plan.ReturnType, BoundType.Never)))
         {
             return Fail("Unsupported common-function call signature or receiver.", out failure);
         }
@@ -130,11 +165,16 @@ internal sealed partial class BodyLowering
         for (var l = 0; l < body.ComparisonLoans.Count; l++)
         {
             var loan = body.ComparisonLoans[l];
-            protectedReceiver |= loan.Place == operation.Input && loan.Mode == LoanRequirement.Ref && body.HasComparisonLoan(id, l) &&
+            protectedReceiver |= loan.Place == operation.Input && loan.Mode == (plan.ReceiverKind == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref) && body.HasComparisonLoan(id, l) &&
                 ReferenceEquals(body.Operations[loan.Read].Source, plan.Receiver) && (!body.IsReachable(id) || this.Dominates(loan.Read, id));
         }
 
-        if (!protectedReceiver || (body.IsReachable(id) && (body.GetInputState(id, operation.Input) & PlaceState.MustInit) == 0))
+        if (plan.ReceiverKind == SemanticsKind.Owner)
+        {
+            protectedReceiver = body.Operations.Take(id).Any(x => x.Kind == OwnershipOperationKind.CallEntry && x.Place == operation.Input && ReferenceEquals(x.Source, plan.Receiver));
+        }
+
+        if (!protectedReceiver || (plan.ReceiverKind != SemanticsKind.Owner && body.IsReachable(id) && (body.GetInputState(id, operation.Input) & PlaceState.MustInit) == 0))
         {
             return Fail("Common-function receiver lacks its call-wide shared Loan.", out failure);
         }
@@ -147,6 +187,45 @@ internal sealed partial class BodyLowering
 
         var physical = new AbiParameter[plan.Arguments.Length];
         var start = function.Operands.Count;
+        var receiverType = plan.ReceiverType.Kind == BoundTypeKind.Semantics ? plan.ReceiverType.Components[0] : plan.ReceiverType;
+        var concreteEntry = receiverType.Kind == BoundTypeKind.Closure && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.functions?.GetValueOrDefault(definition) : null;
+        if (concreteEntry is not null)
+        {
+            if (concreteEntry.ResultSlot)
+            {
+                if (!this.ValidateSlotCallResult(body, id, out failure))
+                {
+                    return false;
+                }
+
+                function.Operands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
+            }
+
+            var environment = this.aggregateLayouts.Get(receiverType)!;
+            if (plan.ReceiverType.Kind == BoundTypeKind.Semantics)
+            {
+                var read = -1;
+                foreach (var loan in body.ComparisonLoans)
+                {
+                    if (loan.Place == operation.Input && ReferenceEquals(loan.Callable, call))
+                    {
+                        read = loan.Read;
+                    }
+                }
+
+                if (read < 0)
+                {
+                    return Fail("Borrowed concrete call has no acquired receiver address.", out failure);
+                }
+
+                function.Operands.Add(this.PhysicalOperand(body, read));
+            }
+            else
+            {
+                function.Operands.Add(environment.Value.Layout.Size == 0 ? new(EmissionOperandKind.NullAddress, 0) : new(EmissionOperandKind.SlotAddress, operation.Input));
+            }
+        }
+
         for (var i = 0; i < plan.Arguments.Length; i++)
         {
             var argument = plan.Arguments[i];
@@ -167,6 +246,13 @@ internal sealed partial class BodyLowering
         }
 
         this.arguments.Clear();
+        if (concreteEntry is not null)
+        {
+            function.Operands.Add(new(EmissionOperandKind.NullAddress, 0));
+            function.Instructions.Add(new(EmissionOpcode.Call, id, Callee: concreteEntry, OperandStart: start, OperandCount: function.Operands.Count - start));
+            return true;
+        }
+
         var abi = new FunctionAbi(string.Empty, FunctionAbi.ResultType(plan.ReturnType)!, physical, ReferenceEquals(plan.ReturnType, BoundType.Never));
         function.Instructions.Add(new(EmissionOpcode.CallValue, id, operation.Input, Callee: abi, OperandStart: start, OperandCount: physical.Length));
         if (abi.NoReturn)

@@ -473,6 +473,8 @@ public abstract class Koto
     /// <summary>Gets the selected symbol, or null before selection.</summary>
     public BindingSymbol? BoundSymbol { get; internal set; }
 
+    internal BoundType? ErasedFunctionType { get; set; }
+
     internal BindingFailure BindingFailure { get; set; }
 
     /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>

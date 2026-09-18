@@ -24,6 +24,7 @@ public enum ConstraintKind : byte
     Or,
     Not,
     Unresolved,
+    Callable,
 }
 
 /// <summary>An immutable, compilation-interned proposition. Types and symbols retain their binding identities.</summary>

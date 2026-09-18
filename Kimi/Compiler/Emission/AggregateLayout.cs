@@ -61,7 +61,7 @@ internal sealed class AggregateLayoutPool
 
         var structure = StructStorage.IsStruct(type);
         var sequence = type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice;
-        if (depth == 64 || (!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray)) ||
+        if (depth == 64 || (!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)) ||
             type.Semantics != SemanticsKind.Owner || (!sequence && type.Origin is not null) || (!structure && type.OriginArguments.Count != 0) ||
             (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Length > int.MaxValue || type.Components.Count != 1)))
         {

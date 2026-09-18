@@ -132,7 +132,7 @@ public sealed partial class Binding
             }
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
-                (StructStorage.IsStruct(operandType) || operandType.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsStorage(operandType)) &&
+                (StructStorage.IsStruct(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Closure || ReferenceTypes.IsStorage(operandType)) &&
                 shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
             {
                 var referent = IsBorrow(operandType.Semantics) ? operandType.Components[0] : operandType;

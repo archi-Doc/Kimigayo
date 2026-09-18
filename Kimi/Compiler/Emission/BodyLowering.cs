@@ -216,6 +216,13 @@ internal sealed partial class BodyLowering
     private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (body.Values[index].Kind == OwnershipValueKind.Capture && body.Function.BoundClosure?.EnvironmentType is not null)
+        {
+            var valid = this.LowerCapture(body, function, index, out failure);
+            this.AddStringFlags(function, operation, index);
+            return valid;
+        }
+
         if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
         {
             return this.LowerBorrowedUpdate(body, function, constants, projectDirectory, index, out failure);
@@ -368,7 +375,15 @@ internal sealed partial class BodyLowering
                     return Fail("A call argument is not proven initialized.", out failure);
                 }
 
-                this.arguments.Add(index);
+                if (operation.Source is InvocationKoto)
+                {
+                    this.arguments.Add(index);
+                }
+                else if (operation.Source.ErasedFunctionType is null && operation.Source is not FunctionKoto { BoundClosure.EnvironmentType: not null } && operation.Source.Parent is not InvocationKoto { BoundValueCall.ReceiverKind: SemanticsKind.Owner })
+                {
+                    return Fail("Unrecognized environment acquisition.", out failure);
+                }
+
                 this.AddStringFlags(function, operation, index);
                 break;
 

@@ -39,7 +39,7 @@ internal readonly record struct SharedEnumConstruction(int Tag, int[] Sources, i
 
 internal readonly record struct SharedValueCall(int Receiver, int[] Arguments);
 
-internal sealed record SharedCallAdapter(ValueLowering[] Parameters, ValueLowering Result);
+internal sealed record SharedCallAdapter(ValueLowering[] Parameters, ValueLowering Result, FunctionAbi? Entry = null, bool Borrowed = false);
 
 internal sealed record SharedDirectAdapter(FunctionAbi Abi, ValueLowering[] Parameters, ValueLowering Result);
 
@@ -499,10 +499,10 @@ internal sealed class GenericStoragePlan
                     }
 
                     if (op.Source is not InvocationKoto { BoundValueCall: { } callPlan } call || op.Input < 0 ||
-                        !ReferenceEquals(callPlan.Receiver, call.Method) || !ReferenceEquals(body.Places[op.Input].Type, callPlan.Signature) ||
+                        !ReferenceEquals(callPlan.Receiver, call.Method) || !ReferenceEquals(body.Places[op.Input].Type, callPlan.ReceiverType) ||
                         !ReferenceEquals(call.BoundType, callPlan.ReturnType) || !ReferenceEquals(body.Places[op.Place].Type, callPlan.ReturnType) ||
                         callPlan.Arguments.Length != call.ArgumentNodes.Count || arguments.Count != callPlan.Arguments.Length ||
-                        !(ReferenceEquals(callPlan.ReturnType, BoundType.Boolean) || ReferenceEquals(callPlan.ReturnType, BoundType.ISize) || ReferenceEquals(callPlan.ReturnType, BoundType.Unit)))
+                        !(ReferenceEquals(callPlan.ReturnType, BoundType.Boolean) || ReferenceEquals(callPlan.ReturnType, BoundType.I32) || ReferenceEquals(callPlan.ReturnType, BoundType.ISize) || ReferenceEquals(callPlan.ReturnType, BoundType.Unit)))
                     {
                         return Fail("Shared common-function call has an unsupported result or inconsistent signature.", out failure);
                     }
@@ -511,7 +511,7 @@ internal sealed class GenericStoragePlan
                     for (var l = 0; l < body.ComparisonLoans.Count; l++)
                     {
                         var loan = body.ComparisonLoans[l];
-                        protectedReceiver |= loan.Place == op.Input && loan.Mode == LoanRequirement.Ref && body.HasComparisonLoan(id, l) &&
+                        protectedReceiver |= loan.Place == op.Input && loan.Mode == (callPlan.ReceiverKind == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref) && body.HasComparisonLoan(id, l) &&
                             ReferenceEquals(body.Operations[loan.Read].Source, callPlan.Receiver) && (!body.IsReachable(id) || this.verifier.SharedDominates(loan.Read, id));
                     }
 
@@ -806,7 +806,7 @@ internal sealed class GenericStoragePlan
 
         bool Add(BoundType type, int place, int parent, int selector, int argument, bool result, int depth)
         {
-            var borrowedStorage = ReferenceTypes.IsStorage(type) && type.Semantics == SemanticsKind.Ref &&
+            var borrowedStorage = ReferenceTypes.IsStorage(type) && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
                 type.Origin is { Kind: OriginKind.Input } origin && ReferenceEquals(origin.Binder, function);
             if (depth > 32 || (type.Origin is not null && !borrowedStorage) || type.OriginArguments.Count != 0)
             {
@@ -900,7 +900,7 @@ internal sealed class GenericStoragePlan
         {
             var type = binding.InstantiateStorageType(target.Parameters[i].Type.BoundType!, call);
             var value = type is null ? null : FunctionAbi.GetValue(type, layouts);
-            var borrowedStorage = (ReferenceTypes.IsStorage(type) || ReferenceTypes.IsString(type)) && type!.Semantics == SemanticsKind.Ref && ReferenceTypes.IsStorage(target.Parameters[i].Type.BoundType);
+            var borrowedStorage = (ReferenceTypes.IsStorage(type) || ReferenceTypes.IsString(type)) && type!.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ReferenceTypes.IsStorage(target.Parameters[i].Type.BoundType);
             if (type is null || value is null || ((ReferenceTypes.IsString(type) || ReferenceTypes.IsStorage(type)) && !borrowedStorage) ||
                 (borrowedStorage && FunctionAbi.GetValue(type.Components[0], layouts) is null))
             {
@@ -1046,9 +1046,12 @@ internal sealed class GenericStoragePlan
                 aggregate?.NeedsDestruction == true ? "__kimi_drop_aggregate" + aggregate.Id : null;
             var array = ReferenceTypes.IsArray(type) ? type.Components[0] : type;
             SharedCallAdapter? adapter = null;
-            if (type.Kind == BoundTypeKind.Function && template.Physical.Instructions.Any(x => x.Kind == SharedStorageOperation.Call && x.CopyPlace == i))
+            var callable = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
+            var concrete = callable.Kind == BoundTypeKind.Closure ? callable.Symbol?.Declaration as FunctionKoto : null;
+            if ((callable.Kind == BoundTypeKind.Function || concrete is not null) && template.Physical.Instructions.Any(x => x.Kind == SharedStorageOperation.Call && x.CopyPlace == i))
             {
-                var inputTypes = type.Components[0];
+                var signature = concrete?.BoundClosure?.Signature ?? callable;
+                var inputTypes = signature.Components[0];
                 var inputValues = new ValueLowering[ReferenceEquals(inputTypes, BoundType.Unit) ? 0 : inputTypes.Components.Count];
                 for (var a = 0; a < inputValues.Length; a++)
                 {
@@ -1060,13 +1063,18 @@ internal sealed class GenericStoragePlan
                     inputValues[a] = inputValue;
                 }
 
-                if (WindowsLowering.GetValue(type.Components[1]) is not { } callbackResult ||
-                    !(ReferenceEquals(type.Components[1], BoundType.Boolean) || ReferenceEquals(type.Components[1], BoundType.ISize) || ReferenceEquals(type.Components[1], BoundType.Unit)))
+                if (WindowsLowering.GetValue(signature.Components[1]) is not { } callbackResult ||
+                    !(ReferenceEquals(signature.Components[1], BoundType.Boolean) || ReferenceEquals(signature.Components[1], BoundType.I32) || ReferenceEquals(signature.Components[1], BoundType.ISize) || ReferenceEquals(signature.Components[1], BoundType.Unit)))
                 {
                     return Fail("Shared callback adapter requires bool, isize or Unit results.", out failure);
                 }
 
-                adapter = new(inputValues, callbackResult);
+                if (concrete is not null && this.functions?.GetValueOrDefault(concrete) is null)
+                {
+                    return Fail("Concrete Callable witness has no verified entry.", out failure);
+                }
+
+                adapter = new(inputValues, callbackResult, concrete is null ? null : this.functions![concrete], type.Kind == BoundTypeKind.Semantics);
             }
 
             policies[i] = new(value.Layout.Size, proof == ConstraintProof.Proven, destroy, array.Kind == BoundTypeKind.FixedArray ? array.Length : 0, adapter);

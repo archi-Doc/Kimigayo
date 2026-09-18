@@ -19,7 +19,23 @@ public sealed partial class OwnershipAnalysis
                 return -1;
             }
 
-            var read = this.Emit(OwnershipOperationKind.Read, source, place);
+            var read = -1;
+            if (closure.EnvironmentType is not null)
+            {
+                if (source.Captures is null && this.body.Places[place].Acquisition != AcquisitionKind.Copy)
+                {
+                    this.Unsupported(source); // Implicit capture must have definition-side Copy proof.
+                }
+
+                var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);
+                read = this.Emit(OwnershipOperationKind.Consume, source, place, acquired, this.body.Places[place].Acquisition);
+                this.Emit(OwnershipOperationKind.CallEntry, source, acquired);
+            }
+            else
+            {
+                read = this.Emit(OwnershipOperationKind.Read, source, place);
+            }
+
             this.arguments.Add(read);
         }
 
@@ -32,7 +48,7 @@ public sealed partial class OwnershipAnalysis
     private int CallValue(InvocationKoto call, BoundValueCall plan)
     {
         var depth = this.comparisonDepth++;
-        var receiver = this.Expression(plan.Receiver, PlaceUseKind.Read);
+        var receiver = this.Expression(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
         if (receiver < 0)
         {
             this.comparisonDepth = depth;
@@ -41,7 +57,19 @@ public sealed partial class OwnershipAnalysis
 
         // Even a temporary has a distinct read marking the receiver Loan's start.
         this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver);
-        this.BeginSharedLoan(receiver);
+        if (plan.ReceiverKind != SemanticsKind.Owner)
+        {
+            var loan = this.BeginSharedLoan(receiver);
+            if (plan.ReceiverType.Kind != BoundTypeKind.Function)
+            {
+                this.body.ComparisonLoans[loan] = this.body.ComparisonLoans[loan] with { Callable = call, Mode = plan.ReceiverKind == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref };
+            }
+        }
+        else
+        {
+            this.Emit(OwnershipOperationKind.CallEntry, plan.Receiver, receiver);
+        }
+
         var mark = this.arguments.Count;
         for (var i = 0; i < plan.Arguments.Length; i++)
         {

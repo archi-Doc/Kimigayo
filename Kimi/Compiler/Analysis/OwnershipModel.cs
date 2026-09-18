@@ -347,6 +347,7 @@ internal enum OwnershipValueKind : byte
     PatternProjection,
     Closure,
     Capture,
+    ClosureErasure,
 }
 
 internal enum SequenceOperation : byte
@@ -388,7 +389,7 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
 // Read anchors acquisition: Read/Borrow, LocateReceiver for storage protection,
 // and final ProjectElement for an exclusive write.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1);
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 

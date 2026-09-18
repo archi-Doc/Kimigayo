@@ -698,6 +698,7 @@ public sealed partial class Binding
             node.BindingState = BindingState.Unvisited;
             node.BindingFailure = BindingFailure.None;
             node.BoundMeaning = null;
+            node.ErasedFunctionType = null;
             node.BoundSymbol = null;
             if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker)
             {

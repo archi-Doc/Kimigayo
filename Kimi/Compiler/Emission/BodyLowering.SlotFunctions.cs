@@ -64,6 +64,24 @@ internal sealed partial class BodyLowering
             }
         }
 
+        if (body.Function.BoundClosure is { EnvironmentType: { } environment } closure)
+        {
+            if (this.aggregateLayouts.Get(environment) is not { } layout)
+            {
+                return Fail("Concrete closure has no finite environment layout.", out failure);
+            }
+
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                if (!body.SymbolPlaces.TryGetValue(closure.Captures[i].Environment, out var capture))
+                {
+                    return Fail("Concrete closure has no capture storage.", out failure);
+                }
+
+                function.SlotAddresses[capture] = new(EmissionOperandKind.CaptureAddress, layout.Offset(i));
+            }
+        }
+
         var returns = 0;
         for (var p = 0; p < body.Places.Count; p++)
         {

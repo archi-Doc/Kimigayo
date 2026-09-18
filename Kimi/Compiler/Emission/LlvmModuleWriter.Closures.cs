@@ -4,6 +4,58 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
+    private static void WriteErasureAdapter(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
+    {
+        var name = "__kimi_erase_" + function.Abi.Name + "_" + instruction.Operation;
+        var entry = instruction.Callee!;
+        output.Write('@');
+        WriteClosureTableName(output, function, instruction.Operation);
+        output.Write($" = private constant {{ ptr, ptr, ptr }} {{ ptr @{name}, ptr null, ptr null }}, align 8\n");
+        output.Write($"define internal {entry.Result} @{name}(i64 %environment");
+        foreach (var parameter in entry.Parameters)
+        {
+            if (parameter.Kind is not (AbiParameterKind.Environment or AbiParameterKind.Context))
+            {
+                output.Write($", {parameter.Type} %{parameter.Name}");
+            }
+        }
+
+        output.Write(", ptr %context) #0 {\nentry:\n  %storage = alloca i64, align 8\n  store i64 %environment, ptr %storage, align 8\n");
+        output.Write(entry.Result == "void" ? "  call void" : $"  %result = call {entry.Result}");
+        output.Write($" @{entry.Name}(ptr %storage");
+        foreach (var parameter in entry.Parameters)
+        {
+            if (parameter.Kind is not (AbiParameterKind.Environment or AbiParameterKind.Context))
+            {
+                output.Write($", {parameter.Type} %{parameter.Name}");
+            }
+        }
+
+        output.Write(", ptr %context)\n");
+        output.Write(entry.NoReturn ? "  unreachable\n}\n" : entry.Result == "void" ? "  ret void\n}\n" : $"  ret {entry.Result} %result\n}}\n");
+    }
+
+    private static void WriteErasure(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
+    {
+        output.Write("  store i64 0, ptr ");
+        WriteSlot(output, function, instruction.Place);
+        output.Write(", align 8\n");
+        if (instruction.Aggregate!.Value.Layout.Size > 0)
+        {
+            output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", ptr ");
+            WriteSlot(output, function, (int)function.GetOperands(instruction)[0].Value);
+            output.Write($", i64 {instruction.Aggregate.Value.Layout.Size}, i1 false)\n");
+        }
+
+        output.Write($"  %operationsSlot{instruction.Operation} = getelementptr i8, ptr ");
+        WriteSlot(output, function, instruction.Place);
+        output.Write(", i64 8\n  store ptr @");
+        WriteClosureTableName(output, function, instruction.Operation);
+        output.Write($", ptr %operationsSlot{instruction.Operation}, align 8\n");
+    }
+
     private static void WriteClosureTableName(TextWriter output, EmissionFunction function, int id)
     {
         output.Write("__kimi_closure_");
@@ -15,9 +67,13 @@ internal static partial class LlvmModuleWriter
     {
         var id = instruction.Operation;
         var operands = function.GetOperands(instruction);
-        output.Write("  store i64 0, ptr ");
-        WriteSlot(output, function, instruction.Place);
-        output.Write(", align 8\n");
+        if (instruction.Aggregate is null)
+        {
+            output.Write("  store i64 0, ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", align 8\n");
+        }
+
         for (var i = 0; i < operands.Length; i++)
         {
             var field = instruction.Pattern![i];
@@ -41,6 +97,14 @@ internal static partial class LlvmModuleWriter
             output.Write(" = getelementptr i8, ptr ");
             WriteSlot(output, function, instruction.Place);
             Name(output, ", i64 ", field.Offset);
+            if (operands[i].Kind == EmissionOperandKind.SlotAddress)
+            {
+                output.Write($"\n  call void @llvm.memcpy.p0.p0.i64(ptr %captureAddress{id}_{i}, ptr ");
+                WriteSlot(output, function, (int)operands[i].Value);
+                output.Write($", i64 {field.Representation.Layout.Size}, i1 false)\n");
+                continue;
+            }
+
             output.Write("\n  store ");
             output.Write(field.Representation.Layout.StorageType);
             output.Write(' ');
@@ -58,6 +122,11 @@ internal static partial class LlvmModuleWriter
             Name(output, "_", i);
             Name(output, ", align ", field.Representation.Layout.Alignment);
             output.Write('\n');
+        }
+
+        if (instruction.Aggregate is not null)
+        {
+            return;
         }
 
         Name(output, "  %operationsSlot", id);

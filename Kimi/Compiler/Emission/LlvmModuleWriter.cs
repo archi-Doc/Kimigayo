@@ -91,7 +91,12 @@ internal static partial class LlvmModuleWriter
     {
         foreach (var instruction in function.Instructions)
         {
-            if (instruction.Opcode == EmissionOpcode.CreateClosure)
+            if (instruction.Opcode == EmissionOpcode.EraseClosure)
+            {
+                WriteErasureAdapter(output, function, instruction);
+            }
+
+            if (instruction.Opcode == EmissionOpcode.CreateClosure && instruction.Aggregate is null)
             {
                 output.Write('@');
                 WriteClosureTableName(output, function, instruction.Operation);
@@ -112,7 +117,20 @@ internal static partial class LlvmModuleWriter
         {
             if (parameter.Kind == AbiParameterKind.Environment)
             {
-                output.Write("  %environmentSlot = alloca i64, align 8\n  store i64 %environment, ptr %environmentSlot, align 8\n");
+                if (parameter.Type == "i64")
+                {
+                    output.Write("  %environmentSlot = alloca i64, align 8\n  store i64 %environment, ptr %environmentSlot, align 8\n");
+                }
+                else
+                {
+                    for (var p = 0; p < function.SlotAddresses.Count; p++)
+                    {
+                        if (function.SlotAddresses[p] is { Kind: EmissionOperandKind.CaptureAddress } capture)
+                        {
+                            output.Write($"  %p{p} = getelementptr i8, ptr %environment, i64 {capture.Value}\n");
+                        }
+                    }
+                }
             }
         }
 
@@ -256,6 +274,10 @@ internal static partial class LlvmModuleWriter
                     WriteClosure(output, function, instruction);
                     break;
 
+                case EmissionOpcode.EraseClosure:
+                    WriteErasure(output, function, instruction);
+                    break;
+
                 case EmissionOpcode.CallValue:
                     WriteValueCall(output, function, instruction);
                     break;
@@ -291,6 +313,9 @@ internal static partial class LlvmModuleWriter
                 break;
             case EmissionOperandKind.ReturnAddress:
                 output.Write("%ret");
+                break;
+            case EmissionOperandKind.CaptureAddress:
+                Name(output, "%p", place);
                 break;
             default:
                 throw new InvalidOperationException("Unprepared slot address.");
@@ -349,6 +374,7 @@ internal static partial class LlvmModuleWriter
                 case EmissionOperandKind.Argument:
                 case EmissionOperandKind.Float32:
                 case EmissionOperandKind.Float64:
+                case EmissionOperandKind.NullAddress:
                     WriteOperand(output, operand);
                     break;
                 case EmissionOperandKind.SlotAddress:

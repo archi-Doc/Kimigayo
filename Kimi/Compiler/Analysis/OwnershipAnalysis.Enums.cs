@@ -88,7 +88,7 @@ public sealed partial class OwnershipAnalysis
             return supported;
         }
 
-        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)
         {
             supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;
             for (var i = 0; i < type.Components.Count; i++)

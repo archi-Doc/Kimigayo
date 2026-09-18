@@ -77,7 +77,16 @@ internal static partial class LlvmModuleWriter
             output.Write($", ptr %a{i}");
         }
 
-        output.Write(") #0 {\nentry:\n  %environment = load i64, ptr %receiver, align 8\n  %tableSlot = getelementptr i8, ptr %receiver, i64 8\n  %table = load ptr, ptr %tableSlot, align 8\n  %callee = load ptr, ptr %table, align 8\n  %contextSlot = getelementptr i8, ptr %table, i64 8\n  %context = load ptr, ptr %contextSlot, align 8\n");
+        output.Write(") #0 {\nentry:\n");
+        if (adapter.Entry is null)
+        {
+            output.Write("  %environment = load i64, ptr %receiver, align 8\n  %tableSlot = getelementptr i8, ptr %receiver, i64 8\n  %table = load ptr, ptr %tableSlot, align 8\n  %callee = load ptr, ptr %table, align 8\n  %contextSlot = getelementptr i8, ptr %table, i64 8\n  %context = load ptr, ptr %contextSlot, align 8\n");
+        }
+        else if (adapter.Borrowed)
+        {
+            output.Write("  %environment = load ptr, ptr %receiver, align 8\n");
+        }
+
         for (var i = 0; i < adapter.Parameters.Length; i++)
         {
             var value = adapter.Parameters[i];
@@ -93,13 +102,13 @@ internal static partial class LlvmModuleWriter
 
         var result = adapter.Result.ComputationType;
         output.Write(result == "void" ? "  call void" : $"  %value = call {result}");
-        output.Write(" %callee(i64 %environment");
+        output.Write(adapter.Entry is null ? " %callee(i64 %environment" : $" @{adapter.Entry.Name}(ptr %{(adapter.Borrowed ? "environment" : "receiver")}");
         for (var i = 0; i < adapter.Parameters.Length; i++)
         {
             output.Write($", {adapter.Parameters[i].ArgumentType} %value{i}");
         }
 
-        output.Write(", ptr %context)\n");
+        output.Write(adapter.Entry is null ? ", ptr %context)\n" : ", ptr null)\n");
         if (result == "i1")
         {
             output.Write("  %resultByte = zext i1 %value to i8\n  store i8 %resultByte, ptr %result, align 1\n");

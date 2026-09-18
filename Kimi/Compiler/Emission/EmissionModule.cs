@@ -38,6 +38,7 @@ internal enum EmissionOpcode : byte
     CompositePattern,
     PatternRead,
     CreateClosure,
+    EraseClosure,
     CallValue,
 
     /// <summary>Memcpy: zero operands use Place/Constant slots; one supplies the source address; two supply source and destination addresses.</summary>
@@ -86,6 +87,7 @@ internal enum EmissionOperandKind : byte
     Float32,
     Float64,
     EnvironmentAddress,
+    CaptureAddress,
 }
 
 // Internal managed storage only: 8-byte packing avoids 16-byte tail padding for the tag.
