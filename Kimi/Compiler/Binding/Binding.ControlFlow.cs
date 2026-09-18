@@ -19,7 +19,7 @@ public sealed partial class Binding
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
     /// <returns>The common Type, or null when none is supplied or the sources conflict.</returns>
-    internal static BoundType? SelectCommonType(List<BoundType> types, out bool conflict)
+    internal BoundType? SelectCommonType(List<BoundType> types, out bool conflict)
     {
         conflict = false;
         for (var i = 0; i < types.Count; i++)
@@ -37,9 +37,47 @@ public sealed partial class Binding
             }
         }
 
+        // Borrow results with the same referent retain every incoming dependency.
+        // This does not search common bases or change referent variance.
+        var borrowed = types.Count > 0 ? types[0] : null;
+        for (var i = 1; i < types.Count && borrowed is not null; i++)
+        {
+            borrowed = this.CommonBorrowResult(borrowed, types[i]);
+        }
+
+        if (borrowed is not null)
+        {
+            return borrowed;
+        }
+
         // No common base is searched; unrelated sources require an annotation.
         conflict = types.Count > 0;
         return null;
+    }
+
+    internal BoundType? CommonBorrowResult(BoundType left, BoundType right)
+    {
+        if (ReferenceEquals(left, BoundType.Never))
+        {
+            return right;
+        }
+
+        if (ReferenceEquals(right, BoundType.Never) || ReferenceEquals(left, right))
+        {
+            return left;
+        }
+
+        if (left.Kind != BoundTypeKind.Semantics || right.Kind != BoundTypeKind.Semantics ||
+            !IsBorrow(left.Semantics) || left.Semantics != right.Semantics ||
+            left.Origin is not { } a || right.Origin is not { } b ||
+            left.Components.Count != 1 || right.Components.Count != 1 ||
+            !ReferenceEquals(left.Components[0], right.Components[0]) ||
+            left.OriginArguments.Count != 0 || right.OriginArguments.Count != 0)
+        {
+            return null;
+        }
+
+        return this.WithOrigins(left, this.Meet(a, b), []);
     }
 
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
@@ -79,7 +117,7 @@ public sealed partial class Binding
     private void InferResultExpected(Koto target, BindingScope scope, ResultContext context)
     {
         this.FindResultEvidence(target, scope, context);
-        context.Expected = SelectCommonType(context.Evidence, out var conflict);
+        context.Expected = this.SelectCommonType(context.Evidence, out var conflict);
         context.Invalid |= conflict;
         context.Evidence.Clear();
     }
@@ -300,7 +338,7 @@ public sealed partial class Binding
         var common = context.Expected;
         if (common is null)
         {
-            common = SelectCommonType(types, out var conflict);
+            common = this.SelectCommonType(types, out var conflict);
             context.Invalid |= conflict;
         }
         else

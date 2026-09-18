@@ -5139,3 +5139,93 @@ Programs 15–21 remain specification targets; 22–38 have no source files yet.
 Units 62–67 (T4n-at–ax, T12a) remain DONE for their bounded criteria after the
 [verification audit](PLAN_HISTORY.md#units62-67-verification); their parent
 I3/I6/I8/I12 families remain IN_PROGRESS. No product M/I family is closed here.
+
+<a id="program15-completion"></a>
+
+## Program 15 completion (2026-09-18)
+
+P15-B/O/G/V complete the unchanged `milestones/Milestone15.kimi`; these IDs are
+program checkpoints, not product M15. Started at HEAD
+`9a6352b9a2a7fbb3152ac81afb8bc0db1d1b7d29` with a clean working tree, so no existing
+uncommitted changes needed preservation. Read AGENTS.md, current plans/status,
+programs 1–21 and the owning result/Origin/ownership/cleanup rules. Later programs
+informed scope only. No milestone source, normative specification or draft changed.
+SDK: 10.0.401; pinned Windows x64 LLVM: 22.1.8. NativeAOT NOT_RUN.
+
+### Reproduction and decisions
+
+- Initial current-source Debug compiler build passed without warnings. Command
+  `dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone15.kimi`
+  reproduced TypeMismatch_Kd at line 28 and ControlFlow_Kd at lines 29–30: the
+  borrowed if result could not combine two distinct local Origins. Later ownership
+  and generation failures were initially unconfirmed. Existing focused tests passed
+  178/178 ([baseline XML](bin/milestone15-work/baseline.xml)); the five initial
+  P15 tests failed at Binding ([initial XML](bin/milestone15-work/initial-tests.xml)).
+- P15-B uses the existing interned Origin meet for matching borrowed referent Types
+  and Semantics. Binding and retained control-flow inference share this operation;
+  no common-base search, implicit mode conversion or invariant referent weakening
+  was added. After this fix the unchanged target passed ownership, and all four
+  initial rejection variants reached their intended ownership diagnostics.
+- P15-O reuses existing converged CFG state and backward borrow liveness. No new
+  loop solver, runtime ownership flags or filename-specific path was needed.
+  Tests cover both normal/continue missing repair, branch initialization, both
+  retained owner dependencies, post-last-use mutation and escaping local sources.
+- P15-G's confirmed next blocker was `Missing or inconsistent value-flow plan`.
+  Pointer Phi/alias validation now permits only matching storage referents with
+  complete `FitsType` proof, preserving Origin shortening and Semantics checks.
+  Dominance, predecessor coverage, result acquisition and cleanup validation remain.
+  A corrupted result plan that drops an incoming Origin is rejected before IR
+  writing. The generated target includes the ordinary pointer Phi.
+- Intermediate verification issues were confined to the harness/environment:
+  one newly written named exit lacked its required colon and was corrected;
+  exact diagnostic matching needed ANSI color stripping; sandbox LLVM execution
+  returned permission denied, then the approved native runs succeeded. These failed
+  attempts are not completion evidence. No execution check remains environment-blocked.
+
+### Final verification
+
+Both configurations use:
+
+```powershell
+dotnet build Kimigayo.slnx -c <Debug|Release> --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false
+dotnet xUnitTest/bin/<Debug|Release>/net10.0/xUnitTest.dll -parallelMode none -failSkips -result-xml bin/milestone15-work/<debug|release>-tests.xml
+./backend/windows-x64/test-milestone15.ps1 -Configuration <Debug|Release>
+```
+
+- Debug/Release solution builds: zero warnings/errors; each full managed suite:
+  **8,708 passed, zero failed/skipped**. [Debug build](bin/milestone15-work/debug-build.log),
+  [Debug tests](bin/milestone15-work/debug-tests.xml),
+  [Release build](bin/milestone15-work/release-build.log),
+  [Release tests](bin/milestone15-work/release-tests.xml).
+- Debug target verification passed 56 checks in the first harness version
+  ([report](bin/milestone15/Debug/8954ad819269402e8c84791fb147a3b0/verification.json)):
+  51 normal execution checks and five O2 rejection checks. After adding explicit
+  O0/O2 rejection projects and exact diagnostic checks, only `-Cases Rejections`
+  was rerun: ten checks passed
+  ([report](bin/milestone15/Debug/6cceb2cb44ac4daaac61cafe529f24a6/verification.json)).
+  The compiler identity is identical across both reports. Normal runs were not repeated.
+- Release final harness: **61 checks passed**
+  ([report](bin/milestone15/Release/7f0e7743ef88488ab693a1bca28b15b4/verification.json)).
+  Canonical O2 plus eight variants at O0/O2 are each executed directly and through
+  both CLI run forms. Variants preserve a byte-identical source copy, change names
+  and input values, reverse selection, run zero/five iterations, distinguish
+  consumed/fallback/repaired destruction, and mutate after the borrow's final use.
+  Every normal stdout matches exact UTF-8/LF bytes, stderr is empty, and exit is 0.
+  Totals/final values are asserted by the source; each canonical run destroys
+  exactly three Items in order, including cleanup on continue. Five invalid inputs
+  at both O0/O2 diagnose missing initialization, missing repair, moved reads and
+  writes to either live borrowed owner; no IR/executable is published.
+- Completed-program regression: **84 checks passed**, 14 unchanged byte-identical
+  programs × O0/O2 × direct/native and two CLI run forms. Each build runs LLVM
+  verification and linking with the current Release compiler; output comes from
+  the program's README contract. [Runner](bin/milestone15-work/native-regressions.ps1),
+  [report](bin/milestone15-work/native-regressions/verification.json).
+- [Frozen identities and evidence index](bin/milestone15-work/verification.json)
+  record source/compiler/test hashes. Target SHA-256 remains
+  `AD6366A5DECE798F8CAE535638D51D1A8796AD227A08DA295F9A3F31B51920B6`.
+
+P15 adds bounded borrowed-result inference and checked pointer transfer support;
+it does not close general variance/Origin inference, unequal active acquisition
+stacks, deferred checking-history joins, arbitrary CFG/effects or product M15.
+No later milestone implementation was started. The current disposition and next
+actions remain solely in PLAN.md.

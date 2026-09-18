@@ -101,12 +101,12 @@ internal sealed partial class BodyLowering
                     return false;
                 }
 
-                if (value.Kind == OwnershipValueKind.Phi && (body.Values[input].Kind == OwnershipValueKind.Alias || !ReferenceEquals(ValueType(body, id), ValueType(body, input))))
+                if (value.Kind == OwnershipValueKind.Phi && (body.Values[input].Kind == OwnershipValueKind.Alias || !FitsValue(ValueType(body, input), ValueType(body, id))))
                 {
                     return false;
                 }
 
-                if (value.Kind == OwnershipValueKind.Alias && !ReferenceEquals(operation.Kind == OwnershipOperationKind.Branch ? BoundType.Boolean : ValueType(body, id), ValueType(body, input)))
+                if (value.Kind == OwnershipValueKind.Alias && !FitsValue(ValueType(body, input), operation.Kind == OwnershipOperationKind.Branch ? BoundType.Boolean : ValueType(body, id)))
                 {
                     return false;
                 }
@@ -201,6 +201,12 @@ internal sealed partial class BodyLowering
 
         return true;
     }
+
+    // An Origin weakening changes the lifetime contract, never the pointer representation.
+    // Keep all other scalar transfers exact, and require the complete semantic proof.
+    private static bool FitsValue(BoundType? source, BoundType? target)
+        => ReferenceEquals(source, target) || (ReferenceTypes.IsStorage(source) && ReferenceTypes.IsStorage(target) &&
+            ReferenceEquals(source!.Components[0], target!.Components[0]) && Binding.FitsType(source, target));
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Integer ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :

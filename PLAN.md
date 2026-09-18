@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The active request is to consolidate the Kimi declaration/function reference and relocate ownership operations to `Kimi.Intrinsics`. Migrate implemented functions, lookup/validation, tests and executable sources; place the remaining specified ownership family under the same group without claiming new runtime support. NativeAOT and draft edits remain excluded.
+The active request is to complete program `milestones/Milestone15.kimi` through checked native execution. Implement only its required common foundations; programs 16–21 inform design but are not implementation targets. NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,21 +31,24 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current request: **Kimi.Intrinsics placement and declaration reference — DONE**.
+Current request: **Program 15 ownership joins — DONE**. P15 identifies the executable program, not product milestone M15.
 
 | ID | State | Acceptance / exact next action |
 | --- | --- | --- |
-| KI-S | DONE | §22.1.1 owns placement and function reference; SPEC.md links it. Ownership APIs move under Intrinsics, intrinsic Contracts stay at Kimi, and output stays at Console. |
-| KI-I | DONE | replace/exchange/swap/makeObj declarations, scopes and validation moved; existing sources migrated; root compatibility names removed. |
-| KI-V | DONE | Warning-free Debug/Release test builds; 8,691 tests per configuration, 48 Release Milestone14 checks and 36 O0/O2 update executions pass. [Evidence](PLAN_HISTORY.md#kimi-intrinsics-placement). NativeAOT NOT_RUN. |
+| P15-B | DONE | Matching borrowed result Types infer the intersection of incoming Origins, independently of arm order; explicit contracts and referent/mode mismatches remain checked. |
+| P15-O | DONE | Existing fixed-point CFG/liveness verifies branch initialization, normal/continue Move repair and both incoming Loan dependencies; tests reject missing initialization/repair, moved reads, live-owner writes and escaping local borrows. |
+| P15-G | DONE | Checked scalar pointer transfers require matching referents and proven Origin fitting. Unchanged target and variants pass LLVM verification and native O0/O2 with ordered defer/destruction. |
+| P15-V | DONE | Warning-free Debug/Release solution builds and 8,708 tests each pass. Target native/CLI and O0/O2 rejections pass, plus 84 Release O0/O2 regression checks for programs 1–14. [Evidence](PLAN_HISTORY.md#program15-completion). NativeAOT NOT_RUN. |
 
 The preceding P18-D/P19-D/P20-D/P21-D/P38-R/P38-S/P38-V checkpoint is preserved in
-[history](PLAN_HISTORY.md#kimi-intrinsics-placement). Programs 15–21 remain
+[history](PLAN_HISTORY.md#kimi-intrinsics-placement). Programs 16–21 remain
 specification targets; 22–38 have no source files. P14 and units 62–67 retain their
-bounded prior completion; no product M/I family is closed by this relocation.
+bounded prior completion; no product M/I family is closed by this program checkpoint.
 
-No next action remains for KI-S/KI-I/KI-V. Remaining ownership APIs retain their
-existing I24/I25 implementation scope.
+KI-S/KI-I/KI-V are complete; their evidence is retained in the linked history. Remaining ownership APIs retain their existing I24/I25 implementation scope.
+
+No next action remains for P15-B/O/G/V. Stop at program 15; no program 16 feature
+is authorized by this checkpoint. General product M3/I6 and M15 obligations stay open.
 
 ### Current milestone states
 

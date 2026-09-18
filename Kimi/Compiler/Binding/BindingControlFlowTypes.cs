@@ -99,7 +99,22 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
             }
         }
 
-        return null;
+        BoundType? common = null;
+        for (var i = 0; i < sources.Count; i++)
+        {
+            if (SemanticType(sources[i].Type) is not { } next)
+            {
+                return null;
+            }
+
+            common = common is null ? next : binding.CommonBorrowResult(common, next);
+            if (common is null)
+            {
+                return null;
+            }
+        }
+
+        return FlowType(common);
     }
 
     public override bool? IsExhaustive(MatchKoto match) => this.GetMatchCoverage(match, null).IsExhaustive;

@@ -1,5 +1,14 @@
 # Kimigayo Implementation Status
 
+The **2026-09-18 program Milestone 15 implementation** passes Binding, ownership,
+checked LLVM generation, LLVM verification, linking and native O0/O2 execution.
+Matching borrowed result Types retain both incoming Origins; existing CFG and
+liveness analysis handles this program's initialization, Move repair, continue
+cleanup and last-use borrow release. Debug/Release solution builds are warning-free
+and all 8,708 managed tests pass per configuration. The target and variants have
+exact stdout, empty stderr and exit 0; invalid variants reject before IR publication.
+[Evidence and limits](PLAN_HISTORY.md#program15-completion). NativeAOT NOT_RUN.
+
 The **2026-09-18 Kimi.Intrinsics relocation** is complete: warning-free Debug/Release test builds and 8,691 tests per configuration pass, together with 48 Release Milestone14 checks and 36 O0/O2 whole-value update executions. [Placement, coverage and limits](#kimi-library-and-whole-value-updates); [verification record](PLAN_HISTORY.md#kimi-intrinsics-placement). NativeAOT was NOT_RUN.
 
 The milestone roadmap now contains **38 programs**: 1–21 have source files and
@@ -10,13 +19,15 @@ Hello World retains its fully qualified call. See [the complete status inventory
 The **2026-09-18 restructuring audit** passes a warning-free Release compiler/test
 build, 57 alias/syntax tests, 577 existing milestone harness checks and two native
 O0/O2 executions of program 13. Programs 1–14 retain executable coverage after
-the source spelling change. Programs 15–21 fail native O2 build probes and have
-no native execution claim; 22–38 remain uncreated. No compiler feature was added.
+the source spelling change. At that checkpoint programs 15–21 failed native O2
+build probes; program 15 is now superseded by the completion above. Programs
+16–21 retain their recorded limitations; 22–38 remain uncreated. The restructuring
+itself added no compiler feature.
 [Audit and limits](PLAN_HISTORY.md#programs38-restructure) distinguish current
 source hashes from earlier combined-program evidence. Debug, the full managed
 suite and NativeAOT were not run for this restructuring.
 
-Updated for program Milestone 14 implementation and native/regression verification on **2026-09-18**, on top of HEAD `d7e42915a73c6c06be1ac4b455187eb07608c99e` and the preceding uncommitted implementation. [SPEC.md](SPEC.md) and its normative chapters define required behavior; implementation restrictions below do not weaken them. [PLAN.md §2](PLAN.md#2-execution-state) owns current work states and next actions. [PLAN_HISTORY.md](PLAN_HISTORY.md) owns dated execution, verification and decision records.
+Updated for program Milestone 15 on **2026-09-18**, starting from clean HEAD `9a6352b9a2a7fbb3152ac81afb8bc0db1d1b7d29`. [SPEC.md](SPEC.md) and its normative chapters define required behavior; implementation restrictions below do not weaken them. [PLAN.md §2](PLAN.md#2-execution-state) owns current work states and next actions. [PLAN_HISTORY.md](PLAN_HISTORY.md) owns dated execution, verification and decision records.
 
 Support is partial across the compiler. Parsing, final Binding, ownership/control-flow analysis, checked LLVM generation, LLVM verification and native execution are distinct stages. A declaration certificate or successfully parsed specification example does not establish runtime support. The coverage below summarizes implemented subsets and their limits, backed by the named code/tests and recorded runs; comprehensive clause conformance remains unfinished.
 
@@ -149,6 +160,7 @@ The existing CFG fixed-point analysis uses checked Binding operations and distin
 | Implemented scope | Remaining limits |
 | --- | --- |
 | if/short-circuit/while/do/loop/labels/require/match and return/yield/exit/continue/defer; result acquisition before normal cleanup and delivery only after cleanup completes | General effects/refinement and unsupported representations remain guarded. Abort/divergence produces no later ordinary cleanup or result. |
+| Borrow results with the same referent Type and Semantics infer an intersection of incoming Origins. Branch-order, nested if, match and named-do result tests preserve both dependencies; checked pointer SSA transfers require semantic fitting. P15 executes branch initialization, Move/repair across normal and continue backedges, last-use Loan release and ordered cleanup at O0/O2. | This does not complete arbitrary unequal active acquisition stacks, general Origin variance/inference, deferred checking-history joins or interprocedural effects. Explicit result contracts and mismatched Types/Semantics still reject. |
 | Supported scalar/Unit defaults are checked independently even when unused, supplied or bodyless requirements. Calls acquire explicit inputs first, then omitted defaults in declaration order using prepared snapshots; no inference from defaults. | General owned/borrowed/effectful defaults, recursive-default completion proof, escaping borrows/captures and generic Copy proof remain unfinished. |
 | Defaults support scalar operations/conversions/selections/do, contained transfers, scalar/Unit locals and updates/finite loops, require and Copy scalar subplace reads. Match defaults read scalar candidates, acquire body bindings and preserve false-guard effects. Scalar-only tuples can be copied from prepared arguments, constructed, saved locally, destructured and read; mutable local/body bindings permit scalar-leaf updates. Prepared scalar-tuple copies include literal/local/returned/selection storage. Scalar subplace inspection recognizes acquired Copy/Move tuple/array arguments, including forwarded parameters and owned contents with checked cleanup. Generation checks exact argument slots and verified initialization/lifetimes. Definite non-Copy prepared acquisition reports `DefaultArgumentMove_Kd`. | Final default results remain scalar/Unit. General aggregate-producing default expressions, whole aggregate guard candidates and owned defaults remain unsupported. Prepared parameters and immutable/candidate bindings cannot be updated through these paths. Owned referent/getter/borrow/capture paths need further plans. |
 | Never calls/arguments/defaults and scalar operands retain later source checking and acquired-argument histories without initializing absent results. Omitted-default completion is separate from callee-body completion. | Direct Never operand fitting has earlier Binding limits; recursive expansion stays pending and bounded. |
@@ -346,7 +358,7 @@ Package loading/pack/publish/store commands, portable content/semantic records, 
 | CI and distribution | `.github/workflows/test.yml` explicitly selects Linux Release, xUnitTest project, nonzero-test minimum and serial tests. `publish.yml` retains a less explicit test command and manual NuGet pack/push. These workflows are distinct; neither execution nor publication was performed by this migration. Windows native/PR coverage and evidence retention still need review. |
 | Performance | Binding/type/CFG/ABI/layout/constant buffers reuse capacity; targeted warm tests measure zero allocation on their own workloads. Shared module preparation, graph loading, process startup and every Binding path are not allocation-free guarantees. Historical require-expression Binding measured 72 bytes/pass; front-end samples did not establish a speedup. The original extended benchmark input failure remains a separate finding. |
 
-Programs 1–14 have current Release target-level native coverage. Programs 15–21 illustrate broader required semantics and have failed O2 build probes, not executable support. Programs 22–38 are planned. Parser coverage and adopted documentation do not establish end-to-end executability. User constructor, closure, generic, reference and sequence support should be read from the bounded areas above, not older blanket omissions.
+Programs 1–15 have Release target-level native coverage, including Debug/Release O0/O2 target and variant coverage for program 15. Programs 16–21 retain failed O2 build probes, not executable support. Programs 22–38 are planned. Parser coverage and adopted documentation do not establish end-to-end executability. User constructor, closure, generic, reference and sequence support should be read from the bounded areas above, not older blanket omissions.
 
 ## 7. Verification Records
 

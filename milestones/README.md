@@ -4,7 +4,7 @@ Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md
 Programs 1–21 have source files; programs 22–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 15–21 are specification targets beyond current
+not an execution claim. Milestones 16–21 are specification targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -39,7 +39,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-18**, after the 38-program restructuring. Build means a native
+As of **2026-09-18**, after the 38-program restructuring and program 15 completion. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -60,7 +60,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 12 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 13 | YES | PASS (Release) | PASS (Release) | Exact copied source, O0/O2 output/exit checks |
 | 14 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 15 | YES | FAIL (Release/O2) | NOT_RUN | TypeMismatch_Kd / ControlFlow_Kd at the joined borrow |
+| 15 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
 | 16 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedOwnership_Kd and dependent Loan/initialization diagnostics |
 | 17 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedOwnership_Kd for element update targets; Move/Loan diagnostics |
 | 18 | YES | FAIL (Release/O2) | NOT_RUN | GenerationFailed_Kd: invalid shared storage/projection |
@@ -89,8 +89,9 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 identities and exact commands: Release compiler/test-project build PASS with zero
 warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
 program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
-The syntax-catalog test includes all 21 existing milestone sources. Programs
-15–21 fail before native execution; their expected output remains specification-derived.
+The syntax-catalog test includes all 21 existing milestone sources. That audit's
+failed program-15 probe is superseded by its completion below. Programs 16–21
+retain failed build probes; their expected output remains specification-derived.
 Programs 22–38 have no source files or executed tests yet. Debug, full managed
 regressions and NativeAOT were not run for this restructuring.
 
@@ -842,7 +843,7 @@ mutation of current after the selected reference's last use. The second iteratio
 Moves current into consume, repairs it, and continues. The loop must reach a
 consistent usable state on both backedges; cleanup still runs on continue.
 
-Expected stdout (not execution evidence):
+Verified stdout:
 
 ```text
 Iteration finished.
@@ -875,10 +876,14 @@ Separate rejection exercises:
 - Inside the selected scope, mutate current before the selected.value read;
   one incoming Loan can still refer to current.
 
-Future verification should also reverse the selection condition with adjusted
-expected totals, exercise zero iterations with adjusted final checks, and vary
-the loop count to require additional backedge traversals. Check both acceptance
-and rejection at O0/O2 without optimizer-dependent ownership legality.
+`backend/windows-x64/test-milestone15.ps1 -Configuration Release` reproduces
+61 checks: unchanged source, byte-identical renamed O0/O2 copies, renamed symbols,
+different values, reversed selection, zero/five iterations, distinguishable
+destructor messages and mutation after the last borrow use, plus five invalid
+variants at both O0/O2. Normal runs check exact stdout, empty stderr and exit 0
+through direct execution and both CLI run forms. Builds verify LLVM before
+linking. Debug is also supported; NativeAOT is not run. Source/compiler hashes
+and reports are saved under `bin/milestone15/<configuration>/<run-id>/`.
 
 Focus: [initialization and Move](../spec/15-ownership-and-lifetime-analysis.md#151-initialization-and-consume-analysis),
 [Loan conflicts](../spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts),
