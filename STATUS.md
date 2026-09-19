@@ -1,5 +1,16 @@
 # Kimigayo Implementation Status
 
+The **2026-09-20 independent documentation Markdown parser** adds an immutable
+syntax tree, precise original-source ranges, item candidates and explicit
+declaration-name classification for the adopted limited profile. Pooled scratch,
+source slices, compact nodes and iterative parsing reduce avoidable allocations
+and recursion. Debug/Release builds have zero warnings/errors; all **155 targeted
+documentation tests** pass in each configuration, including 71 new cases. The
+existing Markdig-backed product API is unchanged. The independent parser has no
+product renderer, structured URL resolver or publication adapter yet; complete
+profile comparison and performance measurements are not established by this run.
+[Evidence and boundaries](PLAN_HISTORY.md#documentation-markdown-parser-20260920).
+
 The **2026-09-19 compiler continuation** adds supported source-module common
 generation and Library inspection, disjoint sibling Moves under inline-part
 borrows, and conservative single-input returned-reference footprints. Borrow
@@ -58,7 +69,7 @@ itself added no compiler feature.
 source hashes from earlier combined-program evidence. Debug, the full managed
 suite and NativeAOT were not run for this restructuring.
 
-Updated for the adopted Windows x64 test profile on **2026-09-19**. [SPEC.md](SPEC.md) and its normative chapters define required behavior; implementation restrictions below do not weaken them. [PLAN.md §2](PLAN.md#2-execution-state) owns current work states and next actions. [PLAN_HISTORY.md](PLAN_HISTORY.md) owns dated execution, verification and decision records.
+Updated for the adopted Windows x64 test profile on **2026-09-20**. [SPEC.md](SPEC.md) and its normative chapters define required behavior; implementation restrictions below do not weaken them. [PLAN.md §2](PLAN.md#2-execution-state) owns current work states and next actions. [PLAN_HISTORY.md](PLAN_HISTORY.md) owns dated execution, verification and decision records.
 
 Support is partial across the compiler. Parsing, final Binding, ownership/control-flow analysis, checked LLVM generation, LLVM verification and native execution are distinct stages. A declaration certificate or successfully parsed specification example does not establish runtime support. The coverage below summarizes implemented subsets and their limits, backed by the named code/tests and recorded runs; comprehensive clause conformance remains unfinished.
 
@@ -84,7 +95,8 @@ The earlier program-14 implementation audit established end-to-end coverage plus
 
 | Implemented scope | Limits / evidence |
 | --- | --- |
-| Optional `///` documentation: all declaration targets, fragment/source identity, directive selection, generated provenance, source mappings, Markdown/items and effective public access | Set `Compilation.CollectDocumentation` before parsing; query `Kotonoha.DocumentationSources` or `Binding.GetDocumentation`. `DocumentationMarkdown` uses pinned Markdig 1.3.2 with raw HTML parsing disabled, escaped output and filtered/resolved links. Diagnostics are separate from language errors. No CLI, LSP server, dedicated Mod query or doctest runner is added. Recovery conservatively defers associations for a source with syntax errors. Snapshot replacement/reparse rebuilds metadata; executable IR carries none. |
+| Optional `///` documentation: all declaration targets, fragment/source identity, directive selection, generated provenance, source mappings, Markdown/items and effective public access | Set `Compilation.CollectDocumentation` before parsing; query `Kotonoha.DocumentationSources` or `Binding.GetDocumentation`. `DocumentationMarkdown` uses pinned Markdig 1.3.2 with raw HTML parsing disabled, escaped output and filtered/resolved links; this remains the older product profile, not complete support for the newly adopted limited profile. Diagnostics are separate from language errors. No CLI, LSP server, dedicated Mod query or doctest runner is added. Recovery conservatively defers associations for a source with syntax errors. Snapshot replacement/reparse rebuilds metadata; executable IR carries none. |
+| Independent limited-profile documentation Markdown syntax and item candidates | `DocumentationMarkdownDocument.Parse` accepts normalized LF text or a `DocumentationComment`. Nodes and completed candidates are safe for concurrent reads; ranges preserve original UTF-16 positions. Classification receives explicit parameter names/receiver roles. Unicode categories are pinned to 15.0.0. Cancellation and a configurable depth limit interrupt without publishing a partial result. The API is separate from product rendering/publication; targeted coverage is not a complete conformance or speed claim. |
 | Immutable UTF-8 source snapshots, original diagnostic positions, Unicode 15.0/NFC identifiers, indentation/brackets/continuations, literal escapes and parse recovery | `SourceDocument`, `Tokenizer`, SourceEncodingTest, UnicodeIdentifierTest and ParserRegressionTest. Source validity survives diagnostic clearing and duplicate-location reports; warnings or earlier Binding errors alone do not invalidate newly parsed source. |
 | Koto syntax for Types, Semantics, Origins, generic/length arguments, declarations/accessors, captures, collections, expressions and transfers; parse/write/parse and reload | FrontEndSyntax, PropertyRevisionParse, NestedTypeParse and KotonohaSerialization tests. Capture/collection syntax is broader than executable support. `$expect`/`$require` statements parse and participate in ordinary test-only binding, control flow and ownership analysis. |
 | Exact numeric magnitude/spelling and target-precision floating literal fitting; metadata-preserving numeric replacement keeps diagnostic location | NumberLiteralHelper, FloatingTypes, NumberLiteral/CharLiteralParse/StringLiteralParse and NumericReplacementTest. Ordinary literals borrow source text; relocated numeric nodes materialize spelling. This does not add Mod APIs or edited-tree persistence. |

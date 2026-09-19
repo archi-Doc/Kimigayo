@@ -406,7 +406,7 @@ dependencies (§18.7.4, §20.7.5).
 | Lexing and text | Recognized/ordinary/trailing comments, literals/interpolation/block comments, all line endings, EOF, empty text, whitespace, non-BMP text and original UTF-16 mappings |
 | Association | Every target, same-line/multiline Attributes and their interiors, nearest/empty/misindented candidates, headers, scope/file boundaries and syntax recovery |
 | Selection | Incomplete False #if syntax, reached #switch arms with nested exclusions, no migration to surviving declarations, no extra excluded-region parsing |
-| Markdown | Fixed CommonMark 0.31.2 examples plus disabled-HTML cases, following Markdown after `<T>`, autolinks, code/quotes, delimiters, duplicate/ambiguous items, hierarchy, escaping and permitted URLs |
+| Markdown | Adopted limited-profile cases from [Documentation Markdown §§2–9](../../draft/Design/2026-09-19%20Documentation%20Markdown.md), selected CommonMark 0.31.2 examples and intentional differences; Unicode 15.0.0; lowercase/plain-or-code names and parameter precedence; immutable node identity, exact ranges, cancellation/depth interruption, escaping and structured URL rules. Markdig is an optional comparison implementation, not the authority. |
 | Integration | Fragment order and provenance, rootgroup leaf, associated Types, overloads/specialization, effective access, generated sources, unresolved links and source-mapped diagnostics |
 | Reuse and performance | Edits, configuration changes, generated replacement/removal and serialization/reparse without stale results; zero disabled overhead allocations, token/diagnostic equality and measured time/allocation baselines |
 

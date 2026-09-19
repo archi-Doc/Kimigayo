@@ -111,7 +111,7 @@ Consecutive documentation lines at the same indentation form one **documentation
 ```kimi
 /// Returns a shared reference to the first element.
 ///
-/// - Abort: `values` is empty.
+/// - abort: `values` is empty.
 func first<T>(values: ref/Array<T>) -> ref/T from values
     return values[0]@ref
 ```
@@ -158,64 +158,42 @@ Documentation belongs to its syntactic declaration. Related declarations—an in
 
 ### 2.3.4. Markdown and links
 
-Use **CommonMark 0.31.2 with raw HTML block and inline recognition disabled**. HTML-looking text is ordinary text and must be escaped in HTML output. A line containing `<T>` must not stop following Markdown parsing. Other CommonMark rules, including autolinks, remain. Interpret extension-looking text using this profile, without tool-specific table, footnote or tag semantics. No dedicated XML markup is recognized.
+Use the **limited documentation Markdown profile**, based on CommonMark 0.31.2 and finalized in [Documentation Markdown §§2–8](../draft/Design/2026-09-19%20Documentation%20Markdown.md). That adopted design is normative and overrides the earlier CommonMark-without-HTML profile and the earlier Documentation Comments design where explicitly changed. Unchanged rules remain required; implementation limits do not narrow the profile.
 
-Heading levels are relative inside each block; display them below the declaration heading while preserving hierarchy. Reference-link definitions are block-local. Fence language `kimi` is a highlighting hint, not a request to compile/execute. Inline code names are not automatically resolved as declarations; no `kimi:` link convention is introduced.
+The profile retains paragraphs and breaks, ATX headings, fenced/inline code, lists, explicitly continued quotes, emphasis/strong emphasis, inline links/autolinks, backslash escapes, numeric character references, and the five case-sensitive named references `amp`, `lt`, `gt`, `quot`, `apos`. Markdown character classification uses Unicode 15.0.0, independent of the host runtime.
 
-````kimi
-/// Adds two integers.
-///
-/// # Example
-///
-/// ```kimi
-/// let total = add(2, 3)
-/// ```
-public func add(left: i32, right: i32) -> i32 => left + right
-````
+Do not recognize Setext headings, indented code blocks, thematic breaks, reference links/definitions, images, raw HTML, or extensions. Lists require their CommonMark content indentation; every quote line requires its marker. Lazy paragraph continuation is disabled. Retain CommonMark's other start/interrupt conditions, including the three-column block-start indentation limit. Unrecognized syntax is processed by the remaining rules: it is not protected as an opaque literal. Thus `![x](guide.md)` is `!` plus an inline link, and a four-column-indented `# example` is a paragraph. HTML-looking text does not suppress following Markdown and must be escaped on output.
 
-Resolve relative-path links against the parent of the ordinary source's §20.7.4 logical source name within its project. Generated sources have no such base; these links remain unresolved. Output rewriting, anchor IDs and permitted URL schemes belong to the rendering tool and must be deterministic for identical inputs/settings. Retain link text when its target is unavailable.
+Heading hierarchy is relative to the enclosing declaration. Fence language `kimi` is a highlighting hint, not execution. Inline code names are not automatically resolved as declarations; no `kimi:` convention is introduced.
+
+Link interpretation and output follow the adopted design §7.2: distinguish empty-path/page-relative references, output-root-relative references, source-relative logical paths and absolute URLs. Source-relative paths require an ordinary logical source name and project identity; generated sources have no such base. Keep logical path, query and fragment separate, decode path segments once, reject invalid encodings/separators and traversal outside the project, and let the rendering tool map logical targets to output URLs. Empty-path references (including empty destinations, query-only and fragment-only references) use the display page, also for generated sources. Preserve absent versus empty query/fragment values.
+
+Rendering settings own permitted schemes (default `http`, `https`, `mailto`) and deterministic output mapping. Validate input and rewritten output under the design's URL rules; do not reinterpret encoded path data as URL structure. Unavailable ordinary links retain their displayed content and formatting; unavailable autolinks retain their escaped original spelling including angle brackets.
 
 ### 2.3.5. Writing and extracting items
 
-Recommend a short opening paragraph explaining purpose; if the first Markdown block is a paragraph, it may be used as the summary. No inferred summary is required. Avoid mechanical repetition of displayed Types, Semantics, Origins and Ownership. Explain meaning, boundaries, effects, ordering, complexity and safety; mention language rules where useful. Documentation does not automatically prove obligations or override declarations. No Description Attribute or standardized deprecation item is introduced; deprecation metadata requires separate Attribute design.
+Recommend a short opening paragraph explaining purpose; use it as the summary only if it is the first Markdown block. Explain meaning, boundaries, effects, ordering, complexity and safety without mechanically repeating declaration facts. Documentation does not prove obligations, override declarations or introduce deprecation metadata.
 
-Parameter items use an inline-code external argument name followed by `:`. Generic Type/Semantics/constant and Origin parameters use their declared names. External labels remain stable across requirement matching and specialization when internal names differ. Explain the receiver in prose or Safety rather than an ordinary parameter item. Describe unnamed Case payloads by position/meaning, or use an existing struct payload for named structure. Not every parameter needs prose. Same-spelled parameters in different namespaces can be clarified with prose/free headings without renaming them.
-
-```kimi
-/// Scales a value.
-///
-/// - `value`: Input value.
-/// - `by`: Scale factor, named `factor` inside the body.
-func scale(value: i32, by => factor: i32) -> i32 => value * factor
-```
-
-| Standard label | Purpose |
-| --- | --- |
-| Returns | Result meaning, ordering or rounding |
-| Abort | API-specific Abort conditions |
-| Safety | Unsafe API memory-safety obligations and their duration (§7.5) |
-| Note | Additional information |
-| Warning | Important restrictions or likely misuse |
-| Example | Usage examples |
-
-Use a list item for short text and a heading for a longer section; both use the same labels. These are documentation conventions, not language keywords. Unknown labels, free headings and any prose language remain ordinary Markdown.
+Standard names are case-sensitive: `return`, `abort`, `safety`, `note`, `warning`, `example`. Old spellings such as `Returns` are not aliases. Short explanations use list items; longer standard sections use headings. Unknown names and free headings remain ordinary text.
 
 ```kimi
-/// Divides the dividend by the divisor.
+/// Adds two values.
 ///
-/// - `left`: Dividend.
-/// - `right`: Divisor.
-/// - Returns: The quotient, truncated toward zero.
-/// - Abort: `right` is zero, or `left` is -2147483648
-///   and `right` is -1.
-func divide(left: i32, right: i32) -> i32 => left / right
+/// - left: Left value.
+/// - right: Right value.
+/// - return: Their sum.
+public func add(left: i32, right: i32) -> i32 => left + right
 ```
 
-Abort prose need not repeat common language/runtime failures; absence or an incomplete list is no guarantee that other Aborts are impossible. Safety prose records the existing unsafe contract; its label's presence/absence changes neither unsafe designation nor caller obligations.
+A name is either unformatted text (including decoded escapes/adopted character references) or one inline-code span. Backticks are optional for both standard items and parameters. Do not mix plain text and code within a name, trim the decoded value, fold its case, normalize Unicode, or revalidate it as a language identifier. Code-span whitespace processing still applies.
 
-Item-extracting tools inspect only root-level lists/headings in the Markdown tree. Recognize a list item's first paragraph beginning with (a) an unformatted standard label plus ASCII `:`, or (b) an inline-code single name plus `:` as a parameter candidate; also recognize an unformatted heading exactly matching a standard label. Match case-sensitively; after the list colon require U+0020, tab, newline or paragraph end. Do not extract from code, quotes or nested lists.
+Inspect only root-level lists and headings. A list item's first block must be a paragraph beginning with a nonempty name and ASCII `:`; after the decoded colon require U+0020, tab, newline or paragraph end. For plain names use the first colon; for code names require the colon immediately after the code span. A root heading is extracted only when its entire decoded name matches a standard name. Do not extract from quotes, code or nested lists.
 
-Descriptions start after the label/delimiter and end with the list item, or at the next same-or-higher heading/block EOF. Return references to the original tree, retaining order, duplicates and containment without reconstructing/overwriting text. Map a parameter candidate only when its declared-name match is unique. Free headings do not infer namespaces. Unknown/ambiguous items retain text and may receive documentation diagnostics.
+List candidates remain unclassified until declaration information is available. Match ordinary parameters by external name and generic Type/Semantics/constant and Origin parameters by declared name. Exclude receivers by declaration role, not the string `self`. Exactly one match makes a parameter item; multiple matches are ambiguous and do not fall back to a standard item; with no match, recognize a standard name or retain an unknown candidate. Headings recognize standard names independently of parameter collisions.
+
+Preserve original node identity, source order, duplicates and containment. List descriptions extend from immediately after the source spelling of the colon to the item end, including children. Heading descriptions extend after the heading to the next root heading of equal or higher level, or EOF. Ranges are half-open UTF-16 ranges in normalized text, mapped to minimal enclosing source intervals; diagnostic positions remain exact across escapes, character references, tabs and normalized line endings. See the adopted design §8 for immutable publication, cancellation, depth limits and resource requirements.
+
+Missing or incomplete `abort` prose does not guarantee other Aborts are impossible. `safety` explains existing unsafe obligations; its presence or absence changes neither unsafe designation nor calling permission. Optional documentation diagnostics remain separate from language validity.
 
 ### 2.3.6. Tooling and diagnostics
 

@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The compiler-wide plan covers unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. The current 60-minute request authorizes those implementation items; Milestone Programs are not implementation targets without a separate explicit instruction. NativeAOT and draft edits remain excluded.
+The compiler-wide plan covers unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. The current focused request is step 2 of the adopted documentation Markdown migration: implement the independent parser while retaining Markdig. Earlier timed compiler continuations are historical, not current authorization. NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,7 +31,21 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current checkpoint: **60-minute compiler continuation stopped at about 50 minutes (23:19 +0900)**, started **2026-09-19 22:29:43 +0900 (13:29:43 UTC)** before inspection; the duration boundary is **23:29:43 +0900**. Fresh baseline: `dev` at `6f44d45`; code unchanged since the previous checkpoint (only user draft commits), and one user draft file changed during this execution was left untouched. Bounded units **T28c/T28e / I28** (native requirement configuration and duplicate-entry rejection) and **T26a–T26e / I26** (`#LibraryImport` requirement matching, declaration shape including enclosing generic/Origin containers, §22.3.2 signature Types and same-symbol physical signatures) are **DONE**, as is **T34b / I34** (README native-requirement usage, verified by tests); Debug/Release full suites each pass 9,294 tests. The remaining ~10 minutes could not complete a verified T28d or lowering unit, so none was started; see the next actions. [Evidence](PLAN_HISTORY.md#compiler-continuation-20260919-132943). The previous 11:34 UTC continuation (T28a/T28b, T6s/T6t, T6v, T34a) remains recorded in [its history](PLAN_HISTORY.md#compiler-continuation-20260919-113419). Parent implementation items remain open. Previous Program 16 completion/evidence is preserved below.
+Current focused checkpoint: **DM2 — independent documentation Markdown parser complete**. Baseline `e01ad63`. The user adopted [Documentation Markdown](draft/Design/2026-09-19%20Documentation%20Markdown.md) and requested step 2 with simple, low-allocation code. Debug/Release builds are warning-free and 155 targeted documentation tests pass per configuration. The existing Markdig-backed `DocumentationMarkdown` API remains the product path. [Implementation and verification evidence](PLAN_HISTORY.md#documentation-markdown-parser-20260920) also preserves the preceding compiler checkpoint; general compiler items below remain backlog.
+
+### Documentation Markdown migration
+
+| ID | State | Scope, acceptance and exact next action |
+| --- | --- | --- |
+| DM1 | DONE | Register the adopted limited profile in SPEC, §2.3.4–5 and A.21 without changing the finalized draft. The new design's explicit rules override the older documentation profile. |
+| DM2 | DONE | Independent immutable `DocumentationMarkdownDocument` API, arena nodes/source slices, pinned Unicode 15.0.0, iterative blocks/delimiters, candidate extraction and role-aware declaration-name classification. Warning-free Debug/Release builds and 155 passing targeted documentation tests per configuration. Existing Markdig implementation/dependency preserved. |
+| DM3 | NEXT | Expand the adopted-profile conformance/difference matrix, source/Unicode/resource tests and Kimigayo declaration adapters. The initial structural fixture renderer is test-only. Verify all retained CommonMark interactions and deliberate differences; do not treat unfiltered CommonMark HTML differences as conformance failures or claim complete coverage from the initial suite. |
+| DM4 | TODO — after DM3 | Benchmark parsing, extraction/classification and source queries with matching inputs, source precision and cache conditions. Use short prose, parameters, fenced examples and adversarial inputs at increasing lengths/depths; record environment, allocations, retained memory and initial/warm timings. Require no unexplained superlinear growth and measured evidence for speed/allocation claims. Establish concrete throughput thresholds from the recorded baseline before tuning; no unmeasured speedup claim. |
+| DM5 | TODO — after verification | Implement/validate the independent product renderer and structured URL resolution/output rules (§7), connect declaration role/diagnostic/publication APIs, then switch the product entry point. Run corresponding DM3 checks and DM4 output benchmarks on that implementation before the switch; retain Markdig only in comparison tests/benchmarks. |
+
+DM2 does not implement a new HTML renderer, URL resolver, compiler publication adapter, optional writing diagnostics or cross-comment cache. Those responsibilities are separate from syntax parsing and remain explicit work above. The default parser tree-depth limit is 256, caller-configurable; exceeding it raises `DocumentationMarkdownLimitException` (a documentation interruption), never a syntax fallback. All public ranges are half-open UTF-16. Cancellation does not publish partial results. `GetItemCandidates` shares a completed snapshot-local result; declaration-dependent classification is separately supplied and not cached on syntax alone.
+
+### Earlier program checkpoint
 
 | ID | State | Acceptance / exact next action |
 | --- | --- | --- |
@@ -39,7 +53,7 @@ Current checkpoint: **60-minute compiler continuation stopped at about 50 minute
 | P16-G | DONE | Enum layout, directed reference payload fitting and canonical call-Origin intersection substitution pass checked LLVM emission, verification, linking and native O0/O2 execution. |
 | P16-V | DONE | Warning-free Debug/Release solution builds; Debug full 9,151 plus the extended 13-case suite, Release full 9,157; 57 native target/variant/rejection checks per configuration and 90 Release regression checks for programs 1–15. Exact output, exit, stderr and source mutations verified. |
 
-Programs 1–16 have bounded completion. The previous stop/await-target restriction is superseded by this compiler continuation; program completion is not a stopping condition. Programs 17–21 informed design only. NativeAOT and draft edits remain excluded. General M/I obligations remain open.
+Programs 1–16 have bounded completion; Programs 17–21 informed design only. General M/I obligations remain open as compiler backlog, separate from the focused documentation parser request. NativeAOT and draft edits remain excluded.
 
 ### Current milestone states
 

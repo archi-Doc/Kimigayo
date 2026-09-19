@@ -6631,3 +6631,61 @@ behavior and were not weakened. Parent I6/I28/I33/I34 remain IN_PROGRESS; curren
 next actions and unresolved implementation work are centralized in PLAN.md.
 
 Final checkpoint time: **2026-09-19 12:35:19 UTC**; elapsed **61 minutes** from the recorded start. Stopping reason: requested duration elapsed, with the active unit's required verification and documentation complete. Final git diff --check passed.
+
+<a id="documentation-markdown-parser-20260920"></a>
+
+## 2026-09-20 — Independent documentation Markdown parser (DM2)
+
+Baseline `e01ad63`, initially clean. The user adopted the finalized 2026-09-19
+Documentation Markdown design and requested the independent parser while retaining
+Markdig. The finalized draft was read, not changed. Its lowercase plain-or-code
+items, parameter-first classification, Unicode 15.0.0, explicit continuation and
+precise half-open source ranges supersede the earlier draft discussed in the task.
+
+Added the independent syntax/candidate API without redirecting compilation or the
+existing Markdig-backed documentation API. Nodes use an immutable flat arena;
+ordinary leaf text borrows source slices, decoded scalars occupy a node word, and
+only transformed multi-character values/URLs allocate strings. Parser scratch is
+pooled and returned on cancellation/failure. Removed delimiter nodes are compacted
+before publication. Blocks, emphasis, traversal and depth checks are iterative;
+code-run and balanced-parenthesis indexes avoid repeated suffix searches. Common
+one/two-backtick runs need no dictionary and flat link destinations need no full
+parenthesis index. Heading description boundaries are resolved in reverse order
+with six level slots. Candidate publication is atomic; declaration classifications
+use ordinal name counts and explicit receiver roles, without spelling heuristics.
+
+The Unicode table contains 338 merged punctuation/symbol ranges generated from
+UnicodeData.txt 15.0.0, SHA-256
+`806E9AED65037197F1EC85E12BE6E8CD870FC5608B4DE0FFFD990F689F376A73`.
+The checked-in generator verifies that identity. Whitespace is the profile's fixed
+Zs/TAB/LF/FF/CR set, not host `char.IsWhiteSpace`.
+
+Intermediate checks corrected span-trimming overloads, list blank propagation
+through nested items, code-line source endpoints, escaped delimiters inside link
+destinations, empty versus absent link titles, and autolinks inside link labels.
+An exploratory run against all 652 unfiltered CommonMark examples was used for
+inspection only: that corpus includes intentionally removed features and output
+policy differences. It is not a limited-profile conformance result. Regressions
+for the relevant boundaries were added to the checked-in suite. The initial suite
+also exercises 1,500 reproducible mixed/incomplete strings with tree/range checks,
+large unmatched delimiters, a 3,000-level explicit quote input with a raised limit,
+fixed Unicode, source line endings, concurrent candidate identity and cancellation.
+
+Final verification: Debug and Release `dotnet build Kimigayo.slnx --no-restore
+-c <configuration> -v:q` each passed with zero warnings/errors. Running
+`dotnet xUnitTest/bin/<configuration>/net10.0/xUnitTest.dll -class '*Documentation*'
+-result-xml <output>` passed **155/155 per configuration**, with zero failures,
+errors, skips or unrun cases: 71 new cases plus 84 existing documentation cases.
+The entire managed suite was not rerun for this additive API.
+[Debug build](bin/documentation-markdown/build-debug.log),
+[Release build](bin/documentation-markdown/build-release.log),
+[Debug test results](bin/documentation-markdown/documentation-debug.xml) and
+[Release test results](bin/documentation-markdown/documentation-release.xml)
+are local generated evidence, not tracked repository fixtures.
+
+Product HTML/structured URL processing, publication adapters, full comparison
+coverage and benchmarks remain later migration stages; no performance ratio or
+complete product-profile support is claimed. No NativeAOT or native execution was run.
+
+### Superseded planning checkpoint
+Current checkpoint: **60-minute compiler continuation stopped at about 50 minutes (23:19 +0900)**, started **2026-09-19 22:29:43 +0900 (13:29:43 UTC)** before inspection; the duration boundary is **23:29:43 +0900**. Fresh baseline: `dev` at `6f44d45`; code unchanged since the previous checkpoint (only user draft commits), and one user draft file changed during this execution was left untouched. Bounded units **T28c/T28e / I28** (native requirement configuration and duplicate-entry rejection) and **T26a–T26e / I26** (`#LibraryImport` requirement matching, declaration shape including enclosing generic/Origin containers, §22.3.2 signature Types and same-symbol physical signatures) are **DONE**, as is **T34b / I34** (README native-requirement usage, verified by tests); Debug/Release full suites each pass 9,294 tests. The remaining ~10 minutes could not complete a verified T28d or lowering unit, so none was started; see the next actions. [Evidence](PLAN_HISTORY.md#compiler-continuation-20260919-132943). The previous 11:34 UTC continuation (T28a/T28b, T6s/T6t, T6v, T34a) remains recorded in [its history](PLAN_HISTORY.md#compiler-continuation-20260919-113419). Parent implementation items remain open. Previous Program 16 completion/evidence is preserved below.
