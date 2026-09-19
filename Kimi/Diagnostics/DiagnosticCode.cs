@@ -132,6 +132,8 @@ public enum DiagnosticCode
     ConflictingLayout_Kd,
     InvalidLibraryImport_Kd,
     MissingNativeRequirement_Kd,
+    UnsupportedImportSignature_Kd,
+    ConflictingImportSignature_Kd,
     SplitCLayoutStorage_Kd,
 
     UnavailableFeature_Kd,

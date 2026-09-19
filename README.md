@@ -79,6 +79,33 @@ These overrides do not change the backend root: the default library is
 `<root>/windows_x64/kimi_backend_windows_x64_v1.lib`. Explicit backend inputs override
 that default and resolve relative to the link manifest.
 
+### Native requirements
+
+A module declares the native libraries its `#LibraryImport` functions need per target.
+Checking reads only these settings, never the `.lib` files:
+
+```text
+NativeRequirements=
+  "x86_64-pc-windows-msvc"=
+    codec={ Kind="static" ContractId="example.codec.v1" }
+```
+
+A `NativeLibraries` entry of the same project declares the requirement and its supply
+together (`Kind` is required there unless a matching requirement supplies it; overlapping
+`Kind`, `ContractId` and `Sha256` values must agree):
+
+```text
+NativeLibraries=
+  "x86_64-pc-windows-msvc"=
+    observer={ Kind="static" Input="native/observer.lib" }
+```
+
+`kernel32` and `kimi_backend` are reserved and need no entry; a `kernel32` entry is an
+error. The old `NativeBindings` setting is rejected with migration guidance. Imports are
+checked for requirement names, declaration shape and the initial Windows C ABI Types, but
+foreign calls are not generated or linked yet, and supplies for another package
+(`Package=`/`Name=` records) are not accepted yet.
+
 ### Using kimi
 
 Use `kimi <command> [project.kimiproj | solution.kimisln | directory] [options]`.

@@ -260,6 +260,12 @@
   + Name="InvalidLibraryImport_Kd"
     Message="LibraryImport requires exactly two unnamed, nonempty, non-interpolated, NUL-free string literals, a native requirement name and a symbol, on a bodyless func"
 
+  + Name="UnsupportedImportSignature_Kd"
+    Message="LibraryImport parameters and results must be i8-i64, u8-u64, f32, f64 or unsafe/T, and Unit only as the result"
+
+  + Name="ConflictingImportSignature_Kd"
+    Message="LibraryImport declarations of one external symbol must have the same physical signature"
+
   + Name="MissingNativeRequirement_Kd"
     Message="The LibraryImport name has no NativeRequirements entry or self-targeted NativeLibraries record for the current target in the defining module"
 

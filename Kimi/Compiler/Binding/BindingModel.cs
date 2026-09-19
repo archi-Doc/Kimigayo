@@ -97,6 +97,8 @@ internal enum BindingFailure : byte
     ConflictingLayout,
     InvalidLibraryImport,
     MissingNativeRequirement,
+    UnsupportedImportSignature,
+    ConflictingImportSignature,
     SplitCLayoutStorage,
 }
 

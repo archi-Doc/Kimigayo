@@ -98,6 +98,8 @@ public class LibraryImportTargetBindingTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd);
         Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
         Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
     }
 
     [Theory]
@@ -127,11 +129,66 @@ public class LibraryImportTargetBindingTest
     [InlineData("struct S\n    var value: i32\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func read(self: S) -> i32", true)]
     [InlineData("contract C\n    #LibraryImport(\"codec\", \"symbol\")\n    unsafe func required() -> i32", true)]
     [InlineData("group Native\n    func outer()\n        #LibraryImport(\"codec\", \"symbol\")\n        unsafe func local() -> i32", true)]
+    [InlineData("struct S<T>\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value: i32) -> i32", true)]
+    [InlineData("struct S<T>\n    public group Native\n        #LibraryImport(\"codec\", \"symbol\")\n        public unsafe func make(value: i32) -> i32", true)]
+    [InlineData("struct S\n    public group Native\n        #LibraryImport(\"codec\", \"symbol\")\n        public unsafe func make(value: i32) -> i32", false)]
     public void ImportPlacementIsRestricted(string source, bool invalid)
     {
         var c = AnalyzeImport(source, "codec");
         Assert.Equal(invalid, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd));
         Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Theory]
+    [InlineData("(a: i8, b: u8, c: i16, d: u16, e: i32, f: u32, g: i64, h: u64, i: f32, j: f64, k: unsafe/i32)", "()", false)]
+    [InlineData("()", "u8", false)]
+    [InlineData("(value: unsafe/u8)", "unsafe/u8", false)]
+    [InlineData("()", "f64", false)]
+    [InlineData("(value: bool)", "()", true)]
+    [InlineData("(value: char)", "()", true)]
+    [InlineData("(value: string)", "()", true)]
+    [InlineData("(value: isize)", "()", true)]
+    [InlineData("(value: usize)", "()", true)]
+    [InlineData("(value: i128)", "()", true)]
+    [InlineData("(value: (i32, i32))", "()", true)]
+    [InlineData("(value: ())", "i32", true)]
+    [InlineData("()", "bool", true)]
+    [InlineData("()", "u128", true)]
+    public void ImportSignaturesFollowTheInitialWindowsCAbi(string parameters, string result, bool unsupported)
+    {
+        var c = AnalyzeImport("group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> " + result, "codec");
+        Assert.Equal(unsupported, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnsupportedImportSignature_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Theory]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: u32) -> u32", false)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: unsafe/i8) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: unsafe/f64) -> ()", false)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i64) -> i32", true)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()", true)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: f32) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()", true)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32, other: i32) -> ()", true)]
+    public void SameExternalSymbolRequiresOnePhysicalSignature(string first, string second, bool conflict)
+    {
+        var c = AnalyzeImport(first + "\n" + second, "codec");
+        Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.UnsupportedImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+    }
+
+    [Fact]
+    public void ImportSignaturesAreSharedAcrossSourceModules()
+    {
+        var c = ModuleBindingTest.Create(
+            "func main() => ()\ngroup Root\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i64) -> ()",
+            "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
+            configure: (root, library) =>
+            {
+                root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+            });
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd);
     }
 
     [Theory]

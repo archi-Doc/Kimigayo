@@ -102,6 +102,8 @@ public partial record class ProjectFile
         HashSet<string>? names = null;
         HashSet<string>? dependencies = null;
         HashSet<string>? tests = null;
+        HashSet<(string Target, string Name)>? requirements = null;
+        HashSet<(string Target, string Name)>? supplies = null;
         var testSettingsSeen = false;
         var count = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < count; i++)
@@ -122,6 +124,12 @@ public partial record class ProjectFile
             if (key.SequenceEqual("NativeBindings"u8))
             {
                 throw new TinyhandException(NativeConfiguration.SupersededBindings);
+            }
+
+            if (key.SequenceEqual("NativeRequirements"u8) || key.SequenceEqual("NativeLibraries"u8))
+            {
+                ValidateNativeMap(ref reader, ref key.SequenceEqual("NativeRequirements"u8) ? ref requirements : ref supplies);
+                continue;
             }
 
             var map = key.SequenceEqual("CompileTimeSettings"u8) ? 1 : key.SequenceEqual("Dependencies"u8) ? 2 : key.SequenceEqual("TestDependencies"u8) ? 3 : 0;
@@ -145,6 +153,38 @@ public partial record class ProjectFile
                 if (name is null || !seen.Add(name))
                 {
                     throw new TinyhandException($"Duplicate or null {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
+                }
+
+                reader.Skip();
+            }
+        }
+    }
+
+    // Per-target native maps: a repeated target/name would be silently overwritten by the dictionary formatter.
+    private static void ValidateNativeMap(ref TinyhandReader reader, ref HashSet<(string Target, string Name)>? seen)
+    {
+        if (reader.TryReadNil())
+        {
+            return;
+        }
+
+        var targets = reader.ReadMapHeaderOrEmptyArray();
+        for (var i = 0; i < targets; i++)
+        {
+            var target = reader.ReadString();
+            if (reader.TryReadNil())
+            {
+                continue;
+            }
+
+            var entries = reader.ReadMapHeaderOrEmptyArray();
+            for (var j = 0; j < entries; j++)
+            {
+                var name = reader.ReadString();
+                seen ??= new();
+                if (target is null || name is null || !seen.Add((target, name)))
+                {
+                    throw new TinyhandException($"Duplicate or null native entry: {target}/{name}");
                 }
 
                 reader.Skip();

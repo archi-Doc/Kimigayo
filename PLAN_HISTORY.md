@@ -6,6 +6,7 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Compiler continuation: native requirements and LibraryImport validation (2026-09-19 13:29 UTC)](#compiler-continuation-20260919-132943)
 - [Compiler continuation: source modules and Library inspection (2026-09-19)](#compiler-continuation-20260919-113419)
 
 - [Bounded loop/match/default continuation (2026-09-18)](#bounded-continuation-20260918)
@@ -6311,6 +6312,147 @@ user-destructor payloads. Existing finite layout/ownership and ABI restrictions
 remain; these are implementation limits rather than specification exceptions.
 NativeAOT was NOT_RUN as requested. No required Windows-native check remains
 unverified. Programs 17+ were not implemented; current next actions remain in PLAN.
+
+<a id="compiler-continuation-20260919-132943"></a>
+## Compiler continuation — 2026-09-19 13:29:43 UTC
+
+Start was recorded before inspection (22:29:43 +0900). Baseline: `dev` at `6f44d45`;
+the commits after `89552bc` changed only draft files, so the previous checkpoint's code
+evidence still described the compiler. A user draft file changed during execution was
+not edited. No Milestone Program was an implementation target; NativeAOT excluded.
+Evidence root: `TestResults/continuation-20260919-222943/`. Baseline warning-free
+Debug test-project build before edits.
+
+### T28c / I28 — native requirement configuration (§20.8.2.1, §20.8.2.4)
+
+DONE. `ProjectFile.NativeRequirements` (per target, logical name to Kind/ContractId/
+Sha256) is new; `NativeLibraryInput` gains optional ContractId/Sha256 and no longer
+defaults Kind to `import`, because Kind is required after expansion. The shared
+`NativeConfiguration.Validate` runs at project load/Prepare and before emission:
+requirement Kind must be static/import, ContractId nonempty and NUL-free, Sha256 64
+hex digits; self-targeted supplies merge with the requirement of the same name, and
+overlapping Kind/ContractId/Sha256 must agree. A `kimi_backend` override takes its Kind
+from the expansion, and a Sha256 assertion must equal the adopted backend hash.
+`NativeBindings` is diagnosed with migration guidance. One existing emission test
+relied on the implicit Kind; it now states `Kind = "import"` and a new case keeps
+the missing-Kind rejection (test correction justified by §20.8.2.1).
+
+- `native-config-debug.xml`: 114 focused PASS (Dependency/EmissionArtifacts/Minimal).
+  Before the change, the new negatives were accepted (unknown key ignored, implicit
+  Kind), so they fail without this implementation.
+- Full Debug `t28c-full-debug.xml`: 9,237 PASS. Warning-free Release solution build;
+  `native-config-release.xml`: 135 focused PASS (adds SolutionInputTest).
+
+Not implemented: `Name`/`Input` array records, `Package`-targeted supplies,
+manifest input records, actual supply hash/kind and connection validation.
+
+### T26a / I26 — LibraryImport arguments and requirement ownership (§22.3.1)
+
+DONE. Binding validates every selected `#LibraryImport` on a function: exactly two
+unlabeled, nonempty, non-interpolated, NUL-free string literals on a bodyless function
+(`InvalidLibraryImport_Kd`). A nonreserved name must be a NativeRequirements entry or
+a self-targeted NativeLibraries record of the *defining* module for the prepared
+target (`MissingNativeRequirement_Kd`); `Compilation.Configuration(module)` exposes
+each prepared module's configuration. Names compare by Ordinal. Imports still cannot
+complete Binding; no lowering is claimed.
+
+### T26b / I26 — import declaration shape and reserved names (§22.3.1, §21.5.2)
+
+DONE. Imports must be `unsafe`, directly in a group or a receiverless struct type
+function, without generic/Origin parameters, specializations, constructors/destructors,
+requirements, local functions or default/optional arguments. `__kimi_`/`llvm.`
+prefixes and `_fltused`, `__chkstk`, `memcmp`, `memcpy`, `memmove`, `memset` are
+rejected as external names.
+
+- `import-shape-debug.xml`: 33 focused PASS (argument forms incl. the `\0` escape
+  and `\(...)` interpolation, reserved kernel32, case-sensitive names, combined
+  supplies, root-versus-dependency module requirements, placement/shape cases). The
+  first interpolation case used an invalid spelling and was corrected to `\(...)`.
+- Warning-free Release solution and Debug test-project builds; full `final2-release.xml`
+  and `final2-debug.xml`: 9,262 PASS each, no skips. An earlier concurrent run was
+  interrupted by the user and is not evidence; both suites were rerun afterwards.
+- No native execution was needed: no generated IR or runtime behavior changed.
+- The user committed the work in progress as `08f2998`. Afterwards, a scan found raw NUL
+  characters written by an editing script into two C# char literals (`Binding.Attributes.cs`,
+  `NativeConfiguration.cs`; git showed them as binary) and into this record. They were
+  replaced by the `'\0'` escape (identical value); rebuild warning-free and 111 focused
+  Debug tests PASS in `nul-fix-debug.xml`.
+
+### T26c / I26 — initial Windows C ABI signature Types (§22.3.2)
+
+DONE. After headers bind, each import parameter/result must be i8–i64, u8–u64, f32,
+f64 or `unsafe/T` (one component), and Unit is accepted only as the result
+(`UnsupportedImportSignature_Kd`). bool, char, string, isize/usize, i128/u128,
+tuples and Unit parameters are rejected; Types that failed to bind keep their own
+diagnostics without a cascade. No physical-signature record or lowering is claimed.
+
+- `import-abi-debug.xml`: 47 focused PASS (14 new: every table entry, eleven arguments,
+  pointer result, and each excluded Type). Warning-free Release solution build;
+  full `final3-release.xml` / `final3-debug.xml`: 9,276 PASS each.
+
+### T26d / I26 — one physical signature per external symbol (§21.5.2)
+
+DONE for the source-visible part. The T26c check now also yields a compact physical
+code per result/parameter (`1 2 4 8 f d p v`), built in a stack buffer; one lazily
+created Ordinal map per Binding pass compares all imports of an external symbol across
+source modules (`ConflictingImportSignature_Kd`). Signedness and pointee Types do not
+affect the physical Type; width, float kind, arity and Unit/value results do. Types
+that failed to bind skip this comparison. Provider/`dllimport` agreement needs actual
+supply resolution and remains open, as do runtime/generated-definition collisions.
+
+- `import-conflict-debug.xml`: 54 focused PASS (six pair cases and a root/dependency
+  module conflict). Warning-free Release solution build; full `final4-release.xml`
+  and `final4-debug.xml`: 9,283 PASS each. Source scan: no NUL bytes in changed files.
+
+### T34b / I34 — native requirement usage, and final checks
+
+DONE. README gains a "Native requirements" section: per-target NativeRequirements,
+self-targeted NativeLibraries expansion/agreement, reserved kernel32/kimi_backend,
+the NativeBindings rejection and the current import limits (no generation/linking,
+no Package/Name supply records). Both README snippets are loaded verbatim by
+DependencyConfigurationTest, and one asserts the parsed Kind/ContractId. A rebind
+assertion confirms import diagnostics are recomputed (the indexer resets each node).
+
+- Runtime-declaration collision checking (user imports of kernel32 runtime APIs) was
+  not started: the runtime's physical signatures exist only in `WindowsRuntime.ll.in`,
+  so a shared signature table is needed first; it matters once imports are lowered.
+- Final: warning-free Release solution and Debug test-project builds; focused
+  `final-focused-debug.xml` 380 PASS, `readme-config-debug.xml` 56 PASS; full
+  `final5-release.xml` and `final5-debug.xml`: 9,286 PASS each, no skips. No native
+  execution: no IR, runtime or artifact behavior changed in this execution.
+
+### T28e / I28 — repeated native entries (§20.8.2.1)
+
+DONE. The raw-map pre-pass already rejected duplicate CompileTimeSettings and
+dependency names; NativeRequirements/NativeLibraries targets and entries were still
+overwritten silently by the dictionary formatter. `ValidateNativeMap` now rejects a
+repeated (target, name) pair within one setting, including across repeated targets or
+repeated top-level keys; the same name in different targets, or in both settings
+(combined declaration), remains valid.
+
+- Four new negatives and one positive: `native-duplicates-debug.xml` 61 PASS. The
+  negatives were accepted before the change (last entry won).
+- Warning-free Release solution / Debug test-project builds (a transient SA1119
+  parenthesis warning was removed); full `final6-release.xml` and `final6-debug.xml`:
+  9,291 PASS each. Changed files contain no NUL bytes.
+- T28d (array/Package records) was assessed but not started: Tinyhand 0.147 exposes
+  `ITinyhandSerializable<T>` for a custom map-or-array reader; the exact plan is in
+  PLAN.md §2.
+
+### T26e / I26 — imports in generic containers (§22.3.1)
+
+DONE. An import whose enclosing struct/group chain has generic or Origin parameters
+would itself be parameterized, so it is rejected as `InvalidLibraryImport_Kd`;
+a group nested in a non-generic struct stays valid. Three new placement cases;
+the generic ones were accepted before the change. `import-generic-debug.xml`:
+57 PASS. Warning-free Release solution / Debug test-project builds; full
+`final7-release.xml` and `final7-debug.xml`: 9,294 PASS each; no NUL bytes.
+
+Stopped at about 50 minutes (23:19 +0900). The next units (T28d array/Package supply
+records; I26 lowering) each need more than the remaining time to reach verification,
+so neither was started. The worktree has uncommitted changes after the user's
+`08f2998` commit; the user draft file was not edited.
+
 
 <a id="compiler-continuation-20260919-113419"></a>
 ## Compiler continuation — 2026-09-19 11:34:19 UTC

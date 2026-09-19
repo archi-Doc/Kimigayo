@@ -488,6 +488,8 @@ public sealed partial class Binding
                     BindingFailure.ConflictingLayout => DiagnosticCode.ConflictingLayout_Kd,
                     BindingFailure.InvalidLibraryImport => DiagnosticCode.InvalidLibraryImport_Kd,
                     BindingFailure.MissingNativeRequirement => DiagnosticCode.MissingNativeRequirement_Kd,
+                    BindingFailure.UnsupportedImportSignature => DiagnosticCode.UnsupportedImportSignature_Kd,
+                    BindingFailure.ConflictingImportSignature => DiagnosticCode.ConflictingImportSignature_Kd,
                     BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,

@@ -41,6 +41,10 @@ public class DependencyConfigurationTest
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\"}}} NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={Kind=\"import\" Input=\"codec.lib\"}}}")]
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\" ContractId=\"a\"}}} NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={ContractId=\"b\" Input=\"codec.lib\"}}}")]
     [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"kernel32.lib\"}}}")]
+    [InlineData("NativeRequirements={t={codec={Kind=\"static\"} codec={Kind=\"import\"}}}")]
+    [InlineData("NativeRequirements={t={codec={Kind=\"static\"}} t={codec={Kind=\"import\"}}}")]
+    [InlineData("NativeRequirements={t={codec={Kind=\"static\"}}} NativeRequirements={t={codec={Kind=\"import\"}}}")]
+    [InlineData("NativeLibraries={t={codec={Kind=\"static\" Input=\"a.lib\"} codec={Kind=\"static\" Input=\"b.lib\"}}}")]
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
         => Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source)));
 
@@ -49,6 +53,14 @@ public class DependencyConfigurationTest
     [InlineData("NativeBindings={\"x86_64-pc-windows-msvc\"={codec=\"codec.lib\"}}")]
     public void SupersededNativeBindingsRequireMigration(string source)
         => Assert.Equal(NativeConfiguration.SupersededBindings, Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Message);
+
+    [Fact]
+    public void IndentedNativeRequirementIsRead()
+    {
+        var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeRequirements=\n  \"x86_64-pc-windows-msvc\"=\n    codec={ Kind=\"static\" ContractId=\"example.codec.v1\" }\n"))!;
+        var requirement = file.NativeRequirements[WindowsProfile.Target]["codec"];
+        Assert.Equal(("static", "example.codec.v1", (string?)null), (requirement.Kind, requirement.ContractId, requirement.Sha256));
+    }
 
     [Fact]
     public void InvalidProgrammaticNativeRequirementsCannotPrepare()
@@ -95,6 +107,9 @@ public class DependencyConfigurationTest
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\" ContractId=\"example.codec.v1\"}}}")]
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"import\" Sha256=\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}}} NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={Input=\"native/codec.lib\" Sha256=\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}}")]
     [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={observer={Kind=\"static\" ContractId=\"o\" Input=\"native/observer.lib\"}}}")]
+    [InlineData("NativeRequirements=\n  \"x86_64-pc-windows-msvc\"=\n    codec={ Kind=\"static\" ContractId=\"example.codec.v1\" }\n")]
+    [InlineData("NativeRequirements={a={codec={Kind=\"static\"}} b={codec={Kind=\"import\"}}} NativeLibraries={a={codec={Input=\"codec.lib\"}}}")]
+    [InlineData("NativeLibraries=\n  \"x86_64-pc-windows-msvc\"=\n    observer={ Kind=\"static\" Input=\"native/observer.lib\" }\n")]
     public void ConfigurationRoundTripsWithoutReadingSources(string source)
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes(source));
