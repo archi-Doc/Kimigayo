@@ -19,7 +19,7 @@ namespace Benchmark;
 
 // Separate from the BDN entry point: alternating paired samples, scaling, cold
 // child processes and retained-result probes need different measurement lifetimes.
-internal static class DocumentationMarkdownMeasurements
+internal static partial class DocumentationMarkdownMeasurements
 {
     private static object? sink;
 
@@ -42,6 +42,12 @@ internal static class DocumentationMarkdownMeasurements
         }
 
         var inputs = Inputs().ToArray();
+        if (args[0] == "output")
+        {
+            MeasureOutput(Path.GetFullPath(args[1]));
+            return;
+        }
+
         if (args[0] == "diagnostics")
         {
             if (OperatingSystem.IsWindows())

@@ -1,5 +1,10 @@
 # Documentation Markdown measurements — 2026-09-20
 
+The product now uses the independent parser and renderer; see
+[DM5 product output](#dm5-product-output-and-switch-2026-09-20) and the
+[product API guide](../Kimi/Compiler/Documentation/README.md). The DM3/DM4 sections
+below preserve measurements taken before that switch.
+
 DM4 compares the independent parser with Markdig and measures improvements against
 the DM3 implementation at commit `4c53331`. The existing Markdig-backed product
 entry point remains unchanged. These measurements cover syntax parsing and the
@@ -327,3 +332,81 @@ IR equivalence. Native execution was not repeated in DM4; NativeAOT was not run.
 DM4's implemented-parser gates are satisfied. HTML rendering, structured URL
 resolution, compiler publication integration and their output benchmarks remain
 DM5 work before switching the product path. No specification or draft was changed.
+
+<a id="dm5-product-output-and-switch-2026-09-20"></a>
+
+## DM5 product output and switch — 2026-09-20
+
+The product facade now parses, classifies and renders independent syntax. Markdig
+1.3.2 is a private comparison dependency of `xUnitTest` and `Benchmark` only.
+Compiler assembly references, restored assets, dependency manifests and a fresh
+managed publish contain no Markdig; the published compiler's `--help` exits 0.
+
+Output measurements use the DM4 harness conditions: Release .NET 10.0.12, Windows
+x64/i7-1280P, `DOTNET_TieredCompilation=0`, process affinity to one logical CPU,
+50 ms warmup, calibrated batches targeting 20 ms, and seven alternating samples.
+The six familiar inputs replace relative link destinations with root-relative
+ones so both engines generate identical HTML. Heading offset is 0; raw HTML is
+disabled; Markdig retains precise source locations. Setup verifies output equality
+apart from the documented optional `<li>` formatting newline. Input creation and
+cached-tree parsing are outside `Render`; `Parse+Render` includes both operations.
+Markdig's renderer does not perform the independent renderer's URL validation and
+cancellation checks; callbacks and deployment-specific mapping are not timed.
+
+| Workload | Parse + render independent / Markdig ns | Independent / Markdig B | Render only independent / Markdig ns |
+| --- | ---: | ---: | ---: |
+| Summary | 187.7 / 645.9 | 360 / 736 | 133.3 / 106.3 |
+| Rich summary | 1,747.3 / 2,219.4 | 880 / 2,128 | 534.3 / 389.1 |
+| Parameters | 4,935.9 / 9,787.4 | 3,224 / 8,352 | 2,144.2 / 1,493.1 |
+| Code example | 7,524.0 / 27,109.4 | 11,680 / 32,456 | 896.8 / 4,402.3 |
+| Nested | 2,527.0 / 5,590.6 | 1,328 / 4,360 | 898.8 / 712.9 |
+| Links/entities | 29,474.9 / 36,812.3 | 18,584 / 42,792 | 13,992.5 / 9,701.7 |
+
+Medians are per operation. Equal-weight geometric means for parse + render are
+**0.476 of Markdig time and 0.394 of its allocated bytes** (52.4% and 60.6% lower).
+Render-only allocation equals the returned HTML string size in all six cases:
+168 / 272 / 1,272 / 11,416 / 416 / 4,712 B respectively, matching Markdig. Rendering
+alone is slower in five cases; this is not a claim of universal renderer speedup.
+The large contiguous code slice benefits from vectorized escaping.
+
+The initial output implementation allocated new StringBuilders and repeated URL
+validation. Measurement led to a bounded per-thread builder cache, vectorized
+escaping, skipping percent-decoding work when no percent escapes exist, and final
+revalidation only for rewritten/mapped output. URL input checks and rejection
+behavior remain covered by regression tests. Reentrant callbacks temporarily
+remove the cached builder from the thread slot; cancellation returns or releases
+scratch without publishing partial HTML.
+
+Repeated list/link rendering at 256 / 1,024 / 4,096 / 16,384 lines costs 0.096 /
+0.433 / 2.013 / 6.600 ms, allocating 33,840 / 280,320 / 1,087,624 / 4,348,984 B.
+Successive 4× input steps cost 4.51× / 4.65× / 3.28× time, satisfying the <6×
+investigative gate. Outputs larger than the 65,536-character builder retention
+limit allocate fresh backing storage; Markdig allocates less on these stress cases
+because its retention strategy differs. This bounds retained per-thread scratch
+instead of retaining the largest document ever rendered. These finite inputs do
+not prove complexity for every document. The traversal itself is iterative and
+visits each node a bounded number of times; source-path normalization scans
+segments once, without repeated whole-document searches.
+
+[Raw samples](Results/DocumentationMarkdown/2026-09-20-product-output.json) record
+runtime, time/allocation samples and product hash:
+
+```text
+E1973176A1A2B05E405F9B29242C62B01BD8DEE69D02549C53B7725F6321C29E
+```
+
+Reproduce after a Release build:
+
+```powershell
+$env:DOTNET_TieredCompilation = '0'
+dotnet Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown output bin/documentation-markdown/dm5-output.json
+```
+
+The switch retains all prior conformance/difference tests, adds 320 exact official
+non-link product-output cases and explicit structured-URL/facade/concurrency tests,
+and migrates obsolete product expectations to the adopted limited profile.
+[API changes and placement rules](../Kimi/Compiler/Documentation/README.md) are
+explicit: no Markdig public types, lowercase standard items, current Binding roles,
+root-relative default source placement, and configurable structured mapping.
+NativeAOT and native fixture execution were not run in DM5; managed integration
+checks collection-on/off emitted IR after invoking the product output path.

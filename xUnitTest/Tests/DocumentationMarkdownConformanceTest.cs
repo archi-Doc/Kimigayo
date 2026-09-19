@@ -29,6 +29,41 @@ public class DocumentationMarkdownConformanceTest
         }
     }
 
+    public static IEnumerable<object[]> RenderingExamples()
+    {
+        // URL policy/resolution intentionally differs from CommonMark serialization.
+        // The separate output tests cover those rules; these exact official HTML
+        // expectations cover every retained example without link nodes.
+        foreach (var example in CommonExamples())
+        {
+            var document = DocumentationMarkdownDocument.Parse((string)example[2]);
+            var pending = new Stack<DocumentationMarkdownNode>();
+            pending.Push(document.Root);
+            var links = false;
+            while (pending.TryPop(out var node))
+            {
+                links |= node.Kind is DocumentationMarkdownKind.Link or DocumentationMarkdownKind.AutoLink;
+                foreach (var child in node.Children)
+                {
+                    pending.Push(child);
+                }
+            }
+
+            if (!links)
+            {
+                yield return example;
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(RenderingExamples))]
+    public void ProductRendererConformsToOfficialNonLinkExamples(int id, string section, string input, string expected)
+    {
+        var actual = DocumentationMarkdownDocument.Parse(input).ToHtml(new() { DeclarationHeadingLevel = 0 });
+        Assert.True(expected == actual, $"Product renderer: {id}, {section}\nExpected: {expected}\nActual: {actual}");
+    }
+
     [Theory]
     [MemberData(nameof(CommonExamples))]
     public void ConformsToRetainedCommonMarkExamples(int id, string section, string input, string expected)

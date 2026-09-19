@@ -1,0 +1,841 @@
+{
+  "Timestamp": "2026-09-19T17:55:08.4199552+00:00",
+  "Runtime": ".NET 10.0.12",
+  "OS": "Microsoft Windows 10.0.26100",
+  "TieredCompilation": "0",
+  "ProductSha256": "E1973176A1A2B05E405F9B29242C62B01BD8DEE69D02549C53B7725F6321C29E",
+  "Measurements": [
+    {
+      "Phase": "Render",
+      "Input": "Summary",
+      "Engine": "Independent",
+      "Characters": 64,
+      "OperationsPerSample": 262144,
+      "Nanoseconds": [
+        135.6658935546875,
+        135.02349853515625,
+        129.7893524169922,
+        133.9092254638672,
+        132.83653259277344,
+        133.30955505371094,
+        131.60781860351562
+      ],
+      "Bytes": [
+        168,
+        168,
+        168,
+        168,
+        168,
+        168,
+        168
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Summary",
+      "Engine": "Markdig",
+      "Characters": 64,
+      "OperationsPerSample": 262144,
+      "Nanoseconds": [
+        105.50270080566406,
+        109.10453796386719,
+        104.71382141113281,
+        106.341552734375,
+        108.16116333007812,
+        106.42547607421875,
+        105.58357238769531
+      ],
+      "Bytes": [
+        168,
+        168,
+        168,
+        168,
+        168,
+        168,
+        168
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Summary",
+      "Engine": "Independent",
+      "Characters": 64,
+      "OperationsPerSample": 131072,
+      "Nanoseconds": [
+        187.66326904296875,
+        194.19326782226562,
+        194.01931762695312,
+        188.37051391601562,
+        182.91549682617188,
+        181.79473876953125,
+        181.9366455078125
+      ],
+      "Bytes": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Summary",
+      "Engine": "Markdig",
+      "Characters": 64,
+      "OperationsPerSample": 32768,
+      "Nanoseconds": [
+        654.888916015625,
+        668.8140869140625,
+        645.9442138671875,
+        663.6016845703125,
+        631.57958984375,
+        638.8916015625,
+        630.224609375
+      ],
+      "Bytes": [
+        736,
+        736,
+        736,
+        736,
+        736,
+        736,
+        736
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Rich-summary",
+      "Engine": "Independent",
+      "Characters": 75,
+      "OperationsPerSample": 65536,
+      "Nanoseconds": [
+        534.2880249023438,
+        544.4854736328125,
+        541.6717529296875,
+        533.8668823242188,
+        530.523681640625,
+        529.96826171875,
+        535.3652954101562
+      ],
+      "Bytes": [
+        272,
+        272,
+        272,
+        272,
+        272,
+        272,
+        272
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Rich-summary",
+      "Engine": "Markdig",
+      "Characters": 75,
+      "OperationsPerSample": 65536,
+      "Nanoseconds": [
+        388.055419921875,
+        392.58270263671875,
+        391.51763916015625,
+        387.139892578125,
+        391.17279052734375,
+        389.10064697265625,
+        386.42730712890625
+      ],
+      "Bytes": [
+        272,
+        272,
+        272,
+        272,
+        272,
+        272,
+        272
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Rich-summary",
+      "Engine": "Independent",
+      "Characters": 75,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        1784.41162109375,
+        1756.451416015625,
+        1723.675537109375,
+        1802.691650390625,
+        1737.677001953125,
+        1747.30224609375,
+        1735.479736328125
+      ],
+      "Bytes": [
+        880,
+        880,
+        880,
+        880,
+        880,
+        880,
+        880
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Rich-summary",
+      "Engine": "Markdig",
+      "Characters": 75,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        2219.354248046875,
+        2245.025634765625,
+        2225.152587890625,
+        2231.866455078125,
+        2196.6552734375,
+        2211.871337890625,
+        2208.343505859375
+      ],
+      "Bytes": [
+        2128,
+        2128,
+        2128,
+        2128,
+        2128,
+        2128,
+        2128
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Parameters",
+      "Engine": "Independent",
+      "Characters": 392,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        2144.17724609375,
+        2123.687744140625,
+        2090.52734375,
+        2181.494140625,
+        2215.72265625,
+        2148.1689453125,
+        2124.06005859375
+      ],
+      "Bytes": [
+        1272,
+        1272,
+        1272,
+        1272,
+        1272,
+        1272,
+        1272
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Parameters",
+      "Engine": "Markdig",
+      "Characters": 392,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        1438.80615234375,
+        1485.626220703125,
+        1465.34423828125,
+        1556.329345703125,
+        1493.07861328125,
+        1511.187744140625,
+        1501.019287109375
+      ],
+      "Bytes": [
+        1272,
+        1272,
+        1272,
+        1272,
+        1272,
+        1272,
+        1272
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Parameters",
+      "Engine": "Independent",
+      "Characters": 392,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        5019.3603515625,
+        4911.23046875,
+        4776.1474609375,
+        5001.953125,
+        4935.8642578125,
+        4953.6376953125,
+        4834.1552734375
+      ],
+      "Bytes": [
+        3224,
+        3224,
+        3224,
+        3224,
+        3224,
+        3224,
+        3224
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Parameters",
+      "Engine": "Markdig",
+      "Characters": 392,
+      "OperationsPerSample": 2048,
+      "Nanoseconds": [
+        9731.201171875,
+        9787.353515625,
+        9738.0859375,
+        9937.79296875,
+        9810.83984375,
+        9657.2265625,
+        9801.318359375
+      ],
+      "Bytes": [
+        8352,
+        8352,
+        8352,
+        8352,
+        8352,
+        8352,
+        8352
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Code-example",
+      "Engine": "Independent",
+      "Characters": 5653,
+      "OperationsPerSample": 32768,
+      "Nanoseconds": [
+        908.5662841796875,
+        931.6558837890625,
+        829.8004150390625,
+        896.820068359375,
+        829.4891357421875,
+        923.5260009765625,
+        833.3526611328125
+      ],
+      "Bytes": [
+        11416,
+        11416,
+        11416,
+        11416,
+        11416,
+        11416,
+        11416
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Code-example",
+      "Engine": "Markdig",
+      "Characters": 5653,
+      "OperationsPerSample": 8192,
+      "Nanoseconds": [
+        4273.974609375,
+        4480.99365234375,
+        4424.76806640625,
+        4402.34375,
+        4363.53759765625,
+        4498.6328125,
+        4324.2919921875
+      ],
+      "Bytes": [
+        11416,
+        11416,
+        11416,
+        11416,
+        11416,
+        11416,
+        11416
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Code-example",
+      "Engine": "Independent",
+      "Characters": 5653,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        7427.8076171875,
+        7514.0869140625,
+        7523.9501953125,
+        7746.484375,
+        7591.015625,
+        7543.7744140625,
+        7487.6708984375
+      ],
+      "Bytes": [
+        11680,
+        11680,
+        11680,
+        11680,
+        11680,
+        11680,
+        11680
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Code-example",
+      "Engine": "Markdig",
+      "Characters": 5653,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        25685.05859375,
+        25530.2734375,
+        48437.5,
+        31417.48046875,
+        28677.63671875,
+        26340.13671875,
+        27109.375
+      ],
+      "Bytes": [
+        32456,
+        32456,
+        32456,
+        32456,
+        32456,
+        32456,
+        32456
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Nested",
+      "Engine": "Independent",
+      "Characters": 95,
+      "OperationsPerSample": 32768,
+      "Nanoseconds": [
+        910.8856201171875,
+        906.0333251953125,
+        877.0294189453125,
+        899.6002197265625,
+        897.4884033203125,
+        898.76708984375,
+        882.4432373046875
+      ],
+      "Bytes": [
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Nested",
+      "Engine": "Markdig",
+      "Characters": 95,
+      "OperationsPerSample": 32768,
+      "Nanoseconds": [
+        697.735595703125,
+        700.5462646484375,
+        701.8310546875,
+        721.099853515625,
+        713.970947265625,
+        714.0655517578125,
+        712.945556640625
+      ],
+      "Bytes": [
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Nested",
+      "Engine": "Independent",
+      "Characters": 95,
+      "OperationsPerSample": 8192,
+      "Nanoseconds": [
+        2552.20947265625,
+        2546.61865234375,
+        2520.37353515625,
+        2568.59130859375,
+        2518.7744140625,
+        2527.001953125,
+        2500.2685546875
+      ],
+      "Bytes": [
+        1328,
+        1328,
+        1328,
+        1328,
+        1328,
+        1328,
+        1328
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Nested",
+      "Engine": "Markdig",
+      "Characters": 95,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        5605.0048828125,
+        5685.2783203125,
+        5512.9638671875,
+        5690.7958984375,
+        5586.4990234375,
+        5590.6494140625,
+        5491.9921875
+      ],
+      "Bytes": [
+        4360,
+        4360,
+        4360,
+        4360,
+        4360,
+        4360,
+        4360
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Links-entities",
+      "Engine": "Independent",
+      "Characters": 1664,
+      "OperationsPerSample": 2048,
+      "Nanoseconds": [
+        14102.392578125,
+        13424.51171875,
+        13950.78125,
+        13992.529296875,
+        13726.806640625,
+        14202.63671875,
+        14170.80078125
+      ],
+      "Bytes": [
+        4712,
+        4712,
+        4712,
+        4712,
+        4712,
+        4712,
+        4712
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Links-entities",
+      "Engine": "Markdig",
+      "Characters": 1664,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        9614.94140625,
+        9858.6181640625,
+        9928.22265625,
+        9701.6845703125,
+        9557.7880859375,
+        9904.8828125,
+        9624.072265625
+      ],
+      "Bytes": [
+        4712,
+        4712,
+        4712,
+        4712,
+        4712,
+        4712,
+        4712
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Links-entities",
+      "Engine": "Independent",
+      "Characters": 1664,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        29795.3125,
+        28136.9140625,
+        29775.390625,
+        28351.7578125,
+        29700.78125,
+        28388.28125,
+        29474.90234375
+      ],
+      "Bytes": [
+        18584,
+        18584,
+        18584,
+        18584,
+        18584,
+        18584,
+        18584
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BRender",
+      "Input": "Links-entities",
+      "Engine": "Markdig",
+      "Characters": 1664,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        36598.4375,
+        37626.5625,
+        36723.046875,
+        37486.62109375,
+        36589.35546875,
+        37975.390625,
+        36812.3046875
+      ],
+      "Bytes": [
+        42792,
+        42792,
+        42792,
+        42792,
+        42792,
+        42792,
+        42792
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Render-scale-256",
+      "Engine": "Independent",
+      "Characters": 8960,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        96367.578125,
+        96153.90625,
+        94453.90625,
+        94353.90625,
+        93185.15625,
+        95971.09375,
+        96309.765625
+      ],
+      "Bytes": [
+        33840,
+        33840,
+        33840,
+        33840,
+        33840,
+        33840,
+        33840
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Render-scale-256",
+      "Engine": "Markdig",
+      "Characters": 8960,
+      "OperationsPerSample": 512,
+      "Nanoseconds": [
+        57728.515625,
+        59570.703125,
+        57894.921875,
+        58188.4765625,
+        57205.46875,
+        58695.1171875,
+        58971.6796875
+      ],
+      "Bytes": [
+        33840,
+        33840,
+        33840,
+        33840,
+        33840,
+        33840,
+        33840
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Render-scale-1024",
+      "Engine": "Independent",
+      "Characters": 35840,
+      "OperationsPerSample": 16,
+      "Nanoseconds": [
+        472387.5,
+        1044993.75,
+        328100,
+        400881.25,
+        404356.25,
+        432593.75,
+        676806.25
+      ],
+      "Bytes": [
+        280320,
+        280829.5,
+        280320,
+        280320,
+        280320,
+        280320,
+        280320
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Render-scale-1024",
+      "Engine": "Markdig",
+      "Characters": 35840,
+      "OperationsPerSample": 128,
+      "Nanoseconds": [
+        307735.15625,
+        253900,
+        253053.90625,
+        269297.65625,
+        266489.84375,
+        264582.8125,
+        258431.25
+      ],
+      "Bytes": [
+        135216,
+        135216,
+        135216,
+        135216,
+        135216,
+        135216,
+        135216
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Render-scale-4096",
+      "Engine": "Independent",
+      "Characters": 143360,
+      "OperationsPerSample": 16,
+      "Nanoseconds": [
+        2427062.5,
+        1602993.75,
+        1705287.5,
+        2860425,
+        1470281.25,
+        2124512.5,
+        2013081.25
+      ],
+      "Bytes": [
+        1088133.5,
+        1087624,
+        1087624,
+        1088133.5,
+        1087624,
+        1087624,
+        1088133.5
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Render-scale-4096",
+      "Engine": "Markdig",
+      "Characters": 143360,
+      "OperationsPerSample": 16,
+      "Nanoseconds": [
+        1069356.25,
+        995437.5,
+        1014456.25,
+        1181456.25,
+        937056.25,
+        1009581.25,
+        944287.5
+      ],
+      "Bytes": [
+        540720,
+        540720,
+        540720,
+        540720,
+        540720,
+        540720,
+        540720
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Render-scale-16384",
+      "Engine": "Independent",
+      "Characters": 573440,
+      "OperationsPerSample": 4,
+      "Nanoseconds": [
+        7729025,
+        6918475,
+        6925925,
+        6475075,
+        6599825,
+        6482000,
+        6336925
+      ],
+      "Bytes": [
+        4348984,
+        4348984,
+        4348984,
+        4348984,
+        4348984,
+        4348984,
+        4348984
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Render",
+      "Input": "Render-scale-16384",
+      "Engine": "Markdig",
+      "Characters": 573440,
+      "OperationsPerSample": 8,
+      "Nanoseconds": [
+        3958450,
+        3974450,
+        4560175,
+        4555900,
+        3939462.5,
+        3870912.5,
+        3849187.5
+      ],
+      "Bytes": [
+        2162736,
+        2162736,
+        2162736,
+        2162736,
+        2162736,
+        2162736,
+        2162736
+      ],
+      "Error": null
+    }
+  ]
+}

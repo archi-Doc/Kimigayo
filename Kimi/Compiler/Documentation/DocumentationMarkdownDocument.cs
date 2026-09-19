@@ -72,7 +72,7 @@ public sealed partial class DocumentationMarkdownDocument
     /// <returns>A completed snapshot safe for concurrent reads.</returns>
     public static DocumentationMarkdownDocument Parse(string text, CancellationToken cancellationToken = default, int maximumDepth = 256) => ParseCore(text, null, cancellationToken, maximumDepth);
 
-    /// <summary>Parses a source-backed comment without changing its existing Markdig processing path.</summary>
+    /// <summary>Parses a source-backed comment into an immutable documentation snapshot.</summary>
     /// <param name = "comment">The source-backed comment.</param>
     /// <param name = "cancellationToken">Cancellation before publication.</param>
     /// <param name = "maximumDepth">Maximum tree depth, excluding the document root.</param>

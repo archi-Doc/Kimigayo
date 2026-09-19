@@ -147,10 +147,12 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
             {
                 foreach (var comment in c.Kotonoha.DocumentationSources.SelectMany(x => x.Comments))
                 {
-                    var markdown = DocumentationMarkdownDocument.Parse(comment);
-                    DocumentationMarkdownParserTest.AssertRanges(markdown);
+                    var markdown = DocumentationMarkdown.Parse(comment, TestContext.Current.CancellationToken);
+                    DocumentationMarkdownParserTest.AssertRanges(markdown.Document);
                     Assert.NotNull(markdown.Summary);
-                    _ = markdown.GetItemCandidates();
+                    _ = markdown.Items;
+                    _ = markdown.ToHtml();
+                    _ = markdown.GetDiagnostics(TestContext.Current.CancellationToken).ToArray();
                 }
             }
 

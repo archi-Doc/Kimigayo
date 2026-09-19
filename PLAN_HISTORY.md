@@ -6,6 +6,7 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Documentation Markdown product switch (2026-09-20)](#documentation-markdown-product-switch-20260920)
 - [Documentation Markdown second tuning round (2026-09-20)](#documentation-markdown-tuning-20260920)
 - [Documentation Markdown benchmarks and improvements (2026-09-20)](#documentation-markdown-benchmarks-20260920)
 - [Compiler continuation: native requirements and LibraryImport validation (2026-09-19 13:29 UTC)](#compiler-continuation-20260919-132943)
@@ -36,6 +37,82 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 - [Plan changes, reverted approaches and out-of-scope findings](#plan-changes)
 - [STATUS dated records](#status-record-index)
 - [STATUS area snapshot and 2026-09-14/15 verification](#status-area-snapshot)
+
+<a id="documentation-markdown-product-switch-20260920"></a>
+
+## Documentation Markdown DM5 — 2026-09-20
+
+The user authorized switching the compiler to the independent parser and removing
+Markdig from the compiler, retaining it only for test purposes. Entry baseline
+`d871d45` was clean. No draft or normative specification was changed.
+
+`DocumentationMarkdown` now delegates parsing to `DocumentationMarkdownDocument`,
+exposes independent node/item types, queries current Binding names and receiver
+roles without rebinding, and reports optional source-mapped item diagnostics.
+Unbound list candidates remain unclassified. Classification is not cached against
+mutable declaration facts. Existing Binding publication, specialization, access,
+fragment ordering and generated-source association remain in use.
+
+The independent renderer uses iterative traversal, LF output, relative heading
+levels (ARIA headings beyond h6), tight/loose lists, escaped code/text/attributes,
+and cancellation with no partial publication. Structured source targets preserve
+project/module identity, logical path, query and fragment. Source segments decode
+UTF-8 once; relative separators/controls, invalid encoding and project-root escape
+are rejected. Output mapping and final rewriting are checked independently. Empty
+paths use the display page and preserve query/fragment absence versus emptiness,
+including with a separate HTML base. Rejected ordinary links keep decorated text;
+rejected autolinks keep their original escaped spelling. The default output
+placement is documented root-relative identity mapping; custom layouts use the
+structured mapper. [API guide](Kimi/Compiler/Documentation/README.md).
+
+Markdig 1.3.2 was removed from `Kimi.csproj` and added as `PrivateAssets="all"`
+only to `xUnitTest` and `Benchmark`. The compiler assembly-reference test passes;
+restored compiler assets, compiler/Playground dependency manifests and output
+directories contain no Markdig. A fresh managed (explicitly non-AOT) publish in
+`bin/documentation-markdown/dm5-publish` contains no Markdig DLL or manifest entry;
+`dotnet .../Kimi.dll --help` exits 0. Restore initially could not read the sandboxed
+user NuGet.Config; an approved restore with a local source-free config used the
+existing package cache and completed. No package version was upgraded.
+
+Acceptance gates recorded before finalization were warning-free Debug/Release
+builds, full managed regressions, official non-link HTML plus explicit URL and
+facade tests, dependency-free compiler publish, equal-output seven-sample
+render/parse+render comparisons, and <6× rendering time per approximately 4× input.
+All pass. Legacy product expectations were migrated for lowercase standard items,
+unrecognized named entities and unsupported reference definitions; the first
+focused run exposed the obsolete `&copy;` expectation, which was corrected to the
+adopted limited profile. No upstream CommonMark fixture was changed.
+
+Output measurements led to bounded per-thread StringBuilder reuse (capacity at
+most 65,536), vectorized escaping and removal of redundant URL scans. Same-output
+six-case geometric means are 0.476 Markdig parse+render time / 0.394 allocations.
+Render-only allocation equals the result string in these cases, but five cases
+are slower than Markdig rendering alone. Oversized stress documents allocate
+more because the retained scratch size is capped. These limits and raw samples
+are in the [output report](Benchmark/DocumentationMarkdown.md#dm5-product-output-and-switch-2026-09-20).
+Final Release product SHA-256:
+`E1973176A1A2B05E405F9B29242C62B01BD8DEE69D02549C53B7725F6321C29E`.
+
+Final verification commands:
+
+```powershell
+dotnet build Kimigayo.slnx -c Release --no-restore
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -result-xml bin/documentation-markdown/dm5-full-release.xml
+dotnet build Kimigayo.slnx -c Debug --no-restore
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -result-xml bin/documentation-markdown/dm5-full-debug.xml
+dotnet publish Kimi/Kimi.csproj -c Release --no-restore -p:PublishAot=false --self-contained false -o bin/documentation-markdown/dm5-publish
+```
+
+Both builds: zero warnings/errors. Both suites: **10,561 passed, zero errors,
+failures, skips or unexecuted tests**, including **1,351 documentation cases**.
+There are 320 additional exact official non-link product-output cases and 54
+explicit output/URL/facade tests. Managed compiler integration renders and queries
+documentation before confirming unchanged collected/uncollected IR. Logs/XML are
+local ignored `bin/documentation-markdown/dm5-*` artifacts; raw benchmark JSON is
+versioned under `Benchmark/Results/DocumentationMarkdown/2026-09-20-product-output.json`.
+Native execution was not repeated; NativeAOT was not run. Optional additional
+writing diagnostics and cross-comment caching remain absent. Current execution
+state and next actions are owned only by [PLAN.md §2](PLAN.md#2-execution-state).
 
 <a id="documentation-markdown-tuning-20260920"></a>
 

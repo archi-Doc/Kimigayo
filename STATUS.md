@@ -1,24 +1,25 @@
 # Kimigayo Implementation Status
 
-The **2026-09-20 documentation Markdown verification and benchmarks** retain 372
-official CommonMark cases, corresponding Markdig comparisons, intentional profile
-differences and 568 generated interactions. Plain paragraph construction,
-contiguous fenced-code slices and single initial candidate extraction reduce
-measured costs. Against the DM3 baseline, six representative inputs show 36.0%
-lower geometric-mean parse time and 51.8% lower allocations; a second tuning round
-the same day (stack-only parser, 36-byte nodes, merged text, lazy destinations,
-NUL-free search needle, and a fix for `<` inside bare link destinations) removes a
-further 33.1% of time and 33.7% of allocations, reaching 0.395/0.170 of Markdig;
-comparison with Markdig, scaling, query and concurrency limits are in the
-[benchmark report](Benchmark/DocumentationMarkdown.md).
-Final Debug/Release solution builds have zero warnings/errors; **977 documentation
-tests and all 10,187 managed tests** pass per configuration. Source ranges,
-Unicode 15, cancellation and Kimigayo integration remain covered. Native O0/O2
-fixture execution passed in DM3 and was not repeated in DM4; NativeAOT was not run.
-The existing Markdig-backed product API is unchanged. The independent syntax and
-candidate API still has no product renderer, structured URL resolver or publication
-adapter. Results cover the implemented parser, not exhaustive conformance or
-whole-product performance. [Execution evidence](PLAN_HISTORY.md#documentation-markdown-benchmarks-20260920).
+The **2026-09-20 documentation Markdown product migration** switches the product
+facade to the independent limited-profile parser. Immutable nodes/items, Binding
+receiver roles and parameter classification, source-mapped optional item diagnostics,
+iterative HTML output and structured source/output URL resolution are connected.
+Markdig is confined to comparison tests/benchmarks; compiler assembly references,
+restored assets, manifests and a fresh managed publish contain no Markdig. The
+published compiler starts successfully. [Product API and placement defaults](Kimi/Compiler/Documentation/README.md).
+
+Debug/Release builds have zero warnings/errors; **1,351 documentation tests and
+all 10,561 managed tests** pass per configuration. Coverage includes the retained
+CommonMark/difference corpus, 320 official non-link product HTML expectations,
+explicit URL component/mapping/escaping cases, Binding/publication integration,
+and deep/concurrent/reentrant/cancelled output. Collection-on/off emitted IR stays
+equal. Six equal-output parse + render workloads have geometric-mean time and
+allocation ratios of 0.476 / 0.394 versus Markdig; render-only results and stress
+allocation tradeoffs are reported separately in the [measurements](Benchmark/DocumentationMarkdown.md#dm5-product-output-and-switch-2026-09-20).
+These are bounded checks, not exhaustive conformance or whole-compiler speedups.
+Optional extension-like writing diagnostics and cross-comment caches are absent.
+Native fixtures were not rerun in DM5; NativeAOT was not run.
+[Execution evidence](PLAN_HISTORY.md#documentation-markdown-product-switch-20260920).
 
 The **2026-09-19 compiler continuation** adds supported source-module common
 generation and Library inspection, disjoint sibling Moves under inline-part
