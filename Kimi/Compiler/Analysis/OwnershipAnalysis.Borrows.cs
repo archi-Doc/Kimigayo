@@ -76,6 +76,22 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(projected);
         }
 
+        if (unwrapped is MemberAccessKoto path && ReferenceEquals(type.Components[0], path.BoundType) && !ObjectTypes.IsOwner(path.BoundType) &&
+            ElementAccess.OwnedPathRoot(path) is { } owner)
+        {
+            // Borrow the inline part in place; its Loan footprint is the static path (SPEC 15.6.2).
+            var ownerPlace = this.Local(owner);
+            if (ownerPlace < 0)
+            {
+                return -1;
+            }
+
+            var borrowed = this.Place(path, type, OwnershipPlaceKind.Temporary, false);
+            var borrow = this.Emit(OwnershipOperationKind.Borrow, path, ownerPlace, borrowed, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+            this.SetValue(borrow, OwnershipValueKind.Address, [], constant: ownerPlace);
+            return this.RegisterTemporary(borrowed);
+        }
+
         var place = (StructStorage.IsStruct(source.BoundType) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple || ScalarTypes.Supports(source.BoundType)) && unwrapped is IdentifierNameKoto
             ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)

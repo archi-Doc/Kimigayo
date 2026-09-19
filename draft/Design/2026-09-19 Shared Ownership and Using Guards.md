@@ -3,7 +3,7 @@
 - 作成日: 2026-09-19
 - 状態: 設計議論をまとめた仕様原案。現行SPECへの統合前であり、実装済み機能を示す文書ではない。
 - 対象: `local`・`sync`、オブジェクト借用、ガード、`using`、スレッド能力、Weak。
-- 将来拡張: `async` の名前を予約する。非同期ガード・`await`・キャンセルはDeferredとする。
+- 将来拡張: `async` はSemanticsの文脈だけで予約する。非同期ガード・`await`・キャンセルはDeferredとする。
 
 本書で変更する事項はSPEC.mdとその参照先より優先し、変更しない事項には既存仕様を適用する。`objref`・`objuniq` は維持し、共有所有方式を独立したSemanticsとして扱う。
 
@@ -39,7 +39,7 @@
    └─ using var
 
 将来拡張
-└─ async       名前のみ予約。非同期Mutex等の詳細はDeferred
+└─ async       Semanticsの文脈だけで予約。非同期Mutex等の詳細はDeferred
 ```
 
 `local/T` はRustの `Rc<RefCell<T>>`、`sync/T` は `Arc<Mutex<T>>` に相当する用途を担う。ただし、内部表現、失敗の扱い、継承ビュー、借用表現までRustと同じにするわけではない。
@@ -85,6 +85,12 @@ objuniq/T
 
 実装上は、参照カウント、Weak、動的型情報、破棄処理などを共通化してよい。異なるSemanticsが必ず異なる機械語や異なる確保方式を要求するわけではない。
 
+#### 文脈キーワード
+
+`local`・`sync`・`async` は、既存の `rc`・`arc` と同じ文脈キーワードとする。型の接頭辞（`local/T`）、Semantics制約（`s is local or sync`）、明示変換先（`x@sync`・`x@sync/Animal`）でのみSemantics名として認識する。通常の除算式 `local / count` は影響を受けない。
+
+それ以外では通常の名前として、`let local = 1`・`func sync() => ()`・`x.async` などに使える。`async` は上記のSemantics文脈だけで将来用に予約し、未対応の診断を出す（§13.1）。
+
 ### 2.2. Semanticsカテゴリ
 
 現在のカテゴリへ `local`・`sync` を次のように追加する。
@@ -101,7 +107,7 @@ objuniq/T
 
 カテゴリ所属だけでは、固有のアクセス操作を許可しない。特に、`s is object` は「ガードなしでpayloadを読める」という保証ではない。
 
-`async` は予約中なので、有効なSemantics、カテゴリの構成要素、ジェネリック引数、Weak対象にはまだ加えない。
+`async` は有効なSemantics、カテゴリの構成要素、Semantics引数、Weakの所有方式にはまだ加えない。通常の名前としての使用は妨げない。
 
 ### 2.3. 所有値の取得
 
@@ -886,7 +892,7 @@ upgradeは有効なstrong所有者を確保し、`Option<S>` を返す。成功�
 
 ### 13.1. asyncの予約
 
-`async` を将来のSemantics位置の名前として予約する。現時点では `async/T` の形成や生成、所有方式変換、カテゴリ検査、Weak対象化を許可しない。
+`async` はSemanticsの文脈だけで予約する（§2.1）。`async/T`・`x@async`・`x@async/T`・Semantics制約の `s is async` は通常の名前として解決せず、未対応の診断を出す。型の形成・生成、所有方式変換、カテゴリへの追加、Weak対象化は許可しない。他の文脈では通常の名前として使える。
 
 将来の用途は、共有所有と非同期Mutexを組み合わせたオブジェクト管理である。現在有効な機能として説明しない。
 
@@ -1019,7 +1025,8 @@ Itemの構造と公開契約からThreadTransferableを証明できるものと�
 | 公開ビュー保証 | 保証違反の派生型を拒否し、保証のないopen型の構造証明をビューへ流用しない |
 | 再帰型 | Weak<sync/Node>の正の構造循環を解決し、不成立・証明不能の条件を成功にしない |
 | Weak | upgrade成功と、ガード取得成功を区別する |
-| async | 予約名の使用を拒否し、Deferredを実装済みとして扱わない |
+| 文脈キーワード | local/sync/asyncは型の接頭辞・Semantics制約・明示変換先でのみ認識し、通常の名前や除算式を妨げない |
+| async | Semanticsの文脈では未対応の診断を出し、通常の名前としての使用は許可する。非同期機能はDeferredとする |
 
 本節は今後の検証観点であり、テスト実施結果ではない。
 
@@ -1049,7 +1056,7 @@ Itemの構造と公開契約からThreadTransferableを証明できるものと�
 
 | 統合先 | 反映する内容 |
 | --- | --- |
-| [§2 字句・ソース構造](../../spec/02-source-and-lexical-structure.md) | usingと新しいSemantics名、asyncの予約、縦連結ヘッダと共通Body |
+| [§2 字句・ソース構造](../../spec/02-source-and-lexical-structure.md) | using、local/sync/asyncの文脈キーワード化、Semantics文脈限定のasync予約、縦連結ヘッダと共通Body |
 | [§3 型と値](../../spec/03-types-and-values.md) | local/sync、Semanticsカテゴリ、ガードの所有、Weak対象 |
 | [§4 配列・Slice](../../spec/04-arrays-indexing-and-slices.md) | SharedReadResultのlocal/syncスロット借用、ジェネリックな取得結果 |
 | [§6 宣言・継承](../../spec/06-declarations-and-containers.md) | open型の公開スレッド能力保証と派生型の検証 |

@@ -63,6 +63,23 @@ public sealed partial class Binding
         // Until Access Effect verification supplies callee/returned-Loan summaries, no body or signature is evidence.
         => implementation.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;
 
+    // SPEC 15.6.2: access through a shared reference cannot grant exclusive
+    // authority, even to an exclusive reference stored below it.
+    private static bool ReachedThroughShared(Koto source)
+    {
+        for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is MemberAccessKoto member && ElementAccess.BorrowedPathRoot(member) is { } root; depth++)
+        {
+            if (root.BoundType?.Semantics == SemanticsKind.Ref)
+            {
+                return true;
+            }
+
+            source = root;
+        }
+
+        return false;
+    }
+
     private BoundOrigin PlaceOrigin(Koto source)
     {
         source = PlaceOriginSource(source);
@@ -136,7 +153,7 @@ public sealed partial class Binding
         BoundType referent;
         if (actual.Kind == BoundTypeKind.Semantics && actual.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
-            if (target == SemanticsKind.Uniq && actual.Semantics != SemanticsKind.Uniq)
+            if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || ReachedThroughShared(source)))
             {
                 return false;
             }

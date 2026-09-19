@@ -5588,3 +5588,114 @@ Using Guards.md`) appeared during the run and was not read or modified.
 Stopped at 2026-09-18 16:25 UTC (about 54 minutes elapsed); the remaining time
 could not fit another unit with its required full Debug/Release and native
 verification. T6i is the next action in PLAN.md §2.
+
+<a id="general-compiler-20260919-082645"></a>
+
+## General compiler continuation (2026-09-19 08:26:45 JST / 2026-09-18 23:26:45 UTC)
+
+Started from clean HEAD `6ca946e317bc0c55eb0b3d99d4f8d4b9732305b8` under the
+user's 60-minute general compiler authorization (Milestone Programs, NativeAOT
+and draft edits excluded). Evidence root: `bin/plan-execution/20260919-082645`.
+The first Debug build failed because Markdig was not restored
+(`CS0246 'Markdig'`); `dotnet restore Kimigayo.slnx -m:1` resolved it without
+configuration changes.
+
+T6i (M3/I6, SPEC §15.6.2) completed at approximately 08:49 JST. Reproducers
+`var pair = Pair.init()` / `let a = pair.left@uniq` (and `@ref`, siblings,
+sibling writes) reported Unsupported at `pair.left`. The owned path then
+fell to an element Move, which produced cascading PossiblyMovedUse and
+ComparisonLoanConflict diagnostics. Probing also found a pre-existing hole:
+`let a = pair@uniq` / `let x = pair.left.value` / `a.left.value += x` verified,
+because an element read names its root only through a projection and no
+Origin-based Loan check treated it as an access.
+
+Changes: `ElementAccess.OwnedPathRoot` recognizes a direct inline field/Tuple
+path whose root is an owned local or parameter Name. `BorrowStruct` emits one
+Borrow of the root Place for such a path (object handles and non-matching
+Types excluded). Lowering validates the root/output Types and uses the
+existing `TryBorrowedPathOffset` for a `BorrowAddress` at slot plus offset.
+`ProjectionPath` records the owned path's selectors. `VerifyBorrows` treats
+a `ProjectElement` under a live exclusive root Loan as an access. It exempts
+Borrow/ProjectElement/WriteElement accesses whose static paths are disjoint;
+element accesses compare their projection `Path`/`Selector` chain. Element
+projections keep expression-scoped comparison Loans, so reusing them for a
+local's lifetime (as the plan text suggested) would have needed a second
+lifetime model. The Origin-based liveness already used by T6e was reused
+instead. No new allocation: selector buffers remain stackalloc.
+
+Boundaries retained: moving a sibling part while a part borrow lives still
+rejects, because the root must remain fully initialized
+(`let a = pair.left@ref` / `let m = pair.right`). Scalar-part and whole scalar
+references (`let t = o.tag@uniq`, `let t = x@uniq` then `t += 1`) do not
+complete Binding (UnresolvedCount 6); that is a separate area, not claimed
+here. Generic shared-storage bodies reject the new Borrow form explicitly.
+
+Verification PASS: warning-free Debug/Release builds; 25 new
+`OwnedPathBorrowTest` cases (13 native positives including arguments,
+receivers and sibling calls; 11 negatives asserting complete Binding plus
+ComparisonLoanConflict, including the closed hole; an immutable-owner `uniq`
+rejection). Before the new tests existed, the change passed the full Debug
+suite (8,934, `t6i-pre-debug.xml`). Final full suites: 8,959 tests per
+configuration, no skips (`t6i-full-debug.xml`, `t6i-full-release.xml`).
+Native: 174 archived OwnedPathBorrow, NestedBorrowedProjection,
+DisjointBorrowedProjection, BorrowedFieldUpdate, BorrowedTuple, BorrowStruct
+and ElementBorrow fixtures pass 348 LLVM/native O0/O2 runs (`t6i-native.log`).
+The five fixtures added later pass 10 more runs (`t6i-native-2.log`). Release-generated
+OwnedPathBorrow fixtures match the archived Debug bytes. Hashes:
+`t6i-fixture-hashes.txt`, `t6i-source-hashes.txt`. NativeAOT NOT_RUN.
+
+T6k (M2/M3, I6; SPEC §15.6.2, R27) completed at approximately 08:58 JST.
+Probing stored references found that `view.0@uniq` and the implicit argument
+`bump(view.0)` bound completely with `view: ref/(uniq/Counter, bool)`. §15.6.2
+states that borrowed access cannot grant exclusive authority; these programs
+were rejected only by an ownership Unsupported at `view.0`. The `AdaptInput`
+reborrow branch now refuses a `uniq` target when `ReachedThroughShared` finds a
+`ref` base along the inline `BorrowedPathRoot` chain (bounded depth 64, no
+allocation). Explicit borrows report InvalidAssignment and calls report
+NoApplicableOverload. Two reproducers were added to
+`BorrowedTupleProjectionTest.RejectsExclusiveProjectionThroughSharedReceiver`.
+
+Verification PASS: warning-free Debug/Release; full suites 8,961 tests each, no
+skips (`t6k-full-debug.xml`, `t6k-full-release.xml`). All 179 fixtures archived
+for T6i regenerate byte-identically (Release), so their native results apply
+unchanged; 12 BorrowedTupleProjection fixtures pass 24 O0/O2 runs
+(`t6k-native.log`). Hashes: `t6k-fixture-hashes.txt`, `t6k-source-hashes.txt`.
+Probing also recorded T6l (stored exclusive-reference reborrows from owned
+storage and shared reborrows of stored `uniq` through `ref`, both Unsupported)
+and scalar references not completing Binding; neither was changed.
+
+T6m (M2/M3, I4/I6; SPEC §15.6.3) completed at approximately 09:11 JST. The
+chapter's own example (`func bump(n: uniq/i32)`, `var v = 0`, `bump(v@uniq)`
+twice) failed Binding with UnsupportedBinding at `v@uniq`; `bump(v)` worked.
+The shorthand branch of `BindConversion` admitted only struct, fixed-array,
+Tuple, Closure and reference operands. It now also admits scalar operands
+whose source is a Name or member path, reusing the existing `AdaptInput`
+Borrow/BorrowablePlace rules and existing ownership/lowering. A first draft
+admitted every scalar operand. The full suites then showed `1.25@ref`
+passing ownership but failing generation, a newly reachable path that
+generation does not implement. The extension was restricted to Places, and
+temporaries keep their Unsupported diagnosis. `ConversionEmissionTest`
+contained `let x = 1\nx@ref` expecting Unsupported. That encoded the old
+limit and conflicted with §15.6.3, so the case became `1@ref`, which is still
+Unsupported and keeps the distinct-category responsibility.
+`FloatConversionEmissionTest`'s `1.25@ref` case is unchanged and passes.
+
+Verification PASS: warning-free Debug/Release; 7 new `ScalarBorrowShorthandTest`
+cases (4 native positives: spec example, shared local, field path, bool; 2
+ComparisonLoanConflict negatives; immutable-local `uniq` Binding rejection).
+Full suites 8,968 tests each, no skips (`t6m-full-debug.xml`,
+`t6m-full-release.xml`). 4 fixtures pass 8 O0/O2 runs (`t6m-native.log`), and
+all previously archived fixtures regenerate byte-identically. Hashes:
+`t6m-fixture-hashes.txt`, `t6m-source-hashes.txt`. Arithmetic directly on
+scalar references (`n + 1` with `n: ref/i32`, `t += 1`) still does not bind and
+was not changed.
+
+Execution totals: 34 new managed cases (8,934 → 8,968 per configuration). One
+obsolete Unsupported expectation (`let x = 1\nx@ref`) was replaced by
+`1@ref`, as justified above. No Milestone Program, draft or NativeAOT work;
+the specification was not edited. The user-owned draft
+`draft/Design/2026-09-19 Shared Ownership and Using Guards.md` changed during
+the run and was neither read nor modified. Stopped at about 09:12 JST (about 45
+minutes elapsed). The remaining time could not fit another unit with its
+required full Debug/Release and native verification, and the next item (T6l)
+first needs an Origin decision. T6l is the next action in PLAN.md §2.

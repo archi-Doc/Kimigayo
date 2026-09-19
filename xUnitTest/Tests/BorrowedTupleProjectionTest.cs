@@ -28,6 +28,8 @@ public class BorrowedTupleProjectionTest
     [InlineData(Counter + "func change(pair: ref/(Counter, bool))\n    let item = pair.0@uniq\n    item.value = 42")]
     [InlineData("func change(pair: ref/((i32, bool), bool))\n    let item = pair.0@uniq\n    item.0 = 42")]
     [InlineData(Counter + "var counter = Counter.init()\nlet pair = (counter@ref, true)\nlet view = pair@ref\nlet item = view.0@uniq\nitem.value = 42")]
+    [InlineData(Counter + "var counter = Counter.init()\nlet pair = (counter@uniq, true)\nlet view = pair@ref\nlet item = view.0@uniq\nitem.value = 42")]
+    [InlineData(Counter + "func bump(c: uniq/Counter)\n    c.value += 1\nvar counter = Counter.init()\nlet pair = (counter@uniq, true)\nlet view = pair@ref\nbump(view.0)")]
     public void RejectsExclusiveProjectionThroughSharedReceiver(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

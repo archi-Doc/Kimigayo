@@ -65,6 +65,16 @@ internal sealed partial class BodyLowering
 
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
             }
+            else if (operation.Source is MemberAccessKoto path && ElementAccess.OwnedPathRoot(path) is { } owner)
+            {
+                if (value.Count != 0 || this.aggregatePlaces[operation.Place] is null || !ReferenceEquals(owner.BoundType, type) ||
+                    !ReferenceEquals(path.BoundType, output.Components[0]) || !this.TryBorrowedPathOffset(path, owner, out var pathOffset))
+                {
+                    return Fail("Owned path borrow does not match its stored layout and Types.", out failure);
+                }
+
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.Integer, pathOffset)]);
+            }
             else
             {
                 if (value.Count != 0 || !ReferenceEquals(type, output.Components[0]) ||

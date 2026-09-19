@@ -103,7 +103,7 @@ public class ConversionEmissionTest
     [InlineData("let x: u8 = 1\n-x@u8", "TypeMismatch")]
     [InlineData("let x: i128 = 1\nx@f64", "Unsupported")]
     [InlineData("let x: u128 = 5000000000\nx@f64", "Unsupported")]
-    [InlineData("let x = 1\nx@ref", "Unsupported")]
+    [InlineData("1@ref", "Unsupported")]
     [InlineData("let x = 1\nx@obj", "Unsupported")]
     [InlineData("3.9@i128", "Unsupported")]
     [InlineData("let flag = true\nflag@char", "TypeMismatch")]

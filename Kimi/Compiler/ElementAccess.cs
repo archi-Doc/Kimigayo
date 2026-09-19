@@ -109,6 +109,33 @@ internal static class ElementAccess
         return null;
     }
 
+    // SPEC 15.6: a direct inline field/Tuple path whose root is an owned local
+    // or parameter Name. Returns that Name, or null for other forms.
+    internal static IdentifierNameKoto? OwnedPathRoot(MemberAccessKoto field)
+    {
+        for (var depth = 0; depth < 64; depth++)
+        {
+            if (!IsSyntax(field) || !TryType(field, out _, out var position) || position < 0)
+            {
+                return null;
+            }
+
+            if (field.Left is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } root)
+            {
+                return root;
+            }
+
+            if (field.Left is not MemberAccessKoto parent)
+            {
+                return null;
+            }
+
+            field = parent;
+        }
+
+        return null;
+    }
+
     // The stored position of one path level and the aggregate that contains it.
     internal static int PathSelector(MemberAccessKoto field, out BoundType? owner, out BoundType? element)
     {

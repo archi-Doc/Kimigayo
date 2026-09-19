@@ -119,7 +119,14 @@ public sealed partial class OwnershipBody
                     }
 
                     var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && ReferenceTypes.IsStorage(this.Places[root].Type);
-                    var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, operation.LoanMode);
+                    var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, operation.LoanMode) ||
+                        this.ElementAccessConflicts(operation, root, mode);
+                    if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement &&
+                        this.IsDisjointProjection(op, p))
+                    {
+                        accessConflict = false; // SPEC 15.6.2: disjoint static paths below one owned root.
+                    }
+
                     if (this.Places[p].Type.Kind == BoundTypeKind.Slice && operation.Projection >= 0 && this.Projections[operation.Projection].Root == root)
                     {
                         var modifies = operation.Kind == OwnershipOperationKind.WriteElement ||
@@ -465,6 +472,12 @@ public sealed partial class OwnershipBody
         }
     }
 
+    // An element access names its root only through its projection; any such
+    // access conflicts with a live exclusive Loan of that root (SPEC 15.6.2).
+    // Element Moves leave the root partially initialized, which is checked separately.
+    private bool ElementAccessConflicts(OwnershipOperation operation, int root, LoanRequirement mode)
+        => mode == LoanRequirement.Uniq && operation.Kind == OwnershipOperationKind.ProjectElement && this.Projections[operation.Projection].Root == root;
+
     private bool IsBorrowAncestor(int value, int place)
     {
         // Follow the actual value's reborrow chain; equal Origin names alone do
@@ -528,7 +541,29 @@ public sealed partial class OwnershipBody
         var leftDepth = 0;
         var value = access;
         var node = this.Values[access];
-        if (node.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate)
+        var projection = this.Operations[access].Projection;
+        var leftRoot = -1;
+        if (this.Operations[access].Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement)
+        {
+            if (projection < 0)
+            {
+                return false;
+            }
+
+            // Only the static prefix of an element path is a precise footprint.
+            for (var path = this.Projections[projection].Path; path >= 0; path = this.Projections[path].Parent)
+            {
+                if (leftDepth == Limit)
+                {
+                    return false;
+                }
+
+                left[leftDepth++] = this.Projections[path].Selector;
+            }
+
+            leftRoot = this.Projections[projection].Root;
+        }
+        else if (node.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate)
         {
             var source = KotoHelper.UnwrapParentheses(this.Operations[access].Source);
             source = source switch
@@ -562,7 +597,11 @@ public sealed partial class OwnershipBody
             value = this.ValueOperands[node.Start];
         }
 
-        var leftRoot = this.ProjectionPath(value, left, ref leftDepth);
+        if (leftRoot < 0)
+        {
+            leftRoot = this.ProjectionPath(value, left, ref leftDepth);
+        }
+
         var rightDepth = 0;
         var rightRoot = this.ProjectionPath(this.borrowDefinitions[place], right, ref rightDepth);
         if (leftRoot < 0 || leftRoot != rightRoot)
@@ -592,7 +631,9 @@ public sealed partial class OwnershipBody
             {
                 if (node.Count == 0)
                 {
-                    return operation.Place;
+                    // An owned inline part's footprint is its static path below the root.
+                    return KotoHelper.UnwrapParentheses(operation.Source) is MemberAccessKoto part && ElementAccess.OwnedPathRoot(part) is { } owner &&
+                        !AddPath(part, owner, selectors, ref depth) ? -1 : operation.Place;
                 }
 
                 if (node.Count != 1)
