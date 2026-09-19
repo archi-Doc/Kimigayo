@@ -1,17 +1,20 @@
 # Kimigayo Implementation Status
 
-The **2026-09-20 documentation Markdown verification** passes 372 retained official
-CommonMark examples, corresponding Markdig comparisons, intentional profile
-differences and 568 generated interactions. Source ranges, Unicode 15, candidate
-identity, cancellation and real Kimigayo declaration/publication inputs are
-covered. A quoted-link-destination defect was corrected. Debug/Release solution
-builds have zero warnings/errors; **947 documentation tests and all 10,157 managed
-tests** pass per configuration, with native O0/O2 documentation fixture execution
-in both configurations. The existing Markdig-backed product API is unchanged.
-The independent immutable syntax/candidate API still has no product renderer,
-structured URL resolver or publication adapter. These results are bounded
-verification, not exhaustive conformance or measured speedup. NativeAOT was not run.
-[Evidence and boundaries](PLAN_HISTORY.md#documentation-markdown-tests-20260920).
+The **2026-09-20 documentation Markdown verification and benchmarks** retain 372
+official CommonMark cases, corresponding Markdig comparisons, intentional profile
+differences and 568 generated interactions. Plain paragraph construction,
+contiguous fenced-code slices and single initial candidate extraction reduce
+measured costs. Against the DM3 baseline, six representative inputs show 36.0%
+lower geometric-mean parse time and 51.8% lower allocations; comparison with Markdig,
+scaling, query and concurrency limits are in the [benchmark report](Benchmark/DocumentationMarkdown.md).
+Final Debug/Release solution builds have zero warnings/errors; **965 documentation
+tests and all 10,175 managed tests** pass per configuration. Source ranges,
+Unicode 15, cancellation and Kimigayo integration remain covered. Native O0/O2
+fixture execution passed in DM3 and was not repeated in DM4; NativeAOT was not run.
+The existing Markdig-backed product API is unchanged. The independent syntax and
+candidate API still has no product renderer, structured URL resolver or publication
+adapter. Results cover the implemented parser, not exhaustive conformance or
+whole-product performance. [Execution evidence](PLAN_HISTORY.md#documentation-markdown-benchmarks-20260920).
 
 The **2026-09-19 compiler continuation** adds supported source-module common
 generation and Library inspection, disjoint sibling Moves under inline-part

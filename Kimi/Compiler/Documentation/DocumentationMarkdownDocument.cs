@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Collections;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -36,6 +37,8 @@ public enum DocumentationMarkdownKind : byte
 /// </summary>
 public sealed partial class DocumentationMarkdownDocument
 {
+    private static readonly SearchValues<char> InlineSyntax = SearchValues.Create("*_`[\\&\n\0<]");
+
     private readonly MarkdownNodeData[] nodes;
 
     private readonly string[] values;
@@ -130,6 +133,34 @@ public sealed partial class DocumentationMarkdownDocument
         if (text.Contains('\r'))
         {
             throw new ArgumentException("Documentation text must use normalized LF line endings.", nameof(text));
+        }
+
+        var plain = text.AsSpan().Trim(" \t");
+        if (plain.IsEmpty)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return new(text, [new() { Kind = DocumentationMarkdownKind.Document, End = text.Length }], [], source);
+        }
+
+        // A single plain paragraph needs no mutable parser or pooled scratch.
+        // Conservatively defer every possible block opener and inline marker.
+        if (!char.IsAsciiDigit(plain[0]) && !"#>-+~".Contains(plain[0]) && plain.IndexOfAny(InlineSyntax) < 0)
+        {
+            if (maximumDepth < 2)
+            {
+                throw new DocumentationMarkdownLimitException(maximumDepth);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var start = text.Length - text.AsSpan().TrimStart(" \t").Length;
+            var end = start + plain.Length;
+            MarkdownNodeData[] nodes =
+            [
+                new() { Kind = DocumentationMarkdownKind.Document, End = text.Length, First = 1, Last = 1 },
+                new() { Kind = DocumentationMarkdownKind.Paragraph, Start = start, End = text.Length, First = 2, Last = 2 },
+                new() { Kind = DocumentationMarkdownKind.Text, Parent = 1, Start = start, End = end, TextStart = start, TextLength = plain.Length },
+            ];
+            return new(text, nodes, [], source);
         }
 
         using var parser = new DocumentationMarkdownParser(text, cancellationToken, maximumDepth);

@@ -14,6 +14,76 @@ namespace XunitTest;
 public class DocumentationMarkdownBoundaryTest
 {
     [Theory]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    [InlineData("plain text")]
+    [InlineData("   plain text  \t")]
+    [InlineData("\t😀 日本語 & text")]
+    [InlineData("123. text")]
+    [InlineData("text\nnext")]
+    [InlineData("# heading")]
+    [InlineData("- list")]
+    [InlineData("<https://a.b>")]
+    [InlineData("text **strong**")]
+    public void PlainFastPathPreservesGeneralParserTreeAndRanges(string input)
+    {
+        var optimized = DocumentationMarkdownDocument.Parse(input);
+        using var parser = new DocumentationMarkdownParser(input, CancellationToken.None, 256);
+        var general = parser.Parse(null);
+        Assert.Equal(Snapshot(general.Root), Snapshot(optimized.Root));
+        DocumentationMarkdownParserTest.AssertRanges(optimized);
+
+        static string[] Snapshot(DocumentationMarkdownNode root)
+        {
+            var result = new List<string>();
+            var pending = new Stack<DocumentationMarkdownNode>();
+            pending.Push(root);
+            while (pending.TryPop(out var node))
+            {
+                result.Add($"{node.Kind}|{node.Span}|{node.Text.ToString()}|{node.HeadingLevel}|{node.Destination}|{node.Title}");
+                foreach (var child in node.Children.Reverse())
+                {
+                    pending.Push(child);
+                }
+            }
+
+            return result.ToArray();
+        }
+    }
+
+    [Fact]
+    public void PlainFastPathRetainsDepthAndCancellationContracts()
+    {
+        Assert.Throws<DocumentationMarkdownLimitException>(() => DocumentationMarkdownDocument.Parse("plain", maximumDepth: 1));
+        Assert.Null(DocumentationMarkdownDocument.Parse(" \t", maximumDepth: 1).Summary);
+        Assert.Throws<OperationCanceledException>(() => DocumentationMarkdownDocument.Parse("plain", new CancellationToken(true)));
+    }
+
+    [Theory]
+    [InlineData("```\none\n\ntwo\n```", "one\n\ntwo\n")]
+    [InlineData("```\none\n\ntwo", "one\n\ntwo\n")]
+    [InlineData("  ```\n  one\n\n  two\n  ```", "one\n\ntwo\n")]
+    [InlineData("> ```\n> one\n>\n> two\n> ```", "one\n\ntwo\n")]
+    [InlineData("- ```\n  one\n\n  two\n  ```", "one\n\ntwo\n")]
+    [InlineData("```\none\n\0two\nthree\n```", "one\n�two\nthree\n")]
+    public void CodeSlicesPreserveBlankLinesPrefixesAndSyntheticFinalNewline(string input, string expected)
+    {
+        var doc = DocumentationMarkdownDocument.Parse(input);
+        var code = doc.Root.FirstChild!.Value;
+        while (code.Kind != DocumentationMarkdownKind.CodeBlock)
+        {
+            code = code.FirstChild!.Value;
+        }
+
+        Assert.Equal(expected, string.Concat(code.Children.Select(x => x.Kind == DocumentationMarkdownKind.SoftBreak ? "\n" : x.Text.ToString())));
+        DocumentationMarkdownParserTest.AssertRanges(doc);
+        foreach (var leaf in code.Children)
+        {
+            Assert.Equal(leaf.Span, leaf.SourceSpan);
+        }
+    }
+
+    [Theory]
     [InlineData("# title", DocumentationMarkdownKind.Heading)]
     [InlineData("- item", DocumentationMarkdownKind.BulletList)]
     [InlineData("> quote", DocumentationMarkdownKind.Quote)]

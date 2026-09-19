@@ -426,20 +426,37 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
             this.SetValue(padding, new string(' ', cursor.VirtualSpaces));
         }
 
-        if (cursor.Position < cursor.End)
+        // Adjacent physical code lines can borrow one contiguous source slice.
+        // Consumed quote/list prefixes, partial tabs and decoded NULs split slices.
+        var lineEnd = cursor.End < this.text.Length ? cursor.End + 1 : cursor.End;
+        if (cursor.Position < lineEnd)
         {
-            var node = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position, cursor.End);
-            this.nodes[node].TextStart = cursor.Position;
-            this.nodes[node].TextLength = cursor.End - cursor.Position;
-            if (this.text.AsSpan(cursor.Position, cursor.End - cursor.Position).Contains('\0'))
+            var content = this.text.AsSpan(cursor.Position, lineEnd - cursor.Position);
+            var last = this.nodes[parent].Last;
+            if (content.Contains('\0'))
             {
-                this.SetValue(node, this.text[cursor.Position..cursor.End].Replace('\0', '\uFFFD'));
+                var node = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position, lineEnd);
+                this.SetValue(node, content.ToString().Replace('\0', '\uFFFD'));
+            }
+            else if (last != 0 && this.nodes[last].Kind == DocumentationMarkdownKind.Text && this.nodes[last].TextStart >= 0 && this.nodes[last].End == cursor.Position)
+            {
+                this.nodes[last].TextLength += content.Length;
+                this.nodes[last].End = lineEnd;
+            }
+            else
+            {
+                var node = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position, lineEnd);
+                this.nodes[node].TextStart = cursor.Position;
+                this.nodes[node].TextLength = content.Length;
             }
         }
 
         // Fenced code has a final LF even when the physical last line has none.
-        var lineEnd = cursor.End < this.text.Length ? cursor.End + 1 : cursor.End;
-        this.AddNode(DocumentationMarkdownKind.SoftBreak, parent, cursor.End, lineEnd);
+        if (cursor.End == this.text.Length)
+        {
+            this.AddNode(DocumentationMarkdownKind.SoftBreak, parent, cursor.End, lineEnd);
+        }
+
         this.nodes[parent].End = lineEnd;
         this.UpdateEnds(lineEnd);
     }

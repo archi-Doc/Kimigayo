@@ -37,7 +37,7 @@ public sealed partial class DocumentationMarkdownDocument
 {
     private DocumentationMarkdownItem[]? items;
 
-    /// <summary>Extracts and atomically caches source-ordered candidates, without assuming declaration information.</summary>
+    /// <summary>Extracts and publishes source-ordered candidates once, without assuming declaration information.</summary>
     /// <param name = "cancellationToken">Cancellation of an unpublished extraction attempt.</param>
     /// <returns>Read-only candidates owned by this snapshot.</returns>
     public ReadOnlySpan<DocumentationMarkdownItem> GetItemCandidates(CancellationToken cancellationToken = default)
@@ -49,6 +49,24 @@ public sealed partial class DocumentationMarkdownDocument
             return existing;
         }
 
+        // Reuse private snapshot storage as the monitor; allocate no lock per document.
+        // Only the first extraction synchronizes. Completed reads stay lock-free.
+        lock (this.nodes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (this.items is not null)
+            {
+                return this.items;
+            }
+
+            var completed = this.ExtractItemCandidates(cancellationToken);
+            Volatile.Write(ref this.items, completed);
+            return completed;
+        }
+    }
+
+    private DocumentationMarkdownItem[] ExtractItemCandidates(CancellationToken cancellationToken)
+    {
         MarkdownBuffer<DocumentationMarkdownItem> result = default;
         try
         {
@@ -90,7 +108,7 @@ public sealed partial class DocumentationMarkdownDocument
             var completed = result.Span.ToArray();
             Array.Reverse(completed);
             cancellationToken.ThrowIfCancellationRequested();
-            return Interlocked.CompareExchange(ref this.items, completed, null) ?? completed;
+            return completed;
         }
         finally
         {

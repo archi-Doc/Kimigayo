@@ -6,6 +6,7 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Documentation Markdown benchmarks and improvements (2026-09-20)](#documentation-markdown-benchmarks-20260920)
 - [Compiler continuation: native requirements and LibraryImport validation (2026-09-19 13:29 UTC)](#compiler-continuation-20260919-132943)
 - [Compiler continuation: source modules and Library inspection (2026-09-19)](#compiler-continuation-20260919-113419)
 
@@ -34,6 +35,78 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 - [Plan changes, reverted approaches and out-of-scope findings](#plan-changes)
 - [STATUS dated records](#status-record-index)
 - [STATUS area snapshot and 2026-09-14/15 verification](#status-area-snapshot)
+
+<a id="documentation-markdown-benchmarks-20260920"></a>
+
+## Documentation Markdown DM4 — 2026-09-20
+
+The user requested step 4: compare time/allocations with Markdig and make necessary
+improvements. Entry baseline was clean commit `4c53331`. The product Markdig path,
+dependencies, specification and draft were preserved. No NativeAOT or native
+execution was performed in this step.
+
+The pre-tuning gates were: retain DM3 regression coverage; no allocation regression
+in six representative parse workloads; at least 10% geometric-mean time or
+allocation improvement over DM3 to retain changes; investigate repeated timing
+regressions above 10%; largest approximately 4× input growth below 6× time unless
+explained; no unexplained quadratic trends; zero allocated bytes for cached
+summary/candidates/source mapping. Parsing, fixture-adapted item processing,
+retained results, three isolated first calls per input/engine and concurrency/
+interruption were measured separately. These gates are historical acceptance
+criteria for this execution, not universal runtime guarantees.
+
+The [report](Benchmark/DocumentationMarkdown.md) owns detailed methods, results,
+environment, reproduction commands, hashes and links to raw baseline/final/paired
+and diagnostic JSON. Measurements use Release .NET 10.0.12, disabled tiering,
+process CPU affinity, seven alternating warm samples (15 in the same-process
+DM3/final pair), and identical LF/HTML-disabled/precise-location inputs. Recorded
+Markdig assembly version 1.3.0.0 belongs to NuGet package 1.3.2.
+
+Changes and evidence:
+
+- Plain single-line paragraphs construct immutable nodes without parser scratch;
+  summary allocation falls from 456 to 216 B.
+- Contiguous physical fenced-code slices coalesce while preserving removed
+  prefixes, NUL replacement and synthetic final LF; the 256-line example falls
+  from 23,088 to 608 B. Eighteen regression cases exercise fast-path tree/range
+  equivalence and code-slice boundaries.
+- Dedicated simultaneous-worker measurements exposed duplicate first extraction.
+  A monitor on private node storage serializes only unpublished extraction;
+  completed reads remain lock-free. At 2,048 items/16 callers, median allocations
+  fall from 1,038,824 to 147,728 B including coordination. Failed/cancelled attempts
+  publish nothing. A waiting caller observes cancellation after acquiring the
+  monitor; waiting itself is not cancellable.
+- Same-process final/DM3 geometric-mean ratios are 0.640 time / 0.482 allocation.
+  Final/Markdig ratios are 0.566 / 0.256 for the six representative parse inputs.
+  All pre-tuning gates above pass. Classification has a small time/allocation
+  disadvantage against the narrower fixture adapter; adversarial unequal
+  backticks also allocate more than Markdig. Both are disclosed, without weakening
+  node metadata or cancellation contracts.
+
+Failures and measurement boundaries:
+
+- Initial broad runs stopped at Markdig internal depth exceptions for
+  `Delimiters-16384` and `Unmatched-brackets-16384`. The harness now records these
+  rejected comparisons explicitly and measures the independent cases; it never
+  reports an exception as a zero-time parse. Final baseline/final runs complete.
+- The first same-process loader shared Tinyhand and failed duplicate registration.
+  Isolating baseline DLL dependencies in its load context corrected the harness.
+- Preliminary pinned-CPU concurrency observations included cold scheduling and
+  were superseded by dedicated seven-sample diagnostics with prepared workers.
+  Cancellation probes include timer scheduling and may cancel before parsing;
+  their elapsed time is not polling latency. Retained heap deltas are estimates;
+  whole-process peak memory includes the harness and does not prove a parser peak
+  reduction. No rendering/URL or whole-product speedup was measured.
+
+Final verification: warning-free `dotnet build Kimigayo.slnx -c Debug --no-restore`
+and the corresponding Release build; `dotnet xUnitTest/bin/<configuration>/net10.0/xUnitTest.dll
+-xml bin/documentation-markdown/dm4-full-<configuration>.xml` passes **10,175 tests,
+zero failures/errors/skips** per configuration (965 documentation cases included).
+The runner deprecates `-xml` in favor of `-result-xml`; it still writes the results.
+The focused Release documentation run also passes all 965. Local build/test logs
+and XML live under `bin/documentation-markdown/dm4-*`; raw benchmark JSON is kept
+under `Benchmark/Results/DocumentationMarkdown/2026-09-20-*`. Current next actions
+remain exclusively in [PLAN.md §2](PLAN.md#2-execution-state).
 
 <a id="migration-audit"></a>
 
