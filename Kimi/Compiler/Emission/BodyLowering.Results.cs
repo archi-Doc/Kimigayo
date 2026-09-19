@@ -245,41 +245,9 @@ internal sealed partial class BodyLowering
         for (var n = 0; n < value.Count; n++)
         {
             var input = body.PhiInputs[value.Start + n];
-            if ((uint)input.Edge >= (uint)body.Edges.Count)
+            if (!this.ValidatePhiInput(body, id, value.Start + n, out var block, out failure))
             {
-                return Fail("Invalid result arrival edge.", out failure);
-            }
-
-            var edge = body.Edges[input.Edge];
-            if ((uint)edge.From >= (uint)body.Operations.Count)
-            {
-                return Fail("Invalid result predecessor.", out failure);
-            }
-
-            var block = this.blocks[edge.From];
-            if (edge.To != id || edge.Kind != OwnershipEdgeKind.Normal || (block >= 0 && this.phiSeen[block] == id) ||
-                !this.Dominates(input.Value, edge.From))
-            {
-                return Fail("Phi value is unavailable at its actual predecessor.", out failure);
-            }
-
-            if (block >= 0)
-            {
-                this.phiSeen[block] = id;
-            }
-
-            if (input.Write >= 0)
-            {
-                if ((uint)input.Write >= (uint)body.Operations.Count || body.Operations[input.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } write ||
-                    write.Place != body.Operations[id].Place || body.Values[input.Write].Kind != OwnershipValueKind.Alias ||
-                    !this.Dominates(input.Write, edge.From) || Definition(body, Input(body, input.Write, 0)) != input.Value)
-                {
-                    return Fail("Result was not secured before cleanup.", out failure);
-                }
-            }
-            else if (input.Write != -1 || body.Operations[id].Source is not (Parsing.AndKoto or Parsing.OrKoto))
-            {
-                return Fail("Missing result acquisition operation.", out failure);
+                return false;
             }
 
             if (block < 0)
@@ -299,6 +267,51 @@ internal sealed partial class BodyLowering
         if (this.blocks[id] >= 0)
         {
             function.AddScalar(EmissionOpcode.Phi, id, CollectionsMarshal.AsSpan(this.phiOperands), llvm);
+        }
+
+        return true;
+    }
+
+    private bool ValidatePhiInput(OwnershipBody body, int id, int index, out int block, out string? failure)
+    {
+        block = -1;
+        failure = null;
+        var input = body.PhiInputs[index];
+        if ((uint)input.Edge >= (uint)body.Edges.Count)
+        {
+            return Fail("Invalid result arrival edge.", out failure);
+        }
+
+        var edge = body.Edges[input.Edge];
+        if ((uint)edge.From >= (uint)body.Operations.Count)
+        {
+            return Fail("Invalid result predecessor.", out failure);
+        }
+
+        block = this.blocks[edge.From];
+        if (edge.To != id || edge.Kind != OwnershipEdgeKind.Normal || (block >= 0 && this.phiSeen[block] == id) ||
+            !this.Dominates(input.Value, edge.From))
+        {
+            return Fail("Phi value is unavailable at its actual predecessor.", out failure);
+        }
+
+        if (block >= 0)
+        {
+            this.phiSeen[block] = id;
+        }
+
+        if (input.Write >= 0)
+        {
+            if ((uint)input.Write >= (uint)body.Operations.Count || body.Operations[input.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } write ||
+                write.Place != body.Operations[id].Place || body.Values[input.Write].Kind != OwnershipValueKind.Alias ||
+                !this.Dominates(input.Write, edge.From) || Definition(body, Input(body, input.Write, 0)) != input.Value)
+            {
+                return Fail("Result was not secured before cleanup.", out failure);
+            }
+        }
+        else if (input.Write != -1 || body.Operations[id].Source is not (Parsing.AndKoto or Parsing.OrKoto))
+        {
+            return Fail("Missing result acquisition operation.", out failure);
         }
 
         return true;

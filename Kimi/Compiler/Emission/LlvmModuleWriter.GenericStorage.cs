@@ -86,7 +86,7 @@ internal static partial class LlvmModuleWriter
             }
 
             output.Write(")\n");
-            output.Write(selected.Result == "void" ? "  ret void\n}\n" : $"  ret {selected.Result} %selected\n}}\n");
+            output.Write(selected.NoReturn ? "  unreachable\n}\n" : selected.Result == "void" ? "  ret void\n}\n" : $"  ret {selected.Result} %selected\n}}\n");
             return;
         }
 
@@ -95,7 +95,7 @@ internal static partial class LlvmModuleWriter
             output.Write($"  %scratch = alloca [{entry.ScratchSize} x i8], align {entry.ScratchAlignment}\n");
         }
 
-        if (!entry.Abi.ResultSlot && entry.Result.Layout.Size != 0)
+        if (!entry.Abi.ResultSlot && entry.Result is { Layout.Size: > 0 })
         {
             output.Write($"  %ret = alloca {entry.Result.Layout.StorageType}, align {entry.Result.Layout.Alignment}\n");
         }
@@ -125,14 +125,18 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        output.Write($"  call void @{entry.Body.Name}(ptr {(entry.Abi.ResultSlot || entry.Result.Layout.Size != 0 ? "%ret" : "null")}");
+        output.Write($"  call void @{entry.Body.Name}(ptr {(entry.Abi.ResultSlot || entry.Result is { Layout.Size: > 0 } ? "%ret" : "null")}");
         for (var i = 0; i < entry.Parameters.Length; i++)
         {
             output.Write(entry.Parameters[i].Layout.Size == 0 ? ", ptr null" : entry.Parameters[i].ArgumentType == "ptr" && entry.Parameters[i].ComputationType != "ptr" ? $", ptr %a{i}" : $", ptr %arg{i}");
         }
 
         output.Write($", ptr @{name}_offsets, ptr @{name}_policies, ptr {(entry.ScratchSize == 0 ? "null" : "%scratch")}, ptr @{name}_direct)\n");
-        if (entry.Abi.Result == "void")
+        if (entry.Abi.NoReturn)
+        {
+            output.Write("  unreachable\n}\n");
+        }
+        else if (entry.Abi.Result == "void")
         {
             output.Write("  ret void\n}\n");
         }
@@ -142,7 +146,7 @@ internal static partial class LlvmModuleWriter
         }
         else
         {
-            output.Write($"  %value = load {entry.Abi.Result}, ptr %ret, align {entry.Result.Layout.Alignment}\n  ret {entry.Abi.Result} %value\n}}\n");
+            output.Write($"  %value = load {entry.Abi.Result}, ptr %ret, align {entry.Result!.Layout.Alignment}\n  ret {entry.Abi.Result} %value\n}}\n");
         }
     }
 
@@ -154,7 +158,7 @@ internal static partial class LlvmModuleWriter
             output.Write($", ptr %a{p}");
         }
 
-        output.Write(", ptr %offsets, ptr %policies, ptr %scratch, ptr %direct) #0 {\nentry:\n");
+        output.Write($", ptr %offsets, ptr %policies, ptr %scratch, ptr %direct){(body.NoReturn ? " noreturn" : string.Empty)} #0 {{\nentry:\n");
         for (var i = 0; i < body.DirectArguments.Length; i++)
         {
             output.Write($"  %directSlot{i} = getelementptr ptr, ptr %direct, i64 {i}\n  %directCall{i} = load ptr, ptr %directSlot{i}, align 8\n");
@@ -233,8 +237,23 @@ internal static partial class LlvmModuleWriter
 
                 switch (op.Kind)
                 {
+                    case SharedStorageOperation.StringLiteral:
+                        var text = source < 0 ? null : constants[source];
+                        output.Write($"  store %kimi.string {{ ptr {(text is null ? "null" : "@" + text.Name)}, i64 {text?.ByteLength ?? 0}, i8 {WindowsLowering.StaticReleaseKind} }}, ptr %p{dest}, align {WindowsLowering.String.Layout.Alignment}\n");
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.WriteLine:
+                    case SharedStorageOperation.AbortMessage:
+                        var callLocation = constants[op.Location];
+                        var runtime = op.Kind == SharedStorageOperation.WriteLine ? WindowsLowering.WriteLine : WindowsLowering.AbortMessage;
+                        output.Write($"  call void @{runtime.Name}(ptr %p{source}, ptr @{callLocation.Name}, i64 {callLocation.ByteLength})\n");
+                        break;
                     case SharedStorageOperation.StorageAddress:
                         output.Write($"  store ptr %place{source}, ptr %p{dest}, align 8\n");
+                        Live(dest, true);
+                        break;
+                    case SharedStorageOperation.Reborrow:
+                        output.Write($"  %reborrow{id} = load ptr, ptr %p{source}, align 8\n  store ptr %reborrow{id}, ptr %p{dest}, align 8\n");
                         Live(dest, true);
                         break;
                     case SharedStorageOperation.CaseTest:
@@ -381,13 +400,40 @@ internal static partial class LlvmModuleWriter
 
             if (op.Scalar is { } scalar)
             {
-                if (scalar.Kind == OwnershipValueKind.Constant)
+                if (scalar.Kind == OwnershipValueKind.Phi)
+                {
+                    output.Write($"  %v{id} = phi {scalar.Type} ");
+                    for (var n = 0; n < scalar.Second; n++)
+                    {
+                        var input = body.PhiInputs[scalar.First + n];
+                        if (n != 0)
+                        {
+                            output.Write(", ");
+                        }
+
+                        output.Write($"[ %v{input.Value}, %phiFrom{input.Predecessor} ]");
+                    }
+
+                    output.Write('\n');
+                }
+                else if (scalar.Kind == OwnershipValueKind.Constant)
                 {
                     output.Write($"  %v{id} = or {scalar.Type} 0, {scalar.Constant}\n");
                 }
                 else if (scalar.Kind == OwnershipValueKind.Alias)
                 {
                     output.Write($"  %v{id} = or {scalar.Type} 0, %v{scalar.First}\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Convert)
+                {
+                    var conversion = body.Conversions[scalar.Second];
+                    var plan = conversion.Plan;
+                    var instruction = new EmissionInstruction(EmissionOpcode.Convert, id, Place: body.Instructions.Length + id, Constant: op.Location, ScalarType: scalar.Type, ScalarOperator: plan.Operator, Check: plan.Checked ? ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None, Representation: conversion.Source, LowerPredicate: plan.LowerPredicate, UpperPredicate: plan.UpperPredicate);
+                    WriteConversion(output, constants, instruction, [new(EmissionOperandKind.Value, scalar.First), new(EmissionOperandKind.Integer, plan.Lower), new(EmissionOperandKind.Integer, plan.Upper)]);
+                    if (plan.Operator is null)
+                    {
+                        output.Write($"  %v{id} = or {scalar.Type} 0, %v{scalar.First}\n");
+                    }
                 }
                 else if (scalar.Kind == OwnershipValueKind.Unary && scalar.Operator == "not")
                 {
@@ -422,6 +468,25 @@ internal static partial class LlvmModuleWriter
                     var location = constants[op.Location];
                     output.Write($"  %sum{id} = call {{ {scalar.Type}, i1 }} @llvm.{scalar.Operator}.with.overflow.{scalar.Type}({scalar.Type} %v{scalar.First}, {scalar.Type} %v{scalar.Second})\n  %v{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 0\n  %overflow{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 1\n");
                     output.Write($"  br i1 %overflow{id}, label %overflowAbort{id}, label %sumReady{id}\noverflowAbort{id}:\n  call void @{WindowsLowering.Abort.Name}(i32 {WindowsLowering.IntegerOverflowReason}, ptr @{location.Name}, i64 {location.ByteLength}, i64 -2)\n  unreachable\nsumReady{id}:\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Binary && scalar.CountWidth != 0)
+                {
+                    var location = constants[op.Location];
+                    var width = int.Parse(scalar.Type.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
+                    // Unsigned comparison also rejects every negative signed count.
+                    // Check in the original count Type before widening or truncating it.
+                    output.Write($"  %badShift{id} = icmp uge i{scalar.CountWidth} %v{scalar.Second}, {width}\n  br i1 %badShift{id}, label %shiftAbort{id}, label %shiftReady{id}\nshiftAbort{id}:\n");
+                    output.Write($"  call void @{WindowsLowering.Abort.Name}(i32 {WindowsLowering.IntegerShiftCountReason}, ptr @{location.Name}, i64 {location.ByteLength}, i64 -2)\n  unreachable\nshiftReady{id}:\n");
+                    if (scalar.CountWidth != width)
+                    {
+                        output.Write($"  %shiftCount{id} = {(scalar.CountWidth < width ? "zext" : "trunc")} i{scalar.CountWidth} %v{scalar.Second} to {scalar.Type}\n");
+                    }
+
+                    output.Write($"  %v{id} = {scalar.Operator} {scalar.Type} %v{scalar.First}, %{(scalar.CountWidth == width ? "v" + scalar.Second : "shiftCount" + id)}\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Binary && scalar.Operator is "and" or "or" or "xor")
+                {
+                    output.Write($"  %v{id} = {scalar.Operator} {scalar.Type} %v{scalar.First}, %v{scalar.Second}\n");
                 }
                 else if (scalar.Kind == OwnershipValueKind.Binary)
                 {
@@ -460,6 +525,13 @@ internal static partial class LlvmModuleWriter
             }
             else if (op.Next >= 0)
             {
+                // Checks and conditional cleanup may split an operation's block.
+                // A dedicated arrival label keeps Phi predecessors independent of those splits.
+                if (body.Instructions[op.Next].Scalar is { Kind: OwnershipValueKind.Phi })
+                {
+                    output.Write($"  br label %phiFrom{id}\nphiFrom{id}:\n");
+                }
+
                 output.Write($"  br label %b{op.Next}\n");
             }
             else

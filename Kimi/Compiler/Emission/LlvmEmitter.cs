@@ -194,7 +194,8 @@ public sealed class LlvmEmitter
             }
 
             if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor &&
-                function.BoundSymbol.ReceiverIndex >= 0 && !ReferenceTypes.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType))
+                function.BoundSymbol.ReceiverIndex >= 0 && !ReferenceTypes.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType) &&
+                !StructStorage.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType))
             {
                 return "Ordinary structure methods need receiver/call lowering outside this subset.";
             }

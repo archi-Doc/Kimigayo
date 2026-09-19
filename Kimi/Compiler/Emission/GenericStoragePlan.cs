@@ -10,6 +10,9 @@ internal enum SharedStorageOperation : byte
 {
     Nothing,
     Initialize,
+    StringLiteral,
+    WriteLine,
+    AbortMessage,
     Declare,
     Transfer,
     Acquire,
@@ -30,12 +33,17 @@ internal enum SharedStorageOperation : byte
     Call,
     DirectCall,
     StorageAddress,
+    Reborrow,
     CaseTest,
     DecomposeEnum,
     Return,
 }
 
-internal readonly record struct SharedScalarValue(string Type, OwnershipValueKind Kind, int First, int Second, long Constant, string? Operator, bool Store);
+internal readonly record struct SharedScalarValue(string Type, OwnershipValueKind Kind, int First, int Second, long Constant, string? Operator, bool Store, int CountWidth = 0);
+
+internal readonly record struct SharedPhiInput(int Value, int Predecessor);
+
+internal readonly record struct SharedConversion(ValueLowering Source, BodyLowering.ConversionPlan Plan);
 
 internal readonly record struct SharedStorageInstruction(SharedStorageOperation Kind, int Destination, int Source, int Count, int CopyPlace, int Next, int Alternative, int Condition, int Location, bool Reachable, int DestructionStart = -1, int FieldOffset = -1, int Index = -1, SharedScalarValue? Scalar = null);
 
@@ -47,13 +55,13 @@ internal readonly record struct SharedValueCall(int Receiver, int[] Arguments);
 
 internal sealed record SharedCallAdapter(ValueLowering[] Parameters, ValueLowering Result, FunctionAbi? Entry = null, bool Borrowed = false);
 
-internal sealed record SharedDirectAdapter(FunctionAbi Abi, ValueLowering[] Parameters, ValueLowering Result);
+internal sealed record SharedDirectAdapter(FunctionAbi Abi, ValueLowering[] Parameters, ValueLowering? Result);
 
-internal sealed record SharedStorageBody(string Name, SharedStorageLeaf[] Leaves, SharedStorageInstruction[] Instructions, int PolicyCount, int ParameterCount, CleanupAction[] Destructions, bool[] LiveFlags, SharedEnumConstruction[] Constructions, SharedValueCall[] Calls, int[][] DirectArguments, SharedStorageLeaf[] Addresses, int AddressOffset);
+internal sealed record SharedStorageBody(string Name, SharedStorageLeaf[] Leaves, SharedStorageInstruction[] Instructions, int PolicyCount, int ParameterCount, CleanupAction[] Destructions, bool[] LiveFlags, SharedEnumConstruction[] Constructions, SharedValueCall[] Calls, int[][] DirectArguments, SharedStorageLeaf[] Addresses, int AddressOffset, SharedPhiInput[] PhiInputs, bool NoReturn, SharedConversion[] Conversions);
 
 internal readonly record struct SharedStoragePolicy(int Size, bool Copy, string? Destructor, long Length = 0, SharedCallAdapter? Call = null);
 
-internal sealed record SharedStorageEntry(FunctionAbi Abi, SharedStorageBody Body, int[] Offsets, SharedStoragePolicy[] Policies, int ScratchSize, int ScratchAlignment, ValueLowering[] Parameters, ValueLowering Result, SharedDirectAdapter[] DirectCalls, FunctionAbi? Selected);
+internal sealed record SharedStorageEntry(FunctionAbi Abi, SharedStorageBody Body, int[] Offsets, SharedStoragePolicy[] Policies, int ScratchSize, int ScratchAlignment, ValueLowering[] Parameters, ValueLowering? Result, SharedDirectAdapter[] DirectCalls, FunctionAbi? Selected);
 
 /// <summary>Builds storage-polymorphic CFGs from universally checked ownership plans. No lookup or body rebinding.</summary>
 internal sealed partial class GenericStoragePlan
@@ -132,10 +140,10 @@ internal sealed partial class GenericStoragePlan
         return false;
     }
 
-    // G10: an ordinary free function whose selected implementation needs no
-    // generic context (no receiver, defaults or compiler-provided lowering).
-    private static bool IsConcreteDirect(BoundCall call, FunctionKoto target)
-        => call.Receiver is null && !target.IsConstructor && call.Target.CompilerFunction == CompilerFunctionKind.None && call.TypeArguments.Length == 0;
+    // The selected concrete body supplies its verified ABI; receiver and constructor
+    // arguments use the same checked acquisition/slot mapping as generic targets.
+    private static bool IsConcreteDirect(BoundCall call)
+        => call.Target.CompilerFunction == CompilerFunctionKind.None && call.TypeArguments.Length == 0;
 
     private static ValueLowering? StorageValue(BoundType type, AggregateLayoutPool layouts)
         => type.Kind == BoundTypeKind.ResolvedRange ? layouts.Get(type)?.Value : FunctionAbi.GetValue(type, layouts);
@@ -145,6 +153,7 @@ internal sealed partial class GenericStoragePlan
         template = null;
         failure = null;
         var function = body.Function;
+        var noReturn = ReferenceEquals(function.BoundSymbol?.Type, BoundType.Never);
         if (!body.IsVerified || function.IsAnonymous || function.IsSpecialization || function.IsDestructor || function.AttributeChain is not null ||
             function.Parameters.Any(x => x.DefaultValue is not null || x.IsOptional))
         {
@@ -164,7 +173,8 @@ internal sealed partial class GenericStoragePlan
             if (op.Place < -1 || op.Place >= body.Places.Count || op.Input < -1 || op.Input >= body.Places.Count ||
                 op.Projection < -1 || op.Projection >= body.Projections.Count ||
                 (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans) &&
-                 !(op.Kind == OwnershipOperationKind.Call && op.Source is InvocationKoto { BoundCall.ReturnType: var unit } && ReferenceEquals(unit, BoundType.Unit))))
+                 !(op.Kind == OwnershipOperationKind.Call && op.Source is InvocationKoto { BoundCall.ReturnType: var result } &&
+                   (ReferenceEquals(result, BoundType.Unit) || ReferenceEquals(result, BoundType.Never)))))
             {
                 return Fail("Shared operation refers to invalid storage or projection.", out failure);
             }
@@ -174,6 +184,17 @@ internal sealed partial class GenericStoragePlan
             !BodyLowering.ValidateSharedValues(body) || !body.ValidateComparisonLoans() || !this.verifier.ValidateSharedGraph(body))
         {
             return Fail("Shared body has an inconsistent value-flow plan.", out failure);
+        }
+
+        if (noReturn)
+        {
+            for (var id = 0; id < body.Operations.Count; id++)
+            {
+                if (body.Operations[id].Kind is OwnershipOperationKind.Deliver or OwnershipOperationKind.Exit && this.verifier.SharedDominates(0, id))
+                {
+                    return Fail("Shared Never body has a normal result delivery or exit.", out failure);
+                }
+            }
         }
 
         var leaves = new List<SharedStorageLeaf>();
@@ -209,7 +230,7 @@ internal sealed partial class GenericStoragePlan
                     return Fail("Generic receiver field storage cannot be represented.", out failure);
                 }
             }
-            else if (!Add(place.Type, p, -1, -1, argument, result, 0))
+            else if (!ReferenceEquals(place.Type, BoundType.Never) && !Add(place.Type, p, -1, -1, argument, result, 0))
             {
                 return Fail("Generic storage requires finite owned fields, scalar values or Type parameters.", out failure);
             }
@@ -232,6 +253,8 @@ internal sealed partial class GenericStoragePlan
         var arguments = new List<int>();
         var destructions = new List<CleanupAction>();
         var liveFlags = new bool[leaves.Count];
+        var phiInputs = new List<SharedPhiInput>();
+        List<SharedConversion>? conversions = null;
         for (var id = 0; id < instructions.Length; id++)
         {
             var op = body.Operations[id];
@@ -302,6 +325,16 @@ internal sealed partial class GenericStoragePlan
                     ReferenceEquals(body.Operations[id - 1].Source, op.Source) && ReferenceEquals(op.Source.BoundType, body.Places[op.Place].Type):
                     kind = SharedStorageOperation.Initialize;
                     break;
+                case OwnershipOperationKind.Produce when ReferenceEquals(body.Places[op.Place].Type, BoundType.String):
+                    if (body.Places[op.Place].Kind != OwnershipPlaceKind.Temporary || op.Source is not StringLiteralKoto { AttributeChain: null } literal ||
+                        !ReferenceEquals(literal.BoundType, BoundType.String) || value.Kind != OwnershipValueKind.None || count != 1)
+                    {
+                        return Fail("Shared string construction requires a checked string literal.", out failure);
+                    }
+
+                    kind = SharedStorageOperation.StringLiteral;
+                    source = literal.Literal.Length == 0 ? -1 : module.Constants.Intern(literal.Literal, LlvmConstantKind.Text);
+                    break;
                 case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Element && op.Projection >= 0:
                     var projection = body.Projections[op.Projection];
                     if (projection.Path != op.Projection || projection.Output != id || projection.Parent >= 0 ||
@@ -333,7 +366,7 @@ internal sealed partial class GenericStoragePlan
                     kind = SharedStorageOperation.Boolean;
                     source = value.Constant == 0 ? 0 : 1;
                     break;
-                case OwnershipOperationKind.Produce when value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary or OwnershipValueKind.Unary &&
+                case OwnershipOperationKind.Produce when value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary or OwnershipValueKind.Unary or OwnershipValueKind.Convert &&
                     IsSharedScalar(body.Places[op.Place].Type):
                     kind = SharedStorageOperation.Initialize;
                     break;
@@ -580,6 +613,25 @@ internal sealed partial class GenericStoragePlan
                     (dest, source) = (source, dest);
                     kind = SharedStorageOperation.FieldAddress;
                     break;
+                case OwnershipOperationKind.Borrow when value.Kind == OwnershipValueKind.Address && value.Count == 1:
+                    var parentType = body.Places[op.Place].Type;
+                    var childType = op.Input < 0 ? null : body.Places[op.Input].Type;
+                    var parentRead = body.ValueOperands[value.Start];
+                    if (!ReferenceTypes.IsStorage(parentType) || !ReferenceTypes.IsStorage(childType) ||
+                        !ReferenceEquals(parentType.Components[0], childType!.Components[0]) ||
+                        (parentType.Semantics == SemanticsKind.Ref && childType.Semantics != SemanticsKind.Ref) ||
+                        op.LoanMode != (childType.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref) ||
+                        value.Constant != op.Place || count != 1 || counts[op.Input] != 1 || parentRead != id - 1 ||
+                        body.Operations[parentRead].Kind != OwnershipOperationKind.Read || body.Operations[parentRead].Place != op.Place ||
+                        !ReferenceEquals(body.Operations[parentRead].Source, KotoHelper.UnwrapParentheses(op.Source)) ||
+                        (body.IsReachable(id) && ((body.GetInputState(id, op.Place) & PlaceState.MustInit) == 0 || !this.verifier.SharedDominates(parentRead, id))))
+                    {
+                        return Fail("Shared reborrow requires an adjacent initialized reference read and compatible authority.", out failure);
+                    }
+
+                    kind = SharedStorageOperation.Reborrow;
+                    (dest, source) = (source, dest);
+                    break;
                 case OwnershipOperationKind.Borrow when value.Kind == OwnershipValueKind.Address && value.Count == 0:
                     if (op.Input < 0 || value.Constant != op.Place || !ReferenceTypes.IsStorage(body.Places[op.Input].Type) ||
                         !ReferenceEquals(body.Places[op.Input].Type.Components[0], body.Places[op.Place].Type) ||
@@ -610,12 +662,14 @@ internal sealed partial class GenericStoragePlan
                 case OwnershipOperationKind.Call:
                     if (op.Source is InvocationKoto { BoundCall: { } direct } directSyntax)
                     {
-                        if (direct.Target.Declaration is not FunctionKoto directTarget || !(IsGeneric(directTarget) || IsConcreteDirect(direct, directTarget)) ||
+                        var writeLine = ReferenceEquals(direct.Target, binding.Library.WriteLine);
+                        var abort = ReferenceEquals(direct.Target, binding.Library.Abort);
+                        if (direct.Target.Declaration is not FunctionKoto directTarget || !(IsGeneric(directTarget) || IsConcreteDirect(direct) || writeLine || abort) ||
                             direct.DefaultArguments.Length != 0 ||
                             arguments.Count != directTarget.Parameters.Count || arguments.Count != directSyntax.ArgumentNodes.Count + (direct.Receiver is null ? 0 : 1) ||
                             direct.ArgumentOperations.Length != directSyntax.ArgumentNodes.Count || direct.ArgumentToParameter.Length != directSyntax.ArgumentNodes.Count ||
                             !(directTarget.IsConstructor ? ReferenceEquals(direct.DeclaringType, direct.ReturnType) : ReferenceTypes.CallTypeMatches(binding.InstantiateStorageType(directTarget.BoundSymbol!.Type!, direct), direct.ReturnType, direct)) ||
-                            !(op.Place < 0 ? ReferenceEquals(direct.ReturnType, BoundType.Unit) : ReferenceEquals(body.Places[op.Place].Type, direct.ReturnType)) ||
+                            !(op.Place < 0 ? ReferenceEquals(direct.ReturnType, BoundType.Unit) || ReferenceEquals(direct.ReturnType, BoundType.Never) : ReferenceEquals(body.Places[op.Place].Type, direct.ReturnType)) ||
                             !ReferenceEquals(directSyntax.BoundType, direct.ReturnType))
                         {
                             return Fail($"Shared direct call to '{direct.Target.Name}' requires a checked generic function and explicit arguments.", out failure);
@@ -646,6 +700,22 @@ internal sealed partial class GenericStoragePlan
                         }
 
                         arguments.Clear();
+                        if (writeLine || abort)
+                        {
+                            if (slots.Length != 1 || !ReferenceEquals(body.Places[slots[0]].Type, BoundType.String) ||
+                                !ReferenceEquals(direct.ReturnType, abort ? BoundType.Never : BoundType.Unit) ||
+                                (abort && (directSyntax.Parent is not MacroKoto macro || !ReferenceEquals(macro.Operand, directSyntax))))
+                            {
+                                return Fail("Shared runtime call requires its canonical owned string argument and result contract.", out failure);
+                            }
+
+                            kind = abort ? SharedStorageOperation.AbortMessage : SharedStorageOperation.WriteLine;
+                            source = starts[slots[0]];
+                            dest = -1;
+                            count = 1;
+                            break;
+                        }
+
                         source = directCalls.Count;
                         directCalls.Add(direct);
                         directArguments.Add(slots);
@@ -844,7 +914,12 @@ internal sealed partial class GenericStoragePlan
                 }
             }
 
-            if ((alternative >= 0 && condition < 0) || !this.locations.TryGet(op.Source, directory, out var location))
+            if (op.Kind == OwnershipOperationKind.Call && ReferenceEquals(op.Source.BoundType, BoundType.Never) && (next >= 0 || alternative >= 0))
+            {
+                return Fail("Shared Never call has a normal continuation.", out failure);
+            }
+
+            if ((alternative >= 0 && condition < 0) || !this.locations.TryGet(kind == SharedStorageOperation.AbortMessage ? op.Source.Parent! : op.Source, directory, out var location))
             {
                 return Fail("Shared operation lacks its condition or diagnostic location.", out failure);
             }
@@ -879,21 +954,55 @@ internal sealed partial class GenericStoragePlan
 
             SharedScalarValue? scalar = null;
             var scalarPlace = op.Kind == OwnershipOperationKind.Consume ? op.Input : op.Place;
-            if (scalarPlace >= 0 && op.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Produce or OwnershipOperationKind.Consume or OwnershipOperationKind.Call &&
+            if (value.Kind == OwnershipValueKind.Phi)
+            {
+                if (scalarPlace < 0 || !IsSharedScalar(body.Places[scalarPlace].Type))
+                {
+                    return Fail("Shared result join requires a supported scalar Type.", out failure);
+                }
+
+                var start = phiInputs.Count;
+                for (var n = 0; n < value.Count; n++)
+                {
+                    var input = body.PhiInputs[value.Start + n];
+                    phiInputs.Add(new(input.Value, body.Edges[input.Edge].From));
+                }
+
+                scalar = new(SharedScalarType(body.Places[scalarPlace].Type), value.Kind, start, value.Count, 0, null, true);
+            }
+            else if (scalarPlace >= 0 && op.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Produce or OwnershipOperationKind.Consume or OwnershipOperationKind.Call &&
                 IsSharedScalar(body.Places[scalarPlace].Type))
             {
                 var first = value.Count > 0 ? body.ValueOperands[value.Start] : -1;
                 var second = value.Count > 1 ? body.ValueOperands[value.Start + 1] : -1;
+                if (value.Kind == OwnershipValueKind.Convert)
+                {
+                    var inputType = ScalarType(first);
+                    var targetType = body.Places[scalarPlace].Type;
+                    if (value.Count != 1 || ScalarTypes.Width(inputType) is not (8 or 16 or 32 or 64) ||
+                        ScalarTypes.Width(targetType) is not (8 or 16 or 32 or 64))
+                    {
+                        return Fail("Shared numeric conversion requires supported integer operands.", out failure);
+                    }
+
+                    conversions ??= new();
+                    second = conversions.Count;
+                    conversions.Add(new(WindowsLowering.GetValue(inputType!)!, BodyLowering.PlanConversion(inputType!, targetType, 64)));
+                }
+
                 var binary = value.Kind == OwnershipValueKind.Binary;
                 var arithmetic = value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent;
+                var bitwise = value.Operator is KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret;
+                var shift = value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
                 var operand = binary ? ScalarType(first) : null;
-                if (binary && (value.Count != 2 || !(arithmetic || ComparisonPredicate(value.Operator) is not null) ||
+                var countWidth = binary && shift ? ScalarTypes.Width(ScalarType(second)) : 0;
+                if (binary && (value.Count != 2 || !(arithmetic || bitwise || shift || ComparisonPredicate(value.Operator) is not null) ||
                     operand is null || !IsSharedScalar(operand) ||
                     (ReferenceEquals(operand, BoundType.Boolean) && value.Operator is not (KotoKind.EqualsEquals or KotoKind.ExclamationEquals)) ||
-                    !ReferenceEquals(operand, ScalarType(second)) ||
-                    !ReferenceEquals(body.Places[scalarPlace].Type, arithmetic ? operand : BoundType.Boolean)))
+                    (shift ? countWidth is not (8 or 16 or 32 or 64) : !ReferenceEquals(operand, ScalarType(second))) ||
+                    !ReferenceEquals(body.Places[scalarPlace].Type, arithmetic || bitwise || shift ? operand : BoundType.Boolean)))
                 {
-                    return Fail("Shared scalar operation requires checked integer arithmetic/comparison operands.", out failure);
+                    return Fail("Shared scalar operation requires compatible integer/boolean operands and result.", out failure);
                 }
 
                 var unary = value.Kind == OwnershipValueKind.Unary;
@@ -914,13 +1023,18 @@ internal sealed partial class GenericStoragePlan
                     KotoKind.Asterisk => sign + "mul",
                     KotoKind.Slash => sign + "div",
                     KotoKind.Percent => sign + "rem",
+                    KotoKind.Ampersand => "and",
+                    KotoKind.Bar => "or",
+                    KotoKind.Caret => "xor",
+                    KotoKind.LessThanLessThan => "shl",
+                    KotoKind.GreaterThanGreaterThan => sign == "s" ? "ashr" : "lshr",
                     KotoKind.EqualsEquals or KotoKind.ExclamationEquals => ComparisonPredicate(value.Operator) + ":" + SharedScalarType(operand!),
                     _ => sign + ComparisonPredicate(value.Operator) + ":" + SharedScalarType(operand!),
                 };
-                scalar = new(SharedScalarType(body.Places[scalarPlace].Type), value.Kind, first, second, unchecked((long)value.Constant), operation, op.Kind == OwnershipOperationKind.Produce && value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary or OwnershipValueKind.Unary);
+                scalar = new(SharedScalarType(body.Places[scalarPlace].Type), value.Kind, first, second, unchecked((long)value.Constant), operation, op.Kind == OwnershipOperationKind.Produce && value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary or OwnershipValueKind.Unary or OwnershipValueKind.Convert, countWidth);
             }
 
-            instructions[id] = new(kind, dest, source, count, copyPlace, next, alternative, condition, module.Constants.Intern(location, LlvmConstantKind.Location), body.IsReachable(id), destructionStart, fieldOffset, indexLeaf, scalar);
+            instructions[id] = new(kind, dest, source, count, copyPlace, next, alternative, condition, module.Constants.Intern(location, LlvmConstantKind.Location), this.verifier.SharedDominates(0, id), destructionStart, fieldOffset, indexLeaf, scalar);
         }
 
         // Canonical definition-side requirements: equal complete symbolic Types share
@@ -961,7 +1075,7 @@ internal sealed partial class GenericStoragePlan
             return Fail("Shared body has unsecured call arguments.", out failure);
         }
 
-        var physical = new SharedStorageBody("__kimi_shared" + module.SharedBodies.Count, leaves.ToArray(), instructions, policies.Count, function.Parameters.Count, destructions.ToArray(), liveFlags, constructions.ToArray(), valueCalls.ToArray(), directArguments.ToArray(), addresses, leaves.Count + projections.Count);
+        var physical = new SharedStorageBody("__kimi_shared" + module.SharedBodies.Count, leaves.ToArray(), instructions, policies.Count, function.Parameters.Count, destructions.ToArray(), liveFlags, constructions.ToArray(), valueCalls.ToArray(), directArguments.ToArray(), addresses, leaves.Count + projections.Count, phiInputs.ToArray(), noReturn, conversions?.ToArray() ?? []);
         template = new(body, physical, policies.ToArray(), projections.ToArray(), directCalls.ToArray());
         return true;
 
@@ -1023,7 +1137,7 @@ internal sealed partial class GenericStoragePlan
                 return true;
             }
 
-            if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Function or BoundTypeKind.Slice) && !EnumStorage.IsEnum(type) && !IsSharedScalar(type) && !borrowedStorage)
+            if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Function or BoundTypeKind.Slice) && !EnumStorage.IsEnum(type) && !IsSharedScalar(type) && !ReferenceEquals(type, BoundType.String) && !borrowedStorage)
             {
                 return false;
             }
@@ -1053,7 +1167,8 @@ internal sealed partial class GenericStoragePlan
     {
         adapter = null;
         var result = FunctionAbi.GetValue(call.ReturnType, layouts);
-        if (this.functions?.GetValueOrDefault(target) is not { } abi || result is null)
+        var noReturn = ReferenceEquals(call.ReturnType, BoundType.Never);
+        if (this.functions?.GetValueOrDefault(target) is not { } abi || (result is null && !noReturn) || abi.NoReturn != noReturn)
         {
             return false;
         }
@@ -1094,8 +1209,9 @@ internal sealed partial class GenericStoragePlan
         var values = new ValueLowering[parameters.Length];
         var abiParameters = new List<AbiParameter>();
         var result = call.ReturnType;
+        var noReturn = ReferenceEquals(result, BoundType.Never);
         var resultValue = FunctionAbi.GetValue(result, layouts);
-        if (resultValue is null)
+        if (resultValue is null && !noReturn)
         {
             return Fail("Shared entry result has no concrete representation.", out failure);
         }
@@ -1150,6 +1266,12 @@ internal sealed partial class GenericStoragePlan
         var resolved = new BoundType[body.Places.Count];
         for (var p = 0; p < resolved.Length; p++)
         {
+            if (ReferenceEquals(body.Places[p].Type, BoundType.Never))
+            {
+                resolved[p] = BoundType.Never; // No value, layout, scratch reservation or policy.
+                continue;
+            }
+
             var type = binding.InstantiateStorageType(body.Places[p].Type, call);
             var value = type is null ? null : StorageValue(type, layouts);
             if (type is null || value is null)
@@ -1306,7 +1428,7 @@ internal sealed partial class GenericStoragePlan
             policies[i] = new(value.Layout.Size, proof == ConstraintProof.Proven, destroy, array.Kind == BoundTypeKind.FixedArray ? array.Length : 0, adapter);
         }
 
-        var abi = new FunctionAbi("__kimi_generic_entry" + module.SharedEntries.Count, FunctionAbi.ResultType(result, layouts)!, abiParameters.ToArray(), resultSlot: resultSlot);
+        var abi = new FunctionAbi("__kimi_generic_entry" + module.SharedEntries.Count, FunctionAbi.ResultType(result, layouts)!, abiParameters.ToArray(), noReturn: noReturn, resultSlot: resultSlot);
         var selected = binding.SelectSpecialization(call);
         var directAdapters = new SharedDirectAdapter[template.DirectCalls.Length];
         var generated = new SharedStorageEntry(abi, template.Physical, offsets, policies, size, alignment, values, resultValue, directAdapters, selected is null ? null : this.functions!.GetValueOrDefault(selected));

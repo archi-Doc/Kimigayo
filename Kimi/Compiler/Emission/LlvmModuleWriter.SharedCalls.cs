@@ -12,7 +12,7 @@ internal static partial class LlvmModuleWriter
             output.Write($", ptr %a{i}");
         }
 
-        output.Write(") #0 {\nentry:\n");
+        output.Write(adapter.Abi.NoReturn ? ") noreturn #0 {\nentry:\n" : ") #0 {\nentry:\n");
         for (var i = 0; i < adapter.Parameters.Length; i++)
         {
             var value = adapter.Parameters[i];
@@ -55,13 +55,19 @@ internal static partial class LlvmModuleWriter
         }
 
         output.Write(")\n");
+        if (adapter.Abi.NoReturn)
+        {
+            output.Write("  unreachable\n}\n");
+            return;
+        }
+
         if (result == "i1")
         {
             output.Write("  %resultByte = zext i1 %value to i8\n  store i8 %resultByte, ptr %result, align 1\n");
         }
         else if (result != "void")
         {
-            output.Write($"  store {result} %value, ptr %result, align {adapter.Result.Layout.Alignment}\n");
+            output.Write($"  store {result} %value, ptr %result, align {adapter.Result!.Layout.Alignment}\n");
         }
 
         output.Write("  ret void\n}\n");

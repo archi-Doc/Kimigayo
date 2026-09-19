@@ -8,7 +8,7 @@ internal sealed partial class BodyLowering
     private int[] conversionIndices = [];
     private int[] physicalValues = [];
 
-    private static ConversionPlan PlanConversion(BoundType source, BoundType target, int pointerWidth)
+    internal static ConversionPlan PlanConversion(BoundType source, BoundType target, int pointerWidth)
     {
         if (FloatingTypes.Supports(source))
         {
@@ -119,7 +119,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private readonly record struct ConversionPlan(string? Operator, string? LowerPredicate, string? UpperPredicate, Int128 Lower, Int128 Upper)
+    internal readonly record struct ConversionPlan(string? Operator, string? LowerPredicate, string? UpperPredicate, Int128 Lower, Int128 Upper)
     {
         internal bool Checked => this.LowerPredicate is not null || this.UpperPredicate is not null;
     }

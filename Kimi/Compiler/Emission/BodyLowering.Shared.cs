@@ -11,6 +11,8 @@ internal sealed partial class BodyLowering
         var count = body.Operations.Count;
         Grow(ref this.blocks, count);
         Grow(ref this.queue, count);
+        Grow(ref this.incoming, count);
+        this.incoming.AsSpan(0, count).Clear();
         for (var id = 0; id < count; id++)
         {
             this.blocks[id] = body.IsReachable(id) ? id : -1;
@@ -28,6 +30,16 @@ internal sealed partial class BodyLowering
                 {
                     return false;
                 }
+
+                if (body.IsReachable(id) && !body.IsReachable(edge.To))
+                {
+                    return false; // Reject stale reachability before building the dominator graph.
+                }
+
+                if (body.IsReachable(id) && edge.Kind != OwnershipEdgeKind.Abort)
+                {
+                    this.incoming[edge.To]++;
+                }
             }
         }
 
@@ -37,7 +49,20 @@ internal sealed partial class BodyLowering
             var value = body.Values[id];
             if (value.Kind == OwnershipValueKind.Phi)
             {
-                return false; // Shared result joins still use secured storage.
+                if (value.Count != this.incoming[id] || (body.IsReachable(id) && value.Count == 0))
+                {
+                    return false;
+                }
+
+                for (var n = 0; n < value.Count; n++)
+                {
+                    if (!this.ValidatePhiInput(body, id, value.Start + n, out var block, out _) || block < 0)
+                    {
+                        return false;
+                    }
+                }
+
+                continue;
             }
 
             // Owned aggregate/symbolic flow can retain a secured-storage alias rather
