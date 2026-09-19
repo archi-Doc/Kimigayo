@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -79,9 +80,103 @@ public class LibraryImportTargetBindingTest
     [Fact]
     public void ForeignFunctionSupportRemainsUnimplemented()
     {
-        var c = MinimalEmissionTest.Analyze("group Native\n    #LibraryImport(\"library\", \"symbol\")\n    public unsafe func imported(value: i32) -> i32");
+        var c = AnalyzeImport("group Native\n    #LibraryImport(\"library\", \"symbol\")\n    public unsafe func imported(value: i32) -> i32", "library");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Theory]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")", "codec", true, false)]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")", "codec", false, false)]
+    [InlineData("#LibraryImport(\"kernel32\", \"ExitProcess\")", null, false, false)]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")", null, false, true)]
+    [InlineData("#LibraryImport(\"Codec\", \"symbol\")", "codec", true, true)]
+    public void ImportNameRequiresADefiningModuleRequirement(string attribute, string? requirement, bool combinedSupply, bool missing)
+    {
+        var c = AnalyzeImport("group Native\n    " + attribute + "\n    public unsafe func imported() -> i32", requirement, combinedSupply);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd);
+        Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Theory]
+    [InlineData("#LibraryImport(\"codec\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\", \"extra\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"\", \"symbol\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"sym\\0bol\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"sym\\(1)bol\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(name: \"codec\", \"symbol\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(codec, \"symbol\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported() -> i32 => 1")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"memcpy\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"__kimi_entry\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"llvm.trap\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported(value: i32 = 1) -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported<T>(value: i32) -> i32")]
+    public void InvalidImportDeclarationsAreDiagnosed(string declaration)
+    {
+        var c = AnalyzeImport("group Native\n    " + declaration, "codec");
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd);
+    }
+
+    [Theory]
+    [InlineData("struct S\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value: i32) -> i32", false)]
+    [InlineData("struct S\n    var value: i32\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func read(self: S) -> i32", true)]
+    [InlineData("contract C\n    #LibraryImport(\"codec\", \"symbol\")\n    unsafe func required() -> i32", true)]
+    [InlineData("group Native\n    func outer()\n        #LibraryImport(\"codec\", \"symbol\")\n        unsafe func local() -> i32", true)]
+    public void ImportPlacementIsRestricted(string source, bool invalid)
+    {
+        var c = AnalyzeImport(source, "codec");
+        Assert.Equal(invalid, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd));
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, true)]
+    public void RequirementsBelongToTheDefiningModule(bool rootRequirement, bool libraryRequirement, bool missing)
+    {
+        var c = ModuleBindingTest.Create(
+            "func main() => ()",
+            "group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported() -> i32",
+            configure: (root, library) =>
+            {
+                if (rootRequirement)
+                {
+                    root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                }
+
+                if (libraryRequirement)
+                {
+                    library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                }
+            });
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
+    }
+
+    private static Compilation AnalyzeImport(string source, string? requirement, bool combinedSupply = false)
+    {
+        var c = Compilation.CreateForTest();
+        if (requirement is not null)
+        {
+            if (combinedSupply)
+            {
+                c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
+            }
+            else
+            {
+                c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "import" } };
+            }
+        }
+
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+        return c;
     }
 
     private static Compilation Reload(Compilation c)

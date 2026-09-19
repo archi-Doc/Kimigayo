@@ -192,6 +192,7 @@ public sealed partial class Binding
             }
 
             this.ValidateLayoutFragments();
+            this.ValidateLibraryImports();
             this.ValidateBaseDeclarations();
             this.PrepareStorage();
             this.ComputeOriginRequirements();
@@ -485,6 +486,8 @@ public sealed partial class Binding
                     BindingFailure.InvalidTestDefinition => DiagnosticCode.InvalidTestDefinition_Kd,
                     BindingFailure.InvalidLayoutAttribute => DiagnosticCode.InvalidLayoutAttribute_Kd,
                     BindingFailure.ConflictingLayout => DiagnosticCode.ConflictingLayout_Kd,
+                    BindingFailure.InvalidLibraryImport => DiagnosticCode.InvalidLibraryImport_Kd,
+                    BindingFailure.MissingNativeRequirement => DiagnosticCode.MissingNativeRequirement_Kd,
                     BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,

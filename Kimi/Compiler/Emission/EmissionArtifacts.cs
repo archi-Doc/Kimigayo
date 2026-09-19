@@ -94,41 +94,38 @@ public static class EmissionArtifacts
     // Validates every configured library, even when unused, and selects the backend supply (SPEC 20.8.2).
     private static NativeLibraryInput? ResolveBackend(ProjectFile settings)
     {
+        if (NativeConfiguration.Validate(settings) is { } failure)
+        {
+            throw new InvalidDataException(failure);
+        }
+
         NativeLibraryInput? backend = null;
         if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
         {
-            if (libraries is null)
-            {
-                throw new InvalidDataException("NativeLibraries target entries must be mappings.");
-            }
-
             foreach (var (name, library) in libraries)
             {
-                if (string.IsNullOrWhiteSpace(name) || name.Contains('\0') || library is null || library.Kind is not ("import" or "static"))
-                {
-                    throw new InvalidDataException("NativeLibraries requires nonempty logical names and import/static entries.");
-                }
-
                 CheckPath(library.Input);
                 if (!Path.GetExtension(library.Input).Equals(".lib", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidDataException("NativeLibraries inputs must be .lib files.");
                 }
 
-                if (name == Kernel32Imports.LibraryName)
+                if (name == WindowsProfile.BackendLibrary)
                 {
-                    throw new InvalidDataException("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
-                }
-                else if (name == WindowsProfile.BackendLibrary)
-                {
+                    var (kind, sha256) = NativeConfiguration.Expand(settings, WindowsProfile.Target, name, library);
+                    if (kind != "static")
+                    {
+                        throw new InvalidDataException("kimi_backend must be static.");
+                    }
+
+                    if (sha256 is not null && !sha256.Equals(WindowsProfile.BackendSha256, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidDataException("The kimi_backend Sha256 assertion does not match the adopted SHA-256.");
+                    }
+
                     backend = library;
                 }
             }
-        }
-
-        if (backend is not null && backend.Kind != "static")
-        {
-            throw new InvalidDataException("kimi_backend must be static.");
         }
 
         return backend;

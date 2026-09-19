@@ -12,6 +12,7 @@ public partial class Compilation
     private Dictionary<Kotonoha, IReadOnlyDictionary<string, BasicValue>>? moduleVariables;
     private Dictionary<Kotonoha, Dictionary<string, Kotonoha>>? moduleReferences;
     private Dictionary<Kotonoha, string[]>? moduleAliases;
+    private Dictionary<Kotonoha, ProjectFile>? moduleConfigurations;
     private string[] rootAliases = RequiredAliases;
 
     internal Kotonoha[] SourceModules { get; private set; }
@@ -54,6 +55,9 @@ public partial class Compilation
     internal Dictionary<string, Kotonoha>? References(Kotonoha module)
         => this.moduleReferences?.GetValueOrDefault(module);
 
+    internal ProjectFile? Configuration(Kotonoha module)
+        => ReferenceEquals(module, this.Kotonoha) ? this.Project.ProjectFile : this.moduleConfigurations?.GetValueOrDefault(module);
+
     internal string[] DefaultAliases(Kotonoha module)
         => ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
 
@@ -70,6 +74,7 @@ public partial class Compilation
         this.moduleReferences = new(modules.Length);
         this.moduleVariables = new(modules.Length);
         this.moduleAliases = new(modules.Length);
+        this.moduleConfigurations = new(modules.Length);
         for (var i = 0; i < modules.Length; i++)
         {
             var node = graph.Nodes[i];
@@ -78,6 +83,7 @@ public partial class Compilation
             modules[i] = module;
             identities.Add(node.Key, module);
             this.moduleAliases.Add(module, EffectiveAliases(node.Input.Configuration.Alias));
+            this.moduleConfigurations.Add(module, node.Input.Configuration);
             if (i == 0)
             {
                 continue;

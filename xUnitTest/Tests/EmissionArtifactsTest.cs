@@ -24,7 +24,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         c.Project.ProjectFile.LlvmBin = "tools/LLVM bin";
         c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal)
         {
-            ["unused"] = new() { Input = "unused.lib" },
+            ["unused"] = new() { Kind = "import", Input = "unused.lib" },
         };
         Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
         Assert.Equal(Path.Combine(this.directory, "out", "Hello.ll"), path);
@@ -76,13 +76,32 @@ public sealed class EmissionArtifactsTest : IDisposable
     [InlineData("kernel32", "import", "kernel32.lib\0")]
     [InlineData("kernel32", "import", "")]
     [InlineData("unused", "unknown", "unused.lib")]
-    public void InvalidNativeInputsAreRejectedEvenWhenUnused(string name, string kind, string input)
+    [InlineData("unused", null, "unused.lib")]
+    public void InvalidNativeInputsAreRejectedEvenWhenUnused(string name, string? kind, string input)
     {
         var c = this.Create();
         c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal) { [name] = new() { Kind = kind, Input = input } };
         Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
         Assert.Null(path);
         Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void BackendSupplyExpandsItsSelfTargetedRequirement()
+    {
+        var c = this.Create();
+        var settings = c.Project.ProjectFile;
+        settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Kind = "static" } };
+        settings.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Input = "kimi_backend.lib" } };
+        Assert.True(EmissionArtifacts.Publish(c, out _, out var error), error);
+
+        settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"].Sha256 = new string('0', 64);
+        Assert.False(EmissionArtifacts.Publish(c, out _, out error));
+        Assert.Contains("Sha256 assertion", error);
+
+        settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"] = new() { Kind = "import", Input = "kimi_backend.lib" };
+        Assert.False(EmissionArtifacts.Publish(c, out _, out error));
+        Assert.Contains("disagrees", error);
     }
 
     [Fact]

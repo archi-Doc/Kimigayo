@@ -32,8 +32,32 @@ public class DependencyConfigurationTest
     [InlineData("PackageSources={{PackageId=\"a\" PackageVersion=\"1\"}}")]
     [InlineData("TestSources={\"test.kimi\" \"test.kimi\"}")]
     [InlineData("TestSources={\"tests/*.kimi\"}")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={ContractId=\"c\"}}}")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"dynamic\"}}}")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\" ContractId=\"\"}}}")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\" Sha256=\"abc\"}}}")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\" Sha256=\"gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg\"}}}")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={Input=\"codec.lib\"}}}")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\"}}} NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={Kind=\"import\" Input=\"codec.lib\"}}}")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\" ContractId=\"a\"}}} NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={ContractId=\"b\" Input=\"codec.lib\"}}}")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"kernel32.lib\"}}}")]
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
         => Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source)));
+
+    [Theory]
+    [InlineData("NativeBindings={}")]
+    [InlineData("NativeBindings={\"x86_64-pc-windows-msvc\"={codec=\"codec.lib\"}}")]
+    public void SupersededNativeBindingsRequireMigration(string source)
+        => Assert.Equal(NativeConfiguration.SupersededBindings, Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Message);
+
+    [Fact]
+    public void InvalidProgrammaticNativeRequirementsCannotPrepare()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() };
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.Contains(c.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
+    }
 
     [Fact]
     public void LegacyProgrammaticReferencesCannotBeSilentlyIgnored()
@@ -68,6 +92,9 @@ public class DependencyConfigurationTest
     [InlineData("PackageSources={{Store=\"packages\"} {PackageId=\"a\" PackageVersion=\"1\" Package=\"a.kimipkg\"}}")]
     [InlineData("KotonohaArray={} Dependencies={} TestSources={\"missing.kimi\"}")]
     [InlineData("Dependencies=\n  Math={PackageId=\"example.math\" PackageVersion=\"1\" Project=\"../Math/Math.kimiproj\"}\n")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\" ContractId=\"example.codec.v1\"}}}")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"import\" Sha256=\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}}} NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={Input=\"native/codec.lib\" Sha256=\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}}")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={observer={Kind=\"static\" ContractId=\"o\" Input=\"native/observer.lib\"}}}")]
     public void ConfigurationRoundTripsWithoutReadingSources(string source)
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes(source));

@@ -58,7 +58,10 @@ public partial record class ProjectFile
     /// <summary>Gets or sets a legacy project-relative LLVM tool override; null uses the compiler toolchain.</summary>
     public string? LlvmBin { get; set; }
 
-    /// <summary>Gets or sets target-specific library overrides. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
+    /// <summary>Gets or sets per-target definition-side native requirements keyed by this module's logical name.</summary>
+    public Dictionary<string, Dictionary<string, NativeRequirement>> NativeRequirements { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Gets or sets self-targeted native supplies. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
     public Dictionary<string, Dictionary<string, NativeLibraryInput>> NativeLibraries { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
@@ -114,6 +117,11 @@ public partial record class ProjectFile
                 testSettingsSeen = true;
                 ValidateTestMap(ref reader);
                 continue;
+            }
+
+            if (key.SequenceEqual("NativeBindings"u8))
+            {
+                throw new TinyhandException(NativeConfiguration.SupersededBindings);
             }
 
             var map = key.SequenceEqual("CompileTimeSettings"u8) ? 1 : key.SequenceEqual("Dependencies"u8) ? 2 : key.SequenceEqual("TestDependencies"u8) ? 3 : 0;

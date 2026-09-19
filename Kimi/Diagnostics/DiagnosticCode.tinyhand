@@ -257,6 +257,12 @@
   + Name="ConflictingLayout_Kd"
     Message="Selected struct fragments must agree on their explicit Layout mode"
 
+  + Name="InvalidLibraryImport_Kd"
+    Message="LibraryImport requires exactly two unnamed, nonempty, non-interpolated, NUL-free string literals, a native requirement name and a symbol, on a bodyless func"
+
+  + Name="MissingNativeRequirement_Kd"
+    Message="The LibraryImport name has no NativeRequirements entry or self-targeted NativeLibraries record for the current target in the defining module"
+
   + Name="SplitCLayoutStorage_Kd"
     Message="All selected instance Fields of a C-layout struct must occur in one fragment"
 

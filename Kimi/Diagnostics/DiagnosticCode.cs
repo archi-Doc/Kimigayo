@@ -130,6 +130,8 @@ public enum DiagnosticCode
     InvalidTestDefinition_Kd,
     InvalidLayoutAttribute_Kd,
     ConflictingLayout_Kd,
+    InvalidLibraryImport_Kd,
+    MissingNativeRequirement_Kd,
     SplitCLayoutStorage_Kd,
 
     UnavailableFeature_Kd,

@@ -95,6 +95,8 @@ internal enum BindingFailure : byte
     InvalidTestDefinition,
     InvalidLayoutAttribute,
     ConflictingLayout,
+    InvalidLibraryImport,
+    MissingNativeRequirement,
     SplitCLayoutStorage,
 }
 

@@ -74,7 +74,7 @@ internal static class DependencyConfiguration
             return "Dependency maps and source lists must not be null.";
         }
 
-        if (ValidateReferences(file.Dependencies) is { } failure)
+        if ((ValidateReferences(file.Dependencies) ?? NativeConfiguration.Validate(file)) is { } failure)
         {
             return failure;
         }
