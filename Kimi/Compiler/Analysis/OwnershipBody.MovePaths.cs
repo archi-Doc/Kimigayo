@@ -136,6 +136,31 @@ public sealed partial class OwnershipBody
     private PlaceState CompleteState(int place)
         => this.moveRoots[place] is >= 0 and var path ? Combine(this.State(place), this.PathState(path)) : this.State(place);
 
+    // Selectors are leaf-first. Untracked children share the parent's remainder;
+    // tracked siblings do not affect the selected child's initialization.
+    private PlaceState InlinePathState(int place, ReadOnlySpan<int> selectors)
+    {
+        var state = this.State(place);
+        var path = this.moveRoots[place];
+        if (path < 0)
+        {
+            return state;
+        }
+
+        for (var i = selectors.Length - 1; i >= 0; i--)
+        {
+            state = Combine(state, this.State(this.PathSlot(path, false)));
+            if (!this.movePathIndex.TryGetValue((path, selectors[i]), out var child))
+            {
+                return this.movePaths[path].HasRemainder ? Combine(state, this.State(this.PathSlot(path))) : PlaceState.None;
+            }
+
+            path = child;
+        }
+
+        return Combine(state, this.PathState(path));
+    }
+
     private PlaceState PathState(int path)
     {
         var node = this.movePaths[path];

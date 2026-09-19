@@ -71,7 +71,7 @@ public static class EmissionArtifacts
             using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
             {
-                WriteManifest(json, settings, backend, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
+                WriteManifest(json, settings, compilation.Binding.Startup.OutputKind, backend, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
             }
 
             File.Move(tempIr, destination, true);
@@ -134,7 +134,7 @@ public static class EmissionArtifacts
         return backend;
     }
 
-    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, NativeLibraryInput? backend, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
+    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, OutputKind outputKind, NativeLibraryInput? backend, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
     {
         json.WriteStartObject();
         json.WriteNumber("schemaVersion", 3);
@@ -159,9 +159,9 @@ public static class EmissionArtifacts
         json.WriteEndObject();
         json.WriteString("irFile", irFile);
         json.WriteString("irSha256", irHash);
-        json.WriteString("outputKind", "Application");
-        json.WriteString("entry", WindowsProfile.EntrySymbol);
-        json.WriteString("subsystem", WindowsProfile.Subsystem);
+        json.WriteString("outputKind", outputKind == OutputKind.Library ? "Library" : "Application");
+        json.WriteString("entry", outputKind == OutputKind.Library ? null : WindowsProfile.EntrySymbol);
+        json.WriteString("subsystem", outputKind == OutputKind.Library ? null : WindowsProfile.Subsystem);
         json.WriteStartArray("libraries");
         json.WriteStartObject();
         json.WriteString("name", Kernel32Imports.LibraryName);

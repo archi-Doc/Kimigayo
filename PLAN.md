@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The compiler-wide plan covers unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. The current request explicitly authorizes completion of program Milestone 16 as recorded in Section 2; no later program is an implementation target. NativeAOT and draft edits remain excluded.
+The compiler-wide plan covers unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. The current 60-minute request authorizes those implementation items; Milestone Programs are not implementation targets without a separate explicit instruction. NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,7 +31,7 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current request: **Program 16 external Origin forwarding — DONE**. P16 is the program number, not a product M/I milestone. [Completion evidence](PLAN_HISTORY.md#program16-completion); the preceding test-profile/library/documentation checkpoint is retained in [history](PLAN_HISTORY.md#pre-program16-checkpoint).
+Current checkpoint: **60-minute compiler continuation completed**, started **2026-09-19 11:34:19 UTC** before inspection; the **12:34:19 UTC** duration boundary has elapsed and no further unit is started. Fresh baseline was clean `dev` at `89552bc`. Bounded units **T28a/T28b / I28**, **T6s/T6t / I6**, **T6v / I33**, and **T34a / I34** are **DONE**: supported source-module generation, Library inspection, disjoint sibling Moves and returned-reference footprints, borrow snapshot reuse, and verified source-dependency usage. Final Debug/Release suites each pass 9,220 tests; affected native sets each pass 252 O0/O2 executions. [Evidence, limitations and elapsed time](PLAN_HISTORY.md#compiler-continuation-20260919-113419). Parent implementation items remain open. Previous Program 16 completion/evidence is preserved below.
 
 | ID | State | Acceptance / exact next action |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ Current request: **Program 16 external Origin forwarding — DONE**. P16 is the 
 | P16-G | DONE | Enum layout, directed reference payload fitting and canonical call-Origin intersection substitution pass checked LLVM emission, verification, linking and native O0/O2 execution. |
 | P16-V | DONE | Warning-free Debug/Release solution builds; Debug full 9,151 plus the extended 13-case suite, Release full 9,157; 57 native target/variant/rejection checks per configuration and 90 Release regression checks for programs 1–15. Exact output, exit, stderr and source mutations verified. |
 
-Programs 1–16 have bounded completion. No program-16 blocker remains; stop here and await a separately authorized target. Programs 17–21 informed design only. NativeAOT and draft edits remain excluded. General M/I obligations remain open.
+Programs 1–16 have bounded completion. The previous stop/await-target restriction is superseded by this compiler continuation; program completion is not a stopping condition. Programs 17–21 informed design only. NativeAOT and draft edits remain excluded. General M/I obligations remain open.
 
 ### Current milestone states
 
@@ -56,10 +56,10 @@ Programs 1–16 have bounded completion. No program-16 blocker remains; stop her
 | M9 | TODO | Dynamic collections, Stringify/interpolation and comparison Contracts remain. |
 | M10 | IN_PROGRESS | Concrete makeObj/obj ownership, Sealed payload access, exchange and destruction/free execute for P14. rc/arc/Weak, views and general refinement remain; ObjectCallCompatible stages are deferred. |
 | M11 | TODO | Complete pointer/foreign ABI path remains; declaration validation is partial. |
-| M12 | TODO | Project graph/locks exist; package/store/common generation/persistent semantic reuse remain. |
+| M12 | IN_PROGRESS | Project graph/locks and T28a/T28b supported source-module common generation/Library inspection exist. Package/store, full native connection and persistent semantic reuse remain. |
 | M13 | IN_PROGRESS | Test semantics and Windows runner are implemented for supported backend forms; I30/I31 retain cross-feature prerequisites. |
 | M14 | BLOCKED | G1 blocks the public host slice; settled lifecycle audit can proceed independently. |
-| M15 | TODO | Full conformance/performance/delivery closure remains. |
+| M15 | IN_PROGRESS | Full conformance/performance/delivery closure remains. |
 
 M4/M5/M7 are reconciled from stale TODO labels to IN_PROGRESS because recorded completed subsets already exist; no acceptance criterion or unfinished scope was closed by this migration.
 
@@ -72,7 +72,7 @@ M4/M5/M7 are reconciled from stale TODO labels to IN_PROGRESS because recorded c
 | I3 | M2 / R1–R3, R27 | IN_PROGRESS | Historical T1a, T3a, T5a/G9, T27a/T27b and T7a slices exist; T4n-ax adds logical Never fitting. Final clause/regression closure remains; the historical 250-block parse/SpecTour audit (SpecTour since removed) is not a current whole-spec certificate. |
 | I4 | M2 / R4 | IN_PROGRESS | Selected omitted-default plans and independent scalar/Unit declarations execute; T4o–q add guarded/Copy-tuple defaults. T4r verifies candidate-local tuple/array literals, nested structural Type/length/Origin evidence, preserved ambiguity and shared temporary acquisition. Exact prepared-slot validation is retained. General contextual nested calls, recursive defaults, owned/borrowed defaults and pending-slot cleanup remain. |
 | I5 | M2 / R5, R19 | IN_PROGRESS | T5a/G9 resolved; 14/31 Kimi declarations validated, including Iterator and Slice identities; this does not certify their entire APIs. Remaining Contract/projection/certificates, bound associated/refinement composition and canonical library identities remain. |
-| I6 | M3 / R6–R7 | IN_PROGRESS | T4n-at–ax add bounded terminal/Abort/divergent guards and finite enum/owned-string mixed histories, ending abandoned protection at replay endpoints. T4r/T6a/T6b add tuple borrow lifetime roots, concrete scalar-field updates and stored aggregate projections with immutable-local ancestry. T6d–T6j add returned-reference ancestry, §15.6.2 disjoint/shared projection checks and nested inline borrowed paths/borrows; T6i adds in-place borrows of owned-local/parameter inline parts with static-path footprints and closes element access under a live exclusive root Loan; T6k rejects exclusive reborrows of stored `uniq` references through `ref` bases in Binding; T6m binds scalar Place shorthand borrows; T6n/T6o materialize scalar temporaries for implicit shared argument borrows and explicit `@ref`/`@uniq`. Their regression gates pass; sibling Moves under a live part borrow, general backedges/continue, unequal Loan joins, deferred cleanup, effectful divergence and general Origins remain. |
+| I6 | M3 / R6–R7 | IN_PROGRESS | T4n-at–ax add bounded terminal/Abort/divergent guards and finite enum/owned-string mixed histories, ending abandoned protection at replay endpoints. T4r/T6a/T6b add tuple borrow lifetime roots, concrete scalar-field updates and stored aggregate projections with immutable-local ancestry. T6d–T6j add returned-reference ancestry, §15.6.2 disjoint/shared projection checks and nested inline borrowed paths/borrows; T6i adds in-place borrows of owned-local/parameter inline parts with static-path footprints and closes element access under a live exclusive root Loan; T6k rejects exclusive reborrows of stored `uniq` references through `ref` bases in Binding; T6m binds scalar Place shorthand borrows; T6n/T6o materialize scalar temporaries for implicit shared argument borrows and explicit `@ref`/`@uniq`. T6s adds disjoint sibling Moves before/during a live inline-part borrow with initialized-subtree validation and checked cleanup; T6t retains single-input returned-reference argument footprints. General backedges/continue, unequal Loan joins, deferred cleanup, effectful divergence and general Origins remain. |
 | I7 | M3 / R7, R20 | TODO | Compute effect-family fixed points/public guarantees and dependent use checks. ObjectCallCompatible stages 2/3 remain deferred by SPEC.md; other settled effect work remains in scope. |
 | I8 | M3 / R8–R9, R27 | IN_PROGRESS | Bounded defaults retain the historical guarded-pattern/Copy-tuple scope. New terminal match guards preserve abandoned protection and selected binding lifetimes. General escaping-Borrow/capture/Copy proofs, owned defaults, refinement and effectful/deferred joins remain. |
 | I9 | M4 / R10 | IN_PROGRESS | Concrete construction/destruction, synthesized construction and bounded borrowed/owned receiver subsets exist; G10g verifies owned-field Move and remaining-field cleanup through concrete methods. Complete inherited/base-layer layout, construction, destruction and general receiver support. |
@@ -94,13 +94,13 @@ M4/M5/M7 are reconciled from stale TODO labels to IN_PROGRESS because recorded c
 | I25 | M10 / R20 | TODO | Implement Weak migration/upgrade/release/cyclic construction and atomic ordering proof. |
 | I26 | M11 / R21, R24 | TODO | Complete specified pointers/C layout/direct foreign calls and ABI validation. |
 | I27 | M12 / R22 | TODO | Implement package integrity/loading/packing/local publication/store lifecycle using fixed bytes. |
-| I28 | M12 / R22, R24 | TODO | Complete common module/Library generation and native input requirement/supply validation. |
+| I28 | M12 / R22, R24 | IN_PROGRESS | T28a supported source-module common generation and T28b Library inspection output are verified; complete module/native input records and requirement/supply validation remain. |
 | I29 | M12 / R23, R28 | TODO | Implement verified semantic records/correspondence/invalidation with cold/warm equivalence. |
 | I30 | M13 / R25 | IN_PROGRESS | Discovery, all-body checking, expect/require parsing, ownership and concrete/shared lowering are implemented. Complete cross-feature generation and independent product/test resource plans after I11/I16/I28. |
 | I31 | M13 / R25 | IN_PROGRESS | Windows x64 isolated runner, solution scheduling, finite budgets, JSON/text results and retention are implemented. Cancellation, missing completion and descendant recovery are verified. Complete cross-feature lifecycle coverage after compiler prerequisites; see current next actions. |
 | I32 | M14 / R26 | TODO | Audit/test settled Mod lifecycle; public host integration BLOCKED by G1. |
-| I33 | M15 / R1–R28 | TODO | Close Appendix A coverage and cross-feature performance/conformance evidence. |
-| I34 | M15 / R27–R28 | TODO | Maintain English support/spec-choice/usage records and examples; retain honest residual boundaries. |
+| I33 | M15 / R1–R28 | IN_PROGRESS | T6v verified scaled live-Loan snapshot reuse and bounded timing/allocation evidence; complete Appendix A coverage and cross-feature performance/conformance evidence remain. |
+| I34 | M15 / R27–R28 | IN_PROGRESS | T34a updated source-dependency usage and added a verified transitive Application example. Complete remaining English support/spec-choice/usage records and examples; retain honest residual boundaries. |
 
 ### Completed slices and evidence
 
@@ -122,7 +122,7 @@ Programs 12–14 retain their recorded target completion; §2 separates the curr
 
 ### Current next action
 
-1. Complete external-module/common generation (I28) and dynamic static initialization/shutdown (I11), preserving test membership and active-case phase reporting.
+1. Continue I28 with module-scoped native input records: retain prepared module identities and native owner/name requirements, revise the manifest schema and validators together, and test missing/tampered dependency records and actual supply consistency before certifying connection validity. I11 dynamic static initialization/shutdown is independent; I6 retains general Origins, joins and backedge work. No Milestone Program is authorized by this checkpoint.
 2. Complete independent product/test optimization and resource plans (I16/I30), reusing product entries without enlarging their frames or sharing classes.
 3. After those prerequisites, extend T25/T26 to initialization/shutdown failures and complete product-plan isolation; retain the adopted interfaces and finite limits.
 
@@ -138,7 +138,7 @@ Evidence levels are separate: parsing, final Binding, control-flow/ownership ana
 | `Compilation.cs`, `Compilation.Modules.cs`, `SourceDocument`, `Kotonoha.AddSource` / `ParseSource` | Prepared module environments and immutable source snapshots; parsing/reload invalidates prior semantic certificates. Source-module loading exists. |
 | `Binding.Bind`, `Binding.CheckBound`, `BindingModel.cs`, `Binding.*.cs`, `KimiLibrary.cs` | Semantic fields and retained operations on Koto, reusable lookup/proof tables and selected calls. No separate Bound Tree; no lookup/reselection in lowering. |
 | `ControlFlowAnalysis`, `StructuralCompletion`, `OwnershipAnalysis`, `OwnershipBody`, `OwnershipModel.cs` | Separate runtime reachability and source checking, places/Loans, defaults, acquisitions, results and cleanup. Extend these records and their validation. |
-| `LlvmEmitter`, `GenericStoragePlan`, `FunctionAbiPool`, `AggregateLayoutPool`, `BodyLowering` | Recheck current semantic/startup/ownership state, then lower supported concrete/shared plans. Supported nested containers, scalar defaults and bounded closures/generics are admitted; external modules/Libraries and unimplemented forms remain rejected. |
+| `LlvmEmitter`, `GenericStoragePlan`, `FunctionAbiPool`, `AggregateLayoutPool`, `BodyLowering` | Recheck current semantic/startup/ownership state across source modules, then lower supported concrete/shared plans. Supported nested containers, scalar defaults and bounded closures/generics share final generation; Library inspection omits the OS entry. Unimplemented bodies and Library native build/run remain rejected. |
 | `EmissionModule.Complete`, `LlvmModuleWriter`, `WindowsLowering` | Validate syntax-free physical records before LLVM writing; no output after failed validation. Retained modules are scratch, not reusable certificates. |
 | `EmissionArtifacts`, `NativeToolchain`, `ToolchainResolver`, `Kernel32Imports`, `WindowsRuntime.ll.in` | Staged artifacts, integrity/tool/profile checks, native linking, bounded processes, startup/output/destruction/Abort. Windows x64 profile pins LLVM 22.1.8 and backend ABI 2. |
 

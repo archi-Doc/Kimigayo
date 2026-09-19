@@ -274,6 +274,9 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.ProjectElement:
                 this.CheckInitialized(operation, operation.Place, this.ElementState(operation.Projection, true));
                 break;
+            case OwnershipOperationKind.Borrow when this.TryOwnedBorrowState(operation, out var borrowedState):
+                this.CheckInitialized(operation, operation.Place, borrowedState);
+                break;
             case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
             case OwnershipOperationKind.CheckReceiverField:
             case OwnershipOperationKind.UpdateTarget:

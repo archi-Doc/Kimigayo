@@ -240,7 +240,10 @@ public sealed class SolutionInputTest : IDisposable
         var lockBytes = File.ReadAllBytes(lockPath);
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
-        Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
+        Assert.True(await solution.Generate(TestContext.Current.CancellationToken));
+        var ir = Path.Combine(this.directory, "bin", WindowsProfile.Target, "Root.ll");
+        Assert.True(File.Exists(ir));
+        Assert.False(File.Exists(Path.ChangeExtension(ir, ".link.build.json")));
         File.AppendAllText(librarySource, "\npublic func unused() => missing()");
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.Equal(lockBytes, File.ReadAllBytes(lockPath));

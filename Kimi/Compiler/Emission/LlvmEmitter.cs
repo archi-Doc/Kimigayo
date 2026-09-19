@@ -130,6 +130,12 @@ public sealed class LlvmEmitter
                 return true;
             }
 
+            if (c.Binding.Startup.OutputKind == OutputKind.Library)
+            {
+                module.Complete();
+                return true;
+            }
+
             if (!this.functions.TryGetValue(c.Binding.Startup.Function!, out var entry))
             {
                 failure = "The selected startup has no implementation.";
@@ -158,7 +164,10 @@ public sealed class LlvmEmitter
         }
     }
 
-    private bool SkipGenerated(OwnershipBody body) => ReferenceEquals(body.Function, this.compilation.Kotonoha.GeneratedFunction) && this.compilation.Binding.Startup.Kind is StartupKind.Explicit or StartupKind.Test;
+    // Only the selected implicit Application body executes. Other source-module
+    // wrappers are checked by ownership but are not callable implementations.
+    private bool SkipGenerated(OwnershipBody body)
+        => body.Function.IsGenerated && !ReferenceEquals(body.Function, this.compilation.Binding.Startup.Function);
 
     private string? CheckInputs()
     {
@@ -170,24 +179,42 @@ public sealed class LlvmEmitter
         }
 
         if (!c.Binding.Result.IsComplete || !c.Ownership.SupportsOriginObligations() || !c.Library.ValidateDeclarations() || !c.Library.ValidateBoundDeclarations() ||
-            c.Kotonoha.HasSourceErrors || c.Kotonoha.DiagnosticCollection.HasErrors || !startup.IsComplete || !c.Ownership.Result.IsVerified)
+            !startup.IsComplete || !c.Ownership.Result.IsVerified)
         {
             return "Emission requires current final Binding, startup, control-flow and ownership verification without errors.";
         }
 
-        if (c.KotonohaArray.Length != 0 || c.SourceModules.Length != 1 || startup.OutputKind != OutputKind.Application || startup.Kind is not (StartupKind.Implicit or StartupKind.Explicit or StartupKind.Test) ||
-            !this.SupportedContainers(c.Kotonoha.RootKoto))
+        var supportedStartup = startup.OutputKind switch
         {
-            return "This partial emitter supports Applications without external modules or declaration containers.";
+            OutputKind.Application => startup.Kind is StartupKind.Implicit or StartupKind.Explicit or StartupKind.Test,
+            OutputKind.Library => startup.Kind == StartupKind.None,
+            _ => false,
+        };
+        if (c.KotonohaArray.Length != 0 || !supportedStartup)
+        {
+            return "Emission requires resolved source-module inputs and a supported Application or Library startup plan.";
         }
 
-        // Declaration-only GeneratedFunction is an analysis wrapper, not an unused user function.
-        var members = c.Kotonoha.RootKoto.Members;
-        for (var i = 0; i < members.Count; i++)
+        foreach (var sourceModule in c.SourceModules)
         {
-            if (members[i] is not (FunctionKoto or AliasKoto))
+            if (sourceModule.HasSourceErrors || sourceModule.DiagnosticCollection.HasErrors)
             {
-                return "Additional selected implementation bodies are outside the implemented execution subset.";
+                return "Emission requires every source module to be free of source and module errors.";
+            }
+
+            if (!this.SupportedContainers(sourceModule.RootKoto))
+            {
+                return "A selected declaration container requires unsupported implementation lowering.";
+            }
+
+            // Declaration-only GeneratedFunction is an analysis wrapper, not an unused user function.
+            var members = sourceModule.RootKoto.Members;
+            for (var i = 0; i < members.Count; i++)
+            {
+                if (members[i] is not (FunctionKoto or AliasKoto))
+                {
+                    return "Additional selected implementation bodies are outside the implemented execution subset.";
+                }
             }
         }
 

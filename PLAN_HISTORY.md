@@ -6,6 +6,8 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Compiler continuation: source modules and Library inspection (2026-09-19)](#compiler-continuation-20260919-113419)
+
 - [Bounded loop/match/default continuation (2026-09-18)](#bounded-continuation-20260918)
 
 - [Program Milestone 12 completion (2026-09-18)](#program12-completion)
@@ -6309,3 +6311,181 @@ user-destructor payloads. Existing finite layout/ownership and ABI restrictions
 remain; these are implementation limits rather than specification exceptions.
 NativeAOT was NOT_RUN as requested. No required Windows-native check remains
 unverified. Programs 17+ were not implemented; current next actions remain in PLAN.
+
+<a id="compiler-continuation-20260919-113419"></a>
+## Compiler continuation — 2026-09-19 11:34:19 UTC
+
+Start was recorded before inspection. Fresh baseline: clean `dev` at `89552bc`.
+The 60-minute request superseded the P16 stop/await-target restriction; no Milestone
+Program was an implementation target. NativeAOT and draft edits remained excluded.
+
+### T28a / I28 — checked source-module common generation
+
+DONE for this bounded slice. R22/R24/R27: §§18.1/18.8, 21.3.4, 21.4 and
+22.2.1–2. Existing Binding/flow/ownership already analyze all source modules.
+Emission now validates every module's source diagnostics and supported containers,
+uses one declaration-to-ABI map and omits nonselected generated wrappers. There is
+no lazy omission of invalid/unsupported dependency bodies. Source-local functions
+remain local under §6.1.1; dependency APIs in tests use named containers.
+
+Evidence root: `TestResults/continuation-20260919-113419/`.
+
+- Initial new-suite baseline: 13 tests, 10 FAIL / 3 PASS. Four failures reached the
+  old external-module emitter guard; other sources required named Containers or
+  the optional-parameter `?` marker. Corrected test syntax preserved scope.
+- Warning-free Debug test-project and Release solution builds, with `--no-restore
+  --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false`.
+- Direct xUnit runner (`dotnet xUnitTest/bin/<configuration>/net10.0/xUnitTest.dll
+  -parallelMode none`): 332 focused PASS per configuration in `module-debug.xml`
+  and `module-release.xml`. Includes 0-byte measured warm scalar-module IR writes.
+- Debug full suite: 9,171 total, 9,169 PASS / two obsolete expected-rejection
+  assertions FAIL (`full-debug.xml`). The assertions in SolutionInputTest were
+  updated for authorized module emission, retaining lock/live-source checks and
+  adding IR/no-native-record checks. All 21 SolutionInputTest cases then PASS in
+  `module-solution-debug.xml`; final broad verification is recorded separately.
+- Eight module fixtures: LLVM verification, object symbol checking, linking and
+  16 exact stdout/stderr/exit O0/O2 executions PASS per compiler configuration.
+  Release input hashes/log: `native-records/20260919T1150573632812Z/result.json`.
+- `backend/windows-x64/test-modules.ps1`: 13 CLI checks PASS per configuration,
+  including shared aliases/transitive source dependencies, native O0/O2 output,
+  root test discovery/execution without dependency tests, and failed dependency
+  build invalidation. Debug record: `module-cli-debug/ca5f0479e7344e90ad7e34bf12488cf9/result.json`;
+  Release: `module-cli-release/bc58b842b17044c1a0681e53abdd2336/result.json`.
+- Native verification exposed a pre-existing stale PowerShell kernel32 expected
+  list. Added GetEnvironmentVariableA/SetHandleInformation already present in the
+  hashed definition and managed runtime catalog; no import/profile was changed.
+- Sandbox blocked NuGet configuration reading and LLVM execution. Existing restored
+  inputs built without restore; authorized native commands succeeded outside the
+  sandbox. The first MTP/VSTest-style test attempt was cancelled and replaced by
+  the repository's direct xUnit runner; it is not test completion evidence.
+
+Broader Library output, module input identities and native requirement/supply
+records remained unfinished at this boundary. Schema 3 was not asserted to prove
+full multi-module connection validity. No specification requirement was narrowed.
+
+### T28b / I28 — Library inspection output
+
+DONE for supported bodies under §§20.8.3, 21.5 and 22.2.2. Checked Library startup
+has no selected runtime body. Lower all supported verified functions with internal
+linkage, finish without an OS entry, and publish the matched inspection IR/manifest
+with `outputKind: Library`, null `entry` and null `subsystem`. Test artifacts use
+the checked test startup's Application output kind even for a Library project.
+Native Application build/run remain explicit rejection boundaries.
+
+- Warning-free Debug test-project / Release solution builds using the commands
+  above. `library-debug.xml`: 139 PASS; `library-release.xml`: 160 PASS (adds all
+  SolutionInputTest cases). Debug full `library-full-debug.xml`: 9,185 PASS, no skips.
+- Six Library fixtures (empty, ordinary/main/Abort/owned-string/generic/destructor
+  bodies), 12 O0/O2 LLVM verification/COFF checks PASS per configuration. No OS
+  entry and the required `_fltused` definition were checked in actual objects.
+- CLI `emit` succeeds with an absent configured LLVM directory; manifest hash and
+  Library fields match. `build` and `run` reject, without publishing an executable.
+  Records: `library-native-debug/04b2f66537ef4836abb281d77d2a2340/result.json` and
+  `library-native-release/1f8121ef52cf404a9aa325cdf2dd6ef0/result.json`.
+- Existing `test-kernel32.ps1` PASS, including import identity, path independence,
+  failed-generation preservation, tool policy and manifest validation.
+
+No source package, external Library ABI, native supply or persistent input-record
+completion is claimed. At about 25 minutes the continuation selected independent
+T6s (the existing I6 sibling-Move backlog) while the larger I28/I11 work remained
+open. Library output requirements were already normative; SPEC needed no change.
+
+### T6s / I6 — disjoint sibling Moves under inline-part Loans
+
+DONE for statically selected owned fields/Tuple parts (R6/R7; §§15.1.3,
+15.6.2–3/15.6.6). Initialization follows the borrowed subtree and its containing
+storage instead of requiring every sibling initialized. Sparse Move-path state
+is reused with stack selectors. Pure intermediate projections locate storage;
+final reads/Moves retain their actual conflict footprint. Emission rechecks the
+same initialized subtree and rejects stale/tampered borrow plans.
+
+- Baseline: `sibling-baseline.xml`, 9 cases, five required positive cases FAIL;
+  four overlapping/moved-storage negatives PASS. Initial fix: 70/71 PASS;
+  the remaining Move-before-borrow emitter gate was corrected.
+- Final focused `sibling-debug.xml`: 80 PASS. Warning-free Debug test-project and
+  Release solution builds. Full `sibling-full-debug.xml` and
+  `sibling-full-release.xml`: 9,203 PASS each, no skips.
+- Ten new fixtures, 20 LLVM/native O0/O2 executions PASS per configuration in
+  `sibling-native-debug` / `sibling-native-release`. Shared/exclusive, tuple/nested,
+  Move-first, reborrow, conditional Move, checking-only continuation, repaired
+  storage and exactly-once remaining/moved-value destruction are covered.
+- Seven negative cases retain moved-subtree, whole-owner and overlap rejection;
+  mutation after analysis cannot publish partial IR. Uncertain provenance,
+  dynamic indices and broader Origin contracts remain conservative.
+
+At the next boundary (~38 minutes), T6t starts on the remaining single-input
+returned-reference footprint limitation; parent I6 remains IN_PROGRESS.
+
+### T6t / I6 — single-input returned-reference footprints
+
+The declared single input Origin carries the entire acquired argument footprint
+through a direct reference-returning call (§15.6.4). Result-side field offsets
+are discarded at calls: the public contract does not identify the returned
+subpart. Unique alias definitions preserve call-result temporary provenance;
+mutable source locals and unknown/intersected result contracts stay conservative.
+
+- Baseline `returned-part-baseline.xml`: six positives FAIL, four negatives PASS.
+  The first fix left one Move-before-call initialization failure, traced to a
+  call-result temporary marked mutable internally; a single defining Alias now
+  supplies its provenance. Source reassignment still cannot gain this proof.
+- `returned-part-debug.xml`: 67 focused PASS, including the added warm 0-byte
+  ownership-reanalysis and rebind/invalidation case. Seven fixtures produce 14
+  exact native O0/O2 PASS in `returned-part-native-debug`.
+- The related Release-compiler native borrow/partial-move regression at the T6s
+  boundary passed 196 O0/O2 executions in `borrow-native-regression`.
+- Release verification and subsequent snapshot-replay regression evidence follow.
+
+T6t DONE after warning-free Release solution build, 67 focused Release PASS in
+`returned-part-release.xml` and 14 native O0/O2 PASS in
+`returned-part-native-release`. A temporary StyleCop parenthesis warning was
+removed by sharing the single-definition predicate. Final broad checks follow.
+
+### T6v / I33 — one snapshot per borrow-check operation
+
+Started at approximately 49 minutes. Borrow validity previously replayed the same
+block prefix for each live Place and again for each referent root. All subsequent
+footprint/conflict queries are read-only, so one converged runtime/checking input
+can serve the whole operation. Scaled live returned-part Loans exercise independent
+part initialization, final values, checking continuations and warm allocation.
+
+- `snapshot-baseline-release.xml`: three scaled scenarios PASS. Five warm analyses
+  took 84.498 ms (8 runtime Loans), 120.669 ms (16), and 64.648 ms (8 checking Loans).
+- `snapshot-final-release.xml`: all 35 focused cases PASS after reuse; corresponding
+  samples were 75.522, 96.939 and 23.459 ms. Both versions measured 0 warm allocated
+  bytes in all three scenarios. These short host samples show the measured
+  workloads only; they are not a general throughput guarantee.
+- Final Debug/Release solution builds both pass with zero warnings/errors.
+
+T6v DONE. Final full suites `final-debug.xml` and `final-release.xml` each pass
+9,220 tests, zero failed/skipped. Final compiler-generated fixture snapshots and
+SHA-256 lists are `final-borrow-fixtures-{debug,release}` and
+`final-borrow-{debug,release}-inputs.json`. Each set passes 252 LLVM/native O0/O2
+executions in `final-borrow-native-{debug,release}`, covering existing owned,
+nested/disjoint/returned borrows, partial Moves, new sibling/returned-part/snapshot
+cases and source-module calls. This supersedes earlier checks for changed code.
+
+Final module CLI harnesses pass 13 checks each:
+`final-module-cli-debug/bddd9908d4e14027a3aae259b13d296e/result.json` and
+`final-module-cli-release/a4e0932f44244d8d845f1d28f783055c/result.json`.
+Final Release Library inspection: 12 O0/O2 LLVM/object checks plus emit/build/run
+boundaries PASS in `final-library-release/c9e20ec6d2be437e87ad561736fb28bc/result.json`.
+
+### T34a / I34 — source-dependency usage and executable example
+
+DONE. Removed obsolete module/Library generation exclusions from the root README
+and dependency example. Added an Application that calls Geometry, which calls Math;
+it verifies the arithmetic result and prints `source modules`. Library inspection
+and native Application commands describe their actual purposes and residual limits.
+All 12 documented commands (restore, locked Library check/emit and locked Application
+build/run, Debug/Release) PASS in isolated copies; `source-example/result.json` and
+per-configuration logs retain evidence. Original example locks were not rewritten.
+
+### Completion boundary
+
+The 60-minute duration elapsed while closing the final coherent documentation unit;
+no subsequent unit was started. No draft file or Milestone Program was changed,
+and NativeAOT was NOT_RUN. SPEC requirements already defined all implemented
+behavior and were not weakened. Parent I6/I28/I33/I34 remain IN_PROGRESS; current
+next actions and unresolved implementation work are centralized in PLAN.md.
+
+Final checkpoint time: **2026-09-19 12:35:19 UTC**; elapsed **61 minutes** from the recorded start. Stopping reason: requested duration elapsed, with the active unit's required verification and documentation complete. Final git diff --check passed.

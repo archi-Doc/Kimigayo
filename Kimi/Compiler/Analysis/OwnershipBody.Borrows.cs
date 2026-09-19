@@ -13,6 +13,18 @@ public sealed partial class OwnershipBody
     private int[] borrowDefinitions = [];
     private int[] slicePaths = [];
 
+    internal PlaceState GetBorrowInputState(int operation)
+    {
+        if (!this.IsReachable(operation) && !this.HasCheckingState(operation))
+        {
+            return PlaceState.None;
+        }
+
+        this.LoadInput(operation, !this.IsReachable(operation));
+        var borrow = this.Operations[operation];
+        return this.TryOwnedBorrowState(borrow, out var state) ? state : this.CompleteState(borrow.Place);
+    }
+
     // Borrow validity follows CFG uses, including the implicit use by deinit.
     // Types retain Origin identity through Copy, Move, calls and field storage.
     internal void VerifyBorrows()
@@ -52,6 +64,7 @@ public sealed partial class OwnershipBody
             {
                 { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
                 { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
+                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
                 _ => -1,
             };
 
@@ -103,9 +116,23 @@ public sealed partial class OwnershipBody
             }
 
             var operation = this.Operations[op];
+            var loaded = false;
             for (var p = 0; p < count; p++)
             {
-                if (!this.borrowLive[(op * count) + p] || (BorrowState(op, p) & PlaceState.MayInit) == 0)
+                if (!this.borrowLive[(op * count) + p])
+                {
+                    continue;
+                }
+
+                if (!loaded)
+                {
+                    // All validity/footprint queries below are read-only. Replay
+                    // this block prefix once, only if some Loan needs its state.
+                    this.LoadInput(op, !this.IsReachable(op));
+                    loaded = true;
+                }
+
+                if ((this.CompleteState(p) & PlaceState.MayInit) == 0)
                 {
                     continue;
                 }
@@ -121,7 +148,7 @@ public sealed partial class OwnershipBody
                     var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && ReferenceTypes.IsStorage(this.Places[root].Type);
                     var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, operation.LoanMode) ||
                         this.ElementAccessConflicts(operation, root, mode);
-                    if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement &&
+                    if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce &&
                         this.IsDisjointProjection(op, p))
                     {
                         accessConflict = false; // SPEC 15.6.2: disjoint static paths below one owned root.
@@ -137,7 +164,7 @@ public sealed partial class OwnershipBody
                         }
                     }
 
-                    var conflict = !external && ((BorrowState(op, root) & PlaceState.MustInit) == 0 || accessConflict);
+                    var conflict = !external && ((this.BorrowRootState(p, root) & PlaceState.MustInit) == 0 || accessConflict);
                     var value = this.Values[op];
                     if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence && value.Count > 0)
                     {
@@ -159,8 +186,6 @@ public sealed partial class OwnershipBody
                 }
             }
         }
-
-        PlaceState BorrowState(int operation, int place) => this.IsReachable(operation) ? this.GetInputState(operation, place) : this.GetCheckingInputState(operation, place);
 
         void AddType(int place, BoundType type)
         {
@@ -472,11 +497,59 @@ public sealed partial class OwnershipBody
         }
     }
 
-    // An element access names its root only through its projection; any such
-    // access conflicts with a live exclusive Loan of that root (SPEC 15.6.2).
-    // Element Moves leave the root partially initialized, which is checked separately.
+    // ProjectElement only locates storage; a prefix of a deeper projection does
+    // not read its whole subtree. Final reads and Moves retain their own footprint.
     private bool ElementAccessConflicts(OwnershipOperation operation, int root, LoanRequirement mode)
-        => mode == LoanRequirement.Uniq && operation.Kind == OwnershipOperationKind.ProjectElement && this.Projections[operation.Projection].Root == root;
+    {
+        if (operation.Projection < 0 || this.Projections[operation.Projection].Root != root)
+        {
+            return false;
+        }
+
+        var projection = this.Projections[operation.Projection];
+        return operation.Kind switch
+        {
+            OwnershipOperationKind.ProjectElement => mode == LoanRequirement.Uniq && (projection.Output >= 0 || projection.Borrow >= 0 || projection.Write >= 0),
+            OwnershipOperationKind.Produce => mode == LoanRequirement.Uniq || operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove,
+            _ => false,
+        };
+    }
+
+    // Read the borrowed subtree and its containing storage from the same converged
+    // runtime/checking snapshot. A disjoint sibling Move does not end this Loan.
+    private PlaceState BorrowRootState(int place, int root)
+    {
+        if (this.moveRoots[root] >= 0 && this.HasSingleBorrowDefinition(place) && ReferenceTypes.IsStorage(this.Places[place].Type))
+        {
+            Span<int> selectors = stackalloc int[16];
+            var depth = 0;
+            if (this.ProjectionPath(this.borrowDefinitions[place], selectors, ref depth) == root)
+            {
+                return this.InlinePathState(root, selectors[..depth]);
+            }
+        }
+
+        return this.CompleteState(root);
+    }
+
+    private bool TryOwnedBorrowState(OwnershipOperation operation, out PlaceState state)
+    {
+        state = PlaceState.None;
+        if (operation.Source is not MemberAccessKoto part || ElementAccess.OwnedPathRoot(part) is not { } owner)
+        {
+            return false;
+        }
+
+        Span<int> selectors = stackalloc int[16];
+        var depth = 0;
+        if (!AddPath(part, owner, selectors, ref depth))
+        {
+            return false;
+        }
+
+        state = this.InlinePathState(operation.Place, selectors[..depth]);
+        return true;
+    }
 
     // A scalar temporary is a Loan root only where a borrow materializes it (SPEC 3.6.2).
     private bool IsBorrowedPlace(int place)
@@ -539,12 +612,16 @@ public sealed partial class OwnershipBody
         return false;
     }
 
+    private bool HasSingleBorrowDefinition(int place)
+        => this.borrowDefinitions[place] >= 0 &&
+        (this.Places[place].Kind == OwnershipPlaceKind.Temporary || this.Places[place] is { Kind: OwnershipPlaceKind.Local, Mutable: false });
+
     // SPEC 15.6.2: distinct inline field/Tuple selectors under the same root
     // designate disjoint places. Unknown steps, array subscripts and different
     // roots conservatively overlap.
     private bool IsDisjointProjection(int access, int place)
     {
-        if (this.Places[place] is not { Kind: OwnershipPlaceKind.Local or OwnershipPlaceKind.Temporary, Mutable: false } || this.borrowDefinitions[place] < 0)
+        if (!this.HasSingleBorrowDefinition(place))
         {
             return false;
         }
@@ -557,13 +634,8 @@ public sealed partial class OwnershipBody
         var node = this.Values[access];
         var projection = this.Operations[access].Projection;
         var leftRoot = -1;
-        if (this.Operations[access].Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement)
+        if (projection >= 0 && this.Operations[access].Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce)
         {
-            if (projection < 0)
-            {
-                return false;
-            }
-
             // Only the static prefix of an element path is a precise footprint.
             for (var path = this.Projections[projection].Path; path >= 0; path = this.Projections[path].Parent)
             {
@@ -674,6 +746,14 @@ public sealed partial class OwnershipBody
                 }
 
                 value = this.ValueOperands[node.Start];
+            }
+            else if (operation.Kind == OwnershipOperationKind.Call && node.Kind == OwnershipValueKind.Call)
+            {
+                // The result contract preserves the acquired input's footprint,
+                // not a field offset within it. Discard result-side selectors:
+                // a callee may return any permitted subpart of that input.
+                depth = 0;
+                value = this.ResultArgument(value);
             }
             else if (node.Kind == OwnershipValueKind.Alias && node.Count == 1)
             {

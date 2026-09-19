@@ -27,7 +27,7 @@ public class ModuleBindingTest
         {
             Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(compilation.Ownership.Analyze().IsVerified);
-            Assert.False(compilation.Emission.Validate(out _));
+            Assert.True(compilation.Emission.Validate(out var failure), failure);
         }
     }
 
@@ -921,31 +921,7 @@ public class ModuleBindingTest
         Assert.True(c.Bind().IsComplete);
     }
 
-    private static string ProjectionConsumer(bool runtime, string argument)
-        => runtime
-            ? "struct Target<T>\ngroup Consumer\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">"
-            : "group Consumer\n    func take<T>() => ()\n    func call() => take<" + argument + ">()";
-
-    private static void VerifyImportedProjectionCertificate(Compilation c, bool runtime, bool valid)
-    {
-        for (var pass = 0; pass < 2; pass++)
-        {
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
-            Assert.Equal(valid, c.Bind().IsComplete);
-            var expression = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody;
-            Assert.Equal(valid, runtime ? Assert.IsType<IsKoto>(expression).BoundRuntimeTest is not null : Assert.IsType<InvocationKoto>(expression).BoundCall is not null);
-            if (pass == 0)
-            {
-                foreach (var module in c.SourceModules)
-                {
-                    module.OnDeserialized(c);
-                }
-            }
-        }
-    }
-
-    private static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null)
+    internal static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null)
     {
         var compilation = Compilation.CreateForTest();
         var project = compilation.Project;
@@ -971,5 +947,29 @@ public class ModuleBindingTest
         }
 
         return compilation;
+    }
+
+    private static string ProjectionConsumer(bool runtime, string argument)
+        => runtime
+            ? "struct Target<T>\ngroup Consumer\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">"
+            : "group Consumer\n    func take<T>() => ()\n    func call() => take<" + argument + ">()";
+
+    private static void VerifyImportedProjectionCertificate(Compilation c, bool runtime, bool valid)
+    {
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
+            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+            Assert.Equal(valid, c.Bind().IsComplete);
+            var expression = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody;
+            Assert.Equal(valid, runtime ? Assert.IsType<IsKoto>(expression).BoundRuntimeTest is not null : Assert.IsType<InvocationKoto>(expression).BoundCall is not null);
+            if (pass == 0)
+            {
+                foreach (var module in c.SourceModules)
+                {
+                    module.OnDeserialized(c);
+                }
+            }
+        }
     }
 }

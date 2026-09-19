@@ -34,7 +34,7 @@ internal sealed partial class BodyLowering
         {
             if (operation.Kind != OwnershipOperationKind.Borrow || !ReferenceTypes.IsStorage(ValueType(body, id)) ||
                 (uint)operation.Place >= (uint)body.Places.Count || value.Constant != operation.Place ||
-                (body.IsReachable(id) && (body.GetInputState(id, operation.Place) & PlaceState.MustInit) == 0))
+                (body.IsReachable(id) && (body.GetBorrowInputState(id) & PlaceState.MustInit) == 0))
             {
                 return Fail("Borrow address requires initialized storage and a verified reference result.", out failure);
             }

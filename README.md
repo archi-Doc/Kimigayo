@@ -9,9 +9,9 @@ dotnet run --project Kimi -- check examples/Strings/main.kimi --Target x86_64-pc
 
 `check` accepts the same input paths as `emit` and requires no LLVM installation. It checks source semantics, including all Project dependency bodies, without generating artifacts or running the program. Direct dependency names and aliases resolve in each defining module's environment.
 
-Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Package inputs and cross-module native generation remain unfinished.
+Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Supported source-module bodies share final Application generation. Library `emit` produces inspection IR with no OS entry; Library native build/run, package inputs and full module/native supply records remain unfinished.
 
-See the [two-project source dependency example](examples/SourceDependencies/README.md).
+See the [transitive source dependency example](examples/SourceDependencies/README.md).
 
 ### Toolchain (Windows x64)
 
