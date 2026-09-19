@@ -37,6 +37,7 @@ public enum KimiDeclarationId : byte
     MakeRcCyclic,
     MakeArcCyclic,
     Weak,
+    TestTempDirectory,
 }
 
 public enum KimiDeclarationState : byte

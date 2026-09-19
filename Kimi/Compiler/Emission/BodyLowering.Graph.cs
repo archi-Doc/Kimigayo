@@ -148,7 +148,7 @@ internal sealed partial class BodyLowering
 
                 if (edge.Kind == OwnershipEdgeKind.Abort)
                 {
-                    if (body.Operations[op].Kind != OwnershipOperationKind.Call || body.Operations[edge.To].Kind != OwnershipOperationKind.Exit || body.EdgeHeads[edge.To] >= 0)
+                    if (body.Operations[op].Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort) || body.Operations[edge.To].Kind != OwnershipOperationKind.Exit || body.EdgeHeads[edge.To] >= 0)
                     {
                         return Fail("Invalid terminal call Abort edge.", out failure);
                     }
@@ -183,8 +183,8 @@ internal sealed partial class BodyLowering
             }
 
             var exit = body.Operations[op].Kind == OwnershipOperationKind.Exit;
-            var call = body.Operations[op].Kind == OwnershipOperationKind.Call;
-            var neverCall = call && body.Operations[op].Source is InvocationKoto invocation && ReferenceEquals(invocation.BoundCall?.ReturnType ?? invocation.BoundValueCall?.ReturnType, BoundType.Never);
+            var call = body.Operations[op].Kind is OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort;
+            var neverCall = body.Operations[op].Kind == OwnershipOperationKind.TestAbort || (call && body.Operations[op].Source is InvocationKoto invocation && ReferenceEquals(invocation.BoundCall?.ReturnType ?? invocation.BoundValueCall?.ReturnType, BoundType.Never));
             if (aborts != (call ? 1 : 0) || (exit || neverCall ? successors != 0 : successors == 0 || (successors != 1 && (successors != 2 || yes != 1 || no != 1)) || (successors == 1 && yes + no != 0)))
             {
                 return Fail("Missing or inconsistent CFG terminator.", out failure);
@@ -290,12 +290,23 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < count; i++)
         {
             this.instructionStarts[i] = this.validation.Instructions.Count;
+            var cleanupPhase = body.Function.CodeContext.Compilation.IsTestBuild && body.Values[i].Kind != OwnershipValueKind.Phi &&
+                (body.Operations[i].Kind == OwnershipOperationKind.Cleanup || (body.DeferredPlans.Count != 0 && this.deferredOwners[i] >= 0));
+            if (cleanupPhase)
+            {
+                this.validation.Add(EmissionOpcode.TestPhaseEnter, i);
+            }
+
             if (!this.LowerOperation(library, body, this.validation, constants, directory, i, marks, out failure))
             {
                 return false;
             }
 
             this.AddPathFlags(body, this.validation, i);
+            if (cleanupPhase && (this.validation.Instructions.Count == 0 || this.validation.Instructions[^1].Opcode is not (EmissionOpcode.Unreachable or EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar)))
+            {
+                this.validation.Add(EmissionOpcode.TestPhaseLeave, i);
+            }
         }
 
         this.instructionStarts[count] = this.validation.Instructions.Count;
@@ -381,7 +392,7 @@ internal sealed partial class BodyLowering
                     }
                 }
 
-                if (body.Operations[cursor].Kind == OwnershipOperationKind.Deliver ||
+                if (body.Operations[cursor].Kind is OwnershipOperationKind.Deliver or OwnershipOperationKind.TestAbort ||
                     (body.Operations[cursor].Kind == OwnershipOperationKind.Call && ReferenceEquals(body.Operations[cursor].Source.BoundType, BoundType.Never)))
                 {
                     break;

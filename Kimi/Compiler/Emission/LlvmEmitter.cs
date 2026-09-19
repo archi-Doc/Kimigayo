@@ -72,6 +72,11 @@ public sealed class LlvmEmitter
                 return false;
             }
 
+            if (c.IsTestBuild)
+            {
+                c.Tests.Discover(c);
+            }
+
             // Register every selected signature first: recursion refers to the same record.
             var ordinal = 0;
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
@@ -118,6 +123,13 @@ public sealed class LlvmEmitter
                 this.lowering.RegisterAggregates(module);
             }
 
+            if (c.IsTestBuild)
+            {
+                module.TestRuntime = Testing.TestRuntime.Create(c.Tests, this.functions);
+                module.Complete();
+                return true;
+            }
+
             if (!this.functions.TryGetValue(c.Binding.Startup.Function!, out var entry))
             {
                 failure = "The selected startup has no implementation.";
@@ -146,7 +158,7 @@ public sealed class LlvmEmitter
         }
     }
 
-    private bool SkipGenerated(OwnershipBody body) => ReferenceEquals(body.Function, this.compilation.Kotonoha.GeneratedFunction) && this.compilation.Binding.Startup.Kind == StartupKind.Explicit;
+    private bool SkipGenerated(OwnershipBody body) => ReferenceEquals(body.Function, this.compilation.Kotonoha.GeneratedFunction) && this.compilation.Binding.Startup.Kind is StartupKind.Explicit or StartupKind.Test;
 
     private string? CheckInputs()
     {
@@ -163,7 +175,7 @@ public sealed class LlvmEmitter
             return "Emission requires current final Binding, startup, control-flow and ownership verification without errors.";
         }
 
-        if (c.KotonohaArray.Length != 0 || c.SourceModules.Length != 1 || startup.OutputKind != OutputKind.Application || startup.Kind is not (StartupKind.Implicit or StartupKind.Explicit) ||
+        if (c.KotonohaArray.Length != 0 || c.SourceModules.Length != 1 || startup.OutputKind != OutputKind.Application || startup.Kind is not (StartupKind.Implicit or StartupKind.Explicit or StartupKind.Test) ||
             !this.SupportedContainers(c.Kotonoha.RootKoto))
         {
             return "This partial emitter supports Applications without external modules or declaration containers.";
@@ -202,7 +214,7 @@ public sealed class LlvmEmitter
 
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
             if ((!body.IsConcrete && !BodyLowering.CanEraseReceiver(body)) || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
-                (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||
+                (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
                 (function.IsAnonymous && function.BoundClosure is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
                 (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.Origins.Count != 0 || function.TypeConstraints.Count != 0)
             {

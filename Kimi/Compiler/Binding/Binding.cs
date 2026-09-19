@@ -146,6 +146,7 @@ public sealed partial class Binding
             this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
             this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
             this.scopes[this.Library.Console] = this.Library.ConsoleScope;
+            this.scopes[this.Library.Test] = this.Library.TestScope;
             this.indexer.Scope = this.Library.Scope;
             var libraryRoot = this.Library.Kotonoha.RootKoto;
             for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
@@ -741,7 +742,7 @@ public sealed partial class Binding
             node.BoundMeaning = null;
             node.ErasedFunctionType = null;
             node.BoundSymbol = null;
-            if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker)
+            if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker && !TestDefinition.IsIncluded(test))
             {
                 // Product lookup and analysis never visit the test's signature names or body.
                 test.BoundType = BoundType.Unit;
@@ -779,6 +780,18 @@ public sealed partial class Binding
 
             if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } invalidTest)
             {
+                if (invalidTest.Parent is FunctionKoto testOwner && TestDefinition.IsIncluded(testOwner) && TestDefinition.IsValidSyntax(testOwner))
+                {
+                    invalidTest.BoundType = BoundType.Unit;
+                    invalidTest.BindingState = BindingState.Resolved;
+                    if (invalidTest.AttributeChain is { } earlier)
+                    {
+                        this.Visit(earlier);
+                    }
+
+                    return;
+                }
+
                 Fail(node, BindingFailure.InvalidTestDefinition);
                 binding.nodes.Add(node);
                 if (AttributeTarget(invalidTest) is { } invalidTarget)

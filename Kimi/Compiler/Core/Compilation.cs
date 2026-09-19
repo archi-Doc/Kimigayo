@@ -43,6 +43,20 @@ public partial class Compilation
     /// <summary>Gets or sets a value indicating whether subsequent parses collect optional documentation. Disabled by default.</summary>
     public bool CollectDocumentation { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether the primary project's test declarations are checked. Changing mode revokes prior analysis.</summary>
+    public bool IsTestBuild
+    {
+        get;
+        set
+        {
+            if (field != value)
+            {
+                field = value;
+                this.InvalidateSourceAnalysis();
+            }
+        }
+    }
+
     /// <summary>
     /// Gets the parsed target triple.
     /// </summary>
@@ -99,6 +113,8 @@ public partial class Compilation
 
     /// <summary>Gets the reusable, checked LLVM emitter for the implemented execution subset.</summary>
     public LlvmEmitter Emission => field ??= new(this);
+
+    internal Testing.TestCatalog Tests => field ??= new();
 
     #endregion
 

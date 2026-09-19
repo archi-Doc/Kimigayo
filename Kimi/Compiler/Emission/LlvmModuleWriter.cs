@@ -51,6 +51,10 @@ internal static partial class LlvmModuleWriter
 
     private static readonly string Runtime = ReadRuntime();
 
+    private static readonly string TestRuntimeBase = Runtime
+        .Replace(WindowsLowering.Abort.GetDefinition(false) + "entry:\n", WindowsLowering.Abort.GetDefinition(false) + "entry:\n  call void @__kimi_test_aborted()\n", StringComparison.Ordinal)
+        .Replace(WindowsLowering.AbortMessage.GetDefinition(false) + "entry:\n", WindowsLowering.AbortMessage.GetDefinition(false) + "entry:\n  call void @__kimi_test_aborted()\n", StringComparison.Ordinal);
+
     internal static void Write(EmissionModule module, TextWriter output)
     {
         output.Write(Header);
@@ -60,10 +64,11 @@ internal static partial class LlvmModuleWriter
             output.Write(constants[i].Definition);
         }
 
-        output.Write(Runtime);
+        output.Write(module.TestRuntime is null ? Runtime : TestRuntimeBase);
+        output.Write(module.TestRuntime);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
-        if (module.Aggregates.Count != 0 || module.SharedBodies.Count != 0)
+        if (module.Aggregates.Count != 0 || module.SharedBodies.Count != 0 || module.TestRuntime is not null)
         {
             output.Write("declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\n");
             foreach (var aggregate in module.Aggregates)
@@ -278,6 +283,22 @@ internal static partial class LlvmModuleWriter
 
                 case EmissionOpcode.Call:
                     WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation, function);
+                    break;
+
+                case EmissionOpcode.TestSnapshot:
+                    WriteTestSnapshot(output, function, instruction);
+                    break;
+
+                case EmissionOpcode.TestPhaseEnter:
+                    output.Write("  %testphase");
+                    WriteNumber(output, instruction.Operation);
+                    output.Write(" = load i32, ptr @__kimi_test_phase\n  store i32 2, ptr @__kimi_test_phase\n");
+                    break;
+
+                case EmissionOpcode.TestPhaseLeave:
+                    output.Write("  store i32 %testphase");
+                    WriteNumber(output, instruction.Operation);
+                    output.Write(", ptr @__kimi_test_phase\n");
                     break;
 
                 case EmissionOpcode.CreateClosure:

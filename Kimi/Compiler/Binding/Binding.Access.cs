@@ -342,6 +342,17 @@ public sealed partial class Binding
 
     private bool Accessible(BindingSymbol symbol, BindingScope use, ModifierKind? operationAccess = null, BoundType? receiverType = null)
     {
+        if (symbol.CompilerFunction == CompilerFunctionKind.TestTempDirectory && (!this.compilation.IsTestBuild || !TestDefinition.IsTestOnly(use.Owner)))
+        {
+            return false;
+        }
+
+        if ((symbol.Declaration is FunctionKoto test && TestDefinition.Marker(test) is not null) ||
+            (TestDefinition.IsTestOnly(symbol.Declaration) && !TestDefinition.IsTestOnly(use.Owner)))
+        {
+            return false;
+        }
+
         if (ReferenceEquals(symbol, this.Library.Module) || symbol.Intrinsic != IntrinsicKind.None || symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.TypeParameter or BindingSymbolKind.LengthParameter or BindingSymbolKind.AssociatedType || symbol.Declaration is FunctionKoto { IsRequirement: true })
         {
             return true;

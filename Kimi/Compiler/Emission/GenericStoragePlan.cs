@@ -13,6 +13,10 @@ internal enum SharedStorageOperation : byte
     StringLiteral,
     WriteLine,
     AbortMessage,
+    TestObserve,
+    TestMessage,
+    TestAbort,
+    TestTempDirectory,
     Declare,
     Transfer,
     Acquire,
@@ -45,7 +49,7 @@ internal readonly record struct SharedPhiInput(int Value, int Predecessor);
 
 internal readonly record struct SharedConversion(ValueLowering Source, BodyLowering.ConversionPlan Plan);
 
-internal readonly record struct SharedStorageInstruction(SharedStorageOperation Kind, int Destination, int Source, int Count, int CopyPlace, int Next, int Alternative, int Condition, int Location, bool Reachable, int DestructionStart = -1, int FieldOffset = -1, int Index = -1, SharedScalarValue? Scalar = null);
+internal readonly record struct SharedStorageInstruction(SharedStorageOperation Kind, int Destination, int Source, int Count, int CopyPlace, int Next, int Alternative, int Condition, int Location, bool Reachable, int DestructionStart = -1, int FieldOffset = -1, int Index = -1, SharedScalarValue? Scalar = null, int Snapshot = -1, int SnapshotKind = 0, bool CleanupPhase = false);
 
 internal readonly record struct SharedStorageLeaf(int Place, int Parent, int Selector, int Parameter, bool Result, int Policy = -1);
 
@@ -170,9 +174,10 @@ internal sealed partial class GenericStoragePlan
         for (var id = 0; id < body.Operations.Count; id++)
         {
             var op = body.Operations[id];
-            if (op.Place < -1 || op.Place >= body.Places.Count || op.Input < -1 || op.Input >= body.Places.Count ||
+            var testIssue = op.Kind is OwnershipOperationKind.TestMessage or OwnershipOperationKind.TestAbort;
+            if (op.Place < -1 || op.Place >= body.Places.Count || op.Input < -1 || op.Input >= (testIssue ? body.Operations.Count : body.Places.Count) ||
                 op.Projection < -1 || op.Projection >= body.Projections.Count ||
-                (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans) &&
+                (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestAbort) &&
                  !(op.Kind == OwnershipOperationKind.Call && op.Source is InvocationKoto { BoundCall.ReturnType: var result } &&
                    (ReferenceEquals(result, BoundType.Unit) || ReferenceEquals(result, BoundType.Never)))))
             {
@@ -261,14 +266,58 @@ internal sealed partial class GenericStoragePlan
             var value = body.Values[id];
             var kind = SharedStorageOperation.Nothing;
             var dest = op.Place < 0 ? -1 : starts[op.Place];
-            var source = op.Input < 0 ? -1 : starts[op.Input];
+            var source = op.Input < 0 || op.Kind is OwnershipOperationKind.TestMessage or OwnershipOperationKind.TestAbort ? -1 : starts[op.Input];
             var count = op.Place < 0 ? 0 : counts[op.Place];
             var copyPlace = -1;
             var condition = -1;
             var fieldOffset = -1;
             var indexLeaf = -1;
+            var snapshot = -1;
+            var snapshotKind = 0;
             switch (op.Kind)
             {
+                case OwnershipOperationKind.TestObserve:
+                case OwnershipOperationKind.TestMessage:
+                case OwnershipOperationKind.TestAbort:
+                    if (op.Source is not TestVerificationKoto { SiteId: >= 0 } verification || !TestDefinition.IsIncluded(verification))
+                    {
+                        return Fail("Shared verification lacks a certified test site.", out failure);
+                    }
+
+                    indexLeaf = verification.SiteId;
+                    count = 1;
+                    if (op.Kind == OwnershipOperationKind.TestObserve)
+                    {
+                        if (value.Count != 1 || BooleanPlace(body.ValueOperands[value.Start]) < 0)
+                        {
+                            return Fail("Shared verification lacks its condition value.", out failure);
+                        }
+
+                        source = body.ValueOperands[value.Start];
+                        kind = SharedStorageOperation.TestObserve;
+                        var definition = source;
+                        while (body.Values[definition].Kind == OwnershipValueKind.Alias)
+                        {
+                            definition = body.ValueOperands[body.Values[definition].Start];
+                        }
+
+                        if (body.Values[definition] is { Kind: OwnershipValueKind.Binary } comparison && ComparisonPredicate(comparison.Operator) is not null)
+                        {
+                            var operandType = ScalarType(body.ValueOperands[comparison.Start]);
+                            if (operandType is not null && IsSharedScalar(operandType))
+                            {
+                                snapshot = definition;
+                                snapshotKind = ReferenceEquals(operandType, BoundType.Boolean) ? 1 : ScalarTypes.Signed(operandType) ? 2 : 3;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        source = op.Input;
+                        kind = op.Kind == OwnershipOperationKind.TestMessage ? SharedStorageOperation.TestMessage : SharedStorageOperation.TestAbort;
+                    }
+
+                    break;
                 case OwnershipOperationKind.Entry:
                 case OwnershipOperationKind.EndComparisonLoans:
                 case OwnershipOperationKind.LocateReceiver:
@@ -664,7 +713,8 @@ internal sealed partial class GenericStoragePlan
                     {
                         var writeLine = ReferenceEquals(direct.Target, binding.Library.WriteLine);
                         var abort = ReferenceEquals(direct.Target, binding.Library.Abort);
-                        if (direct.Target.Declaration is not FunctionKoto directTarget || !(IsGeneric(directTarget) || IsConcreteDirect(direct) || writeLine || abort) ||
+                        var testTemp = ReferenceEquals(direct.Target, binding.Library.GetSymbol(KimiDeclarationId.TestTempDirectory));
+                        if (direct.Target.Declaration is not FunctionKoto directTarget || !(IsGeneric(directTarget) || IsConcreteDirect(direct) || writeLine || abort || testTemp) ||
                             direct.DefaultArguments.Length != 0 ||
                             arguments.Count != directTarget.Parameters.Count || arguments.Count != directSyntax.ArgumentNodes.Count + (direct.Receiver is null ? 0 : 1) ||
                             direct.ArgumentOperations.Length != directSyntax.ArgumentNodes.Count || direct.ArgumentToParameter.Length != directSyntax.ArgumentNodes.Count ||
@@ -700,6 +750,17 @@ internal sealed partial class GenericStoragePlan
                         }
 
                         arguments.Clear();
+                        if (testTemp)
+                        {
+                            if (slots.Length != 0 || count != 1 || !ReferenceEquals(direct.ReturnType, BoundType.String))
+                            {
+                                return Fail("Shared temporary directory call has an invalid signature.", out failure);
+                            }
+
+                            kind = SharedStorageOperation.TestTempDirectory;
+                            break;
+                        }
+
                         if (writeLine || abort)
                         {
                             if (slots.Length != 1 || !ReferenceEquals(body.Places[slots[0]].Type, BoundType.String) ||
@@ -892,7 +953,7 @@ internal sealed partial class GenericStoragePlan
                 var edge = body.Edges[edgeId];
                 if (edge.Kind == OwnershipEdgeKind.Abort)
                 {
-                    if (op.Kind != OwnershipOperationKind.Call || body.Operations[edge.To].Kind != OwnershipOperationKind.Exit)
+                    if (op.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort) || body.Operations[edge.To].Kind != OwnershipOperationKind.Exit)
                     {
                         return Fail("Shared CFG has an invalid call Abort edge.", out failure);
                     }
@@ -1034,7 +1095,17 @@ internal sealed partial class GenericStoragePlan
                 scalar = new(SharedScalarType(body.Places[scalarPlace].Type), value.Kind, first, second, unchecked((long)value.Constant), operation, op.Kind == OwnershipOperationKind.Produce && value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary or OwnershipValueKind.Unary or OwnershipValueKind.Convert, countWidth);
             }
 
-            instructions[id] = new(kind, dest, source, count, copyPlace, next, alternative, condition, module.Constants.Intern(location, LlvmConstantKind.Location), this.verifier.SharedDominates(0, id), destructionStart, fieldOffset, indexLeaf, scalar);
+            var cleanupPhase = false;
+            if (function.CodeContext.Compilation.IsTestBuild && value.Kind != OwnershipValueKind.Phi)
+            {
+                cleanupPhase = op.Kind == OwnershipOperationKind.Cleanup;
+                foreach (var deferred in body.DeferredPlans)
+                {
+                    cleanupPhase |= id > deferred.Entry && id < deferred.End && id != deferred.Continuation;
+                }
+            }
+
+            instructions[id] = new(kind, dest, source, count, copyPlace, next, alternative, condition, module.Constants.Intern(location, LlvmConstantKind.Location), this.verifier.SharedDominates(0, id), destructionStart, fieldOffset, indexLeaf, scalar, snapshot, snapshotKind, cleanupPhase);
         }
 
         // Canonical definition-side requirements: equal complete symbolic Types share

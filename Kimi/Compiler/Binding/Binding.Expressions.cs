@@ -175,7 +175,7 @@ public sealed partial class Binding
             return node.BoundType;
         }
 
-        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null)
+        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null && !TestDefinition.IsIncluded(testDefinition))
         {
             return testDefinition.BoundType;
         }
@@ -381,6 +381,8 @@ public sealed partial class Binding
                 this.RequireType(require.Condition, scope, BoundType.Boolean);
                 this.BindNode(require.ElseBody, scope);
                 return Complete(node, BoundType.Unit);
+            case TestVerificationKoto verification:
+                return this.BindVerification(verification, scope);
             case LabeledKoto labeled:
                 return Complete(node, this.BindNode(labeled.Target, scope, expected));
             case TupleLiteralKoto tuple:

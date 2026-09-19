@@ -7,6 +7,7 @@ internal enum KimiLibraryContainer : byte
     Root,
     Console,
     Intrinsics,
+    Test,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
@@ -18,6 +19,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Owned, "Owned", Intrinsic: IntrinsicKind.Owned),
         new(KimiDeclarationId.Callable, "Callable", Intrinsic: IntrinsicKind.Callable),
         new(KimiDeclarationId.WriteLine, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLine),
+        new(KimiDeclarationId.TestTempDirectory, "tempDirectory", KimiLibraryContainer.Test, Function: CompilerFunctionKind.TestTempDirectory),
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
         new(KimiDeclarationId.Array, "Array", SourceExpected: false),

@@ -10,3 +10,5 @@ EXPORTS
     VirtualAlloc
     VirtualProtect
     VirtualFree
+    GetEnvironmentVariableA
+    SetHandleInformation

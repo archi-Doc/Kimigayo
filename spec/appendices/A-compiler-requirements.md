@@ -321,7 +321,7 @@ Implement the contracts in [Test definitions](../06-declarations-and-containers.
 | CLI/artifacts | Unknown IDs, empty selection, conflicting options, stable list/display order, all-case artifact reuse across filters, one process per case and parallel limits |
 | Performance | Debug/Release semantic agreement, successful checks without failure allocations/events, reusable buffers, one startup artifact validation with per-child ID matching; measure costs under §22.6.5 |
 
-Concrete formats/defaults are tracked in [Appendix D.4](D-deferred-features.md#d4-testing-profile-details-and-extensions) and must be settled before implementing their interfaces. Membership/discovery, serial verification/reporting, cleanup/recovery, then parallelism/external output are a possible implementation sequence, not reduced conformance requirements.
+The [test execution profile](../testing-profile.md) defines concrete formats and defaults. Verify solution-wide barriers/budgets, stable single-project/solution IDs, absent product entry, nonexecuted but checked startup bodies, temporary API/environment, and bounded result retention. Membership/discovery, serial verification/reporting, cleanup/recovery, then parallelism/external output are a possible implementation sequence, not reduced conformance requirements.
 
 ## A.18. Kimi library and source aliases
 

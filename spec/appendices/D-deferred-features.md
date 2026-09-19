@@ -43,7 +43,7 @@ Rows follow the order of their owning chapters.
 | Notification- or USN-based skipping of mutable-source reads | Deferred pending proof of complete observation and snapshot synchronization | [D.3](#d3-input-monitoring-and-reuse) |
 | Mods (source generation): concrete APIs and host configuration | Execution and semantic rules are specified; APIs and host configuration remain design work | [Mods](../20-compilation-configuration.md#207-mods-source-generation) |
 | Automatic toolchain installation, debug information, cross-module/DLL ABI, additional CPU/OS profiles | Deferred beyond the Windows profile; explicit build and run commands are defined in §20.8.6 | [Native build](../20-compilation-configuration.md#208-llvm-output-native-build-and-execution), [LLVM profile](../21-layout-runtime-and-code-generation.md#215-llvm-windows-x64-profile) |
-| Testing profile details and extensions | Basic declarations, verification, discovery and execution contracts are specified; concrete profile interfaces and further features remain design work | [D.4](#d4-testing-profile-details-and-extensions) |
+| Testing extensions | Named profiles and further extensions remain deferred; the initial public execution profile is specified | [D.4](#d4-testing-extensions) |
 | Struct layout modes | Kimigayo and C modes are specified; special layouts are deferred | [Structure layout and ABI](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi) |
 | Generic budget defaults, setting names, reporting and physical internal argument positions | Compiler choices within the adopted generation contracts and initial selection guidance | [Generic entries](../21-layout-runtime-and-code-generation.md#2136-entry-abi-and-call-responsibility), [budget strategy](B-reference-models.md#b73-two-growth-limits-and-deterministic-selection) |
 | Persistent generation choices and object-code caches | Deferred until measured need and complete generation-key validation; semantic plans and independent native input summaries may be cached | [Persistence](../21-layout-runtime-and-code-generation.md#21342-persistence-and-composition) |
@@ -82,20 +82,9 @@ Object-Semantics enum construction and matching, empty enums, and representation
 
 Mutable input is fixed from its actual bytes (§18.5.2); equality of file ID, size and timestamp is not content evidence. Notification cookies and per-file USNs do not yet replace reading the input. Before adopting such a path, validate the initial full scan, notification completeness and order, rename and alias updates, open writing handles, and races between synchronization and snapshot capture. Overflow, watcher disconnection, cookie failure or a journal-generation change must cause a full reread. Cookie delivery or a last-recorded USN alone is not a portable proof that nothing changed. This deferred optimization does not weaken the separate assumption that only the compiler writes registered user-cache content (§18.6.4).
 
-## D.4. Testing profile details and extensions
+## D.4. Testing extensions
 
-The basic language and execution rules are specified in §6.5.1, §17.5, §18.8, §20.9, §21.3.7 and §22.6. TestSources, TestDependencies and lock partitions are already specified; they are not deferred settings.
-
-Before implementing profile interfaces, settle together:
-
-- the public API for a case's temporary directory;
-- finite deadline and recovery defaults and their option forms;
-- per-case and whole-run retention budgets, frame and queue limits, and log location and retention;
-- transport, machine-readable schemas, the empty-set option name and exit-code allocation;
-- ID encodings, collision checks, versions and integer bounds.
-
-These unresolved details do not permit unbounded waiting or storage, or ambiguous success.
-
+The basic language and execution rules are specified in §6.5.1, §17.5, §18.8, §20.9, §21.3.7 and §22.6. The [test execution profile](../testing-profile.md) defines the adopted public interfaces and bounds. Profile defaults, temporary-directory access, solution execution and reporting are no longer deferred. Named execution profiles remain deferred; projects have one Test settings record with CLI overrides.
 Parameterized tests, Suite Attributes, skips, resource locks, verification helpers for Option/Result, string and collection diffs, attachments, expected Abort, compile-failure tests and coverage are not introduced. Initially, Abort is a failure. Future cases must be separately identified, reported, selected and scheduled; do not implicitly form a Cartesian product of input lists or duplicate Non-Copy values. Define value generation, Move/process transport and static discovery before adopting parameterization. Existing `group`/`rootgroup` declarations provide organization. A future Suite must distinguish display, tags and settings inheritance, within-Suite serialization and cross-Suite resource exclusion; it must not default to shared mutable fixtures.
 
 Reusing a child process changes static/FFI state and initialization counts, so it requires an explicit future isolation mode rather than a transparent optimization. Same-process parallel tests require a language concurrency and memory model (D.2). Entry/Provider-based test composition belongs to the unsettled Composition Root extension; it is not a prerequisite for the initial dedicated test host.

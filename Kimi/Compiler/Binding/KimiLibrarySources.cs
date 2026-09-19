@@ -18,6 +18,7 @@ public sealed partial class KimiLibrary
             Read("Slice.kimi"),
             Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
             Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),
+            Read("Test.kimi", KimiLibraryContainer.Test, signatures: true),
         ];
 
         private static Source Read(string name, KimiLibraryContainer container = KimiLibraryContainer.Root, bool signatures = false)
@@ -76,6 +77,7 @@ public sealed partial class KimiLibrary
             {
                 KimiLibraryContainer.Console => this.Console,
                 KimiLibraryContainer.Intrinsics => this.Intrinsics,
+                KimiLibraryContainer.Test => this.Test,
                 _ => this.Kotonoha.RootKoto,
             };
             this.ParseSource(source, container);

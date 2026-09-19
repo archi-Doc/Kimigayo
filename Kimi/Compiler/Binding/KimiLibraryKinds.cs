@@ -23,4 +23,5 @@ public enum CompilerFunctionKind : byte
     Exchange,
     Swap,
     MakeObj,
+    TestTempDirectory,
 }

@@ -8,7 +8,7 @@ This is the index of the Kimigayo specification. The chapter files under `spec/`
 
 | Part | Status |
 | --- | --- |
-| Chapters 1–22 | Normative language rules and implementation contracts. |
+| Chapters 1–22 and the linked [test execution profile](spec/testing-profile.md) | Normative language rules and implementation contracts. |
 | Appendix A | Normative compiler requirements. |
 | Appendix B | Non-normative reference models (optional algorithms). |
 | Appendix C | Pointer to the separate implementation status; not part of the language. |
@@ -59,6 +59,7 @@ Implementation coverage is recorded separately in [STATUS.md](STATUS.md). Parser
 - [20. Compilation configuration](spec/20-compilation-configuration.md)
 - [21. Layout, runtime metadata, and code generation](spec/21-layout-runtime-and-code-generation.md)
 - [22. Kimi, program execution, and foreign functions](spec/22-core-execution-and-foreign-functions.md)
+  - [Test execution profile](spec/testing-profile.md): solution execution, settings, temporary storage, limits, identities and results.
 
 ### Appendices
 
@@ -91,6 +92,7 @@ This table indexes the required declarations in [§22.1](spec/22-core-execution-
 | `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees) |
 | `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Stringify`, `Equatable`, `Comparable`, `Iterator`, `Iterable` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
 | `Kimi.Console` | `writeLine(text: string) -> ()` | [§22.4](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |
+| `Kimi.Test` | `tempDirectory() -> string`, in test-only bodies | [Test execution profile](spec/testing-profile.md#environment-and-temporary-directory) |
 | `Kimi.Intrinsics` | `replace`, `exchange`, `swap` | [§15.7 whole-value updates](spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
 | `Kimi.Intrinsics` | `makeObj`, `makeRc`, `makeArc`, strong/Weak `clone`, `downgrade`, `upgrade`, `makeRcCyclic`, `makeArcCyclic` | [§13.5.8–9](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) |
 
@@ -107,7 +109,7 @@ Design documents, decision records and change records are stored in `draft/` (fo
 | [Kimi library and named aliases](draft/Changes/2026-09-17%20Kimi%20Library%20and%20Named%20Aliases.md) | [Source aliases and effective defaults](spec/18-modules-and-dependencies.md#181-external-references-and-aliases), [name lookup](spec/09-names-signatures-and-access.md#941-named-aliases-collisions-and-warnings), [the Kimi library](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) | Core remains the name of the Type component. |
 | [Declaration Container nesting](draft/Changes/2026-09-17%20Declaration%20Container%20Nesting.md) | [Container placement](spec/06-declarations-and-containers.md#611-root-and-nested-containers), [bound Contract references](spec/08-generics-constraints-and-contracts.md#849-bound-contracts-collisions-and-proof-paths), [qualified lookup](spec/09-names-signatures-and-access.md#961-bound-container-paths), [static storage](spec/22-core-execution-and-foreign-functions.md#2224-static-storage-in-inherited-environments) | Its changed rules take precedence. Runtime Contract Views and user-declared Contract parameters are not introduced. |
 | [Dependencies and artifacts](draft/Design/2026-09-13%20Dependencies%20and%20Artifacts.md) | [Chapter 18](spec/18-modules-and-dependencies.md), [native build and commands](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution), [product/test generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), [Appendix A.16](spec/appendices/A-compiler-requirements.md#a16-dependencies-artifacts-and-bounded-reuse) | Source-first distribution, exact-version resolution, locks, pack/publish, content stores, semantic reuse and native input validation. |
-| [Testing](draft/Design/2026-09-13%20Testing.md) | [Test declarations](spec/06-declarations-and-containers.md#651-test-definitions), [verification](spec/17-failure-handling.md#175-test-verification-operations), [inputs](spec/18-modules-and-dependencies.md#188-product-and-test-inputs), [discovery and CLI](spec/20-compilation-configuration.md#209-test-command-and-discovery), [generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), [execution and reporting](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting), [Appendix A.17](spec/appendices/A-compiler-requirements.md#a17-test-verification-and-runner-requirements) | §17.5 supersedes the draft's earlier `$require` return behavior. Profile interfaces and future features remain in [Appendix D.4](spec/appendices/D-deferred-features.md#d4-testing-profile-details-and-extensions). |
+| [Testing](draft/Design/2026-09-13%20Testing.md) | [Test declarations](spec/06-declarations-and-containers.md#651-test-definitions), [verification](spec/17-failure-handling.md#175-test-verification-operations), [inputs](spec/18-modules-and-dependencies.md#188-product-and-test-inputs), [discovery and CLI](spec/20-compilation-configuration.md#209-test-command-and-discovery), [generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), [execution and reporting](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting), [Appendix A.17](spec/appendices/A-compiler-requirements.md#a17-test-verification-and-runner-requirements) | §17.5 supersedes the draft's earlier `$require` return behavior. The adopted [test profile](spec/testing-profile.md) defines public execution interfaces; future extensions remain in [Appendix D.4](spec/appendices/D-deferred-features.md#d4-testing-extensions). |
 
 The Composition Root Entry/Provider design was withdrawn; its declarations and final selection remain unsettled. [§13.8](spec/13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax) defines the reserved root and the independently specified built-ins; it neither redirects `Kimi.Console.writeLine` nor introduces composition Bindings.
 

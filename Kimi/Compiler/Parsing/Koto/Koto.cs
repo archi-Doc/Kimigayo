@@ -345,6 +345,9 @@ public enum KotoKind : byte
     /// <summary>A do expression.</summary>
     Do,
 
+    /// <summary>A standalone expect/require verification.</summary>
+    TestVerification,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }

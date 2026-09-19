@@ -31,7 +31,7 @@ public static class WindowsProfile
     internal static readonly string[] ProvidedSymbols = ["__chkstk", "memcmp", "memcpy", "memmove", "memset"];
 
     /// <summary>Gets the seven Windows APIs imported by the generated runtime (SPEC 22.5.6).</summary>
-    internal static readonly string[] RuntimeImports = ["GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess"];
+    internal static readonly string[] RuntimeImports = ["GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess", "GetEnvironmentVariableA", "SetHandleInformation"];
 
     public static string LlvmVersion { get; }
 

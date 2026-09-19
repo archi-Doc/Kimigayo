@@ -634,6 +634,8 @@ public sealed partial class OwnershipAnalysis
                 return this.Repeat(repeat);
             case RequireKoto require:
                 return this.Require(require);
+            case TestVerificationKoto verification:
+                return this.Verification(verification);
             case ForKoto iteration:
                 this.Iterate(iteration);
                 return this.Temporary(node);
@@ -1538,7 +1540,7 @@ public sealed partial class OwnershipAnalysis
 
         public override void Visit(Koto node)
         {
-            if (node is FunctionKoto && TestDefinition.Marker(node) is not null)
+            if (node is FunctionKoto && TestDefinition.Marker(node) is not null && !TestDefinition.IsIncluded(node))
             {
                 return;
             }

@@ -338,7 +338,7 @@ public sealed class ControlFlowAnalysis
 
     private Flow Visit(Koto node, bool reachable, ControlFlowType? expected = null)
     {
-        if (node is FunctionKoto && TestDefinition.Marker(node) is not null)
+        if (node is FunctionKoto && TestDefinition.Marker(node) is not null && !TestDefinition.IsIncluded(node))
         {
             return new(true, ControlFlowType.Unit);
         }
@@ -485,6 +485,11 @@ public sealed class ControlFlowAnalysis
                 break;
             case RequireKoto require:
                 flow = this.VisitRequire(require, reachable);
+                break;
+            case TestVerificationKoto verification:
+                var conditionFlow = this.Visit(verification.Condition, reachable, ControlFlowType.Boolean);
+                var messageFlow = verification.Message is { } message ? this.Visit(message, reachable && conditionFlow.Normal, new("string")) : new Flow(true, ControlFlowType.Unit);
+                flow = new(conditionFlow.Normal, ControlFlowType.Unit, Union(conditionFlow.Transfers, conditionFlow.Normal ? messageFlow.Transfers : null), conditionFlow.Pending || messageFlow.Pending);
                 break;
             case CodeBlockKoto block:
                 flow = this.VisitSequence(block.Items, 0, block.Items.Count, reachable);

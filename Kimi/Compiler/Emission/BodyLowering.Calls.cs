@@ -48,7 +48,7 @@ internal sealed partial class BodyLowering
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
 
-        var runtime = ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort);
+        var runtime = ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
         var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Physical.Abi ?? this.functions!.GetValueOrDefault(target);
         if (callee is null)
         {

@@ -548,7 +548,7 @@ The linker receives the backend as a profile-wide static input and extracts only
 
 ## 20.9. Test command and discovery
 
-`kimi test <project>` uses the [product/test inputs](18-modules-and-dependencies.md#188-product-and-test-inputs), [Test definitions](06-declarations-and-containers.md#651-test-definitions) and [test generation](21-layout-runtime-and-code-generation.md#2137-product-and-test-generation). Project selection follows the CLI's project rules. Product selection, generation and meaning are fixed before test inputs and generated declarations are added. Tests are discovered at compile time without running user initialization or test code. Excluded definitions and dependencies' own tests are not collected; to test a dependency, target that project explicitly.
+`kimi test <input>` uses the [product/test inputs](18-modules-and-dependencies.md#188-product-and-test-inputs), [Test definitions](06-declarations-and-containers.md#651-test-definitions) and [test generation](21-layout-runtime-and-code-generation.md#2137-product-and-test-generation). Input resolution follows §20.8.6.1; solutions select every listed project. The [test profile](testing-profile.md) owns cross-project selection, configuration, limits and output. Product selection, generation and meaning are fixed before test inputs and generated declarations are added. Tests are discovered at compile time without running user initialization or test code. Excluded definitions and dependencies' own tests are not collected; to test a dependency, select that project independently.
 
 Test discovery and identity keep the complete declaring Container environment. Test eligibility for non-generic declarations includes inherited parameters, which a nested group cannot hide. Placement is applied after directive selection and source generation (§6.1.1).
 
@@ -556,15 +556,6 @@ Every selected test declaration and body is verified with the ordinary Type, own
 
 Product and test artifacts, manifests and caches are distinct. Product analysis may be shared when source, generated output, dependencies, target, settings and compiler agree; fixing product meaning does not require two full compilations. Test-specific product conditions are reported, and analysis from different conditions is never reused. Both product and test resolution partitions are validated under §18.4–§18.5; no lock is required for an empty required partition, but an existing stale lock is not treated as absent. `test` does not update locks. Generation plans and budgets follow §21.3.7, independently of filters.
 
-| Option | Required behavior |
-| --- | --- |
-| No selection option | Run every case |
-| `--list` | List verified IDs and names, applying any supplied selection, without executing the target |
-| `--filter Arithmetic` | Case-sensitive literal substring match on fully qualified test names; no implicit regex or wildcard |
-| `--case <CaseId>` | Select exactly one known case by exact ID; an unknown ID is an error |
-| `--jobs N` | At most `N` simultaneous child processes; `N` must be positive |
-| `--no-parallel` | At most one child, still a new process per case |
+Selection options, concurrency, defaults and conflicts are defined once in the [test profile](testing-profile.md#options-and-settings). Execution order is unspecified, even in serial mode; tests may not depend on it. Listing and final display have a stable order.
 
-`--case` with `--filter`, and `--jobs` with `--no-parallel`, are rejected. The finite default parallel limit is chosen considering CPU, memory, I/O and startup constraints. Execution start and completion order is unspecified, even in serial mode, and tests may not depend on it; listing and final display order must be stable for the same inputs and settings. One failed case does not stop the others, while an unrecoverable runner failure or user cancellation stops new launches.
-
-Zero discovered or selected cases are an error unless an empty-set option explicitly allows them; that option cannot rescue an invalid CaseId. The CLI exits zero only when all selected cases succeed, or when an explicitly allowed empty set succeeds; otherwise it exits nonzero. This differs from the child process completion protocol (§22.6.4). Machine-readable lists and results and controls for the execution deadline, recovery grace and storage budgets are provided; their concrete option names, defaults and formats remain [profile details to specify](appendices/D-deferred-features.md#d4-testing-profile-details-and-extensions), and no unspecified spelling is implicitly accepted. Runtime, environment and reporting requirements are in §22.6.
+Zero discovered or selected cases across the command are an error unless `--allow-empty` is present; that option cannot rescue an invalid CaseId. Successful verified listing exits zero. Execution exits zero only when all selected cases succeed, or when an explicitly allowed empty set succeeds. This differs from child completion (§22.6.4). The [test profile](testing-profile.md) defines machine-readable results, time/storage controls and exit codes. Runtime, environment and reporting requirements are in §22.6.

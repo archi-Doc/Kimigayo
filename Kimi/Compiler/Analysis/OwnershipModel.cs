@@ -75,6 +75,9 @@ public enum OwnershipOperationKind : byte
     WriteBorrowedField,
     UpdateTarget,
     UpdateBorrowed,
+    TestObserve,
+    TestMessage,
+    TestAbort,
 }
 
 public enum PlacementKind : byte

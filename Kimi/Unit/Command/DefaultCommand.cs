@@ -19,7 +19,7 @@ public class DefaultCommand : ISimpleCommand
     {
         if (args.Length != 0)
         {
-            Console.Error.WriteLine($"Unknown command '{args[0]}'. Use restore, check, build, run, emit, or lsp.");
+            Console.Error.WriteLine($"Unknown command '{args[0]}'. Use restore, check, build, run, test, emit, or lsp.");
             Environment.ExitCode = 1;
             return;
         }

@@ -34,6 +34,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
 | Whole-value update intrinsics | `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts |
 | `Console.writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
+| `Test.tempDirectory` | `public func tempDirectory() -> string`; independently owned case-directory path, restricted to test-only bodies under the [test profile](testing-profile.md#environment-and-temporary-directory) |
 
 Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
 
@@ -49,13 +50,14 @@ Array/Dictionary contents, generic enum payloads, and fixed-array elements prese
 
 ### 22.1.1. Declaration placement and function reference
 
-`Kimi.Intrinsics` is a public, non-generic group with no Origin parameters. It contains the whole-value update and object ownership operations as one family. `Copy`, `Owned`, `Callable`, and `Sealed` remain directly under `Kimi`; `writeLine` remains under `Kimi.Console`. Neither group is opened recursively by the default Kimi alias: use `Intrinsics.replace(...)` / `Console.writeLine(...)`, a fully qualified path, or an explicit alias that opens the corresponding group. A named alias such as `alias Memory => Kimi.Intrinsics` preserves the original declarations' Identities. There are no root-level compatibility declarations such as `Kimi.replace` or `Kimi.makeObj`.
+`Kimi.Intrinsics` is a public, non-generic group with no Origin parameters. It contains the whole-value update and object ownership operations as one family. `Copy`, `Owned`, `Callable`, and `Sealed` remain directly under `Kimi`; `writeLine` remains under `Kimi.Console`. The Console, Intrinsics and Test groups are not opened recursively by the default Kimi alias: use `Intrinsics.replace(...)` / `Console.writeLine(...)`, a fully qualified path, or an explicit alias that opens the corresponding group. A named alias such as `alias Memory => Kimi.Intrinsics` preserves the original declarations' Identities. There are no root-level compatibility declarations such as `Kimi.replace` or `Kimi.makeObj`.
 
 The following reference collects the public function names. Types are abbreviated relative to `Kimi`; the linked sections own all constraints, overload requirements, Origins, acquisition and failure behavior.
 
 | Fully qualified function | Signature / input and result Types | Owning rules |
 | --- | --- | --- |
 | `Kimi.Console.writeLine` | `(text: string) -> ()` | §22.4 |
+| `Kimi.Test.tempDirectory` | `() -> string` | [Test profile](testing-profile.md#environment-and-temporary-directory) |
 | `Kimi.Intrinsics.replace<T>` | `(target: uniq/T, with => value: T) -> ()` | §15.7 |
 | `Kimi.Intrinsics.exchange<T>` | `(target: uniq/T, with => value: T) -> T` | §15.7 |
 | `Kimi.Intrinsics.swap<T>` | `(first: uniq/T, second: uniq/T) -> ()` | §15.7 |
@@ -68,7 +70,7 @@ The following reference collects the public function names. Types are abbreviate
 | `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
 
-Container members stay with their owning Types and Contracts: `Iterator.next` and `Iterable.iterate` are listed in §22.1; collection, indexing, range and Slice APIs are defined in §4.6–7; comparison and Stringify requirements are listed in §22.1. `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` (§17.1) are not declarations in either group.
+Container members stay with their owning Types and Contracts: `Iterator.next` and `Iterable.iterate` are listed in §22.1; collection, indexing, range and Slice APIs are defined in §4.6–7; comparison and Stringify requirements are listed in §22.1. `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` (§17.1) are not declarations in these groups.
 
 This reference specifies required APIs, including unimplemented ones. [STATUS.md](../STATUS.md#kimi-library-and-whole-value-updates) records current declaration and runtime coverage separately.
 
@@ -391,7 +393,7 @@ HANDLE and data pointers use ptr, SIZE_T i64, DWORD/UINT/BOOL i32, and LPDWORD p
 
 ### 22.6.1. Test startup and active case
 
-The test build uses dedicated generated startup instead of automatically executing the product main. Verify an explicit main as an ordinary function. Reject included sources containing top-level executable statements or top-level let/var; move that work into functions or explicitly exclude startup sources. Do not silently discard or execute it before tests. Test-only and product input membership is defined in §18.8; discovery is defined in §20.9.
+The test build uses dedicated generated startup and requires no product Application entry. Verify explicit main functions and every selected top-level runtime body with ordinary Type, ownership and control-flow rules, but do not execute them automatically. This applies equally to normal sources and TestSources and produces no warning merely because startup is not executed. Ordinary build still validates its Application/Library startup rules; passing tests does not establish a valid product entry. Top-level let/var remain SourceDocument-local runtime bindings, not static Properties, and are not initialized by test startup. Tests cannot capture those locals. Put shared preparation in ordinary helpers called explicitly by each test, or use ordinary lazy static Properties. Product/test membership is defined in §18.8; discovery is defined in §20.9.
 
 ```text
 assign case -> prepare minimal reporting runtime -> activate case
@@ -404,13 +406,13 @@ All permitted verifications from user initialization through shutdown belong to 
 
 ### 22.6.2. Process isolation and recovery
 
-Pass a CaseId to the same immutable native executable and execute each selected case once in a new child process. Do not share static state, automatically retry, or replace the executable/diagnostic table while it runs. An unsupported execution target is an execution error. Fix the working directory to the target project root; give each case a unique temporary directory reclaimed by the parent after use. Capture the parent's initial environment, apply settings, and pass the same configured environment to each case. Continuously drain separate per-case stdout/stderr streams without interleaving cases' stored logs.
+Pass a CaseId to the same immutable native executable for its project and execute each selected case once in a new child process. Do not share static state, automatically retry, or replace the executable/diagnostic table while it runs. An unsupported execution target is an execution error. Fix the working directory to the target project root; give each case a unique temporary directory reclaimed after every outcome. Capture the parent's environment once and apply project settings, then override only reserved case-specific settings, including TMP/TEMP. The [test profile](testing-profile.md) defines the temporary-directory API, environment, stdin and limits. Continuously drain separate per-case stdout/stderr streams without interleaving cases' stored logs.
 
 External files, databases and ports may remain shared. Use case-specific resources or §20.9's serial mode where needed; temporary-directory recovery does not perform user defer or external rollback. Parallel cases are separate processes and add no language-level threads or memory model.
 
 Use the parent's monotonic clock for a finite execution deadline and recovery grace. The execution deadline covers child launch through exit, including runtime preparation, initialization, body, cleanup, shutdown and completion reporting; exclude build and queue time. Normal exit, abnormal exit, timeout and cancellation enter the same bounded recovery process. Stop timed-out/cancelled cases and recover remaining managed descendants even after normal child exit.
 
-Manage the process group from launch using an OS management unit or equivalent; later PID enumeration alone is insufficient. Bound process termination waits, channel draining/EOF waits and temporary cleanup by recovery grace. Report surviving processes/unrecovered resources after grace, preserving the original termination reason. Do not claim storage still used by a live process was recovered. Forced termination does not guarantee user cleanup. No guarantee extends to external processes outside OS management. An unrecoverable resource shortage fails the run. Concrete limits and management mechanisms remain §D.4 profile work, without permission for unbounded waits.
+Manage the process group from launch using an OS management unit or equivalent; later PID enumeration alone is insufficient. Bound process termination waits, channel draining/EOF waits and temporary cleanup by recovery grace. Report surviving processes/unrecovered resources after grace, preserving the original termination reason. Do not claim storage still used by a live process was recovered. Forced termination does not guarantee user cleanup. No guarantee extends to external processes outside OS management. An unrecoverable resource shortage fails the run. The [test profile](testing-profile.md) defines the adopted limits and management mechanism.
 
 ### 22.6.3. Diagnostic identity
 
@@ -446,7 +448,7 @@ Keep failure records, termination reason and management errors separately; recov
 
 A `$require` failure does not produce normal completion or resume the test function; the parent recovers that case's process and continues managing other cases. Identify a `$require`-initiated Abort from reliable termination information associated with its verification site. A recorded false condition alone does not establish that reason: condition cleanup, message evaluation or message cleanup may Abort or diverge before the operation reaches its own Abort. Retain both the already recorded failure and the actual termination reason in those cases.
 
-Provide human-readable and versioned machine-readable results. Include project/target/settings, IDs, source locations and expressions, retained values/messages, phases, durations, termination state, management errors, log paths and omission information. Terminal formatting is not the machine-readable interface. Concrete schemas/encodings remain §D.4.
+Provide human-readable and versioned machine-readable results using the [test profile](testing-profile.md). Include project/target/settings, IDs, source locations and expressions, retained values/messages, phases, durations, termination state, management errors, log paths and omission information. Terminal formatting is not the machine-readable interface.
 
 ### 22.6.5. Bounded diagnostics and storage
 

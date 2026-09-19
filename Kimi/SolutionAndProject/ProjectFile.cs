@@ -37,6 +37,12 @@ public partial record class ProjectFile
     /// <summary>Gets or sets explicit project-relative test-only source paths.</summary>
     public string[] TestSources { get; set; } = [];
 
+    /// <summary>Gets or sets a stable test identity independent of solution selection and absolute paths.</summary>
+    public string? TestProjectId { get; set; }
+
+    /// <summary>Gets or sets the project's test execution settings.</summary>
+    public Testing.TestSettings Test { get; set; } = new();
+
     /// <summary>Gets or sets the project-wide alias imports.</summary>
     public string[] Alias { get; set; } = [];
 
@@ -93,10 +99,23 @@ public partial record class ProjectFile
         HashSet<string>? names = null;
         HashSet<string>? dependencies = null;
         HashSet<string>? tests = null;
+        var testSettingsSeen = false;
         var count = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < count; i++)
         {
             var key = reader.ReadStringSpan();
+            if (key.SequenceEqual("Test"u8))
+            {
+                if (testSettingsSeen)
+                {
+                    throw new TinyhandException("Repeated Test settings record.");
+                }
+
+                testSettingsSeen = true;
+                ValidateTestMap(ref reader);
+                continue;
+            }
+
             var map = key.SequenceEqual("CompileTimeSettings"u8) ? 1 : key.SequenceEqual("Dependencies"u8) ? 2 : key.SequenceEqual("TestDependencies"u8) ? 3 : 0;
             if (map == 0)
             {
@@ -118,6 +137,49 @@ public partial record class ProjectFile
                 if (name is null || !seen.Add(name))
                 {
                     throw new TinyhandException($"Duplicate or null {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
+                }
+
+                reader.Skip();
+            }
+        }
+    }
+
+    private static void ValidateTestMap(ref TinyhandReader reader)
+    {
+        if (reader.TryReadNil())
+        {
+            throw new TinyhandException("Test must be a settings record.");
+        }
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var count = reader.ReadMapHeaderOrEmptyArray();
+        for (var i = 0; i < count; i++)
+        {
+            var name = reader.ReadString();
+            if (name is null || !names.Add(name) || name is not ("Timeout" or "RecoveryGrace" or "DiagnosticCount" or "DiagnosticBytes" or "LogBytes" or "Environment"))
+            {
+                throw new TinyhandException("Unknown or duplicate Test setting: " + name);
+            }
+
+            if (name != "Environment")
+            {
+                reader.Skip();
+                continue;
+            }
+
+            if (reader.TryReadNil())
+            {
+                throw new TinyhandException("Test.Environment must be a map.");
+            }
+
+            var environment = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            var entries = reader.ReadMapHeaderOrEmptyArray();
+            for (var j = 0; j < entries; j++)
+            {
+                var variable = reader.ReadString();
+                if (variable is null || !environment.Add(variable))
+                {
+                    throw new TinyhandException("Duplicate test environment name: " + variable);
                 }
 
                 reader.Skip();

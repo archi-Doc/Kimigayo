@@ -26,10 +26,13 @@ public sealed partial class KimiLibrary
         this.Intrinsics = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Intrinsics", TokenKind.Group, context, default);
         this.IntrinsicsScope = new(this.Intrinsics) { Parent = this.Scope };
         this.IntrinsicsSymbol = new("Intrinsics", BindingSymbolKind.Container, this.Intrinsics, this.Scope);
+        this.Test = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Test", TokenKind.Group, context, default);
+        this.TestScope = new(this.Test) { Parent = this.Scope };
+        this.TestSymbol = new("Test", BindingSymbolKind.Container, this.Test, this.Scope);
         this.LoadSources();
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
-        var symbolCount = 2;
+        var symbolCount = 3;
         for (var i = 0; i < entries.Length; i++)
         {
             ref readonly var entry = ref entries[i];
@@ -37,6 +40,7 @@ public sealed partial class KimiLibrary
             {
                 KimiLibraryContainer.Console => this.ConsoleScope,
                 KimiLibraryContainer.Intrinsics => this.IntrinsicsScope,
+                KimiLibraryContainer.Test => this.TestScope,
                 _ => this.Scope,
             };
             var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction);
@@ -75,7 +79,8 @@ public sealed partial class KimiLibrary
         this.registeredSymbols = new BindingSymbol[symbolCount];
         this.registeredSymbols[0] = this.ConsoleSymbol;
         this.registeredSymbols[1] = this.IntrinsicsSymbol;
-        var symbolIndex = 2;
+        this.registeredSymbols[2] = this.TestSymbol;
+        var symbolIndex = 3;
         if (this.SliceIterator is { } sliceIterator)
         {
             this.registeredSymbols[symbolIndex++] = sliceIterator;
@@ -142,6 +147,12 @@ public sealed partial class KimiLibrary
 
     internal GroupKoto Console { get; }
 
+    internal GroupKoto Test { get; }
+
+    internal BindingScope TestScope { get; }
+
+    internal BindingSymbol TestSymbol { get; }
+
     internal GroupKoto Intrinsics { get; }
 
     internal BindingScope IntrinsicsScope { get; }
@@ -181,7 +192,8 @@ public sealed partial class KimiLibrary
 
     internal BindingScope? SignatureScope(DeclarationContainerKoto container)
         => ReferenceEquals(container, this.Console) ? this.ConsoleScope :
-            ReferenceEquals(container, this.Intrinsics) ? this.IntrinsicsScope : null;
+            ReferenceEquals(container, this.Intrinsics) ? this.IntrinsicsScope :
+            ReferenceEquals(container, this.Test) ? this.TestScope : null;
 
     internal void Restore()
     {
@@ -200,6 +212,7 @@ public sealed partial class KimiLibrary
 
         this.IntrinsicsScope.Reset();
         this.ConsoleScope.Reset();
+        this.TestScope.Reset();
         this.Kotonoha.RootKoto.BoundSymbol = this.Module;
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }

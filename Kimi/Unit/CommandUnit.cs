@@ -37,6 +37,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand<RestoreCommand, KimiOptions>();
                 context.AddCommand<EmitCommand, KimiOptions>();
                 context.AddCommand<RunCommand, KimiOptions>();
+                context.AddCommand<TestCommand>();
 
                 // Logger
                 context.ClearLogOutputResolvers();
@@ -102,13 +103,21 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             };
 
             // Main
-            var parser = this.Context.CreateSimpleParser(parserOptions);
-            if (!parser.Parse(KimiOptions.ExpandFlags(param.Args)))
+            var arguments = SimpleParserHelper.SplitArguments(param.Args, default);
+            if (arguments.Length != 0 && arguments[0] == "test")
             {
-                Environment.ExitCode = 1;
+                await this.Context.ServiceProvider.GetRequiredService<TestCommand>().Execute(arguments[1..], this.Context.ExecutionRoot.CancellationToken);
             }
+            else
+            {
+                var parser = this.Context.CreateSimpleParser(parserOptions);
+                if (!parser.Parse(KimiOptions.ExpandFlags(param.Args)))
+                {
+                    Environment.ExitCode = 1;
+                }
 
-            await parser.Execute(this.Context.ExecutionRoot.CancellationToken);
+                await parser.Execute(this.Context.ExecutionRoot.CancellationToken);
+            }
 
             await this.Context.SendStopAsync();
             await this.Context.SendTerminateAsync();

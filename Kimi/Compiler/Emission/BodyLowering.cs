@@ -216,6 +216,11 @@ internal sealed partial class BodyLowering
     private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (operation.Kind is OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestMessage or OwnershipOperationKind.TestAbort)
+        {
+            return this.LowerVerification(body, function, index, out failure);
+        }
+
         if (body.Values[index].Kind == OwnershipValueKind.Capture && body.Function.BoundClosure?.EnvironmentType is not null)
         {
             var valid = this.LowerCapture(body, function, index, out failure);

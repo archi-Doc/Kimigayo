@@ -204,6 +204,11 @@ internal static partial class LlvmModuleWriter
             }
 
             output.Write($"b{id}:\n");
+            if (op.CleanupPhase)
+            {
+                output.Write($"  %testphase{id} = load i32, ptr @__kimi_test_phase\n  store i32 2, ptr @__kimi_test_phase\n");
+            }
+
             if (op.Kind is SharedStorageOperation.Destroy or SharedStorageOperation.Transfer)
             {
                 for (var k = op.Count - 1; k >= 0; k--)
@@ -237,6 +242,30 @@ internal static partial class LlvmModuleWriter
 
                 switch (op.Kind)
                 {
+                    case SharedStorageOperation.TestObserve:
+                        output.Write($"  %test{id} = call i64 @__kimi_test_observe(i1 %v{source}, i32 {op.Index})\n");
+                        if (op.Snapshot >= 0 && body.Instructions[op.Snapshot].Scalar is { } comparison)
+                        {
+                            for (var side = 0; side < 2; side++)
+                            {
+                                var operand = side == 0 ? comparison.First : comparison.Second;
+                                var type = body.Instructions[operand].Scalar!.Value.Type;
+                                var width = int.Parse(type.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
+                                output.Write($"  %testbits{id}_{side} = zext {type} %v{operand} to i128\n  call void @__kimi_test_scalar(i64 %test{id}, i32 {side}, i16 {op.SnapshotKind}, i16 {width}, i128 %testbits{id}_{side})\n");
+                            }
+                        }
+
+                        break;
+                    case SharedStorageOperation.TestMessage:
+                        output.Write($"  call void @__kimi_test_message(i64 %test{source}, ptr %p{dest})\n");
+                        break;
+                    case SharedStorageOperation.TestAbort:
+                        output.Write($"  call void @__kimi_test_require_abort(i64 %test{source}, i32 {op.Index})\n");
+                        break;
+                    case SharedStorageOperation.TestTempDirectory:
+                        output.Write($"  call void @__kimi_test_temp(ptr %p{dest})\n");
+                        Live(dest, true);
+                        break;
                     case SharedStorageOperation.StringLiteral:
                         var text = source < 0 ? null : constants[source];
                         output.Write($"  store %kimi.string {{ ptr {(text is null ? "null" : "@" + text.Name)}, i64 {text?.ByteLength ?? 0}, i8 {WindowsLowering.StaticReleaseKind} }}, ptr %p{dest}, align {WindowsLowering.String.Layout.Alignment}\n");
@@ -513,6 +542,11 @@ internal static partial class LlvmModuleWriter
                         output.Write($"  store {scalar.Type} %v{id}, ptr %p{op.Destination}, align {SharedScalarAlignment(scalar.Type)}\n");
                     }
                 }
+            }
+
+            if (op.CleanupPhase)
+            {
+                output.Write($"  store i32 %testphase{id}, ptr @__kimi_test_phase\n");
             }
 
             if (op.Alternative >= 0)

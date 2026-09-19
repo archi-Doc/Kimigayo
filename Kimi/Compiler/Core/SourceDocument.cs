@@ -23,16 +23,17 @@ public sealed partial class SourceDocument
     /// <summary>Decodes UTF-8 source without replacing malformed byte sequences.</summary>
     /// <param name="path">The source path.</param>
     /// <param name="utf8">The source bytes, optionally beginning with a UTF-8 BOM.</param>
+    /// <param name="isTestOnly">Whether this source belongs exclusively to tests.</param>
     /// <returns>The decoded source document.</returns>
     /// <exception cref="DecoderFallbackException">The source is not valid UTF-8.</exception>
-    public static SourceDocument FromUtf8(string path, ReadOnlySpan<byte> utf8)
+    public static SourceDocument FromUtf8(string path, ReadOnlySpan<byte> utf8, bool isTestOnly = false)
     {
         if (utf8.StartsWith("\uFEFF"u8))
         {
             utf8 = utf8[3..];
         }
 
-        return new(path, StrictUtf8.GetString(utf8));
+        return new(path, StrictUtf8.GetString(utf8), isTestOnly);
     }
 
     [IgnoreMember]
@@ -49,6 +50,10 @@ public sealed partial class SourceDocument
     /// </summary>
     [Key(1)]
     public string SourceText { get; private set; } = string.Empty;
+
+    /// <summary>Gets a value indicating whether this immutable input belongs exclusively to the root project's tests.</summary>
+    [Key(2)]
+    public bool IsTestOnly { get; private set; }
 
     /// <summary>
     /// Gets the number of physical lines in the source text.
@@ -67,13 +72,15 @@ public sealed partial class SourceDocument
     /// </summary>
     /// <param name="path">The source URL or path.</param>
     /// <param name="sourceText">The complete source text.</param>
-    public SourceDocument(string path, string sourceText)
+    /// <param name="isTestOnly">Whether this source belongs exclusively to tests.</param>
+    public SourceDocument(string path, string sourceText, bool isTestOnly = false)
     {
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(sourceText);
 
         this.Path = path;
         this.SourceText = sourceText;
+        this.IsTestOnly = isTestOnly;
     }
 
     /// <summary>

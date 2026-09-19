@@ -14,6 +14,7 @@ public sealed partial class KimiLibrary
         var valid = !this.Kotonoha.DiagnosticCollection.HasErrors && this.Kotonoha.GeneratedFunction is null &&
             this.ValidCompilerGroup(this.Intrinsics, this.IntrinsicsSymbol, this.IntrinsicsScope) &&
             this.ValidCompilerGroup(this.Console, this.ConsoleSymbol, this.ConsoleScope) &&
+            this.ValidCompilerGroup(this.Test, this.TestSymbol, this.TestScope) &&
             this.SliceIterator is { Declaration: StructKoto helper } &&
             ReferenceEquals(FindDeclaration(this.Kotonoha.RootKoto, "SliceIterator", false), helper);
         this.ValidatedDeclarationCount = 0;
@@ -29,6 +30,7 @@ public sealed partial class KimiLibrary
                     {
                         KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap => this.ValidUpdate(symbol, entry.Id),
                         KimiDeclarationId.WriteLine => this.ValidWriteLine(),
+                        KimiDeclarationId.TestTempDirectory => this.ValidTempDirectory(symbol),
                         KimiDeclarationId.MakeObj => this.ValidMakeObj(),
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
@@ -181,6 +183,16 @@ public sealed partial class KimiLibrary
         static bool Type(Koto? node, bool borrow) => node is TypeSemanticsKoto { OriginName: null, OriginExpression: null, OriginArguments: null, SemanticsParameter: null } type &&
             (borrow ? type.SemanticsKind == SemanticsKind.Uniq && Type(type.Type, false) : type is { SemanticsKind: SemanticsKind.Owner, Type: null, Identifier: "T" });
     }
+
+    private bool ValidTempDirectory(BindingSymbol symbol)
+        => symbol.CompilerFunction == CompilerFunctionKind.TestTempDirectory && ReferenceEquals(symbol.Scope, this.TestScope) &&
+            symbol.Declaration is FunctionKoto function && ReferenceEquals(function.Parent, this.Test) && function is
+            {
+                Name: "tempDirectory", Modifier: ModifierKind.Public, GenericArguments.Count: 0, Origins.Count: 0,
+                Parameters.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null,
+                IsRequirement: false, IsGenerated: false, IsSpecialization: false,
+                ReturnType: TypeSemanticsKoto { Type: null, Identifier: "string", SemanticsKind: SemanticsKind.Owner, OriginExpression: null, OriginName: null, OriginArguments: null },
+            };
 
     private bool ValidWriteLine()
         => this.WriteLine.CompilerFunction == CompilerFunctionKind.WriteLine && ReferenceEquals(this.WriteLine.Scope, this.ConsoleScope) &&

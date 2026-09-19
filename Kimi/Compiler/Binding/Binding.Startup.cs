@@ -17,6 +17,7 @@ public enum StartupKind : byte
     None,
     Implicit,
     Explicit,
+    Test,
 }
 
 /// <summary>A startup selection for the latest final Bind; this does not certify ownership or emission.</summary>

@@ -9,7 +9,11 @@ public sealed partial class Binding
     private BindingScope ModuleScope(Koto node) => this.scopes[node.CodeContext.Kotonoha.RootKoto];
 
     private BindingSymbol? ModuleReference(Koto use, string name)
-        => name == "Kimi" ? this.Library.Module : this.compilation.FindReference(use.CodeContext.Kotonoha, name) is { } module ? this.moduleSymbols!.GetValueOrDefault(module) : null;
+        => name == "Kimi" ? this.Library.Module : this.TestReferenceAllowed(use, name) && this.compilation.FindReference(use.CodeContext.Kotonoha, name) is { } module ? this.moduleSymbols!.GetValueOrDefault(module) : null;
+
+    private bool TestReferenceAllowed(Koto use, string name)
+        => !this.compilation.IsTestBuild || !ReferenceEquals(use.CodeContext.Kotonoha, this.compilation.Kotonoha) ||
+            !this.compilation.Project.ProjectFile.TestDependencies.ContainsKey(name) || TestDefinition.IsTestOnly(use);
 
     private void IndexModuleReferences()
     {

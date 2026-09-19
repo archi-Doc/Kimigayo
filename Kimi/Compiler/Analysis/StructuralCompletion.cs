@@ -193,6 +193,14 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
                 }
 
                 break;
+            case TestVerificationKoto verification:
+                result = this.Visit(verification.Condition);
+                if (result.Normal && verification.Message is { } message)
+                {
+                    result = this.Merge(result, this.Visit(message) with { Normal = false });
+                }
+
+                break;
             case IsKoto { IsRuntimeTest: true } test:
                 result = this.Visit(test.Left);
                 break;

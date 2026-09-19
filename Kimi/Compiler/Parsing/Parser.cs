@@ -2466,6 +2466,35 @@ CloseParameters:
 
     internal static Koto? ParseBlockItem(ref TokenReader reader)
     {
+        if (reader.CurrentTokenKind == TokenKind.Dollar && reader.PeekKind(1) is TokenKind.Identifier or TokenKind.Require)
+        {
+            var probe = reader;
+            var start = probe.Read();
+            var require = probe.IsCurrentIdentifier("require") || probe.CurrentTokenKind == TokenKind.Require;
+            if (require || probe.IsCurrentIdentifier("expect"))
+            {
+                reader = probe;
+                reader.Advance();
+                if (!reader.TryConsume(TokenKind.OpenParenthesis))
+                {
+                    reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                    return reader.NewErrorKoto();
+                }
+
+                var arguments = ParseArgumentList(ref reader, out var labels);
+                var trailing = reader.PeekKind(-1) == TokenKind.Comma;
+                var closed = reader.TryConsume(TokenKind.CloseParenthesis);
+                if (!closed || arguments.Length is < 1 or > 2 || trailing ||
+                    (labels is not null && labels.Length > 0 && labels[0] is not null) ||
+                    (arguments.Length == 2 && (labels is null || labels.Length < 2 || labels[1] != "message")))
+                {
+                    reader.Diagnostic.Add(start.Span, DiagnosticCode.UnexpectedToken_Kd, "test verification arguments");
+                }
+
+                return new TestVerificationKoto(ref reader, SourceSpan.FromBounds(start.Span.Start, reader.PreviousSyntaxEnd), require, arguments.Length > 0 ? arguments[0] : reader.NewErrorKoto(), arguments.Length > 1 ? arguments[1] : null);
+            }
+        }
+
         if (reader.AttributeKoto is not null && (reader.CurrentTokenKind != TokenKind.Func || reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket))
         {
             reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "attribute placement");
@@ -3001,6 +3030,11 @@ CloseParameters:
         reader.IfBodyRegion |= ifBody;
         try
         {
+            if (reader.CurrentTokenKind == TokenKind.Dollar)
+            {
+                return ParseBlockItem(ref reader) ?? reader.NewErrorKoto();
+            }
+
             if (reader.CurrentTokenKind == TokenKind.Require)
             {
                 return ParseRequire(ref reader);

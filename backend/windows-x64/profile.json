@@ -13,7 +13,7 @@
     "memset"
   ],
   "kernel32": {
-    "definitionSha256": "d08872d05e6cd023889982a412ac8fa7e78f056805cd84d3daf8db459a0f494e",
+    "definitionSha256": "be1d23998d9f19d58c47f8b66ea77cdfb2f5300110ea61097a3345c0f816dd52",
     "dlltoolSha256": "3733b6d47353a29f18b0e543675d83c525655a7cdfa3fb9c06cfc5d4a1a4fdfc"
   }
 }

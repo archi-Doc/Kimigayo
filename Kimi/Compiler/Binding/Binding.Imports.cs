@@ -71,7 +71,7 @@ public sealed partial class Binding
 
             symbol = this.SelectTypeCandidate(symbol, root, use, false);
 
-            if (symbol is null && first && this.compilation.References(use.CodeContext.Kotonoha) is { } references &&
+            if (symbol is null && first && (!this.compilation.IsTestBuild || this.TestReferenceAllowed(use, name.ToString())) && this.compilation.References(use.CodeContext.Kotonoha) is { } references &&
                 references.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out var module))
             {
                 symbol = this.moduleSymbols!.GetValueOrDefault(module);

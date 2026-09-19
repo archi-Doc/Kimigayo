@@ -7,6 +7,27 @@ namespace Kimi.Compiler;
 /// <summary>Syntax-level product membership; this does not discover or certify executable tests.</summary>
 internal static class TestDefinition
 {
+    internal static bool IsIncluded(Koto node)
+        => node.CodeContext.Compilation.IsTestBuild && ReferenceEquals(node.CodeContext.Kotonoha, node.CodeContext.Compilation.Kotonoha);
+
+    internal static bool IsTestOnly(Koto node)
+    {
+        if (node.CodeContext.SourceDocument?.IsTestOnly == true)
+        {
+            return true;
+        }
+
+        for (var current = node; current is not null; current = current.Parent)
+        {
+            if (current is FunctionKoto && Marker(current) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     internal static AttributeKoto? Marker(Koto node)
     {
         for (var attribute = node.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)

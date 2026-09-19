@@ -53,6 +53,9 @@ internal enum EmissionOpcode : byte
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
+    TestSnapshot,
+    TestPhaseEnter,
+    TestPhaseLeave,
 
     /// <summary>A normal return, emitted only after lowering proves a normal Exit.</summary>
     ReturnVoid,
@@ -203,6 +206,8 @@ internal sealed class EmissionModule
 
     internal bool IsComplete { get; private set; }
 
+    internal string? TestRuntime { get; set; }
+
     internal bool NeedsStringComparison { get; set; }
 
     internal int FunctionCount => this.functionCount;
@@ -213,6 +218,7 @@ internal sealed class EmissionModule
     internal void Clear()
     {
         this.IsComplete = false;
+        this.TestRuntime = null;
         this.NeedsStringComparison = false;
         this.functionCount = 0;
         this.Constants.Clear();

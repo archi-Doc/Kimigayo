@@ -606,7 +606,7 @@ The responsibility transitions of §21.4.3 apply at the **logical callee entry**
 
 ### 21.3.7. Product and test generation
 
-For code generation, product substitutions, sharing classes, call entries, frames and budget choices are fixed first, from product inputs and normal-output roots. Semantic-only test checking and `--list` need not construct this plan. Source membership and dependency partitions follow §18.8.
+For code generation, product substitutions, sharing classes, call entries, frames and budget choices are fixed first, from product inputs and normal-output roots. Test processing does not require a valid product entry: when ordinary startup selection has no unique valid entry, its product startup root set is empty; Library/public generation roots retain their ordinary meaning. When an ordinary entry is valid, plan its product closure without executing it. In either case verify all selected product bodies and never choose roots from a test filter. Semantic-only test checking and `--list` need not construct this plan. Source membership and dependency partitions follow §18.8.
 
 Additional test requests, including new substitutions of product generics, belong to the test region. Existing product entries are reused for identical substitutions. A new test entry may connect to an existing product body only after the existing contract is validated; product sharing classes, context schemas and frames are never enlarged, and required additions go into the test region.
 

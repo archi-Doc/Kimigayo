@@ -314,7 +314,7 @@ public partial class Project
         return success;
     }
 
-    private bool BuildTarget(string target, bool emit, ArtifactPaths? paths, HashSet<string>? testSources, DependencyPartition? graph)
+    private bool BuildTarget(string target, bool emit, ArtifactPaths? paths, HashSet<string>? testSources, DependencyPartition? graph, Action<Compilation>? prepared = null)
     {
         // Create & Prepare Compilation
         var project = graph is null ? this : new Project(this.kimigayo, graph.Nodes[0].Input.Configuration)
@@ -323,8 +323,9 @@ public partial class Project
             Directory = this.Directory,
             KimiOptions = this.KimiOptions,
             SolutionLanguageVersion = this.SolutionLanguageVersion,
+            FilePath = this.FilePath,
         };
-        var compilation = new Compilation(this.kimigayo, project);
+        var compilation = new Compilation(this.kimigayo, project) { IsTestBuild = prepared is not null };
         // The service retains named diagnostic collections across attempts, but the new compilation
         // must not inherit an earlier target's preparation/publication errors.
         compilation.Kotonoha.DiagnosticCollection.ClearDiagnostic();
@@ -384,6 +385,15 @@ public partial class Project
             }
         }
 
+        if (compilation.IsTestBuild && testSources is not null)
+        {
+            foreach (var path in testSources.Order(StringComparer.Ordinal))
+            {
+                var source = SourceDocument.FromUtf8(path, System.IO.File.ReadAllBytes(path), isTestOnly: true);
+                projectKotonoha.AddSource(source);
+            }
+        }
+
         foreach (var y in this.additionalSource)
         {
             projectKotonoha.AddSource(y);
@@ -391,7 +401,7 @@ public partial class Project
 
         var binding = compilation.Bind();
         compilation.Binding.ReportDiagnostics();
-        var startup = compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
+        var startup = compilation.IsTestBuild ? compilation.Binding.CheckTestStartup() : compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
         compilation.Binding.ReportStartupDiagnostics();
         var ownership = compilation.Ownership.Analyze();
         var controlFlow = compilation.Ownership.ControlFlow!;
@@ -403,6 +413,12 @@ public partial class Project
         for (var i = 1; i < compilation.SourceModules.Length; i++)
         {
             accepted &= !compilation.SourceModules[i].HasSourceErrors && !compilation.SourceModules[i].DiagnosticCollection.HasErrors;
+        }
+
+        if (accepted && prepared is not null)
+        {
+            compilation.Tests.Discover(compilation);
+            prepared(compilation);
         }
 
         if (!accepted || !emit)
