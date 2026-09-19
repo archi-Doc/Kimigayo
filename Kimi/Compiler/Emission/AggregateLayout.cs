@@ -190,7 +190,8 @@ internal sealed class AggregateLayoutPool
 
     private AggregateLayout? GetEnum(BoundType type, int depth)
     {
-        if (depth == 64 || type.Origin is not null || type.OriginArguments.Count != 0 || type.StoredCases is not { Length: > 0 } types)
+        if (depth == 64 || type.Origin is not null ||
+            type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) || type.StoredCases is not { Length: > 0 } types)
         {
             return null;
         }

@@ -4,7 +4,7 @@ Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md
 Programs 1–21 have source files; programs 22–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 16–21 are specification targets beyond current
+not an execution claim. Milestones 17–21 are specification targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -39,7 +39,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-18**, after the 38-program restructuring and program 15 completion. Build means a native
+As of **2026-09-19**, after the 38-program restructuring and program 16 completion. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -61,7 +61,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 13 | YES | PASS (Release) | PASS (Release) | Exact copied source, O0/O2 output/exit checks |
 | 14 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 15 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
-| 16 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedOwnership_Kd and dependent Loan/initialization diagnostics |
+| 16 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
 | 17 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedOwnership_Kd for element update targets; Move/Loan diagnostics |
 | 18 | YES | FAIL (Release/O2) | NOT_RUN | GenerationFailed_Kd: invalid shared storage/projection |
 | 19 | YES | FAIL (Release/O2) | NOT_RUN | InvalidPattern_Kd / UnprovenConstraint_Kd for associated results/nested conformance |
@@ -90,7 +90,7 @@ identities and exact commands: Release compiler/test-project build PASS with zer
 warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
 program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
 The syntax-catalog test includes all 21 existing milestone sources. That audit's
-failed program-15 probe is superseded by its completion below. Programs 16–21
+failed program-15/16 probes are superseded by their completions. Programs 17–21
 retain failed build probes; their expected output remains specification-derived.
 Programs 22–38 have no source files or executed tests yet. Debug, full managed
 regressions and NativeAOT were not run for this restructuring.

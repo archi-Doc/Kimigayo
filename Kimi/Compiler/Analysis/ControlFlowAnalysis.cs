@@ -378,6 +378,11 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case SyntaxFormKoto { Akind: KotoKind.EnumCase }:
+                // Case payloads are declaration Types, including their Origin names.
+                // Binding validates them; constructing a Case is a separate expression.
+                flow = new(true, ControlFlowType.Unit);
+                break;
             case IsKoto { BoundConstraint: not null }:
                 // A declaration constraint has no runtime evaluation. Its bound
                 // Container path is checked by Binding, including every qualifier.

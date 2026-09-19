@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The compiler-wide plan covers unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. The current execution is the test implementation in Section 2. Milestone Programs require separate explicit authorization and are not implementation targets or stopping conditions. NativeAOT and draft edits remain excluded.
+The compiler-wide plan covers unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. The current request explicitly authorizes completion of program Milestone 16 as recorded in Section 2; no later program is an implementation target. NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,24 +31,15 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current execution: **Adopted test profile checkpoint implemented and verified for the supported Windows backend**. G2 is resolved by [the normative profile](spec/testing-profile.md). Discovery, verification operations, isolated project/solution execution and reporting are implemented; [evidence](PLAN_HISTORY.md#test-profile-implementation-20260919) separates managed tests and native runs. I30/I31 remain IN_PROGRESS for full cross-feature conformance with existing I11/I16/I28 prerequisites. NativeAOT and draft edits remain excluded.
+Current request: **Program 16 external Origin forwarding — DONE**. P16 is the program number, not a product M/I milestone. [Completion evidence](PLAN_HISTORY.md#program16-completion); the preceding test-profile/library/documentation checkpoint is retained in [history](PLAN_HISTORY.md#pre-program16-checkpoint).
 
 | ID | State | Acceptance / exact next action |
 | --- | --- | --- |
-| KL | DONE | Embedded sources, stable catalog, ordinary helper binding/collection and explicit validation are complete; warm rebind allocates zero bytes. [Verification and measurements](PLAN_HISTORY.md#kimi-library-organization). No KL actions remain; missing library declarations/APIs stay in I5/G4 and I19–I25. |
-| DOC-S | DONE | §2.3.1–6 owns the rules; Attribute, unsafe and directive chapters link to it. Appendix A.21 owns verification. Adopted draft unchanged. |
-| DOC-LP | DONE | Optional range collection, all declaration targets, interpolation, fragments and directive exclusions; source mappings and generated provenance survive reparse. |
-| DOC-M | DONE | Lazy text, pinned CommonMark profile, escaped rendering, relative links, item extraction, separate diagnostics and Binding-backed publication. |
-| DOC-V | DONE | Warning-free Debug/Release builds; 8,792 managed tests per configuration, including 84 documentation cases; identical collected/uncollected IR and two verified native O0/O2 executions. |
+| P16-O | DONE | The unchanged target passes Binding and ownership. Substituted enum payload dependencies retain both external sources; escaping-source and conflicting parent/source access are rejected. |
+| P16-G | DONE | Enum layout, directed reference payload fitting and canonical call-Origin intersection substitution pass checked LLVM emission, verification, linking and native O0/O2 execution. |
+| P16-V | DONE | Warning-free Debug/Release solution builds; Debug full 9,151 plus the extended 13-case suite, Release full 9,157; 57 native target/variant/rejection checks per configuration and 90 Release regression checks for programs 1–15. Exact output, exit, stderr and source mutations verified. |
 
-The preceding P18-D/P19-D/P20-D/P21-D/P38-R/P38-S/P38-V checkpoint is preserved in
-[history](PLAN_HISTORY.md#kimi-intrinsics-placement). Programs 16–21 remain
-specification targets; 22–38 have no source files. P14 and units 62–67 retain their
-bounded prior completion; no product M/I family is closed by this program checkpoint.
-
-KI-S/KI-I/KI-V are complete; their evidence is retained in the linked history. Remaining ownership APIs retain their existing I24/I25 implementation scope.
-
-P15-B/O/G/V remain complete; their scope and evidence are in [history](PLAN_HISTORY.md#program15-completion). General unfinished M/I items remain planned separately from KL. Milestone Program implementation and unspecified documentation CLI/LSP/Mod interfaces remain excluded.
+Programs 1–16 have bounded completion. No program-16 blocker remains; stop here and await a separately authorized target. Programs 17–21 informed design only. NativeAOT and draft edits remain excluded. General M/I obligations remain open.
 
 ### Current milestone states
 

@@ -6202,3 +6202,110 @@ Verification:
 - Backend import definitions add GetEnvironmentVariableA and SetHandleInformation, with the normalized definition hash updated. The adopted backend archive and LLVM version remain unchanged.
 
 I30/I31 are not whole-language completion claims. External-module emission (I28), dynamic static lifetime (I11), and full independent generic resource plans (I16) remain compiler prerequisites; unsupported emission fails before case launch. Current state and exact next actions remain only in PLAN.md; STATUS.md records the supported boundary. No draft file was changed.
+
+
+<a id="pre-program16-checkpoint"></a>
+
+## Superseded execution state before program 16 (2026-09-19)
+
+Current execution: **Adopted test profile checkpoint implemented and verified for the supported Windows backend**. G2 is resolved by [the normative profile](spec/testing-profile.md). Discovery, verification operations, isolated project/solution execution and reporting are implemented; [evidence](PLAN_HISTORY.md#test-profile-implementation-20260919) separates managed tests and native runs. I30/I31 remain IN_PROGRESS for full cross-feature conformance with existing I11/I16/I28 prerequisites. NativeAOT and draft edits remain excluded.
+
+| ID | State | Acceptance / exact next action |
+| --- | --- | --- |
+| KL | DONE | Embedded sources, stable catalog, ordinary helper binding/collection and explicit validation are complete; warm rebind allocates zero bytes. [Verification and measurements](PLAN_HISTORY.md#kimi-library-organization). No KL actions remain; missing library declarations/APIs stay in I5/G4 and I19–I25. |
+| DOC-S | DONE | §2.3.1–6 owns the rules; Attribute, unsafe and directive chapters link to it. Appendix A.21 owns verification. Adopted draft unchanged. |
+| DOC-LP | DONE | Optional range collection, all declaration targets, interpolation, fragments and directive exclusions; source mappings and generated provenance survive reparse. |
+| DOC-M | DONE | Lazy text, pinned CommonMark profile, escaped rendering, relative links, item extraction, separate diagnostics and Binding-backed publication. |
+| DOC-V | DONE | Warning-free Debug/Release builds; 8,792 managed tests per configuration, including 84 documentation cases; identical collected/uncollected IR and two verified native O0/O2 executions. |
+
+The preceding P18-D/P19-D/P20-D/P21-D/P38-R/P38-S/P38-V checkpoint is preserved in
+[history](PLAN_HISTORY.md#kimi-intrinsics-placement). Programs 16–21 remain
+specification targets; 22–38 have no source files. P14 and units 62–67 retain their
+bounded prior completion; no product M/I family is closed by this program checkpoint.
+
+KI-S/KI-I/KI-V are complete; their evidence is retained in the linked history. Remaining ownership APIs retain their existing I24/I25 implementation scope.
+
+P15-B/O/G/V remain complete; their scope and evidence are in [history](PLAN_HISTORY.md#program15-completion). General unfinished M/I items remain planned separately from KL. Milestone Program implementation and unspecified documentation CLI/LSP/Mod interfaces remain excluded.
+
+
+<a id="program16-completion"></a>
+
+## Program Milestone 16: external Origin forwarding (2026-09-19)
+
+Scope: unchanged `milestones/Milestone16.kimi`, independently of product M/I IDs.
+Starting HEAD was `ad1dcd63e68b740b5a174d8cd7885d385807798d`; the worktree was
+clean, so there were no pre-existing edits to back up. Root AGENTS.md, the owning
+Origin/match/storage specifications and adjacent milestone programs were read.
+Programs 17–21 informed boundaries only. No draft or specification edits were needed.
+
+The initial current-source Debug build had zero warnings/errors, and 180 focused
+borrow/enum/match/join regression tests passed. Reproduction was
+`dotnet Kimi/bin/Debug/net10.0/Kimi.dll build milestones/Milestone16.kimi`.
+Binding passed, but Origin-bearing Selection storage and match acquisition were
+rejected by ownership. Later failures were recorded only as they became observable:
+
+1. Admit enum storage with the declaration's Origin arity and already-substituted
+   payload Types, retaining the existing finite-storage and ownership checks.
+2. Control flow then remained pending on the enum payload's `source` Type annotation.
+   Enum Case declarations now follow declaration flow; Binding still validates their
+   payload Types and Origin names, including unknown-Origin rejection.
+3. Ownership passed; checked emission rejected the Origin-bearing enum layout.
+   Physical layout now uses prepared Case storage without runtime Origin data.
+4. Emission next rejected a reference PayloadPlacement whose source Origin could
+   validly shorten to the result intersection. Transfers use the existing directed
+   reference fitting proof; unrelated aggregate Types still require identity.
+5. Emission then rejected the call result's intersection substitution. Call-Origin
+   checking reuses Binding's canonical substitution/Meet, including reordered and
+   duplicate operands, while preserving complete Type checks.
+
+The unchanged target then emitted checked LLVM. Sandboxed `opt.exe` initially
+failed with permission denied; approved local-tool execution enabled the ordinary
+LLVM verifier, linker and native runner. This was an environment restriction,
+not evidence of native completion until those tools and programs actually passed.
+Intermediate repro/build/test logs are in `bin/milestone16-work/` (ignored artifacts).
+Verification (SDK 10.0.401, runtime 10.0.12, Windows x64 LLVM 22.1.8/profile ABI 2):
+
+| Check | Result / evidence |
+| --- | --- |
+| Debug/Release solution builds | PASS, zero warnings/errors; `bin/milestone16-work/final-{debug,release}-build.log` |
+| Managed Debug | Full 9,151-test run PASS; then all 13 external-Origin cases PASS, including six subsequently added cases. The initial compilation overlapped those test edits; XML inspection detected the stale test assembly, which was rebuilt before `extended-debug-tests.xml`. No compiler changes occurred after the full run. |
+| Managed Release | Full 9,157 tests PASS, zero errors/failures/skips; `final-release-tests.xml` |
+| Debug native target/variants/rejections | 57 PASS; [record](bin/milestone16/Debug/6547c467b70d46a788db9b3d1ee305e7/verification.json) |
+| Release native target/variants/rejections | 57 PASS; [record](bin/milestone16/Release/12179b710e884af2aa6b2af8f46c9fe3/verification.json) |
+| Completed programs 1–15 | 90 Release O0/O2 execution checks PASS; byte-identical source copies, expected output from milestone documentation; [record](bin/milestone16-work/native-regressions/verification.json) |
+
+Each target harness covers the unchanged source through its normal O2 build and
+three execution routes (direct executable, `run` executable, `run` input). Seven
+variants at both O0/O2 cover byte-identical renamed input, renamed declarations,
+changed values, reversed choice, identical source Origins, Missing Case selection
+and an additional enum local. Six invalid variants at both levels reject before IR
+publication: Static/incomplete result contracts, writes conflicting with either
+retained source, parent access during a child reborrow, and a local source escape.
+Managed tests additionally cover reordered/duplicate Origin intersections,
+unknown payload Origins and both source conflicts while the enum remains live.
+
+Successful executions have exact five-line stdout (including final LF), empty
+stderr and exit 0. Both selection branches observe the external Cells after Pair
+and match-Subject cleanup; the later mutations are checked as 13 and 24. No file
+side effects are specified. Every native build uses ordinary input-IR verification,
+O2 verification where applicable, object generation and linking; all tool versions
+match the pinned profile. Reports retain compiler/source hashes, and those hashes
+still match the final compiler binaries and unchanged target source.
+
+Reproduce current-source verification:
+
+```powershell
+dotnet build Kimigayo.slnx -c Debug --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -parallelMode none -failSkips
+dotnet build Kimigayo.slnx -c Release --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -parallelMode none -failSkips
+& backend/windows-x64/test-milestone16.ps1 -Configuration Debug
+& backend/windows-x64/test-milestone16.ps1 -Configuration Release
+```
+
+Boundaries: this completes program 16, not general aggregate covariance, arbitrary
+Origin-polymorphic calls, borrowed enum Subject decomposition, or all mixed
+user-destructor payloads. Existing finite layout/ownership and ABI restrictions
+remain; these are implementation limits rather than specification exceptions.
+NativeAOT was NOT_RUN as requested. No required Windows-native check remains
+unverified. Programs 17+ were not implemented; current next actions remain in PLAN.

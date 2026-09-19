@@ -353,7 +353,10 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.PayloadPlacement:
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.Consume:
-                if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id || !ReferenceEquals(place.Type, body.Places[operation.Input].Type) ||
+                if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
+                    !(operation.Kind == OwnershipOperationKind.Consume
+                        ? FitsValue(place.Type, body.Places[operation.Input].Type)
+                        : FitsValue(body.Places[operation.Input].Type, place.Type)) ||
                     (body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary && this.slotResultPlaces[operation.Input] == 0) ||
                     (operation.Kind == OwnershipOperationKind.PayloadPlacement && this.payloadOwners[place.Id] < 0) ||
                     (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.slotResultWrites[id] == 0 && this.slotFunctionPlaces[place.Id] != 2) ||

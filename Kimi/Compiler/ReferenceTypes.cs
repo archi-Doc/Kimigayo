@@ -65,13 +65,7 @@ internal static class ReferenceTypes
                 return false;
             }
 
-            if (pattern.Kind == OriginKind.Input && ReferenceEquals(pattern.Binder, call.Target.Declaration) && (uint)pattern.Slot < (uint)call.InputOrigins.Length)
-            {
-                return ReferenceEquals(call.InputOrigins[pattern.Slot], value);
-            }
-
-            return pattern.Kind == OriginKind.Parameter && call.DeclaringType is { } declaring && ReferenceEquals(pattern.Binder, declaring.Symbol?.Declaration) &&
-                (uint)pattern.Slot < (uint)declaring.OriginArguments.Count && ReferenceEquals(declaring.OriginArguments[pattern.Slot], value);
+            return ReferenceEquals(call.Target.Declaration.CodeContext.Compilation.Binding.InstantiateStorageOrigin(pattern, call), value);
         }
     }
 

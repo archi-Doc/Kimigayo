@@ -100,7 +100,8 @@ public sealed partial class OwnershipAnalysis
             return supported;
         }
 
-        if (type.Semantics != SemanticsKind.Owner || type.Origin is not null || type.OriginArguments.Count != 0 ||
+        if (type.Semantics != SemanticsKind.Owner || type.Origin is not null ||
+            type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) ||
             type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
             this.compilation.Binding.EnumStorage(type) is not { } storage)
         {
