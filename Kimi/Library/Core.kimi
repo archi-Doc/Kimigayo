@@ -1,0 +1,13 @@
+public contract Copy
+public contract Owned
+public contract Callable
+public contract Sealed
+
+public enum Option<T>
+    Self is Copy when T is Copy
+    Some(T)
+    None
+
+public enum Result<T, E>
+    Ok(T)
+    Err(E)

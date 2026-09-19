@@ -23,11 +23,20 @@ public enum KimiDeclarationId : byte
     Comparable,
     Iterator,
     Iterable,
-    ObjectOwnership,
+    ObjectOwnership, // Reserved legacy aggregate ID; no longer a declaration entry.
     Sealed,
     Replace,
     Exchange,
     Swap,
+    MakeObj,
+    MakeRc,
+    MakeArc,
+    Clone,
+    Downgrade,
+    Upgrade,
+    MakeRcCyclic,
+    MakeArcCyclic,
+    Weak,
 }
 
 public enum KimiDeclarationState : byte

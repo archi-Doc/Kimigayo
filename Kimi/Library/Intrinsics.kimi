@@ -1,0 +1,5 @@
+// Signatures implemented by the compiler; loaded into Kimi.Intrinsics.
+public func replace<T>(target: uniq/T, with => value: T) -> ()
+public func exchange<T>(target: uniq/T, with => value: T) -> T
+public func swap<T>(first: uniq/T, second: uniq/T) -> ()
+public func makeObj<T>(value: T) -> obj/T

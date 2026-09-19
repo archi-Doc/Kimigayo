@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The active request is timed general compiler implementation across unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. Milestone Programs are regression inputs, not implementation targets unless separately requested. Checkpoint-specific target restrictions are superseded. NativeAOT and draft edits remain excluded.
+The compiler-wide plan covers unfinished implementation Milestones and Checklist items, respecting dependencies and finalized specification boundaries. The current bounded checkpoint is Kimi library organization (Section 2); it adds no runtime language features. Milestone Programs remain regression inputs. NativeAOT and draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,10 +31,11 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current execution: **General compiler implementation — timed (60 minutes)**, started 2026-09-19 00:49:39 UTC (2026-09-19 09:49:39 JST) from clean HEAD `95731eb`. Earlier timed checkpoints (T4r, T6a–T6m) retain their bounded completion; the compiler Milestones remain incomplete. Documentation Comments retain their completed checkpoint and the adopted design's precedence. [Execution evidence](PLAN_HISTORY.md#general-compiler-20260919-094939); [previous execution](PLAN_HISTORY.md#general-compiler-20260919-082645).
+Current execution: **Kimi library organization (KL) — complete**. Externalize embedded declarations, centralize identity registration, remove positional binding dependencies, separate explicit declaration/bound validation and preserve compiler performance. The preceding T6n–T6r general implementation checkpoint is retained in [history](PLAN_HISTORY.md#general-compiler-20260919-094939); its timed instruction is superseded.
 
 | ID | State | Acceptance / exact next action |
 | --- | --- | --- |
+| KL | DONE | Embedded sources, stable catalog, ordinary helper binding/collection and explicit validation are complete; warm rebind allocates zero bytes. [Verification and measurements](PLAN_HISTORY.md#kimi-library-organization). No KL actions remain; missing library declarations/APIs stay in I5/G4 and I19–I25. |
 | DOC-S | DONE | §2.3.1–6 owns the rules; Attribute, unsafe and directive chapters link to it. Appendix A.21 owns verification. Adopted draft unchanged. |
 | DOC-LP | DONE | Optional range collection, all declaration targets, interpolation, fragments and directive exclusions; source mappings and generated provenance survive reparse. |
 | DOC-M | DONE | Lazy text, pinned CommonMark profile, escaped rendering, relative links, item extraction, separate diagnostics and Binding-backed publication. |
@@ -47,7 +48,7 @@ bounded prior completion; no product M/I family is closed by this program checkp
 
 KI-S/KI-I/KI-V are complete; their evidence is retained in the linked history. Remaining ownership APIs retain their existing I24/I25 implementation scope.
 
-P15-B/O/G/V remain complete; their scope and evidence are in [history](PLAN_HISTORY.md#program15-completion). General unfinished M/I items are authorized by the current request. Milestone Program implementation and unspecified documentation CLI/LSP/Mod interfaces remain excluded.
+P15-B/O/G/V remain complete; their scope and evidence are in [history](PLAN_HISTORY.md#program15-completion). General unfinished M/I items remain planned separately from KL. Milestone Program implementation and unspecified documentation CLI/LSP/Mod interfaces remain excluded.
 
 ### Current milestone states
 
@@ -79,7 +80,7 @@ M4/M5/M7 are reconciled from stale TODO labels to IN_PROGRESS because recorded c
 | I2 | M1 / R1–R28 | DONE | Historical Appendix A.1–A.17 mapping; [I2 record](PLAN_HISTORY.md#appendix-a-baseline). Extend clause audit for adopted A.18–A.20 under I33. |
 | I3 | M2 / R1–R3, R27 | IN_PROGRESS | Historical T1a, T3a, T5a/G9, T27a/T27b and T7a slices exist; T4n-ax adds logical Never fitting. Final clause/regression closure remains; the historical 250-block parse/SpecTour audit (SpecTour since removed) is not a current whole-spec certificate. |
 | I4 | M2 / R4 | IN_PROGRESS | Selected omitted-default plans and independent scalar/Unit declarations execute; T4o–q add guarded/Copy-tuple defaults. T4r verifies candidate-local tuple/array literals, nested structural Type/length/Origin evidence, preserved ambiguity and shared temporary acquisition. Exact prepared-slot validation is retained. General contextual nested calls, recursive defaults, owned/borrowed defaults and pending-slot cleanup remain. |
-| I5 | M2 / R5, R19 | IN_PROGRESS | T5a/G9 resolved; 12/22 Kimi declarations validated, including Iterator and Slice identities; this does not certify their entire APIs. Remaining Contract/projection/certificates, bound associated/refinement composition and canonical library identities remain. |
+| I5 | M2 / R5, R19 | IN_PROGRESS | T5a/G9 resolved; 13/30 Kimi declarations validated, including Iterator and Slice identities; this does not certify their entire APIs. Remaining Contract/projection/certificates, bound associated/refinement composition and canonical library identities remain. |
 | I6 | M3 / R6–R7 | IN_PROGRESS | T4n-at–ax add bounded terminal/Abort/divergent guards and finite enum/owned-string mixed histories, ending abandoned protection at replay endpoints. T4r/T6a/T6b add tuple borrow lifetime roots, concrete scalar-field updates and stored aggregate projections with immutable-local ancestry. T6d–T6j add returned-reference ancestry, §15.6.2 disjoint/shared projection checks and nested inline borrowed paths/borrows; T6i adds in-place borrows of owned-local/parameter inline parts with static-path footprints and closes element access under a live exclusive root Loan; T6k rejects exclusive reborrows of stored `uniq` references through `ref` bases in Binding; T6m binds scalar Place shorthand borrows; T6n/T6o materialize scalar temporaries for implicit shared argument borrows and explicit `@ref`/`@uniq`. Their regression gates pass; sibling Moves under a live part borrow, general backedges/continue, unequal Loan joins, deferred cleanup, effectful divergence and general Origins remain. |
 | I7 | M3 / R7, R20 | TODO | Compute effect-family fixed points/public guarantees and dependent use checks. ObjectCallCompatible stages 2/3 remain deferred by SPEC.md; other settled effect work remains in scope. |
 | I8 | M3 / R8–R9, R27 | IN_PROGRESS | Bounded defaults retain the historical guarded-pattern/Copy-tuple scope. New terminal match guards preserve abandoned protection and selected binding lifetimes. General escaping-Borrow/capture/Copy proofs, owned defaults, refinement and effectful/deferred joins remain. |
@@ -252,7 +253,7 @@ The [I2 baseline mapping](PLAN_HISTORY.md#appendix-a-baseline) covers the then-c
 | G8 `IMPLEMENTATION_MISMATCH` — documentation reconciled | Stale STATUS omitted struct/borrow/module support and conflated CI workflows | Corrected in this migration using recorded subsets and code inspection. Historical wording is retained; comprehensive support audit remains I34. |
 | G9 `IMPLEMENTATION_MISMATCH` — RESOLVED (T5a) | Unresolved-conformance diagnostic cascades, R5/R27 | Recorded fix retains failed proof states and independent errors; [exact original diagnostics and rationale](PLAN_HISTORY.md#old-decisions), [unit 3 evidence](PLAN_HISTORY.md#units-1-32). |
 
-Container bound associated/refinement identity, conditional refinement-path merging, inherited conformance composition, declaration-path cycles, abstract Origin bounds, A.20 outer-edit invalidation and inherited-environment static lifetime remain incomplete (I5/I6/I11/I29/I33). Current code has 22 Kimi catalog entries, 12 validated; ten missing slots and the object-API deferral comment remain G4, despite specified object spellings. Iterator/Slice declaration identity does not close their full API requirements.
+Container bound associated/refinement identity, conditional refinement-path merging, inherited conformance composition, declaration-path cycles, abstract Origin bounds, A.20 outer-edit invalidation and inherited-environment static lifetime remain incomplete (I5/I6/I11/I29/I33). The embedded-source catalog has 30 individual declaration entries, 13 validated; 17 missing declarations remain G4. Ownership APIs are tracked individually; the family summary is separate. Source organization does not complete their semantic or runtime requirements. Iterator/Slice declaration identity does not close their full API requirements.
 
 No unresolved **SPEC_CONFLICT** was established by this investigation. Contradictory status text or stale code comments are not specification conflicts. If two applicable normative rules remain contradictory after owning-section/supersession review, add a SPEC_CONFLICT row with both clauses and block only dependent work.
 

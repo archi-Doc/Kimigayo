@@ -157,6 +157,15 @@ public ref struct TokenReader
         this.currentToken = this.tokens.Length > 0 ? this.tokens[0] : this.endToken;
     }
 
+    /// <summary>Initializes a new instance of the <see cref="TokenReader"/> struct using immutable cached tokens and compilation-local state.</summary>
+    /// <param name="codeContext">The current source context.</param>
+    /// <param name="sourceText">The complete text whose offsets the tokens reference.</param>
+    /// <param name="tokens">An immutable token sequence which outlives this reader.</param>
+    internal TokenReader(CodeContext codeContext, ReadOnlySpan<char> sourceText, ReadOnlySpan<Token> tokens)
+        : this(codeContext, sourceText, tokens, sourceText.Length)
+    {
+    }
+
     private TokenReader(CodeContext codeContext, ReadOnlySpan<char> sourceText, ReadOnlySpan<Token> tokens, int end)
     {
         this.CodeContext = codeContext;

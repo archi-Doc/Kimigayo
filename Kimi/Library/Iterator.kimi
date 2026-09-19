@@ -1,0 +1,3 @@
+public contract Iterator
+    associate Element
+    func next(self: uniq/Self) -> Option<Self.Element>

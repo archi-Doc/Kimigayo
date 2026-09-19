@@ -966,8 +966,9 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (plan.Target.Declaration is FunctionKoto libraryBody &&
-            (ReferenceEquals(plan.Target.Scope.Owner, this.compilation.Library.Slice.Declaration) ||
-             ReferenceEquals(plan.Target.Scope.Owner, this.compilation.Library.SliceIterator.Declaration)) &&
+            plan.Target.CompilerFunction == CompilerFunctionKind.None &&
+            (libraryBody.Body is not null || libraryBody.ExpressionBody is not null) &&
+            ReferenceEquals(libraryBody.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
             !this.libraryBodies.Contains(libraryBody))
         {
             this.libraryBodies.Add(libraryBody);

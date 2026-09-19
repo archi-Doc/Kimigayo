@@ -5806,3 +5806,95 @@ candidates needed more than the remaining time for implementation plus full
 Debug/Release and native verification: T6l needs an Origin decision, G10 a
 shared-frame non-generic call ABI, and sibling Moves under a live part borrow
 path-aware root initialization.
+
+
+<a id="kimi-library-organization"></a>
+## Kimi library organization (KL, 2026-09-19)
+
+Completed the requested source/catalog refactor on baseline HEAD
+`55ad003a92b3ed4b067409f8e1576431e731f01e`. The saved original KimiLibrary source
+matches that commit's blob. This supersedes the earlier timed execution as the
+current bounded checkpoint; product-wide unfinished APIs remain in PLAN.
+
+- Moved the existing definitions into five embedded `Kimi/Library/*.kimi` sources.
+  Ordinary source bodies remain ordinary compiler input. Signature-only loading
+  is private to the registered Console/Intrinsics groups; user syntax is unchanged.
+- Centralized stable declaration identities and compiler hooks. Retired the old
+  ObjectOwnership aggregate slot without reusing its numeric ID; 30 individual
+  entries now include makeObj and the missing ownership/Weak declarations. Thirteen
+  entries validate; this is not a certificate of complete API/runtime support.
+  `SourceExpected` distinguishes accidental removal of supported source from an
+  intentionally missing implementation. ID lookup is independent of list positions.
+- Replaced binding's repeated declaration lists with tree-driven indexing/binding.
+  Checked signature-only group shells retain their scopes without redundant node
+  passes. Directly called ordinary library bodies are collected by originating
+  Kotonoha identity, replacing the Slice/SliceIterator-only ownership collector.
+- Separated explicit declaration checks and bound-identity checks from status
+  queries. Rebind and emission validate contracts; invalid libraries stop before
+  indexing. File-specific source locations survive parsing. Helpers may add methods
+  to Slice/Option without changing compiler-managed Slice storage or enum Cases.
+- Shared immutable source text and successfully lexed token arrays, with atomic
+  publication. No cache retains a compilation, SourceDocument or AST. Lexical errors
+  are not cached; each compilation receives its own diagnostics. Added a narrow
+  internal TokenReader entry point for immutable token spans. Recognition scans
+  existing backing lists as spans rather than allocating snapshots or caching
+  syntax positions. ASTs, symbols and semantic state remain compilation-local.
+
+Verification root: `bin/kimi-library-refactor/`.
+
+- Compiler/test builds: `dotnet build xUnitTest/xUnitTest.csproj -c Debug`
+  and `-c Release`, both with `--no-restore --nologo -v quiet`: zero warnings/errors.
+  The updated Benchmark project also builds warning-free in Release.
+- Final suites: `dotnet xUnitTest/bin/<configuration>/net10.0/xUnitTest.dll
+  -noLogo -result-xml bin/kimi-library-refactor/full-<configuration>.xml`.
+  Debug and Release each pass **8,998**, zero failures/skips. CoreCatalogTest has
+  31 cases including concurrent compilation isolation, file locations, declaration
+  reordering, helper binding/emission, malformed signatures, missing/duplicate
+  declarations, storage rejection and the existing zero-allocation warm Bind check.
+- Native: `backend/windows-x64/test-scalars.ps1 -ToolchainRoot ./toolchain
+  -FixtureDirectory bin/kimi-library-refactor/native-inputs
+  -OutputDirectory bin/kimi-library-refactor/native`. Eight fixtures exercise Slice,
+  its iterator, whole-value operations/aliases/user-function identity and object
+  exchange/zero-sized cleanup. LLVM verification, O0/O2 generation and exact
+  stdout/stderr/exit checks pass **16 executions**. All **40** final Debug-generated
+  IR/oracle files match the previously executed frozen Release inputs; executions
+  are not double-counted. See `native.log`, `native-inputs.json` and
+  `native-final-comparison.txt`.
+- NativeAOT was not run. No language behavior was intentionally added; SPEC's
+  existing loaded/synthesized Kimi identity requirements remain authoritative.
+
+Performance evidence: `perf/Program.cs`, `perf-paired.json` and
+`perf-summary.json`. The preserved baseline and final Release compiler DLLs are
+loaded in separate AssemblyLoadContexts in one process; paired samples alternate
+execution order. `DOTNET_TieredCompilation=0`, 1,000 warmups per variant, 14 samples
+per operation/variant; each sample runs 2,000 library creations, 1,000 fresh small
+program parses/binds, or 5,000 warm binds. The source cache is warm; this does not
+measure first-process resource loading or establish a general compiler speedup.
+
+| Operation | Baseline median | Final median | Baseline/final allocated bytes per operation |
+| --- | --- | --- | --- |
+| Fresh library, cached sources | 16.78 us | 14.58 us | 47,720 / 47,648 |
+| Fresh small program parse + Bind | 110.48 us | 107.20 us | 103,313 / 103,345 |
+| Warm Bind, same tree | 68.92 us | 69.36 us | 0 / 0 |
+
+Median paired changes are -12.68%, -2.22% and +2.14%, respectively. Warm timings
+vary substantially (baseline 57.04–85.68 us; final 58.83–78.59 us), so no strict
+warm-throughput improvement or universal no-regression claim is made. Initialization
+is faster in this bounded probe, fresh Bind adds 32 bytes (about 0.03%), and repeated
+Bind retains zero allocation. The tracked `KimiLibraryBenchmark` covers all three
+operations for future measurements; BenchmarkDotNet timing runs were not used here.
+
+Intermediate findings and fixes:
+
+- The initial `dotnet test --filter` invocation selected zero tests under the
+  configured runner; all reported counts use the explicit xUnit DLL runner.
+- A duplicate synthetic function node exposed a hang when malformed library syntax
+  reached indexing. The pre-binding validation failure now returns before indexing.
+  A helper test initially used a root function (ordinary startup syntax) and an
+  unprepared fixed-array target; it now uses a group and prepares the target.
+- Early separate-process measurements were disturbed by host pauses/load. Raw
+  trial files are retained but are not the final comparison. The measurements
+  motivated immutable token caching and avoiding redundant signature-group passes.
+
+The current outcome and next actions are recorded only in PLAN.md. Documentation
+updates do not change the declared runtime support boundaries.

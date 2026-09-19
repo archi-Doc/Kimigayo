@@ -33,15 +33,10 @@ public sealed partial class Binding
         this.indexer = new(this);
         this.TypeSystem = new BindingControlFlowTypes(this);
         this.Library = new(compilation);
-        this.symbols.Add(this.Library.Intrinsics, this.Library.IntrinsicsSymbol);
-        this.symbols.Add(this.Library.Console, this.Library.ConsoleSymbol);
-        this.symbols.Add(this.Library.WriteLine.Declaration, this.Library.WriteLine);
-        this.symbols.Add(this.Library.Option.Declaration, this.Library.Option);
-        this.symbols.Add(this.Library.Result.Declaration, this.Library.Result);
-        this.symbols.Add(this.Library.Replace.Declaration, this.Library.Replace);
-        this.symbols.Add(this.Library.Exchange.Declaration, this.Library.Exchange);
-        this.symbols.Add(this.Library.Swap.Declaration, this.Library.Swap);
-        this.symbols.Add(this.Library.MakeObj.Declaration, this.Library.MakeObj);
+        foreach (var symbol in this.Library.RegisteredSymbols)
+        {
+            this.symbols.Add(symbol.Declaration, symbol);
+        }
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
@@ -140,33 +135,48 @@ public sealed partial class Binding
             this.IndexModuleReferences();
             this.PrunePatternScopes();
             this.Library.Restore();
-            this.kimiValid = this.Library.IsValid;
+            this.kimiValid = this.Library.ValidateDeclarations();
             if (!this.kimiValid)
             {
                 Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
+                // A malformed compiler library must not enter indexing/overload chains.
+                return this.Result = this.Check(mode);
             }
 
             this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
-            this.indexer.Scope = this.Library.Scope;
-            // These declarations use ordinary indexing, schemas, storage and constraints.
-            this.Library.Scope.Types.Remove("Option");
-            this.Library.Scope.Types.Remove("Result");
-            this.Library.Scope.Types.Remove("Iterator");
-            this.Library.Scope.Types.Remove("Slice");
-            this.indexer.Visit(this.Library.Option.Declaration);
-            this.indexer.Visit(this.Library.Result.Declaration);
-            this.indexer.Visit(this.Library.Iterator.Declaration);
-            this.indexer.Visit(this.Library.Slice.Declaration);
-            this.indexer.Visit(this.Library.SliceIterator.Declaration);
             this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
-            this.indexer.Scope = this.Library.IntrinsicsScope;
-            this.indexer.Visit(this.Library.Replace.Declaration);
-            this.indexer.Visit(this.Library.Exchange.Declaration);
-            this.indexer.Visit(this.Library.Swap.Declaration);
-            this.indexer.Visit(this.Library.MakeObj.Declaration);
             this.scopes[this.Library.Console] = this.Library.ConsoleScope;
-            this.indexer.Scope = this.Library.ConsoleScope;
-            this.indexer.Visit(this.Library.WriteLine.Declaration);
+            this.indexer.Scope = this.Library.Scope;
+            var libraryRoot = this.Library.Kotonoha.RootKoto;
+            for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
+            {
+                var declaration = libraryRoot.NestedContainers[i];
+                if (declaration.BoundSymbol?.Intrinsic is not (null or IntrinsicKind.None))
+                {
+                    continue;
+                }
+
+                if (this.Library.SignatureScope(declaration) is { } signatureScope)
+                {
+                    this.indexer.Scope = signatureScope;
+                    for (var m = 0; m < declaration.Members.Count; m++)
+                    {
+                        this.indexer.Visit(declaration.Members[m]);
+                    }
+
+                    this.indexer.Scope = this.Library.Scope;
+                }
+                else
+                {
+                    this.indexer.Visit(declaration);
+                }
+            }
+
+            for (var i = 0; i < libraryRoot.Members.Count; i++)
+            {
+                this.indexer.Visit(libraryRoot.Members[i]);
+            }
+
             this.ValidateDefaultAliases();
             this.BindSchemas();
             this.PrepareAliases();
@@ -195,16 +205,27 @@ public sealed partial class Binding
                 this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
             }
 
-            this.BindNode(this.Library.WriteLine.Declaration, this.scopes[this.Library.WriteLine.Declaration]);
-            this.BindNode(this.Library.Option.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.Result.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.Iterator.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.Slice.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.SliceIterator.Declaration, this.Library.Scope);
-            this.BindNode(this.Library.Replace.Declaration, this.Library.IntrinsicsScope);
-            this.BindNode(this.Library.Exchange.Declaration, this.Library.IntrinsicsScope);
-            this.BindNode(this.Library.Swap.Declaration, this.Library.IntrinsicsScope);
-            this.BindNode(this.Library.MakeObj.Declaration, this.Library.IntrinsicsScope);
+            for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
+            {
+                var declaration = libraryRoot.NestedContainers[i];
+                if (this.Library.SignatureScope(declaration) is { } signatureScope)
+                {
+                    for (var m = 0; m < declaration.Members.Count; m++)
+                    {
+                        this.BindNode(declaration.Members[m], signatureScope);
+                    }
+                }
+                else if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
+                {
+                    this.BindNode(declaration, this.Library.Scope);
+                }
+            }
+
+            for (var i = 0; i < libraryRoot.Members.Count; i++)
+            {
+                this.BindNode(libraryRoot.Members[i], this.Library.Scope);
+            }
+
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
             this.ComputeOriginRequirements();
@@ -233,6 +254,12 @@ public sealed partial class Binding
             if (mode == BindingMode.Final)
             {
                 this.CompleteAliasWarnings();
+            }
+
+            this.kimiValid = this.Library.ValidateBoundDeclarations();
+            if (!this.kimiValid)
+            {
+                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
             }
 
             this.Result = this.Check(mode);
@@ -483,7 +510,7 @@ public sealed partial class Binding
                     BindingFailure.NonExhaustiveMatch => DiagnosticCode.NonExhaustiveMatch_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
-                this.issues.Add(new(node, code));
+                this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code));
             }
         }
 

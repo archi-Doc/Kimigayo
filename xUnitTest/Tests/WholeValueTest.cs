@@ -238,7 +238,7 @@ public class WholeValueTest
         var function = (FunctionKoto)c.Library.Replace.Declaration;
         function.Parameters[1].Type = function.Parameters[0].Type;
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.Declarations[(int)KimiDeclarationId.Replace].State);
+        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Replace));
     }
 
     [Fact]

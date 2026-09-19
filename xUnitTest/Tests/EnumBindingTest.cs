@@ -156,7 +156,7 @@ public class EnumBindingTest
         var symbol = c.Library.GetSymbol(id)!;
         c.Library.Kotonoha.CreateCodeContext().Parse((EnumKoto)symbol.Declaration, "Extra");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.Declarations[(int)id].State);
+        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
     }
 
@@ -167,7 +167,7 @@ public class EnumBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public enum Option<T>");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.Declarations[(int)KimiDeclarationId.Option].State);
+        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Option));
     }
 
     [Fact]

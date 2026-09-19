@@ -1,0 +1,15 @@
+public struct Slice<T> origin source
+    public func iterate(self: Self) -> SliceIterator<T> from source
+        return SliceIterator<T>.init(self)
+public struct SliceIterator<T> origin source
+    Self is Iterator
+    associate Iterator.Element is ref/T from source
+    let values: Slice<T> from source
+    var position: isize = 0
+    public init(values: Slice<T> from source)
+        self.values = values
+    public func next(self: uniq/Self) -> Option<ref/T from source>
+        require self.position < self.values.length else => return .None
+        let index = self.position
+        self.position = self.position + 1
+        return .Some(self.values[index]@ref/T)

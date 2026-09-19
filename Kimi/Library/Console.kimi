@@ -1,0 +1,2 @@
+// Signatures implemented by the compiler; loaded into Kimi.Console.
+public func writeLine(text: string)

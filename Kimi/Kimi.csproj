@@ -31,6 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Library\*.kimi" LogicalName="Kimi.Library.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Diagnostics\DiagnosticCode.tinyhand" />
     <EmbeddedResource Include="Compiler\Emission\WindowsRuntime.ll.in" />
     <EmbeddedResource Include="..\backend\windows-x64\profile.json" LogicalName="Kimi.WindowsBackendProfile.json" />
