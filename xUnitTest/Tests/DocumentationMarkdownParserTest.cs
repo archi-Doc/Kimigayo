@@ -51,7 +51,9 @@ public class DocumentationMarkdownParserTest
     [InlineData("![x](guide.md)", "<p>!<a href=\"guide.md\">x</a></p>\n")]
     [InlineData("[**x**](a(b)c \"title\")", "<p><a href=\"a(b)c\" title=\"title\"><strong>x</strong></a></p>\n")]
     [InlineData("[x]()", "<p><a href=\"\">x</a></p>\n")]
-    [InlineData("[x]( \"title\")", "<p><a href=\"\" title=\"title\">x</a></p>\n")]
+    [InlineData("[x]( \"title\")", "<p><a href=\"&quot;title&quot;\">x</a></p>\n")]
+    [InlineData("[x](<> \"title\")", "<p><a href=\"\" title=\"title\">x</a></p>\n")]
+    [InlineData("[x]( \"two words\")", "<p>[x]( &quot;two words&quot;)</p>\n")]
     [InlineData("[x](a \"\")", "<p><a href=\"a\" title=\"\">x</a></p>\n")]
     [InlineData("[a [b](u)](v)", "<p>[a <a href=\"u\">b</a>](v)</p>\n")]
     [InlineData("<https://example.com>", "<p><a href=\"https://example.com\">https://example.com</a></p>\n")]
@@ -204,7 +206,7 @@ public class DocumentationMarkdownParserTest
         }
     }
 
-    private static void AssertRanges(DocumentationMarkdownDocument document)
+    internal static void AssertRanges(DocumentationMarkdownDocument document)
     {
         var pending = new Stack<DocumentationMarkdownNode>();
         pending.Push(document.Root);
@@ -223,14 +225,14 @@ public class DocumentationMarkdownParserTest
     }
 
     // Structural test renderer only: intentionally no product URL resolution or publication policy.
-    private static string RenderSyntax(DocumentationMarkdownNode node)
+    internal static string RenderSyntax(DocumentationMarkdownNode node, bool encodeUrls = false)
     {
         var builder = new StringBuilder();
-        Render(node, builder);
+        Render(node, builder, encodeUrls);
         return builder.ToString();
     }
 
-    private static void Render(DocumentationMarkdownNode node, StringBuilder output)
+    private static void Render(DocumentationMarkdownNode node, StringBuilder output, bool encodeUrls)
     {
         var tight = node.Kind == DocumentationMarkdownKind.Paragraph && node.Parent is { Kind: DocumentationMarkdownKind.ListItem } item && item.Parent!.Value.IsTight;
         var tag = node.Kind switch
@@ -268,7 +270,7 @@ public class DocumentationMarkdownParserTest
 
             if (tag == "a")
             {
-                output.Append(" href=\"").Append(Escape(node.Destination.AsSpan())).Append('"');
+                output.Append(" href=\"").Append(Escape(encodeUrls ? EncodeUrl(node.Destination!) : node.Destination.AsSpan())).Append('"');
             }
 
             if (node.Title is { } title)
@@ -301,7 +303,7 @@ public class DocumentationMarkdownParserTest
 
         foreach (var child in node.Children)
         {
-            Render(child, output);
+            Render(child, output, encodeUrls);
         }
 
         if (tight && node.NextSibling is not null)
@@ -322,6 +324,25 @@ public class DocumentationMarkdownParserTest
         {
             output.Append("</code></pre>\n");
         }
+    }
+
+    // Match the official examples' serialization only; no product URL policy or resolution.
+    private static string EncodeUrl(string value)
+    {
+        var output = new StringBuilder();
+        foreach (var rune in value.EnumerateRunes())
+        {
+            if (rune.IsAscii && (char.IsAsciiLetterOrDigit((char)rune.Value) || "!#$%&'()*+,-./:;=?@_~".Contains((char)rune.Value)))
+            {
+                output.Append((char)rune.Value);
+            }
+            else
+            {
+                output.Append(Uri.EscapeDataString(rune.ToString()));
+            }
+        }
+
+        return output.ToString();
     }
 
     private static string Escape(ReadOnlySpan<char> text) => text.ToString().Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");

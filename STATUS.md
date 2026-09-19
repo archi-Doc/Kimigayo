@@ -1,15 +1,17 @@
 # Kimigayo Implementation Status
 
-The **2026-09-20 independent documentation Markdown parser** adds an immutable
-syntax tree, precise original-source ranges, item candidates and explicit
-declaration-name classification for the adopted limited profile. Pooled scratch,
-source slices, compact nodes and iterative parsing reduce avoidable allocations
-and recursion. Debug/Release builds have zero warnings/errors; all **155 targeted
-documentation tests** pass in each configuration, including 71 new cases. The
-existing Markdig-backed product API is unchanged. The independent parser has no
-product renderer, structured URL resolver or publication adapter yet; complete
-profile comparison and performance measurements are not established by this run.
-[Evidence and boundaries](PLAN_HISTORY.md#documentation-markdown-parser-20260920).
+The **2026-09-20 documentation Markdown verification** passes 372 retained official
+CommonMark examples, corresponding Markdig comparisons, intentional profile
+differences and 568 generated interactions. Source ranges, Unicode 15, candidate
+identity, cancellation and real Kimigayo declaration/publication inputs are
+covered. A quoted-link-destination defect was corrected. Debug/Release solution
+builds have zero warnings/errors; **947 documentation tests and all 10,157 managed
+tests** pass per configuration, with native O0/O2 documentation fixture execution
+in both configurations. The existing Markdig-backed product API is unchanged.
+The independent immutable syntax/candidate API still has no product renderer,
+structured URL resolver or publication adapter. These results are bounded
+verification, not exhaustive conformance or measured speedup. NativeAOT was not run.
+[Evidence and boundaries](PLAN_HISTORY.md#documentation-markdown-tests-20260920).
 
 The **2026-09-19 compiler continuation** adds supported source-module common
 generation and Library inspection, disjoint sibling Moves under inline-part

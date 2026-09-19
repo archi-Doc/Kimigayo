@@ -6689,3 +6689,94 @@ complete product-profile support is claimed. No NativeAOT or native execution wa
 
 ### Superseded planning checkpoint
 Current checkpoint: **60-minute compiler continuation stopped at about 50 minutes (23:19 +0900)**, started **2026-09-19 22:29:43 +0900 (13:29:43 UTC)** before inspection; the duration boundary is **23:29:43 +0900**. Fresh baseline: `dev` at `6f44d45`; code unchanged since the previous checkpoint (only user draft commits), and one user draft file changed during this execution was left untouched. Bounded units **T28c/T28e / I28** (native requirement configuration and duplicate-entry rejection) and **T26a–T26e / I26** (`#LibraryImport` requirement matching, declaration shape including enclosing generic/Origin containers, §22.3.2 signature Types and same-symbol physical signatures) are **DONE**, as is **T34b / I34** (README native-requirement usage, verified by tests); Debug/Release full suites each pass 9,294 tests. The remaining ~10 minutes could not complete a verified T28d or lowering unit, so none was started; see the next actions. [Evidence](PLAN_HISTORY.md#compiler-continuation-20260919-132943). The previous 11:34 UTC continuation (T28a/T28b, T6s/T6t, T6v, T34a) remains recorded in [its history](PLAN_HISTORY.md#compiler-continuation-20260919-113419). Parent implementation items remain open. Previous Program 16 completion/evidence is preserved below.
+
+<a id="documentation-markdown-tests-20260920"></a>
+
+## 2026-09-20 — Documentation Markdown conformance and integration (DM3)
+
+Baseline `2b97404`, initially clean. The user requested step 3: conformance,
+differential and Kimigayo integration tests. The finalized design was read without
+modification. No product entry point or Markdig dependency was switched.
+
+Added an offline, attributed CommonMark 0.31.2 corpus and a fixed manifest:
+372 common examples each test the independent parser against upstream expected
+HTML and compare Markdig 1.3.2 against the same oracle. All 280 exclusions have
+explicit profile reasons; all 652 inputs receive syntax/range invariant checks.
+The upstream JSON identity is pinned by SHA-256. The structural fixture renderer
+uses the upstream URL encoding convention. Only the optional newline between
+`<li>` and `<p>` is normalized for Markdig comparison; text/code whitespace and
+other structure are retained. [Selection, license, matrix and commands](xUnitTest/TestData/DocumentationMarkdown/README.md)
+are checked in with the fixtures. Neither exclusions nor the fixture renderer
+claim full product HTML conformance.
+
+Additional cases cover every adopted §2.2 row, 568 generated delimiter/link
+interactions, 3/4-column container starts, partial tabs, exact character-reference
+and multiline ranges across LF/CR/CRLF, UTF-16 EOF/insertions, Unicode 15 under
+three cultures, non-NFC and case-sensitive names, stable borrowed scalars after
+compacting GC, concurrent candidate publication and cancelled requests, active
+large-input cancellation/retry and depth interruption. The original deterministic
+mixed-input and deep/unmatched-delimiter cases remain in the suite.
+
+Kimigayo integration consumes real external, generic, Semantics, length and Origin
+names through a test-only adapter. Receiver exclusion uses Binding's ReceiverIndex;
+ordinary group/top-level `self` remains a parameter. Tests cover namespace
+ambiguity, generated source provenance, independent declaration fragments,
+configuration reload, changed declaration inputs, effective access and explicit
+specialization. All 17 existing declaration-target cases now parse independent
+syntax. Collection on/off compilation requests independent Markdown before
+ownership/lowering and still emits identical IR. Parser interruption leaves
+language diagnostics and Binding validity unchanged.
+
+### Findings and corrections
+
+- The first 372 independent official cases passed. Sixteen initial Markdig
+  mismatches were solely its omitted `<li>`/`<p>` formatting newline; the narrowly
+  specified normalization now accounts for those without changing expectations.
+- Generated comparisons exposed an independent parser defect: `[x]( "title")`
+  was incorrectly treated as an empty destination plus title. Destination scanning
+  has precedence, so its destination is `"title"`; `[x](<> "title")` explicitly
+  expresses an empty destination with a title. Removed the special case and
+  corrected/expanded regression expectations. The adopted specification is unchanged.
+- Markdig omits empty HTML title attributes and produces nested anchors for an
+  autolink wrapped in an inline link (including an empty outer destination).
+  Explicit tests record these differences. Independent syntax retains absent versus
+  empty titles and follows the adopted prohibition on nested links. These cases
+  are not normalized away or treated as reasons to weaken the profile.
+
+### Verification
+
+Environment: Windows x64, .NET 10.0.12 runtime, pinned Markdig 1.3.2 and repository
+LLVM 22.1.8 toolchain. Both `dotnet build Kimigayo.slnx --no-restore -c
+<configuration> -v:q` runs passed with zero warnings/errors. Direct xUnit runs use
+`-parallelMode none -failSkips -result-xml <output>`; focused runs additionally use
+`-class '*Documentation*'`.
+
+| Verification | Debug | Release |
+| --- | --- | --- |
+| Documentation suite | 947 PASS | 947 PASS |
+| Full managed suite | 10,157 PASS | 10,157 PASS |
+| DocumentationComments fixture, LLVM verification/link/execution | 2 PASS (O0/O2) | 2 PASS (O0/O2) |
+
+All managed runs have zero failures, errors, skips or unrun cases. Net new test
+cases: 792 relative to the 155-case DM2 documentation suite. The generated
+interaction matrix executes 568 comparisons within one Fact, not 568 separately
+counted xUnit cases. Full suites include the focused cases; counts are not additive.
+Native runs verify expected stdout/stderr and exit status using the existing
+`backend/windows-x64/test-scalars.ps1` command with
+`-FixturePattern DocumentationComments.ll`. The initial sandbox denied LLVM
+execution; the authorized escalation completed both native checks.
+
+Local generated evidence (not tracked fixtures):
+[Debug build](bin/documentation-markdown/dm3-build-debug.log),
+[Release build](bin/documentation-markdown/dm3-build-release.log),
+[Debug documentation XML](bin/documentation-markdown/dm3-documentation-debug.xml),
+[Release documentation XML](bin/documentation-markdown/dm3-documentation-release.xml),
+[Debug full XML](bin/documentation-markdown/dm3-full-debug.xml),
+[Release full XML](bin/documentation-markdown/dm3-full-release.xml),
+[Debug native log](bin/documentation-markdown/dm3-native-debug.log), and
+[Release native log](bin/documentation-markdown/dm3-native-release.log).
+
+No benchmark or NativeAOT run was performed. Culture checks are not cross-OS or
+cross-runtime verification. Independent product rendering, structured URL
+resolution/output, final publication adapters and their associated §7/§9 tests
+remain required before product switching. Current next actions are owned by PLAN.md.

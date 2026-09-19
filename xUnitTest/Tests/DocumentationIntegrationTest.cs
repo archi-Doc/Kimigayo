@@ -36,6 +36,10 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         Assert.NotNull(comment.Declaration);
         Assert.Empty(Assert.Single(tree.DocumentationSources).GetDiagnostics());
+        var independent = DocumentationMarkdownDocument.Parse(comment, TestContext.Current.CancellationToken);
+        Assert.Equal("d", independent.Text);
+        Assert.Equal("d", Assert.Single(independent.Summary!.Value.Children).Text.ToString());
+        DocumentationMarkdownParserTest.AssertRanges(independent);
     }
 
     [Fact]
@@ -139,6 +143,17 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
             Assert.True(c.Prepare(WindowsProfile.Target));
             c.Kotonoha.AddSource(new SourceDocument("same.kimi", source));
             Assert.True(c.Bind().IsComplete);
+            if (collect)
+            {
+                foreach (var comment in c.Kotonoha.DocumentationSources.SelectMany(x => x.Comments))
+                {
+                    var markdown = DocumentationMarkdownDocument.Parse(comment);
+                    DocumentationMarkdownParserTest.AssertRanges(markdown);
+                    Assert.NotNull(markdown.Summary);
+                    _ = markdown.GetItemCandidates();
+                }
+            }
+
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Ownership.Analyze().IsVerified);
             using var writer = new StringWriter();

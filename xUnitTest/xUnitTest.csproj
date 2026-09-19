@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Kimi\Kimi.csproj" />
+    <EmbeddedResource Include="TestData\DocumentationMarkdown\*.json" />
   </ItemGroup>
 
   <ItemGroup>

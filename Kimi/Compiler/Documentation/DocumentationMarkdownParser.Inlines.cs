@@ -597,11 +597,9 @@ internal sealed partial class DocumentationMarkdownParser
         SkipLinkWhitespace(input, ref position);
         var destinationStart = position;
         var destinationEnd = position;
-        var emptyWithTitle = position > start && position < input.Length && input[position] is '\'' or '"';
-        if (emptyWithTitle)
-        {
-        }
-        else if (position < input.Length && input[position] == '<')
+        // Parse the destination first, even when it starts with a quote after whitespace.
+        // An explicitly empty destination before a title is written as <>.
+        if (position < input.Length && input[position] == '<')
         {
             destinationStart = ++position;
             while (position < input.Length && input[position] is not ('<' or '>' or '\n'))
@@ -654,7 +652,7 @@ internal sealed partial class DocumentationMarkdownParser
             destinationEnd = position;
         }
 
-        var beforeWhitespace = emptyWithTitle ? start : position;
+        var beforeWhitespace = position;
         SkipLinkWhitespace(input, ref position);
         var titleStart = position;
         var titleEnd = position;
