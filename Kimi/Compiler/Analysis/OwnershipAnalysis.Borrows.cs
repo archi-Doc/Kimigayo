@@ -101,7 +101,9 @@ public sealed partial class OwnershipAnalysis
 
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
         var operation = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
-        this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsStorage(source.BoundType) ? [this.Value(place)] : [], constant: place);
+        // A scalar temporary is materialized at the borrow from its one prepared value (SPEC 3.6.2, 10.2).
+        var materialized = ScalarTypes.Supports(source.BoundType) && this.body.Places[place].Kind == OwnershipPlaceKind.Temporary;
+        this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsStorage(source.BoundType) || materialized ? [this.Value(place)] : [], constant: place);
         return this.RegisterTemporary(result);
     }
 

@@ -963,6 +963,20 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (IsUnfittedLiteral(argument) && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowed &&
+                    ScalarTypes.Supports(borrowed.Components[0]) && this.FitsInputLiteral(argument, borrowed.Components[0]))
+                {
+                    // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed;
+                    // its Place Origin binds the parameter's input Origin like any other borrowed temporary.
+                    if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, borrowed.Components[0], argument))
+                    {
+                        return CandidateApplicability.Inapplicable;
+                    }
+
+                    operations[i] = new(call.ArgumentNodes[i], borrowed.Components[0], type, ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow, ParameterIndex: mapping[i]);
+                    continue;
+                }
+
                 if (!this.FitsInputLiteral(argument, type))
                 {
                     return CandidateApplicability.Inapplicable;

@@ -5699,3 +5699,110 @@ the run and was neither read nor modified. Stopped at about 09:12 JST (about 45
 minutes elapsed). The remaining time could not fit another unit with its
 required full Debug/Release and native verification, and the next item (T6l)
 first needs an Origin decision. T6l is the next action in PLAN.md §2.
+
+<a id="general-compiler-20260919-094939"></a>
+
+## General compiler continuation (2026-09-19 09:49:39 JST / 00:49:39 UTC)
+
+Started from clean HEAD `95731eb` under the user's 60-minute general compiler
+authorization (Milestone Programs, NativeAOT and draft edits excluded).
+Evidence root: `bin/plan-execution/20260919-094939`.
+
+T6n (M2/M3, I4/I6; SPEC §10.2 "Borrowed temporaries", §13.5.5.2) completed at
+approximately 10:05 JST. Reproducers: `read(one())` with
+`read(n: ref/i32)` passed Binding and ownership, then generation failed with
+"Borrow source has no matching aggregate storage". `read(1)` failed Binding
+(NoApplicableOverload, UnsupportedBinding at the literal). Spec §13.5.4 also
+confirms that a callee cannot read a scalar through `ref/i32` ("Safe
+references are never implicitly dereferenced"). The native oracle is therefore
+call completion and side-effect output, not the value.
+
+Changes:
+- `BorrowStruct` records the temporary's prepared value as the Borrow input for scalar temporaries.
+- Lowering allocates a slot only for scalar temporaries that a Borrow uses (`IsMaterializedScalar`). It stores the value once at the borrow and borrows the slot, and it requires a shared result.
+- Candidate evaluation lets an unfitted scalar literal that fits `T` form a CrossSemanticsBorrow with `SourceType = T`, so commit fits the literal to `T`.
+- `VerifyBorrows` makes a borrowed scalar temporary a Loan root for its Projection Origin. Only borrowed temporaries qualify: a first draft admitted every scalar temporary with a matching binder, and the full suite caught a false conflict in `OwnedPathBorrowTest` "Parameter".
+- The escape reproducer (`let r = keep(one())`, `let s = r`) verified before the root change. It now rejects.
+
+Verification PASS: warning-free Debug/Release. `ScalarTemporaryBorrowTest` has 11 cases: 7 native positives, including literal/float/rank; the escape negative; and `uniq` literal, ambiguity and unrepresentable-literal Binding rejections. Full suites: 8,979 tests each, no skips (`t6n-full-debug.xml`, `t6n-full-release.xml`). 46 ScalarTemporaryBorrow, ScalarBorrowShorthand, OwnedPathBorrow, BorrowStruct and BorrowedTupleProjection fixtures pass 92 O0/O2 runs (`t6n-native.log`), and Release bytes match Debug. Hashes: `t6n-fixture-hashes.txt`, `t6n-source-hashes.txt`.
+
+T6o (M2/M3, I6; SPEC §3.6.1–3.6.2, §13.5.5.2) completed at approximately 10:11
+JST. T6m had restricted scalar shorthand borrows to Places, because
+generation could not lower temporaries. With T6n materialization available,
+the restriction was lifted. A probe then showed `1@uniq` and `one()@uniq`
+passing ownership but failing generation, because the materialization
+lowering required a shared result. §3.6.1 gives a new owned temporary
+exclusive writable capability, and §3.6.2 permits the applicable explicit
+exclusive borrow. The shared-only check was therefore removed; implicit
+`uniq` temporary adaptation stays rejected in Binding (§10.2). `ConversionEmissionTest`'s
+`1@ref` and `FloatConversionEmissionTest`'s `1.25@ref` Unsupported cases were
+removed as spec-contradicting. `1.25@ref` is now a native positive, which
+also shows it is not treated as a numeric widening. Verification PASS:
+warning-free Debug/Release; full suites 8,982 each, no skips
+(`t6o-full-debug.xml`, `t6o-full-release.xml`); 15 ScalarBorrowShorthand and
+ScalarTemporaryBorrow fixtures pass 30 O0/O2 runs (`t6o-native.log`); the 46 T6n
+fixtures are byte-identical. Hashes: `t6o-fixture-hashes.txt`,
+`t6o-source-hashes.txt`.
+
+T6p (M2/M6, I4/I14; SPEC §10.2) completed at approximately 10:20 JST. §10.2's
+generic examples `inspect(1)` / `inspect(1.5)` with `inspect<T>(value: ref/T)`
+failed with NoApplicableOverload. Literal defaulting called `InferInput` →
+`AdaptInput` with the default Type, but the temporary form required an already
+bound source Type. `AdaptInput` now also admits an unfitted literal as an owner
+temporary for a shared target only. The T6n candidate path then records a
+Borrow with the literal fitted to `T`. A generic `uniq/T` literal
+(`modify(1)`) still rejects.
+
+A first test version put `Console.writeLine` inside the generic body and failed
+generation ("Shared operation refers to invalid storage or projection."). The same
+failure occurs for a plain local argument (`inspect(v)`) with the HEAD `95731eb`
+compiler sources: the `Kimi/` changes were stashed, the tests rebuilt and the
+probe rerun, then the changes restored. It is recorded as G10 and the test uses
+an empty generic body with caller-side output.
+
+Verification PASS: warning-free Debug/Release; full suites 8,984 each, no skips
+(`t6p-full-debug.xml`, `t6p-full-release.xml`); 16 ScalarTemporaryBorrow and
+ScalarBorrowShorthand fixtures pass 32 O0/O2 runs (`t6p-native.log`); the T6n
+archive is byte-identical. Hashes: `t6p-fixture-hashes.txt`,
+`t6p-source-hashes.txt`.
+
+T6q (M2/M3, I4/I6; SPEC §10.2, §15.6.4) completed at approximately 10:26 JST.
+`keep(1)` with `func keep(n: ref/i32) -> ref/i32 from n` failed Binding with
+UnprovenConstraint: the T6n literal-borrow candidate branch never ran
+`InferInput`, so the result Origin stayed unsubstituted. The branch now calls
+`InferInput` with the referent Type, which also exercises the T6p literal
+temporary admission. `read(keep(1))` executes, and `let r = keep(1)` with a
+later use of `r` rejects. Verification PASS: warning-free Debug/Release; full
+suites 8,986 each, no skips (`t6q-full-debug.xml`, `t6q-full-release.xml`).
+Those full runs preceded a whitespace-only SA1001 fix in the test file; after
+it, both configurations rebuilt warning-free and `ScalarTemporaryBorrowTest`
+(15 cases) passed in each. 17 fixtures pass 34 O0/O2 runs (`t6q-native.log`),
+and the T6n archive is byte-identical. Hashes: `t6q-fixture-hashes.txt`,
+`t6q-source-hashes.txt`.
+
+G10 analysis: shared generic bodies admit direct calls only to generic
+targets, and a Unit-result call (for example `Console.writeLine`) has no Place.
+It therefore fails `GenericStoragePlan.PrepareBody` validation before any call
+lowering. Supporting non-generic calls in shared bodies needs a
+string/argument ABI for shared frames (M6/I15 "general calls"), which was
+too large for the remaining time.
+
+T6r (M3/I6, regression coverage) completed at approximately 10:30 JST.
+Probes showed that scalar-field borrows through borrowed bases (`p.tag@uniq`,
+`bump(p.tag)`, `read(p.tag)`, a live field borrow with a sibling write) and
+owned Tuple scalar elements already bind, verify and emit through existing
+T6f/T6h/T6i/T6m paths. Only tests were added to `ScalarBorrowShorthandTest`:
+3 native positives and the `ref`-base `@uniq` Binding rejection. Verification
+PASS: warning-free Debug/Release; full suites 8,990 each, no skips
+(`t6r-full-debug.xml`, `t6r-full-release.xml`); 11 fixtures pass 22 O0/O2 runs
+(`t6r-native.log`), and Release bytes match. Hashes: `t6r-fixture-hashes.txt`,
+`t6r-source-hashes.txt`.
+
+Execution totals: 29 new managed cases (8,968 → 8,990 per configuration, net
+of 2 removed spec-contradicting Unsupported cases, as justified in T6o). No
+Milestone Program, draft or NativeAOT work; the specification was not edited.
+Stopped at about 10:31 JST (about 41 minutes elapsed). The remaining
+candidates needed more than the remaining time for implementation plus full
+Debug/Release and native verification: T6l needs an Origin decision, G10 a
+shared-frame non-generic call ABI, and sibling Moves under a live part borrow
+path-aware root initialization.

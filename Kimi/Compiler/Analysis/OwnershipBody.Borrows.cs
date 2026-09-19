@@ -208,8 +208,8 @@ public sealed partial class OwnershipBody
                 for (var root = 0; root < count; root++)
                 {
                     var candidate = this.Places[root];
-                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple) &&
-                        ReferenceEquals(candidate.Source, origin.Binder))
+                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple || ScalarTypes.Supports(candidate.Type)) &&
+                        ReferenceEquals(candidate.Source, origin.Binder) && (!ScalarTypes.Supports(candidate.Type) || this.IsBorrowedPlace(root)))
                     {
                         Record(root);
                     }
@@ -477,6 +477,20 @@ public sealed partial class OwnershipBody
     // Element Moves leave the root partially initialized, which is checked separately.
     private bool ElementAccessConflicts(OwnershipOperation operation, int root, LoanRequirement mode)
         => mode == LoanRequirement.Uniq && operation.Kind == OwnershipOperationKind.ProjectElement && this.Projections[operation.Projection].Root == root;
+
+    // A scalar temporary is a Loan root only where a borrow materializes it (SPEC 3.6.2).
+    private bool IsBorrowedPlace(int place)
+    {
+        for (var i = 0; i < this.Operations.Count; i++)
+        {
+            if (this.Operations[i] is { Kind: OwnershipOperationKind.Borrow } borrow && borrow.Place == place)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private bool IsBorrowAncestor(int value, int place)
     {

@@ -67,7 +67,6 @@ public class FloatConversionEmissionTest
     [InlineData("let x: u128 = 1\nx@f64")]
     [InlineData("let x: f64 = 1.0\nx@u128")]
     [InlineData("let x: f32 = 1.0\nx@i128")]
-    [InlineData("1.25@ref")]
     public void RemainingConversionsAreNotMistakenForWidening(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

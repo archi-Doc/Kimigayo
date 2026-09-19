@@ -170,8 +170,10 @@ public sealed partial class Binding
         else if (actual.Semantics == SemanticsKind.Owner && (this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) ||
             ((source.BoundSymbol is null || KotoHelper.UnwrapParentheses(source) is InvocationKoto) &&
                 !(KotoHelper.UnwrapParentheses(source) is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
-                KotoHelper.UnwrapParentheses(source) is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never))))
+                KotoHelper.UnwrapParentheses(source) is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) ||
+            (target == SemanticsKind.Ref && IsUnfittedLiteral(source))))
         {
+            // SPEC 10.2: an owner temporary, including a defaulted literal, may be shared-borrowed.
             referent = actual;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;

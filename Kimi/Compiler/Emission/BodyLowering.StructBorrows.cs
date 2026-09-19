@@ -6,6 +6,25 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    // A scalar temporary receives a slot only when a borrow materializes it.
+    private static bool IsMaterializedScalar(OwnershipBody body, int place)
+    {
+        if (body.Places[place] is not { Kind: OwnershipPlaceKind.Temporary } temporary || !ScalarTypes.Supports(temporary.Type))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < body.Operations.Count; i++)
+        {
+            if (body.Operations[i] is { Kind: OwnershipOperationKind.Borrow } borrow && borrow.Place == place)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool LowerStructBorrow(OwnershipBody body, EmissionFunction function, int id, out string? failure)
     {
         failure = null;
@@ -74,6 +93,20 @@ internal sealed partial class BodyLowering
                 }
 
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.Integer, pathOffset)]);
+            }
+            else if (body.Places[operation.Place].Kind == OwnershipPlaceKind.Temporary && ScalarTypes.Supports(type))
+            {
+                var input = value.Count == 1 ? Input(body, id, 0) : -1;
+                if (input < 0 || !ReferenceEquals(ValueType(body, input), type) || !ReferenceEquals(type, output.Components[0]) ||
+                    (body.IsReachable(id) && !this.Dominates(input, id)))
+                {
+                    return Fail("Scalar temporary borrow requires its prepared value.", out failure);
+                }
+
+                // Materialize the prepared value once in the temporary's slot, then borrow that slot.
+                var slot = WindowsLowering.GetValue(type)!;
+                function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, input)], slot.ComputationType, place: operation.Place, representation: slot);
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
             }
             else
             {
