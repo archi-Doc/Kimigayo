@@ -5,10 +5,14 @@ official CommonMark cases, corresponding Markdig comparisons, intentional profil
 differences and 568 generated interactions. Plain paragraph construction,
 contiguous fenced-code slices and single initial candidate extraction reduce
 measured costs. Against the DM3 baseline, six representative inputs show 36.0%
-lower geometric-mean parse time and 51.8% lower allocations; comparison with Markdig,
-scaling, query and concurrency limits are in the [benchmark report](Benchmark/DocumentationMarkdown.md).
-Final Debug/Release solution builds have zero warnings/errors; **965 documentation
-tests and all 10,175 managed tests** pass per configuration. Source ranges,
+lower geometric-mean parse time and 51.8% lower allocations; a second tuning round
+the same day (stack-only parser, 36-byte nodes, merged text, lazy destinations,
+NUL-free search needle, and a fix for `<` inside bare link destinations) removes a
+further 33.1% of time and 33.7% of allocations, reaching 0.395/0.170 of Markdig;
+comparison with Markdig, scaling, query and concurrency limits are in the
+[benchmark report](Benchmark/DocumentationMarkdown.md).
+Final Debug/Release solution builds have zero warnings/errors; **977 documentation
+tests and all 10,187 managed tests** pass per configuration. Source ranges,
 Unicode 15, cancellation and Kimigayo integration remain covered. Native O0/O2
 fixture execution passed in DM3 and was not repeated in DM4; NativeAOT was not run.
 The existing Markdig-backed product API is unchanged. The independent syntax and

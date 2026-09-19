@@ -37,15 +37,18 @@ public enum DocumentationMarkdownKind : byte
 /// </summary>
 public sealed partial class DocumentationMarkdownDocument
 {
-    private static readonly SearchValues<char> InlineSyntax = SearchValues.Create("*_`[\\&\n\0<]");
+    // Every inline marker plus the line ending: one scan both rejects markup and
+    // splits lines. NUL is excluded because it selects a slower vectorized searcher;
+    // ParseCore finds it separately and NUL-containing text takes the general parser.
+    private static readonly SearchValues<char> PlainStops = SearchValues.Create("*_`[\\&<]\n");
 
     private readonly MarkdownNodeData[] nodes;
 
-    private readonly string[] values;
+    private readonly MarkdownValue[] values;
 
     private readonly DocumentationText? source;
 
-    internal DocumentationMarkdownDocument(string text, MarkdownNodeData[] nodes, string[] values, DocumentationText? source)
+    internal DocumentationMarkdownDocument(string text, MarkdownNodeData[] nodes, MarkdownValue[] values, DocumentationText? source)
     {
         this.Text = text;
         this.nodes = nodes;
@@ -120,19 +123,32 @@ public sealed partial class DocumentationMarkdownDocument
             return MemoryMarshal.CreateReadOnlySpan(ref characters, node.TextLength);
         }
 
-        return node.TextStart < 0 ? this.values[~node.TextStart].AsSpan(0, node.TextLength) : this.Text.AsSpan(node.TextStart, node.TextLength);
+        return node.TextStart < 0 ? this.values[~node.TextStart].Text.AsSpan(0, node.TextLength) : this.Text.AsSpan(node.TextStart, node.TextLength);
     }
 
-    internal string GetValue(int index) => this.values[index];
+    // Destinations and titles that equal a source slice are materialized on first
+    // use. A concurrent first use may create equal strings; either result is valid.
+    internal string GetValue(int index)
+    {
+        ref var value = ref this.values[index];
+        return value.Text ?? (value.Text = this.Text.Substring(value.Start, value.Length));
+    }
 
     private static DocumentationMarkdownDocument ParseCore(string text, DocumentationText? source, CancellationToken cancellationToken, int maximumDepth)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumDepth, 1);
         cancellationToken.ThrowIfCancellationRequested();
-        if (text.Contains('\r'))
+        // One scan finds both the rejected CR and the rare NUL that later stages must handle.
+        var hasNul = false;
+        if (text.AsSpan().IndexOfAny('\r', '\0') >= 0)
         {
-            throw new ArgumentException("Documentation text must use normalized LF line endings.", nameof(text));
+            if (text.Contains('\r'))
+            {
+                throw new ArgumentException("Documentation text must use normalized LF line endings.", nameof(text));
+            }
+
+            hasNul = true;
         }
 
         var plain = text.AsSpan().Trim(" \t");
@@ -142,29 +158,135 @@ public sealed partial class DocumentationMarkdownDocument
             return new(text, [new() { Kind = DocumentationMarkdownKind.Document, End = text.Length }], [], source);
         }
 
-        // A single plain paragraph needs no mutable parser or pooled scratch.
-        // Conservatively defer every possible block opener and inline marker.
-        if (!char.IsAsciiDigit(plain[0]) && !"#>-+~".Contains(plain[0]) && plain.IndexOfAny(InlineSyntax) < 0)
+        if (!hasNul && TryParsePlainParagraph(text, plain, maximumDepth, out var nodes))
         {
-            if (maximumDepth < 2)
-            {
-                throw new DocumentationMarkdownLimitException(maximumDepth);
-            }
-
             cancellationToken.ThrowIfCancellationRequested();
-            var start = text.Length - text.AsSpan().TrimStart(" \t").Length;
-            var end = start + plain.Length;
-            MarkdownNodeData[] nodes =
-            [
-                new() { Kind = DocumentationMarkdownKind.Document, End = text.Length, First = 1, Last = 1 },
-                new() { Kind = DocumentationMarkdownKind.Paragraph, Start = start, End = text.Length, First = 2, Last = 2 },
-                new() { Kind = DocumentationMarkdownKind.Text, Parent = 1, Start = start, End = end, TextStart = start, TextLength = plain.Length },
-            ];
             return new(text, nodes, [], source);
         }
 
-        using var parser = new DocumentationMarkdownParser(text, cancellationToken, maximumDepth);
-        return parser.Parse(source);
+        return ParseGeneral(text, source, cancellationToken, maximumDepth, hasNul);
+    }
+
+    // Kept out of ParseCore: the parser struct's stack frame and its try/finally
+    // would otherwise be paid by the allocation-free plain-paragraph path too.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [SkipLocalsInit]
+    private static DocumentationMarkdownDocument ParseGeneral(string text, DocumentationText? source, CancellationToken cancellationToken, int maximumDepth, bool hasNul)
+    {
+        // Typical comments fit in this frame's scratch; only larger ones touch the pool.
+        // The buffers expose only written elements, so the stack need not be zeroed.
+        ValueScratch values = default;
+        var scratch = new DocumentationMarkdownParser.Scratch(
+            stackalloc MarkdownNodeData[64],
+            stackalloc DocumentationMarkdownParser.NodeLinks[64],
+            values,
+            stackalloc DocumentationMarkdownParser.Container[8],
+            stackalloc DocumentationMarkdownParser.ContentLine[16],
+            stackalloc DocumentationMarkdownParser.Delimiter[16],
+            stackalloc DocumentationMarkdownParser.Bracket[8],
+            stackalloc DocumentationMarkdownParser.CodeRun[8]);
+        // Not `using`: a read-only local would call Parse on a defensive copy.
+        var parser = new DocumentationMarkdownParser(text, cancellationToken, maximumDepth, hasNul, in scratch);
+        try
+        {
+            return parser.Parse(source);
+        }
+        finally
+        {
+            parser.Dispose();
+        }
+    }
+
+    [InlineArray(4)]
+    private struct ValueScratch
+    {
+        private MarkdownValue element;
+    }
+
+    // A single paragraph of plain text, possibly over several lines, needs no
+    // mutable parser or pooled scratch: construct the immutable arena directly.
+    // Conservatively defer every possible block opener, inline marker, blank
+    // line and hard break to the general parser.
+    [SkipLocalsInit]
+    private static bool TryParsePlainParagraph(string text, ReadOnlySpan<char> plain, int maximumDepth, out MarkdownNodeData[] nodes)
+    {
+        nodes = null!;
+        // Record every line's content bounds before allocating: the fill loop
+        // then runs no vectorized search after the array store, which measured
+        // several times slower than the same searches beforehand.
+        const int MaximumLines = 24;
+        Span<int> bounds = stackalloc int[MaximumLines * 3];
+        var lineCount = 0;
+        var offset = 0;
+        while (true)
+        {
+            if (lineCount == MaximumLines)
+            {
+                return false;
+            }
+
+            var stop = plain[offset..].IndexOfAny(PlainStops);
+            var lineEnd = stop < 0 ? plain.Length : offset + stop;
+            if (lineEnd < plain.Length && plain[lineEnd] != '\n')
+            {
+                return false;
+            }
+
+            var newline = lineEnd < plain.Length ? stop : -1;
+            var line = plain[offset..lineEnd];
+            var content = line.IndexOfAnyExcept(' ', '\t');
+            if (content < 0 || char.IsAsciiDigit(line[content]) || "#>-+~".Contains(line[content]))
+            {
+                return false;
+            }
+
+            var contentEnd = lineEnd;
+            while (plain[contentEnd - 1] is ' ' or '\t')
+            {
+                contentEnd--;
+            }
+
+            if (newline >= 0 && lineEnd - contentEnd >= 2 && plain[lineEnd - 1] == ' ' && plain[lineEnd - 2] == ' ')
+            {
+                return false;
+            }
+
+            bounds[lineCount * 3] = offset + content;
+            bounds[(lineCount * 3) + 1] = contentEnd;
+            bounds[(lineCount * 3) + 2] = lineEnd;
+            lineCount++;
+            if (newline < 0)
+            {
+                break;
+            }
+
+            offset = lineEnd + 1;
+        }
+
+        if (maximumDepth < 2)
+        {
+            throw new DocumentationMarkdownLimitException(maximumDepth);
+        }
+
+        var start = text.Length - text.AsSpan().TrimStart(" \t").Length;
+        nodes = new MarkdownNodeData[(2 * lineCount) + 1];
+        nodes[0] = new() { Kind = DocumentationMarkdownKind.Document, End = text.Length, First = 1 };
+        nodes[1] = new() { Kind = DocumentationMarkdownKind.Paragraph, Start = start, End = text.Length, First = 2 };
+        for (var line = 0; line < lineCount; line++)
+        {
+            var id = 2 + (2 * line);
+            var last = line == lineCount - 1;
+            var contentStart = start + bounds[line * 3];
+            var contentEnd = start + bounds[(line * 3) + 1];
+            nodes[id] = new() { Kind = DocumentationMarkdownKind.Text, Parent = 1, Start = contentStart, End = contentEnd, TextStart = contentStart, TextLength = contentEnd - contentStart, Next = last ? 0 : id + 1 };
+            if (!last)
+            {
+                var lf = start + bounds[(line * 3) + 2];
+                nodes[id + 1] = new() { Kind = DocumentationMarkdownKind.SoftBreak, Parent = 1, Start = lf, End = lf + 1, Next = id + 2 };
+            }
+        }
+
+        return true;
     }
 }
 
@@ -287,8 +409,30 @@ internal enum MarkdownNodeFlags : byte
     Detached = 4,
 }
 
-// No object references per node. Text is either a source slice or an index into the
-// small decoded-value table (negative TextStart). Sibling links make delimiter edits O(1).
+// A decoded string, or a source slice materialized only when a string is requested.
+internal struct MarkdownValue
+{
+    internal string? Text;
+
+    internal int Start;
+
+    internal int Length;
+
+    internal MarkdownValue(string text)
+    {
+        this.Text = text;
+    }
+
+    internal MarkdownValue(int start, int length)
+    {
+        this.Start = start;
+        this.Length = length;
+    }
+}
+
+// No object references per node, and only forward links: parent, first child and
+// next sibling. Text is either a source slice or an index into the small
+// decoded-value table (negative TextStart). 36 bytes per retained node.
 internal struct MarkdownNodeData
 {
     internal DocumentationMarkdownKind Kind;
@@ -306,10 +450,6 @@ internal struct MarkdownNodeData
     internal int Parent;
 
     internal int First;
-
-    internal int Last;
-
-    internal int Previous;
 
     internal int Next;
 

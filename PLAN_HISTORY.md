@@ -6,6 +6,7 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Documentation Markdown second tuning round (2026-09-20)](#documentation-markdown-tuning-20260920)
 - [Documentation Markdown benchmarks and improvements (2026-09-20)](#documentation-markdown-benchmarks-20260920)
 - [Compiler continuation: native requirements and LibraryImport validation (2026-09-19 13:29 UTC)](#compiler-continuation-20260919-132943)
 - [Compiler continuation: source modules and Library inspection (2026-09-19)](#compiler-continuation-20260919-113419)
@@ -35,6 +36,61 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 - [Plan changes, reverted approaches and out-of-scope findings](#plan-changes)
 - [STATUS dated records](#status-record-index)
 - [STATUS area snapshot and 2026-09-14/15 verification](#status-area-snapshot)
+
+<a id="documentation-markdown-tuning-20260920"></a>
+
+## Documentation Markdown second tuning round — 2026-09-20
+
+The user requested a review of `Kimi/Compiler/Documentation` against the
+2026-09-19 draft for bugs, then allocation and speed reductions measured with
+`DocumentationMarkdownMeasurements`. Entry baseline was commit `cde175c` (DM4
+complete). The draft, specification, Markdig product path and public API shapes
+were not changed.
+
+Findings and changes:
+
+- Bug: bare link destinations stopped at any `<` (`[x](a<b)` became text).
+  CommonMark 0.31.2, cmark, commonmark.js and Markdig accept `<` after the first
+  character. Fixed in `TryLink` and the parenthesis index; three parser cases and
+  three Markdig comparison destinations were added. No retained conformance,
+  difference or interaction result changed.
+- Allocation: retained nodes lost `Previous`/`Last` (44 → 36 bytes; parser-only
+  links and depth/height live in a parallel buffer); the parser became a
+  `ref struct` on caller-provided `stackalloc` scratch (no parser object, no pool
+  traffic for typical comments); adjacent plain text runs merge; destinations and
+  titles without escapes are lazily materialized source slices and title-less links
+  add no table entry; the fence language, decoded text, entities and titles avoid
+  intermediate strings; `ClassifyItems` scans small parameter sets without a
+  dictionary; `GetText`/`Format` build exact arrays and strings once.
+- Speed (from a SuspendThread+ClrMD sampler over a parse loop): a NUL in the
+  inline `SearchValues` needle selected the slower
+  `Ssse3AndWasmHandleZeroInNeedle` searcher and per-node NUL scans were wasted;
+  fixed by a NUL-free needle plus a document-level NUL flag. Multi-line paragraphs
+  with contiguous lines parse in place, joined paragraphs map positions per line;
+  the exact depth is tracked during parsing instead of a final tree walk;
+  parenthesis indexing jumps between relevant characters with a lazily cached stop;
+  fence lines, whitespace consumption and list-marker reading avoid repeated scans.
+  A plain-paragraph fast path now handles multi-line plain text; its fill loop
+  records line bounds first because vectorized searches after the array store
+  measured several times slower on this host.
+- Measured pair (same process, 15 alternating samples, `cde175c` vs tuned):
+  Summary 127.6 → 133.8 ns / 216 → 192 B; Rich-summary 1,253.0 → 872.7 / 920 → 536;
+  Parameters 3,851.8 → 1,927.9 / 2,608 → 1,952; Code-example 7,227.1 → 4,245.3 /
+  608 → 264; Nested 1,732.6 → 1,129.9 / 1,336 → 912; Links-entities 14,991.8 →
+  9,603.9 / 15,664 → 11,568. Geometric means 0.669 time / 0.663 bytes. Full-run
+  tuned/Markdig geometric means 0.395 / 0.170. Backtick-runs-256 allocation fell
+  from 39,000 to 192 B; failed links/titles from 45,464 to 18,584 B at size 256.
+  Scaling families remain below the 6× gate (2.76×–4.05× for ~4× input).
+
+Verification: warning-free Release and Debug solution builds; the focused
+documentation run passes 925 cases (`-class '*DocumentationMarkdown*'`, 977 with
+`'*Documentation*'`); the full Release and Debug suites each pass 10,187 tests with
+zero failures or skips. Raw JSON:
+`Benchmark/Results/DocumentationMarkdown/2026-09-20-tuned*.json`; report section:
+[Benchmark/DocumentationMarkdown.md](Benchmark/DocumentationMarkdown.md#second-tuning-round-2026-09-20-after-dm4).
+Limits: the Markdig product path, renderer, URL resolution and publication adapter
+are unchanged (DM5); timing noise on the host is about ±10% between runs; NativeAOT
+and native execution were not run.
 
 <a id="documentation-markdown-benchmarks-20260920"></a>
 

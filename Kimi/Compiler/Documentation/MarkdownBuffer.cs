@@ -7,33 +7,51 @@ namespace Kimi.Compiler.Documentation;
 
 #pragma warning disable SA1202 // Keep growth next to its scratch-buffer implementation.
 
-// Parser-owned scratch only. Never expose a rented array through the immutable tree.
-internal struct MarkdownBuffer<T> : IDisposable
+// Parser-owned scratch only. Starts in caller-provided (typically stack) storage
+// and rents from the pool only when that overflows. Never expose the storage
+// through the immutable tree.
+internal ref struct MarkdownBuffer<T>
 {
-    private T[]? items;
+    private Span<T> items;
+
+    private T[]? rented;
 
     internal int Count;
 
-    internal ref T this[int index] => ref this.items![index];
+    internal MarkdownBuffer(Span<T> initial)
+    {
+        this.items = initial;
+    }
 
-    internal ReadOnlySpan<T> Span => this.items.AsSpan(0, this.Count);
+    internal ref T this[int index] => ref this.items[index];
+
+    internal ReadOnlySpan<T> Span => this.items[..this.Count];
 
     internal int Add(T item)
     {
-        if (this.items is null || this.Count == this.items.Length)
+        if (this.Count == this.items.Length)
         {
-            this.Grow();
+            this.Grow(this.Count + 1);
         }
 
-        this.items![this.Count] = item;
+        this.items[this.Count] = item;
         return this.Count++;
+    }
+
+    // Rent the expected final size once instead of doubling through the pool.
+    internal void EnsureCapacity(int capacity)
+    {
+        if (this.items.Length < capacity)
+        {
+            this.Grow(capacity);
+        }
     }
 
     internal void Clear()
     {
         if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
         {
-            this.items.AsSpan(0, this.Count).Clear();
+            this.items[..this.Count].Clear();
         }
 
         this.Count = 0;
@@ -41,24 +59,26 @@ internal struct MarkdownBuffer<T> : IDisposable
 
     public void Dispose()
     {
-        if (this.items is { } items)
+        this.Count = 0;
+        this.items = default;
+        if (this.rented is { } rented)
         {
-            this.items = null;
-            this.Count = 0;
-            ArrayPool<T>.Shared.Return(items, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
+            this.rented = null;
+            ArrayPool<T>.Shared.Return(rented, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void Grow()
+    private void Grow(int minimum)
     {
-        var next = ArrayPool<T>.Shared.Rent(this.items is null ? 16 : checked(this.items.Length * 2));
-        if (this.items is { } previous)
+        var next = ArrayPool<T>.Shared.Rent(Math.Max(minimum, Math.Max(16, checked(this.items.Length * 2))));
+        this.items[..this.Count].CopyTo(next);
+        if (this.rented is { } previous)
         {
-            previous.AsSpan(0, this.Count).CopyTo(next);
             ArrayPool<T>.Shared.Return(previous, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
         }
 
+        this.rented = next;
         this.items = next;
     }
 }

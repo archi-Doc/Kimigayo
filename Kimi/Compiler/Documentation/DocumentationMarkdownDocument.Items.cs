@@ -70,30 +70,35 @@ public sealed partial class DocumentationMarkdownDocument
         MarkdownBuffer<DocumentationMarkdownItem> result = default;
         try
         {
-            // Reverse root traversal resolves every heading's end in constant work.
-            // Headings have six possible levels; overlapping descriptions are only ranges.
-            Span<int> headingEnds = stackalloc int[7];
-            headingEnds.Fill(this.Text.Length);
-            for (var block = this.nodes[0].Last; block != 0; block = this.nodes[block].Previous)
+            // One forward root traversal. A heading's description ends at the next
+            // root heading of the same or a higher level, so keep the unresolved
+            // result index per level and patch it when that heading appears.
+            Span<int> pending = stackalloc int[7];
+            pending.Fill(-1);
+            for (var block = this.nodes[0].First; block != 0; block = this.nodes[block].Next)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ref readonly var data = ref this.nodes[block];
                 if (data.Kind == DocumentationMarkdownKind.Heading)
                 {
-                    var end = headingEnds[data.Argument];
                     for (var level = data.Argument; level <= 6; level++)
                     {
-                        headingEnds[level] = data.Start;
+                        if (pending[level] >= 0)
+                        {
+                            ref var item = ref result[pending[level]];
+                            item = item with { DescriptionSpan = SourceSpan.FromBounds(item.DescriptionSpan.Start, data.Start) };
+                            pending[level] = -1;
+                        }
                     }
 
                     if (this.TryName(data.First, heading: true, out var name, out _) && IsStandardItem(name))
                     {
-                        result.Add(new(name, new(this, block), SourceSpan.FromBounds(data.End, end), DocumentationMarkdownItemKind.Standard));
+                        pending[data.Argument] = result.Add(new(name, new(this, block), SourceSpan.FromBounds(data.End, this.Text.Length), DocumentationMarkdownItemKind.Standard));
                     }
                 }
                 else if (data.Kind is DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList)
                 {
-                    for (var item = data.Last; item != 0; item = this.nodes[item].Previous)
+                    for (var item = data.First; item != 0; item = this.nodes[item].Next)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         var paragraph = this.nodes[item].First;
@@ -105,10 +110,8 @@ public sealed partial class DocumentationMarkdownDocument
                 }
             }
 
-            var completed = result.Span.ToArray();
-            Array.Reverse(completed);
             cancellationToken.ThrowIfCancellationRequested();
-            return completed;
+            return result.Span.ToArray();
         }
         finally
         {
@@ -128,12 +131,13 @@ public sealed partial class DocumentationMarkdownDocument
             return ReadOnlyMemory<DocumentationMarkdownItem>.Empty;
         }
 
-        var counts = new Dictionary<string, int>(parameters.Length, StringComparer.Ordinal);
+        // Declarations rarely have many parameters: count matches by scanning
+        // them instead of building a table. Large sets use a table once.
+        Dictionary<string, int>? counts = parameters.Length > 16 ? new(parameters.Length, StringComparer.Ordinal) : null;
         foreach (var parameter in parameters)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             ArgumentNullException.ThrowIfNull(parameter.Name);
-            if (!parameter.IsReceiver)
+            if (counts is not null && !parameter.IsReceiver)
             {
                 counts[parameter.Name] = counts.GetValueOrDefault(parameter.Name) + 1;
             }
@@ -149,7 +153,22 @@ public sealed partial class DocumentationMarkdownDocument
                 continue;
             }
 
-            var count = counts.GetValueOrDefault(item.Name);
+            var count = 0;
+            if (counts is not null)
+            {
+                count = counts.GetValueOrDefault(item.Name);
+            }
+            else
+            {
+                foreach (var parameter in parameters)
+                {
+                    if (!parameter.IsReceiver && string.Equals(parameter.Name, item.Name, StringComparison.Ordinal))
+                    {
+                        count++;
+                    }
+                }
+            }
+
             var kind = count == 1 ? DocumentationMarkdownItemKind.Parameter : count > 1 ? DocumentationMarkdownItemKind.Ambiguous : IsStandardItem(item.Name) ? DocumentationMarkdownItemKind.Standard : DocumentationMarkdownItemKind.Unknown;
             item = item with
             {
@@ -162,6 +181,18 @@ public sealed partial class DocumentationMarkdownDocument
     }
 
     private static bool IsStandardItem(string name) => name is "return" or "abort" or "safety" or "note" or "warning" or "example";
+
+    // Standard names are shared literals; only other names allocate.
+    private static string CreateName(ReadOnlySpan<char> name) => name switch
+    {
+        "return" => "return",
+        "abort" => "abort",
+        "safety" => "safety",
+        "note" => "note",
+        "warning" => "warning",
+        "example" => "example",
+        _ => name.ToString(),
+    };
 
     private bool TryName(int first, bool heading, out string name, out int descriptionStart)
     {
@@ -177,7 +208,7 @@ public sealed partial class DocumentationMarkdownDocument
         StringBuilder? builder = null;
         if (code)
         {
-            name = this.GetText(this.nodes[first]).ToString();
+            name = CreateName(this.GetText(this.nodes[first]));
             node = this.nodes[first].Next;
             if (heading)
             {
@@ -204,7 +235,7 @@ public sealed partial class DocumentationMarkdownDocument
 
                 if (!code)
                 {
-                    name = builder is null ? value[..colon].ToString() : builder.Append(value[..colon]).ToString();
+                    name = builder is null ? CreateName(value[..colon]) : builder.Append(value[..colon]).ToString();
                 }
 
                 if (name.Length == 0)
@@ -235,7 +266,7 @@ public sealed partial class DocumentationMarkdownDocument
 
             if (heading && data.Next == 0 && builder is null)
             {
-                name = value.ToString();
+                name = CreateName(value);
                 return name.Length > 0;
             }
 

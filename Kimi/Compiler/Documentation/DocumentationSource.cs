@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -336,16 +335,77 @@ public sealed class DocumentationComment
             return existing;
         }
 
-        var builder = new StringBuilder(this.Span.Length);
-        var sourceOffsets = new List<int>();
-        var textOffsets = new List<int>();
+        // Measure once, then fill exact arrays and the string in place: no
+        // builder, growing lists or intermediate copies.
+        var (lineCount, textLength) = this.ScanLines(default, null, null);
+        var textOffsets = new int[lineCount];
+        var sourceOffsets = new int[lineCount];
+        var normalized = string.Create(textLength, (this, textOffsets, sourceOffsets), static (span, state) => state.Item1.ScanLines(span, state.textOffsets, state.sourceOffsets));
+        var created = new DocumentationText(this.Source, normalized, textOffsets, sourceOffsets);
+        return Interlocked.CompareExchange(ref this.text, created, null) ?? created;
+    }
+
+    /// <summary>Writes canonical comment prefixes without changing the extracted text.</summary>
+    /// <returns>The formatted comment block.</returns>
+    public string Format()
+    {
+        var text = this.GetText().Text;
+        var length = 0;
+        for (var start = 0; start <= text.Length;)
+        {
+            var newline = text.AsSpan(start).IndexOf('\n');
+            var end = newline < 0 ? text.Length : start + newline;
+            length += this.Indent + 3 + (end > start ? end - start + 1 : 0) + (newline < 0 ? 0 : 1);
+            start = end + 1;
+        }
+
+        return string.Create(length, (text, this.Indent), static (span, state) =>
+        {
+            var (text, indent) = state;
+            var written = 0;
+            for (var start = 0; start <= text.Length;)
+            {
+                var newline = text.AsSpan(start).IndexOf('\n');
+                var end = newline < 0 ? text.Length : start + newline;
+                span.Slice(written, indent).Fill(' ');
+                written += indent;
+                "///".CopyTo(span[written..]);
+                written += 3;
+                if (end > start)
+                {
+                    span[written++] = ' ';
+                    text.AsSpan(start, end - start).CopyTo(span[written..]);
+                    written += end - start;
+                }
+
+                if (newline >= 0)
+                {
+                    span[written++] = '\n';
+                }
+
+                start = end + 1;
+            }
+        });
+    }
+
+    // Walks the comment lines. With null outputs it only measures; otherwise it
+    // fills the normalized text and both offset tables in the same order.
+    private (int Lines, int Length) ScanLines(Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
+    {
         var source = this.Source.SourceText;
         var position = this.Span.Start;
+        var lines = 0;
+        var length = 0;
         while (position <= this.Span.End)
         {
-            if (sourceOffsets.Count > 0)
+            if (lines > 0)
             {
-                builder.Append('\n');
+                if (textOffsets is not null)
+                {
+                    output[length] = '\n';
+                }
+
+                length++;
                 position += this.Indent;
             }
 
@@ -355,15 +415,25 @@ public sealed class DocumentationComment
                 position++;
             }
 
-            sourceOffsets.Add(position);
-            textOffsets.Add(builder.Length);
+            if (textOffsets is not null)
+            {
+                sourceOffsets![lines] = position;
+                textOffsets[lines] = length;
+            }
+
+            lines++;
             var end = position;
             while (end < this.Span.End && source[end] is not ('\r' or '\n'))
             {
                 end++;
             }
 
-            builder.Append(source.AsSpan(position, end - position));
+            if (textOffsets is not null)
+            {
+                source.AsSpan(position, end - position).CopyTo(output[length..]);
+            }
+
+            length += end - position;
             if (end == this.Span.End)
             {
                 break;
@@ -372,17 +442,7 @@ public sealed class DocumentationComment
             position = end + (source[end] == '\r' && end + 1 < source.Length && source[end + 1] == '\n' ? 2 : 1);
         }
 
-        var created = new DocumentationText(this.Source, builder.ToString(), textOffsets.ToArray(), sourceOffsets.ToArray());
-        return Interlocked.CompareExchange(ref this.text, created, null) ?? created;
-    }
-
-    /// <summary>Writes canonical comment prefixes without changing the extracted text.</summary>
-    /// <returns>The formatted comment block.</returns>
-    public string Format()
-    {
-        var lines = this.GetText().Text.Split('\n');
-        var prefix = new string(' ', this.Indent) + "///";
-        return string.Join("\n", lines.Select(line => line.Length == 0 ? prefix : prefix + " " + line));
+        return (lines, length);
     }
 }
 

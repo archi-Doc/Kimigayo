@@ -1,45 +1,26 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
-using System.Text;
+using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler.Documentation;
 
 #pragma warning disable SA1201, SA1202, SA1204, SA1401, SA1513, SA1600 // Delimiter algorithm and compact scratch records.
 
-internal sealed partial class DocumentationMarkdownParser
+internal ref partial struct DocumentationMarkdownParser
 {
-    private static readonly SearchValues<char> InlineCharacters = SearchValues.Create("*_`[\\&\n\0<]");
+    // A NUL in the needle selects a slower vectorized searcher, so NUL-free input
+    // (the norm) uses a set without it.
+    private static readonly SearchValues<char> InlineCharacters = SearchValues.Create("*_`[\\&\n<]");
 
-    private MarkdownBuffer<Delimiter> delimiters;
+    private static readonly SearchValues<char> InlineCharactersWithNul = SearchValues.Create("*_`[\\&\n\0<]");
 
-    private MarkdownBuffer<Bracket> brackets;
+    private static readonly SearchValues<char> DecodeCharacters = SearchValues.Create("\\&\0");
 
-    private MarkdownBuffer<CodeRun> codeRuns;
+    private static readonly SearchValues<char> ParenthesisCharacters = SearchValues.Create("()\\");
 
-    private Dictionary<int, int>? codeHeads;
-
-    private int singleCodeHead;
-
-    private int doubleCodeHead;
-
-    private bool indexedParentheses;
-
-    private char[]? inlineCharacters;
-
-    private int[]? inlinePositions;
-
-    private int[]? parentheses;
-
-    private int[]? nextDestinationStop;
-
-    private int inlineBase;
-
-    private bool mappedInline;
-
-    private int lastDelimiter;
-
-    private int lastBracket;
+    // Space, ASCII controls and DEL end a bare link destination.
+    private static readonly SearchValues<char> DestinationStops = SearchValues.Create("\0\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\t\n\u000B\u000C\r\u000E\u000F\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F \u007F");
 
     private void ParseInlines(int parent)
     {
@@ -52,54 +33,69 @@ internal sealed partial class DocumentationMarkdownParser
             return;
         }
 
-        var length = 0;
-        for (var i = 0; i < count; i++)
+        this.inlineDepth = this.links[parent].Level;
+        this.inlineBase = this.lines[first].Start;
+        this.mappedCount = 0;
+        this.lastPlainText = 0;
+        var last = first + count - 1;
+        var contiguous = true;
+        for (var line = first + 1; line <= last; line++)
         {
-            length += this.lines[first + i].End - this.lines[first + i].Start + (i == 0 ? 0 : 1);
+            contiguous &= this.lines[line].Start == this.lines[line - 1].End + 1;
         }
 
         ReadOnlySpan<char> input;
-        this.mappedInline = count > 1;
-        this.inlineBase = this.lines[first].Start;
-        if (count == 1)
+        if (contiguous)
         {
-            input = this.text.AsSpan(this.inlineBase, length).TrimEnd(" \t");
+            // Continuation lines without removed prefixes are already one slice.
+            input = this.text.AsSpan(this.inlineBase, this.lines[last].End - this.inlineBase).TrimEnd(" \t");
         }
         else
         {
-            EnsureBuffer(ref this.inlineCharacters, length);
-            EnsureBuffer(ref this.inlinePositions, length);
-            var written = 0;
-            for (var line = 0; line < count; line++)
+            var length = count - 1;
+            for (var line = first; line <= last; line++)
             {
-                var slice = this.lines[first + line];
-                if (line > 0)
+                length += this.lines[line].End - this.lines[line].Start;
+            }
+
+            EnsureBuffer(ref this.inlineCharacters, length);
+            var written = 0;
+            for (var line = first; line <= last; line++)
+            {
+                ref var slice = ref this.lines[line];
+                if (line > first)
                 {
-                    this.inlineCharacters![written] = '\n';
-                    this.inlinePositions![written++] = this.lines[first + line - 1].End;
+                    this.inlineCharacters![written++] = '\n';
                 }
 
-                this.text.AsSpan(slice.Start, slice.End - slice.Start).CopyTo(this.inlineCharacters.AsSpan(written));
-                for (var p = slice.Start; p < slice.End; p++)
-                {
-                    this.inlinePositions![written++] = p;
-                }
+                slice.Joined = written;
+                var sliceLength = slice.End - slice.Start;
+                this.text.AsSpan(slice.Start, sliceLength).CopyTo(this.inlineCharacters.AsSpan(written));
+                written += sliceLength;
             }
 
             input = this.inlineCharacters.AsSpan(0, written).TrimEnd(" \t");
+            this.mappedFirst = first;
+            this.mappedCount = count;
         }
 
         this.delimiters.Clear();
         this.brackets.Clear();
         this.codeRuns.Clear();
-        this.codeHeads?.Clear();
-        this.singleCodeHead = this.doubleCodeHead = -1;
         this.indexedParentheses = false;
-        if (input.IndexOfAny(InlineCharacters) < 0)
+        this.stopSearchedFrom = int.MaxValue;
+        this.stopFound = -1;
+        this.inlineHasNul = this.hasNul && input.Contains('\0');
+        this.inlineMultiline = count > 1;
+        var markers = this.inlineHasNul ? InlineCharactersWithNul : InlineCharacters;
+        // Absolute index of the next marker at or after position; -1 once none remain.
+        var next = input.IndexOfAny(markers);
+        if (next < 0)
         {
             if (!input.IsEmpty)
             {
-                this.AddInlineText(parent, input, 0, input.Length);
+                this.AddPlainText(parent, input, 0, input.Length);
+                this.maxDepth = Math.Max(this.maxDepth, this.inlineDepth + 1);
             }
 
             return;
@@ -114,15 +110,21 @@ internal sealed partial class DocumentationMarkdownParser
         var failedSingleTitle = int.MaxValue;
         var failedParenTitle = int.MaxValue;
         var position = 0;
+        var tokens = 0;
         while (position < input.Length)
         {
-            this.cancellationToken.ThrowIfCancellationRequested();
-            var plain = input[position..].IndexOfAny(InlineCharacters);
-            if (plain < 0)
+            if ((++tokens & 255) == 0)
             {
-                plain = input.Length - position;
+                this.cancellationToken.ThrowIfCancellationRequested();
             }
 
+            if (next >= 0 && next < position)
+            {
+                var delta = input[position..].IndexOfAny(markers);
+                next = delta < 0 ? -1 : position + delta;
+            }
+
+            var plain = next < 0 ? input.Length - position : next - position;
             if (plain > 0)
             {
                 var end = position + plain;
@@ -137,7 +139,7 @@ internal sealed partial class DocumentationMarkdownParser
 
                 if (textEnd > position)
                 {
-                    this.AddInlineText(parent, input, position, textEnd);
+                    this.AddPlainText(parent, input, position, textEnd);
                 }
 
                 position = end;
@@ -208,12 +210,12 @@ internal sealed partial class DocumentationMarkdownParser
                         end--;
                     }
 
-                    this.SetInlineText(node, input, begin, end, normalizeCode: true);
+                    this.SetInlineText(node, input, begin, end, this.MapStart(begin), this.MapEnd(end), normalizeCode: true);
                     position = closing + runLength;
                 }
                 else
                 {
-                    this.AddInlineText(parent, input, position, runEnd);
+                    this.AddPlainText(parent, input, position, runEnd);
                     position = runEnd;
                 }
             }
@@ -256,56 +258,60 @@ internal sealed partial class DocumentationMarkdownParser
                         this.ProcessEmphasis(bracket.Delimiter);
                         var node = bracket.Node;
                         var firstChild = this.nodes[node].Next;
-                        var lastChild = this.nodes[parent].Last;
+                        var lastChild = this.links[parent].Last;
                         this.nodes[node].Kind = DocumentationMarkdownKind.Link;
                         this.nodes[node].End = this.MapEnd(end);
                         this.nodes[node].TextLength = 0;
                         this.nodes[node].Argument = this.values.Add(destination);
-                        this.values.Add(title ?? string.Empty);
-                        if (title is not null)
+                        if (title is { } titleValue)
                         {
+                            this.values.Add(titleValue);
                             this.nodes[node].Flags |= MarkdownNodeFlags.HasTitle;
                         }
 
                         this.nodes[node].First = firstChild;
-                        this.nodes[node].Last = firstChild == 0 ? 0 : lastChild;
+                        this.links[node].Last = firstChild == 0 ? 0 : lastChild;
                         this.nodes[node].Next = 0;
-                        this.nodes[parent].Last = node;
+                        this.links[parent].Last = node;
+                        var height = 1;
                         if (firstChild != 0)
                         {
-                            this.nodes[firstChild].Previous = 0;
+                            this.links[firstChild].Previous = 0;
                             for (var child = firstChild; child != 0; child = this.nodes[child].Next)
                             {
                                 this.nodes[child].Parent = node;
+                                height = Math.Max(height, this.links[child].Level + 1);
                             }
                         }
 
+                        this.SetHeight(node, height);
+                        this.lastPlainText = 0;
                         lastLinkStart = bracket.Position;
                         position = end;
                         continue;
                     }
                 }
 
-                this.AddInlineText(parent, input, position, position + 1);
+                this.AddPlainText(parent, input, position, position + 1);
                 position++;
             }
             else if (character == '<' && TryAutoLink(input, position, out var autoEnd, out var email))
             {
                 var node = this.AddNode(DocumentationMarkdownKind.AutoLink, parent, this.MapStart(position), this.MapEnd(autoEnd));
-                var destination = input[(position + 1)..(autoEnd - 1)].ToString();
-                this.nodes[node].Argument = this.values.Add(email ? "mailto:" + destination : destination);
-                this.SetInlineText(node, input, position + 1, autoEnd - 1);
+                this.nodes[node].Argument = this.values.Add(email ? new(string.Concat("mailto:", input[(position + 1)..(autoEnd - 1)])) : this.SliceValue(input, position + 1, autoEnd - 1));
+                this.SetInlineText(node, input, position + 1, autoEnd - 1, this.MapStart(position + 1), this.MapEnd(autoEnd - 1), normalizeCode: false);
                 lastLinkStart = position;
                 position = autoEnd;
             }
             else
             {
-                this.AddInlineText(parent, input, position, position + 1);
+                this.AddPlainText(parent, input, position, position + 1);
                 position++;
             }
         }
 
         this.ProcessEmphasis(0);
+        this.maxDepth = Math.Max(this.maxDepth, this.inlineDepth + 1);
     }
 
     private void ProcessEmphasis(int bottom)
@@ -354,30 +360,23 @@ internal sealed partial class DocumentationMarkdownParser
             var openNode = opening.Node;
             var closeNode = close.Node;
             var first = this.nodes[openNode].Next;
-            var last = this.nodes[closeNode].Previous;
+            var last = this.links[closeNode].Previous;
             var parent = this.nodes[openNode].Parent;
             // Allocate without linking at the tail: the wrapper replaces the enclosed sibling range.
-            var wrapper = this.nodes.Add(new() { Kind = use == 2 ? DocumentationMarkdownKind.Strong : DocumentationMarkdownKind.Emphasis, Parent = parent, Previous = openNode, Next = closeNode, First = first, Last = last, Start = this.nodes[openNode].End - use, End = this.nodes[closeNode].Start + use, });
+            var wrapper = this.nodes.Add(new() { Kind = use == 2 ? DocumentationMarkdownKind.Strong : DocumentationMarkdownKind.Emphasis, Parent = parent, Next = closeNode, First = first, Start = this.nodes[openNode].End - use, End = this.nodes[closeNode].Start + use, });
+            this.links.Add(new() { Previous = openNode, Last = last });
             this.nodes[openNode].Next = wrapper;
-            this.nodes[closeNode].Previous = wrapper;
-            this.nodes[first].Previous = 0;
+            this.links[closeNode].Previous = wrapper;
+            this.links[first].Previous = 0;
             this.nodes[last].Next = 0;
-            var nesting = 1;
+            var height = 1;
             for (var child = first; child != 0; child = this.nodes[child].Next)
             {
                 this.nodes[child].Parent = wrapper;
-                if (this.nodes[child].Kind is DocumentationMarkdownKind.Emphasis or DocumentationMarkdownKind.Strong)
-                {
-                    nesting = Math.Max(nesting, this.nodes[child].Argument + 1);
-                }
+                height = Math.Max(height, this.links[child].Level + 1);
             }
 
-            this.nodes[wrapper].Argument = nesting;
-            if (nesting > this.maximumDepth)
-            {
-                throw new DocumentationMarkdownLimitException(this.maximumDepth);
-            }
-
+            this.SetHeight(wrapper, height);
             for (var delimiter = opening.Next; delimiter != closer;)
             {
                 var next = this.delimiters[delimiter].Next;
@@ -416,6 +415,19 @@ internal sealed partial class DocumentationMarkdownParser
         }
     }
 
+    // An inline wrapper's leaves are at (block depth + height + 1). Fail early.
+    private void SetHeight(int node, int height)
+    {
+        this.links[node].Level = height;
+        var depth = this.inlineDepth + height + 1;
+        if (depth > this.maximumDepth)
+        {
+            throw new DocumentationMarkdownLimitException(this.maximumDepth);
+        }
+
+        this.maxDepth = Math.Max(this.maxDepth, depth);
+    }
+
     private void RemoveDelimiter(int id)
     {
         var delimiter = this.delimiters[id];
@@ -432,9 +444,30 @@ internal sealed partial class DocumentationMarkdownParser
 
     private int AddInlineText(int parent, ReadOnlySpan<char> input, int start, int end)
     {
-        var id = this.AddNode(DocumentationMarkdownKind.Text, parent, this.MapStart(start), this.MapEnd(end));
-        this.SetInlineText(id, input, start, end);
+        var sourceStart = this.MapStart(start);
+        var sourceEnd = this.MapEnd(end);
+        var id = this.AddNode(DocumentationMarkdownKind.Text, parent, sourceStart, sourceEnd);
+        this.SetInlineText(id, input, start, end, sourceStart, sourceEnd, normalizeCode: false);
         return id;
+    }
+
+    // Plain runs never become delimiters or links, so a run that continues the
+    // previous plain node's source slice extends that node instead of adding one.
+    private void AddPlainText(int parent, ReadOnlySpan<char> input, int start, int end)
+    {
+        var sourceStart = this.MapStart(start);
+        var sourceEnd = this.MapEnd(end);
+        var last = this.lastPlainText;
+        if (last != 0 && this.nodes[last].End == sourceStart && sourceEnd - sourceStart == end - start)
+        {
+            this.nodes[last].End = sourceEnd;
+            this.nodes[last].TextLength += end - start;
+            return;
+        }
+
+        var id = this.AddNode(DocumentationMarkdownKind.Text, parent, sourceStart, sourceEnd);
+        this.SetInlineText(id, input, start, end, sourceStart, sourceEnd, normalizeCode: false);
+        this.lastPlainText = this.nodes[id].TextStart >= 0 ? id : 0;
     }
 
     private void AddDecoded(int parent, int start, int end, int scalar)
@@ -447,34 +480,67 @@ internal sealed partial class DocumentationMarkdownParser
         this.nodes[id].Argument = BitConverter.IsLittleEndian ? first | (second << 16) : (first << 16) | second;
     }
 
-    private void SetInlineText(int id, ReadOnlySpan<char> input, int start, int end, bool normalizeCode = false)
+    private void SetInlineText(int id, ReadOnlySpan<char> input, int start, int end, int sourceStart, int sourceEnd, bool normalizeCode)
     {
-        var value = input[start..end];
-        var sourceStart = this.MapStart(start);
-        if ((!normalizeCode || !value.Contains('\n')) && !value.Contains('\0') && (end == start || this.MapEnd(end) - sourceStart == end - start))
+        // Only code spans can hold a NUL or line ending: every other run stops at them.
+        var special = !normalizeCode ? -1 : this.inlineHasNul ? input[start..end].IndexOfAny('\n', '\0') : this.inlineMultiline ? input[start..end].IndexOf('\n') : -1;
+        if (special < 0 && sourceEnd - sourceStart == end - start)
         {
             this.nodes[id].TextStart = sourceStart;
             this.nodes[id].TextLength = end - start;
         }
         else
         {
-            var decoded = value.ToString();
-            if (normalizeCode)
-            {
-                decoded = decoded.Replace('\n', ' ');
-            }
-
-            this.SetValue(id, decoded.Replace('\0', '\uFFFD'));
+            this.SetValue(id, this.CreateText(input[start..end], normalizeCode));
         }
     }
 
-    private int MapStart(int position) => this.mappedInline ? this.inlinePositions![position] : this.inlineBase + position;
+    // One allocation: NULs become U+FFFD and, inside code, line endings become spaces.
+    private string CreateText(ReadOnlySpan<char> value, bool normalizeCode)
+    {
+        EnsureBuffer(ref this.decodeScratch, value.Length);
+        var output = this.decodeScratch.AsSpan(0, value.Length);
+        value.CopyTo(output);
+        output.Replace('\0', '\uFFFD');
+        if (normalizeCode)
+        {
+            output.Replace('\n', ' ');
+        }
 
+        return new string(output);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int MapStart(int position) => this.mappedCount == 0 ? this.inlineBase + position : this.MapJoined(position);
+
+    private int MapJoined(int position)
+    {
+        var low = this.mappedFirst;
+        var high = low + this.mappedCount - 1;
+        while (low < high)
+        {
+            var middle = (low + high + 1) >> 1;
+            if (this.lines[middle].Joined <= position)
+            {
+                low = middle;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+
+        ref var line = ref this.lines[low];
+        return line.Start + (position - line.Joined);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int MapEnd(int end) => end == 0 ? this.inlineBase : this.MapStart(end - 1) + 1;
 
     private void IndexCodeRuns(ReadOnlySpan<char> input)
     {
         var position = 0;
+        var longest = 0;
         while (position < input.Length)
         {
             var delta = input[position..].IndexOf('`');
@@ -490,83 +556,90 @@ internal sealed partial class DocumentationMarkdownParser
                 position++;
             }
 
+            longest = Math.Max(longest, position - start);
             this.codeRuns.Add(new(start, position - start, -1));
         }
 
+        this.longestCodeRun = longest;
+        ((Span<int>)this.shortCodeHeads).Fill(-1);
+        if (longest >= ShortCodeHeads)
+        {
+            EnsureBuffer(ref this.codeHeads, longest + 1);
+            this.codeHeads.AsSpan(ShortCodeHeads, longest + 1 - ShortCodeHeads).Fill(-1);
+        }
+
+        Span<int> shortHeads = this.shortCodeHeads;
         for (var i = this.codeRuns.Count - 1; i >= 0; i--)
         {
             ref var run = ref this.codeRuns[i];
-            if (run.Length <= 2)
-            {
-                ref var head = ref (run.Length == 1 ? ref this.singleCodeHead : ref this.doubleCodeHead);
-                run.Next = head;
-                head = i;
-            }
-            else
-            {
-                this.codeHeads ??= new();
-                run.Next = this.codeHeads.GetValueOrDefault(run.Length, -1);
-                this.codeHeads[run.Length] = i;
-            }
+            ref var head = ref (run.Length < ShortCodeHeads ? ref shortHeads[run.Length] : ref this.codeHeads![run.Length]);
+            run.Next = head;
+            head = i;
         }
     }
 
     private int FindCodeCloser(int length, int after)
     {
-        var index = length == 1 ? this.singleCodeHead : length == 2 ? this.doubleCodeHead : this.codeHeads?.GetValueOrDefault(length, -1) ?? -1;
+        if (length > this.longestCodeRun)
+        {
+            return -1;
+        }
 
+        Span<int> shortHeads = this.shortCodeHeads;
+        ref var head = ref (length < ShortCodeHeads ? ref shortHeads[length] : ref this.codeHeads![length]);
+        var index = head;
         while (index >= 0 && this.codeRuns[index].Start < after)
         {
             index = this.codeRuns[index].Next;
         }
 
-        if (length == 1)
-        {
-            this.singleCodeHead = index;
-        }
-        else if (length == 2)
-        {
-            this.doubleCodeHead = index;
-        }
-        else if (this.codeHeads is not null)
-        {
-            this.codeHeads[length] = index;
-        }
+        head = index;
         return index < 0 ? -1 : this.codeRuns[index].Start;
     }
 
+    // The matching close of every '(' (-1 when unmatched), computed once per block
+    // so repeated failing destinations stay linear. Jumps between the few
+    // interesting characters instead of testing each one.
     private void IndexParentheses(ReadOnlySpan<char> input)
     {
         EnsureBuffer(ref this.parentheses, input.Length);
-        EnsureBuffer(ref this.nextDestinationStop, input.Length + 1);
         this.parentheses.AsSpan(0, input.Length).Fill(-1);
-        this.nextDestinationStop.AsSpan(0, input.Length).Clear();
-        MarkdownBuffer<int> stack = default;
+        var stack = new MarkdownBuffer<int>(stackalloc int[32]);
         try
         {
-            for (var i = 0; i < input.Length; i++)
+            var i = 0;
+            var iterations = 0;
+            while (i < input.Length)
             {
-                if ((i & 1023) == 0)
+                var delta = input[i..].IndexOfAny(ParenthesisCharacters);
+                if (delta < 0)
+                {
+                    break;
+                }
+
+                if ((++iterations & 1023) == 0)
                 {
                     this.cancellationToken.ThrowIfCancellationRequested();
                 }
 
-                if (input[i] <= ' ' || input[i] is '<' or '\u007F')
+                i += delta;
+                var character = input[i];
+                if (character == '(')
                 {
-                    this.nextDestinationStop![i] = 1;
+                    stack.Add(i++);
                 }
-
-                if (input[i] == '\\' && i + 1 < input.Length && MarkdownUnicode.IsAsciiPunctuation(input[i + 1]))
+                else if (character == ')')
                 {
+                    if (stack.Count > 0)
+                    {
+                        this.parentheses![stack[--stack.Count]] = i;
+                    }
+
                     i++;
                 }
-                else if (input[i] == '(')
+                else
                 {
-                    stack.Add(i);
-                }
-                else if (input[i] == ')' && stack.Count > 0)
-                {
-                    this.parentheses![stack[--stack.Count]] = i;
+                    i += i + 1 < input.Length && MarkdownUnicode.IsAsciiPunctuation(input[i + 1]) ? 2 : 1;
                 }
             }
         }
@@ -574,23 +647,25 @@ internal sealed partial class DocumentationMarkdownParser
         {
             stack.Dispose();
         }
-
-        var stop = input.Length;
-        this.nextDestinationStop![input.Length] = stop;
-        for (var i = input.Length - 1; i >= 0; i--)
-        {
-            if (this.nextDestinationStop[i] != 0)
-            {
-                stop = i;
-            }
-
-            this.nextDestinationStop[i] = stop;
-        }
     }
 
-    private bool TryLink(ReadOnlySpan<char> input, int start, ref int failedDouble, ref int failedSingle, ref int failedParen, out string destination, out string? title, out int end)
+    // First destination-ending character at or after position. Destinations are
+    // requested in increasing order, so one cached search usually answers.
+    private int NextDestinationStop(ReadOnlySpan<char> input, int position)
     {
-        destination = string.Empty;
+        if (position < this.stopSearchedFrom || position > this.stopFound)
+        {
+            var delta = input[position..].IndexOfAny(DestinationStops);
+            this.stopSearchedFrom = position;
+            this.stopFound = delta < 0 ? input.Length : position + delta;
+        }
+
+        return this.stopFound;
+    }
+
+    private bool TryLink(ReadOnlySpan<char> input, int start, ref int failedDouble, ref int failedSingle, ref int failedParen, out MarkdownValue destination, out MarkdownValue? title, out int end)
+    {
+        destination = default;
         title = null;
         end = start;
         var position = start;
@@ -621,7 +696,8 @@ internal sealed partial class DocumentationMarkdownParser
         }
         else
         {
-            while (position < input.Length && input[position] > ' ' && input[position] is not ('<' or ')' or '\u007F'))
+            // A bare destination may not start with '<' but may contain one later.
+            while (position < input.Length && input[position] > ' ' && input[position] is not (')' or '\u007F'))
             {
                 if (input[position] == '\\' && position + 1 < input.Length && MarkdownUnicode.IsAsciiPunctuation(input[position + 1]))
                 {
@@ -636,7 +712,7 @@ internal sealed partial class DocumentationMarkdownParser
                     }
 
                     var close = this.parentheses![position];
-                    if (close < 0 || close >= this.nextDestinationStop![position])
+                    if (close < 0 || close >= this.NextDestinationStop(input, position))
                     {
                         return false;
                     }
@@ -714,10 +790,10 @@ internal sealed partial class DocumentationMarkdownParser
             return false;
         }
 
-        destination = this.Decode(input[destinationStart..destinationEnd]);
+        destination = this.DecodeValue(input, destinationStart, destinationEnd);
         if (hasTitle)
         {
-            title = this.Decode(input[titleStart..titleEnd]);
+            title = this.DecodeValue(input, titleStart, titleEnd);
         }
 
         end = position + 1;
@@ -802,42 +878,63 @@ internal sealed partial class DocumentationMarkdownParser
 
     private static bool IsAsciiLetter(char value) => (uint)((value | 0x20) - 'a') <= 'z' - 'a';
 
+    // A value without escapes or references is a source slice until a string is needed.
+    private MarkdownValue DecodeValue(ReadOnlySpan<char> input, int start, int end)
+    {
+        return input[start..end].IndexOfAny(DecodeCharacters) < 0 ? this.SliceValue(input, start, end) : new(this.Decode(input[start..end]));
+    }
+
+    private MarkdownValue SliceValue(ReadOnlySpan<char> input, int start, int end)
+    {
+        if (end == start)
+        {
+            return new(string.Empty);
+        }
+
+        var sourceStart = this.MapStart(start);
+        return this.MapEnd(end) - sourceStart == end - start ? new(sourceStart, end - start) : new(input[start..end].ToString());
+    }
+
+    // Decoded text is never longer than its source, so pooled scratch suffices.
     private string Decode(ReadOnlySpan<char> input)
     {
-        var special = input.IndexOfAny('\\', '&', '\0');
+        var special = input.IndexOfAny(DecodeCharacters);
         if (special < 0)
         {
             return input.ToString();
         }
 
-        var builder = new StringBuilder(input.Length);
-        builder.Append(input[..special]);
+        EnsureBuffer(ref this.decodeScratch, input.Length);
+        var output = this.decodeScratch.AsSpan();
+        input[..special].CopyTo(output);
+        var written = special;
         for (var i = special; i < input.Length; i++)
         {
             if (input[i] == '\\' && i + 1 < input.Length && MarkdownUnicode.IsAsciiPunctuation(input[i + 1]))
             {
-                builder.Append(input[++i]);
+                output[written++] = input[++i];
             }
             else if (input[i] == '&' && TryEntity(input[i..], out var scalar, out var consumed))
             {
                 if (scalar <= char.MaxValue)
                 {
-                    builder.Append((char)scalar);
+                    output[written++] = (char)scalar;
                 }
                 else
                 {
-                    builder.Append(char.ConvertFromUtf32(scalar));
+                    output[written++] = (char)(0xD800 + ((scalar - 0x10000) >> 10));
+                    output[written++] = (char)(0xDC00 + ((scalar - 0x10000) & 1023));
                 }
 
                 i += consumed - 1;
             }
             else
             {
-                builder.Append(input[i] == '\0' ? '\uFFFD' : input[i]);
+                output[written++] = input[i] == '\0' ? '\uFFFD' : input[i];
             }
         }
 
-        return builder.ToString();
+        return new string(output[..written]);
     }
 
     private static bool TryEntity(ReadOnlySpan<char> input, out int scalar, out int consumed)
@@ -919,33 +1016,27 @@ internal sealed partial class DocumentationMarkdownParser
         buffer = ArrayPool<T>.Shared.Rent(length);
     }
 
+    private static void ReturnBuffer<T>(ref T[]? buffer)
+    {
+        if (buffer is not null)
+        {
+            ArrayPool<T>.Shared.Return(buffer);
+            buffer = null;
+        }
+    }
+
     private void DisposeInlineBuffers()
     {
         this.delimiters.Dispose();
         this.brackets.Dispose();
         this.codeRuns.Dispose();
-        if (this.inlineCharacters is not null)
-        {
-            ArrayPool<char>.Shared.Return(this.inlineCharacters);
-        }
-
-        if (this.inlinePositions is not null)
-        {
-            ArrayPool<int>.Shared.Return(this.inlinePositions);
-        }
-
-        if (this.parentheses is not null)
-        {
-            ArrayPool<int>.Shared.Return(this.parentheses);
-        }
-
-        if (this.nextDestinationStop is not null)
-        {
-            ArrayPool<int>.Shared.Return(this.nextDestinationStop);
-        }
+        ReturnBuffer(ref this.codeHeads);
+        ReturnBuffer(ref this.inlineCharacters);
+        ReturnBuffer(ref this.parentheses);
+        ReturnBuffer(ref this.decodeScratch);
     }
 
-    private struct Delimiter
+    internal struct Delimiter
     {
         internal int Node;
 
@@ -962,9 +1053,9 @@ internal sealed partial class DocumentationMarkdownParser
         internal bool CanClose;
     }
 
-    private readonly record struct Bracket(int Node, int Position, int Delimiter, int Previous);
+    internal readonly record struct Bracket(int Node, int Position, int Delimiter, int Previous);
 
-    private struct CodeRun(int start, int length, int next)
+    internal struct CodeRun(int start, int length, int next)
     {
         internal int Start = start;
 

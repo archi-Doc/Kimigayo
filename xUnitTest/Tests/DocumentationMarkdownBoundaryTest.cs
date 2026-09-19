@@ -21,6 +21,15 @@ public class DocumentationMarkdownBoundaryTest
     [InlineData("\t😀 日本語 & text")]
     [InlineData("123. text")]
     [InlineData("text\nnext")]
+    [InlineData("  first line \n\t second\t\n third  ")]
+    [InlineData("hard  \nbreak")]
+    [InlineData("a\n\nb")]
+    [InlineData("a\n \nb")]
+    [InlineData("a\n")]
+    [InlineData("a\n- b")]
+    [InlineData("a\n# b")]
+    [InlineData("a\n1. b")]
+    [InlineData("one\n    four\n\t\ttabs")]
     [InlineData("# heading")]
     [InlineData("- list")]
     [InlineData("<https://a.b>")]
@@ -28,8 +37,17 @@ public class DocumentationMarkdownBoundaryTest
     public void PlainFastPathPreservesGeneralParserTreeAndRanges(string input)
     {
         var optimized = DocumentationMarkdownDocument.Parse(input);
-        using var parser = new DocumentationMarkdownParser(input, CancellationToken.None, 256);
-        var general = parser.Parse(null);
+        var parser = new DocumentationMarkdownParser(input, CancellationToken.None, 256);
+        DocumentationMarkdownDocument general;
+        try
+        {
+            general = parser.Parse(null);
+        }
+        finally
+        {
+            parser.Dispose();
+        }
+
         Assert.Equal(Snapshot(general.Root), Snapshot(optimized.Root));
         DocumentationMarkdownParserTest.AssertRanges(optimized);
 

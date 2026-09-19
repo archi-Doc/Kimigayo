@@ -66,6 +66,9 @@ public class DocumentationMarkdownParserTest
     [InlineData("```\n\0\n```", "<pre><code>�\n</code></pre>\n")]
     [InlineData("[x](a(\\<b))", "<p><a href=\"a(&lt;b)\">x</a></p>\n")]
     [InlineData("[<https://a.b>](c)", "<p>[<a href=\"https://a.b\">https://a.b</a>](c)</p>\n")]
+    [InlineData("[x](a<b)", "<p><a href=\"a&lt;b\">x</a></p>\n")]
+    [InlineData("[x](a(b<c)d \"t<u\")", "<p><a href=\"a(b&lt;c)d\" title=\"t&lt;u\">x</a></p>\n")]
+    [InlineData("[x](<a<b>)", "<p>[x](&lt;a&lt;b&gt;)</p>\n")]
     public void ParsesSupportedSyntaxAndDeliberateDifferences(string input, string expected)
     {
         var document = DocumentationMarkdownDocument.Parse(input);

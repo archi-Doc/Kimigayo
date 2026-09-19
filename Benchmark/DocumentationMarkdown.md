@@ -5,6 +5,83 @@ the DM3 implementation at commit `4c53331`. The existing Markdig-backed product
 entry point remains unchanged. These measurements cover syntax parsing and the
 implemented query APIs; they do not measure complete documentation generation.
 
+## Second tuning round (2026-09-20, after DM4)
+
+A review of `Kimi/Compiler/Documentation` after DM4 (baseline commit `cde175c`)
+corrected one CommonMark deviation and reduced parse time and allocations further.
+The baseline for the same-process pair below is a Release build of `cde175c`
+(`Kimi.dll` SHA-256 `3DA9F59F1D0D5BE01AB72F01C0F46E1C3EF813CFEE9118B250BE0BB22F4F7987`);
+the tuned build is `8F42F7EA41D599DF737D9D91CC29355D176E6FC39D321FFAAEAF232515D76EF4`.
+
+| Parse workload | UTF-16 characters | DM4 ns/op | Tuned ns/op | DM4 B/op | Tuned B/op |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Plain summary | 64 | 127.6 | 133.8 | 216 | 192 |
+| Formatted summary | 74 | 1,253.0 | 872.7 | 920 | 536 |
+| 12 parameter descriptions | 392 | 3,851.8 | 1,927.9 | 2,608 | 1,952 |
+| 256-line fenced code example | 5,653 | 7,227.1 | 4,245.3 | 608 | 264 |
+| Nested lists/quotes | 95 | 1,732.6 | 1,129.9 | 1,336 | 912 |
+| 32 lines of links/entities | 1,632 | 14,991.8 | 9,603.9 | 15,664 | 11,568 |
+
+The geometric-mean tuned/DM4 ratio is **0.669 for time** and **0.663 for allocated
+bytes** (33.1% and 33.7% reductions). The plain summary is within noise (+6 ns, its
+fast path now also accepts multi-line plain paragraphs) and allocates 24 B less.
+Against Markdig in the same run, the six ratios have geometric means of **0.395
+(time)** and **0.170 (bytes)**; the plain-summary first call in a fresh process
+takes 3.0 ms versus 39.3 ms.
+
+Correctness change: a bare link destination may contain `<` after its first
+character (`[x](a<b)`, `[x](a(b<c)d "t<u")`), as in CommonMark 0.31.2, cmark and
+Markdig; the parser previously stopped the destination at `<` and produced text.
+Regression cases were added to the parser tests and the Markdig comparison
+generator (`"a<b"`, `"a(b<c)d"`, `"<a<b>"`). No other syntax result changed:
+the 372 retained conformance examples, the Markdig comparisons and all
+differences still pass.
+
+Measured implementation changes, in the order they were profiled with a
+SuspendThread-based sampler (Markdig-independent, single-threaded parse loop):
+
+1. `SearchValues` needles containing NUL select a slower vectorized searcher.
+   The inline marker set no longer contains NUL; a NUL-inclusive set is used only
+   when the document contains NUL (found by the same scan that rejects CR).
+   Per-node NUL scans were removed: plain runs stop at NUL by construction, so only
+   code spans are scanned. This was the largest time reduction.
+2. The parser is a stack-only `ref struct` with caller-supplied `stackalloc`
+   scratch (64 nodes, 16 lines, 16 delimiters, …). No parser object and, for
+   typical comments, no `ArrayPool` traffic. Retained nodes shrink from 44 to 36
+   bytes: sibling/tail links and depth information live in a parallel parser-only
+   buffer, and freezing is a single copy.
+3. Adjacent plain text runs extend the previous text node in place (delimiter and
+   bracket nodes stay separate). Unequal backtick runs at 33,408 characters now
+   allocate 192 B instead of 39,000 B; failed links/titles allocate 59% less.
+4. Link destinations and titles without escapes or references are source slices
+   materialized on first `Destination`/`Title` use; title-less links add no empty
+   table entry. Multi-line paragraphs whose lines are contiguous in the source are
+   parsed in place; others are joined once and positions are mapped per line
+   rather than per character.
+5. The exact tree depth is tracked while parsing (container depth, inline wrapper
+   heights), replacing the final full-tree walk. Parenthesis matching for link
+   destinations jumps between the few relevant characters and the destination
+   stop is found lazily; fenced-code lines that cannot close the fence skip the
+   indentation scan; `ConsumeWhitespace`, `ReadListMarker` and the fence-language
+   word avoid repeated scans and intermediate strings.
+6. `ClassifyItems` counts matches by scanning up to 16 parameters instead of
+   building a dictionary; standard item names are shared literals;
+   `DocumentationComment.GetText` and `Format` fill exact arrays and strings once.
+
+Other final-run observations: cached summary/candidate queries and 1,024-range
+mapping still allocate 0 B; `Parse + extract` at 8/128/2,048 items costs
+1.72/20.5/441 µs and 1,976/27,896/442,616 B (DM4: 3.91/51.2/827 µs); a depth
+interruption costs 10.1 µs / 928 B. Largest-two-size growth is 2.98×–4.05× for the
+prose, block, failed-link, failed-title, delimiter and bracket families, 3.73× for
+quote depth and 2.76× for unequal backtick runs; all remain below the 6× gate.
+Dedicated concurrency diagnostics: 2,048-item initial extraction with 1/4/16
+simultaneous requests allocates 147,608/147,632/164,968 B (one extraction plus
+coordination). Raw data: [tuned run](Results/DocumentationMarkdown/2026-09-20-tuned.json),
+[same-process pair](Results/DocumentationMarkdown/2026-09-20-tuned-paired.json),
+[diagnostics](Results/DocumentationMarkdown/2026-09-20-tuned-diagnostics.json).
+Timing noise on this host is roughly ±10% between runs; the paired figures are
+the comparable ones. The sections below record the DM4 state they were written for.
+
 ## Results
 
 All tables report medians. Time and allocation totals exclude input construction.

@@ -67,7 +67,7 @@ public class DocumentationMarkdownConformanceTest
         }
 
         string[] labels = ["x", "*x*", "**x**", "`x`", "a [b] c", "[b](u)", "a\\]b", "a&amp;b"];
-        string[] destinations = [string.Empty, "u", "a(b)c", "a(b(c)d)e", "a\\(b", "<a b>", "<a\\>b>", "u \"title\"", "u 'title'", "u (title)", " \"title\"", "u\n\"title\"", "u \"unclosed", "a(b", "a\\)b", "<> \"title\"", " \"two words\""];
+        string[] destinations = [string.Empty, "u", "a(b)c", "a(b(c)d)e", "a\\(b", "<a b>", "<a\\>b>", "u \"title\"", "u 'title'", "u (title)", " \"title\"", "u\n\"title\"", "u \"unclosed", "a(b", "a\\)b", "<> \"title\"", " \"two words\"", "a<b", "a(b<c)d", "<a<b>"];
         foreach (var label in labels)
         {
             foreach (var destination in destinations)

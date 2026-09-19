@@ -1,22 +1,32 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
-
 namespace Kimi.Compiler.Documentation;
 
 #pragma warning disable SA1201, SA1202, SA1204, SA1401, SA1513, SA1600 // Private parser records and state-machine layout.
 
-internal sealed partial class DocumentationMarkdownParser(string text, CancellationToken cancellationToken, int maximumDepth) : IDisposable
+// A single-use parser living on the caller's stack: no parser object is allocated,
+// and small documents finish entirely in caller-provided stack scratch.
+// Call Parse once and then Dispose on the same variable. A defensive copy (for
+// example a read-only `using var` local) would mutate the copy and never return
+// its rented scratch to the pool.
+internal ref partial struct DocumentationMarkdownParser
 {
-    private readonly string text = text;
+    private const int ShortCodeHeads = 8;
 
-    private readonly CancellationToken cancellationToken = cancellationToken;
+    private readonly string text;
 
-    private readonly int maximumDepth = maximumDepth;
+    private readonly CancellationToken cancellationToken;
+
+    private readonly int maximumDepth;
+
+    private readonly bool hasNul;
 
     private MarkdownBuffer<MarkdownNodeData> nodes;
 
-    private MarkdownBuffer<string> values;
+    // Parser-only sibling/tail links and depth/height, parallel to nodes.
+    private MarkdownBuffer<NodeLinks> links;
+
+    private MarkdownBuffer<MarkdownValue> values;
 
     private MarkdownBuffer<Container> containers;
 
@@ -36,16 +46,99 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
 
     private int detachedNodes;
 
+    // The deepest node depth so far; exact, so no final tree walk is needed.
+    private int maxDepth;
+
+    private int spacesValue = -1;
+
+    // Inline scratch; declared here because partial struct fields need one ordering.
+    private MarkdownBuffer<Delimiter> delimiters;
+
+    private MarkdownBuffer<Bracket> brackets;
+
+    private MarkdownBuffer<CodeRun> codeRuns;
+
+    // Chain heads of unmatched backtick runs, indexed by run length: short runs
+    // inline, longer runs (rare) in a pooled array.
+    private CodeHeadArray shortCodeHeads;
+
+    private int[]? codeHeads;
+
+    private int longestCodeRun;
+
+    private bool indexedParentheses;
+
+    private char[]? inlineCharacters;
+
+    private int[]? parentheses;
+
+    private int stopSearchedFrom;
+
+    private int stopFound;
+
+    private char[]? decodeScratch;
+
+    private int inlineBase;
+
+    // Joined multi-line input maps back through its content lines; 0 means the
+    // input is one contiguous source slice starting at inlineBase.
+    private int mappedFirst;
+
+    private int mappedCount;
+
+    private int inlineDepth;
+
+    private int lastDelimiter;
+
+    private int lastBracket;
+
+    // The most recent plain text node; adjacent plain runs extend it in place.
+    private int lastPlainText;
+
+    private bool inlineHasNul;
+
+    private bool inlineMultiline;
+
+    internal DocumentationMarkdownParser(string text, CancellationToken cancellationToken, int maximumDepth)
+        : this(text, cancellationToken, maximumDepth, text.Contains('\0'))
+    {
+    }
+
+    internal DocumentationMarkdownParser(string text, CancellationToken cancellationToken, int maximumDepth, bool hasNul)
+    {
+        this.text = text;
+        this.cancellationToken = cancellationToken;
+        this.maximumDepth = maximumDepth;
+        this.hasNul = hasNul;
+    }
+
+    internal DocumentationMarkdownParser(string text, CancellationToken cancellationToken, int maximumDepth, bool hasNul, in Scratch scratch)
+        : this(text, cancellationToken, maximumDepth, hasNul)
+    {
+        this.nodes = new(scratch.Nodes);
+        this.links = new(scratch.Links);
+        this.values = new(scratch.Values);
+        this.containers = new(scratch.Containers);
+        this.lines = new(scratch.Lines);
+        this.delimiters = new(scratch.Delimiters);
+        this.brackets = new(scratch.Brackets);
+        this.codeRuns = new(scratch.CodeRuns);
+    }
+
     internal DocumentationMarkdownDocument Parse(DocumentationText? source)
     {
-        this.nodes.Add(new() { Kind = DocumentationMarkdownKind.Document, End = this.text.Length });
+        var length = this.text.Length;
+        this.nodes.EnsureCapacity((length >> 4) + 8);
+        this.links.EnsureCapacity((length >> 4) + 8);
+        this.nodes.Add(new() { Kind = DocumentationMarkdownKind.Document, End = length });
+        this.links.Add(default);
         this.containers.Add(new(0, 0, '\0'));
         var start = 0;
-        while (start < this.text.Length)
+        while (start < length)
         {
             this.cancellationToken.ThrowIfCancellationRequested();
-            var length = this.text.AsSpan(start).IndexOf('\n');
-            var end = length < 0 ? this.text.Length : start + length;
+            var delta = this.text.AsSpan(start).IndexOf('\n');
+            var end = delta < 0 ? length : start + delta;
             this.ParseLine(start, end);
             start = end + 1;
         }
@@ -53,14 +146,18 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
         var blockCount = this.nodes.Count;
         for (var id = 1; id < blockCount; id++)
         {
-            this.cancellationToken.ThrowIfCancellationRequested();
             if (this.nodes[id].Kind is DocumentationMarkdownKind.Paragraph or DocumentationMarkdownKind.Heading)
             {
+                this.cancellationToken.ThrowIfCancellationRequested();
                 this.ParseInlines(id);
             }
         }
 
-        this.CheckDepth();
+        if (this.maxDepth > this.maximumDepth)
+        {
+            throw new DocumentationMarkdownLimitException(this.maximumDepth);
+        }
+
         this.cancellationToken.ThrowIfCancellationRequested();
         return new(this.text, this.FreezeNodes(), this.values.Span.ToArray(), source);
     }
@@ -68,6 +165,7 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
     public void Dispose()
     {
         this.nodes.Dispose();
+        this.links.Dispose();
         this.values.Dispose();
         this.containers.Dispose();
         this.lines.Dispose();
@@ -128,18 +226,29 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
         if (this.fence != 0)
         {
             this.previousListBlank = false;
-            var closing = cursor;
-            var indent = closing.SkipWhitespace(this.text);
-            var count = closing.Count(this.text, this.fenceCharacter);
             this.UpdateEnds(end);
             this.nodes[this.fence].End = end;
-            if (indent <= 3 && count >= this.fenceLength && closing.IsBlank(this.text))
+            // Only a line starting with whitespace or the fence character can close the fence.
+            var closes = false;
+            if (cursor.VirtualSpaces > 0 || (cursor.Position < end && (this.text[cursor.Position] == this.fenceCharacter || this.text[cursor.Position] is ' ' or '\t')))
+            {
+                var closing = cursor;
+                var indent = closing.SkipWhitespace(this.text);
+                var count = closing.Count(this.text, this.fenceCharacter);
+                closes = indent <= 3 && count >= this.fenceLength && closing.IsBlank(this.text);
+            }
+
+            if (closes)
             {
                 this.fence = 0;
             }
             else
             {
-                cursor.ConsumeWhitespace(this.text, this.fenceIndent);
+                if (this.fenceIndent > 0)
+                {
+                    cursor.ConsumeWhitespace(this.text, this.fenceIndent);
+                }
+
                 this.AddCodeLine(cursor, this.fence);
             }
 
@@ -181,7 +290,7 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
             var content = cursor;
             var indent = content.SkipWhitespace(this.text);
             var position = content.Position;
-            var marker = indent <= 3 ? this.ReadListMarker(content) : default;
+            var marker = indent <= 3 && position < end && this.text[position] is '-' or '+' or '*' or (>= '0' and <= '9') ? this.ReadListMarker(content) : default;
             var top = this.containers.Count - 1;
             var parent = this.containers[top].Node;
             var parentKind = this.nodes[parent].Kind;
@@ -296,36 +405,71 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
                     }
                 }
 
-                var heading = this.AddNode(DocumentationMarkdownKind.Heading, parent, position, end);
+                var heading = this.AddBlock(DocumentationMarkdownKind.Heading, parent, position, end);
                 this.nodes[heading].Argument = headingLevel;
                 this.AddContentLine(heading, afterMarker.Position, contentEnd);
             }
             else if (openingFenceLength != 0)
             {
-                this.fence = this.AddNode(DocumentationMarkdownKind.CodeBlock, parent, position, end);
+                this.fence = this.AddBlock(DocumentationMarkdownKind.CodeBlock, parent, position, end);
                 this.fenceLength = openingFenceLength;
                 this.fenceCharacter = character;
                 this.fenceIndent = indent;
-                var info = this.Decode(this.text.AsSpan(afterMarker.Position, end - afterMarker.Position).Trim(" \t"));
-                var languageEnd = 0;
-                while (languageEnd < info.Length && !MarkdownUnicode.IsWhitespace(info[languageEnd]))
-                {
-                    languageEnd++;
-                }
-
-                if (languageEnd > 0)
-                {
-                    this.SetValue(this.fence, info[..languageEnd]);
-                }
+                this.SetLanguage(this.fence, afterMarker.Position, end);
             }
             else
             {
-                this.paragraph = this.AddNode(DocumentationMarkdownKind.Paragraph, parent, position, end);
+                this.paragraph = this.AddBlock(DocumentationMarkdownKind.Paragraph, parent, position, end);
                 this.AddContentLine(this.paragraph, position, end);
             }
 
             this.UpdateEnds(end);
             return;
+        }
+    }
+
+    // The first word of the decoded info string. Borrow the source unless an
+    // escape or character reference makes the decoded word differ.
+    private void SetLanguage(int node, int infoStart, int end)
+    {
+        while (infoStart < end && this.text[infoStart] is ' ' or '\t')
+        {
+            infoStart++;
+        }
+
+        var wordEnd = infoStart;
+        while (wordEnd < end && !MarkdownUnicode.IsWhitespace(this.text[wordEnd]))
+        {
+            wordEnd++;
+        }
+
+        if (wordEnd == infoStart)
+        {
+            return;
+        }
+
+        var word = this.text.AsSpan(infoStart, wordEnd - infoStart);
+        if (word.IndexOfAny(DecodeCharacters) < 0)
+        {
+            this.nodes[node].TextStart = infoStart;
+            this.nodes[node].TextLength = word.Length;
+            return;
+        }
+
+        var decoded = this.Decode(word);
+        var languageEnd = 0;
+        while (languageEnd < decoded.Length && !MarkdownUnicode.IsWhitespace(decoded[languageEnd]))
+        {
+            languageEnd++;
+        }
+
+        if (languageEnd == decoded.Length)
+        {
+            this.SetValue(node, decoded);
+        }
+        else if (languageEnd > 0)
+        {
+            this.SetValue(node, decoded[..languageEnd]);
         }
     }
 
@@ -376,9 +520,13 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
         var body = cursor;
         var spaces = body.SkipWhitespace(this.text);
         var empty = body.Position == body.End;
-        var padding = empty || spaces > 4 ? 1 : spaces;
-        cursor.ConsumeWhitespace(this.text, padding);
-        return new(width, padding, character, ordered, number, cursor, empty);
+        if (empty || spaces > 4)
+        {
+            cursor.ConsumeWhitespace(this.text, 1);
+            return new(width, 1, character, ordered, number, cursor, empty);
+        }
+
+        return new(width, spaces, character, ordered, number, body, empty);
     }
 
     private void Push(Container container)
@@ -394,7 +542,8 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
             container.FirstQuote = this.containers.Count;
         }
 
-        this.containers.Add(container);
+        // A container at stack index i has depth i.
+        this.maxDepth = Math.Max(this.maxDepth, this.containers.Add(container));
     }
 
     private void UpdateEnds(int end)
@@ -403,6 +552,16 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
         {
             this.nodes[this.containers[i].Node].End = end;
         }
+    }
+
+    // Leaf blocks record their depth so inline nesting can be bounded exactly.
+    private int AddBlock(DocumentationMarkdownKind kind, int parent, int start, int end)
+    {
+        var id = this.AddNode(kind, parent, start, end);
+        var depth = this.containers.Count;
+        this.links[id].Level = depth;
+        this.maxDepth = Math.Max(this.maxDepth, depth);
+        return id;
     }
 
     private void AddContentLine(int node, int start, int end)
@@ -420,10 +579,17 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
 
     private void AddCodeLine(Cursor cursor, int parent)
     {
+        this.maxDepth = Math.Max(this.maxDepth, this.links[parent].Level + 1);
         if (cursor.VirtualSpaces > 0)
         {
             var padding = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position - 1, cursor.Position);
-            this.SetValue(padding, new string(' ', cursor.VirtualSpaces));
+            if (this.spacesValue < 0)
+            {
+                this.spacesValue = this.values.Add(new("    "));
+            }
+
+            this.nodes[padding].TextStart = ~this.spacesValue;
+            this.nodes[padding].TextLength = cursor.VirtualSpaces;
         }
 
         // Adjacent physical code lines can borrow one contiguous source slice.
@@ -432,11 +598,11 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
         if (cursor.Position < lineEnd)
         {
             var content = this.text.AsSpan(cursor.Position, lineEnd - cursor.Position);
-            var last = this.nodes[parent].Last;
-            if (content.Contains('\0'))
+            var last = this.links[parent].Last;
+            if (this.hasNul && content.Contains('\0'))
             {
                 var node = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position, lineEnd);
-                this.SetValue(node, content.ToString().Replace('\0', '\uFFFD'));
+                this.SetValue(node, this.CreateText(content, normalizeCode: false));
             }
             else if (last != 0 && this.nodes[last].Kind == DocumentationMarkdownKind.Text && this.nodes[last].TextStart >= 0 && this.nodes[last].End == cursor.Position)
             {
@@ -463,8 +629,9 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
 
     private int AddNode(DocumentationMarkdownKind kind, int parent, int start, int end)
     {
-        var previous = this.nodes[parent].Last;
-        var id = this.nodes.Add(new() { Kind = kind, Parent = parent, Previous = previous, Start = start, End = end });
+        var previous = this.links[parent].Last;
+        var id = this.nodes.Add(new() { Kind = kind, Parent = parent, Start = start, End = end });
+        this.links.Add(new() { Previous = previous });
         if (previous == 0)
         {
             this.nodes[parent].First = id;
@@ -474,73 +641,44 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
             this.nodes[previous].Next = id;
         }
 
-        this.nodes[parent].Last = id;
+        this.links[parent].Last = id;
+        this.lastPlainText = 0;
         return id;
     }
 
     private void SetValue(int node, string value)
     {
-        this.nodes[node].TextStart = ~this.values.Add(value);
+        this.nodes[node].TextStart = ~this.values.Add(new(value));
         this.nodes[node].TextLength = value.Length;
     }
 
     private void RemoveNode(int node)
     {
         var data = this.nodes[node];
+        var previous = this.links[node].Previous;
         this.nodes[node].Flags |= MarkdownNodeFlags.Detached;
         this.detachedNodes++;
-        if (data.Previous == 0)
+        if (previous == 0)
         {
             this.nodes[data.Parent].First = data.Next;
         }
         else
         {
-            this.nodes[data.Previous].Next = data.Next;
+            this.nodes[previous].Next = data.Next;
         }
 
         if (data.Next == 0)
         {
-            this.nodes[data.Parent].Last = data.Previous;
+            this.links[data.Parent].Last = previous;
         }
         else
         {
-            this.nodes[data.Next].Previous = data.Previous;
+            this.links[data.Next].Previous = previous;
         }
     }
 
-    private void CheckDepth()
-    {
-        var depth = 0;
-        var node = 0;
-        while (true)
-        {
-            this.cancellationToken.ThrowIfCancellationRequested();
-            if (this.nodes[node].First != 0)
-            {
-                node = this.nodes[node].First;
-                if (++depth > this.maximumDepth)
-                {
-                    throw new DocumentationMarkdownLimitException(this.maximumDepth);
-                }
-
-                continue;
-            }
-
-            while (node != 0 && this.nodes[node].Next == 0)
-            {
-                node = this.nodes[node].Parent;
-                depth--;
-            }
-
-            if (node == 0)
-            {
-                return;
-            }
-
-            node = this.nodes[node].Next;
-        }
-    }
-
+    // Delimiter nodes are useful mutable scratch, but must not remain in the
+    // retained snapshot. Compact once before any public identities exist.
     private MarkdownNodeData[] FreezeNodes()
     {
         if (this.detachedNodes == 0)
@@ -548,51 +686,59 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
             return this.nodes.Span.ToArray();
         }
 
-        // Delimiter nodes are useful mutable scratch, but must not remain in the
-        // retained snapshot. Compact once before any public identities exist.
-        var map = ArrayPool<int>.Shared.Rent(this.nodes.Count);
-        try
+        // The sibling links are dead by now; their Previous slots hold the compaction map.
+        var total = this.nodes.Count;
+        var result = new MarkdownNodeData[total - this.detachedNodes];
+        var count = 0;
+        for (var i = 0; i < total; i++)
         {
-            var count = 0;
-            for (var i = 0; i < this.nodes.Count; i++)
+            if ((this.nodes[i].Flags & MarkdownNodeFlags.Detached) == 0)
             {
-                if ((this.nodes[i].Flags & MarkdownNodeFlags.Detached) == 0)
-                {
-                    map[i] = count++;
-                }
+                this.links[i].Previous = count++;
+            }
+        }
+
+        for (var i = 0; i < total; i++)
+        {
+            if ((i & 1023) == 0)
+            {
+                this.cancellationToken.ThrowIfCancellationRequested();
             }
 
-            var result = new MarkdownNodeData[count];
-            for (var i = 0; i < this.nodes.Count; i++)
+            var node = this.nodes[i];
+            if ((node.Flags & MarkdownNodeFlags.Detached) == 0)
             {
-                if ((i & 1023) == 0)
-                {
-                    this.cancellationToken.ThrowIfCancellationRequested();
-                }
-
-                var node = this.nodes[i];
-                if ((node.Flags & MarkdownNodeFlags.Detached) != 0)
-                {
-                    continue;
-                }
-
-                node.Parent = map[node.Parent];
-                node.First = map[node.First];
-                node.Last = map[node.Last];
-                node.Previous = map[node.Previous];
-                node.Next = map[node.Next];
-                result[map[i]] = node;
+                node.Parent = this.links[node.Parent].Previous;
+                node.First = this.links[node.First].Previous;
+                node.Next = this.links[node.Next].Previous;
+                result[this.links[i].Previous] = node;
             }
+        }
 
-            return result;
-        }
-        finally
-        {
-            ArrayPool<int>.Shared.Return(map);
-        }
+        return result;
     }
 
-    private struct Container(int node, int indent, char marker)
+    // Initial storage supplied by the caller's frame; growth rents from the pool.
+    internal readonly ref struct Scratch(Span<MarkdownNodeData> nodes, Span<NodeLinks> links, Span<MarkdownValue> values, Span<Container> containers, Span<ContentLine> lines, Span<Delimiter> delimiters, Span<Bracket> brackets, Span<CodeRun> codeRuns)
+    {
+        internal readonly Span<MarkdownNodeData> Nodes = nodes;
+
+        internal readonly Span<NodeLinks> Links = links;
+
+        internal readonly Span<MarkdownValue> Values = values;
+
+        internal readonly Span<Container> Containers = containers;
+
+        internal readonly Span<ContentLine> Lines = lines;
+
+        internal readonly Span<Delimiter> Delimiters = delimiters;
+
+        internal readonly Span<Bracket> Brackets = brackets;
+
+        internal readonly Span<CodeRun> CodeRuns = codeRuns;
+    }
+
+    internal struct Container(int node, int indent, char marker)
     {
         internal int Node = node;
 
@@ -607,7 +753,32 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
         internal int FirstQuote;
     }
 
-    private readonly record struct ContentLine(int Start, int End);
+    // Sibling/tail links make delimiter edits O(1); Level is a block's depth or an
+    // inline wrapper's height for the exact depth limit. Never retained.
+    internal struct NodeLinks
+    {
+        internal int Previous;
+
+        internal int Last;
+
+        internal int Level;
+    }
+
+    [System.Runtime.CompilerServices.InlineArray(ShortCodeHeads)]
+    private struct CodeHeadArray
+    {
+        private int element;
+    }
+
+    internal struct ContentLine(int start, int end)
+    {
+        internal int Start = start;
+
+        internal int End = end;
+
+        // Offset within the joined inline input of a multi-line block.
+        internal int Joined;
+    }
 
     private readonly record struct ListMarker(int Width, int Padding, char Delimiter, bool Ordered, int Number, Cursor Content, bool Empty);
 
@@ -640,7 +811,7 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
             return this.Position - start;
         }
 
-        internal bool IsBlank(string text)
+        internal readonly bool IsBlank(string text)
         {
             return this.Position >= this.nonblankEnd;
         }
@@ -649,6 +820,11 @@ internal sealed partial class DocumentationMarkdownParser(string text, Cancellat
 
         internal int ConsumeWhitespace(string text, int maximum)
         {
+            if (this.VirtualSpaces == 0 && (maximum <= 0 || this.Position >= this.End || text[this.Position] is not (' ' or '\t')))
+            {
+                return 0;
+            }
+
             var initial = this.Column;
             var pending = Math.Min(this.VirtualSpaces, maximum);
             this.VirtualSpaces -= pending;
