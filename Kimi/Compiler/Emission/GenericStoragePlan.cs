@@ -132,6 +132,11 @@ internal sealed partial class GenericStoragePlan
         return false;
     }
 
+    // G10: an ordinary free function whose selected implementation needs no
+    // generic context (no receiver, defaults or compiler-provided lowering).
+    private static bool IsConcreteDirect(BoundCall call, FunctionKoto target)
+        => call.Receiver is null && !target.IsConstructor && call.Target.CompilerFunction == CompilerFunctionKind.None && call.TypeArguments.Length == 0;
+
     private static ValueLowering? StorageValue(BoundType type, AggregateLayoutPool layouts)
         => type.Kind == BoundTypeKind.ResolvedRange ? layouts.Get(type)?.Value : FunctionAbi.GetValue(type, layouts);
 
@@ -158,7 +163,8 @@ internal sealed partial class GenericStoragePlan
             var op = body.Operations[id];
             if (op.Place < -1 || op.Place >= body.Places.Count || op.Input < -1 || op.Input >= body.Places.Count ||
                 op.Projection < -1 || op.Projection >= body.Projections.Count ||
-                (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans)))
+                (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans) &&
+                 !(op.Kind == OwnershipOperationKind.Call && op.Source is InvocationKoto { BoundCall.ReturnType: var unit } && ReferenceEquals(unit, BoundType.Unit))))
             {
                 return Fail("Shared operation refers to invalid storage or projection.", out failure);
             }
@@ -327,7 +333,7 @@ internal sealed partial class GenericStoragePlan
                     kind = SharedStorageOperation.Boolean;
                     source = value.Constant == 0 ? 0 : 1;
                     break;
-                case OwnershipOperationKind.Produce when value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary &&
+                case OwnershipOperationKind.Produce when value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary or OwnershipValueKind.Unary &&
                     IsSharedScalar(body.Places[op.Place].Type):
                     kind = SharedStorageOperation.Initialize;
                     break;
@@ -604,12 +610,13 @@ internal sealed partial class GenericStoragePlan
                 case OwnershipOperationKind.Call:
                     if (op.Source is InvocationKoto { BoundCall: { } direct } directSyntax)
                     {
-                        if (direct.Target.Declaration is not FunctionKoto directTarget || !IsGeneric(directTarget) ||
+                        if (direct.Target.Declaration is not FunctionKoto directTarget || !(IsGeneric(directTarget) || IsConcreteDirect(direct, directTarget)) ||
                             direct.DefaultArguments.Length != 0 ||
                             arguments.Count != directTarget.Parameters.Count || arguments.Count != directSyntax.ArgumentNodes.Count + (direct.Receiver is null ? 0 : 1) ||
                             direct.ArgumentOperations.Length != directSyntax.ArgumentNodes.Count || direct.ArgumentToParameter.Length != directSyntax.ArgumentNodes.Count ||
                             !(directTarget.IsConstructor ? ReferenceEquals(direct.DeclaringType, direct.ReturnType) : ReferenceTypes.CallTypeMatches(binding.InstantiateStorageType(directTarget.BoundSymbol!.Type!, direct), direct.ReturnType, direct)) ||
-                            !ReferenceEquals(body.Places[op.Place].Type, direct.ReturnType) || !ReferenceEquals(directSyntax.BoundType, direct.ReturnType))
+                            !(op.Place < 0 ? ReferenceEquals(direct.ReturnType, BoundType.Unit) : ReferenceEquals(body.Places[op.Place].Type, direct.ReturnType)) ||
+                            !ReferenceEquals(directSyntax.BoundType, direct.ReturnType))
                         {
                             return Fail($"Shared direct call to '{direct.Target.Name}' requires a checked generic function and explicit arguments.", out failure);
                         }
@@ -654,7 +661,7 @@ internal sealed partial class GenericStoragePlan
                         !ReferenceEquals(callPlan.Receiver, call.Method) || !ReferenceEquals(body.Places[op.Input].Type, callPlan.ReceiverType) ||
                         !ReferenceEquals(call.BoundType, callPlan.ReturnType) || !ReferenceEquals(body.Places[op.Place].Type, callPlan.ReturnType) ||
                         callPlan.Arguments.Length != call.ArgumentNodes.Count || arguments.Count != callPlan.Arguments.Length ||
-                        !(ReferenceEquals(callPlan.ReturnType, BoundType.Boolean) || ReferenceEquals(callPlan.ReturnType, BoundType.I32) || ReferenceEquals(callPlan.ReturnType, BoundType.ISize) || ReferenceEquals(callPlan.ReturnType, BoundType.Unit)))
+                        !(IsSharedScalar(callPlan.ReturnType) || ReferenceEquals(callPlan.ReturnType, BoundType.Unit)))
                     {
                         return Fail("Shared common-function call has an unsupported result or inconsistent signature.", out failure);
                     }
@@ -878,16 +885,39 @@ internal sealed partial class GenericStoragePlan
                 var first = value.Count > 0 ? body.ValueOperands[value.Start] : -1;
                 var second = value.Count > 1 ? body.ValueOperands[value.Start + 1] : -1;
                 var binary = value.Kind == OwnershipValueKind.Binary;
-                if (binary && (value.Count != 2 || value.Operator is not (KotoKind.Plus or KotoKind.LessThan or KotoKind.GreaterThan) ||
-                    !(ReferenceEquals(ScalarType(first), BoundType.ISize) || ReferenceEquals(ScalarType(first), BoundType.I32)) ||
-                    !ReferenceEquals(ScalarType(first), ScalarType(second)) ||
-                    !ReferenceEquals(body.Places[scalarPlace].Type, value.Operator == KotoKind.Plus ? ScalarType(first) : BoundType.Boolean)))
+                var arithmetic = value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent;
+                var operand = binary ? ScalarType(first) : null;
+                if (binary && (value.Count != 2 || !(arithmetic || ComparisonPredicate(value.Operator) is not null) ||
+                    operand is null || !IsSharedScalar(operand) ||
+                    (ReferenceEquals(operand, BoundType.Boolean) && value.Operator is not (KotoKind.EqualsEquals or KotoKind.ExclamationEquals)) ||
+                    !ReferenceEquals(operand, ScalarType(second)) ||
+                    !ReferenceEquals(body.Places[scalarPlace].Type, arithmetic ? operand : BoundType.Boolean)))
                 {
-                    return Fail("Shared scalar operation requires checked isize addition/comparison operands.", out failure);
+                    return Fail("Shared scalar operation requires checked integer arithmetic/comparison operands.", out failure);
                 }
 
-                var predicate = value.Operator == KotoKind.GreaterThan ? "sgt" : "slt";
-                scalar = new(ReferenceEquals(body.Places[scalarPlace].Type, BoundType.Boolean) ? "i1" : ReferenceEquals(body.Places[scalarPlace].Type, BoundType.I32) ? "i32" : "i64", value.Kind, first, second, unchecked((long)value.Constant), binary ? value.Operator == KotoKind.Plus ? "add" : ReferenceEquals(ScalarType(first), BoundType.I32) ? predicate + "32" : predicate : null, op.Kind == OwnershipOperationKind.Produce && value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary);
+                var unary = value.Kind == OwnershipValueKind.Unary;
+                var unaryOperand = unary && value.Count == 1 ? ScalarType(first) : null;
+                if (unary && (unaryOperand is null || !ReferenceEquals(unaryOperand, body.Places[scalarPlace].Type) ||
+                    !(value.Operator == KotoKind.Not ? ReferenceEquals(unaryOperand, BoundType.Boolean) :
+                      (value.Operator == KotoKind.PrefixPlus || (value.Operator == KotoKind.PrefixMinus && ScalarTypes.Signed(unaryOperand))) && !ReferenceEquals(unaryOperand, BoundType.Boolean))))
+                {
+                    return Fail("Shared scalar unary operation requires a matching bool or signed-integer operand.", out failure);
+                }
+
+                // Checked arithmetic names its overflow intrinsic; a comparison carries its operand Type.
+                var sign = binary && ScalarTypes.Signed(operand!) ? "s" : "u";
+                var operation = unary ? value.Operator switch { KotoKind.Not => "not", KotoKind.PrefixMinus => "neg", _ => "pos" } : !binary ? null : value.Operator switch
+                {
+                    KotoKind.Plus => sign + "add",
+                    KotoKind.Minus => sign + "sub",
+                    KotoKind.Asterisk => sign + "mul",
+                    KotoKind.Slash => sign + "div",
+                    KotoKind.Percent => sign + "rem",
+                    KotoKind.EqualsEquals or KotoKind.ExclamationEquals => ComparisonPredicate(value.Operator) + ":" + SharedScalarType(operand!),
+                    _ => sign + ComparisonPredicate(value.Operator) + ":" + SharedScalarType(operand!),
+                };
+                scalar = new(SharedScalarType(body.Places[scalarPlace].Type), value.Kind, first, second, unchecked((long)value.Constant), operation, op.Kind == OwnershipOperationKind.Produce && value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Binary or OwnershipValueKind.Unary);
             }
 
             instructions[id] = new(kind, dest, source, count, copyPlace, next, alternative, condition, module.Constants.Intern(location, LlvmConstantKind.Location), body.IsReachable(id), destructionStart, fieldOffset, indexLeaf, scalar);
@@ -1017,6 +1047,30 @@ internal sealed partial class GenericStoragePlan
         string LengthKey(BoundLength length) => length.Parameter is { } symbol ? "slot:" + symbol.Slot : length.IsConstant
             ? length.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
             : length.Operation + "(" + LengthKey(length.Left!) + "," + (length.Right is null ? string.Empty : LengthKey(length.Right)) + ")";
+    }
+
+    private bool ConcreteAdapter(BoundCall call, FunctionKoto target, AggregateLayoutPool layouts, out SharedDirectAdapter? adapter)
+    {
+        adapter = null;
+        var result = FunctionAbi.GetValue(call.ReturnType, layouts);
+        if (this.functions?.GetValueOrDefault(target) is not { } abi || result is null)
+        {
+            return false;
+        }
+
+        var parameters = new ValueLowering[target.Parameters.Count];
+        for (var p = 0; p < parameters.Length; p++)
+        {
+            if (target.Parameters[p].Type.BoundType is not { } type || FunctionAbi.GetValue(type, layouts) is not { } value)
+            {
+                return false;
+            }
+
+            parameters[p] = value;
+        }
+
+        adapter = new(abi, parameters, result);
+        return true;
     }
 
     private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth = 0)
@@ -1236,9 +1290,9 @@ internal sealed partial class GenericStoragePlan
                 }
 
                 if (WindowsLowering.GetValue(signature.Components[1]) is not { } callbackResult ||
-                    !(ReferenceEquals(signature.Components[1], BoundType.Boolean) || ReferenceEquals(signature.Components[1], BoundType.I32) || ReferenceEquals(signature.Components[1], BoundType.ISize) || ReferenceEquals(signature.Components[1], BoundType.Unit)))
+                    !(IsSharedScalar(signature.Components[1]) || ReferenceEquals(signature.Components[1], BoundType.Unit)))
                 {
-                    return Fail("Shared callback adapter requires bool, isize or Unit results.", out failure);
+                    return Fail("Shared callback adapter requires bool, integer or Unit results.", out failure);
                 }
 
                 if (concrete is not null && this.functions?.GetValueOrDefault(concrete) is null)
@@ -1266,6 +1320,17 @@ internal sealed partial class GenericStoragePlan
         this.calls.Add(call, entry); // Reserve before following recursive concrete call contexts.
         for (var i = 0; i < directAdapters.Length; i++)
         {
+            if (template.DirectCalls[i].Target.Declaration is FunctionKoto concrete && !IsGeneric(concrete))
+            {
+                // A concrete target needs no context: call its verified ordinary entry.
+                if (!this.ConcreteAdapter(template.DirectCalls[i], concrete, layouts, out directAdapters[i]!))
+                {
+                    return Fail("Shared concrete call target has no verified entry or representation.", out failure);
+                }
+
+                continue;
+            }
+
             var inner = binding.InstantiateForwardedCall(template.DirectCalls[i], call);
             if (inner?.Target.Declaration is not FunctionKoto innerTarget || !this.templates.TryGetValue(innerTarget, out var innerTemplate) ||
                 !this.PrepareEntry(compilation, module, layouts, inner, innerTemplate, out var innerEntry, out failure, depth + 1))
@@ -1281,7 +1346,22 @@ internal sealed partial class GenericStoragePlan
 
     internal sealed record Template(OwnershipBody Body, SharedStorageBody Physical, BoundType[] Types, (int Place, int Selector, int Case)[] Projections, BoundCall[] DirectCalls);
 
-    private static bool IsSharedScalar(BoundType type) => ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.ISize) || ReferenceEquals(type, BoundType.I32);
+    // bool and integers up to 64 bits; literal constants keep their Type's bit pattern.
+    private static bool IsSharedScalar(BoundType type)
+        => ReferenceEquals(type, BoundType.Boolean) || ScalarTypes.Width(type) is 8 or 16 or 32 or 64;
+
+    private static string? ComparisonPredicate(KotoKind kind) => kind switch
+    {
+        KotoKind.LessThan => "lt",
+        KotoKind.LessThanEquals => "le",
+        KotoKind.GreaterThan => "gt",
+        KotoKind.GreaterThanEquals => "ge",
+        KotoKind.EqualsEquals => "eq",
+        KotoKind.ExclamationEquals => "ne",
+        _ => null,
+    };
+
+    private static string SharedScalarType(BoundType type) => ReferenceEquals(type, BoundType.Boolean) ? "i1" : "i" + ScalarTypes.Width(type);
 
     internal sealed record CallEntry(Template Template, SharedStorageEntry Physical, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType?[] Arguments, BoundLength?[] Lengths);
 }

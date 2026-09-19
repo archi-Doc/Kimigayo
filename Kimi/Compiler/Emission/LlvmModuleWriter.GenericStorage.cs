@@ -25,6 +25,8 @@ internal static partial class LlvmModuleWriter
         }
     }
 
+    private static int SharedScalarAlignment(string type) => type switch { "i8" => 1, "i16" => 2, "i32" => 4, _ => 8 };
+
     private static void WriteSharedEntry(TextWriter output, SharedStorageEntry entry)
     {
         var name = entry.Abi.Name;
@@ -387,15 +389,44 @@ internal static partial class LlvmModuleWriter
                 {
                     output.Write($"  %v{id} = or {scalar.Type} 0, %v{scalar.First}\n");
                 }
-                else if (scalar.Kind == OwnershipValueKind.Binary && scalar.Operator == "add")
+                else if (scalar.Kind == OwnershipValueKind.Unary && scalar.Operator == "not")
+                {
+                    output.Write($"  %v{id} = xor i1 %v{scalar.First}, true\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Unary && scalar.Operator == "pos")
+                {
+                    output.Write($"  %v{id} = or {scalar.Type} 0, %v{scalar.First}\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Unary)
+                {
+                    // Checked negation: only the minimum value overflows.
+                    var location = constants[op.Location];
+                    output.Write($"  %sum{id} = call {{ {scalar.Type}, i1 }} @llvm.ssub.with.overflow.{scalar.Type}({scalar.Type} 0, {scalar.Type} %v{scalar.First})\n  %v{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 0\n  %overflow{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 1\n");
+                    output.Write($"  br i1 %overflow{id}, label %overflowAbort{id}, label %sumReady{id}\noverflowAbort{id}:\n  call void @{WindowsLowering.Abort.Name}(i32 {WindowsLowering.IntegerOverflowReason}, ptr @{location.Name}, i64 {location.ByteLength}, i64 -2)\n  unreachable\nsumReady{id}:\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Binary && scalar.Operator is "sdiv" or "srem" or "udiv" or "urem")
+                {
+                    // SPEC 13.4: zero divisor and signed minimum by -1 (including %) abort.
+                    var location = constants[op.Location];
+                    var width = int.Parse(scalar.Type.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
+                    var minimum = width == 64 ? long.MinValue : -(1L << (width - 1));
+                    output.Write($"  %zero{id} = icmp eq {scalar.Type} %v{scalar.Second}, 0\n  %min{id} = icmp eq {scalar.Type} %v{scalar.First}, {minimum}\n  %minus{id} = icmp eq {scalar.Type} %v{scalar.Second}, -1\n");
+                    output.Write(scalar.Operator[0] == 's' ? $"  %wrap{id} = and i1 %min{id}, %minus{id}\n" : $"  %wrap{id} = or i1 false, false\n");
+                    output.Write($"  %bad{id} = or i1 %zero{id}, %wrap{id}\n  br i1 %bad{id}, label %divAbort{id}, label %divReady{id}\n");
+                    output.Write($"divAbort{id}:\n  %reason{id} = select i1 %zero{id}, i32 {WindowsLowering.IntegerDivisionZeroReason}, i32 {WindowsLowering.IntegerOverflowReason}\n");
+                    output.Write($"  call void @{WindowsLowering.Abort.Name}(i32 %reason{id}, ptr @{location.Name}, i64 {location.ByteLength}, i64 -2)\n  unreachable\ndivReady{id}:\n");
+                    output.Write($"  %v{id} = {scalar.Operator} {scalar.Type} %v{scalar.First}, %v{scalar.Second}\n");
+                }
+                else if (scalar.Kind == OwnershipValueKind.Binary && scalar.Operator is "sadd" or "ssub" or "smul" or "uadd" or "usub" or "umul")
                 {
                     var location = constants[op.Location];
-                    output.Write($"  %sum{id} = call {{ {scalar.Type}, i1 }} @llvm.sadd.with.overflow.{scalar.Type}({scalar.Type} %v{scalar.First}, {scalar.Type} %v{scalar.Second})\n  %v{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 0\n  %overflow{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 1\n");
+                    output.Write($"  %sum{id} = call {{ {scalar.Type}, i1 }} @llvm.{scalar.Operator}.with.overflow.{scalar.Type}({scalar.Type} %v{scalar.First}, {scalar.Type} %v{scalar.Second})\n  %v{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 0\n  %overflow{id} = extractvalue {{ {scalar.Type}, i1 }} %sum{id}, 1\n");
                     output.Write($"  br i1 %overflow{id}, label %overflowAbort{id}, label %sumReady{id}\noverflowAbort{id}:\n  call void @{WindowsLowering.Abort.Name}(i32 {WindowsLowering.IntegerOverflowReason}, ptr @{location.Name}, i64 {location.ByteLength}, i64 -2)\n  unreachable\nsumReady{id}:\n");
                 }
                 else if (scalar.Kind == OwnershipValueKind.Binary)
                 {
-                    output.Write($"  %v{id} = icmp {scalar.Operator![..3]} {(scalar.Operator.EndsWith("32", StringComparison.Ordinal) ? "i32" : "i64")} %v{scalar.First}, %v{scalar.Second}\n");
+                    var separator = scalar.Operator!.IndexOf(':');
+                    output.Write($"  %v{id} = icmp {scalar.Operator[..separator]} {scalar.Operator[(separator + 1)..]} %v{scalar.First}, %v{scalar.Second}\n");
                 }
                 else if (scalar.Type == "i1")
                 {
@@ -403,7 +434,7 @@ internal static partial class LlvmModuleWriter
                 }
                 else
                 {
-                    output.Write($"  %v{id} = load {scalar.Type}, ptr %p{op.Destination}, align {(scalar.Type == "i32" ? 4 : 8)}\n");
+                    output.Write($"  %v{id} = load {scalar.Type}, ptr %p{op.Destination}, align {SharedScalarAlignment(scalar.Type)}\n");
                 }
 
                 if (scalar.Store)
@@ -414,7 +445,7 @@ internal static partial class LlvmModuleWriter
                     }
                     else
                     {
-                        output.Write($"  store {scalar.Type} %v{id}, ptr %p{op.Destination}, align {(scalar.Type == "i32" ? 4 : 8)}\n");
+                        output.Write($"  store {scalar.Type} %v{id}, ptr %p{op.Destination}, align {SharedScalarAlignment(scalar.Type)}\n");
                     }
                 }
             }

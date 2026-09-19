@@ -5898,3 +5898,55 @@ Intermediate findings and fixes:
 
 The current outcome and next actions are recorded only in PLAN.md. Documentation
 updates do not change the declared runtime support boundaries.
+
+<a id="general-compiler-20260919-045448"></a>
+
+## General compiler implementation — G10a (2026-09-19 04:54:48 UTC)
+
+Started from clean HEAD `5d9e12c82b878f6b8b7907795e1b669f6884a6e5` under a
+30-minute implementation window. User constraints: do not run existing tests or
+build-check examples/milestones; keep new tests minimal; update documents at the
+end. Evidence root: `bin/plan-execution/20260919-045448`.
+
+G10a (M6/I15). Reproducers in the new `SharedConcreteCallTest` failed as
+recorded for G10: "Shared direct call to 'twice' requires a checked generic
+function and explicit arguments." for a scalar-result concrete call, and "Shared
+operation refers to invalid storage or projection." for a Unit-result call.
+Changes (`GenericStoragePlan.cs`, `LlvmModuleWriter.GenericStorage.cs`):
+- A Unit-result direct call may have no result Place.
+- `IsConcreteDirect` admits ordinary free functions with no receiver, constructor,
+  defaults, Type arguments or compiler function. `ConcreteAdapter` builds the
+  existing `SharedDirectAdapter` from the function's verified `FunctionAbi`;
+  the adapter writer was already ABI-generic.
+- `IsSharedScalar` covers bool and 8/16/32/64-bit integers; `SharedScalarType`
+  and `SharedScalarAlignment` replace the i1/i32/i64-only mapping.
+- Binary scalar operations carry an explicit operation: `s|u` + add/sub/mul
+  (overflow intrinsics), div/rem (division by zero, and the signed `MIN / -1`
+  including `%` per SPEC §13.4, Abort with the existing reasons), and
+  `predicate:type` comparisons (`eq`/`ne`, signedness-aware relational ones).
+  `==`/`!=` also accept bool operands.
+- Unary `not`, `+` and checked `-` (signed only).
+- Common-function callback results accept the same scalar set.
+
+Findings during the unit: `and`/`or` in a shared body produce Phi values, which
+`ValidateSharedGraph` rejects by design ("Shared result joins still use secured
+storage"). A `Console.writeLine` shared body now reaches the string-leaf
+rejection in `Add`. Both remain G10 work. Mutable locals, compound assignment,
+`while` and `if` with the new scalar types already lowered. The PLAN question on
+scalar reference arithmetic was resolved from SPEC §13.4.3 and §3.2: safe references
+are never implicitly dereferenced, so it is not an implementation gap.
+
+Verification: warning-free Debug and Release builds. 14 new cases PASS in both
+configurations (`g10-debug.xml`, `g10-release.xml`): 10 positives (concrete
+Unit/scalar/wide calls, operators, unary, division, unsigned, mutable locals,
+callbacks, bool equality) and 4 native Abort cases (checked negation, division
+by zero, `i8` remainder overflow, `u8` addition overflow). 14 fixtures pass 28
+LLVM/native O0/O2 runs (`g10-native.log`); Release fixture bytes match Debug.
+Hashes: `g10-hashes.txt`. Existing managed tests, existing fixtures and
+example/milestone builds were NOT_RUN by instruction; the pre-existing
+shared-generic regression gate is therefore open and is the first next action in
+PLAN.md. NativeAOT NOT_RUN; no draft or Milestone Program edits.
+
+Implementation stopped at about 05:17 UTC (about 22.5 minutes). The remaining G10
+items (Phi joins, string leaves) could not be completed and verified in the rest
+of the window.
