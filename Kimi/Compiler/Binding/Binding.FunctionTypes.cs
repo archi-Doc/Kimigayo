@@ -6,28 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private static bool PerCallSignature(BoundType signature)
-    {
-        if (signature.Components[1].CarriesOrigin)
-        {
-            return false;
-        }
-
-        var inputs = signature.Components[0];
-        for (var i = 0; i < inputs.Components.Count; i++)
-        {
-            var input = inputs.Components[i];
-            if (input.CarriesOrigin && !(input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
-                input.Origin.Slot == i && !input.Components[0].CarriesOrigin))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool CallableSignatureFits(BoundType actual, BoundType expected)
+    internal static bool CallableSignatureFits(BoundType actual, BoundType expected)
     {
         if (FitsType(actual, expected))
         {
@@ -51,7 +30,28 @@ public sealed partial class Binding
             var input = a.Components[i];
             var required = b.Components[i];
             if (!FitsType(required, input) && !(input.Origin is { Kind: OriginKind.Input } && required.Origin is { Kind: OriginKind.Input } &&
-                input.Semantics == SemanticsKind.Ref && required.Semantics == SemanticsKind.Ref && ReferenceEquals(input.Components[0], required.Components[0])))
+                input.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && required.Semantics == input.Semantics && ReferenceEquals(input.Components[0], required.Components[0])))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool PerCallSignature(BoundType signature)
+    {
+        if (signature.Components[1].CarriesOrigin)
+        {
+            return false;
+        }
+
+        var inputs = signature.Components[0];
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            var input = inputs.Components[i];
+            if (input.CarriesOrigin && !(input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
+                input.Origin.Slot == i && !input.Components[0].CarriesOrigin))
             {
                 return false;
             }

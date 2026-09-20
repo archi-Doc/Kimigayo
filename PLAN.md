@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The compiler-wide plan covers unfinished implementation Milestones and Checklist items. The current focused request integrates the approved Origin syntax and elision revision into the specification and compiler, including source migration and cross-phase verification. Earlier documentation work and timed continuations are historical. NativeAOT and draft edits remain excluded.
+The compiler-wide plan covers unfinished implementation Milestones and Checklist items. The current focused request integrates call borrow reservations into the formal specification and compiler, including explicit uniq/objuniq, approved object projections and shared inspection by defaults. The user also authorized one Japanese Design Change in draft/Changes. Earlier Origin/documentation work and timed continuations are historical. NativeAOT and other draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,16 +31,15 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current focused work: **OSE — Origin syntax and elision integration**. Formal integration and the compiler's supported migration paths are implemented. Wider proof and callable support remain incomplete; the normative rules are not narrowed to those limits. The proposal is unchanged. [Verification and decisions](PLAN_HISTORY.md#origin-syntax-elision-20260920). The follow-up [review of the surrounding code](PLAN_HISTORY.md#origin-review-20260920) corrected five defects and reduced parse/Bind cost without changing any rule; it did not narrow OSE3.
+Current focused work: **CR — Call borrow reservations**. The adopted rules live in §15.6.7. The requested Japanese Design Change is recorded under draft/Changes; formal rules do not depend on it. Earlier OSE checkpoints are preserved in [history](PLAN_HISTORY.md#call-reservation-predecessor-20260920).
 
-| Item | State | Acceptance / next action |
+| Item | State | Acceptance / exact next action |
 | --- | --- | --- |
-| OSE1 | DONE | Self-contained English rules and examples integrated into owning chapters; old syntax and duplicate static-storage prose removed. |
-| OSE2 | DONE | Brace roles, prefix attachment, constructor/accessor lists, generic/layout recognition, syntax output, rejection, round trips and artifact reload verified. |
-| OSE3 | IN_PROGRESS | Independent aggregate inputs, conditional reconstructed inputs/local/results, stored-accessor inheritance, supported specialization inheritance, Owned result defaults and supported callable comparison implemented. Next: extend I5's declared-bound/principal solver and conditional proofs, then inherit explicit-Origin/constrained specialization contracts and complete I18 function-item/Callable support. These are still required rules. |
-| OSE4 | DONE — supported paths | Source fixtures migrated; ownership anchors and substituted field metadata updated. Checked IR and native borrowed-aggregate/specialization cases verified. General custom-accessor and wider callable generation retain existing I12/I18 dependencies. |
-| OSE5 | DONE | Debug/Release regression, focused artifact/round-trip checks, warm allocation checks and O0/O2 native verification recorded in history. NativeAOT not run. |
-| OSE6 | DONE | Surrounding-code review: grouped Container suffix before a function arrow, stamped enum storage after a failed case substitution, unchecked anonymous input slot writes, schema indexing bounds and unbounded requirement dependents corrected. `BoundType` subtree Origin summaries, consumer-stamped requirement edges and a `struct` `OriginArgument` keep warm Bind allocation-free while reducing cold allocation 5.1% and warm Bind time 3–4% on the pinned Origin workload. |
+| CR1 | DONE | Japanese Design Change and self-contained English specification integrated; immediate-exclusivity contradictions replaced by owning-section references. |
+| CR2 | DONE — implemented representations | Call-local reservations, simultaneous activation, parent authority, static disjointness, abandoned preparation and phase diagnostics. Covers direct/indirect/concrete Callable calls, constructors, supported generic borrows, defaults, whole-value updates and concrete object borrows/projections. |
+| CR3 | VERIFYING | Run warning-free Debug/Release solution builds, full managed regression, focused reservation/corruption/allocation checks and native O0/O2 fixtures. Record actual results in history. No NativeAOT. |
+| CR4 | BACKLOG — existing representation/effect dependencies | Extend I5/I18/I24 plans before admitting generic by-value reference ABI, arbitrary effectful/borrow-producing defaults, general object views or collection mutation. Reservation rules apply to these required language features too; unsupported generation must continue to reject. |
+| OSE3 | IN_PROGRESS — backlog | Extend I5's declared-bound/principal solver and conditional proofs, then inherit explicit-Origin/constrained specialization contracts and complete I18 function-item/Callable support. Other OSE checkpoints are historical. |
 
 Previous focused work **DM6** is complete; its findings, 10,589-test Debug/Release verification and measurements are preserved in [history](PLAN_HISTORY.md#documentation-markdown-review-20260920) and [measurements](Benchmark/DocumentationMarkdown.md#dm6-parser-review-2026-09-20).
 
@@ -67,7 +66,7 @@ Product rendering, structured URL mapping and declaration classification now con
 | P16-G | DONE | Enum layout, directed reference payload fitting and canonical call-Origin intersection substitution pass checked LLVM emission, verification, linking and native O0/O2 execution. |
 | P16-V | DONE | Warning-free Debug/Release solution builds; Debug full 9,151 plus the extended 13-case suite, Release full 9,157; 57 native target/variant/rejection checks per configuration and 90 Release regression checks for programs 1–15. Exact output, exit, stderr and source mutations verified. |
 
-Programs 1–16 have bounded completion; Programs 17–21 informed design only. General M/I obligations remain open as compiler backlog, separate from the focused documentation parser request. NativeAOT and draft edits remain excluded.
+Programs 1–16 have bounded completion; Programs 17–21 informed design only. General M/I obligations remain open as compiler backlog, separate from the focused documentation parser request. NativeAOT and draft edits other than the requested call-reservation Design Change remain excluded.
 
 ### Current milestone states
 

@@ -124,6 +124,8 @@ public enum DiagnosticCode
 
     DeferredExpansionLimit_Kd,
     ComparisonLoanConflict_Kd,
+    CallReservationConflict_Kd,
+    CallActivationConflict_Kd,
 
     InvalidDependencyConfiguration_Kd,
     UnresolvedDependencyGraph_Kd,

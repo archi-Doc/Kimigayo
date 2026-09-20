@@ -23,7 +23,9 @@ internal static class ReferenceTypes
             (type.Components[0].Kind == BoundTypeKind.Parameter ||
                 (ScalarTypes.Supports(type.Components[0]) && type.Origin is { Kind: OriginKind.Input or OriginKind.Projection })));
 
-    internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsStorage(type);
+    internal static bool IsBorrow(BoundType? type) => IsStorage(type) || ObjectTypes.IsBorrow(type);
+
+    internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsBorrow(type);
 
     internal static bool CallTypeMatches(BoundType? formal, BoundType? actual, BoundCall call)
     {

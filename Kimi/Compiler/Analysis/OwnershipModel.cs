@@ -78,6 +78,7 @@ public enum OwnershipOperationKind : byte
     TestObserve,
     TestMessage,
     TestAbort,
+    ActivateCallBorrows,
 }
 
 public enum PlacementKind : byte
@@ -134,7 +135,7 @@ public enum OwnershipFailure : byte
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
-public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None, LoanRequirement LoanMode = LoanRequirement.None, int Projection = -1)
+public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None, LoanRequirement LoanMode = LoanRequirement.None, int Projection = -1, int Reservation = -1)
 {
     public PlaceUseKind Use => this.Kind switch
     {
@@ -166,7 +167,7 @@ public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject
 public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
     int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
-public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1);
+public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false);
 
 /// <summary>Verification of the supported ownership subset, never an executable-emission certificate.</summary>
 public readonly record struct OwnershipResult(bool IsVerified, int BodyCount, int ErrorCount, int UnsupportedCount);
@@ -203,6 +204,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipStringComparison> StringComparisons = new();
     internal readonly List<OwnershipComparisonLoan> ComparisonLoans = new();
     internal readonly List<OwnershipCallLoans> CallLoans = new();
+    internal readonly List<OwnershipCallReservation> CallReservations = new();
     internal readonly List<int> LoanInputs = new();
     internal readonly List<int> LoanStates = new();
     internal readonly List<int> OperationRegions = new();
@@ -291,6 +293,7 @@ public sealed partial class OwnershipBody
         this.StringComparisons.Clear();
         this.ComparisonLoans.Clear();
         this.CallLoans.Clear();
+        this.CallReservations.Clear();
         this.LoanInputs.Clear();
         this.LoanStates.Clear();
         this.reportedIssues.Clear();
@@ -393,7 +396,9 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
 // Read anchors acquisition: Read/Borrow, LocateReceiver for storage protection,
 // and final ProjectElement for an exclusive write.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null);
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null, int Reservation = -1);
+
+internal readonly record struct OwnershipCallReservation(InvocationKoto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 

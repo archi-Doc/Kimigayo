@@ -328,7 +328,7 @@ let b = ^(-1)..sideEffect() // Abort constructing Index; do not call sideEffect.
 
 The built-in access receiver is located first. While its index is evaluated, modification, destruction, Move and reallocation of that storage are prohibited; shared reads remain allowed, as in `values[values.length - 1]`. For a chained Copy read, the located root is protected through all index evaluations and the final element Copy, and that Copy is acquired before later surrounding operands are evaluated; intermediate arrays are not copied. A temporary receiver keeps its ordinary enclosing-expression lifetime. A write establishes its exclusive Loan after resolving bounds and checks existing Loans. The receiver and boundaries are never reevaluated. For a Slice, the handle is copied first; reassigning the original handle does not change the acquired view.
 
-**Writes and updates.** [Simple assignment](13-operators-and-assignment.md#1371-simple-assignment) secures its right-hand side before locating the indexed target. [Compound assignment](13-operators-and-assignment.md#1372-compound-assignment) evaluates the receiver and index, checks bounds, reads the old value, evaluates the right-hand side, computes and writes back, once each. Increment and decrement use the same target and Loan rules. An arithmetic failure prevents writeback, and the established exclusive Loan forbids conflicting access from the right-hand side. The exclusive Loan of an element write lasts from bounds resolution through old-value destruction and placement. [Exchange operations](15-ownership-and-lifetime-analysis.md#157-whole-value-updates) evaluate their arguments left to right and keep each target's exclusive Loan during later arguments; `Kimi.Intrinsics.swap` requires static non-overlap, not merely a runtime `i != j`.
+**Writes and updates.** [Simple assignment](13-operators-and-assignment.md#1371-simple-assignment) secures its right-hand side before locating the indexed target. [Compound assignment](13-operators-and-assignment.md#1372-compound-assignment) evaluates the receiver and index, checks bounds, reads the old value, evaluates the right-hand side, computes and writes back, once each. Increment and decrement use the same target and Loan rules. An arithmetic failure prevents writeback, and the established exclusive Loan forbids conflicting access from the right-hand side. The exclusive Loan of an element write lasts from bounds resolution through old-value destruction and placement. [Exchange operations](15-ownership-and-lifetime-analysis.md#157-whole-value-updates) evaluate their arguments left to right and reserve each target under §15.6.7 before activating all targets at entry; `Kimi.Intrinsics.swap` requires static non-overlap, not merely a runtime `i != j`.
 
 The common [Abort and constant-evaluation rules](17-failure-handling.md#1734-checks-builds-and-constant-evaluation) apply. Syntax, Type, literal-fitting and required constant-evaluation violations are compile-time errors. An ordinary out-of-bounds `a[10]` on a three-element array instead aborts if executed; a compiler may warn, but optimization must not turn such a runtime failure into language-level rejection. Rejection of an ineligible static Move Path is a separate rule.
 
@@ -504,7 +504,7 @@ values.insert(^1, 20) // [10, 20, 30]
 let last = values.remove(^1) // 30; capacity is unchanged.
 let first = values[0]
 values.append(first)
-// values.append(values[0]) is invalid: the exclusive receiver is already active.
+values.append(values[0]) // The element Copy finishes before receiver activation.
 ```
 
 ### 4.7.3. Dictionary operations and indexed replacement
@@ -558,7 +558,7 @@ Addition beyond capacity, and `reserve` that needs growth, may Abort on a requir
 
 ### 4.7.5. Loans, retained dependencies and call effects
 
-The whole-collection exclusive receiver is acquired before later arguments, even for runtime no-ops. Active element, Slice and empty-Slice Loans conflict with mutation. Their duration follows later uses and observable destruction, not necessarily lexical scope. There is no two-phase reservation: obtain an owned Copy or removal result first, then mutate in a separate expression.
+The whole-collection exclusive receiver is reserved before later arguments and activated before entry under [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations), even for runtime no-ops. Temporary shared inspection may finish during preparation. Element, Slice and empty-Slice Loans still live at activation conflict with mutation. Their duration follows later uses and observable destruction, not necessarily lexical scope. A removal requires exclusive access and cannot run through an overlapping receiver reservation.
 
 These public dependency rules apply without inspecting private bodies:
 

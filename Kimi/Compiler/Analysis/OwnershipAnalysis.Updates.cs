@@ -18,6 +18,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var depth = this.comparisonDepth++;
+        var reservationMark = this.body.CallReservations.Count;
         var first = -1;
         var second = -1;
         Koto firstSource = call;
@@ -48,9 +49,10 @@ public sealed partial class OwnershipAnalysis
                 }
                 else
                 {
-                    this.Emit(OwnershipOperationKind.UpdateTarget, call.ArgumentNodes[i], place, loanMode: LoanRequirement.Uniq);
+                    var reservation = this.NewCallReservation(call);
+                    var borrow = this.Emit(OwnershipOperationKind.UpdateTarget, call.ArgumentNodes[i], place, loanMode: LoanRequirement.Uniq, reservation: reservation);
                     var loan = this.BeginSharedLoan(place, call);
-                    this.body.ComparisonLoans[loan] = this.body.ComparisonLoans[loan] with { Mode = LoanRequirement.Uniq };
+                    this.CompleteCallReservation(reservation, borrow, loan: loan);
                 }
             }
             else
@@ -70,6 +72,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
+        this.ActivateCallReservations(call, reservationMark);
         var result = -1;
         if (first >= 0 && second >= 0)
         {
@@ -114,6 +117,8 @@ public sealed partial class OwnershipAnalysis
 
     private int BorrowedWholeValueUpdate(InvocationKoto call, BoundCall plan)
     {
+        var depth = this.comparisonDepth++;
+        var reservationMark = this.body.CallReservations.Count;
         var first = -1;
         var second = -1;
         var swap = plan.Target.CompilerFunction == CompilerFunctionKind.Swap;
@@ -121,7 +126,7 @@ public sealed partial class OwnershipAnalysis
         {
             var argument = plan.ArgumentOperations[i];
             var place = swap || argument.ParameterIndex == 0
-                ? this.BorrowStruct(call.ArgumentNodes[i], argument.ParameterType!) : this.Expression(call.ArgumentNodes[i]);
+                ? this.PrepareCallArgument(call, call.ArgumentNodes[i], argument) : this.Expression(call.ArgumentNodes[i]);
             if (argument.ParameterIndex == 0)
             {
                 first = place;
@@ -132,8 +137,11 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
+        this.ActivateCallReservations(call, reservationMark);
         if (first < 0 || second < 0)
         {
+            this.EndComparisonLoans(depth, call);
+            this.comparisonDepth = depth;
             return -1;
         }
 
@@ -143,6 +151,8 @@ public sealed partial class OwnershipAnalysis
             this.compilation.Binding.ProveOwned(type, call) != ConstraintProof.Proven)
         {
             this.Unsupported(call);
+            this.EndComparisonLoans(depth, call);
+            this.comparisonDepth = depth;
             return -1;
         }
 
@@ -151,6 +161,8 @@ public sealed partial class OwnershipAnalysis
         this.SetValue(update, OwnershipValueKind.BorrowedUpdate, [this.Value(first), this.Value(second)], constant: first);
         this.placeValues[result] = update;
         this.RegisterTemporary(result);
+        this.EndComparisonLoans(depth, call);
+        this.comparisonDepth = depth;
         return plan.Target.CompilerFunction == CompilerFunctionKind.Exchange ? result : this.Temporary(call);
     }
 }

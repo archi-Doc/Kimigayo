@@ -117,16 +117,15 @@ public class WholeValueTest
     }
 
     [Fact]
-    public void SealedPayloadBindingDoesNotClaimObjectRuntimeSupport()
+    public void SealedBorrowedPayloadHasCheckedRuntimeSupport()
     {
         var c = MinimalEmissionTest.Analyze("struct S\nfunc f(x: objref/S) -> ref{x}/S => x@ref/S\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Emission.Validate(out var error), error);
     }
 
     [Theory]
-    [InlineData("var x: i32 = 1\nKimi.Intrinsics.replace(x, with: x + 1)")]
     [InlineData("var x: i32 = 1\nKimi.Intrinsics.swap(x, x)")]
     [InlineData("var x: i32\nKimi.Intrinsics.replace(x, with: 2)")]
     [InlineData("let x: i32 = 1\nKimi.Intrinsics.replace(x, with: 2)")]
@@ -140,7 +139,6 @@ public class WholeValueTest
 
     [Theory]
     [InlineData("func f(x: uniq/S) => Kimi.Intrinsics.swap(x, x)")]
-    [InlineData("func f(x: uniq/S) => Kimi.Intrinsics.replace(x, with: S.init(x.value))")]
     public void BorrowedTargetsProtectLaterArguments(string function)
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public var value: i32 = 0\n    public init(value: i32) => self.value = value\n" + function + "\n()");

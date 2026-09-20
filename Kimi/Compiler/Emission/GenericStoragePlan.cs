@@ -177,7 +177,7 @@ internal sealed partial class GenericStoragePlan
             var testIssue = op.Kind is OwnershipOperationKind.TestMessage or OwnershipOperationKind.TestAbort;
             if (op.Place < -1 || op.Place >= body.Places.Count || op.Input < -1 || op.Input >= (testIssue ? body.Operations.Count : body.Places.Count) ||
                 op.Projection < -1 || op.Projection >= body.Projections.Count ||
-                (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestAbort) &&
+                (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.ActivateCallBorrows or OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestAbort) &&
                  !(op.Kind == OwnershipOperationKind.Call && op.Source is InvocationKoto { BoundCall.ReturnType: var result } &&
                    (ReferenceEquals(result, BoundType.Unit) || ReferenceEquals(result, BoundType.Never)))))
             {
@@ -320,6 +320,7 @@ internal sealed partial class GenericStoragePlan
                     break;
                 case OwnershipOperationKind.Entry:
                 case OwnershipOperationKind.EndComparisonLoans:
+                case OwnershipOperationKind.ActivateCallBorrows:
                 case OwnershipOperationKind.LocateReceiver:
                 case OwnershipOperationKind.ProjectElement:
                 case OwnershipOperationKind.CheckReceiverField:

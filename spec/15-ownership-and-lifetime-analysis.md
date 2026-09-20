@@ -707,7 +707,7 @@ func make(a: ref/A, b: ref/B)
 
 While the returned `Pair` is live, shared Loans on both `a` and `b` remain active. A dependency requiring `uniq` propagates an exclusive Loan. The spelling `static` alone creates no parameter-root Loan, but it does not erase the storage anchors and conflicts of a borrow into static Field storage.
 
-A call's receiver and argument Loans begin as each borrow or reborrow is formed in evaluation order, before later arguments and defaults; in particular, an exclusive receiver is active while explicit arguments are evaluated. Receiver and argument borrow protection lasts through the entire call, not merely the callee's last use, and extends for dependent results. There is no two-phase reservation exception; intrinsic exchange/swap and dynamic collection mutation use the same rule. These language checks supply the common value-borrow attribute proof of §21.5.5.
+Receiver and argument protection begins at Borrow/Reborrow formation in evaluation order. Eligible exclusive operations start with the call reservation of §15.6.7; other Loans are immediately active. After activation, call protection lasts through the entire call, including callee cleanup, not merely the callee's last use, and extends for dependent results. Intrinsics and collection methods use the same rules. These checks supply the call-wide attribute proof of §21.5.5.
 
 **Static call effects.** Each callable's potentially accessed static Field identities, and its read, shared or exclusive borrow, write, replacement and destruction effects, are summarized, including those of callees, defaults, lazy initialization and cleanup. They are compared with active caller Loans by the normal overlap rules. Borrowed results keep Field anchors and dependency paths: borrows of immutable sources may be `static`, whereas borrows of mutable sources keep a finite Origin under §11.3.2. Static allocation never permits replacing or destroying a borrowed current value.
 
@@ -749,6 +749,33 @@ struct Logger {sink}
 
 Here `observe` accepts `ref/Writer`, and reading `self.out` shares the stored capability instead of extracting it. `sink` must remain valid during destruction, even if the `deinit` body were replaced with `()`.
 
+### 15.6.7. Call borrow reservations
+
+A **call reservation** delays exclusive access, not evaluation or lifetime protection. It belongs to one invocation's preparation and is not a value, Type, Semantics or Origin. No runtime lock, allocation or fallible activation is required.
+
+**Eligibility.** A final exclusive Borrow/Reborrow that directly prepares a receiver or parameter starts a reservation of its target. This includes implicit adaptation, explicit `@uniq`/`@uniq/T`, `objuniq`, permitted exclusive object projections, and generic adaptations with that resolved effect. Parentheses are transparent. Direct, indirect, Callable, generic, constructor and intrinsic invocations follow the same rule. Resolve the operation and overload first; reservation legality never changes candidate ranking or retries selection.
+
+The directly written adaptation and its call-only Reborrow form one preparation chain. They must not first activate an intermediate exclusive Loan. Other operand operations keep their own evaluation and Loans. Reservations do not pass through local or aggregate storage, Closure captures, nested invocations, or results of `if`, `match`, `do` or other control-flow expressions. Such expressions use ordinary Borrow/Reborrow rules internally; a subsequent call adaptation cannot demote their already active Loans. An inner invocation activates its own reservations before entry. Ordinary exclusive borrows outside eligible preparation remain immediately active. Compound assignment and indexing keep their own evaluation rules; lowering them to helper calls grants no new reservation permission.
+
+**Reservation.** Evaluate and locate the target once, checking initialization, declared access, mutability, complete-Type/Origin validity and the existing exclusive authority. Protect its Place and the owner/provenance needed to keep that location valid. Shared reads and shared Borrows through otherwise valid paths may coexist. Conflicting writes, Move, destruction, reallocation and independent exclusive operations or reservations are forbidden. Structural non-overlap follows §15.6.2; equal Origins do not establish equal Loans or disjointness. A reservation is not a shared borrow that can manufacture exclusive authority.
+
+An exclusive child reservation preserves its parent's authority and dependencies. It permits temporary shared inspection through an authorized parent path, but never re-enables independent access blocked by an already active ancestor Loan. Activation suspends conflicting parent access under normal Reborrow rules. Object projection, Property permissions and ObjectCallCompatible requirements remain unchanged.
+
+**Preparation and activation.** Locate/adapt the receiver first for a method call, evaluate explicit arguments in textual order, then omitted defaults in parameter order (§7.2–3). Defaults may temporarily inspect prepared reserved inputs through shared access under §7.2; they cannot use them as active exclusive references or retain a new inspection Loan. End those temporary inspection Loans before entry. No other temporary is destroyed early merely to make activation possible.
+
+After all inputs are prepared, verify that every reservation can be active simultaneously. Check the complete argument set, retained and returned dependencies, captures, static anchors and cleanup effects. A shared Loan may coexist during reservation only if it does not conflict at activation. Owned or Copy results can still retain Loans. Overlapping exclusive arguments and shared/exclusive argument pairs are rejected even if the callee would not use them. Activation is a static proof boundary before the logical callee entry, not an ordered sequence that permits transient aliasing. All existing call-wide and result-Loan rules then apply.
+
+**Abandoned calls.** Transfers retain reservation protection while their operands are evaluated and acquired. End only reservations belonging to invocations abandoned by that transfer, without activating them, before the abandoned preparation's remaining cleanup. Preserve actual Loans retained by other values and all normal acquisition/cleanup ordering. A transfer caught inside an argument does not abandon the enclosing call. Divergence enters no callee; Abort keeps its no-cleanup contract. Unreachable syntax is still checked under the ordinary rules.
+
+```kimi
+var p: i32 = 1
+Kimi.Intrinsics.replace(p@uniq, with: p + 1) // Read during reservation.
+Kimi.Intrinsics.exchange(p, with: p + 1)     // Same implicit preparation.
+// Kimi.Intrinsics.swap(p, p)                // Error: overlapping targets.
+```
+
+Diagnostics distinguish reservation, activation and the conflicting use or retained Loan. Suggest a separate local only when its acquired value's dependencies allow the call.
+
 <a id="157-initialization-preserving-exchange"></a>
 
 ## 15.7. Whole-value updates
@@ -775,15 +802,13 @@ These operations cannot repair Uninitialized, Moved or partially moved storage; 
 
 ### 15.7.1. Evaluation and transfer
 
-Explicit arguments, including named arguments, are evaluated in textual order, and defaults under the ordinary call rules. Each target Loan begins at borrow formation and protects the target through the call, including during later arguments; there is no two-phase borrowing exception. Argument acquisition and fitting finish before any update. If an argument does not complete, no update occurs; earlier effects remain, and the ordinary cleanup and Abort rules apply.
+Argument evaluation, target reservation and activation follow §15.6.7, including textual order for named arguments. Acquisition and fitting finish before any update. If an argument does not complete, no update occurs; earlier effects remain, and the ordinary cleanup and Abort rules apply.
 
 `replace` destroys the complete old value in its original location using its normal `deinit`/field/base order. Abort or divergence during that destruction prevents placement, and no rollback is promised. Placement transfers the preconstructed new value without rerunning constructors, initializers or setters. The transfers of `exchange` and `swap` execute no user code, destruction or Abort-producing operation. Their internal empty state is unobservable; no inter-thread atomicity is promised.
 
 ```kimi
 var p: i32 = 0
-// Kimi.Intrinsics.replace(p, with: p + 1) // Error: target Loan conflicts with the later read.
-let next = p + 1
-Kimi.Intrinsics.replace(p, with: next)
+Kimi.Intrinsics.replace(p, with: p + 1) // Copy the input before activation.
 let old = Kimi.Intrinsics.exchange(p, with: 5)
 p = p + 1                     // Valid: assignment evaluates its RHS first.
 var q: i32 = 9
@@ -791,7 +816,7 @@ Kimi.Intrinsics.swap(p, q)
 // Kimi.Intrinsics.swap(p, p)             // Error: overlapping exclusive targets.
 ```
 
-Diagnostics identify the borrow and the conflicting use. For a conflict with a later argument, they suggest precomputing that argument in a local only when its dependencies permit it. For a Non-Copy `x`, `x = x` can Move and reinitialize, whereas `Kimi.Intrinsics.exchange(x, with: x)` conflicts with the already active target Loan.
+For a Non-Copy `x`, `x = x` can Move and reinitialize, whereas `Kimi.Intrinsics.exchange(x, with: x)` attempts to Move reserved storage and is rejected.
 
 ### 15.7.2. Static non-overlap
 

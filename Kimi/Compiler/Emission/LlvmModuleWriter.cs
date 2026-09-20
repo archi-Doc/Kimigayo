@@ -241,6 +241,12 @@ internal static partial class LlvmModuleWriter
                     output.Write(borrowOperands.Length == 2 ? (long)borrowOperands[1].Value : 0);
                     output.Write('\n');
                     break;
+                case EmissionOpcode.ObjectBorrow:
+                    Name(output, "  %v", instruction.Operation);
+                    output.Write(" = load ptr, ptr ");
+                    WriteStorageAddress(output, function, function.GetOperands(instruction)[0]);
+                    output.Write(", align 8\n");
+                    break;
                 case EmissionOpcode.ObjectPayload:
                     Name(output, "  %objectHeader", instruction.Operation);
                     output.Write(" = load ptr, ptr ");

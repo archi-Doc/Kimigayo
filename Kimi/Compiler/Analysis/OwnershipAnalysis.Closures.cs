@@ -48,7 +48,11 @@ public sealed partial class OwnershipAnalysis
     private int CallValue(InvocationKoto call, BoundValueCall plan)
     {
         var depth = this.comparisonDepth++;
-        var receiver = this.Expression(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
+        var reservationMark = this.body.CallReservations.Count;
+        var explicitReceiver = plan.ReceiverKind == SemanticsKind.Uniq && IsDirectExclusiveBorrow(plan.Receiver);
+        var receiver = explicitReceiver
+            ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, plan.ReceiverType, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow))
+            : this.Expression(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
         if (receiver < 0)
         {
             this.comparisonDepth = depth;
@@ -56,13 +60,25 @@ public sealed partial class OwnershipAnalysis
         }
 
         // Even a temporary has a distinct read marking the receiver Loan's start.
-        this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver);
+        var reservation = plan.ReceiverKind == SemanticsKind.Uniq && !explicitReceiver ? this.NewCallReservation(call) : -1;
+        var receiverValue = this.Value(receiver);
+        var read = this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver, reservation: reservation);
+        if (ReferenceTypes.IsBorrow(plan.ReceiverType) && this.body.Places[receiver].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
+        {
+            this.SetValue(read, OwnershipValueKind.Alias, [receiverValue]);
+        }
+
         if (plan.ReceiverKind != SemanticsKind.Owner)
         {
             var loan = this.BeginSharedLoan(receiver);
             if (plan.ReceiverType.Kind != BoundTypeKind.Function)
             {
                 this.body.ComparisonLoans[loan] = this.body.ComparisonLoans[loan] with { Callable = call, Mode = plan.ReceiverKind == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref };
+            }
+
+            if (reservation >= 0)
+            {
+                this.CompleteCallReservation(reservation, read, loan: loan);
             }
         }
         else
@@ -73,14 +89,10 @@ public sealed partial class OwnershipAnalysis
         var mark = this.arguments.Count;
         for (var i = 0; i < plan.Arguments.Length; i++)
         {
-            if (plan.Arguments[i].Kind != ArgumentOperationKind.Value)
-            {
-                this.Unsupported(call);
-            }
-
-            this.arguments.Add(this.Argument(call.ArgumentNodes[i], plan.Arguments[i].Kind));
+            this.arguments.Add(this.PrepareCallArgument(call, call.ArgumentNodes[i], plan.Arguments[i]));
         }
 
+        this.ActivateCallReservations(call, reservationMark);
         var acquired = true;
         for (var i = mark; i < this.arguments.Count; i++)
         {

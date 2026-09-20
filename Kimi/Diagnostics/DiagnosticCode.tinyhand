@@ -353,6 +353,12 @@
   + Name="ComparisonLoanConflict_Kd"
     Message="This operation conflicts with an active inspection, argument, or element access loan"
 
+  + Name="CallReservationConflict_Kd"
+    Message="This operation conflicts with an exclusive call reservation; only shared inspection is permitted during preparation"
+
+  + Name="CallActivationConflict_Kd"
+    Message="An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live"
+
   + Name="DeferredExpansionLimit_Kd"
     Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
 

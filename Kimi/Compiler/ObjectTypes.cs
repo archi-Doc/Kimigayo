@@ -9,4 +9,7 @@ internal static class ObjectTypes
 {
     internal static bool IsOwner(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Obj, Components.Count: 1 };
+
+    internal static bool IsBorrow(BoundType? type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 };
 }

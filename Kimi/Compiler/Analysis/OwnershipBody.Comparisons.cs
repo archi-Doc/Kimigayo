@@ -16,10 +16,32 @@ public sealed partial class OwnershipBody
         _ => false,
     };
 
-    internal bool ConflictsWithLoan(int id, int loanId)
+    internal bool ConflictsWithLoan(int id, int loanId, int activation = -1)
     {
         var operation = this.Operations[id];
         var loan = this.ComparisonLoans[loanId];
+        if (operation.Reservation >= 0 && operation.Kind == OwnershipOperationKind.Read)
+        {
+            operation = operation with { Kind = OwnershipOperationKind.UpdateTarget, LoanMode = LoanRequirement.Uniq };
+        }
+
+        if (loan.Reservation >= 0)
+        {
+            var reservation = this.CallReservations[loan.Reservation];
+            if (reservation.Place >= 0 && this.borrowDefinitions.Length >= this.Places.Count && this.IsDisjointProjection(id, reservation.Place))
+            {
+                return false;
+            }
+
+            loan = loan with { Mode = this.ReservationMode(loan.Reservation, activation >= 0 ? activation : id) };
+        }
+
+        if (operation.Reservation >= 0 && activation < 0)
+        {
+            // Independent overlapping reservations are never permitted.
+            operation = operation with { LoanMode = loan.Reservation >= 0 ? LoanRequirement.Uniq : LoanRequirement.Ref };
+        }
+
         if (loan.Call is { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap } &&
             ReferenceEquals(operation.Source, loan.Call) && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Write)
         {
@@ -84,7 +106,7 @@ public sealed partial class OwnershipBody
 
     internal bool ValidateComparisonLoans()
     {
-        if (!this.ValidateElementPaths())
+        if (!this.ValidateElementPaths() || !this.ValidateCallReservations())
         {
             return false;
         }
@@ -102,6 +124,16 @@ public sealed partial class OwnershipBody
         for (var i = 0; i < this.ComparisonLoans.Count; i++)
         {
             var loan = this.ComparisonLoans[i];
+            if (loan.Reservation >= 0)
+            {
+                if (!this.ValidCallReservation(loan.Reservation, i))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
             if (loan.Callable is not null)
             {
                 if (!this.ValidCallableLoan(i))
@@ -185,7 +217,7 @@ public sealed partial class OwnershipBody
                     }
                 }
                 else if (output < 0 || this.ComparisonLoans[output].Read != id ||
-                    (this.ComparisonLoans[output].Callable is not null ? !this.ValidCallableLoan(output) : this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementWriteLoan(output) :
+                    (this.ComparisonLoans[output].Reservation >= 0 ? !this.ValidCallReservation(this.ComparisonLoans[output].Reservation, output) : this.ComparisonLoans[output].Callable is not null ? !this.ValidCallableLoan(output) : this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementWriteLoan(output) :
                         this.ComparisonLoans[output].Projection >= 0 ? !this.ValidElementBorrowLoan(output) : this.ComparisonLoans[output].Parent != input))
                 {
                     return false;
@@ -257,7 +289,7 @@ public sealed partial class OwnershipBody
             (loan.Mode != LoanRequirement.Uniq || this.Places[loan.Place].Type.Semantics == SemanticsKind.Uniq || this.Places[loan.Place].Mutable) &&
             this.LoanInputs[loan.Read] == loan.Parent && this.LoanStates[loan.Read] == index &&
             (loan.Parent < 0 || this.ComparisonLoans[loan.Parent].Depth <= loan.Depth) &&
-            (loan.Mode != LoanRequirement.Uniq || !this.ElementWriteLoanConflicts(index));
+            (loan.Reservation >= 0 || loan.Mode != LoanRequirement.Uniq || !this.ElementWriteLoanConflicts(index));
     }
 
     private bool ValidElementWriteLoan(int id)
@@ -284,7 +316,7 @@ public sealed partial class OwnershipBody
                     argument.ParameterType is { Semantics: SemanticsKind.Uniq, Components.Count: 1 } parameter &&
                     ReferenceEquals(parameter.Components[0], this.Places[loan.Place].Type))
                 {
-                    return !this.ElementWriteLoanConflicts(id);
+                    return loan.Reservation >= 0 || !this.ElementWriteLoanConflicts(id);
                 }
             }
 

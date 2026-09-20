@@ -163,9 +163,10 @@ internal sealed partial class BodyLowering
             for (var i = 0; i < body.Operations.Count; i++)
             {
                 var operation = body.Operations[i];
-                if (operation.Kind == OwnershipOperationKind.Consume && operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter &&
+                if (operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Read && operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter &&
                     (uint)operation.Place < (uint)body.Places.Count &&
-                    body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result, Type.Kind: BoundTypeKind.Tuple })
+                    body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result } prepared &&
+                    (prepared.Type.Kind == BoundTypeKind.Tuple || ReferenceTypes.IsStorage(prepared.Type)))
                 {
                     preparedCopies = true;
                     break;

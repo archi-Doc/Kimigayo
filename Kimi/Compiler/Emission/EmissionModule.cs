@@ -17,6 +17,7 @@ internal enum EmissionOpcode : byte
     ElementAddress,
     BorrowAddress,
     ObjectPayload,
+    ObjectBorrow,
     Sequence,
     StoreScalar,
     StoreElement,

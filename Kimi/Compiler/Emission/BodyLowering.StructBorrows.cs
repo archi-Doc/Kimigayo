@@ -32,7 +32,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (value.Kind == OwnershipValueKind.Address)
         {
-            if (operation.Kind != OwnershipOperationKind.Borrow || !ReferenceTypes.IsStorage(ValueType(body, id)) ||
+            if (operation.Kind != OwnershipOperationKind.Borrow || !ReferenceTypes.IsBorrow(ValueType(body, id)) ||
                 (uint)operation.Place >= (uint)body.Places.Count || value.Constant != operation.Place ||
                 (body.IsReachable(id) && (body.GetBorrowInputState(id) & PlaceState.MustInit) == 0))
             {
@@ -41,20 +41,57 @@ internal sealed partial class BodyLowering
 
             var type = body.Places[operation.Place].Type;
             var output = ValueType(body, id)!;
-            if (ObjectTypes.IsOwner(type))
+            if (ObjectTypes.IsBorrow(output))
+            {
+                if (!(ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type)) || !ReferenceEquals(type.Components[0], output.Components[0]) ||
+                    (output.Semantics == SemanticsKind.ObjUniq && type.Semantics is not (SemanticsKind.Obj or SemanticsKind.ObjUniq)))
+                {
+                    return Fail("Object borrow requires matching view and exclusive authority.", out failure);
+                }
+
+                if (ObjectTypes.IsOwner(type) && value.Count == 0)
+                {
+                    function.AddScalar(EmissionOpcode.ObjectBorrow, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
+                    return true;
+                }
+
+                if (ObjectTypes.IsBorrow(type) && value.Count == 1 && ReferenceEquals(ValueType(body, Input(body, id, 0)), type) &&
+                    (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
+                {
+                    function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
+                    return true;
+                }
+
+                return Fail("Object borrow requires its initialized owner or parent borrow.", out failure);
+            }
+
+            if (ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type))
             {
                 var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadBorrow } conversion &&
                     ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(conversion.BoundType, output);
                 var memberProjection = operation.Source.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } call } } &&
                     ReferenceEquals(call.Receiver, operation.Source) && call.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection &&
                     call.ReceiverOperation.ObjectCompatibility == ConstraintProof.Proven && ReferenceEquals(call.ReceiverOperation.ParameterType, output);
-                if (value.Count != 0 || !ReferenceEquals(type.Components[0], output.Components[0]) || !(explicitProjection || memberProjection))
+                if (!ReferenceEquals(type.Components[0], output.Components[0]) || !(explicitProjection || memberProjection) ||
+                    (output.Semantics == SemanticsKind.Uniq && type.Semantics == SemanticsKind.ObjRef))
                 {
                     return Fail("Object payload address requires a proved complete-payload projection.", out failure);
                 }
 
-                function.AddScalar(EmissionOpcode.ObjectPayload, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
-                return true;
+                if (ObjectTypes.IsOwner(type) && value.Count == 0)
+                {
+                    function.AddScalar(EmissionOpcode.ObjectPayload, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
+                    return true;
+                }
+
+                if (ObjectTypes.IsBorrow(type) && value.Count == 1 && ReferenceEquals(ValueType(body, Input(body, id, 0)), type) &&
+                    (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
+                {
+                    function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, 16)]);
+                    return true;
+                }
+
+                return Fail("Payload projection lacks its prepared object reference.", out failure);
             }
 
             if (operation.Source is MemberAccessKoto projected && !ReferenceTypes.IsStorage(projected.BoundType) &&
@@ -131,7 +168,9 @@ internal sealed partial class BodyLowering
             };
         var receiver = Input(body, id, 0);
         var root = field is null ? null : ElementAccess.BorrowedPathRoot(field);
-        if (field is null || root is null || !ReferenceEquals(ValueType(body, receiver), root.BoundType) || !ReferenceTypes.IsValue(field.BoundType) ||
+        if (field is null || root is null ||
+            (!ReferenceEquals(ValueType(body, receiver), root.BoundType) &&
+                !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !ReferenceTypes.IsValue(field.BoundType) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
             return Fail("Borrowed field access requires a dominating typed receiver.", out failure);
@@ -166,6 +205,15 @@ internal sealed partial class BodyLowering
         }
 
         return true;
+    }
+
+    private bool PreparedBorrowMatches(OwnershipBody body, int read, int receiver, Koto root)
+    {
+        var place = ValuePlace(body.Operations[receiver]);
+        return KotoHelper.UnwrapParentheses(root).BoundSymbol is { } symbol &&
+            this.IsPreparedArgument(body, read, symbol, place) &&
+            body.Operations[this.elementNextCalls[read]].Source is InvocationKoto { BoundCall: { } call } &&
+            ReferenceTypes.CallTypeMatches(root.BoundType, ValueType(body, receiver), call);
     }
 
     // Inline parts are contiguous in their containing layout: sum each

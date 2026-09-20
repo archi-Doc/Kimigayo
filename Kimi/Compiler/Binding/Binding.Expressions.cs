@@ -168,7 +168,7 @@ public sealed partial class Binding
 
         if (expected?.Kind == BoundTypeKind.Function && actual?.Kind == BoundTypeKind.Closure &&
             actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
-            FitsType(closure.Signature, expected) && this.ProveCopy(actual, node) == ConstraintProof.Proven && !actual.CarriesOrigin)
+            CallableSignatureFits(closure.Signature, expected) && this.ProveCopy(actual, node) == ConstraintProof.Proven && !actual.CarriesOrigin)
         {
             node.ErasedFunctionType = expected;
             return expected;

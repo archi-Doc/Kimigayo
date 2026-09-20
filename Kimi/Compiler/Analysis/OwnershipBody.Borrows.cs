@@ -115,73 +115,80 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
-            var operation = this.Operations[op];
+            var activating = this.Operations[op].Kind == OwnershipOperationKind.ActivateCallBorrows;
             var loaded = false;
-            for (var p = 0; p < count; p++)
+            for (var r = activating ? this.Operations[op].Reservation : -2; r != -1; r = r >= 0 ? this.CallReservations[r].Next : -1)
             {
-                if (!this.borrowLive[(op * count) + p])
+                var accessId = activating ? this.CallReservations[r].Borrow : op;
+                var operation = this.Operations[accessId];
+                var accessMode = !activating && operation.Reservation >= 0 ? LoanRequirement.Ref : operation.LoanMode;
+                for (var p = 0; p < count; p++)
                 {
-                    continue;
-                }
-
-                if (!loaded)
-                {
-                    // All validity/footprint queries below are read-only. Replay
-                    // this block prefix once, only if some Loan needs its state.
-                    this.LoadInput(op, !this.IsReachable(op));
-                    loaded = true;
-                }
-
-                if ((this.CompleteState(p) & PlaceState.MayInit) == 0)
-                {
-                    continue;
-                }
-
-                for (var root = 0; root < count; root++)
-                {
-                    var mode = this.borrowDependencies[(p * count) + root];
-                    if (mode == LoanRequirement.None)
+                    if (!this.borrowLive[(op * count) + p] || (activating && p == this.CallReservations[r].Place))
                     {
                         continue;
                     }
 
-                    var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && ReferenceTypes.IsStorage(this.Places[root].Type);
-                    var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, operation.LoanMode) ||
-                        this.ElementAccessConflicts(operation, root, mode);
-                    if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce &&
-                        this.IsDisjointProjection(op, p))
+                    if (!loaded)
                     {
-                        accessConflict = false; // SPEC 15.6.2: disjoint static paths below one owned root.
+                        // All validity/footprint queries below are read-only. Replay
+                        // this block prefix once, only if some Loan needs its state.
+                        this.LoadInput(op, !this.IsReachable(op));
+                        loaded = true;
                     }
 
-                    if (this.Places[p].Type.Kind == BoundTypeKind.Slice && operation.Projection >= 0 && this.Projections[operation.Projection].Root == root)
+                    if ((this.CompleteState(p) & PlaceState.MayInit) == 0)
                     {
-                        var modifies = operation.Kind == OwnershipOperationKind.WriteElement ||
-                            (operation.Kind == OwnershipOperationKind.Produce && operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove);
-                        if (modifies)
+                        continue;
+                    }
+
+                    for (var root = 0; root < count; root++)
+                    {
+                        var mode = this.BorrowModeAt(p, root, op, this.borrowDependencies[(p * count) + root]);
+                        if (mode == LoanRequirement.None)
                         {
-                            accessConflict = this.slicePaths[p] < 0 || this.ElementPathsOverlap(operation.Projection, this.slicePaths[p]);
+                            continue;
                         }
-                    }
 
-                    var conflict = !external && ((this.BorrowRootState(p, root) & PlaceState.MustInit) == 0 || accessConflict);
-                    var value = this.Values[op];
-                    if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence && value.Count > 0)
-                    {
-                        var receiver = this.ValueOperands[value.Start];
-                        var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
-                        var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
-                            : value.Kind == OwnershipValueKind.Address ? operation.LoanMode : LoanRequirement.Ref;
-                        if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
-                            (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(op, p))
+                        var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && ReferenceTypes.IsBorrow(this.Places[root].Type);
+                        var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, accessMode) ||
+                            this.ElementAccessConflicts(operation, root, mode);
+                        if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce &&
+                            this.IsDisjointProjection(accessId, p))
                         {
-                            conflict = true;
+                            accessConflict = false; // SPEC 15.6.2: disjoint static paths below one owned root.
                         }
-                    }
 
-                    if (conflict)
-                    {
-                        this.ReportIssue(new(operation.Source, OwnershipFailure.ComparisonLoanConflict));
+                        if (this.Places[p].Type.Kind == BoundTypeKind.Slice && operation.Projection >= 0 && this.Projections[operation.Projection].Root == root)
+                        {
+                            var modifies = operation.Kind == OwnershipOperationKind.WriteElement ||
+                                (operation.Kind == OwnershipOperationKind.Produce && operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove);
+                            if (modifies)
+                            {
+                                accessConflict = this.slicePaths[p] < 0 || this.ElementPathsOverlap(operation.Projection, this.slicePaths[p]);
+                            }
+                        }
+
+                        var conflict = !external && ((this.BorrowRootState(p, root) & PlaceState.MustInit) == 0 || accessConflict);
+                        var value = this.Values[accessId];
+                        if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence && value.Count > 0)
+                        {
+                            var receiver = this.ValueOperands[value.Start];
+                            var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
+                            var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
+                                : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
+                            if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
+                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
+                            {
+                                conflict = true;
+                            }
+                        }
+
+                        if (conflict)
+                        {
+                            var reservation = activating ? r : operation.Reservation >= 0 ? operation.Reservation : this.reservationPlaces[p];
+                            this.ReportIssue(new(activating ? this.Operations[op].Source : operation.Source, OwnershipFailure.ComparisonLoanConflict, Reservation: reservation, Activation: activating));
+                        }
                     }
                 }
             }
@@ -196,7 +203,7 @@ public sealed partial class OwnershipBody
 
             if (type.Origin is { } origin)
             {
-                AddOrigin(place, origin, type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+                AddOrigin(place, origin, type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
@@ -252,6 +259,17 @@ public sealed partial class OwnershipBody
         bool Uses(int id, int place)
         {
             var operation = this.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.ActivateCallBorrows)
+            {
+                for (var r = operation.Reservation; r >= 0; r = this.CallReservations[r].Next)
+                {
+                    if (this.Operations[this.CallReservations[r].Borrow].Place == place)
+                    {
+                        return true; // Keep existing parent authority active until the child is activated.
+                    }
+                }
+            }
+
             if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
             {
                 return this.Values[id].Constant == place || operation.Input == place;
@@ -593,7 +611,7 @@ public sealed partial class OwnershipBody
                 // initialization. Follow the actual stored value, never merely
                 // a matching Origin (which could name a sibling Loan).
                 if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 &&
-                    this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsStorage(local.Type))
+                    this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsBorrow(local.Type))
                 {
                     var definition = this.borrowDefinitions[operation.Place];
                     if (definition >= 0 && definition < value)
@@ -761,7 +779,7 @@ public sealed partial class OwnershipBody
             }
             else if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0)
             {
-                var definition = this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsStorage(local.Type)
+                var definition = this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsBorrow(local.Type)
                     ? this.borrowDefinitions[operation.Place] : -1;
                 if (definition < 0 || definition >= value)
                 {

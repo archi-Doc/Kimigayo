@@ -57,6 +57,7 @@ internal static class ScalarDefaults
                 IsInsideDefault(local, function, parameterIndex),
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate, Declaration: SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern } } =>
                 IsInsideDefault(pattern, function, parameterIndex),
+            MemberAccessKoto field when ElementAccess.BorrowedPathRoot(field) is not null => SupportsPreparedStorage(field, function, parameterIndex),
             BinaryKoto element when ElementAccess.IsSyntax(element) => SupportsPreparedStorage(element, function, parameterIndex),
             ParenthesizedKoto parentheses => SupportsExpression(parentheses.Operand, function, parameterIndex),
             IfKoto conditional => SupportsConditional(conditional, function, parameterIndex),
@@ -236,6 +237,8 @@ internal static class ScalarDefaults
                 SupportsPatternValue(local.BoundType) && IsInsideDefault(local, function, parameterIndex),
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern } } local =>
                 SupportsPatternValue(local.BoundType) && IsInsideDefault(pattern, function, parameterIndex),
+            MemberAccessKoto field when ElementAccess.BorrowedPathRoot(field) is not null =>
+                SupportsPreparedStorage(field.Left, function, parameterIndex),
             BinaryKoto element when ElementAccess.IsSyntax(element) && ElementAccess.TryType(element, out _, out _) =>
                 SupportsPreparedStorage(element.Left, function, parameterIndex) &&
                 (element is not IndexKoto || SupportsExpression(element.Right, function, parameterIndex)),

@@ -78,7 +78,7 @@ public sealed partial class Binding
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope)
     {
         var syntax = ConversionTargetSyntax(conversion);
-        if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq })
+        if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
         {
             var pattern = this.BindType(conversion.Right, scope, this.TypeContext(conversion.Right, scope) with { SuppressOuter = true });
             var actual = this.BindNode(conversion.Left, scope);
@@ -101,7 +101,7 @@ public sealed partial class Binding
                 return Complete(conversion, payload);
             }
 
-            if (pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
+            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
                 this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
                 var storage = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.PlaceOrigin(conversion.Left));
@@ -110,7 +110,11 @@ public sealed partial class Binding
                 return Complete(conversion, storage);
             }
 
-            if (!this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out var adapted, out _, out _) ||
+            BoundType adapted;
+            var fits = ObjectTypes.IsBorrow(pattern)
+                ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
+                : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _);
+            if (!fits ||
                 !FitsType(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))
             {
@@ -129,6 +133,20 @@ public sealed partial class Binding
             if (operandType is null)
             {
                 return Complete(conversion, null);
+            }
+
+            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && IsObjectSemantics(operandType.Semantics) &&
+                shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
+            {
+                var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
+                if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
+                {
+                    return Fail(conversion, BindingFailure.InvalidAssignment);
+                }
+
+                Complete(conversion.Right, adapted);
+                conversion.ConversionBinding = ConversionBinding.Borrow;
+                return Complete(conversion, adapted);
             }
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&

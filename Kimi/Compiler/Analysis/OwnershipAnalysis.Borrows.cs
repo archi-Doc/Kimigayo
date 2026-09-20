@@ -34,7 +34,7 @@ public sealed partial class OwnershipAnalysis
         return true;
     }
 
-    private int BorrowStruct(Koto source, BoundType type)
+    private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
         if (unwrapped is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice } slice && type.Semantics == SemanticsKind.Ref)
@@ -71,7 +71,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             var projected = this.Place(field, type, OwnershipPlaceKind.Temporary, false);
-            var address = this.Emit(OwnershipOperationKind.Borrow, field, receiver, projected, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+            var address = this.Emit(OwnershipOperationKind.Borrow, field, receiver, projected, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
             this.SetValue(address, OwnershipValueKind.Address, [this.Value(receiver)], constant: receiver);
             return this.RegisterTemporary(projected);
         }
@@ -87,7 +87,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             var borrowed = this.Place(path, type, OwnershipPlaceKind.Temporary, false);
-            var borrow = this.Emit(OwnershipOperationKind.Borrow, path, ownerPlace, borrowed, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+            var borrow = this.Emit(OwnershipOperationKind.Borrow, path, ownerPlace, borrowed, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
             this.SetValue(borrow, OwnershipValueKind.Address, [], constant: ownerPlace);
             return this.RegisterTemporary(borrowed);
         }
@@ -100,10 +100,10 @@ public sealed partial class OwnershipAnalysis
         }
 
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
-        var operation = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+        var operation = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
         // A scalar temporary is materialized at the borrow from its one prepared value (SPEC 3.6.2, 10.2).
         var materialized = ScalarTypes.Supports(source.BoundType) && this.body.Places[place].Kind == OwnershipPlaceKind.Temporary;
-        this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsStorage(source.BoundType) || materialized ? [this.Value(place)] : [], constant: place);
+        this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsBorrow(source.BoundType) || materialized ? [this.Value(place)] : [], constant: place);
         return this.RegisterTemporary(result);
     }
 

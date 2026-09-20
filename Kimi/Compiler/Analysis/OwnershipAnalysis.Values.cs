@@ -74,7 +74,7 @@ public sealed partial class OwnershipAnalysis
 
         var preparedDefaultPlace = this.defaultFunction is not null && place >= 0 && this.body.Places[place].Kind != OwnershipPlaceKind.Local;
         if (preparedDefaultPlace && kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume &&
-            place >= 0 && ScalarTypes.Supports(this.body.Places[place].Type))
+            place >= 0 && ScalarResult(this.body.Places[place].Type))
         {
             // Prepared arguments are immutable acquired SSA values, including literal
             // temporaries and earlier defaults. They are not loadable caller locals.

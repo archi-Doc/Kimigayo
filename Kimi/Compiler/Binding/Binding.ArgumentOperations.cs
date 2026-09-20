@@ -137,6 +137,11 @@ public sealed partial class Binding
         }
 
         var projected = path is not null;
+        if (ObjectTypes.IsBorrow(pattern))
+        {
+            return !projected && this.AdaptObjectBorrow(source, pattern, actual, scope, false, out adapted, out quality, out kind);
+        }
+
         if (pattern.Kind != BoundTypeKind.Semantics || pattern.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq))
         {
             return !projected; // An owning receiver cannot acquire a sliced base.
@@ -195,6 +200,42 @@ public sealed partial class Binding
         }
 
         adapted = this.InternType(BoundTypeKind.Semantics, null, target, [referent], origin: this.PlaceOrigin(source));
+        return true;
+    }
+
+    private bool AdaptObjectBorrow(Koto source, BoundType pattern, BoundType actual, BindingScope scope, bool explicitOwner, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind)
+    {
+        adapted = actual;
+        quality = ArgumentAdaptation.Exact;
+        kind = ArgumentOperationKind.Value;
+        var exclusive = pattern.Semantics == SemanticsKind.ObjUniq;
+        if (ObjectTypes.IsBorrow(actual))
+        {
+            if (exclusive && (actual.Semantics != SemanticsKind.ObjUniq || ReachedThroughShared(source)))
+            {
+                return false;
+            }
+
+            if (actual.Semantics == SemanticsKind.ObjRef)
+            {
+                return true;
+            }
+
+            kind = ArgumentOperationKind.Reborrow;
+            quality = exclusive ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
+        }
+        else if ((actual.Semantics == SemanticsKind.Obj || (explicitOwner && !exclusive && actual.Semantics is SemanticsKind.Rc or SemanticsKind.Arc)) &&
+            this.BorrowablePlace(source, scope, exclusive))
+        {
+            kind = ArgumentOperationKind.Borrow;
+            quality = ArgumentAdaptation.CrossSemanticsBorrow;
+        }
+        else
+        {
+            return false;
+        }
+
+        adapted = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
         return true;
     }
 }

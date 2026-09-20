@@ -150,6 +150,11 @@ public sealed partial class OwnershipAnalysis
         this.body.LoanStates.Add(head);
         for (var loan = head; loan >= 0; loan = this.body.ComparisonLoans[loan].Parent)
         {
+            if (this.body.ComparisonLoans[loan].Reservation >= 0 || this.body.Operations[^1].Reservation >= 0)
+            {
+                continue; // Reservation phases and static subpaths are checked on the completed plan.
+            }
+
             if (this.body.ConflictsWithLoan(this.body.Operations.Count - 1, loan))
             {
                 // The diagnostic is deliberately Place-independent, matching ReportIssue's key.

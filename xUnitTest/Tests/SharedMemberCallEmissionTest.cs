@@ -31,12 +31,12 @@ public class SharedMemberCallEmissionTest
     }
 
     [Fact]
-    public void ExclusiveReceiverRemainsProtectedDuringArgumentEvaluation()
+    public void ExclusiveReceiverAllowsPreparedSharedInspection()
     {
         var c = MinimalEmissionTest.Analyze(Counter + "func run<T>(value: ref/T, c: uniq/Counter)\n    c.add(c.read())\nlet v = true\nvar c = Counter.init(1)\nrun(v, c)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]

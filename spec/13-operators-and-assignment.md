@@ -372,7 +372,7 @@ inspect(person.age@ref)    // Borrow the getter's Copy result temporary.
 
 Each operand and required receiver is evaluated once, and chained adaptations finish from the inside outward. Each operation uses its own acquisition and permission rules. Acquisition never propagates backward through a call or getter into hidden storage.
 
-Assignment remains right-hand-side-first and returns Unit. A custom setter receives the secured result normally; source Move and destination write permissions are independent. Destroying the old destination value must preserve result Loans and Origins. Loans begin at the Borrow or Reborrow, including during later argument evaluation; an exclusive receiver Loan is not delayed until after the arguments.
+Assignment remains right-hand-side-first and returns Unit. A custom setter receives the secured result normally; source Move and destination write permissions are independent. Destroying the old destination value must preserve result Loans and Origins. Borrow/Reborrow protection begins at formation. Eligible exclusive receiver and argument borrows, including direct explicit adaptations, follow [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations); other exclusive borrows are immediately active.
 
 ```kimi
 var x = makeResource() // Non-Copy.

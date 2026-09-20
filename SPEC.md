@@ -52,6 +52,7 @@ Origin syntax, prefix attachment, input omission and canonical contracts are def
 ### Part V. Ownership, cleanup, and failure
 
 - [15. Ownership and lifetime analysis](spec/15-ownership-and-lifetime-analysis.md)
+  - [Call borrow reservations](spec/15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations): preparation, activation and non-escaping explicit borrows.
 - [16. Scope exit and destruction](spec/16-scope-exit-and-destruction.md)
 - [17. Failure handling](spec/17-failure-handling.md)
 

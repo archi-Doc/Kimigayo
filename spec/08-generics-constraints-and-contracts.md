@@ -713,6 +713,8 @@ Access Effect
 
 A broad Borrow-versus-acquisition category is insufficient: Copy is distinguished from Move, shared from exclusive, and Borrow from Reborrow. Symbolic generic Types and Origins are allowed if the required effect and dependencies are uniquely expressible. This rule applies to ordinary acquisition and to all generic `@s`, `@s/T` and `@Type` forms.
 
+An eligible exclusive call adaptation uses [reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations) once its Access Effect is determined. Reservation does not relax definition-side proof for any admitted effect, or introduce a new Semantics or runtime operation.
+
 ```text
 Generic analysis
 ├─ effect known -> analyze normally

@@ -45,7 +45,7 @@ internal sealed partial class BodyLowering
         if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
             !ReferenceEquals(operation.Source.ErasedFunctionType, body.Places[operation.Place].Type) ||
-            !Binding.FitsType(closure.Signature, body.Places[operation.Place].Type) ||
+            !Binding.CallableSignatureFits(closure.Signature, body.Places[operation.Place].Type) ||
             this.aggregateLayouts.Get(source) is not { NeedsDestruction: false } layout || layout.Value.Layout.Size > 8 ||
             this.functions?.GetValueOrDefault(definition) is not { ResultSlot: false } entry ||
             (body.IsReachable(id) && !this.Dominates(input, id)))
@@ -231,14 +231,15 @@ internal sealed partial class BodyLowering
             var argument = plan.Arguments[i];
             var entry = this.arguments[i];
             var place = body.Operations[entry].Place;
-            if (!ReferenceEquals(body.Operations[entry].Source, call) || argument.ParameterIndex != i || argument.Kind != ArgumentOperationKind.Value ||
+            if (!ReferenceEquals(body.Operations[entry].Source, call) || argument.ParameterIndex != i ||
+                argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
                 !ReferenceEquals(argument.ParameterType, inputs.Components[i]) ||
                 !ReferenceEquals(argument.Source, call.ArgumentNodes[i]) || !ReferenceEquals(argument.SourceType, call.ArgumentNodes[i].BoundType) ||
-                !ReferenceEquals(body.Places[place].Type, argument.ParameterType) || !ScalarTypes.Supports(argument.ParameterType) ||
+                !ReferenceEquals(body.Places[place].Type, argument.ParameterType) || !ReferenceTypes.IsValue(argument.ParameterType) ||
                 body.Values[entry].Kind != OwnershipValueKind.Alias || body.Values[entry].Count != 1 ||
                 (body.IsReachable(id) && !this.Dominates(entry, id)))
             {
-                return Fail("Common-function argument lacks checked scalar acquisition.", out failure);
+                return Fail("Common-function argument lacks checked value or borrow acquisition.", out failure);
             }
 
             physical[i] = new(WindowsLowering.GetValue(argument.ParameterType!)!.ArgumentType!, string.Empty);

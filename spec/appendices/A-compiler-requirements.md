@@ -233,7 +233,7 @@ Preserve one-time receiver/argument evaluation, index-evaluation protection, exc
 | Lowering | Identical acceptance, results, effect/Abort order, and Loan legality with optimization enabled/disabled; O(1) view operations without element-proportional allocation or Copy |
 | Dynamic mutations | §4.7's success/absence/duplicate outcomes, ^0/^1 and maximum-length cases, RHS-first Dictionary replacement versus argument-first insertion, stored-key identity and remove/re-add order |
 | Capacity and cost | No internal allocation within capacity, including deletion churn; reserve additional arithmetic and overshoot; shrink failure preserves placement; growth/reindex operation counts meet amortized bounds; cleanup-free Array clear is O(1) |
-| Dependencies and effects | No dependency subtraction after clear/None/Err, old-result versus new-input dependencies, uniq element conflicts, receiver-before-argument Loans, generic equality/destructor summaries and static reentry |
+| Dependencies and effects | No dependency subtraction after clear/None/Err, old-result versus new-input dependencies, uniq element conflicts, receiver reservation before arguments and activation before entry, generic equality/destructor summaries and static reentry |
 | Temporary argument borrowing | Typed/generic/unfitted inputs, candidate ambiguity, normal temporary expiry and rejected escape, no implicit extra reference/handle layer or exclusive-temporary extension |
 
 ## A.14. Layout, LLVM, and runtime verification
@@ -358,12 +358,21 @@ protected base calls, defining Self, Property permissions, witness Identity,
 ObjectViewCompatible, and public ObjectCallCompatible status.
 
 For `replace`, `exchange`, and `swap`, verify original declaration Identity, textual
-argument order including names, early target Loans, full initialization, exact
+argument order including names, early target reservations and simultaneous activation, full initialization, exact
 Types, and structural disjointness. Test scalar and non-Copy contents, `let`
 fields, open ordinary owners, nested references, independent external dependencies,
 old-content dependencies, and returned destruction responsibilities. Verify
 destruction at the original location, Abort/divergence before placement, and
 absence of destruction during exchange/swap transfers.
+
+For §15.6.7, test implicit and direct explicit reservations, transparent parentheses,
+object projections, generic/indirect/Callable calls, constructors and prepared defaults.
+Check overlapping exclusive reservations, shared arguments retained at activation,
+ancestor authority, disjoint static paths, nested dependencies and cleanup effects.
+Storage, captures and control-flow results must not propagate reservations. Test
+abandoned calls, locally caught transfers, Never/Abort and unreachable checking.
+Corrupted reservation/activation plans must not reach emission; O0/O2 must preserve
+evaluation order, cleanup and the call-wide attribute contract.
 
 Payload tests must retain Identity, allocation, Dynamic Type, header, counts, and
 Descriptor; final release destroys the current contents once. Compare O0/O2 and

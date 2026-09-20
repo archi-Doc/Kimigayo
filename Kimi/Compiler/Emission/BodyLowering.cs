@@ -264,7 +264,7 @@ internal sealed partial class BodyLowering
             return this.LowerStructBorrow(body, function, index, out failure);
         }
 
-        if (operation.Kind == OwnershipOperationKind.EndComparisonLoans)
+        if (operation.Kind is OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.ActivateCallBorrows)
         {
             failure = null;
             return true;

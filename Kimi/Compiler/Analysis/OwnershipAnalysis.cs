@@ -129,7 +129,8 @@ public sealed partial class OwnershipAnalysis
                 OwnershipFailure.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
                 OwnershipFailure.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
                 OwnershipFailure.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
-                OwnershipFailure.ComparisonLoanConflict => DiagnosticCode.ComparisonLoanConflict_Kd,
+                OwnershipFailure.ComparisonLoanConflict => issue.Activation ? DiagnosticCode.CallActivationConflict_Kd :
+                    issue.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
                 OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
                 _ => DiagnosticCode.UnsupportedOwnership_Kd,
             });
@@ -320,7 +321,9 @@ public sealed partial class OwnershipAnalysis
         this.body.Solve();
         this.FinalizeResults();
         this.body.CheckUnreachable();
+        this.body.PrepareCallReservations();
         this.body.VerifyBorrows();
+        this.body.VerifyCallReservations();
 
         for (var i = 0; i < this.body.IssueStorage.Count; i++)
         {
@@ -602,7 +605,7 @@ public sealed partial class OwnershipAnalysis
             case ConversionKoto conversion:
                 if (conversion.ConversionBinding == ConversionBinding.PayloadBorrow)
                 {
-                    if (ObjectTypes.IsOwner(conversion.Left.BoundType) && ReferenceTypes.IsStorage(conversion.BoundType))
+                    if ((ObjectTypes.IsOwner(conversion.Left.BoundType) || ObjectTypes.IsBorrow(conversion.Left.BoundType)) && ReferenceTypes.IsStorage(conversion.BoundType))
                     {
                         return this.BorrowStruct(conversion.Left, conversion.BoundType!);
                     }
@@ -611,7 +614,7 @@ public sealed partial class OwnershipAnalysis
                     return -1;
                 }
 
-                if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsStorage(conversion.BoundType))
+                if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsBorrow(conversion.BoundType))
                 {
                     return this.BorrowStruct(conversion.Left, conversion.BoundType!);
                 }
@@ -988,23 +991,22 @@ public sealed partial class OwnershipAnalysis
 
         var mark = this.arguments.Count;
         var loanDepth = this.comparisonDepth++;
+        var reservationMark = this.body.CallReservations.Count;
         var borrows = false;
         if (plan.Receiver is { } receiver)
         {
-            this.arguments.Add(ReferenceTypes.IsStorage(plan.ReceiverOperation.ParameterType) && plan.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection
-                ? this.BorrowStruct(receiver, plan.ReceiverOperation.ParameterType!) : this.Argument(receiver, plan.ReceiverOperation.Kind));
+            this.arguments.Add(this.PrepareCallArgument(call, receiver, plan.ReceiverOperation));
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = plan.ArgumentOperations[i];
             borrows |= argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType);
-            this.arguments.Add(ReferenceTypes.IsStorage(argument.ParameterType) && argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
-                ? this.BorrowStruct(call.ArgumentNodes[i], argument.ParameterType!) : argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType)
-                ? this.BorrowArgument(call, argument) : this.Argument(call.ArgumentNodes[i], argument.Kind));
+            this.arguments.Add(this.PrepareCallArgument(call, call.ArgumentNodes[i], argument));
         }
 
         this.PrepareDefaults(plan, mark);
+        this.ActivateCallReservations(call, reservationMark);
         if (plan.Target.Declaration is FunctionKoto target && target.Parameters.Count != this.arguments.Count - mark)
         {
             this.Unsupported(call); // Every parameter must have an explicit or default acquisition.
@@ -1483,7 +1485,7 @@ public sealed partial class OwnershipAnalysis
         this.body.CleanupStepStorage.Add(new(operation, place, declaration, place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
     }
 
-    private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None, int projection = -1)
+    private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None, int projection = -1, int reservation = -1)
     {
         var id = this.body.OperationStorage.Count;
         if (id >= DeferredOperationLimit && this.body.DeferredPlans.Count != 0)
@@ -1491,7 +1493,7 @@ public sealed partial class OwnershipAnalysis
             throw new DeferredExpansionLimitException(source);
         }
 
-        this.body.OperationStorage.Add(new(kind, source, place, input, acquisition, LoanMode: loanMode, Projection: projection));
+        this.body.OperationStorage.Add(new(kind, source, place, input, acquisition, LoanMode: loanMode, Projection: projection, Reservation: reservation));
         this.RecordComparisonState(source);
         this.resultHeads.Add(-2);
         this.RecordValue(id, kind, source, place, input);
@@ -1502,9 +1504,9 @@ public sealed partial class OwnershipAnalysis
         return id;
     }
 
-    private int Emit(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None, int projection = -1)
+    private int Emit(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None, int projection = -1, int reservation = -1)
     {
-        var id = this.New(kind, source, place, input, acquisition, loanMode, projection);
+        var id = this.New(kind, source, place, input, acquisition, loanMode, projection, reservation);
         if (this.checkingRegion > 0 && this.body.CheckingRegions[this.checkingRegion].Entry < 0)
         {
             var region = this.body.CheckingRegions[this.checkingRegion];
