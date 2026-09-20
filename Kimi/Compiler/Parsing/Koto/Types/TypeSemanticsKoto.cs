@@ -58,6 +58,11 @@ public sealed class TypeSemanticsKoto : TypeKoto
             ? this.coreTypeToken.ToText()
             : this.nameOrSemanticsParameter ?? string.Empty;
 
+    /// <summary>Gets a value indicating whether this layer writes any Origin annotation.</summary>
+    /// <remarks>Equivalent to testing <see cref="OriginName"/>, <see cref="OriginExpression"/> and
+    /// <see cref="OriginArguments"/> together, in one field read.</remarks>
+    internal bool HasOrigin => this.origin is not null;
+
     internal bool IsTransparentWrapper => this.isTransparentWrapper;
 
     /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a simple named or primitive type with owner semantics.</summary>
@@ -177,9 +182,9 @@ public sealed class TypeSemanticsKoto : TypeKoto
         this.Adopt(expression);
         if (arguments is not null)
         {
-            foreach (var argument in arguments)
+            for (var i = 0; i < arguments.Length; i++)
             {
-                this.Adopt(argument.Value);
+                this.Adopt(arguments[i].Value);
             }
         }
 
@@ -220,11 +225,11 @@ public sealed class TypeSemanticsKoto : TypeKoto
             yield return this.OriginExpression;
         }
 
-        if (this.OriginArguments is not null)
+        if (this.OriginArguments is { } yielded)
         {
-            foreach (var argument in this.OriginArguments)
+            for (var i = 0; i < yielded.Length; i++)
             {
-                yield return argument.Value;
+                yield return yielded[i].Value;
             }
         }
     }
@@ -238,13 +243,13 @@ public sealed class TypeSemanticsKoto : TypeKoto
             return true;
         }
 
-        if (this.OriginArguments is not null)
+        if (this.OriginArguments is { } arguments)
         {
-            foreach (var argument in this.OriginArguments)
+            for (var i = 0; i < arguments.Length; i++)
             {
-                if (argument.Value == oldKoto)
+                if (arguments[i].Value == oldKoto)
                 {
-                    argument.Value = newKoto;
+                    arguments[i].Value = newKoto;
                     return true;
                 }
             }
@@ -305,23 +310,14 @@ public sealed class TypeSemanticsKoto : TypeKoto
 }
 
 /// <summary>Represents a named Origin argument.</summary>
-[TinyhandObject]
-public sealed partial class OriginArgument
+/// <remarks>The syntax tree is rebuilt by reparsing, so this carries no serialized state.</remarks>
+/// <param name="name">The Origin parameter name.</param>
+/// <param name="value">The Origin expression.</param>
+public struct OriginArgument(string name, Koto value)
 {
     /// <summary>Gets the declared Origin parameter name.</summary>
-    [Key(0)]
-    public string Name { get; private set; } = string.Empty;
+    public string Name { get; } = name;
 
     /// <summary>Gets the supplied Origin expression.</summary>
-    [IgnoreMember]
-    public Koto Value { get; internal set; } = default!;
-
-    /// <summary>Initializes a new instance of the <see cref="OriginArgument"/> class.</summary>
-    /// <param name="name">The Origin parameter name.</param>
-    /// <param name="value">The Origin expression.</param>
-    public OriginArgument(string name, Koto value)
-    {
-        this.Name = name;
-        this.Value = value;
-    }
+    public Koto Value { get; internal set; } = value;
 }

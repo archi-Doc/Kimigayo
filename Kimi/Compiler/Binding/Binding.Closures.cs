@@ -28,7 +28,7 @@ public sealed partial class Binding
 {
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || HasDeclaredOrigins(expected))
+        if (expected.Kind != BoundTypeKind.Function || expected.CarriesOrigin)
         {
             return false;
         }

@@ -374,10 +374,10 @@ public sealed partial class Binding
                 maxGenerics = Math.Max(maxGenerics, function.GenericArguments.Count);
                 maxOrigins = Math.Max(maxOrigins, function.Origins.Count);
                 maxInputOrigins = Math.Max(maxInputOrigins, InputOriginCount(function));
-                solveOrigins |= function.Origins.Count != 0 || (candidate.Type is { } resultPattern && HasDeclaredOrigins(resultPattern));
+                solveOrigins |= function.Origins.Count != 0 || (candidate.Type is { } resultPattern && resultPattern.CarriesOrigin);
                 for (var p = 0; !solveOrigins && p < function.Parameters.Count; p++)
                 {
-                    solveOrigins |= function.Parameters[p].Type.BoundType is { } input && HasDeclaredOrigins(input);
+                    solveOrigins |= function.Parameters[p].Type.BoundType is { } input && input.CarriesOrigin;
                 }
             }
         }

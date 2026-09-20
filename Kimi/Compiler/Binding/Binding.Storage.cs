@@ -218,6 +218,13 @@ public sealed partial class Binding
             return type;
         }
 
+        // Without a corresponding binder this rewrites Origins only, so an Origin-free
+        // subtree is already its own result; skip its scratch frames and recursion.
+        if (!type.CarriesOrigin && correspondingBinder is null)
+        {
+            return type;
+        }
+
         var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments, inputs) : null;
         var length = correspondingBinder is null ? type.LengthExpression : this.CorrespondingLength(type.LengthExpression, binder, correspondingBinder);
         var components = this.RentTypes(type.Components.Count);

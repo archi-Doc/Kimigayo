@@ -92,24 +92,6 @@ public sealed partial class Binding
         return true;
     }
 
-    private static bool HasDeclaredOrigins(BoundType type)
-    {
-        if (type.Origin is not null || type.OriginArguments.Count != 0)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (HasDeclaredOrigins(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
     {
         if (FitsType(actual, expected))

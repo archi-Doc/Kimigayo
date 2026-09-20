@@ -538,6 +538,11 @@ public sealed partial class Binding
 
     private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
     {
+        if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
+        {
+            return;
+        }
+
         if (pattern.Origin is { } p && actual.Origin is { } a)
         {
             this.MatchInputOrigin(p, a, binder, origins, inputs);
@@ -565,8 +570,13 @@ public sealed partial class Binding
         }
         else if (ReferenceEquals(pattern.Binder, binder) && pattern.Kind is OriginKind.Parameter or OriginKind.Input)
         {
+            // Anonymous aggregate input slots are recorded while parameter Types bind, so a
+            // pattern can outrun the width the caller reserved. Skip what cannot be carried.
             var target = pattern.Kind == OriginKind.Parameter ? origins : inputs;
-            target[pattern.Slot] = target[pattern.Slot] is { } previous ? this.Meet(previous, actual) : actual;
+            if ((uint)pattern.Slot < (uint)target.Length)
+            {
+                target[pattern.Slot] = target[pattern.Slot] is { } previous ? this.Meet(previous, actual) : actual;
+            }
         }
         else if (pattern.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto && binder.BoundSymbol?.Schema is { } schema)
         {

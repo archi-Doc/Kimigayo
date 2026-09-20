@@ -15,11 +15,23 @@ identity. Single nongeneric receiverless function references checked against an
 expected Function Type now validate inputs, results and Origin bindings; unsupported
 selection shapes are diagnosed rather than accepted with an unchecked signature.
 
-Debug/Release solution builds have zero warnings/errors; all **10,676 tests** pass
+A follow-up review of the surrounding code corrected five defects: a grouped
+Container suffix before a function arrow (`(Outer).Inner -> U`) was accepted as a
+Function Parameter List; a failed enum case substitution published stamped, partly
+filled storage metadata; anonymous aggregate input slots could be written past the
+width a caller reserved; Origin requirement accumulation indexed declaration slots
+by the Type's own argument count; and requirement dependents grew once per Bind for
+declarations that had dropped out. Subtree Origin summaries on `BoundType`,
+consumer-stamped requirement edges and a value `OriginArgument` keep warm rebinding
+allocation-free while reducing cold parse/Bind allocation and time on a pinned
+Origin workload. No specification rule changed.
+
+Debug/Release solution builds have zero warnings/errors; all **10,678 tests** pass
 per configuration, including 48 focused Origin revision cases. Artifact reload,
 syntax round trips, invalid lifetime/contract cases and warm ownership/emission
-allocation checks pass. Additional native evidence and exact commands are in
-[the verification record](PLAN_HISTORY.md#origin-syntax-elision-20260920).
+allocation checks pass. Additional native evidence, measurements and exact commands
+are in [the integration record](PLAN_HISTORY.md#origin-syntax-elision-20260920) and
+[the review record](PLAN_HISTORY.md#origin-review-20260920).
 
 This does not complete the existing general Origin-bound/principal solver,
 universal Semantics-role proofs, explicit-Origin/constrained specialization

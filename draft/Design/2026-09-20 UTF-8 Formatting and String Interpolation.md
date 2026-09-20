@@ -3,6 +3,7 @@
 - 日付: 2026-09-20
 - 状態: 設計案。例は提案APIを使用し、実装済み機能や検証済みABIを示さない。
 - 優先順位: 本案で変更する事項は[SPEC.md](../../SPEC.md)およびその参照先より優先する。変更しない事項には既存仕様を適用する。他の設計案の未統合機能を前提としない。
+- Originの構文・省略・互換性は正式仕様の[§15.3–4](../../spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins)に従い、本案では変更しない。
 - 目的: 書式化を1回の評価と書き込みで実行し、借用とバッファ再利用によって不要な確保・コピーを避ける。
 
 ## 1. 基本方針
@@ -24,25 +25,34 @@
 
 ```kimi
 contract BufferWriter
-    func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow from self, BufferFull>
+    func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow{self}, BufferFull>
 
 contract Utf8Format
-    func format<W> origin target(self: ref/Self, writer: uniq/(Utf8Writer<W> from target)) -> Result<(), BufferFull>
+    func format<W>(self: ref/Self, writer: uniq/Utf8Writer<W>) -> Result<(), BufferFull>
         W is BufferWriter
 ```
 
 | 型 | 所有権・依存関係 |
 | --- | --- |
 | `BufferFull` / `InvalidUtf8` | 状態を持たないCopyのエラー型。引数なしの公開コンストラクターを持つ |
-| `WriteWindow origin source` | Non-Copy。書き込み領域と確定位置を排他的に借用する |
-| `FixedBufferWriter origin source` | Non-Copy。呼び出し側の固定長バイト領域を排他的に借用する |
+| `WriteWindow {source}` | Non-Copy。書き込み領域と確定位置を排他的に借用する |
+| `FixedBufferWriter {source}` | Non-Copy。呼び出し側の固定長バイト領域を排他的に借用する |
 | `ReusableBufferWriter` | Non-Copy。伸長可能なヒープ領域を所有する |
-| `Utf8Slice origin source` | Copy。検証済みUTF-8領域を共有借用する。参照カウント更新なし |
-| `Utf8Writer<W> origin target` | Non-Copy。`W is BufferWriter`。`uniq/W from target`と失敗状態を保持する |
+| `Utf8Slice {source}` | Copy。検証済みUTF-8領域を共有借用する。参照カウント更新なし |
+| `Utf8Writer<W> {target}` | Non-Copy。`W is BufferWriter`。`uniq{target}/W`と失敗状態を保持する |
 
 `Utf8Writer`は常に借用専用で、Writer本体を所有せず、独自のヒープ領域を持たない。型引数`W`の内部Originも保持する。`uniq/W`に`BufferWriter`適合を自動追加する特別規則は設けない。
 
 ユーザーの適合は、既存の明示的な適合宣言・公開実装・制約検証に従う。同名メソッドがあるだけでは適合しない。
+
+Origin表記は次のように使い分ける。
+
+- 型宣言は`Utf8Writer<W> {target}`、型への適用は`Utf8Writer<W>{target}`。借用の注釈は`uniq{borrow}/Utf8Writer<W>{target}`のように`/`の前へ置く。外側の借用と内部WriterのOriginを混同しない。
+- 通常の入力`writer: uniq/Utf8Writer<W>`では、外側の借用と省略された`target`に独立した入力Originを持つ。どちらも定義時に全称化し、内部Originが外側の借用の期間を包含する整形式条件を保持する。省略は`static`固定や寿命延長ではない。
+- 結果の`WriteWindow{self}`は受け手の借用、`Utf8Slice{bytes.source}`は入力ビューの元領域に依存する。所有ビュー自体の変数名を借用Originとして扱わない。内部Originは結果省略の候補に自動追加しない。
+- ストレージの借用は`uniq{target}/W`のように明示し、入力省略規則をフィールドや入れ子の借用層へ拡張しない。完全な型引数`W`と`Self`は既存の束縛を保持する。
+
+例えば`format<W> {target}(..., writer: uniq/Utf8Writer<W>{target})`は上の省略形と同等の契約を表せる。適合実装との互換性は正規化されたOrigin契約で判定し、明示・省略の表記だけでオーバーロードや特殊化を区別しない。
 
 ### 2.2. 構築と標準Writer
 
@@ -50,9 +60,9 @@ contract Utf8Format
 
 | 関数 | 結果と動作 |
 | --- | --- |
-| `fixed<length N>(destination: uniq/[N of u8])` | `FixedBufferWriter from destination`。確定済み長さ0、容量N |
+| `fixed<length N>(destination: uniq/[N of u8])` | `FixedBufferWriter{destination}`。確定済み長さ0、容量N |
 | `buffer(initialCapacity: isize)` | `ReusableBufferWriter`。確定済み長さ0。0なら未確保で開始できる |
-| `writer<W>(destination: uniq/W)`、`W is BufferWriter` | `Utf8Writer<W> from destination`。失敗状態を持たず開始する |
+| `writer<W>(destination: uniq/W)`、`W is BufferWriter` | `Utf8Writer<W>{destination}`。失敗状態を持たず開始する |
 
 `initialCapacity`の負数は`KIMI_E_INDEX_BOUNDS`、上限超過・確保失敗は既存の確保用Abortとする。
 
@@ -61,7 +71,7 @@ contract Utf8Format
 | 操作 | 受け手 | 結果・動作 |
 | --- | --- | --- |
 | `length` / `capacity` | getterの`ref/Self` | `isize`。確定済みバイト数 / 全容量 |
-| `bytes()` | `ref/Self` | `Slice<u8> from self`。確定済み部分だけを共有借用 |
+| `bytes()` | `ref/Self` | `Slice<u8>{self}`。確定済み部分だけを共有借用 |
 | `clear()` | `uniq/Self` | `()`。長さを0に戻し、容量を保持する。消去は保証しない |
 | `reserve(minimum: isize)` | `uniq/Self` | §3のWindowを返す |
 
@@ -75,10 +85,10 @@ contract Utf8Format
 
 | 操作 | シグネチャ・動作 |
 | --- | --- |
-| `Text.utf8(text: ref/string)` | `Utf8Slice from text`。確保・コピー・再検証なし |
-| `Text.validateUtf8 origin source(bytes: Slice<u8> from source)` | `Result<Utf8Slice from source, InvalidUtf8>`。全体を1回検証。確保・コピーなし |
+| `Text.utf8(text: ref/string)` | `Utf8Slice{text}`。確保・コピー・再検証なし |
+| `Text.validateUtf8(bytes: Slice<u8>)` | `Result<Utf8Slice{bytes.source}, InvalidUtf8>`。全体を1回検証。確保・コピーなし |
 | `byteLength` | getterの`self: Self`から`isize`を返す |
-| `bytes(self: Self)` | `Slice<u8> from self.source`。元領域を共有借用したまま返す |
+| `bytes(self: Self)` | `Slice<u8>{self.source}`。元領域を共有借用したまま返す |
 
 検証は有効なUnicode scalarのUTF-8だけを受理する。不完全な列、過長符号化、surrogate、範囲外の値を拒否し、置換や正規化は行わない。共有Loanにより、検証後の競合する書き換えを禁止する。バイト単位の任意の切り出しを有効なUTF-8とみなしてはならない。
 
@@ -87,7 +97,7 @@ contract Utf8Format
 | 操作 | 動作 |
 | --- | --- |
 | `write(text: ref/string)` | 文字列のUTF-8を一括追記する |
-| `write origin input(text: Utf8Slice from input)` | 検証済み領域を再検証せず一括追記する |
+| `write(text: Utf8Slice)` | 検証済み領域を再検証せず一括追記する。入力の省略Originは受け手の`target`と独立 |
 | `writeChar(value: char)` | 1つのUnicode scalarを追記する |
 | `writeValue<T>(value: ref/T)`、`T is Utf8Format` | §4の共通規則で適合実装を1回呼ぶ |
 
@@ -118,7 +128,7 @@ Windowは予約開始位置・書き込み済み長さ・容量上限を保持�
 | --- | --- | --- |
 | `written` / `remaining` | getterの`ref/Self` | `isize`。今回の書き込み済み長さ / 残容量 |
 | `push(byte: u8)` | `uniq/Self` | `Result<(), BufferFull>`。1バイトを末尾へ書く |
-| `append origin input(bytes: Slice<u8> from input)` | `uniq/Self` | `Result<(), BufferFull>`。全バイトを末尾へコピーする |
+| `append(bytes: Slice<u8>)` | `uniq/Self` | `Result<(), BufferFull>`。全バイトを末尾へコピーする。入力の省略OriginはWindowの`source`と独立 |
 | `limit(maximum: isize)` | `owner/Self` | `Self`。元のWindowを消費し、容量を`min(現在の容量, maximum)`へ制限する |
 | `commit()` | `owner/Self` | `isize`。初期化済み部分を確定し、今回の確定バイト数を返す |
 
@@ -242,7 +252,7 @@ let result = Text.tryFormat(123, destination) // 成功: 3バイト。追加ヒ�
 
 ```kimi
 // Pointには Self is Utf8Format を宣言する。
-public func format<W> origin target(self: ref/Self, writer: uniq/(Utf8Writer<W> from target)) -> Result<(), BufferFull>
+public func format<W>(self: ref/Self, writer: uniq/Utf8Writer<W>) -> Result<(), BufferFull>
     W is BufferWriter
     return $tryWrite(writer, "(\(self.x), \(self.y))")
 ```
@@ -297,6 +307,7 @@ Console.writeLine("Hello, \(name)")
 - Windowの二重確定、消費後使用、競合する再予約・伸長・入力aliasを拒否すること。未確定破棄で長さが増えないこと。
 - 検証済みビューの競合書き換えを拒否し、確定したUTF-8に不完全な文字を含めないこと。
 - 公開APIだけで上限付きWriterとユーザー書式化を実装でき、借用・破棄・再利用が成立すること。
+- Originの明示形と省略形の適合が一致し、返却ビューの依存先とLoanを保持すること。入力同士のOriginを暗黙に同一化せず、不正な寿命延長・参照の脱出を拒否すること。
 - `writeLine`後も入力変数を使え、書式化失敗で補間本文を部分出力しないこと。§6.3の性能条件。
 
 本案は主に既存§12.3.3、§22.1、§22.4、§22.5.5を置き換え、静的Contract、Origin・Loan、生成計画へ新宣言を接続する。一般の可変Slice、rawメモリ取得、隠れた共有バッファ、グローバルプールは追加しない。

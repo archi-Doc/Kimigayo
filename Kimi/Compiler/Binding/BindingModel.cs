@@ -170,6 +170,10 @@ public sealed record BoundType : ControlFlowType
 {
     private readonly NumericCategory numeric;
 
+    // Whole-subtree summaries, computed once at construction (see the constructor).
+    private readonly bool carriesOrigin;
+    private readonly bool carriesOriginOrSlot;
+
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
         : base(name)
     {
@@ -182,6 +186,18 @@ public sealed record BoundType : ControlFlowType
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
+
+        // Components are complete before interning, so these summaries are exact and never revisited.
+        var found = origin is not null || originArguments is { Length: > 0 };
+        var slot = found || kind == BoundTypeKind.Parameter;
+        for (var i = 0; components is not null && i < components.Length && !(found && slot); i++)
+        {
+            found |= components[i].carriesOrigin;
+            slot |= components[i].carriesOriginOrSlot;
+        }
+
+        this.carriesOrigin = found;
+        this.carriesOriginOrSlot = slot;
     }
 
     private enum NumericCategory : byte
@@ -241,6 +257,14 @@ public sealed record BoundType : ControlFlowType
     internal BoundType[]? StoredCases { get; set; }
 
     internal ulong StorageVersion { get; set; }
+
+    /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin.</summary>
+    /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>
+    internal bool CarriesOrigin => this.carriesOrigin;
+
+    /// <summary>Gets a value indicating whether this subtree carries an Origin or a Type Parameter.</summary>
+    /// <remarks>Requirement accumulation only reads those two, so everything else is skippable.</remarks>
+    internal bool CarriesOriginOrSlot => this.carriesOriginOrSlot;
 
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
 

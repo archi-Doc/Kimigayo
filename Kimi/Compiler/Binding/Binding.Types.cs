@@ -451,9 +451,7 @@ public sealed partial class Binding
 
                         var target = this.TypeName(targetSyntax, scope, true);
                         if (target?.Kind == BindingSymbolKind.SemanticsTarget &&
-                            targetSyntax is not TypeSemanticsKoto { OriginName: not null } and
-                            not TypeSemanticsKoto { OriginExpression: not null } and
-                            not TypeSemanticsKoto { OriginArguments: not null })
+                            targetSyntax is not TypeSemanticsKoto { HasOrigin: true })
                         {
                             inner = target.Type;
                             // Grouping preserves the projection's role (SPEC 8.1.1–8.1.2).

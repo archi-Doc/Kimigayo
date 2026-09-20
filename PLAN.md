@@ -31,7 +31,7 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current focused work: **OSE — Origin syntax and elision integration**. Formal integration and the compiler's supported migration paths are implemented. Wider proof and callable support remain incomplete; the normative rules are not narrowed to those limits. The proposal is unchanged. [Verification and decisions](PLAN_HISTORY.md#origin-syntax-elision-20260920).
+Current focused work: **OSE — Origin syntax and elision integration**. Formal integration and the compiler's supported migration paths are implemented. Wider proof and callable support remain incomplete; the normative rules are not narrowed to those limits. The proposal is unchanged. [Verification and decisions](PLAN_HISTORY.md#origin-syntax-elision-20260920). The follow-up [review of the surrounding code](PLAN_HISTORY.md#origin-review-20260920) corrected five defects and reduced parse/Bind cost without changing any rule; it did not narrow OSE3.
 
 | Item | State | Acceptance / next action |
 | --- | --- | --- |
@@ -40,6 +40,7 @@ Current focused work: **OSE — Origin syntax and elision integration**. Formal 
 | OSE3 | IN_PROGRESS | Independent aggregate inputs, conditional reconstructed inputs/local/results, stored-accessor inheritance, supported specialization inheritance, Owned result defaults and supported callable comparison implemented. Next: extend I5's declared-bound/principal solver and conditional proofs, then inherit explicit-Origin/constrained specialization contracts and complete I18 function-item/Callable support. These are still required rules. |
 | OSE4 | DONE — supported paths | Source fixtures migrated; ownership anchors and substituted field metadata updated. Checked IR and native borrowed-aggregate/specialization cases verified. General custom-accessor and wider callable generation retain existing I12/I18 dependencies. |
 | OSE5 | DONE | Debug/Release regression, focused artifact/round-trip checks, warm allocation checks and O0/O2 native verification recorded in history. NativeAOT not run. |
+| OSE6 | DONE | Surrounding-code review: grouped Container suffix before a function arrow, stamped enum storage after a failed case substitution, unchecked anonymous input slot writes, schema indexing bounds and unbounded requirement dependents corrected. `BoundType` subtree Origin summaries, consumer-stamped requirement edges and a `struct` `OriginArgument` keep warm Bind allocation-free while reducing cold allocation 5.1% and warm Bind time 3–4% on the pinned Origin workload. |
 
 Previous focused work **DM6** is complete; its findings, 10,589-test Debug/Release verification and measurements are preserved in [history](PLAN_HISTORY.md#documentation-markdown-review-20260920) and [measurements](Benchmark/DocumentationMarkdown.md#dm6-parser-review-2026-09-20).
 

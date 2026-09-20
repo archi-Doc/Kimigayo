@@ -424,30 +424,28 @@ public sealed partial class Binding
                 return origin;
             }
 
-            if (InputCount(current.Owner) != 0)
+            var owner = current.Owner;
+            var inputCount = InputCount(owner);
+            for (var i = 0; i < inputCount; i++)
             {
-                for (var i = 0; i < InputCount(current.Owner); i++)
+                if (InputName(owner, i) != name)
                 {
-                    var inputSyntax = InputType(current.Owner, i);
-                    if (InputName(current.Owner, i) != name)
-                    {
-                        continue;
-                    }
-
-                    var type = BoundInputType(current.Owner, i);
-                    if (type is null && inputSyntax is not null && !ReferenceEquals(inputSyntax, use))
-                    {
-                        type = this.BindType(inputSyntax, current);
-                    }
-
-                    if (type?.Origin is { } input && IsBorrow(type.Semantics))
-                    {
-                        return input;
-                    }
-
-                    Fail(use, BindingFailure.InvalidOrigin);
-                    return null;
+                    continue;
                 }
+
+                var type = BoundInputType(owner, i);
+                if (type is null && InputType(owner, i) is { } inputSyntax && !ReferenceEquals(inputSyntax, use))
+                {
+                    type = this.BindType(inputSyntax, current);
+                }
+
+                if (type?.Origin is { } input && IsBorrow(type.Semantics))
+                {
+                    return input;
+                }
+
+                Fail(use, BindingFailure.InvalidOrigin);
+                return null;
             }
         }
 
@@ -480,20 +478,16 @@ public sealed partial class Binding
             // Only a declared input carrier introduces this Origin path; there is no Value lookup fallback.
             for (var current = scope; current is not null && result is null; current = current.Parent)
             {
-                if (InputCount(current.Owner) == 0)
+                var owner = current.Owner;
+                var inputCount = InputCount(owner);
+                for (var i = 0; i < inputCount; i++)
                 {
-                    continue;
-                }
-
-                for (var i = 0; i < InputCount(current.Owner); i++)
-                {
-                    var inputSyntax = InputType(current.Owner, i);
-                    if (InputName(current.Owner, i) != input.IdentifierName)
+                    if (InputName(owner, i) != input.IdentifierName)
                     {
                         continue;
                     }
 
-                    var type = BoundInputType(current.Owner, i) ?? (inputSyntax is null ? null : this.BindType(inputSyntax, current));
+                    var type = BoundInputType(owner, i) ?? (InputType(owner, i) is { } inputSyntax ? this.BindType(inputSyntax, current) : null);
                     if (type is { Kind: BoundTypeKind.Semantics })
                     {
                         type = type.Components[0];
@@ -516,11 +510,11 @@ public sealed partial class Binding
 
                     if (result is not null)
                     {
-                        if (current.Owner is FunctionKoto function)
+                        if (owner is FunctionKoto function)
                         {
                             input.BoundSymbol = this.symbols[function.Parameters[i]];
                         }
-                        else if (current.Owner is PropertyAccessorKoto accessor)
+                        else if (owner is PropertyAccessorKoto accessor)
                         {
                             var operation = Accessor(accessor);
                             input.BoundSymbol = i == 0 ? operation.SelfSymbol : operation.ValueSymbol;
@@ -599,7 +593,8 @@ public sealed partial class Binding
         {
             BoundOrigin? meet = null;
             var guaranteedBorrow = false;
-            for (var i = 0; i < InputCount(context.Owner); i++)
+            var inputCount = InputCount(context.Owner);
+            for (var i = 0; i < inputCount; i++)
             {
                 var type = BoundInputType(context.Owner, i);
                 if (type?.Origin is not { } input || (!IsBorrow(type.Semantics) && type.Kind != BoundTypeKind.SemanticsApplication))
@@ -627,7 +622,7 @@ public sealed partial class Binding
             {
                 if (aggregateSlot >= 0)
                 {
-                    for (var i = 0; i < InputCount(context.Owner); i++)
+                    for (var i = 0; i < inputCount; i++)
                     {
                         if (BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) != ConstraintProof.Proven)
                         {
@@ -646,7 +641,8 @@ public sealed partial class Binding
 
         bool OwnedWithoutConditionalBorrows()
         {
-            for (var i = 0; i < InputCount(context.Owner); i++)
+            var count = InputCount(context.Owner);
+            for (var i = 0; i < count; i++)
             {
                 var input = BoundInputType(context.Owner, i);
                 if (input?.Kind == BoundTypeKind.SemanticsApplication)

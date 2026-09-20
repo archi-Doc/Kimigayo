@@ -1477,8 +1477,10 @@ CloseParameters:
             {
                 return reader.PeekKind(offset + 1) == TokenKind.Slash;
             }
-            else if (kind is TokenKind.EndBlock or TokenKind.Invalid)
+            else if (kind is TokenKind.EndBlock or TokenKind.StartBlock or TokenKind.Separator or TokenKind.Invalid)
             {
+                // An Origin annotation never spans a statement boundary; an unbalanced
+                // brace must not drag this probe across the rest of the document.
                 break;
             }
         }
@@ -1509,7 +1511,9 @@ CloseParameters:
     {
         var open = reader.Read();
         Koto? expression = null;
-        List<OriginArgument>? arguments = null;
+        // Named lists are short; grow the result array directly instead of a list plus a copy.
+        OriginArgument[]? arguments = null;
+        var argumentCount = 0;
         var end = open.Span.End;
         reader.SkipSeparators();
         if (reader.CurrentTokenKind == TokenKind.CloseBrace)
@@ -1528,7 +1532,16 @@ CloseParameters:
                     reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "mixed positional and named Origins");
                 }
 
-                (arguments ??= new()).Add(new(name, ParseOriginExpression(ref reader)));
+                if (arguments is null)
+                {
+                    arguments = new OriginArgument[2];
+                }
+                else if (argumentCount == arguments.Length)
+                {
+                    Array.Resize(ref arguments, argumentCount * 2);
+                }
+
+                arguments[argumentCount++] = new(name, ParseOriginExpression(ref reader));
             }
             else
             {
@@ -1554,7 +1567,12 @@ CloseParameters:
             end = close.End;
         }
 
-        return (expression, arguments?.ToArray(), end);
+        if (arguments is not null && argumentCount != arguments.Length)
+        {
+            Array.Resize(ref arguments, argumentCount);
+        }
+
+        return (expression, arguments, end);
     }
 
     private static Koto ParseOriginExpression(ref TokenReader reader)
@@ -4192,7 +4210,9 @@ Loop:
             if (parseOrigin)
             {
                 var annotated = ParseTypeOrigin(ref reader, type);
-                parameterList = ReferenceEquals(annotated, type);
+                // An Origin annotation or a preceding Container suffix both stop this
+                // parenthesized list from acting as a Function Parameter List (SPEC 3.2).
+                parameterList &= ReferenceEquals(annotated, type);
                 type = annotated;
             }
         }

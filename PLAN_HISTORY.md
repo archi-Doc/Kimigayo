@@ -6,6 +6,8 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Origin surrounding-code review (2026-09-20)](#origin-review-20260920)
+- [Origin syntax and elision integration (2026-09-20)](#origin-syntax-elision-20260920)
 - [Documentation Markdown parser review (2026-09-20)](#documentation-markdown-review-20260920)
 - [Documentation Markdown formal specification integration (2026-09-20)](#documentation-markdown-specification-20260920)
 
@@ -7218,3 +7220,71 @@ An intermediate Debug build hit a file-copy lock because the test runner was sti
 ### Remaining coverage
 
 The general declared-bound/principal Origin solver and universal Semantics-role proofs were already incomplete and are not completed here. Explicit-Origin or constrained original specializations, wider conditional contract proofs, custom-accessor execution and general function-item/Callable conversion remain incomplete. The formal revision applies to them; unsupported implementations are not specification exceptions. Current scope and next actions remain in PLAN OSE3 and I5/I12/I18, rather than being duplicated here.
+
+<a id="origin-review-20260920"></a>
+
+## Origin surrounding-code review (2026-09-20)
+
+Follow-up review of the code around the integrated Origin syntax and elision revision, after the integration record above. Scope: defects, improvements, allocation and speed in the parser, Binding Origin model, requirement propagation and the storage metadata the revision touched. No specification rule was changed and no `draft` file was edited.
+
+### Corrected defects
+
+| ID | Defect | Correction |
+| --- | --- | --- |
+| OR1 | `ParseDeclarationType` overwrote `parameterList` after the grouped Container suffix branch, so `(Outer).Inner -> U` and `(Outer){a} -> U` became Function Types with no diagnostic, against SPEC 3.2. | The Origin check now narrows the flag instead of replacing it. Both spellings are added to `NestedTypeParseTest.FunctionArrowRequiresAParameterList`. |
+| OR2 | `PrepareInstantiatedStorage` stamped `StorageVersion` before `PrepareEnumCases`, so a failed case substitution left a stamped, partially filled `StoredCases`; the next call in the same Binding version returned it as valid. | The enum path clears `StoredCases` on failure, matching the struct path. |
+| OR3 | `MatchInputOrigin` wrote `target[pattern.Slot]` unchecked. Anonymous aggregate input slots are appended while parameter Types bind, so a pattern can name a slot wider than the width the caller reserved from `InputOriginCount`; other call sites already clamp with `Math.Min`. | The write is bounds-checked and a slot that cannot be carried is skipped. |
+| OR4 | `AccumulateRequirements` and `ValidateOriginRequirements` indexed `Schema.Origins` and `Schema.GenericSlots` by the Type's own argument/component count. | Both loops are bounded by the declaration's own slot counts. |
+| OR5 | `OriginRequirementWork.Dependents` was cleared only for declarations active in the current pass, while `CollectRequirementEdges` kept appending to producers that had dropped out, growing those lists once per Bind. | Work carries a pass stamp; only producers active in the current pass collect dependents. |
+
+### Improvements and reductions
+
+- `BoundType` computes two whole-subtree summaries at construction: `CarriesOrigin` and `CarriesOriginOrSlot`. Interning makes them exact and permanent. The recursive `HasDeclaredOrigins` helper is removed in favour of the first flag, and `SubstituteStoredOrigins`, `HasUnsubstitutedOrigin`, `MatchInputOrigins`, `RetainInnerOutlives` and `AccumulateRequirements` now skip complete uninteresting subtrees in constant time.
+- `CollectRequirementEdges` deduplicates with a monotonic consumer stamp on the producer instead of a `HashSet` of work pairs, since edge collection visits one consumer at a time.
+- `TypeSemanticsKoto.HasOrigin` replaces the three-property test in `CompleteOrigins` and in the pair-target check in `BindTypeStructure`.
+- `BindOriginName`, the qualified-Origin path of `BindOrigin` and the result branch of `OmittedOrigin` evaluate `InputCount` once per scope and no longer resolve input syntax before the name matches.
+- `OriginArgument` is a `struct`; its unused `TinyhandObject` attributes are removed, since the syntax tree is rebuilt by reparsing. `ParseOriginBraces` grows the result array directly instead of a `List` plus a copy.
+- `HasBorrowOriginSuffix` stops at statement and block boundaries so an unbalanced brace cannot drag the probe through the rest of the document.
+
+`OriginParameter.Span` and the `OriginNameList` span tracking were examined as apparently dead and were kept: `TypeBindingTest.OriginDeclarationSpansAndExpressionBindingsAreRetained` requires them.
+
+### Measurements
+
+Origin-heavy workload: 256 functions over `struct View<T> {a, b}` and a nested `Outer{o}.Inner{i}`, each with named aggregate arguments, a prefix borrow Origin and a grouped Container qualifier. Pinned to one core at high priority, interleaved baseline/current processes in the same session, medians and minima over 40 warm and 20 cold samples.
+
+| Measure | Baseline | Current |
+| --- | --- | --- |
+| Warm `Bind` of the existing syntax | 3.41–3.43 ms min | 3.25–3.32 ms min |
+| Warm `Bind` allocation | 0 bytes | 0 bytes |
+| Cold parse and first `Bind` | 6.24–6.53 ms median | 6.00–6.04 ms median |
+| Cold allocation | 2,823,968 bytes | 2,679,720 bytes |
+
+Timing on this hybrid CPU varies by several percent between unpinned runs; only the interleaved pinned comparison above is reported. This is a bounded workload measurement, not a compiler-wide throughput claim.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| Debug solution build | warning-free |
+| Release solution build | warning-free |
+| Full Debug suite | 10,678 passed; no failures, errors, skips or unrun cases |
+| Full Release suite | 10,678 passed; no failures, errors, skips or unrun cases |
+| Anonymous Origin native fixtures | 4 native executions passed, O0/O2 |
+| BorrowStruct native regressions | 20 native executions passed, O0/O2 |
+
+Commands (from the repository root):
+
+```powershell
+dotnet build Kimigayo.slnx -c Debug -v quiet
+dotnet build Kimigayo.slnx -c Release -v quiet
+./xUnitTest/bin/Debug/net10.0/xUnitTest.exe -parallel all
+./xUnitTest/bin/Release/net10.0/xUnitTest.exe -parallel all
+./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Anonymous*Origin*.ll' -OutputDirectory bin/origin-review-native
+./backend/windows-x64/test-scalars.ps1 -FixturePattern 'BorrowStruct*.ll' -OutputDirectory bin/origin-review-regression
+```
+
+The count rises from 10,676 to 10,678 because of the two added parameter-list cases. No NativeAOT test was run. OR2 and OR3 are defensive corrections on paths the suite does not reach today, so they carry no new regression case.
+
+### Remaining coverage
+
+This review did not change the open Origin work. The general declared-bound/principal solver, universal Semantics-role proofs, explicit-Origin and constrained specialization inheritance, custom-accessor execution and general function-item/Callable conversion remain open in PLAN OSE3 and I5/I12/I18.

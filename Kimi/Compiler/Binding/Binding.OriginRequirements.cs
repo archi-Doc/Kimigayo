@@ -9,13 +9,16 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, OriginRequirementWork> originRequirementNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<OriginRequirementWork> activeOriginRequirements = new();
     private readonly Queue<OriginRequirementWork> originRequirementQueue = new();
-    private readonly HashSet<(OriginRequirementWork Source, OriginRequirementWork Target)> originRequirementEdges = new();
+    private uint originRequirementPass;
+    private uint originRequirementConsumer;
 
     private void ComputeOriginRequirements()
     {
         this.activeOriginRequirements.Clear();
         this.originRequirementQueue.Clear();
-        this.originRequirementEdges.Clear();
+        // Retained work survives between passes so summaries and lists are reused. A pass
+        // stamp keeps declarations that dropped out from accumulating dependents forever.
+        this.originRequirementPass++;
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
@@ -36,6 +39,7 @@ public sealed partial class Binding
 
             work.Schema = schema;
             work.Dependents.Clear();
+            work.Pass = this.originRequirementPass;
             work.Queued = true;
             this.activeOriginRequirements.Add(work);
             this.originRequirementQueue.Enqueue(work);
@@ -43,6 +47,8 @@ public sealed partial class Binding
 
         for (var i = 0; i < this.activeOriginRequirements.Count; i++)
         {
+            // One consumer at a time, so a monotonic stamp on the producer replaces an edge set.
+            this.originRequirementConsumer++;
             this.VisitRequirementTypes(this.activeOriginRequirements[i], collectEdges: true);
         }
 
@@ -133,8 +139,10 @@ public sealed partial class Binding
 
     private void CollectRequirementEdges(BoundType type, OriginRequirementWork consumer)
     {
-        if (type.Symbol?.Declaration is { } declaration && this.originRequirementNodes.TryGetValue(declaration, out var source) && this.originRequirementEdges.Add((source, consumer)))
+        if (type.Symbol?.Declaration is { } declaration && this.originRequirementNodes.TryGetValue(declaration, out var source) &&
+            source.Pass == this.originRequirementPass && source.Consumer != this.originRequirementConsumer)
         {
+            source.Consumer = this.originRequirementConsumer;
             source.Dependents.Add(consumer);
         }
 
@@ -151,6 +159,10 @@ public sealed partial class Binding
         internal DeclarationSchema Schema { get; set; } = schema;
 
         internal List<OriginRequirementWork> Dependents { get; } = new();
+
+        internal uint Pass { get; set; }
+
+        internal uint Consumer { get; set; }
 
         internal bool Queued { get; set; }
     }

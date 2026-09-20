@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     private static bool PerCallSignature(BoundType signature)
     {
-        if (HasDeclaredOrigins(signature.Components[1]))
+        if (signature.Components[1].CarriesOrigin)
         {
             return false;
         }
@@ -17,8 +17,8 @@ public sealed partial class Binding
         for (var i = 0; i < inputs.Components.Count; i++)
         {
             var input = inputs.Components[i];
-            if (HasDeclaredOrigins(input) && !(input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
-                input.Origin.Slot == i && !HasDeclaredOrigins(input.Components[0])))
+            if (input.CarriesOrigin && !(input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
+                input.Origin.Slot == i && !input.Components[0].CarriesOrigin))
             {
                 return false;
             }

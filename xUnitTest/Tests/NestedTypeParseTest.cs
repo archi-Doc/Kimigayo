@@ -93,6 +93,8 @@ public class NestedTypeParseTest
     [InlineData("ref/(i32) -> bool")]
     [InlineData("i32 -> bool")]
     [InlineData("i32{a} -> bool")]
+    [InlineData("(Outer).Inner -> bool")]
+    [InlineData("(Outer){a} -> bool")]
     public void FunctionArrowRequiresAParameterList(string type)
     {
         // A bare Type cannot replace the Function Parameter List (SPEC 3.2); recovery still keeps the arrow.

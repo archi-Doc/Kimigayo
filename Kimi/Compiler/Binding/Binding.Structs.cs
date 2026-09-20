@@ -90,6 +90,8 @@ public sealed partial class Binding
             type.StorageVersion = this.storageVersion;
             if (!this.PrepareEnumCases(type))
             {
+                // A stamped version must never publish partially substituted cases.
+                type.StoredCases = null;
                 return false;
             }
 

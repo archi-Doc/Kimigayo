@@ -42,7 +42,7 @@ public sealed partial class Binding
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
-        var written = annotation is not null && (annotation.OriginName is not null || annotation.OriginExpression is not null || annotation.OriginArguments is not null);
+        var written = annotation is { HasOrigin: true };
         if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
         {
             return Fail(use, BindingFailure.InvalidOrigin);
@@ -250,6 +250,11 @@ public sealed partial class Binding
 
     private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use)
     {
+        if (!inner.CarriesOrigin)
+        {
+            return;
+        }
+
         if (inner.Origin is { } origin && !OriginOutlives(origin, outer))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer));
@@ -272,6 +277,12 @@ public sealed partial class Binding
 
     private void AccumulateRequirements(BoundType type, DeclarationSchema schema, int polarity, ref bool changed)
     {
+        // Only Origins and Type Parameter slots contribute; other subtrees cannot change a summary.
+        if (!type.CarriesOriginOrSlot)
+        {
+            return;
+        }
+
         if (type.Kind == BoundTypeKind.Parameter)
         {
             for (var i = 0; i < schema.GenericSlots.Count; i++)
@@ -297,10 +308,13 @@ public sealed partial class Binding
             this.AccumulateOrigin(origin, schema, polarity, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref, ref changed);
         }
 
-        for (var i = 0; i < type.OriginArguments.Count; i++)
+        // A Type may carry fewer or more arguments than its declaration while a pass is
+        // still completing; only the slots the declaration actually owns carry requirements.
+        var declared = type.Symbol?.Schema;
+        for (var i = 0; i < type.OriginArguments.Count && i < (declared?.Origins.Count ?? 0); i++)
         {
-            var source = type.Symbol?.Schema?.Origins[i];
-            if (source is null || source.Variance == OriginVariance.Unused)
+            var source = declared!.Origins[i];
+            if (source.Variance == OriginVariance.Unused)
             {
                 continue;
             }
@@ -312,7 +326,7 @@ public sealed partial class Binding
         for (var i = 0; i < type.Components.Count; i++)
         {
             var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
-            if (type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } target)
+            if (type.Kind == BoundTypeKind.Constructed && declared is { } target && i < target.GenericSlots.Count)
             {
                 var variance = target.GenericSlots[i].OriginVariance;
                 if (variance == OriginVariance.Unused)
@@ -375,7 +389,7 @@ public sealed partial class Binding
 
             if (type.Symbol?.Schema is { } schema)
             {
-                for (var i = 0; i < type.OriginArguments.Count; i++)
+                for (var i = 0; i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
                 {
                     if (type.OriginArguments[i].Kind == OriginKind.Static && schema.Origins[i].LoanRequirement == LoanRequirement.Uniq)
                     {
