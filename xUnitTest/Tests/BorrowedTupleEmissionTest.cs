@@ -12,7 +12,7 @@ public class BorrowedTupleEmissionTest
     [InlineData("Local", "let pair: (i32, bool) = (42, true)\nlet r = pair@ref\nrequire r.0 == 42 and r.1 else => $abort(\"value\")")]
     [InlineData("ExclusiveRead", "var pair: (i32, bool) = (42, true)\nlet r = pair@uniq\nrequire r.0 == 42 and r.1 else => $abort(\"value\")")]
     [InlineData("Implicit", "func first(pair: ref/(i32, bool)) -> i32 => pair.0\nlet pair: (i32, bool) = (42, true)\nrequire first(pair) == 42 else => $abort(\"value\")")]
-    [InlineData("Returned", "func view(pair: ref/(i32, bool)) -> ref/(i32, bool) from pair => pair\nlet pair: (i32, bool) = (42, true)\nlet r = view(pair@ref)\nrequire r.0 == 42 else => $abort(\"value\")")]
+    [InlineData("Returned", "func view(pair: ref/(i32, bool)) -> ref{pair}/(i32, bool) => pair\nlet pair: (i32, bool) = (42, true)\nlet r = view(pair@ref)\nrequire r.0 == 42 else => $abort(\"value\")")]
     [InlineData("Reborrow", "func first(pair: ref/(i32, bool)) -> i32 => pair.0\nfunc forward(pair: uniq/(i32, bool)) -> i32 => first(pair)\nvar pair: (i32, bool) = (42, true)\nrequire forward(pair@uniq) == 42 else => $abort(\"value\")")]
     [InlineData("LastUse", "var pair: (i32, bool) = (42, true)\nlet r = pair@ref\nlet n = r.0\npair = (7, false)\nrequire n == 42 and pair.0 == 7 else => $abort(\"value\")")]
     [InlineData("UnitPrefix", "func read(pair: ref/((), i64, bool)) -> i64 => pair.1\nrequire read(((), 42, true)) == 42 else => $abort(\"offset\")")]
@@ -24,7 +24,7 @@ public class BorrowedTupleEmissionTest
     [InlineData("var pair: (i32, bool) = (1, true)\nlet r = pair@ref\npair = (2, false)\nlet n = r.0")]
     [InlineData("var pair: (i32, bool) = (1, true)\nlet r = pair@ref\npair.0 = 2\nlet n = r.0")]
     [InlineData("let pair: (i32, bool)\nlet r = pair@ref\nlet n = r.0")]
-    [InlineData("func view(pair: ref/(i32, bool)) -> ref/(i32, bool) from pair => pair\nlet r = view((1, true))\nlet n = r.0")]
+    [InlineData("func view(pair: ref/(i32, bool)) -> ref{pair}/(i32, bool) => pair\nlet r = view((1, true))\nlet n = r.0")]
     [InlineData("let pair: (i32, string) = (1, \"owned\")\nlet moved = pair.1\nlet r = pair@ref\nlet n = r.0")]
     public void RejectsInvalidLifetimeOrInitialization(string source)
     {

@@ -176,7 +176,7 @@ public class KotoHierarchyTest
                 func Run()
                     return
 
-            struct Container<s/T> origin source
+            struct Container<s/T> {source}
                 T is Comparable
                 var value: s/T
                 group Rejected

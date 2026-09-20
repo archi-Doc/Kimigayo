@@ -515,7 +515,7 @@ Repository PowerShell builders share the same root layout: `-ToolchainRoot`, the
 **Initial setup.** `backend/windows-x64/setup.ps1 -LlvmBin <existing LLVM directory>` validates the complete selected LLVM tool set against the embedded profile, copies the nine executables above and the adjacent support DLLs to the selected toolchain root, and then invokes the backend build and verification using those copies. Without `-LlvmBin`, it validates and uses the tools already in the root. The helper sources and the freestanding test harness require no Windows SDK or additional Clang headers. Setup uses an existing local installation; it neither downloads tools nor changes PATH. It succeeds only if this run produces the adopted backend and the installed archive matches the catalog. Missing tools, failed version probes and mismatches are errors, and setup has no exploratory override. A distribution of LLVM must keep the applicable license notices. Generated and copied toolchain contents are ignored by Git, while sources, scripts and the authoritative catalog remain version-controlled.
 
 ```powershell
-# Once per toolchain installation, from the Kimigayo checkout:
+# Once per toolchain installation, {the} Kimigayo checkout:
 ./backend/windows-x64/setup.ps1 -LlvmBin C:/App/llvm
 
 # Rebuild the native backend after changing its sources:

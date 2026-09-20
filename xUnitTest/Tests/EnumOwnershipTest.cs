@@ -234,9 +234,9 @@ public class EnumOwnershipTest
     [InlineData("enum E\n    Empty\n    Again(E)\nlet x = E.Empty")]
     [InlineData("enum E<T>\n    Empty\n    Again(E<E<T>>)\nlet x = E<i32>.Empty")]
     [InlineData("enum A\n    Empty\n    Again(B)\nenum B\n    Again(A)\nlet x = A.Empty")]
-    [InlineData("enum V<T> origin a\n    Some(ref/T from a)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
-    [InlineData("func f(x: ref/i32 from static) -> Option<ref/i32 from static> => .Some(x)")]
-    [InlineData("func f(x: uniq/i32) -> Option<uniq/i32 from x> => .Some(x)")]
+    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
+    [InlineData("func f(x: ref{static}/i32) -> Option<ref{static}/i32> => .Some(x)")]
+    [InlineData("func f(x: uniq/i32) -> Option<uniq{x}/i32> => .Some(x)")]
     public void UnsupportedPayloadTypesCannotBeHiddenByAnEmptyCase(string source)
     {
         var c = Parse(source);

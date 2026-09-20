@@ -10,7 +10,7 @@ namespace XunitTest;
 public class SpecRevisionAnalysisTest
 {
     [Theory]
-    [InlineData("computed child: objref/Node\n    get(self: ref/Self) -> objref/Node from self => self.node@objref")]
+    [InlineData("computed child: objref/Node\n    get(self: ref/Self) -> objref{self}/Node => self.node@objref")]
     [InlineData("computed value: obj/Node\n    get(self: ref/Self) -> obj/Node => Node.new()")]
     [InlineData("var value: i64\n    get(self: ref/Self) -> i64\n        return 1")]
     [InlineData("var value: i32\n    get")]
@@ -57,10 +57,10 @@ public class SpecRevisionAnalysisTest
     [Fact]
     public void ContractGetterAnnotationIsPreserved()
     {
-        var tree = Parse("contract Collection\n    property child: objref/Node\n        get(self: ref/Self) -> objref/Node from self");
+        var tree = Parse("contract Collection\n    property child: objref/Node\n        get(self: ref/Self) -> objref{self}/Node");
         var property = Assert.IsType<PropertyKoto>(Assert.Single(Assert.Single(tree.RootKoto.NestedDeclarationContainers).Members));
         Assert.True(property.IsContractRequirement);
-        Assert.Equal("objref/Node from self", property.Accessors[0].ReturnType!.ToString());
+        Assert.Equal("objref{self}/Node", property.Accessors[0].ReturnType!.ToString());
         Assert.True(property.Accessors[0].IsBodyless);
     }
 

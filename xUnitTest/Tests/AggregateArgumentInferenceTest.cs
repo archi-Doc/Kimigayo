@@ -19,8 +19,8 @@ public class AggregateArgumentInferenceTest
     [InlineData("func use<T>(first: T, second: T) => ()\nlet n: u8 = 2\nuse((255, true), (n, true))")]
     [InlineData("func use<T>(first: T, second: T) => ()\nlet n: u8 = 2\nuse((n, true), (255, true))")]
     [InlineData("func use<length N, T>(value: ([N of T], bool)) => ()\nuse<0, u8>(([], true))")]
-    [InlineData("func use origin a(value: (ref/i32 from a, bool)) => ()\nfunc forward origin b(x: ref/i32 from b) => use((x, true))")]
-    [InlineData("func use origin a(value: [1 of (ref/i32 from a, bool)]) => ()\nfunc forward origin b(x: ref/i32 from b) => use([(x, true)])")]
+    [InlineData("func use {a}(value: (ref{a}/i32, bool)) => ()\nfunc forward {b}(x: ref{b}/i32) => use((x, true))")]
+    [InlineData("func use {a}(value: [1 of (ref{a}/i32, bool)]) => ()\nfunc forward {b}(x: ref{b}/i32) => use([(x, true)])")]
     public void CollectsStructuralEvidenceBeforeDefaulting(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

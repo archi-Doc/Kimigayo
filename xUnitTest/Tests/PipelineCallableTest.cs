@@ -38,7 +38,7 @@ public class PipelineCallableTest
     [InlineData("initializer")]
     public void RejectsCorruptSharedMatchPlans(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("func present<T> origin source(items: Slice<T> from source) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [1 of i32] = [4]\nrequire present(values[..]) == 1 else => $abort(\"match\")");
+        var c = MinimalEmissionTest.Analyze("func present<T> {source}(items: Slice<T>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [1 of i32] = [4]\nrequire present(values[..]) == 1 else => $abort(\"match\")");
         Assert.True(c.Emission.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "present");
         var match = Assert.Single(body.Matches);
@@ -71,7 +71,7 @@ public class PipelineCallableTest
 
     [Theory]
     [InlineData("(value: ref/Item)", "(value: uniq/Item)")]
-    [InlineData("(value: ref/Item)", "(value: ref/Item from static)")]
+    [InlineData("(value: ref/Item)", "(value: ref{static}/Item)")]
     public void RejectsStrongerInputContract(string original, string replacement)
         => Assert.False(MinimalEmissionTest.Analyze(Source.Replace(original, replacement, StringComparison.Ordinal)).Binding.Result.IsComplete);
 }

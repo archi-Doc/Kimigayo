@@ -211,7 +211,7 @@ yield [Expression] | yield to Label [: Expression]
 
 Brackets mark optional syntax. Omitted `return`/`exit`/`yield` values mean `()` and are checked against the target's result Type. `for`, `while` and `defer` accept Unit expressions as `exit` operands, not non-Unit values. `continue` has no value, and `return` has no named form.
 
-The operand, and `to Label` when present, start on the transfer keyword's physical line. A named value follows `:`; the colon is omitted when the value is omitted. Normal continuation is allowed after the expression starts. `to` is contextual only immediately after `exit`, `continue` or `yield`; write `exit (to)` to use a variable of that name. Postfix `value to Label` and `value from Label` are not transfer syntax.
+The operand, and `to Label` when present, start on the transfer keyword's physical line. A named value follows `:`; the colon is omitted when the value is omitted. Normal continuation is allowed after the expression starts. `to` is contextual only immediately after `exit`, `continue` or `yield`; write `exit (to)` to use a variable of that name. Postfix `value to Label` and `value{Label}` are not transfer syntax.
 
 ```kimi
 exit to search: score(item)
@@ -297,7 +297,7 @@ The receiver Loan of `next` ends before the loop body. Results may keep existing
 | --- | --- |
 | Array or fixed array under `owner` Semantics | Elements consumed as `T` |
 | `ResolvedRange` | `isize`; an unresolved `Range` is not Iterable |
-| `Slice` | `ref/T from source`, even for Copy elements |
+| `Slice` | `ref{source}/T`, even for Copy elements |
 | Dictionary under `owner` Semantics | `(K, V)` pairs consumed in insertion order |
 
 Direct iteration consumes a Non-Copy owning collection; use `for item in values[..]` for shared iteration. A consumed source remains unavailable until validly reinitialized. Source Loans are kept while the iterator or escaped yielded references need them; overlapping mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. See [ranges](04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [Slice iteration](04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
@@ -420,8 +420,8 @@ Each child payload or Tuple position applies the rule independently. Once a path
 A position containing `uniq/T` permits only Wildcard or Binding, optionally grouped. At the root, write `match value@ref`; for nested payloads, bind first and inspect in an inner match. There is no Pattern-local `@ref` syntax.
 
 ```kimi
-enum Box origin source
-    Value(uniq/Option<i32> from source)
+enum Box {source}
+    Value(uniq{source}/Option<i32>)
 
 match box
     .Value(let value)

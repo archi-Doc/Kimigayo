@@ -997,7 +997,7 @@ EndOfFile:
                     return true;
                 }
             }
-            else if (c is ';' or '=' or '"' or '\'' or '{' or '}')
+            else if (c is ';' or '=' or '"' or '\'')
             {
                 return false;
             }

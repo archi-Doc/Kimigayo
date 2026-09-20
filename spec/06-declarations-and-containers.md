@@ -24,7 +24,7 @@ A **Declaration Container** is a named declaration scope whose indented body may
 | `contract` | No | Declares function and Property requirements, associated Types and Constraints; supports refinement of multiple parents. No implementations, storage or parameters of its own; enclosing generic and Origin bindings are inherited. See [Contracts](08-generics-constraints-and-contracts.md#84-static-contracts). |
 | `extension` (future) | — | Not introduced; see the extension boundary below. |
 
-**Static members.** `static` is not a declaration modifier in this revision: `static func`, `static let` and `static var` are rejected, including redundant uses in groups. Members of a group or rootgroup are inherently static, a struct function without a receiver is a Type function, and struct Fields and computed members are instance members. The contextual Origin spelling `from static` remains valid and does not make a declaration static.
+**Static members.** `static` is not a declaration modifier in this revision: `static func`, `static let` and `static var` are rejected, including redundant uses in groups. Members of a group or rootgroup are inherently static, a struct function without a receiver is a Type function, and struct Fields and computed members are instance members. The contextual Origin spelling `{static}` remains valid and does not make a declaration static.
 
 **Extension boundary.** This revision accepts no `extension` declarations or imports and supplies no extension candidates. Later references to future extension access, identity and precedence constrain that future design only; they are not active lookup stages or conformance mechanisms. Ordinary member lookup is complete without an extension pass.
 
@@ -154,8 +154,8 @@ struct Node
     var value: i32
     var next: obj/Node
 
-struct View origin source
-    var data: ref/Data from source
+struct View {source}
+    var data: ref{source}/Data
 ```
 
 `Data` is an assumed Core; the instance borrow's Origin is explicitly declared and bound.
@@ -176,7 +176,7 @@ Physical layout and ABI guarantees follow [structure layout and ABI](21-layout-r
 
 A structure is **sealed** unless `open` immediately precedes `struct` in its declaration. A sealed structure cannot be a base Type. `open` permits derivation and is independent of accessibility: `public struct` remains sealed, while `internal open struct` permits derivation only where the Type is accessible. A derived structure is sealed unless it is itself declared `open`; openness is not inherited. No separate `sealed` modifier exists.
 
-A structure may name one direct base with `: BaseType`, after its Name and generic parameters and before its Origin list. The base must resolve to an accessible constructed or nongeneric `open struct` Core; a generic parameter, a Semantics-applied Type, a group, an enum and a contract are not bases. Omitting the clause declares no user-defined base. Multiple bases and direct or indirect inheritance cycles, including cycles through different constructions of one generic declaration, are rejected. The base's Constraints must hold, and its accessibility must cover the derived Type's [effective access domain](09-names-signatures-and-access.md#932-api-signature-accessibility). Constraint Clauses continue to express capabilities separately from the base clause.
+A structure may name one direct base with `: BaseType`, after its Name, generic parameters and optional Origin list. The base must resolve to an accessible constructed or nongeneric `open struct` Core; a generic parameter, a Semantics-applied Type, a group, an enum and a contract are not bases. Omitting the clause declares no user-defined base. Multiple bases and direct or indirect inheritance cycles, including cycles through different constructions of one generic declaration, are rejected. The base's Constraints must hold, and its accessibility must cover the derived Type's [effective access domain](09-names-signatures-and-access.md#932-api-signature-accessibility). Constraint Clauses continue to express capabilities separately from the base clause.
 
 ```kimi
 public open struct Base
@@ -204,7 +204,7 @@ Explicit ordinary base-member invocation and additional ordinary derived/base co
 
 #### 6.2.3.1. Declaration
 
-A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a common executable Body (§14.2), either single-item or indented. It has no ordinary Name, explicit receiver, separate generic or Origin parameters, or result annotation; unavailable modifiers follow §2.5.1. It uses the containing structure's Type parameters, Origins and Constraints. Parameter labels, defaults and Type checking follow ordinary function parameters. Access defaults to `private`, and constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions and executable Blocks may not.
+A constructor is a dedicated structure declaration: an optional access specification, `init`, an optional Origin declaration list, a parameter list, an optional `: base(arguments)` clause, and a common executable Body (§14.2), either single-item or indented. It has no ordinary Name, explicit receiver, separate generic parameters, or result annotation; unavailable modifiers follow §2.5.1. It uses the containing structure's Type parameters, Origins and Constraints. Its own `init {a}(...)` Origins bind per call; they do not add hidden result slots. Input omission follows §15.4 and is never inferred backward from field assignments. Parameter labels, defaults and Type checking follow ordinary function parameters. Access defaults to `private`, and constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions and executable Blocks may not.
 
 ```kimi
 public open struct Named
@@ -296,19 +296,19 @@ The header supports ordinary generic and Origin parameters. The body permits Cas
 **Payload storage.** Payload elements are anonymous storage, not named Fields or accessors, and follow the same complete-Type, Semantics and Origin storage checks as struct stored values. Directly declared borrowed elements require explicit valid Origins; nested Types keep all their dependencies. Use a struct payload for data that needs named fields.
 
 ```kimi
-enum View<T> origin source
-    Some(ref/T from source)
+enum View<T> {source}
+    Some(ref{source}/T)
     None
 
-enum MutView<T> origin source
-    Some(uniq/T from source)
+enum MutView<T> {source}
+    Some(uniq{source}/T)
     None
 
 func makeView<T>(value: ref/T)
-    -> View<T> from (source => value) => .Some(value)
+    -> View<T>{source => value} => .Some(value)
 ```
 
-The result annotation maps the enum's abstract `source` to the input's Origin. It describes borrows stored in an owned enum, whereas `ref/T from value` annotates a direct result borrow. The [single-Origin shorthand](15-ownership-and-lifetime-analysis.md#1531-origin-arguments) also permits `View<T> from value`; the named mapping makes the assignment explicit.
+The result annotation maps the enum's abstract `source` to the input's Origin. It describes borrows stored in an owned enum, whereas `ref{value}/T` annotates a direct result borrow. The [single-Origin shorthand](15-ownership-and-lifetime-analysis.md#1531-origin-arguments) also permits `View<T>{value}`; the named mapping makes the assignment explicit.
 
 At construction, payload dependencies bind to the enum's Origin arguments, and every stored value is validated against that contract. Variance and Loan requirements are inferred from the occurrences in all Cases under the ordinary fixed-point rules. Selecting a Case does not weaken the Type's Origin contract. Storing or moving out a `uniq/T` payload transfers the exclusive reference value, not its referent; a shared read reborrows it and suspends conflicting exclusive access. The ordinary storage, lifetime and unique Loan-anchor rules still apply.
 
@@ -340,10 +340,10 @@ let move: Message = Message.Move(10, 20)
 let some: Option<i32> = Option<i32>.Some(42)
 let none: Option<i32> = .None
 // value: ref/T
-let view: View<T> from (source => value) = View<T>.Some(value)
+let view: View<T>{source => value} = View<T>.Some(value)
 ```
 
-`.Case` resolves only within the already known expected enum: the owned expected Type for construction, or the Type determined at the [Pattern position](14-control-flow.md#1481-patterns) for matching. It never searches all enums by Case name, retries another expected Type, or changes a matched value's Origin contract; this is not general expected-Type member lookup. `let bad = .None` has no known enum Type, and `View<T> from (source => value).Some(...)` is not a Case reference.
+`.Case` resolves only within the already known expected enum: the owned expected Type for construction, or the Type determined at the [Pattern position](14-control-flow.md#1481-patterns) for matching. It never searches all enums by Case name, retries another expected Type, or changes a matched value's Origin contract; this is not general expected-Type member lookup. `let bad = .None` has no known enum Type, and `View<T>{source => value}.Some(...)` is not a Case reference.
 
 A payload-free Case produces its value without parentheses. A payload Case requires all positional arguments in declaration order. Omitted or named arguments, partial application, and acquiring a Case constructor as a function value are invalid.
 

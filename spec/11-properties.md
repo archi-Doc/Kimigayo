@@ -116,7 +116,7 @@ Standard accessors need no Copy constraint. A stored custom getter needs a proof
 struct Box<T>
     public var item: T
 
-func view<T>(box: ref/Box<T>) -> ref/T from box
+func view<T>(box: ref/Box<T>) -> ref{box}/T
     return box.item@ref/T
 
 func readCopy<T>(box: ref/Box<T>) -> T
@@ -253,22 +253,24 @@ let edit = holder.item@uniq/Resource // Error: direct exclusive access.
 
 A setter may return without updating the storage. Unconsumed input is destroyed normally; transferred input is neither destroyed twice nor automatically restored to the caller. Use a result-returning function when acceptance or rejection must be reported. These restrictions do not prohibit a legal whole-receiver Move or destruction. Initial placement does not invoke validation (§11.3.1).
 
+Explicit accessor signatures may declare per-call Origins immediately after `get` or `set`: `get {a}(...) -> T`, `set {a}(...) -> ()`. Bodyless standard accessors have no declaration list. Inherited Origin names cannot be redeclared. The same rules apply to explicit Contract requirement signatures.
+
 ## 11.3. Types and Origins
 
 A stored Type may be inferred only from its declaration initializer; otherwise an annotation is required. It is never inferred from accessors or later assignments. Storage explicitly binds the required Origins, including nested dependencies (§15.4); `self` does not create a self-borrowing storage contract.
 
-Each accessor signature is first completed by the ordinary position-sensitive function elision. Then the required Type structure and bound Origins are compared, and the body is verified. A stored custom input or result must match the storage Type `T`, including Origin correspondence, not just names; if elision cannot establish the match, explicit Origins are required.
+Complete an accessor from an existing storage contract before applying function elision. A stored custom value input or result inherits omitted Origins from the corresponding complete storage Type `T`; explicit bindings are checked, not overwritten. The receiver retains its independent per-call Origin. Verify complete Type correspondence and the body afterward. No new accessor parameter may narrow the calls required by storage.
 
 ```kimi
-struct View origin source
-    public var value: ref/i32 from source
-        get(self: ref/Self) -> ref/i32 from source
+struct View {source}
+    public var value: ref{source}/i32
+        get(self: ref/Self) -> ref{source}/i32
             return storage
-        set(self: uniq/Self, value: ref/i32 from source) -> ()
+        set(self: uniq/Self, value: ref{source}/i32) -> ()
             storage = value
 ```
 
-Omitting `from source` above would elide the getter's direct result to `self` and give the setter's direct input an independent input Origin; neither establishes the storage contract. Existing bound dependencies are never replaced by `self`.
+Omitting `{source}` in the accessor Types above inherits the storage Origin. It does not default to `self` or introduce an independent setter input. The field itself still requires its explicit storage contract.
 
 Computed and required accessors use the same function elision but no shared storage-Type comparison. A getter whose only direct borrowed input is `self` may elide its result Origin to `self`; setter input completion is independent. No Origins are created for absent accessors. Static getter and setter contracts use the ordinary receiverless rules. Copy reference and aggregate Types still undergo all lifetime and Loan checks.
 
@@ -301,7 +303,7 @@ Construction keeps base-first order, declaration-order initializers, the ban on 
 
 Group and rootgroup stored Properties require an initializer, an Owned complete storage Type (§15.2.3), and the per-slot lazy state machine of §22.2. Safe shared borrows of eligible immutable static storage may be retained, including inside aggregates. Acquisition, initialization and destruction dependencies are checked separately; Owned supplies no Loan or pointer-validity evidence.
 
-Safe code cannot form a `from static` borrow of mutable static storage, including an inline subplace or backing data that safe mutation can invalidate. A new borrow of such storage has a finite, use-bounded Origin and cannot be fitted to `static`, including through generic substitution or an accessor result. A function or custom getter can expose it only through a result Origin bounded by a borrowed input under §15.4, keeping the Field anchor in its effect summary (§15.6.4); a result Origin elided to `static` is an error. Copying an already stored reference preserves its original referent and Origin; it is not a borrow of the mutable slot. An eligible static borrow must be anchored in initialized immutable storage whose referenced path stays protected from safe mutation. Local Loans and shutdown checks remain necessary (§15.6.4, §22.2.3).
+Safe code cannot form a `{static}` borrow of mutable static storage, including an inline subplace or backing data that safe mutation can invalidate. A new borrow of such storage has a finite, use-bounded Origin and cannot be fitted to `static`, including through generic substitution or an accessor result. A function or custom getter can expose it only through a result Origin bounded by a borrowed input under §15.4, keeping the Field anchor in its effect summary (§15.6.4); a result Origin elided to `static` is an error. Copying an already stored reference preserves its original referent and Origin; it is not a borrow of the mutable slot. An eligible static borrow must be anchored in initialized immutable storage whose referenced path stays protected from safe mutation. Local Loans and shutdown checks remain necessary (§15.6.4, §22.2.3).
 
 Actual slot access triggers initialization. Calling a custom or computed accessor initializes only the slots actually touched by its execution or callees, not every summarized effect. A standard write initializes the slot first and then replaces its value; a static `let` permits no external initialization or replacement. A custom `set` follows its function effects and may never touch the storage. Unused initializers still require validation. Static accessors have no `self`.
 

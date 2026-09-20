@@ -168,11 +168,11 @@ Explicit @ Operation
 | `E@Type` | A defined adaptation to the specified target |
 | `E@Semantics` | The same, with the Core, immediate Referent Type or object View Target taken from the operand as applicable |
 
-An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. The result Origins are inferred from the operand, the operation, Loans and applicable constraints to obtain the complete result Type. Origin information in aliases, generic Types and operands is kept; constraints are never erased and validity is never extended. Runtime targets contain no `from Origin`; `exit to Label: value` belongs to control-transfer syntax.
+An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. The result Origins are inferred from the operand, the operation, Loans and applicable constraints to obtain the complete result Type. Origin information in aliases, generic Types and operands is kept; constraints are never erased and validity is never extended. Adaptation and runtime `is` targets contain no written Origin list at any layer; `exit to Label: value` belongs to control-transfer syntax.
 
 ```text
 Adaptation Target
-├─ Core / immediate Referent Type / object View Target: specified, or taken from the operand
+├─ Core / immediate Referent Type / object View Target: specified, or taken{the} operand
 ├─ Semantics: determined by Type, alias, or explicit Semantics
 └─ Origin: inferred during adaptation
     -> complete result Type retains target, Semantics, and Origin
@@ -202,7 +202,7 @@ let taken = value // Copy if Copy, otherwise Move.
 
 Operand Types, expected Types and conversion success cannot resolve a role ambiguity or reopen outer lookup. Qualified names and constructed Types use normal Type syntax; `@s/T` gives `s` the Semantics role and `T` the Core role, extended to the View Target role when `s` is an object Semantics. Qualification or an explicit Semantics/Core form may disambiguate a bare name.
 
-The extended Container path syntax (§9.6.1) neither relaxes the Origin restrictions on Adaptation Targets nor permits groups or Contracts as value Types, and parenthesized qualifiers keep their intermediate validation obligations.
+The extended Container path syntax (§9.6.1) neither relaxes the Origin restrictions on Adaptation Targets nor permits groups or Contracts as value Types, and bound Container qualifiers are unavailable here because their Origin argument list is mandatory. Other grouping and selector forms keep their existing rules.
 
 ### 13.5.2. Static selection and inference
 
@@ -239,7 +239,7 @@ number@owner   // Copy if number is Copy.
 resource@owner // Ordinary Move if resource is a non-Copy owned value.
 ```
 
-**Origin Restriction** is common static result fitting, not another value operation. The acquisition or Borrow and its effect are determined first; then only the shortening permitted by the variance and outlives rules is applied. Identity Acquisition is checked before this use-site restriction. Core, Semantics, dependencies and Loans are preserved; no Copy, Move or Borrow is added, lifetimes are not extended, and arbitrary nested Origins are not rewritten. For example, fitting `ref/T from longer` to `ref/T from shorter` requires `longer` to outlive `shorter`. An exclusive same-Type adaptation still uses Reborrow.
+**Origin Restriction** is common static result fitting, not another value operation. The acquisition or Borrow and its effect are determined first; then only the shortening permitted by the variance and outlives rules is applied. Identity Acquisition is checked before this use-site restriction. Core, Semantics, dependencies and Loans are preserved; no Copy, Move or Borrow is added, lifetimes are not extended, and arbitrary nested Origins are not rewritten. For example, fitting `ref{longer}/T` to `ref{shorter}/T` requires `longer` to outlive `shorter`. An exclusive same-Type adaptation still uses Reborrow.
 
 A target that changes both Core and Semantics must be one defined operation; no hidden convert-then-borrow sequence is inserted:
 
@@ -304,10 +304,10 @@ Ordinary initialization, access, reborrow, Loan and Origin checks apply. Shared 
 The effective static Type and declared constraints are used; an inventory of derived Types or an optimizer's guess of the Dynamic Type is not Sealed evidence. Open Views, runtime Contract Views and base subobjects do not qualify. No ordinary argument receives an implicit payload projection; only a selected same-complete-Type borrowed receiver may use the implicit path of §12.4.4.
 
 ```kimi
-func borrowPayload<T>(source: objref/T) -> ref/T from source
+func borrowPayload<T>(source: objref/T) -> ref{source}/T
     T is Sealed
     return source@ref/T
-func borrowPayloadMut<T>(source: objuniq/T) -> uniq/T from source
+func borrowPayloadMut<T>(source: objuniq/T) -> uniq{source}/T
     T is Sealed
     return source@uniq/T
 
@@ -548,7 +548,7 @@ owned animal -> checked cast -> success(dog) or failure(original)
 
 For an exclusive result whose variant is not yet known, the possible child Loan is tracked conservatively; the parent cannot conflict until that dependency ends. An owning cast never restores the source binding on failure. It neither destroys nor copies the object and changes no reference counts. Destroying the result follows the normal responsibility of the branch it holds.
 
-Target validity and accessibility, Semantics preservation, [Owned erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), result Origins and Loans, and destruction dependencies are checked statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. The source is evaluated and secured once. For a source certified by Owned payload erasure, a missing fixed Origin binding may be supplied as `static` only where the §15.2.3 proof covered that binding. Thus a cast to a concrete `Box<ref/i32 from static>` may be valid when Runtime Type Identity, Supports and all other checks match; this is a static proof, not a runtime recovery of an Origin. The handle's outer borrow Origin is preserved. Non-static bindings are never invented, per-call callable Origins are never bound, and no other information excluded from that proof is rewritten; a target needing unpreserved or uncertified information is rejected. API names and Option/Result branching syntax remain design boundaries: these guarantees define no cast spelling and add no checked cast to `@`.
+Target validity and accessibility, Semantics preservation, [Owned erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), result Origins and Loans, and destruction dependencies are checked statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. The source is evaluated and secured once. For a source certified by Owned payload erasure, a missing fixed Origin binding may be supplied as `static` only where the §15.2.3 proof covered that binding. Thus a cast to a concrete `Box<ref{static}/i32>` may be valid when Runtime Type Identity, Supports and all other checks match; this is a static proof, not a runtime recovery of an Origin. The handle's outer borrow Origin is preserved. Non-static bindings are never invented, per-call callable Origins are never bound, and no other information excluded from that proof is rewritten; a target needing unpreserved or uncertified information is rejected. API names and Option/Result branching syntax remain design boundaries: these guarantees define no cast spelling and add no checked cast to `@`.
 
 ## 13.7. Assignment
 

@@ -10,14 +10,12 @@ namespace XunitTest;
 public class PairAnnotationBindingTest
 {
     [Theory]
-    [InlineData("s/T from a")]
-    [InlineData("(s/T) from a")]
-    [InlineData("((s/T)) from a")]
-    [InlineData("(s/(T)) from a")]
-    [InlineData("owner/((s/T) from a)")]
+    [InlineData("s{a}/T")]
+    [InlineData("s{a}/(T)")]
+    [InlineData("owner/(s{a}/T)")]
     public void OriginalPairAnnotationRetainsWholeTypeAndPendingProof(string type)
     {
-        var c = Parse($"func f<s/T> origin a(value: {type}) => ()");
+        var c = Parse($"func f<s/T> {{a}}(value: {type}) => ()");
         Verify(c);
         Verify(Reload(c));
         var builder = default(IndentedStringBuilder);
@@ -61,20 +59,20 @@ public class PairAnnotationBindingTest
     [InlineData("unsafe")]
     public void NonBorrowSemanticsCannotCertifyAnOuterOrigin(string semantics)
     {
-        var c = Parse($"func f<s/T> origin a(value: s/T from a)\n    s is {semantics}\n    ()");
+        var c = Parse($"func f<s/T> {{a}}(value: s{{a}}/T)\n    s is {semantics}\n    ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
         Assert.False(Reload(c).Bind().IsComplete);
     }
 
     [Theory]
-    [InlineData("(s/T) from a", "owner")]
-    [InlineData("(s/T) from a", "unsafe")]
-    [InlineData("s/U from a", "owner")]
-    [InlineData("s/U from a", "unsafe")]
+    [InlineData("s{a}/T", "owner")]
+    [InlineData("s{a}/T", "unsafe")]
+    [InlineData("s{a}/U", "owner")]
+    [InlineData("s{a}/U", "unsafe")]
     public void ApplicationEvidenceNeverDischargesAnExplicitOrigin(string type, string semantics)
     {
-        var c = Parse($"func f<s/T, U> origin a(value: {type})\n    s is {semantics}\n    ()");
+        var c = Parse($"func f<s/T, U> {{a}}(value: {type})\n    s is {semantics}\n    ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
     }
@@ -93,24 +91,20 @@ public class PairAnnotationBindingTest
     }
 
     [Theory]
-    [InlineData("s/T from a")]
-    [InlineData("(s/T) from a")]
-    public void BorrowAnnotationProofRemainsExplicitlyPending(string type)
+    [InlineData("s{a}/T")]
+    public void BorrowAnnotationAcceptsDefinitionSideBorrowProof(string type)
     {
-        var c = Parse($"func f<s/T> origin a(value: {type})\n    s is ref\n    T is i32\n    ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        var c = Parse($"func f<s/T> {{a}}(value: {type})\n    s is ref\n    T is i32\n    ()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(BoundTypeKind.Parameter, Function(c).Parameters[0].Type.BoundType!.Kind);
     }
 
     [Theory]
-    [InlineData("s/T from missing", DiagnosticCode.MissingOriginBinding_Kd)]
-    [InlineData("(s/T) from missing", DiagnosticCode.MissingOriginBinding_Kd)]
-    [InlineData("s/T from (wrong => a)", DiagnosticCode.InvalidOriginBinding_Kd)]
-    [InlineData("(s/T) from (wrong => a)", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("s{missing}/T", DiagnosticCode.MissingOriginBinding_Kd)]
+    [InlineData("s{wrong => a}/T", DiagnosticCode.InvalidOriginBinding_Kd)]
     public void InvalidAnnotationsRetainOrdinaryDiagnostics(string type, DiagnosticCode code)
     {
-        var c = Parse($"func f<s/T> origin a(value: {type}) => ()");
+        var c = Parse($"func f<s/T> {{a}}(value: {type}) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
         Assert.False(Reload(c).Bind().IsComplete);
@@ -119,7 +113,7 @@ public class PairAnnotationBindingTest
     [Fact]
     public void AnnotationDoesNotChangeAnotherUseOfTheOriginalPair()
     {
-        var c = Parse("func f<s/T> origin a, b(x: s/T, y: (s/T) from a, z: s/T from b) => ()");
+        var c = Parse("func f<s/T> {a, b}(x: s/T, y: s{a}/T, z: s{b}/T) => ()");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c);
         var schema = f.BoundSymbol!.Schema!;
@@ -133,7 +127,7 @@ public class PairAnnotationBindingTest
     [Fact]
     public void NestedAnnotationsDoNotAddSemanticsLayers()
     {
-        var c = Parse("func f<s/T> origin a(value: (unsafe/((s/T) from a), [2 of (s/T) from a])) => ()");
+        var c = Parse("func f<s/T> {a}(value: (unsafe/(s{a}/T), [2 of s{a}/T])) => ()");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c);
         var tuple = f.Parameters[0].Type.BoundType!;

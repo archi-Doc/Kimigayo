@@ -491,9 +491,9 @@ public sealed partial class Binding
 
         var arguments = this.typeScratch.Rent(requirement.GenericArguments.Count);
         var origins = this.originScratch.Rent(implementation.Origins.Count);
-        var inputs = this.originScratch.Rent(implementation.Parameters.Count);
+        var inputs = this.originScratch.Rent(InputOriginCount(implementation));
         Array.Clear(origins, 0, implementation.Origins.Count);
-        Array.Clear(inputs, 0, implementation.Parameters.Count);
+        Array.Clear(inputs, 0, InputOriginCount(implementation));
         try
         {
             for (var i = 0; i < requirement.GenericArguments.Count; i++)
@@ -524,7 +524,7 @@ public sealed partial class Binding
             witness.BasePath = selection.Path;
             witness.RequirementReceiver = requirement.BoundSymbol!.ReceiverIndex is var receiverIndex && receiverIndex >= 0 ? this.ContractType(requirement.Parameters[receiverIndex].Type.BoundType!, premises, self) : null;
             witness.ImplementationReceiver = implementation.BoundSymbol!.ReceiverIndex is var implementationIndex && implementationIndex >= 0 ? this.CallType(implementation.Parameters[implementationIndex].Type.BoundType!, implementation, arguments, premises, null, origins, inputs, selection.DeclaringType) : null;
-            witness.SetOrigins(origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, implementation.Parameters.Count));
+            witness.SetOrigins(origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, InputOriginCount(implementation)));
             witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
             return CombineProof(proof, witness.ObjectCompatibility, true);
         }

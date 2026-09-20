@@ -52,7 +52,7 @@ public class PropertyCompletionBindingTest
     [Fact]
     public void StaticBorrowCannotRetainPropertyCertificate()
     {
-        var c = MinimalEmissionTest.Analyze("group S\n    var value: ref/i32 from static");
+        var c = MinimalEmissionTest.Analyze("group S\n    var value: ref{static}/i32");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Property(c).IsVerified);
     }

@@ -14,7 +14,7 @@ public class StructuredConstraintSubjectBindingTest
     [InlineData("(i32, bool) is Copy")]
     [InlineData("[2 of i32] is Copy")]
     [InlineData("Box<i32> is Copy")]
-    [InlineData("ref/i32 from static is Copy")]
+    [InlineData("ref{static}/i32 is Copy")]
     [InlineData("((i32)) is Copy")]
     [InlineData("Box<Box<i32>> is Copy")]
     [InlineData("Box<[2 of i32]> is Copy")]
@@ -50,7 +50,7 @@ public class StructuredConstraintSubjectBindingTest
     [InlineData("Box<string> is Copy or Owned")]
     [InlineData("(i32, string) is Copy")]
     [InlineData("[2 of i32] is [3 of i32]")]
-    [InlineData("ref/i32 from static is i32")]
+    [InlineData("ref{static}/i32 is i32")]
     public void InvalidFormationAndRefutedProofsRejectTheOwner(string clause)
     {
         var c = MinimalEmissionTest.Analyze(Source(clause));

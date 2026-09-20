@@ -70,7 +70,7 @@ public class OwnershipJoinTest
     }
 
     [Theory]
-    [InlineData("ref/Cell from static", "a@ref", "b@ref")]
+    [InlineData("ref{static}/Cell", "a@ref", "b@ref")]
     [InlineData("ref/Cell", "a@ref", "b@uniq")]
     [InlineData("ref/Cell", "a@ref", "true")]
     public void BorrowJoinCannotChangeItsContract(string annotation, string first, string second)

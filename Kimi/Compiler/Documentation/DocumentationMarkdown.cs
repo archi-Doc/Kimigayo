@@ -56,7 +56,7 @@ public sealed class DocumentationMarkdown
             }
         }
 
-        var origins = declaration is FunctionKoto callable ? callable.Origins : declaration is DeclarationContainerKoto type ? type.OriginNames : [];
+        var origins = declaration is FunctionKoto callable ? callable.Origins : declaration is DeclarationContainerKoto type ? type.OriginNames : declaration is PropertyAccessorKoto accessor ? accessor.Origins : [];
         foreach (var origin in origins)
         {
             parameters.Add(new(origin));

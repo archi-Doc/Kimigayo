@@ -223,7 +223,7 @@ public sealed partial class OwnershipBody
             {
                 foreach (var entry in this.SymbolPlaces)
                 {
-                    if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && entry.Key.Slot == origin.Slot &&
+                    if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && entry.Key.Slot == (origin.Kind == OriginKind.Input ? origin.InputIndex : origin.Slot) &&
                         (origin.Kind != OriginKind.Input || entry.Key.Kind == BindingSymbolKind.Parameter))
                     {
                         Record(entry.Value);
@@ -296,7 +296,7 @@ public sealed partial class OwnershipBody
 
                 for (var i = 0; i < StructStorage.Count(type); i++)
                 {
-                    if (Observes(StructStorage.FieldType(type, i)!, depth + 1))
+                    if (StructStorage.FieldType(type, i) is not { } field || Observes(field, depth + 1))
                     {
                         return true;
                     }

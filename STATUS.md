@@ -1,5 +1,33 @@
 # Kimigayo Implementation Status
 
+The **2026-09-20 Origin syntax and elision integration** adopts `{...}` declarations
+and aggregate arguments, prefix borrow annotations (`uniq{borrow}/Writer<T>{target}`),
+and independent anonymous aggregate input Origins. Constructor/accessor lists,
+stored-accessor inheritance, supported specialization inheritance, conditional
+reconstructed borrow slots, Owned-aware result defaults and complete-contract
+comparison are connected to the existing binder. Old Origin syntax is rejected;
+the library, specification examples, milestone sources and affected tests use the
+new syntax. The approved proposal itself is unchanged.
+
+Origin-bearing input fields now use substituted storage metadata in ownership and
+generation. Rebinding refreshes that metadata without losing anonymous binder
+identity. Single nongeneric receiverless function references checked against an
+expected Function Type now validate inputs, results and Origin bindings; unsupported
+selection shapes are diagnosed rather than accepted with an unchecked signature.
+
+Debug/Release solution builds have zero warnings/errors; all **10,676 tests** pass
+per configuration, including 48 focused Origin revision cases. Artifact reload,
+syntax round trips, invalid lifetime/contract cases and warm ownership/emission
+allocation checks pass. Additional native evidence and exact commands are in
+[the verification record](PLAN_HISTORY.md#origin-syntax-elision-20260920).
+
+This does not complete the existing general Origin-bound/principal solver,
+universal Semantics-role proofs, explicit-Origin/constrained specialization
+inheritance, custom-accessor execution or general function-item/Callable erasure.
+Those required behaviors remain open in [PLAN OSE3/I5/I12/I18](PLAN.md#2-execution-state).
+The formal specification includes them without implementation exceptions.
+No NativeAOT test was run; no whole-compiler throughput improvement is claimed.
+
 The **2026-09-20 foreign-import symbol agreement continuation** extends
 `#LibraryImport` checking to the §21.5.2 final symbol table. An import that names
 one of the nine kernel32 declarations the generated runtimes emit (the seven of
@@ -17,8 +45,9 @@ emitted runtime IR templates, so they cannot drift. The same continuation reject
 function acquired as a value in a declaration initializer, an assignment source, a
 call argument, a transferred result, an expression body or an array/tuple literal
 element (`UnsafeFunctionValue_Kd`, SPEC 7.7); direct calls are unchanged, and a
-safe function group is still accepted against a declared Function Type without a
-signature check, recorded as a known gap. Debug/Release solution builds are
+safe function group was then accepted against a declared Function Type without a
+signature check (the OSE revision above repairs the supported comparison path).
+At that checkpoint, Debug/Release solution builds were
 warning-free and **all 10,602 managed tests** pass per configuration. Actual
 provider identity after supply resolution, direct-call lowering, linking and
 native execution of imports remain unimplemented; no native fixtures were
@@ -180,7 +209,7 @@ ContainerNestingTest covers declaration/rebind/serialization and 64-level nestin
 
 | Implemented scope | Remaining limits / relevant tests |
 | --- | --- |
-| Nested complete Types/Semantics, owner normalization, Tuples/functions/fixed arrays, generic Type/pair slots and declared/input/static/intersection Origins | General bound/Loan/Origin solver, arbitrary SemanticsTarget application and universal role proofs remain incomplete. Original pair grouping preserves WholeType identity; valid borrow annotations on pairs still retain unresolved definition obligations (PairGroupingBindingTest, PairAnnotationBindingTest). |
+| Nested complete Types/Semantics, owner normalization, Tuples/functions/fixed arrays, generic Type/pair slots and declared/input/static/intersection Origins. Original pair grouping preserves WholeType; explicit pair borrow annotations bind when safe-borrow and target-role evidence is available. | General bound/Loan/Origin solver, arbitrary SemanticsTarget application and universal role proofs remain incomplete. Unproved pair annotations keep definition obligations (PairGroupingBindingTest, PairAnnotationBindingTest, OriginSyntaxRevisionTest). |
 | Four-valued Proven/Refuted/Unknown/Error proofs, declaration assumptions, associated Types, conditional conformance and inherited witnesses. Unknown/Error do not certify success. | Full generic-body/effect proofs, candidate equivalence and bound associated/refinement composition remain incomplete. Missing-name cause suppression retains failed certificates and independent errors (T5a/G9). |
 | Late input/projection/qualifier/conformance validity is rechecked before publishing function, Property, enum, runtime-test and conformance certificates; replacement/rebind revokes stale facts. | ExpressionInputFormation, ExpressionProjectionCertificate, SignatureProjectionCertificate, AggregateProjectionCertificate, AssociatedProjectionCertificate, ConditionalProjectionCertificate, ConstraintProjectionCertificate and LateConstraintEnvironmentBinding tests cover the stated semantic paths, not general runtime execution. |
 | Projection domains are retained through normalized function/accessor signatures, generic premises, associated specifications, enum payloads and bases. Conformance access checks use effective Type/Contract intersections and ancestor paths; conditional public members have their own domains. | Source-local functions are not exported and named function result Types are not inferred. Private initializer/helper projections do not themselves become API components. ApiAccess, PropertyApiAccess, ProjectionApiAccess, ConditionalPremiseAccess and ConditionalMemberAccess families cover rejection/recovery. |

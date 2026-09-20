@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class BorrowStructEmissionTest
 {
-    private const string Counter = "struct Counter\n    public var value: i32 = 0\n    deinit => Console.writeLine(\"drop\")\nfunc add(counter: uniq/Counter, amount: i32)\n    counter.value = counter.value + amount\nfunc borrow(counter: ref/Counter) -> ref/Counter from counter => counter\n";
+    private const string Counter = "struct Counter\n    public var value: i32 = 0\n    deinit => Console.writeLine(\"drop\")\nfunc add(counter: uniq/Counter, amount: i32)\n    counter.value = counter.value + amount\nfunc borrow(counter: ref/Counter) -> ref{counter}/Counter => counter\n";
 
     [Fact]
     public void Milestone5()
@@ -61,7 +61,7 @@ public class BorrowStructEmissionTest
     [Theory]
     [InlineData("var c = Counter.init()\nlet r = borrow(c@ref)\nadd(c@uniq, 1)\nlet n = r.value")]
     [InlineData("func take(c: Counter) => ()\nvar c = Counter.init()\nlet r = borrow(c@ref)\ntake(c)\nlet n = r.value")]
-    [InlineData("func bad() -> ref/Counter from static\n    let c = Counter.init()\n    return c@ref")]
+    [InlineData("func bad() -> ref{static}/Counter\n    let c = Counter.init()\n    return c@ref")]
     [InlineData("func bad(c: ref/Counter)\n    c.value = 9")]
     [InlineData("let c = Counter.init()\nadd(c@uniq, 1)")]
     [InlineData("func both(a: uniq/Counter, b: uniq/Counter) => ()\nvar c = Counter.init()\nboth(c@uniq, c@uniq)")]

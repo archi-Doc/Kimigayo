@@ -31,7 +31,7 @@ Both forms precede ordinary declarations and executable items at the SourceDocum
 
 Named targets are limited to Kotonoha and groups. A named alias creates no Core, value, storage or declaration identity and does not open the target's members; the opening form keeps its existing Container target range. Neither form adds Container placements or ways to instantiate Containers (§6.1). Where the Container rules permit a group under an instantiated parent, a named alias may keep that reference, with all required Type and Origin arguments bound; it acquires no generic parameters of its own.
 
-The entire target, including inside Type arguments and Origin specifications, is resolved from the Compilation root without source or default aliases. A leading `::` is optional and does not change resolution. Built-in syntax such as `i32` and `from static` remains valid. Referenced declarations' bodies and constraints are checked in their definition environments. Alias chains, cycles, source-order resolution and transitive dependency reachability are not introduced. A real root declaration or direct reference with the same spelling remains usable.
+The entire target, including inside Type arguments and Origin specifications, is resolved from the Compilation root without source or default aliases. A leading `::` is optional and does not change resolution. Built-in syntax such as `i32` and `{static}` remains valid. Referenced declarations' bodies and constraints are checked in their definition environments. Alias chains, cycles, source-order resolution and transitive dependency reachability are not introduced. A real root declaration or direct reference with the same spelling remains usable.
 
 ```kimi
 alias Output => ::Kimi.Console

@@ -60,6 +60,66 @@ public sealed partial class Binding
         return true;
     }
 
+    private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required)
+    {
+        if (symbol.Declaration is not FunctionKoto function || symbol.Next is not null ||
+            function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || symbol.ReceiverIndex >= 0 ||
+            symbol.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+        {
+            return Fail(use, BindingFailure.Unsupported, true);
+        }
+
+        var parameters = required.Components[0];
+        if (parameters.Components.Count != function.Parameters.Count)
+        {
+            return Fail(use, BindingFailure.TypeMismatch);
+        }
+
+        var origins = this.originScratch.Rent(function.Origins.Count);
+        var inputCount = InputOriginCount(function);
+        var inputs = this.originScratch.Rent(inputCount);
+        Array.Clear(origins, 0, function.Origins.Count);
+        Array.Clear(inputs, 0, inputCount);
+        try
+        {
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (function.Parameters[i].Type.BoundType is not { } parameter)
+                {
+                    return Fail(use, BindingFailure.TypeMismatch);
+                }
+
+                // Only the implementation's per-call binders are inferred; the
+                // required signature's quantifiers and fixed Origins remain rigid.
+                this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
+            }
+
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                var parameter = Substitute(function.Parameters[i].Type.BoundType!);
+                if (HasUnsubstitutedOrigin(parameter, function) || !FitsType(parameters.Components[i], parameter))
+                {
+                    return Fail(use, BindingFailure.TypeMismatch);
+                }
+            }
+
+            if (symbol.Type is not { } result || HasUnsubstitutedOrigin(result = Substitute(result), function) || !FitsType(result, required.Components[1]))
+            {
+                return Fail(use, BindingFailure.TypeMismatch);
+            }
+
+            return Complete(use, required);
+        }
+        finally
+        {
+            this.originScratch.Return(origins, clearArray: true);
+            this.originScratch.Return(inputs, clearArray: true);
+        }
+
+        BoundType Substitute(BoundType type)
+            => this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
+    }
+
     private BoundType? BindFunctionType(FunctionTypeKoto function, BindingScope scope, TypeBindingContext context)
     {
         var tuple = function.Parameters as TupleTypeKoto;
@@ -84,7 +144,7 @@ public sealed partial class Binding
                 Complete(tuple, parameters);
             }
 
-            var result = this.BindType(function.ReturnType, scope, context.Nested);
+            var result = this.BindType(function.ReturnType, scope, new(TypePosition.Result, function));
             return result is null ? null : this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
         }
         finally

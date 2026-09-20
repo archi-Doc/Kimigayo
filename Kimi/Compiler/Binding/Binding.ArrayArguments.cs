@@ -74,7 +74,7 @@ public sealed partial class Binding
         if (source.BoundType is { } actual)
         {
             this.MatchInputOrigins(pattern, actual, function, origins, inputs);
-            pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, function.Parameters.Count)));
+            pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
             return this.Infer(pattern, actual, function, types, true, lengths);
         }
 

@@ -124,15 +124,12 @@ public sealed class TypeSemanticsKoto : TypeKoto
             if (!this.isTransparentWrapper)
             {
                 builder.Append(this.SemanticsKind == SemanticsKind.Parameter ? this.SemanticsParameter : this.SemanticsKind.ToText());
+                this.WriteOriginTo(ref builder);
                 builder.Append(Constants.SlashChar);
             }
 
-            // An inner Origin belongs to its own layer, and a function arrow binds
-            // less tightly than '/'. Keep both boundaries when writing changed trees.
-            var needsParentheses = !this.isTransparentWrapper &&
-                (this.Type is FunctionTypeKoto ||
-                (this.Type is TypeSemanticsKoto inner &&
-                (inner.OriginName is not null || inner.OriginExpression is not null || inner.OriginArguments is not null)));
+            // Prefix Origins no longer need grouping; function arrows still do.
+            var needsParentheses = !this.isTransparentWrapper && this.Type is FunctionTypeKoto;
             if (needsParentheses)
             {
                 builder.Append('(');
@@ -149,34 +146,9 @@ public sealed class TypeSemanticsKoto : TypeKoto
             builder.Append(this.Identifier);
         }
 
-        if (this.OriginArguments is { } arguments)
+        if (this.Type is null || this.isTransparentWrapper)
         {
-            builder.Append(" from (");
-            for (var i = 0; i < arguments.Length; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                builder.Append(arguments[i].Name);
-                builder.Append(" => ");
-                arguments[i].Value.WriteTo(ref builder);
-            }
-
-            builder.Append(')');
-        }
-        else if (this.OriginExpression is not null)
-        {
-            builder.Append(" from ");
-            this.OriginExpression.WriteTo(ref builder);
-        }
-        else if (this.origin?.Name is { } originName)
-        {
-            builder.AppendSpace();
-            builder.Append(Constants.FromKeyword);
-            builder.AppendSpace();
-            builder.Append(originName);
+            this.WriteOriginTo(ref builder);
         }
     }
 
@@ -285,6 +257,40 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
         this.Type = newKoto;
         return true;
+    }
+
+    private void WriteOriginTo(ref IndentedStringBuilder builder)
+    {
+        if (this.origin is null)
+        {
+            return;
+        }
+
+        builder.Append('{');
+        if (this.OriginArguments is { } arguments)
+        {
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(arguments[i].Name);
+                builder.Append(" => ");
+                arguments[i].Value.WriteTo(ref builder);
+            }
+        }
+        else if (this.OriginExpression is { } expression)
+        {
+            expression.WriteTo(ref builder);
+        }
+        else
+        {
+            builder.Append(this.origin.Name);
+        }
+
+        builder.Append('}');
     }
 
     /// <summary>Stores the Origin annotation of a type layer.</summary>

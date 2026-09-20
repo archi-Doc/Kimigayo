@@ -33,7 +33,7 @@ public class ExternalOriginForwardingTest
     [Fact]
     public void RejectsUnknownPayloadOrigin()
     {
-        var c = MinimalEmissionTest.Analyze(Source().Replace("Found(ref/Cell from source)", "Found(ref/Cell from missing)", StringComparison.Ordinal));
+        var c = MinimalEmissionTest.Analyze(Source().Replace("Found(ref{source}/Cell)", "Found(ref{missing}/Cell)", StringComparison.Ordinal));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.Validate(out _));
     }
@@ -43,7 +43,7 @@ public class ExternalOriginForwardingTest
     [InlineData("self.left")]
     public void RejectsInsufficientReturnOrigin(string origin)
     {
-        var c = MinimalEmissionTest.Analyze(Source().Replace("Selection from self.left and self.right", "Selection from " + origin, StringComparison.Ordinal));
+        var c = MinimalEmissionTest.Analyze(Source().Replace("Selection{self.left and self.right}", "Selection from " + origin, StringComparison.Ordinal));
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }

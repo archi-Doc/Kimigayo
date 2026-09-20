@@ -7,8 +7,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
+    private ulong storageVersion;
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
+
+    internal bool PrepareTypeStorage(BoundType type) => this.PrepareInstantiatedStorage(type, 0);
 
     internal BoundType? InstantiateStorageType(BoundType type, BoundCall call)
     {
@@ -53,12 +56,18 @@ public sealed partial class Binding
 
         if (StructStorage.IsStruct(type))
         {
-            if (type.StoredFields is not null)
+            if (type.StoredFields is not null && type.StorageVersion == this.storageVersion)
             {
                 return true;
             }
 
-            type.StoredFields = new BoundType[StructStorage.Count(type)];
+            var count = StructStorage.Count(type);
+            if (type.StoredFields?.Length != count)
+            {
+                type.StoredFields = new BoundType[count];
+            }
+
+            type.StorageVersion = this.storageVersion;
             for (var i = 0; i < type.StoredFields.Length; i++)
             {
                 var field = this.StoredType(StructStorage.Field(type, i), type);
@@ -73,11 +82,12 @@ public sealed partial class Binding
         }
         else if (Compiler.EnumStorage.IsEnum(type))
         {
-            if (type.StoredCases is not null)
+            if (type.StoredCases is not null && type.StorageVersion == this.storageVersion)
             {
                 return true;
             }
 
+            type.StorageVersion = this.storageVersion;
             if (!this.PrepareEnumCases(type))
             {
                 return false;
@@ -93,9 +103,9 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var component in type.Components)
+        for (var i = 0; i < type.Components.Count; i++)
         {
-            if (!this.PrepareInstantiatedStorage(component, depth + 1))
+            if (!this.PrepareInstantiatedStorage(type.Components[i], depth + 1))
             {
                 return false;
             }

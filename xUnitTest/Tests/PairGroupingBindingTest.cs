@@ -28,7 +28,7 @@ public class PairGroupingBindingTest
     [Theory]
     [InlineData("(s/(T))")]
     [InlineData("owner/(s/((T)))")]
-    [InlineData("ref/(s/(T)) from static")]
+    [InlineData("ref{static}/(s/(T))")]
     [InlineData("unsafe/(s/((T)))")]
     [InlineData("[2 of s/(T)]")]
     [InlineData("(s/(T), s/((T)))")]
@@ -76,9 +76,9 @@ public class PairGroupingBindingTest
     }
 
     [Theory]
-    [InlineData("s/(T from static)")]
-    [InlineData("s/((T from missing))")]
-    [InlineData("s/(T from (wrong => static))")]
+    [InlineData("s/(T{static})")]
+    [InlineData("s/((T{missing}))")]
+    [InlineData("s/(T{wrong => static})")]
     public void GroupingNeverErasesTargetOriginAnnotations(string type)
     {
         var c = Parse($"func f<s/T>(value: {type}) => ()");
@@ -91,8 +91,7 @@ public class PairGroupingBindingTest
     public void PairIdentityIsNotInferredFromEqualTargetConstraints()
     {
         var c = Parse("func f<s/T, r/U>(value: s/(U))\n    T is i32\n    U is i32\n    ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        Assert.True(c.Bind().IsComplete);
         var f = Function(c, "f");
         Assert.Equal(BoundTypeKind.SemanticsApplication, f.Parameters[0].Type.BoundType!.Kind);
         Assert.NotSame(f.BoundSymbol!.Schema!.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.BoundType);

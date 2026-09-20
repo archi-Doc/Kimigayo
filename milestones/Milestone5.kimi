@@ -4,10 +4,10 @@ struct Counter
     deinit => Console.writeLine("Counter destroyed.")
     // All fields have initializers, so a public init() is synthesized.
 
-struct CounterView origin source
-    let counter: ref/Counter from source
+struct CounterView {source}
+    let counter: ref{source}/Counter
 
-    public init(counter: ref/Counter from source)
+    public init(counter: ref{source}/Counter)
         self.counter = counter
 
     public func read(self: ref/Self) -> i32 => self.counter.value
@@ -21,7 +21,7 @@ struct CounterView origin source
 func add(counter: uniq/Counter, amount: i32)
     counter.value = counter.value + amount
 
-func borrowCounter(counter: ref/Counter) -> ref/Counter from counter
+func borrowCounter(counter: ref/Counter) -> ref{counter}/Counter
     return counter
 
 func finish(counter: Counter)

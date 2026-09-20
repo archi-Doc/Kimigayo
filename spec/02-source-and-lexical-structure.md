@@ -30,7 +30,7 @@ Bodies, explicit delimiters and method-chain continuations are tracked separatel
 
 At end of file, diagnose unclosed explicit delimiters and missing bodies, and close the remaining bodies.
 
-Within parentheses, brackets and recognized generic delimiters, continued content uses one additional indentation level per open delimiter beyond the active body or chain level. A matching closer may align with its opening line or stay at the content indentation. Comparison angle brackets do not establish continuation. Nested bodies generate their own layout events. A comma or closer on the same line as an indented body's content cannot close that body; dedent on the next effective line first.
+Within parentheses, brackets, Origin braces and recognized generic delimiters, continued content uses one additional indentation level per open delimiter beyond the active body or chain level. A matching closer may align with its opening line or stay at the content indentation. Comparison angle brackets do not establish continuation. Nested bodies generate their own layout events. A comma or closer on the same line as an indented body's content cannot close that body; dedent on the next effective line first.
 
 A header expression continued across lines must use delimiters inside that expression; grouping the entire construct does not continue its header. A leading `->` may continue a function or accessor header only where its grammar still expects `->`, at one extra level from the header baseline. It changes neither that baseline nor the rule against a separate `=>` line. Content inside a delimiter opened on the `->` line uses one level beyond the `->` line itself. The continuation ends before the next effective line at or above the `->` line's level, which starts the body or the next item.
 
@@ -112,7 +112,7 @@ Consecutive documentation lines at the same indentation form one **documentation
 /// Returns a shared reference to the first element.
 ///
 /// - abort: `values` is empty.
-func first<T>(values: ref/Array<T>) -> ref/T from values
+func first<T>(values: ref/Array<T>) -> ref{values}/T
     return values[0]@ref
 ```
 
@@ -208,18 +208,20 @@ A token's spelling is contiguous. Adjacent spellings must be separated when thei
 
 | Punctuation/operator class | Spellings |
 | --- | --- |
-| Structural | `(` `)` `[` `]` `,` `.` `:` `::` `->` `=>` `@` `#` `$` `?` |
+| Structural | `(` `)` `[` `]` `{` `}` `,` `.` `:` `::` `->` `=>` `@` `#` `$` `?` |
 | Arithmetic and updates | `+` `-` `*` `/` `%` `++` `--` `+=` `-=` `*=` `/=` `%=` |
 | Comparison and assignment | `=` `==` `!=` `<` `<=` `>` `>=` |
 | Bitwise and shifts | `&` `\|` `^` `<<` `>>` `&=` `\|=` `^=` `<<=` `>>=` |
 | Ranges | `..` `..=` |
-| Recognized but unavailable | `{` `}` `;` `!` `&&` `\|\|` |
+| Recognized but unavailable | `;` `!` `&&` `\|\|` |
 
 Outside comments and literals, the longest punctuation spelling is matched: `..=` before `..` before `.`, `->` before `-`, `<<=` before `<<` before `<`, `>>=` before `>>` before `>`, `::` before `:`, and `=>` or `==` before `=`. Thus `a+++b` is `a`, `++`, `+`, `b`; there is no `+++` token. Unlisted punctuation is invalid unless it forms a grammatically valid sequence of listed tokens.
 
 Only when closing syntactically recognized generic Type arguments or parameters may `>>` split into two `>` tokens, and `>>=` into `>`, `>`, `=` (or `>`, `>=` when only one level closes). Expression shifts are unaffected. Tuple indices use the exception in §2.6.
 
 The [notation table](01-overview.md#12-conventions-and-notation) summarizes the meaning of punctuation. Expression grouping, generic/comparison boundaries and the token rules for `@` follow [precedence and associativity](13-operators-and-assignment.md#131-precedence-and-associativity).
+
+Origin lists use `{` and `}` as one delimiter pair, with the ordinary continuation rules. They create no executable scope or body baseline. `origin` and `from` are ordinary Names, not Origin keywords. Empty `{}` and old `origin ...` / `from ...` annotations are rejected; see §15.3.
 
 ## 2.5. Names
 
@@ -266,7 +268,7 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | --- | --- |
 | Declarations | `alias`, `rootgroup`, `group`, `struct`, `enum`, `contract`, `computed`, `property` in declaration and header positions. `extension` is reserved in the same positions for a future declaration and is rejected in this revision. |
 | Unavailable declaration modifiers | `virtual`, `override`, `abstract`; recognized only in a declaration's leading modifier sequence, and rejected there with the unavailable-feature diagnostic. |
-| Parameters, Origins and accessors | `in` in a `for` header; `origin` in an Origin parameter list; `from` in an Origin annotation; `to` immediately after `exit`, `continue` or `yield`; `static` as the distinguished Origin in Origin expressions; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance. |
+| Parameters, Origins and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `static` as the distinguished Origin in Origin expressions; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance. |
 | Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe` in Semantics positions, including requirements. `unsafe` is also recognized before `func` and before a Body that introduces an Unsafe Statement. |
 | Semantics categories | `value`, `valueborrow`, `object`, `objectborrow`, `borrow`, `owning`, `reference` in Semantics requirements; see [category sets](03-types-and-values.md#33-type-semantics). |
 | Contextual bindings and operations | `self`, `value`, `storage` under the receiver and accessor rules (§9.2, Chapter 11); `abort` after `$`. |

@@ -304,10 +304,10 @@ public class ParserRegressionTest
     }
 
     [Theory]
-    [InlineData("Dog from owner", "owner")]
-    [InlineData("ref/Dog from source", "source")]
-    [InlineData("ref/SomeType<List<T>, U> from collection", "collection")]
-    [InlineData("SomeType<T> from collection", "collection")]
+    [InlineData("Dog{owner}", "owner")]
+    [InlineData("ref{source}/Dog", "source")]
+    [InlineData("ref{collection}/SomeType<List<T>, U>", "collection")]
+    [InlineData("SomeType<T>{collection}", "collection")]
     public void ParsesAndWritesTypeOrigin(string typeText, string expectedOrigin)
     {
         var (root, diagnostics) = Parse($"func F(value: {typeText}) => ()");
@@ -390,7 +390,7 @@ public class ParserRegressionTest
     public void ParsesOriginDeclarationForSemanticsGenericArgument()
     {
         var source = """
-            public open struct TestStruct<s/C> origin a, b
+            public open struct TestStruct<s/C> {a, b}
             """;
 
         var (root, diagnostics) = Parse(source);
@@ -410,7 +410,7 @@ public class ParserRegressionTest
         {
             root.UnparseAll(ref builder);
             var text = builder.ToString();
-            Assert.Contains("public open struct TestStruct<s/C> origin a, b", text);
+            Assert.Contains("public open struct TestStruct<s/C> {a, b}", text);
         }
         finally
         {
@@ -422,11 +422,11 @@ public class ParserRegressionTest
     public void DiagnosesAndIgnoresTypeConstraintsFromLaterStructDefinitions()
     {
         var source = """
-            struct A<s/T> origin first, shared
+            struct A<s/T> {first, shared}
                 T is FirstConstraint
                 var first: i32
 
-            struct A<s/T> origin ignored, later
+            struct A<s/T> {ignored, later}
                 T is IgnoredConstraint
                 semantics is DefinitelyInvalid
                 var second: i32
@@ -452,7 +452,7 @@ public class ParserRegressionTest
         {
             root.UnparseAll(ref builder);
             var text = builder.ToString();
-            Assert.Contains("struct A<s/T> origin first, shared", text);
+            Assert.Contains("struct A<s/T> {first, shared}", text);
             Assert.Contains("T is FirstConstraint", text);
             Assert.DoesNotContain("ignored", text);
             Assert.DoesNotContain("IgnoredConstraint", text);
@@ -468,7 +468,7 @@ public class ParserRegressionTest
     public void RebuildsKotoSyntaxFromSerializedSources()
     {
         var source = """
-            public open struct TestStruct<s/C> origin a, b
+            public open struct TestStruct<s/C> {a, b}
                 C is Comparable
 
                 #Example

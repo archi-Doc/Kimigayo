@@ -143,6 +143,8 @@ public sealed class BindingSymbol
     /// <summary>Gets the instance receiver's parameter slot, or -1 for ordinary/type functions.</summary>
     public int ReceiverIndex { get; internal set; } = -1;
 
+    internal List<BoundOrigin>? AggregateInputOrigins { get; set; }
+
     internal BoundType? WholeType { get; set; }
 
     internal BindingSymbol? Pair { get; set; }
@@ -237,6 +239,8 @@ public sealed record BoundType : ControlFlowType
     internal BoundType[]? StoredFields { get; set; }
 
     internal BoundType[]? StoredCases { get; set; }
+
+    internal ulong StorageVersion { get; set; }
 
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
 

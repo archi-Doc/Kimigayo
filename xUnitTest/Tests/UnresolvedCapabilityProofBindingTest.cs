@@ -11,7 +11,7 @@ public class UnresolvedCapabilityProofBindingTest
     [Theory]
     [InlineData("Target", true)]
     [InlineData("[2 of Target]", true)]
-    [InlineData("ref/Target from static", true)]
+    [InlineData("ref{static}/Target", true)]
     [InlineData("() -> Target", false)]
     public void PendingTypeConditionsCannotSupplyCapabilityProofs(string type, bool copy)
     {
@@ -34,7 +34,7 @@ public class UnresolvedCapabilityProofBindingTest
     [Theory]
     [InlineData("Target")]
     [InlineData("[2 of Target]")]
-    [InlineData("ref/Target from static")]
+    [InlineData("ref{static}/Target")]
     [InlineData("() -> Target")]
     public void FinalUnmetConditionsProduceErrorInsteadOfCapabilityEvidence(string type)
     {
@@ -82,7 +82,7 @@ public class UnresolvedCapabilityProofBindingTest
 
     [Theory]
     [InlineData("i32", ConstraintProof.Proven)]
-    [InlineData("ref/i32 from static", ConstraintProof.Proven)]
+    [InlineData("ref{static}/i32", ConstraintProof.Proven)]
     [InlineData("() -> i32", ConstraintProof.Refuted)]
     public void UnrelatedResolvedOperandsRetainTheirProofs(string type, ConstraintProof copy)
     {

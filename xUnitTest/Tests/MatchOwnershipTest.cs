@@ -45,7 +45,7 @@ public class MatchOwnershipTest
     [Theory]
     [InlineData("func f<T>(x: T) => match x\n    let value => ()")]
     [InlineData("func f<T>(x: T) => match x\n    _ => ()")]
-    [InlineData("func f(x: ref/i32 from static) => match x\n    let r => ()")]
+    [InlineData("func f(x: ref{static}/i32) => match x\n    let r => ()")]
     public void BoundButUnsupportedMatchCannotVerify(string source)
     {
         var c = Parse(source);
@@ -339,7 +339,7 @@ public class MatchOwnershipTest
         var matches = body.Matches;
         var decompositions = body.Decompositions;
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(decompositions[0].Case).Owner.Declaration;
-        c.Kotonoha.CreateCodeContext().Parse(declaration, "Borrowed(ref/i32 from static)");
+        c.Kotonoha.CreateCodeContext().Parse(declaration, "Borrowed(ref{static}/i32)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
         Assert.False(c.Ownership.Analyze().IsVerified);

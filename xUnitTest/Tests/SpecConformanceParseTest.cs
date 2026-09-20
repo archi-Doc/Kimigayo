@@ -17,15 +17,15 @@ public class SpecConformanceParseTest
     [InlineData("List<char>")]
     [InlineData("()")]
     [InlineData("(i32, string) -> bool")]
-    [InlineData("ref/(i32, string) from owner")]
+    [InlineData("ref{owner}/(i32, string)")]
     [InlineData("List<(i32, string)>")]
     [InlineData("List<(i32) -> bool>")]
     [InlineData("List<List<i32>>")]
-    [InlineData("ref/T from self.source")]
-    [InlineData("ref/T from x and y.source")]
-    [InlineData("ref/T from static")]
-    [InlineData("Pair<A, B> from (left => a, right => b.source and c)")]
-    [InlineData("View<T> from (source => s)")]
+    [InlineData("ref{self.source}/T")]
+    [InlineData("ref{x and y.source}/T")]
+    [InlineData("ref{static}/T")]
+    [InlineData("Pair<A, B>{left => a, right => b.source and c}")]
+    [InlineData("View<T>{source => s}")]
     [InlineData("has")]
     public void TypeSyntaxWorksInEveryDeclarationPosition(string type)
     {
@@ -45,8 +45,8 @@ public class SpecConformanceParseTest
     public void ParsesFunctionOriginsAndSeparatesConstraintsFromExecutableBody()
     {
         var parsed = Parse("""
-            func unwrap<s/T> origin source, owner(value: s/T from source)
-                -> ref/T from value and owner
+            func unwrap<s/T> {source, owner}(value: s{source}/T)
+                -> ref{value and owner}/T
                 s is ref or obj
                 T is Comparable and (Equatable or Hashable)
 
@@ -77,8 +77,8 @@ public class SpecConformanceParseTest
                 property count: i32 has get
                 property item: Element has get, set
 
-            struct Logger origin sink
-                let output: uniq/Writer from sink
+            struct Logger {sink}
+                let output: uniq{sink}/Writer
                 deinit
                     self.output.flush()
                     return
@@ -257,8 +257,8 @@ public class SpecConformanceParseTest
     [InlineData("var bad: ref/")]
     [InlineData("var bad: List<i32")]
     [InlineData("var bad: ref/T from")]
-    [InlineData("var bad: ref/T from source.")]
-    [InlineData("var bad: ref/T from source and")]
+    [InlineData("var bad: ref{source}/T.")]
+    [InlineData("var bad: ref{source}/T and")]
     public void RecoversFromMalformedSyntaxWithoutLosingTheNextDeclaration(string source)
     {
         var parsed = Parse(source + "\nvar after = 1");

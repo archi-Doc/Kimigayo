@@ -363,6 +363,7 @@ public sealed partial class Binding
         var maxParameters = 0;
         var maxGenerics = 0;
         var maxOrigins = 0;
+        var maxInputOrigins = 0;
         var solveOrigins = self is not null || group.Scope.Owner is StructKoto or EnumKoto;
         foreach (var candidate in candidates)
         {
@@ -372,6 +373,7 @@ public sealed partial class Binding
                 maxParameters = Math.Max(maxParameters, function.Parameters.Count);
                 maxGenerics = Math.Max(maxGenerics, function.GenericArguments.Count);
                 maxOrigins = Math.Max(maxOrigins, function.Origins.Count);
+                maxInputOrigins = Math.Max(maxInputOrigins, InputOriginCount(function));
                 solveOrigins |= function.Origins.Count != 0 || (candidate.Type is { } resultPattern && HasDeclaredOrigins(resultPattern));
                 for (var p = 0; !solveOrigins && p < function.Parameters.Count; p++)
                 {
@@ -382,7 +384,7 @@ public sealed partial class Binding
 
         var argumentCount = call.ArgumentNodes.Count;
         var originSlots = solveOrigins ? maxOrigins : 0;
-        var inputSlots = solveOrigins ? maxParameters : 0;
+        var inputSlots = solveOrigins ? maxInputOrigins : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
         var scratch = this.typeScratch.Rent(Math.Max(1, maxGenerics));
         var lengthArguments = this.lengthScratch.Rent(maxGenerics);
@@ -626,7 +628,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(winner, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? selected.Parameters.Count : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            (call.CallStorage ??= new()).Set(winner, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
             return Complete(call, result);
         }
         finally
@@ -733,7 +735,7 @@ public sealed partial class Binding
         Array.Clear(lengths, 0, function.GenericArguments.Count);
         Array.Clear(used, 0, function.Parameters.Count);
         Array.Clear(origins, 0, function.Origins.Count);
-        Array.Clear(inputs, 0, Math.Min(inputs.Length, function.Parameters.Count));
+        Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
 
         if (function.IsSpecialization)
         {
@@ -1115,7 +1117,7 @@ public sealed partial class Binding
             }
 
             this.MatchInputOrigins(pattern, actual, function, origins, inputs);
-            pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, function.Parameters.Count)));
+            pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
             return this.Infer(pattern, actual, function, arguments, true, lengths);
         }
 
@@ -1138,6 +1140,18 @@ public sealed partial class Binding
         if (ReferenceEquals(actual, BoundType.Never))
         {
             return true;
+        }
+
+        if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
+            ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length && arguments[selectorSlot] is { } whole)
+        {
+            if (whole.Semantics == SemanticsKind.Owner)
+            {
+                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths);
+            }
+
+            return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
+                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)

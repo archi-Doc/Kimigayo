@@ -126,8 +126,18 @@ public sealed partial class Binding
         var result = this.SubstituteType(type, function, arguments, lengths);
         if (result is not null)
         {
+            for (var i = 0; i < function.Parameters.Count && i < inputs.Length; i++)
+            {
+                if (function.Parameters[i].Type.BoundType?.Origin is { BorrowCondition: { } selector } &&
+                    ContainerSlot(function, selector) is var slot && slot >= 0 && slot < arguments.Length &&
+                    arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
+                {
+                    inputs[i] = BoundOrigin.Static;
+                }
+            }
+
             result = this.ContractType(result, scope, self);
-            result = this.SubstituteStoredOrigins(result, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, function.Parameters.Count)));
+            result = this.SubstituteStoredOrigins(result, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
         }
 
         return result;

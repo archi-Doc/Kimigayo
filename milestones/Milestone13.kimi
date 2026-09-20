@@ -3,16 +3,16 @@ struct Sample
     public let value: i32
     public init(value: i32) => self.value = value
 
-struct Cursor<T> origin source
+struct Cursor<T> {source}
     Self is Iterator
-    associate Iterator.Element is ref/T from source
-    let values: Slice<T> from source
+    associate Iterator.Element is ref{source}/T
+    let values: Slice<T>{source}
     var position: isize = 0
 
-    public init(values: Slice<T> from source)
+    public init(values: Slice<T>{source})
         self.values = values
 
-    public func next(self: uniq/Self) -> Option<ref/T from source>
+    public func next(self: uniq/Self) -> Option<ref{source}/T>
         require self.position < self.values.length else => return .None
         let index = self.position
         self.position = self.position + 1

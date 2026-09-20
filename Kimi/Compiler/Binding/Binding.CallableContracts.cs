@@ -83,7 +83,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            substituted = this.SubstituteStoredOrigins(substituted, implementation.Binder, origins.AsSpan(0, implementation.OriginCount), inputs.AsSpan(0, implementation.InputCount), requirement.Binder);
+            substituted = this.SubstituteStoredOrigins(substituted, implementation.Binder, origins.AsSpan(0, implementation.OriginCount), inputs.AsSpan(0, InputOriginCount(implementation.Binder)), requirement.Binder);
             return this.ContractType(substituted, scope, self);
         }
     }
@@ -105,7 +105,7 @@ public sealed partial class Binding
 
         internal int GenericCount => this.function?.GenericArguments.Count ?? 0;
 
-        internal int OriginCount => this.function?.Origins.Count ?? 0;
+        internal int OriginCount => this.function?.Origins.Count ?? this.accessor?.Declaration?.Origins.Count ?? 0;
 
         internal int InputCount => this.function?.Parameters.Count ?? 2;
 

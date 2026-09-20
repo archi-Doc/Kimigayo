@@ -3,19 +3,19 @@ struct Cell
     public var value: i32
     public init(value: i32) => self.value = value
 
-enum Selection origin source
-    Found(ref/Cell from source)
+enum Selection {source}
+    Found(ref{source}/Cell)
     Missing
 
-struct Pair origin left, right
-    let first: ref/Cell from left
-    let second: ref/Cell from right
+struct Pair {left, right}
+    let first: ref{left}/Cell
+    let second: ref{right}/Cell
 
-    public init(first: ref/Cell from left, second: ref/Cell from right)
+    public init(first: ref{left}/Cell, second: ref{right}/Cell)
         self.first = first
         self.second = second
 
-    public func choose(self: ref/Self, useFirst: bool) -> Selection from self.left and self.right
+    public func choose(self: ref/Self, useFirst: bool) -> Selection{self.left and self.right}
         if useFirst
             return .Found(self.first)
         return .Found(self.second)

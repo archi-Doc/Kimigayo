@@ -23,7 +23,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
 | `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and `Iterable` with associated Type `Element = isize` under §4.6.3 |
-| `Slice<T>` origin source | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref/T from source`; backing Origin is explicit or inferred under ordinary rules |
+| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref{source}/T`; backing Origin is explicit or inferred under ordinary rules |
 | `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and consuming Iterable conformance |
 | `Stringify` | `func stringify(self: ref/Self) -> string`; returns an independent owned string |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
@@ -172,7 +172,7 @@ struct Cache<T>
         public var count: i32 = 0
 ```
 
-Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate. Cache<ref/i32 from a>.Statistics.count and the corresponding b reference use one key after both full references pass their checks.
+Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate. Cache<ref{a}/i32>.Statistics.count and the corresponding b reference use one key after both full references pass their checks.
 
 Require the stored value to be Owned and satisfy existing static-storage conditions; do not require every enclosing Type argument to be Owned. Preserve full Origins for access and lifetime checking. Under §8.10 and §21.3, verify one representation, initialization and destruction plan for all valid Origin bindings sharing a key, including the required operations, evidence and callees. Owned storage alone does not prove initializer shareability. Reuse verified typed plans and finalize concrete layout at instantiation; do not choose by the first accessing Origin or split failing plans into Origin-specific storage. Initializers may depend on ordinary runtime state.
 
@@ -182,25 +182,7 @@ Shared code reaches a key through a supplied initialize-and-address operation (�
 
 ## 22.3. Foreign function imports
 
-#### 22.2.4. Static storage in inherited environments
-
-A Field directly in a group is static even when that group is nested in a struct. Its storage key is the Field declaration Identity plus normalized enclosing bindings with Origins recursively erased. Retain Type structure and every Semantics layer, including unused arguments. Distinct keys have distinct storage; code sharing never merges them. Different paths to one key use one initialization state, Loan/effect identity and destruction responsibility.
-
-```kimi
-struct Cache<T>
-    public group Statistics
-        public var count: i32 = 0
-```
-
-Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate. Cache<ref/i32 from a>.Statistics.count and the corresponding b reference use one key after both full references pass their checks.
-
-Require the stored value to be Owned and satisfy existing static-storage conditions; do not require every enclosing Type argument to be Owned. Preserve full Origins for access and lifetime checking. Under §8.10 and §21.3, verify one representation, initialization and destruction plan for all valid Origin bindings sharing a key, including the required operations, evidence and callees. Owned storage alone does not prove initializer shareability. Reuse verified typed plans and finalize concrete layout at instantiation; do not choose by the first accessing Origin or split failing plans into Origin-specific storage. Initializers may depend on ordinary runtime state.
-
-Apply §22.2.3 lazy initialization, initialization-cycle Abort and reverse-initialization shutdown destruction. Type/function references alone do not initialize Fields. Check unused Field declarations and initializers, without requiring their runtime initialization or destruction.
-
-Shared code reaches a key through a supplied initialize-and-address operation (§21.3.3), fixed directly or represented by an existing entry/context pair. Its immutable private context retains storage/state references and required initializer/destructor operations; mutable initialization state stays with storage. No new GenericContext slot kind, per-call context construction or runtime Type search is required. Direct-call optimization must preserve initialization checks, cycle detection and storage Identity.
-
-## 22.3.1. Declaration and call contract
+### 22.3.1. Declaration and call contract
 
 `#LibraryImport("library", "symbol")` on a bodyless unsafe func selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is a case-sensitive logical native requirement name belonging to the defining Kotonoha (§20.8.2), not a consumer alias or DLL path. Requirements may come from NativeRequirements or a self-targeted combined NativeLibraries record. The second argument is the exact external symbol, independently of the source function name. Actual supply/kind and member-closure validation occur under §20.8.2 without replacing the following source/ABI obligations.
 
@@ -218,25 +200,7 @@ Acquire arguments once from left to right, then use the selected ABI. No automat
 
 Unresolved logical libraries and unsupported ABI signatures are compilation errors. Record required link inputs; unresolved native symbols fail manual linking/loading before entry. C aggregate passing, export, callbacks, varargs, and extra calling conventions remain extensions; C storage layout is specified separately and does not enable them.
 
-#### 22.2.4. Static storage in inherited environments
-
-A Field directly in a group is static even when that group is nested in a struct. Its storage key is the Field declaration Identity plus normalized enclosing bindings with Origins recursively erased. Retain Type structure and every Semantics layer, including unused arguments. Distinct keys have distinct storage; code sharing never merges them. Different paths to one key use one initialization state, Loan/effect identity and destruction responsibility.
-
-```kimi
-struct Cache<T>
-    public group Statistics
-        public var count: i32 = 0
-```
-
-Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate. Cache<ref/i32 from a>.Statistics.count and the corresponding b reference use one key after both full references pass their checks.
-
-Require the stored value to be Owned and satisfy existing static-storage conditions; do not require every enclosing Type argument to be Owned. Preserve full Origins for access and lifetime checking. Under §8.10 and §21.3, verify one representation, initialization and destruction plan for all valid Origin bindings sharing a key, including the required operations, evidence and callees. Owned storage alone does not prove initializer shareability. Reuse verified typed plans and finalize concrete layout at instantiation; do not choose by the first accessing Origin or split failing plans into Origin-specific storage. Initializers may depend on ordinary runtime state.
-
-Apply §22.2.3 lazy initialization, initialization-cycle Abort and reverse-initialization shutdown destruction. Type/function references alone do not initialize Fields. Check unused Field declarations and initializers, without requiring their runtime initialization or destruction.
-
-Shared code reaches a key through a supplied initialize-and-address operation (§21.3.3), fixed directly or represented by an existing entry/context pair. Its immutable private context retains storage/state references and required initializer/destructor operations; mutable initialization state stays with storage. No new GenericContext slot kind, per-call context construction or runtime Type search is required. Direct-call optimization must preserve initialization checks, cycle detection and storage Identity.
-
-## 22.3.2. Initial Windows C ABI
+### 22.3.2. Initial Windows C ABI
 
 Compute a physical signature once and share it between declare and call:
 

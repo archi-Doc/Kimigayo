@@ -21,7 +21,7 @@ public class OriginFragmentBindingTest
         foreach (var reverse in new[] { false, true })
         {
             var c = Create();
-            AddFragments(c, $"struct S<a> origin {origins}", $"struct S<a> origin {origins}", reverse);
+            AddFragments(c, $"struct S<a> {{{origins}}}", $"struct S<a> {{{origins}}}", reverse);
             Verify(c);
             Verify(Reload(c));
 
@@ -79,7 +79,7 @@ public class OriginFragmentBindingTest
         foreach (var reverse in new[] { false, true })
         {
             var c = Create();
-            AddFragments(c, $"struct S origin {first}", $"struct S origin {second}", reverse);
+            AddFragments(c, $"struct S {{{first}}}", $"struct S {{{second}}}", reverse);
             Verify(c);
             Verify(Reload(c));
         }
@@ -100,7 +100,7 @@ public class OriginFragmentBindingTest
     public void MatchingInvalidHeadersNeverBecomeValidThroughMerging(string origins, bool duplicate)
     {
         var c = Create();
-        AddFragments(c, $"struct S origin {origins}", $"struct S origin {origins}", false);
+        AddFragments(c, $"struct S {{{origins}}}", $"struct S {{{origins}}}", false);
         Verify(c);
         Verify(Reload(c));
 
@@ -117,7 +117,7 @@ public class OriginFragmentBindingTest
     public void SameSpelledOriginsOnDifferentTypeIdentitiesRemainDistinct()
     {
         var c = Create();
-        AddFragments(c, "struct S origin a, b : a", "struct S<T> origin a, b : a", false);
+        AddFragments(c, "struct S {a, b : a}", "struct S<T> {a, b : a}", false);
         Assert.False(c.Bind().IsComplete);
         var declarations = c.Kotonoha.RootKoto.NestedContainers.Where(x => x.Name == "S").ToArray();
         Assert.Equal(2, declarations.Length);
@@ -132,9 +132,9 @@ public class OriginFragmentBindingTest
     public void AddingABoundedFragmentInvalidatesTheUnboundedDeclaration()
     {
         var c = Create();
-        c.Kotonoha.AddSource(new SourceDocument("first.kimi", "struct S origin a, b"));
+        c.Kotonoha.AddSource(new SourceDocument("first.kimi", "struct S {a, b}"));
         Assert.True(c.Bind().IsComplete);
-        c.Kotonoha.AddSource(new SourceDocument("second.kimi", "struct S origin a, b : a"));
+        c.Kotonoha.AddSource(new SourceDocument("second.kimi", "struct S {a, b : a}"));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingFailure.Duplicate, Assert.Single(c.Kotonoha.RootKoto.NestedContainers).BindingFailure);
         Assert.False(Reload(c).Bind().IsComplete);
@@ -144,7 +144,7 @@ public class OriginFragmentBindingTest
     public void WarmUnboundedFragmentBindingAllocatesNothing()
     {
         var c = Create();
-        AddFragments(c, "struct S origin a, b", "struct S origin a, b", false);
+        AddFragments(c, "struct S {a, b}", "struct S {a, b}", false);
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

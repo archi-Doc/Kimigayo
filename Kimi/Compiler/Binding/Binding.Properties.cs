@@ -156,6 +156,15 @@ public sealed partial class Binding
         }
 
         var scope = this.scopes[syntax!];
+        if (property.IsStored && property.Type is { } storageType)
+        {
+            var inheritedSyntax = accessor.Kind == PropertyAccessorKind.Set ? syntax!.ValueType : syntax!.ReturnType;
+            if (inheritedSyntax is not null)
+            {
+                this.InheritOriginContract(inheritedSyntax, storageType);
+            }
+        }
+
         if (accessor.Kind == PropertyAccessorKind.Set)
         {
             accessor.Input = syntax!.ValueType is { } input ? this.BindType(input, scope) : this.BindImplicitSetterInput(property, accessor, scope);

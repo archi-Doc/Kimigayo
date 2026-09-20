@@ -69,19 +69,22 @@ public class PropertyBindingTest
     }
 
     [Theory]
-    [InlineData("from source", "from source", true)]
-    [InlineData("", "from source", false)]
-    [InlineData("from source", "", false)]
+    [InlineData("{source}", "{source}", true)]
+    [InlineData("", "{source}", true)]
+    [InlineData("{source}", "", true)]
+    [InlineData("", "", true)]
+    [InlineData("{static}", "", false)]
+    [InlineData("", "{static}", false)]
     public void StoredAccessorOriginsMustMatchStorage(string getter, string setter, bool valid)
     {
-        var c = Parse($"struct S origin source\n    var item: ref/i32 from source\n        get(self: ref/Self) -> ref/i32 {getter} => storage\n        set(self: uniq/Self, value: ref/i32 {setter}) -> () => storage = value");
+        var c = Parse($"struct S {{source}}\n    var item: ref{{source}}/i32\n        get(self: ref/Self) -> ref{getter}/i32 => storage\n        set(self: uniq/Self, value: ref{setter}/i32) -> () => storage = value");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
     [Fact]
     public void ReceiverOriginPathsRetainTheAccessorInputIdentity()
     {
-        var c = Parse("struct S origin source\n    var item: ref/i32 from source\n        get(self: ref/Self) -> ref/i32 from self.source => storage");
+        var c = Parse("struct S {source}\n    var item: ref{source}/i32\n        get(self: ref/Self) -> ref{self.source}/i32 => storage");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var getter = Property(c, "S", "item").Getter;
         var self = Walk(getter.Declaration!.ReturnType!).OfType<IdentifierNameKoto>().Single(x => x.IdentifierName == "self");
@@ -263,10 +266,10 @@ public class PropertyBindingTest
 
     [Theory]
     [InlineData("ref/i32", PropertyWitnessKind.StorageCopy)]
-    [InlineData("ref/(ref/i32 from static)", PropertyWitnessKind.StorageBorrow)]
+    [InlineData("ref/(ref{static}/i32)", PropertyWitnessKind.StorageBorrow)]
     public void DistinguishesReferenceCopyFromBorrowingTheReferenceSlot(string result, PropertyWitnessKind kind)
     {
-        var c = Parse($"contract C\n    property item: {result} has get\nstruct S\n    Self is C\n    public var item: ref/i32 from static");
+        var c = Parse($"contract C\n    property item: {result} has get\nstruct S\n    Self is C\n    public var item: ref{{static}}/i32");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(kind, Assert.Single(Conformance(c, "S", "C").PropertyWitnesses).Kind);
     }

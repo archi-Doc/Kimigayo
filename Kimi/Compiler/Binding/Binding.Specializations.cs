@@ -167,12 +167,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            var valid = original.Type is { } result && this.SubstituteType(result, definition, arguments) is { } expected &&
-                symbol.Type is { } actualResult && SameContract(expected, actualResult, definition, function);
+            var valid = this.CompleteSpecializationOrigins(function, definition, arguments);
             for (var p = 0; p < function.Parameters.Count; p++)
             {
-                valid &= function.Parameters[p].ExternalName == definition.Parameters[p].ExternalName &&
-                    SameContract(this.SubstituteType(definition.Parameters[p].Type.BoundType!, definition, arguments)!, function.Parameters[p].Type.BoundType!, definition, function);
+                valid &= function.Parameters[p].ExternalName == definition.Parameters[p].ExternalName;
             }
 
             if (!valid)
@@ -200,36 +198,6 @@ public sealed partial class Binding
         static bool Closed(BoundType type)
             => type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection) &&
                 type.LengthExpression is null && type.Components.All(Closed);
-
-        static bool SameContract(BoundType a, BoundType b, FunctionKoto left, FunctionKoto right)
-        {
-            if (!SignatureEquals(a, b, left, right) || !SameOrigin(a.Origin, b.Origin, left, right) || a.OriginArguments.Count != b.OriginArguments.Count)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < a.OriginArguments.Count; i++)
-            {
-                if (!SameOrigin(a.OriginArguments[i], b.OriginArguments[i], left, right))
-                {
-                    return false;
-                }
-            }
-
-            for (var i = 0; i < a.Components.Count; i++)
-            {
-                if (!SameContract(a.Components[i], b.Components[i], left, right))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        static bool SameOrigin(BoundOrigin? a, BoundOrigin? b, FunctionKoto left, FunctionKoto right)
-            => ReferenceEquals(a, b) || (a is { Kind: OriginKind.Input } && b is { Kind: OriginKind.Input } &&
-                ReferenceEquals(a.Binder, left) && ReferenceEquals(b.Binder, right) && a.Slot == b.Slot);
     }
 
     private sealed record Specialization(BindingSymbol Original, BoundType?[] Arguments);

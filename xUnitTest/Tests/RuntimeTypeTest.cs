@@ -205,7 +205,7 @@ public class RuntimeTypeTest
     [Fact]
     public void SourceOriginsAndUnreachableResultsAreRetained()
     {
-        var c = Parse("struct Dog\nfunc f origin a(x: objref/Dog from a) -> bool\n    return true\n    return (x) is not Dog");
+        var c = Parse("struct Dog\nfunc f {a}(x: objref{a}/Dog) -> bool\n    return true\n    return (x) is not Dog");
         AssertBound(c);
         var test = Test(c);
         Assert.NotNull(test.BoundRuntimeTest!.Value.OperandType.Origin);
@@ -245,7 +245,7 @@ public class RuntimeTypeTest
     [InlineData("obj/Dog")]
     [InlineData("i32")]
     [InlineData("(Dog, Dog)")]
-    [InlineData("Dog from a")]
+    [InlineData("Dog{a}")]
     public void ForbiddenTargetSyntaxIsRejectedWithoutExpandingTheGrammar(string target)
     {
         var c = Compilation.CreateForTest();

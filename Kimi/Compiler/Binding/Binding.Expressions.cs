@@ -160,6 +160,12 @@ public sealed partial class Binding
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
         var actual = this.BindNodeCore(node, scope, expected);
+        if (actual is null && expected?.Kind == BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsValuePosition(node))
+        {
+            return this.BindFunctionReference(node, symbol, expected);
+        }
+
         if (expected?.Kind == BoundTypeKind.Function && actual?.Kind == BoundTypeKind.Closure &&
             actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
             FitsType(closure.Signature, expected) && this.ProveCopy(actual, node) == ConstraintProof.Proven && !HasDeclaredOrigins(actual))

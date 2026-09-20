@@ -31,7 +31,7 @@ public static partial class Parser
             genericDepth += kind == TokenKind.LessThan ? 1 : kind == TokenKind.GreaterThan ? -1 : kind == TokenKind.GreaterThanGreaterThan ? -2 : 0;
             if (depth == 1 && genericDepth == 0 && i > 0)
             {
-                if (i > 1 && reader.GetSpan(reader.PeekToken(i)).SequenceEqual(Constants.FromKeyword))
+                if (i > 1 && kind == TokenKind.OpenBrace)
                 {
                     return true;
                 }
@@ -75,7 +75,7 @@ public static partial class Parser
                 return false;
             }
 
-            if (kind is TokenKind.LessThan or TokenKind.OpenParenthesis || reader.GetSpan(reader.PeekToken(i)).SequenceEqual(Constants.FromKeyword))
+            if (kind is TokenKind.LessThan or TokenKind.OpenParenthesis or TokenKind.OpenBrace)
             {
                 return true;
             }

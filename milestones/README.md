@@ -759,7 +759,7 @@ and [closure generation](../spec/21-layout-runtime-and-code-generation.md#2125-c
 ## Milestone 13: a Slice-backed Iterator
 
 Cursor implements the Kimi Iterator Contract and explicitly binds its Element
-to `ref/T from source`. It stores a borrowed Slice and a position; it owns no
+to `ref{source}/T`. It stores a borrowed Slice and a position; it owns no
 Sample elements. Its next method yields a borrow of external backing storage,
 not of the Cursor or next's exclusive receiver. This makes it non-lending:
 the first reference remains valid while later calls advance the iterator.

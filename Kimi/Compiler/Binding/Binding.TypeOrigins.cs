@@ -43,7 +43,12 @@ public sealed partial class Binding
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
         var written = annotation is not null && (annotation.OriginName is not null || annotation.OriginExpression is not null || annotation.OriginArguments is not null);
-        if (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice || (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication && written))
+        if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
+        {
+            return Fail(use, BindingFailure.InvalidOrigin);
+        }
+
+        if (IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication || (type.Kind == BoundTypeKind.Parameter && written))
         {
             if (annotation?.OriginArguments is not null)
             {
@@ -51,7 +56,7 @@ public sealed partial class Binding
             }
 
             var origin = written ? annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope) : type.Origin;
-            if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin))
+            if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin) && annotation?.SemanticsParameter is null)
             {
                 return Fail(use, BindingFailure.InvalidOrigin);
             }
@@ -63,7 +68,20 @@ public sealed partial class Binding
 
             if (origin is null && !written && !context.SuppressOuter)
             {
-                origin = this.OmittedOrigin(use, scope, context, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref);
+                if (type.Kind == BoundTypeKind.SemanticsApplication && !context.Direct && context.Position is not (TypePosition.Local or TypePosition.Result))
+                {
+                    // Definition proof must show this position needs no borrow Origin.
+                    return type;
+                }
+
+                var condition = type.Kind == BoundTypeKind.SemanticsApplication ? type.Symbol : null;
+                var mayBeExclusive = IsExclusive(type.Semantics) || (condition?.WholeType is { } whole &&
+                    !this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Obj | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Unsafe, scope));
+                origin = this.OmittedOrigin(use, scope, type.Kind == BoundTypeKind.Slice ? context with { Direct = false } : context, mayBeExclusive ? LoanRequirement.Uniq : LoanRequirement.Ref, type.Kind == BoundTypeKind.Slice ? 0 : -1, condition);
+                if (type.Kind == BoundTypeKind.SemanticsApplication && origin?.Kind == OriginKind.Input && context.Direct)
+                {
+                    origin.BorrowCondition = type.Symbol;
+                }
             }
 
             if (origin is null && (written || !context.SuppressOuter))
@@ -155,7 +173,21 @@ public sealed partial class Binding
                     }
                     else if (written)
                     {
-                        if (count != 1 || arguments[0] is not null)
+                        var slot = -1;
+                        for (var i = 0; i < count; i++)
+                        {
+                            if (arguments[i] is null)
+                            {
+                                if (slot >= 0)
+                                {
+                                    return Fail(use, BindingFailure.InvalidOrigin);
+                                }
+
+                                slot = i;
+                            }
+                        }
+
+                        if (slot < 0)
                         {
                             return Fail(use, BindingFailure.InvalidOrigin);
                         }
@@ -166,7 +198,7 @@ public sealed partial class Binding
                             return null;
                         }
 
-                        arguments[0] = bound;
+                        arguments[slot] = bound;
                     }
 
                     for (var i = 0; i < count; i++)
@@ -176,8 +208,7 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        // Direct-input quantification applies only to a borrow layer, never aggregate slots.
-                        var bound = this.OmittedOrigin(use, scope, context with { Direct = false, Slot = i }, schema!.Origins[i].LoanRequirement);
+                        var bound = this.OmittedOrigin(use, scope, context with { Direct = false }, schema!.Origins[i].LoanRequirement, i);
                         if (bound is null)
                         {
                             return null;

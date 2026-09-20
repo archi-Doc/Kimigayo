@@ -51,7 +51,7 @@ internal sealed class OriginNameList : List<string>
         return true;
     }
 
-    /// <summary>Writes <c> origin a, b : a</c>, or nothing for an empty list.</summary>
+    /// <summary>Writes <c> {a, b : a}</c>, or nothing for an empty list.</summary>
     /// <param name="origins">Declared Origin parameters.</param>
     /// <param name="builder">The destination builder.</param>
     internal static void WriteTo(IReadOnlyList<string> origins, ref IndentedStringBuilder builder)
@@ -61,7 +61,7 @@ internal sealed class OriginNameList : List<string>
             return;
         }
 
-        builder.Append(" origin ");
+        builder.Append(" {");
         for (var i = 0; i < origins.Count; i++)
         {
             if (i > 0)
@@ -76,6 +76,8 @@ internal sealed class OriginNameList : List<string>
                 builder.Append(bound);
             }
         }
+
+        builder.Append('}');
     }
 
     internal void Add(string name, SourceSpan span)

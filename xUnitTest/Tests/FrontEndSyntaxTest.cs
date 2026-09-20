@@ -78,7 +78,7 @@ public class FrontEndSyntaxTest
 
     [Theory]
     [InlineData("let a: [4 of i32] = [1, 2, 3, 4]")]
-    [InlineData("let a: [(N * 2 + 1) of ref/T from source] = values")]
+    [InlineData("let a: [(N * 2 + 1) of ref{source}/T] = values")]
     [InlineData("let a: [Sizes.width of [2 of _]] = values")]
     [InlineData("let a: [::width of i32] = values")]
     [InlineData("func f<length N, T>(a: [N of T]) -> [N of T] => a")]
@@ -110,7 +110,7 @@ public class FrontEndSyntaxTest
     [InlineData("func f()\n    require valid else => return\n    work()")]
     [InlineData("func f()\n    require valid\n    else\n        return\n    work()")]
     [InlineData("enum Option<T>\n    None\n    Some(T)")]
-    [InlineData("enum E origin a\n    A\n    B(ref/T from a)\n    func f() => ()")]
+    [InlineData("enum E {a}\n    A\n    B(ref{a}/T)\n    func f() => ()")]
     [InlineData("let a = match value\n    .Some(let x) if x > 0 => x\n    .None => 0\n    _ => -1")]
     [InlineData("let a = match value\n    Option<i32>.Some(var x) => x\n    (let a, (var b, _)) => b\n    (1,) => 1\n    () => 0")]
     [InlineData("open struct Base\nstruct Derived : Base\n    init(value: i32) : base(value)\n        return\n    deinit\n        return")]

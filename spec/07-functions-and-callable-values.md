@@ -2,7 +2,7 @@
 
 [Specification index](../SPEC.md)
 
-A function declaration begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters and a parenthesized parameter list. A result Type follows `->`; omitting it in a named function means Unit (`()`), regardless of accessibility or body form. Definitions use the common Body forms (§7.1). Anonymous functions have separate [inference rules](#761-syntax-and-inference).
+A function declaration begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters `{...}` and a parenthesized parameter list. A result Type follows `->`; omitting it in a named function means Unit (`()`), regardless of accessibility or body form. Definitions use the common Body forms (§7.1). Anonymous functions have separate [inference rules](#761-syntax-and-inference).
 
 The declared function Name is a single, unqualified Name, and the declaration belongs to the lexical Container or executable scope in which it appears. A member is declared inside the relevant Container body, including a permitted fragment; `func View.get(...)` and other qualified declaration names are compile-time errors. A qualified declaration cannot attach a function to another Container, introduce an extension, or obtain that Container's private access or generic bindings. Qualified Names at use sites and explicit receivers follow their own rules.
 
@@ -212,7 +212,7 @@ reader() // Shared call; Move capture does not imply consuming call.
 
 let item = makeResource() // Non-Copy.
 let take = func [item] () => item
-let first = take() // Moves item from the consuming closure.
+let first = take() // Moves item{the} consuming closure.
 take()             // Error: the non-Copy closure was consumed.
 ```
 

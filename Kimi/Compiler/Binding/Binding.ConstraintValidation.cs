@@ -360,12 +360,22 @@ public sealed partial class Binding
         }
 
         if (obligation.Kind == BindingObligationKind.TypeFormation &&
-            obligation.Use is TypeSemanticsKoto { SemanticsParameter: not null, BoundType: { Kind: BoundTypeKind.SemanticsApplication, Origin: null } } application && application.BoundSymbol?.Pair?.WholeType is { } whole)
+            obligation.Use is TypeSemanticsKoto { SemanticsParameter: not null, BoundType: { } applied } application && application.BoundSymbol?.Pair?.WholeType is { } whole)
         {
-            // Borrow application still needs its Origin/Loan contract. This step discharges only
-            // applications proved to need no outer Origin, without choosing a concrete instance.
-            // An annotated WholeType instead remains a Parameter and needs its own proof;
-            // owner/unsafe evidence cannot certify that annotation (SPEC 8.1.2).
+            if (application.OriginExpression is not null || application.OriginName is not null)
+            {
+                var allowed = applied.Origin?.Kind == OriginKind.Static ? SemanticsMask.Ref | SemanticsMask.ObjRef : SemanticsMask.ValueBorrow | SemanticsMask.ObjRef | SemanticsMask.ObjUniq;
+                return this.HasSemanticsRole(whole, allowed, scope) && (applied.Kind == BoundTypeKind.Parameter || this.HasValueRole(type, scope, false));
+            }
+
+            if (applied.Kind == BoundTypeKind.SemanticsApplication && applied.Origin is not null)
+            {
+                // The outer slot activates only for safe-borrow bindings. Object
+                // bindings additionally require the ordinary payload formation proof.
+                return this.HasValueRole(type, scope, false) &&
+                    (this.HasValueRole(type, scope, true) || this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Unsafe, scope));
+            }
+
             return this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Unsafe, scope) && this.HasValueRole(type, scope, false);
         }
 

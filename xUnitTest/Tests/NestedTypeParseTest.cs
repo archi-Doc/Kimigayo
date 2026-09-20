@@ -17,12 +17,12 @@ public class NestedTypeParseTest
     [InlineData("uniq/ref/T")]
     [InlineData("ref/obj/Node")]
     [InlineData("unsafe/ref/i32")]
-    [InlineData("ref/ref/ref/T from outer")]
-    [InlineData("ref/(ref/T from inner) from outer")]
-    [InlineData("uniq/(ref/(ref/T from a) from b) from c")]
-    [InlineData("ref/(View<T> from (source => inner)) from outer")]
-    [InlineData("ref/(ref/A.B<List<T>> from inner) from outer")]
-    [InlineData("List<ref/(ref/i32 from inner) from outer>")]
+    [InlineData("ref{outer}/ref/ref/T")]
+    [InlineData("ref{outer}/(ref{inner}/T)")]
+    [InlineData("uniq{c}/(ref{b}/(ref{a}/T))")]
+    [InlineData("ref{outer}/(View<T>{source => inner})")]
+    [InlineData("ref{outer}/(ref{inner}/A.B<List<T>>)")]
+    [InlineData("List<ref{outer}/(ref{inner}/i32)>")]
     [InlineData("s/ref/T")]
     [InlineData("(ref/T)")]
     [InlineData("(ref/T,)")]
@@ -53,7 +53,7 @@ public class NestedTypeParseTest
     [Fact]
     public void UngroupedOriginBelongsOnlyToTheOutermostLayer()
     {
-        var outer = Assert.IsType<TypeSemanticsKoto>(ParseParameterType("ref/uniq/T from outer"));
+        var outer = Assert.IsType<TypeSemanticsKoto>(ParseParameterType("ref{outer}/uniq/T"));
         var inner = Assert.IsType<TypeSemanticsKoto>(outer.Type);
         Assert.Equal(SemanticsKind.Ref, outer.SemanticsKind);
         Assert.Equal("outer", outer.OriginName);
@@ -66,7 +66,7 @@ public class NestedTypeParseTest
     [Fact]
     public void RetainsSeparateOriginsAndParentLinksAtEachLayer()
     {
-        const string Type = "ref/(uniq/T from inner.source and other) from outer";
+        const string Type = "ref{outer}/(uniq{inner.source and other}/T)";
         var outer = Assert.IsType<TypeSemanticsKoto>(ParseParameterType(Type));
         var parentheses = Assert.IsType<ParenthesizedTypeKoto>(outer.Type);
         var inner = Assert.IsType<TypeSemanticsKoto>(parentheses.Type);
@@ -92,7 +92,7 @@ public class NestedTypeParseTest
     [Theory]
     [InlineData("ref/(i32) -> bool")]
     [InlineData("i32 -> bool")]
-    [InlineData("(i32) from a -> bool")]
+    [InlineData("i32{a} -> bool")]
     public void FunctionArrowRequiresAParameterList(string type)
     {
         // A bare Type cannot replace the Function Parameter List (SPEC 3.2); recovery still keeps the arrow.
@@ -125,9 +125,9 @@ public class NestedTypeParseTest
     }
 
     [Theory]
-    [InlineData("value@ref/(ref/T from inner)")]
-    [InlineData("value@Box<ref/T from inner>")]
-    [InlineData("value@ref/((T) -> ref/U from inner)")]
+    [InlineData("value@ref/(ref{inner}/T)")]
+    [InlineData("value@Box<ref{inner}/T>")]
+    [InlineData("value@ref/((T) -> ref{inner}/U)")]
     public void ParenthesesAndTypeArgumentsDoNotPermitOriginsInAdaptationTargets(string expression)
         => Assert.NotEmpty(Parse($"let result = {expression}").DiagnosticCollection.GetArray());
 
@@ -150,7 +150,7 @@ public class NestedTypeParseTest
         Assert.Null(types.GetDeclaredType(ParseParameterType("(i32,)")));
         Assert.Null(types.GetDeclaredType(ParseParameterType("ref/ref/i32")));
         Assert.Equal(new ControlFlowType("unsafe/unsafe/i32"), types.GetDeclaredType(ParseParameterType("unsafe/(unsafe/i32)")));
-        Assert.Null(types.GetDeclaredType(ParseParameterType("unsafe/(unsafe/i32 from inner)")));
+        Assert.NotEmpty(Parse("func f(x: unsafe/(unsafe{inner}/i32))").DiagnosticCollection.GetArray());
     }
 
     [Theory]

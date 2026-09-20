@@ -11,9 +11,11 @@ public sealed partial class Binding
 
     private static bool IsExclusive(SemanticsKind semantics) => semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
 
-    private static int InputCount(Koto owner) => owner is FunctionKoto f ? f.Parameters.Count : owner is PropertyAccessorKoto ? 2 : 0;
+    private static int InputCount(Koto owner) => owner is FunctionKoto f ? f.Parameters.Count : owner is PropertyAccessorKoto ? 2 : owner is FunctionTypeKoto t ? t.Parameters is TupleTypeKoto tuple ? tuple.ElementNodes.Count : 1 : 0;
 
-    private static Koto? InputType(Koto owner, int index) => owner is FunctionKoto f ? f.Parameters[index].Type : owner is PropertyAccessorKoto a ? index == 0 ? a.ReceiverType : a.ValueType : null;
+    private static int InputOriginCount(Koto owner) => InputCount(owner) + (owner.BoundSymbol?.AggregateInputOrigins?.Count ?? 0);
+
+    private static Koto? InputType(Koto owner, int index) => owner is FunctionKoto f ? f.Parameters[index].Type : owner is PropertyAccessorKoto a ? index == 0 ? a.ReceiverType : a.ValueType : owner is FunctionTypeKoto t ? t.Parameters is TupleTypeKoto tuple ? tuple.ElementNodes[index] : t.Parameters : null;
 
     private static string InputName(Koto owner, int index) => owner is FunctionKoto f ? f.Parameters[index].InternalName : index == 0 ? "self" : "value";
 
@@ -235,6 +237,11 @@ public sealed partial class Binding
                 parameters = function.IsSpecialization ? [] : function.GenericArguments;
                 origins = function.Origins;
             }
+            else if (node is PropertyAccessorKoto accessor)
+            {
+                parameters = [];
+                origins = accessor.Origins;
+            }
             else if (node is DeclarationContainerKoto { IsRoot: false } container)
             {
                 if (container.Parent is not (GroupKoto or StructKoto) &&
@@ -312,6 +319,11 @@ public sealed partial class Binding
                 var origin = schema.Origins[i];
                 origin.Variance = i < origins.Count ? OriginVariance.Unused : OriginVariance.Covariant;
                 origin.LoanRequirement = i < origins.Count ? LoanRequirement.None : LoanRequirement.Ref;
+                if (i < origins.Count && scope.Parent is { } enclosing && FindAbstractOrigin(origin.Name, enclosing) is not null)
+                {
+                    Fail(node, BindingFailure.Duplicate);
+                }
+
                 scope.Origins ??= new(StringComparer.Ordinal);
                 if (!scope.Origins.TryAdd(origin.Name, origin.Origin))
                 {
@@ -536,11 +548,44 @@ public sealed partial class Binding
         return result;
     }
 
-    private BoundOrigin? OmittedOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement = LoanRequirement.Ref)
+    private BoundOrigin? OmittedOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement = LoanRequirement.Ref, int aggregateSlot = -1, BindingSymbol? borrowCondition = null)
     {
+        if (this.inheritedOriginTypes.TryGetValue(use, out var inherited))
+        {
+            var origin = aggregateSlot < 0 ? inherited.Origin : aggregateSlot < inherited.OriginArguments.Count ? inherited.OriginArguments[aggregateSlot] : null;
+            if (origin is not null)
+            {
+                return origin;
+            }
+        }
+
+        if (aggregateSlot >= 0 && context.Position == TypePosition.Parameter &&
+            context.Owner is FunctionKoto { IsAnonymous: false } or PropertyAccessorKoto)
+        {
+            var slots = context.Owner.BoundSymbol!.AggregateInputOrigins ??= new();
+            foreach (var slot in slots)
+            {
+                if (ReferenceEquals(slot.Occurrence, use) && slot.TargetSlot == aggregateSlot)
+                {
+                    return slot;
+                }
+            }
+
+            var origin = new BoundOrigin(OriginKind.Input, context.Owner, InputCount(context.Owner) + slots.Count)
+            {
+                InputIndex = context.Slot,
+                Occurrence = use,
+                TargetSlot = aggregateSlot,
+            };
+            slots.Add(origin);
+            return origin;
+        }
+
         if (context.Position == TypePosition.Parameter && context.Direct)
         {
-            return this.OriginAtom(context.Owner, OriginKind.Input, context.Slot);
+            var origin = this.OriginAtom(context.Owner, OriginKind.Input, context.Slot);
+            origin.BorrowCondition = null;
+            return origin;
         }
 
         if (context.Position == TypePosition.Local && context.Owner is VariableKoto { InitializerKoto: not null })
@@ -553,30 +598,70 @@ public sealed partial class Binding
         if (context.Position == TypePosition.Result)
         {
             BoundOrigin? meet = null;
+            var guaranteedBorrow = false;
             for (var i = 0; i < InputCount(context.Owner); i++)
             {
                 var type = BoundInputType(context.Owner, i);
-                if (type?.Origin is not { } input || !IsBorrow(type.Semantics))
+                if (type?.Origin is not { } input || (!IsBorrow(type.Semantics) && type.Kind != BoundTypeKind.SemanticsApplication))
                 {
                     continue;
                 }
 
                 meet = meet is null ? input : this.Meet(meet, input);
+                guaranteedBorrow |= IsBorrow(type.Semantics) || (borrowCondition is not null && ReferenceEquals(type.Symbol, borrowCondition)) ||
+                    (type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.ValueBorrow | SemanticsMask.ObjRef | SemanticsMask.ObjUniq, scope));
             }
 
             if (meet is not null)
             {
+                if (!guaranteedBorrow && (requirement == LoanRequirement.Uniq || (aggregateSlot >= 0 && !OwnedWithoutConditionalBorrows())))
+                {
+                    Fail(use, BindingFailure.MissingOrigin);
+                    return null;
+                }
+
                 return meet;
             }
 
             if (requirement != LoanRequirement.Uniq)
             {
+                if (aggregateSlot >= 0)
+                {
+                    for (var i = 0; i < InputCount(context.Owner); i++)
+                    {
+                        if (BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) != ConstraintProof.Proven)
+                        {
+                            Fail(use, BindingFailure.MissingOrigin);
+                            return null;
+                        }
+                    }
+                }
+
                 return BoundOrigin.Static;
             }
         }
 
         Fail(use, BindingFailure.MissingOrigin);
         return null;
+
+        bool OwnedWithoutConditionalBorrows()
+        {
+            for (var i = 0; i < InputCount(context.Owner); i++)
+            {
+                var input = BoundInputType(context.Owner, i);
+                if (input?.Kind == BoundTypeKind.SemanticsApplication)
+                {
+                    input = input.Components[0];
+                }
+
+                if (input is not null && this.ProveOwned(input, use) != ConstraintProof.Proven)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
     }
 
     private void AddObligation(BindingObligation obligation)

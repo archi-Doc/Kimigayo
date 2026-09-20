@@ -43,7 +43,7 @@ public sealed partial class Binding
 
     internal BoundType? StoredType(Koto syntax, BoundType owner)
     {
-        if (syntax.BoundType is not { } field || owner.Symbol is null)
+        if ((syntax.BoundType ?? (syntax as PropertyKoto)?.BoundSymbol?.Type) is not { } field || owner.Symbol is null)
         {
             return null;
         }

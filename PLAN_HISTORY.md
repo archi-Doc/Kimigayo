@@ -7167,3 +7167,54 @@ No benchmark or NativeAOT run was performed. Culture checks are not cross-OS or
 cross-runtime verification. Independent product rendering, structured URL
 resolution/output, final publication adapters and their associated §7/§9 tests
 remain required before product switching. Current next actions are owned by PLAN.md.
+
+<a id="origin-syntax-elision-20260920"></a>
+
+## Origin syntax and elision integration (2026-09-20)
+
+The user authorized integrating `draft/Changes/2026-09-20 Origin Syntax and Elision.md` with precedence over conflicting formal rules, then updating the compiler and source examples. The proposal was read but not edited. The resulting specification is self-contained: Chapters 2–3 own lexical/attachment rules, 6/11 declarations and accessors, 8 reconstruction/specialization, 9 paths, 10 callable compatibility, and 15 Origin contracts and elision. Appendix F summarizes the grammar; Appendix A records verification requirements. Remaining examples were migrated. Two repeated static-storage sections in Chapter 22 were removed.
+
+### Implementation and decisions
+
+- Brace declarations/arguments, prefix borrow Origins, trailing commas, role checks and generic/layout recognition replace the old contextual keywords. Constructors and explicit accessors accept their own lists; unparse and source-backed artifact reload preserve them.
+- Missing aggregate input slots retain independent per-occurrence identities. Solver slots are separate from the value-input index used for Loan anchors. Call, conformance and accessor scratch arrays account for additional slots rather than assuming one Origin per parameter.
+- Reconstructed Semantics applications retain conditional input slots. Non-borrow substitution drops only the inactive outer slot. Locals/results use their position rules; explicit annotations need safe-borrow proof. Original pair WholeType bindings are preserved.
+- Stored accessor omissions inherit storage Types first. Supported specializations select by Origin-erased input structure, then inherit the complete contract. Corresponding preliminary input occurrences are reused; inheritance adds no second quantifier. Preliminary obligations are discarded and regenerated when those Types are rebound, preventing obsolete obligations from blocking ownership.
+- Aggregate result defaults require existing Owned evidence. Nested Function Types form their own input/result boundary. Contract comparison accepts equivalent explicit/anonymous binders and rejects fixed-static implementations of universal requirements.
+- Single nongeneric receiverless function references with an expected Function Type now check contravariant inputs, covariant results and implementation-side Origin substitution. Required Origins remain rigid. Generic/member/overload selection and inherited generic environments outside this path are explicitly unsupported. This repairs the recorded unchecked-signature path for supported references without claiming general function-item erasure.
+- Ownership prepares substituted input field metadata, including abstract-Origin structs whose physical layout is concrete. Storage metadata carries a Binding version and reuses arrays. The initial implementation introduced enumerator allocations; indexed traversal restored the existing warm zero-allocation tests. Unknown field metadata conservatively retains destructor dependencies instead of causing a null dereference.
+- Lowering and Emit consume the corrected existing typed plans; no Origin runtime representation or Origin-only code specialization was added. Library, milestone, benchmark and affected test sources were migrated. `examples/` needed no Origin spelling changes.
+
+### Verification
+
+Final solution builds are warning-free in Debug and Release. Direct xUnit runner results are:
+
+| Check | Result |
+| --- | --- |
+| Full Debug suite | 10,676 passed; no failures, errors, skips or unrun cases |
+| Full Release suite | 10,676 passed; no failures, errors, skips or unrun cases |
+| Focused Origin revision suite | 48 passed; included in the full counts |
+| New borrowed-aggregate and specialization fixtures | 4 native runs passed, O0/O2 |
+| Existing BorrowStruct fixtures, including Milestone 5 | 20 native runs passed, O0/O2 |
+
+Native checks include LLVM verification, dependency checks, linking, exact stdout/stderr and exit status. A conflicting mutation while an aggregate retains a borrow is rejected before emission. Artifact reload, repeated Binding and parse/write/parse are covered. The new aggregate fixture also measures 16 warm ownership/emission repetitions after warm-up and asserts zero bytes allocated on the executing thread; this is a bounded reuse check, not a throughput benchmark.
+
+Commands (from the repository root):
+
+```powershell
+dotnet build Kimigayo.slnx --no-restore -v quiet
+dotnet build Kimigayo.slnx --no-restore -c Release -v quiet
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -noLogo -parallelMode none -result-xml bin/origin-final-debug.xml
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -noLogo -parallelMode none -result-xml bin/origin-final-release.xml
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -noLogo -parallelMode none -class '*OriginSyntaxRevisionTest' -result-xml bin/origin-focused.xml
+./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Anonymous*Origin*.ll' -OutputDirectory bin/origin-native-new
+./backend/windows-x64/test-scalars.ps1 -FixturePattern 'BorrowStruct*.ll' -OutputDirectory bin/origin-native-regression
+```
+
+Evidence: [Debug build](bin/origin-build-debug.log), [Release build](bin/origin-build-release.log), [Debug XML](bin/origin-final-debug.xml), [Release XML](bin/origin-final-release.xml), [focused XML](bin/origin-focused.xml), [new native cases](bin/origin-native-new.log), and [native regressions](bin/origin-native-regression.log). Logs and generated fixtures are local ignored artifacts. The sandbox initially denied execution of the repository LLVM tools; the authorized elevated verification succeeded. No NativeAOT test was run.
+
+An intermediate Debug build hit a file-copy lock because the test runner was still using its output assembly. After the runner exited, the solution build and full suite were rerun successfully; the final logs above contain the completed verification.
+
+### Remaining coverage
+
+The general declared-bound/principal Origin solver and universal Semantics-role proofs were already incomplete and are not completed here. Explicit-Origin or constrained original specializations, wider conditional contract proofs, custom-accessor execution and general function-item/Callable conversion remain incomplete. The formal revision applies to them; unsupported implementations are not specification exceptions. Current scope and next actions remain in PLAN OSE3 and I5/I12/I18, rather than being duplicated here.

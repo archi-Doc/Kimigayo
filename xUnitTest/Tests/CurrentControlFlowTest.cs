@@ -40,7 +40,7 @@ public class CurrentControlFlowTest
     [InlineData("work:\n    ()")]
     [InlineData("defer: finish()")]
     [InlineData("unsafe:\n    release()")]
-    [InlineData("loop\n    exit 1 from outer")]
+    [InlineData("loop\n    exit 1{outer}")]
     [InlineData("loop\n    continue outer")]
     [InlineData("if ready =>\n    work()")]
     [InlineData("func f() =>\n    work()")]

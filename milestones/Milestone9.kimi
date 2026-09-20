@@ -7,7 +7,7 @@ group Demo
             public init(value: T)
                 self.value = value
 
-            public func view(self: ref/Self) -> ref/T from self
+            public func view(self: ref/Self) -> ref{self}/T
                 return self.value@ref/T
 
             deinit => Console.writeLine("Batch destroyed.")

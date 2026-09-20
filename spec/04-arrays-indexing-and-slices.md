@@ -2,7 +2,7 @@
 
 [Specification index](../SPEC.md)
 
-A fixed array `[N of T]` has a compile-time length `N` and a complete element Type `T`, including Semantics and Origins. A dynamic `Array<T>` owns variable-length storage, and `Slice<T> from source` is a shared borrowed view. Their [indexing and slicing](#46-indexing-and-slicing) rules are defined together.
+A fixed array `[N of T]` has a compile-time length `N` and a complete element Type `T`, including Semantics and Origins. A dynamic `Array<T>` owns variable-length storage, and `Slice<T>{source}` is a shared borrowed view. Their [indexing and slicing](#46-indexing-and-slicing) rules are defined together.
 
 ## 4.1. Fixed-array identity and layout
 
@@ -175,7 +175,7 @@ The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`.
 | `Index` | Copy, Owned position measured from the start or the end; retains no target |
 | `Range` | Copy, Owned unresolved boundaries and end-inclusion flag; not Iterable |
 | `ResolvedRange` | Copy, Owned validated absolute half-open interval; finite `isize` iteration |
-| `Slice<T> from source` | Copy shared view, independent of `T`'s Copy capability; retains the backing Origin and shared Loan |
+| `Slice<T>{source}` | Copy shared view, independent of `T`'s Copy capability; retains the backing Origin and shared Loan |
 
 These names are not keywords; `::Kimi.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
 
@@ -334,7 +334,7 @@ The common [Abort and constant-evaluation rules](17-failure-handling.md#1734-che
 
 ### 4.6.5. Slice storage, lifetime, and permissions
 
-`Slice<T> from source` shares an initialized contiguous region of complete element Type `T`. Formation requires the ordinary initialization and access checks and cannot hide Uninitialized or partially Moved storage. Its runtime length is not part of Type identity. Every range access returns a Slice, including constant-length ranges, without copying elements into a fixed array.
+`Slice<T>{source}` shares an initialized contiguous region of complete element Type `T`. Formation requires the ordinary initialization and access checks and cannot hide Uninitialized or partially Moved storage. Its runtime length is not part of Type identity. Every range access returns a Slice, including constant-length ranges, without copying elements into a fixed array.
 
 Slice indices start at zero; from-end positions and reslicing use the current Slice length, and the original array indices are not retained. Slicing the rows of a nested fixed array produces `Slice<[N of T]>` without flattening. Element inheritance or matching layout does not permit conversion between Slices of different element Types.
 
@@ -350,7 +350,7 @@ Borrowing a temporary never extends its [lifetime](03-types-and-values.md#36-tem
 
 ```kimi
 func makeArray() -> Array<i32> => [1, 2, 3]
-func inspect<T> origin source(values: Slice<T> from source) => ()
+func inspect<T> {source}(values: Slice<T>{source}) => ()
 
 inspect(makeArray()[..]) // Temporary array survives through the call.
 let escaped = makeArray()[..]
@@ -364,17 +364,17 @@ A `var` Slice permits only handle reassignment, and `uniq/Slice<T>` exclusively 
 
 ### 4.6.6. Slice operations and element results
 
-For `s: Slice<T> from source`, members receive and Copy the handle by value. Element and partial-Slice results retain `source` rather than borrowing the handle variable used in the call. All listed operations are public.
+For `s: Slice<T>{source}`, members receive and Copy the handle by value. Element and partial-Slice results retain `source` rather than borrowing the handle variable used in the call. All listed operations are public.
 
 | Operation | Result and conditions |
 | --- | --- |
 | `s.length: isize` / `s.isEmpty: bool` | Read-only count / whether the count is zero |
 | `s.indices: ResolvedRange` | Read-only snapshot under the metadata rules |
 | `s[index]` | Shared element access; accepts `isize` or `Index` |
-| `s[range]` | `Slice<T> from source`; accepts `Range` or `ResolvedRange`, checked against the current length |
-| `s.tryGet(index)` | `Option<ref/T from source>`; separate `isize` and `Index` overloads |
-| `s.trySlice(range)` | `Option<Slice<T> from source>`; separate `Range` and `ResolvedRange` overloads |
-| `s.splitAt(index)` | `(Slice<T> from source, Slice<T> from source)`, covering `[0, p)` and `[p, length)` |
+| `s[range]` | `Slice<T>{source}`; accepts `Range` or `ResolvedRange`, checked against the current length |
+| `s.tryGet(index)` | `Option<ref{source}/T>`; separate `isize` and `Index` overloads |
+| `s.trySlice(range)` | `Option<Slice<T>{source}>`; separate `Range` and `ResolvedRange` overloads |
+| `s.splitAt(index)` | `(Slice<T>{source}, Slice<T>{source})`, covering `[0, p)` and `[p, length)` |
 | `s.trySplitAt(index)` | `Option` of that Tuple |
 
 Both split operations have `isize` and `Index` overloads and accept the boundaries zero and length. Invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`; `tryGet` and `trySlice` likewise return `None` on their own invalid bounds. `tryGet` deliberately has a fixed reference result, independent of `T`'s Copy capability.
@@ -399,14 +399,14 @@ For `s: Slice<Result<i32, i32>>`, `s[0]` is an owned Copy `Result`, while `s[0]@
 For an unknown `T`, the correlated result Type, acquisition effect and Origins are kept as the internal family `SharedReadResult(T, source)`, which is not a source-spellable Type. The body is verified for all admitted cases; unknown is neither assumed to mean Non-Copy nor deferred until a favorable instantiation. An operation or result that does not fit every case requires a constraint or an explicit borrow.
 
 ```kimi
-func first<T> origin source(s: Slice<T> from source) -> T
+func first<T> {source}(s: Slice<T>{source}) -> T
     T is Copy
     return s[0]
 
-func firstRef<T> origin source(s: Slice<T> from source) -> ref/T from source
+func firstRef<T> {source}(s: Slice<T>{source}) -> ref{source}/T
     return s[0]@ref // Borrow the slot regardless of T's Copy capability.
 
-func head<T, E> origin source(s: Slice<Result<T, E>> from source) -> ref/Result<T, E> from source
+func head<T, E> {source}(s: Slice<Result<T, E>>{source}) -> ref{source}/Result<T, E>
     return s[0]@ref // Plain s[0] fails definition checking: Copy bindings return a value.
 
 let values: [4 of i32] = [10, 20, 30, 40]
@@ -420,7 +420,7 @@ match s.tryGet(10)
     .Some(let value) => ()
     .None => ()
 
-func tryTail<T> origin source(values: Slice<T> from source) -> Option<Slice<T> from source>
+func tryTail<T> {source}(values: Slice<T>{source}) -> Option<Slice<T>{source}>
     return values.trySlice(1..) // None for an empty Slice; no static length condition.
 ```
 
@@ -434,7 +434,7 @@ shared[0] = 20 // Error: Slice elements are read-only.
 
 ### 4.6.7. Slice iteration and nested Origins
 
-`Slice` implements Iterable with `Element = ref/T from source`, including for Copy elements, yielding shared references in index order. The iterator keeps a handle and a position, not owned elements. Yielded references borrow the backing slots, not the iterator's receiver or storage, which satisfies the [non-lending protocol](14-control-flow.md#1462-iteration-protocol-and-acquisition). The iterator stays exhausted after `None`.
+`Slice` implements Iterable with `Element = ref{source}/T`, including for Copy elements, yielding shared references in index order. The iterator keeps a handle and a position, not owned elements. Yielded references borrow the backing slots, not the iterator's receiver or storage, which satisfies the [non-lending protocol](14-control-flow.md#1462-iteration-protocol-and-acquisition). The iterator stays exhausted after `None`.
 
 Element-internal Origins are kept separate from slot-borrow Origins:
 
@@ -514,7 +514,7 @@ values.append(first)
 | `tryInsert(key: K, value: V) -> Result<(), (K, V)>` | Append; `Ok(())` | Unchanged; `Err((input key, input value))` |
 | `insertOrReplace(key: K, value: V) -> Option<V>` | Append; `None` | Keep the stored key and position; `Some(old value)` |
 | `remove(key: ref/K) -> Option<(K, V)>` | `None` | Remove and return the stored key and value |
-| `tryGet(self: ref/Self, key: ref/K) -> Option<ref/V from self>` | `None` | Shared reference to the stored value |
+| `tryGet(self: ref/Self, key: ref/K) -> Option<ref{self}/V>` | `None` | Shared reference to the stored value |
 | `clear() -> ()` | Destroy all entries in the order of §4.7.6 | Same |
 
 A duplicate is the only `Err` outcome of `tryInsert`; no dedicated error Type is introduced. Both value arguments are acquired before lookup, unlike Dictionary literals (§12.3.4). `insertOrReplace` secures the old result, stores the new value and then destroys the unused input key; delivery follows that cleanup. Removing a key and later adding an equal key appends a new position. No API mutates a stored key.

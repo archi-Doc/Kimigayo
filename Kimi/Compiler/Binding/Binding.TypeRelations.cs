@@ -267,7 +267,7 @@ public sealed partial class Binding
                 }
 
                 // s/U applies only the kind; it never inherits the original pair's outer Origin.
-                return this.InternType(BoundTypeKind.Semantics, null, whole.Semantics, scratch.AsSpan(0, 1), origin: type.Origin);
+                return this.InternType(BoundTypeKind.Semantics, null, whole.Semantics, scratch.AsSpan(0, 1), origin: IsBorrow(whole.Semantics) ? type.Origin : null);
             }
 
             return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, type.Origin, (BoundOrigin[])type.OriginArguments, expression) : type;

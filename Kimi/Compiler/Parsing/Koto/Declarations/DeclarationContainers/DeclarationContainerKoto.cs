@@ -302,6 +302,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             builder.Append('>');
         }
 
+        OriginNameList.WriteTo(this.OriginNames, ref builder);
+
         if (this.bases is { Length: > 0 } bases)
         {
             builder.Append(" : ");
@@ -315,8 +317,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 bases[i].WriteTo(ref builder);
             }
         }
-
-        OriginNameList.WriteTo(this.OriginNames, ref builder);
     }
 
     /// <summary>Writes a root-group declaration for this group.</summary>

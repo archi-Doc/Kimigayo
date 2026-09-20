@@ -11,14 +11,14 @@ namespace XunitTest;
 public class ContainerNestingTest
 {
     [Theory]
-    [InlineData("struct Outer<T> origin source\n    public group Helpers\n        public func identity(value: T) -> T => value\nfunc f origin a() -> i32 => (Outer<i32>.Helpers from (source => a)).identity(42)")]
-    [InlineData("alias H => (Outer<i32>.Helpers from (source => static))\nstruct Outer<T> origin source\n    public group Helpers\n        public func identity(value: T) -> T => value\nlet x = H.identity(42)")]
+    [InlineData("struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value\nfunc f {a}() -> i32 => (Outer<i32>.Helpers{source => a}).identity(42)")]
+    [InlineData("alias H => (Outer<i32>.Helpers{source => static})\nstruct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value\nlet x = H.identity(42)")]
     [InlineData("contract C\nstruct Outer<T>\n    public struct Inner\n        Self is C when T is Copy\nfunc accept<T>(value: T)\n    T is C\n    ()\naccept(Outer<i32>.Inner.init())")]
     [InlineData("struct Outer\n    private struct Hidden\n    public struct Inner\n        private func use(value: Hidden) => ()")]
     [InlineData("open struct Outer\n    protected struct Inner")]
     [InlineData("struct Outer<T>\n    T is Owned\n    public group Storage\n        var value: T")]
-    [InlineData("struct Outer<T>\n    public struct Cell origin a\n        let value: ref/T from a\n        public init(value: ref/T from a) => self.value = value\nfunc f origin x(value: ref/i32 from x)\n    let cell = (Outer<i32>.Cell from (a => x)).init(value)")]
-    [InlineData("struct Outer<T> origin a\n    public struct Cell\n        let value: ref/T from a\n        public init(value: ref/T from a) => self.value = value\nfunc f origin x(value: ref/i32 from x)\n    let cell = (Outer<i32> from (a => x)).Cell.init(value)")]
+    [InlineData("struct Outer<T>\n    public struct Cell {a}\n        let value: ref{a}/T\n        public init(value: ref{a}/T) => self.value = value\nfunc f {x}(value: ref{x}/i32)\n    let cell = (Outer<i32>.Cell{a => x}).init(value)")]
+    [InlineData("struct Outer<T> {a}\n    public struct Cell\n        let value: ref{a}/T\n        public init(value: ref{a}/T) => self.value = value\nfunc f {x}(value: ref{x}/i32)\n    let cell = (Outer<i32>{a => x}).Cell.init(value)")]
     [InlineData("struct Outer\n    public group G\n        public struct Inner\n            public enum E\n                A\n            public contract C")]
     [InlineData("struct Outer\n    group Helpers\n        func identity(value: Self) -> Self => value")]
     [InlineData("struct Outer<T>\n    public struct Inner<U>\n        var first: T\n        var second: U\nfunc use(x: Outer<i32>.Inner<string>) => ()")]
@@ -26,16 +26,16 @@ public class ContainerNestingTest
     [InlineData("struct Outer<T>\n    public struct Tag\n    func use(x: Tag) => ()")]
     [InlineData("struct Outer<T>\n    public struct Tag\nstruct Outer<T>\n    public struct Tag\n        var count: i32 = 0")]
     [InlineData("struct Outer<T>\n    public contract C\n        func read(value: T) -> T")]
-    [InlineData("struct View<T> origin source\n    public struct Tag\nfunc f<T> origin a(value: View<T>.Tag from (source => a)) => ()")]
-    [InlineData("struct View<T> origin source\n    public struct Tag origin local\nfunc f<T> origin a, b(value: View<T>.Tag from (source => a, local => b)) => ()")]
+    [InlineData("struct View<T> {source}\n    public struct Tag\nfunc f<T> {a}(value: View<T>.Tag{source => a}) => ()")]
+    [InlineData("struct View<T> {source}\n    public struct Tag {local}\nfunc f<T> {a, b}(value: View<T>.Tag{source => a, local => b}) => ()")]
     [InlineData("open struct Base<T>\n    public struct Node\nstruct Derived: Base<i32>\nfunc f(value: Derived.Node) => ()")]
     [InlineData("alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()")]
     [InlineData("alias H => Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: H.Tag) => ()")]
     [InlineData("alias Outer<i32>.Helpers\nalias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()")]
     [InlineData("struct Family<T>\n    public contract Marker\nstruct Good\n    Self is Family<i32>.Marker\n    Self is Family<string>.Marker")]
     [InlineData("struct Family<T>\n    public contract Sink\n        func write(value: T)\nstruct Writer\n    Self is Family<i32>.Sink\n    public func write(value: i32) => ()")]
-    [InlineData("struct View<T> origin source\n    public struct Tag\nfunc f<T> origin a(value: (View<T> from (source => a)).Tag) => ()")]
-    [InlineData("struct View<T> origin source\n    public struct Tag origin local\nfunc f<T> origin a, b(value: (View<T> from (source => a)).Tag from (local => b)) => ()")]
+    [InlineData("struct View<T> {source}\n    public struct Tag\nfunc f<T> {a}(value: (View<T>{source => a}).Tag) => ()")]
+    [InlineData("struct View<T> {source}\n    public struct Tag {local}\nfunc f<T> {a, b}(value: (View<T>{source => a}).Tag{local => b}) => ()")]
     [InlineData("struct Outer<T>\n    public struct Tag\nfunc f(value: ::Outer<i32>.Tag) => ()")]
     [InlineData("struct Family<T>\n    public contract Marker\nstruct S<T>\n    Self is Family<T>.Marker\nfunc accept<T>(x: T)\n    T is Family<i32>.Marker\n    ()\naccept(S<i32>.init())")]
     public void BindsNestedDeclarations(string source)
@@ -45,16 +45,16 @@ public class ContainerNestingTest
     }
 
     [Theory]
-    [InlineData("struct Outer<T> origin source\n    public group Helpers\n        public func identity(value: T) -> T => value\nlet x = Outer<i32>.Helpers.identity(42)")]
+    [InlineData("struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value\nlet x = Outer<i32>.Helpers.identity(42)")]
     [InlineData("struct Outer<T>\n    public group Storage\n        var value: T")]
-    [InlineData("struct Outer<T> origin source\n    public struct Tag\n    public group Storage\n        var value: Tag")]
+    [InlineData("struct Outer<T> {source}\n    public struct Tag\n    public group Storage\n        var value: Tag")]
     [InlineData("struct Family<T>\n    T is Copy\n    public contract Marker\nstruct NonCopy\nstruct Bad\n    Self is Family<NonCopy>.Marker")]
     [InlineData("struct Family<T>\n    T is Copy\n    public group Helpers\n        public func f() => ()\nstruct NonCopy\nFamily<NonCopy>.Helpers.f()")]
     [InlineData("struct Outer\n    public struct Inner\n        private struct Hidden\n    func use(value: Inner.Hidden) => ()")]
     [InlineData("struct Outer\n    group Helpers\n        protected struct Hidden")]
     [InlineData("contract C\nstruct Outer<T>\n    Self is C when T is Copy\n        struct Inner")]
     [InlineData("contract C\nstruct NonCopy\nstruct Outer<T>\n    public struct Inner\n        Self is C when T is Copy\nfunc accept<T>(value: T)\n    T is C\n    ()\naccept(Outer<NonCopy>.Inner.init())")]
-    [InlineData("struct Outer<T>\n    public struct Tag origin source\nfunc f origin a()\n    let value = (Outer<i32>.Tag from (source => a))")]
+    [InlineData("struct Outer<T>\n    public struct Tag {source}\nfunc f {a}()\n    let value = (Outer<i32>.Tag{source => a})")]
     [InlineData("enum Outer\n    A\n    struct Inner")]
     [InlineData("contract Outer\n    struct Inner")]
     [InlineData("func f()\n    struct Inner")]
@@ -62,7 +62,7 @@ public class ContainerNestingTest
     [InlineData("group Outer\n    rootgroup Inner")]
     [InlineData("struct Outer<T>\n    struct T")]
     [InlineData("struct Outer<T>\n    public struct Tag\nfunc use(x: Outer.Tag) => ()")]
-    [InlineData("struct Outer origin source\n    struct Inner origin source")]
+    [InlineData("struct Outer {source}\n    struct Inner {source}")]
     [InlineData("struct Outer\n    group G\n        Self is Copy")]
     [InlineData("open struct Base<T>\n    public struct Node\nstruct Derived: Base<i32>\n    public struct Node<U>")]
     [InlineData("struct Outer<T>\n    T is Copy\n    public struct Tag\nstruct NonCopy\nfunc f(value: Outer<NonCopy>.Tag) => ()")]
@@ -73,7 +73,7 @@ public class ContainerNestingTest
     [InlineData("struct Family<T>\n    public contract Marker\nstruct Bad<A, B>\n    Self is Family<A>.Marker\n    Self is Family<B>.Marker")]
     [InlineData("struct Family<T>\n    public contract Marker\nstruct Bad\n    Self is Family<i32>.Marker\n    Self is Family<i32>.Marker")]
     [InlineData("struct Family<T>\n    public contract Sink\n        func write(value: T)\nstruct Writer\n    Self is Family<i32>.Sink\n    public func write(value: string) => ()")]
-    [InlineData("struct View<T> origin source\n    public struct Tag\nfunc f<T> origin a(value: (View<T> from (source => a)).Tag from (source => a)) => ()")]
+    [InlineData("struct View<T> {source}\n    public struct Tag\nfunc f<T> {a}(value: (View<T>{source => a}).Tag{source => a}) => ()")]
     [InlineData("struct Family<T>\n    public contract Marker\nstruct S<T>\n    Self is Family<T>.Marker\nfunc accept<T>(x: T)\n    T is Family<i32>.Marker\n    ()\naccept(S<string>.init())")]
     public void RejectsInvalidPlacementAndUnboundEnvironment(string source)
     {
@@ -123,7 +123,7 @@ public class ContainerNestingTest
     [Fact]
     public void EmptyNestedTypeRetainsUnusedBorrowDependency()
     {
-        var c = Parse("struct Outer<T>\n    public struct Tag\nfunc f origin a(x: Outer<ref/i32 from a>.Tag) => ()");
+        var c = Parse("struct Outer<T>\n    public struct Tag\nfunc f {a}(x: Outer<ref{a}/i32>.Tag) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>());
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -140,7 +140,7 @@ public class ContainerNestingTest
     [Fact]
     public void InheritedSlotsShareIdentityButNotAnalysisState()
     {
-        var c = Parse("struct Outer<T> origin source\n    public struct Inner<U> origin local\n        let value: T");
+        var c = Parse("struct Outer<T> {source}\n    public struct Inner<U> {local}\n        let value: T");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var outer = Assert.Single(c.Kotonoha.RootKoto.NestedContainers);
         var inner = Assert.Single(outer.NestedContainers);

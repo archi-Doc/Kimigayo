@@ -16,7 +16,7 @@ public class IntrinsicCapabilityTest
     [InlineData("f64", true, true)]
     [InlineData("()", true, true)]
     [InlineData("string", false, true)]
-    [InlineData("ref/i32 from static", true, true)]
+    [InlineData("ref{static}/i32", true, true)]
     [InlineData("unsafe/i32", true, true)]
     [InlineData("(i32, string)", false, true)]
     [InlineData("(i32, bool)", true, true)]
@@ -36,8 +36,8 @@ public class IntrinsicCapabilityTest
     [Theory]
     [InlineData("ref/i32", ConstraintProof.Proven)]
     [InlineData("uniq/i32", ConstraintProof.Refuted)]
-    [InlineData("ref/(uniq/i32 from a) from b", ConstraintProof.Proven)]
-    [InlineData("uniq/(ref/i32 from a) from b", ConstraintProof.Refuted)]
+    [InlineData("ref{b}/(uniq{a}/i32)", ConstraintProof.Proven)]
+    [InlineData("uniq{b}/(ref{a}/i32)", ConstraintProof.Refuted)]
     [InlineData("obj/S", ConstraintProof.Refuted)]
     [InlineData("rc/S", ConstraintProof.Refuted)]
     [InlineData("arc/S", ConstraintProof.Refuted)]
@@ -45,7 +45,7 @@ public class IntrinsicCapabilityTest
     [InlineData("objuniq/S", ConstraintProof.Refuted)]
     public void CopyUsesOnlyTheOuterSemantics(string type, ConstraintProof expected)
     {
-        var c = Parse($"struct S\nfunc inspect origin a, b(x: {type}) => ()");
+        var c = Parse($"struct S\nfunc inspect {{a, b}}(x: {type}) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -162,7 +162,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void UnknownOriginsDoNotProveNegatedOwned()
     {
-        var c = Parse("func reject<T>(x: T)\n    T is not Owned\n    ()\nfunc inspect origin a(x: ref/i32 from a)\n    reject(x)");
+        var c = Parse("func reject<T>(x: T)\n    T is not Owned\n    ()\nfunc inspect {a}(x: ref{a}/i32)\n    reject(x)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is InvocationKoto);
     }
@@ -179,7 +179,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void RecursiveOwnedPropagatesAReachableOrigin()
     {
-        var c = Parse("struct Node origin source\n    let next: obj/Node from source\n    let value: ref/i32 from source\nfunc inspect origin a(x: Node from a) => ()");
+        var c = Parse("struct Node {source}\n    let next: obj/Node{source}\n    let value: ref{source}/i32\nfunc inspect {a}(x: Node{a}) => ()");
         c.Bind();
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -226,7 +226,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void EnumPayloadsParticipateInStaticStorageValidation()
     {
-        var c = Parse("enum E<T>\n    Value(T)\ngroup Globals\n    var value: E<ref/i32 from static>");
+        var c = Parse("enum E<T>\n    Value(T)\ngroup Globals\n    var value: E<ref{static}/i32>");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
@@ -234,7 +234,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void OwnedDoesNotPermitStoredStaticBorrowsInGlobalStorage()
     {
-        var c = Parse("struct View origin source\n    let value: ref/i32 from source\nfunc inspect(x: View from static) => ()\ngroup Globals\n    var value: View from static");
+        var c = Parse("struct View {source}\n    let value: ref{source}/i32\nfunc inspect(x: View{static}) => ()\ngroup Globals\n    var value: View{static}");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -306,7 +306,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void UnusedTypeArgumentsAndPointerPointeesAreNotStoredDependencies()
     {
-        var c = Parse("struct Phantom<T>\nstruct Pointer<T>\n    let value: unsafe/T\nfunc inspect origin a(x: Phantom<ref/i32 from a>, y: Pointer<ref/i32 from a>) => ()");
+        var c = Parse("struct Phantom<T>\nstruct Pointer<T>\n    let value: unsafe/T\nfunc inspect {a}(x: Phantom<ref{a}/i32>, y: Pointer<ref{a}/i32>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.All(f.Parameters, p => Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(p.Type.BoundType!, f)));
@@ -315,7 +315,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void OwnedSubstitutesStoredGenericTypesAndNamedOrigins()
     {
-        var c = Parse("struct View<T> origin source\n    let value: ref/T from source\nfunc inspect origin a(x: View<i32> from static, y: View<i32> from a) => ()");
+        var c = Parse("struct View<T> {source}\n    let value: ref{source}/T\nfunc inspect {a}(x: View<i32>{static}, y: View<i32>{a}) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -325,7 +325,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void StaticOuterBorrowDoesNotEraseAnInnerDependency()
     {
-        var c = Parse("func inspect origin a(x: ref/(ref/i32 from a) from static) => ()");
+        var c = Parse("func inspect {a}(x: ref{static}/(ref{a}/i32)) => ()");
         c.Bind();
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));

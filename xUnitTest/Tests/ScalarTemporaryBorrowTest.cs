@@ -19,7 +19,7 @@ public class ScalarTemporaryBorrowTest
     [InlineData("Literal", Read + "require read(1) else => $abort(\"value\")", "called\n")]
     [InlineData("Float", "func check(x: ref/f64) -> bool\n    Console.writeLine(\"checked\")\n    return true\nrequire check(1.5) else => $abort(\"value\")", "checked\n")]
     [InlineData("Rank", "func pick(value: i64) -> i32 => 1\nfunc pick(value: ref/i32) -> i32 => 2\nrequire pick(1) == 1 else => $abort(\"rank\")", "")]
-    [InlineData("Returned", Read + "func keep(n: ref/i32) -> ref/i32 from n => n\nrequire read(keep(1)) and read(keep(one())) else => $abort(\"value\")", "called\ncalled\n")]
+    [InlineData("Returned", Read + "func keep(n: ref/i32) -> ref{n}/i32 => n\nrequire read(keep(1)) and read(keep(one())) else => $abort(\"value\")", "called\ncalled\n")]
     [InlineData("Generic", Inspect + "inspect(1)\ninspect(1.5)\ninspect(makeValue())\nConsole.writeLine(\"done\")", "done\n")]
     public void ExecutesScalarTemporaryBorrows(string name, string source, string output)
     {
@@ -29,8 +29,8 @@ public class ScalarTemporaryBorrowTest
     }
 
     [Theory]
-    [InlineData("func keep(n: ref/i32) -> ref/i32 from n => n\nfunc one() -> i32 => 1\nlet r = keep(one())\nlet s = r")]
-    [InlineData("func keep(n: ref/i32) -> ref/i32 from n => n\nlet r = keep(1)\nlet s = r")]
+    [InlineData("func keep(n: ref/i32) -> ref{n}/i32 => n\nfunc one() -> i32 => 1\nlet r = keep(one())\nlet s = r")]
+    [InlineData("func keep(n: ref/i32) -> ref{n}/i32 => n\nlet r = keep(1)\nlet s = r")]
     public void RejectsReturnedBorrowOfTemporaryAfterStatement(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

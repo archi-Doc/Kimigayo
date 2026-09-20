@@ -10,7 +10,7 @@ public class AccessorReceiverBindingTest
 {
     [Theory]
     [InlineData("struct Hidden\npublic struct Api\n    public computed item: i32\n        get(self: ref/Hidden) -> i32 => 1")]
-    [InlineData("struct Api\n    computed item: i32\n        get(self: ref/(ref/Self from static)) -> i32 => 1")]
+    [InlineData("struct Api\n    computed item: i32\n        get(self: ref/(ref{static}/Self)) -> i32 => 1")]
     [InlineData("struct Api\n    computed item: i32\n        get(self: unsafe/Self) -> i32 => 1")]
     [InlineData("struct Hidden\npublic contract Api\n    property item: i32\n        get(self: ref/Hidden) -> i32")]
     [InlineData("group Api\n    computed item: i32\n        get(self: i32) -> i32 => 1")]
@@ -51,7 +51,7 @@ public class AccessorReceiverBindingTest
     [InlineData("public contract Api\n    property item: i32\n        get(self: Self) -> i32\n        set(self: uniq/Self, value: i32) -> ()")]
     [InlineData("public group Api\n    public computed item: i32\n        get() -> i32 => 1\n        set(value: i32) -> () => ()")]
     [InlineData("public group Api\n    public var item: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value")]
-    [InlineData("struct Api<T> origin source\n    public computed item: i32\n        get(self: ref/Self from static) -> i32 => 1")]
+    [InlineData("struct Api<T> {source}\n    public computed item: i32\n        get(self: ref{static}/Self) -> i32 => 1")]
     public void ValidShorthandStaticAndRequirementReceiversRemainSupported(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

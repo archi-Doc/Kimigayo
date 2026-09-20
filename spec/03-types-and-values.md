@@ -5,7 +5,7 @@
 An ordinary **Type** combines Semantics, a Core and any required Origins. Its single-layer form is:
 
 ```text
-Type = Semantics/Core from Origin
+Type = Semantics{Origin}/Core
 ```
 
 | Term | Meaning |
@@ -15,9 +15,9 @@ Type = Semantics/Core from Origin
 | Core | The component that defines the value's kind, structure and identity. |
 | Origin | The set of program points where a borrow is guaranteed valid. It constrains borrows and the values that retain them. |
 
-For example, `ref/Dog from source` has Semantics `ref`, Core `Dog` and Origin `source`. Semantics and Origins may be omitted only under the inference and elision rules, and not every layer has an Origin.
+For example, `ref{source}/Dog` has Semantics `ref`, Core `Dog` and Origin `source`. Semantics and Origins may be omitted only under the inference and elision rules, and not every layer has an Origin.
 
-A Core is distinct from the **outer** Semantics and Origins. Its elements and generic arguments may be complete Types: the Core of `owner/(i32, ref/Dog from source)` is a Tuple whose second element keeps its borrow and Origin.
+A Core is distinct from the **outer** Semantics and Origins. Its elements and generic arguments may be complete Types: the Core of `owner/(i32, ref{source}/Dog)` is a Tuple whose second element keeps its borrow and Origin.
 
 The basic form has two extensions:
 
@@ -49,7 +49,7 @@ Type
 │  │  └─ Common Function
 │  └─ Other named examples: Array<T>, Dictionary<K, V>, Slice<T>
 └─ Origin
-   ├─ Derived from a borrow source
+   ├─ Derived{a} borrow source
    ├─ Declared abstract Origin
    ├─ Intersection of Origins
    └─ static
@@ -195,7 +195,7 @@ A Weak keeps `S`'s complete View Type, mode, Type/Origin arguments and actual Lo
 
 ## 3.3. Type semantics
 
-Semantics prefixes associate to the right, and an unparenthesized `from Origin` annotates the outermost layer. See [the start of this chapter](#3-types-and-values) for the basic form and [nested Semantics](#336-nested-semantics-and-type-grouping) for layer boundaries and permitted combinations.
+Semantics prefixes associate to the right, and an unparenthesized `{Origin}` annotates the outermost layer. See [the start of this chapter](#3-types-and-values) for the basic form and [nested Semantics](#336-nested-semantics-and-type-grouping) for layer boundaries and permitted combinations.
 
 Only a declared Semantics binding may occupy a generic Semantics position. A pair parameter `<s/T>` binds one complete Type and exposes its outer Semantics and direct target; [generic Type parameters](08-generics-constraints-and-contracts.md#81-generic-type-parameters) define this correspondence. Syntax position alone never changes a parameter's kind.
 
@@ -287,13 +287,15 @@ A completed object has exactly one Dynamic Type, unchanged for its whole lifetim
 Upcasts, view-support tests, checked casts and metadata all use this relation. It grants no access, ownership, `Owned`, Origin/Loan validity, or permission to invoke an incompatible ordinary member. Generic element relationships do not imply container covariance. Core inheritance alone does not make complete Types substitutable: there is no slicing and no implicit `owner/Dog -> owner/Animal`, ordinary `ref/Dog -> ref/Animal` or `uniq/Dog -> uniq/Animal` conversion. Object upcasts are explicit operations; [inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) supplies only the receiver of a selected inherited member.
 
 ```text
-objref/Animal from source       Dog object
+objref{source}/Animal       Dog object
     ├─ public view: Animal         ├─ Animal state
     ├─ shared access               ├─ Dog state
     └─ Origin: source              └─ Dog type and destruction information
 ```
 
 ### 3.3.6. Nested Semantics and type grouping
+
+Borrow Origins are prefix annotations: `ref{outer}/uniq{inner}/T`. Semantics prefixes associate to the right, and each annotation belongs only to that prefix. A named aggregate keeps its own arguments: `uniq{borrow}/Utf8Writer<W>{target}`. Parentheses group a complete Type and do not move Origins: `(View<T>{a})` is valid; `(View<T>){a}`, `(uniq/T){a}` and `View<T>{a}{b}` are not. Only safe-borrow Semantics accept a borrow annotation (§15.3.1).
 
 `ref/V`, `uniq/V` and `unsafe/V` may take a complete value Type `V`, including its own Semantics and Origins, as their immediate **Referent Type**. The outer layer refers to storage holding a value of `V`; it neither replaces `V`'s Semantics nor refers directly to `V`'s eventual referent.
 
@@ -303,14 +305,14 @@ ref/uniq/T                          // Shared borrow of an exclusive-reference v
 uniq/ref/T                          // Exclusive borrow of a shared-reference value.
 ref/obj/T                           // Borrow of object-handle storage, not objref/T.
 unsafe/ref/T                        // Raw pointer to shared-reference storage.
-ref/(ref/T from inner) from outer    // Separate inner and outer Origins.
+ref{outer}/(ref{inner}/T)    // Separate inner and outer Origins.
 ```
 
-Prefixes associate to the right: `ref/ref/T from outer` annotates only the outer reference. Parentheses group complete Types and permit per-layer annotations. `ref/((i32) -> bool)` borrows a function value, while `(ref/i32) -> bool` takes one borrowed integer; `ref/(i32) -> bool` is invalid because a Function Type needs its own parameter list. Grouping adds neither a Tuple nor a borrow.
+Prefixes associate to the right: `ref{outer}/ref/T` annotates only the outer reference. Parentheses group complete Types and permit per-layer annotations. `ref/((i32) -> bool)` borrows a function value, while `(ref/i32) -> bool` takes one borrowed integer; `ref/(i32) -> bool` is invalid because a Function Type needs its own parameter list. Grouping adds neither a Tuple nor a borrow.
 
 For identity, applicability, layout and Origin analysis, aliases are expanded and every Type layer is preserved: `ref/ref/T` differs from `ref/T`. Grouping and redundant `owner` prefixes normalize away, but `owner/V` keeps `V`'s references and Object Semantics. Object Semantics require a supported Core or runtime Contract View Target, not a Type that already has Semantics applied: `ref/obj/T` is valid, while `obj/ref/T` does not box a reference. Generic substitutions obey the same rules; see [generic slots](08-generics-constraints-and-contracts.md#81-generic-type-parameters).
 
-Each Type layer keeps its Origin dependencies under the [position-specific elision rules](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts); an outer annotation cannot replace an inner one. In parameter Types, only an outer direct borrow may introduce an implicit input Origin; inner borrow Origins and aggregate Origin arguments must be explicit. Local initializers may infer all layers, and instance Fields require explicit bindings throughout. The examples above illustrate composition, not unrestricted Origin omission.
+Each Type layer keeps its Origin dependencies under the [position-specific elision rules](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts); an outer annotation cannot replace an inner one. In parameter Types, an outer direct borrow and each omitted aggregate slot introduce independent input Origins under §15.4; nested borrow layers still require explicit bindings. Local initializers may infer all layers, and instance Fields require explicit bindings throughout. The examples above illustrate composition, not unrestricted Origin omission.
 
 At each safe value-borrow layer, all observable Origins of `V` must outlive that layer (`inner : outer` in the last example). Grouping or a redundant `owner` cannot add a conflicting annotation to one normalized layer. Raw pointers establish neither safe-reference validity nor longer lifetimes.
 
@@ -374,7 +376,7 @@ Complete Types are classified by Core, Semantics and stored components:
 | `ref/T`, `objref/T`, `unsafe/T` | Copy regardless of the referent `T` |
 | `uniq/T`, `objuniq/T` | Non-Copy |
 | `obj/T`, `rc/T`, `arc/T` | Non-Copy, even if `T` is Copy |
-| `Slice<T> from source` | Copy shared handle regardless of `T`; no exclusive-element Slice exists |
+| `Slice<T>{source}` | Copy shared handle regardless of `T`; no exclusive-element Slice exists |
 | `Index`, `Range`, `ResolvedRange` | Copy |
 | Function Item | Copy |
 | Concrete Closure | Copy exactly when every captured complete Type is Copy; empty environments qualify |
@@ -487,13 +489,13 @@ Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how
 
 The relation `a : b` means that `a` outlives `b`, including equality: `region(a) ⊇ region(b)`. Source declares such bounds in an [Origin parameter list](15-ownership-and-lifetime-analysis.md#153-abstract-origins); the same notation expresses derived facts under [Origin ordering](15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection).
 
-Origin annotations appear in signatures and Type declarations. Local Origins may be inferred from initializers and ordinary Origin and Loan constraints. Omission is permitted only under the [position-specific rules](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts): direct borrowed inputs introduce input Origins, results use conservative elision, and instance Fields require explicit Origin bindings. Static Fields require `Owned` and the [static-source rules](11-properties.md#1132-static-storage).
+Origin annotations appear in signatures and Type declarations. Local Origins may be inferred from initializers and ordinary Origin and Loan constraints. Omission is permitted only under the [position-specific rules](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts): direct borrowed inputs and omitted input aggregate slots introduce input Origins, results use conservative elision, and instance Fields require explicit Origin bindings. Static Fields require `Owned` and the [static-source rules](11-properties.md#1132-static-storage).
 
 The safe value borrows are:
 
 ```kimi
-ref/T from o   // shared, immutable, and aliasable
-uniq/T from o  // exclusive and mutable
+ref{o}/T   // shared, immutable, and aliasable
+uniq{o}/T  // exclusive and mutable
 ```
 
 `uniq/T` is not implicitly copyable and cannot coexist with another overlapping borrow. The object borrows `objref/T` and `objuniq/T` follow the same shared and exclusive rules; examples in this section use `ref` and `uniq`.
@@ -521,6 +523,6 @@ Here `A <: B` covers normalized identity and the explicitly defined subtype rule
 | Numeric conversion | An established numeric Type and a target admitted by the [explicit numeric conversion table](13-operators-and-assignment.md#1354-numeric-conversions-and-literals). | A value conversion with the specified rounding, range checks and failure behavior. `i32` is not a subtype of `i64`; representable literal fitting is separate. |
 | Acquisition legality | An expression, the selected access operation, and the current initialization, access, ownership and Loan state. Apply the ordinary Copy, Move, Borrow or Consume requirements. | Type compatibility does not prove legality: an exact Type match can still fail because storage is Moved, access is unavailable or a Loan conflicts. Such a failure does not reopen committed lookup or overload selection. |
 
-For example, `ref/T from longer <: ref/T from shorter` may hold when `longer : shorter`, without a new Loan. In contrast, `uniq/T` to `ref/T` needs a Reborrow, and an object view change needs its explicit upcast. The same normalized Type does not force an identity operation: explicit same-Type exclusive adaptation still selects Reborrow, and ordinary by-value acquisition may Copy or Move.
+For example, `ref{longer}/T <: ref{shorter}/T` may hold when `longer : shorter`, without a new Loan. In contrast, `uniq/T` to `ref/T` needs a Reborrow, and an object view change needs its explicit upcast. The same normalized Type does not force an identity operation: explicit same-Type exclusive adaptation still selects Reborrow, and ordinary by-value acquisition may Copy or Move.
 
 Candidate analysis may record operation choices and unresolved obligations but must not commit source-state changes while testing candidates. After selection, the chosen acquisition and adaptation are enforced in the specified evaluation order, and static result fitting is applied without replacing that operation. The [implementation correspondence](appendices/B-reference-models.md#b5-type-relation-and-operation-plans) is informative; no particular internal API is required.

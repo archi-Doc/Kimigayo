@@ -105,6 +105,7 @@ public sealed class BoundOrigin
         this.Slot = slot;
         this.Name = name ?? kind.ToString();
         this.Operands = operands ?? [];
+        this.InputIndex = slot;
     }
 
     public static BoundOrigin Static { get; } = new(OriginKind.Static, name: "static");
@@ -118,6 +119,15 @@ public sealed class BoundOrigin
     public string Name { get; }
 
     public IReadOnlyList<BoundOrigin> Operands { get; }
+
+    /// <summary>Gets the value input carrying this Origin; distinct from its inference slot.</summary>
+    public int InputIndex { get; internal init; }
+
+    internal Koto? Occurrence { get; init; }
+
+    internal int TargetSlot { get; init; }
+
+    internal BindingSymbol? BorrowCondition { get; set; }
 }
 
 /// <summary>A retained semantic requirement, independent of successful name resolution.</summary>

@@ -19,7 +19,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            if (node is not (FunctionKoto or DeclarationContainerKoto) || node.BoundSymbol?.Schema is not { } schema)
+            if (node is not (FunctionKoto or DeclarationContainerKoto or PropertyAccessorKoto) || node.BoundSymbol?.Schema is not { } schema)
             {
                 continue;
             }
@@ -83,6 +83,24 @@ public sealed partial class Binding
             }
 
             if (function.ReturnType?.BoundType is { } result)
+            {
+                Visit(result, 1);
+            }
+        }
+        else if (work.Owner is PropertyAccessorKoto accessor)
+        {
+            var operation = Accessor(accessor);
+            if (operation.Receiver is { } receiver)
+            {
+                Visit(receiver, -1);
+            }
+
+            if (operation.Input is { } input)
+            {
+                Visit(input, -1);
+            }
+
+            if (operation.Result is { } result)
             {
                 Visit(result, 1);
             }

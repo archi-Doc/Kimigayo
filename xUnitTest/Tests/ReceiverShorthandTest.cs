@@ -10,7 +10,7 @@ public class ReceiverShorthandTest
 {
     [Theory]
     [InlineData("struct S", " => self")]
-    [InlineData("struct S<T> origin source", " => self")]
+    [InlineData("struct S<T> {source}", " => self")]
     [InlineData("enum S\n    A", " => self")]
     [InlineData("contract S", "")]
     public void BareSelfMatchesExplicitSharedReceiverAndResultOrigin(string header, string body)
@@ -100,7 +100,7 @@ public class ReceiverShorthandTest
     [Fact]
     public void OmittedAccessorReceiverParticipatesInOriginsAndConformance()
     {
-        var c = Parse("contract C\n    func read(self) -> i32\n    property item: i32\n        get() -> i32\n        set(value: i32) -> ()\nstruct S\n    Self is C\n    public var item: i32\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public func read(self: ref/Self) -> i32 => 1\n    func view(self) -> ref/Self from self => self");
+        var c = Parse("contract C\n    func read(self) -> i32\n    property item: i32\n        get() -> i32\n        set(value: i32) -> ()\nstruct S\n    Self is C\n    public var item: i32\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public func read(self: ref/Self) -> i32 => 1\n    func view(self) -> ref{self}/Self => self");
         AssertComplete(c);
         foreach (var property in Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>())
         {
@@ -113,7 +113,7 @@ public class ReceiverShorthandTest
     [Fact]
     public void OmittedReceiverCompletesBorrowedAccessorResults()
     {
-        var c = Parse("struct S origin source\n    var item: ref/i32 from source\n        get() -> ref/i32 from self.source => storage\n    computed view: ref/Self\n        get() -> ref/Self from self => self");
+        var c = Parse("struct S {source}\n    var item: ref{source}/i32\n        get() -> ref{self.source}/i32 => storage\n    computed view: ref/Self\n        get() -> ref{self}/Self => self");
         AssertComplete(c);
         var getter = Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == "view").BoundSymbol!.Property!.Getter;
         Assert.Same(getter.Receiver, getter.Result);

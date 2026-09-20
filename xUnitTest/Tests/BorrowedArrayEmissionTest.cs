@@ -17,7 +17,7 @@ public class BorrowedArrayEmissionTest
     [InlineData("Exclusive", "func sum(a: uniq/[2 of i32]) -> i32\n    var total = 0\n    for i in a.indices => total += a[i]\n    return total\nvar a: [2 of i32] = [20, 22]\nrequire sum(a@uniq) == 42 else => $abort(\"sum\")")]
     [InlineData("Forward", "func first(a: ref/[1 of i32]) -> i32 => a[0]\nfunc forward(a: ref/[1 of i32]) -> i32 => first(a)\nlet a: [1 of i32] = [42]\nrequire forward(a@ref) == 42 else => $abort(\"forward\")")]
     [InlineData("Temporary", "func first(a: ref/[1 of i32]) -> i32 => a[0]\nfunc make() -> [1 of i32] => [42]\nrequire first(make()@ref) == 42 else => $abort(\"temporary\")")]
-    [InlineData("Returned", "func view(a: ref/[1 of i32]) -> ref/[1 of i32] from a => a\nlet a: [1 of i32] = [42]\nrequire view(a@ref)[0] == 42 else => $abort(\"returned\")")]
+    [InlineData("Returned", "func view(a: ref/[1 of i32]) -> ref{a}/[1 of i32] => a\nlet a: [1 of i32] = [42]\nrequire view(a@ref)[0] == 42 else => $abort(\"returned\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("BorrowedArray" + name, source, string.Empty);
 

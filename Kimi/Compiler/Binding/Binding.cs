@@ -80,6 +80,7 @@ public sealed partial class Binding
         this.running = true;
         try
         {
+            this.storageVersion++;
             this.issues.Clear();
             this.constraintDiagnosticCauses?.Clear();
             this.ResetMatches();
@@ -99,6 +100,7 @@ public sealed partial class Binding
             this.ResetAliases();
             this.obligations.Clear();
             this.obligationSet.Clear();
+            this.inheritedOriginTypes.Clear();
             this.ResetCapabilities(mode);
             this.ResetContracts();
             foreach (var scope in this.scopes.Values)

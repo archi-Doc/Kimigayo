@@ -18,7 +18,7 @@ public class ParserOptimizationTest
         var structure = kotonoha.RootKoto.GetOrAddDeclarationContainer("A", TokenKind.Struct, default, default);
         var arguments = structure.GenericArguments;
         var origins = structure.Origins;
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "struct A<T> origin first");
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "struct A<T> {first}");
         Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
         Assert.Same(arguments, structure.GenericArguments);
         Assert.Same(origins, structure.Origins);

@@ -30,7 +30,7 @@ public class ClosedProjectionConstraintBindingTest
     [InlineData("Source.Origin.Item is string or Copy", true)]
     [InlineData("(Source.Origin.Item, bool) is Copy", true)]
     [InlineData("[2 of Source.Origin.Item] is Copy", true)]
-    [InlineData("ref/Source.Origin.Item from static is Copy", true)]
+    [InlineData("ref{static}/Source.Origin.Item is Copy", true)]
     [InlineData("[2 of Source.Origin.Item] is [3 of i32]", false)]
     public void ClosedProjectionIdentityAndCapabilitiesAreJudged(string clause, bool valid)
     {

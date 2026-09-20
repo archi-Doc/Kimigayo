@@ -26,7 +26,7 @@ public class SpecializationBindingTest
     [InlineData("specialize func weight<i32>(other: ref/i32) -> i32 => 2")]
     [InlineData("specialize func weight<i32, i64>(value: ref/i32) -> i32 => 2")]
     [InlineData("specialize func weight<T>(value: ref/T) -> i32 => 2")]
-    [InlineData("specialize func weight<i32>(value: ref/i32 from static) -> i32 => 2")]
+    [InlineData("specialize func weight<i32>(value: ref{static}/i32) -> i32 => 2")]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32 => true")]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32 => 2\nspecialize func weight<i32>(value: ref/i32) -> i32 => 3")]
     public void RejectsInvalidImplementation(string specialization)

@@ -37,7 +37,7 @@ A Signature determines whether declarations may coexist in one scope:
 | Field / computed / Property Requirement | Name |
 | Enum Case | Name within its enum; no payload overloads |
 
-**GenericArity** counts generic argument slots, including function length slots; a pair counts as one. **OriginArity** counts explicitly declared Origin parameters, excluding Origins projected from a Type slot and inference variables. Origin schemas govern binding and fragment compatibility, not additional overloads: `View<T> origin source` and `View<T> origin left, right` cannot coexist as same-name, same-arity Type overloads.
+**GenericArity** counts generic argument slots, including function length slots; a pair counts as one. **OriginArity** counts explicitly declared Origin parameters, excluding anonymous input Origins, Origins projected from a Type slot and inference variables. It is not a callable-contract equality test (§15.3.5). Origin schemas govern binding and fragment compatibility, not additional overloads: `View<T> {source}` and `View<T> {left, right}` cannot coexist as same-name, same-arity Type overloads.
 
 Types are normalized by resolved Symbol and Kotonoha/version, expanding transparent aliases and resolved associated-Type projections and removing grouping and redundant `owner` prefixes. Every Semantics layer is preserved. Generic expressions are represented structurally by declared binder and slot position:
 
@@ -338,23 +338,25 @@ Inherited lookup keeps the defining declaration and the substituted base environ
 
 #### 9.6.1.1. Origins on paths
 
-The effective explicit Origin list combines the inherited and own slots; redeclaring an inherited Origin name is an error. Origins inside Type arguments stay inside those Types and are not added again. One trailing `from (...)` binds the final effective slots by resolved binder identity. Unknown, duplicate or already-bound slots are rejected, and `from a` is shorthand only when there is exactly one effective slot.
+The effective explicit Origin list combines the inherited and own slots; redeclaring an inherited Origin name is an error. Origins inside Type arguments stay inside those Types and are not added again. One trailing `{...}` binds the final effective slots by resolved binder identity. Unknown, duplicate or already-bound slots are rejected, and `{a}` is shorthand only when there is exactly one unbound effective slot.
 
 ```kimi
-struct View<T> origin source
-    let value: ref/T from source
+struct View<T> {source}
+    let value: ref{source}/T
     public struct Tag
     public contract Source
-        func read(self: ref/Self) -> ref/T from source
+        func read(self: ref/Self) -> ref{source}/T
 
-func inspect<T> origin a(value: View<T>.Tag from (source => a)) => ()
+func inspect<T> {a}(value: View<T>.Tag{source => a}) => ()
 ```
 
-`View<T>.Source from (source => a)` keeps the same inherited binding, and an inner `origin` local is supplied in the same trailing list. Ordinary Type annotations use the position-specific Origin omission rules. Contract references, aliases and standalone Container qualifiers must explicitly supply any unbound Origins; `static` is never invented and a lexical Self environment is never modified.
+`View<T>.Source{source => a}` keeps the same inherited binding; an inner declaration's own Origin slots use the same trailing list. Ordinary Type annotations use the position-specific Origin omission rules. Contract references, aliases and standalone Container qualifiers must explicitly supply any unbound Origins; `static` is never invented and a lexical Self environment is never modified.
 
-`(ContainerPath from (...)).member` binds an intermediate qualifier. The parentheses normalize to the same Type-side reference and create no runtime value or duplicate candidate. Rejection of a missing Origin is deferred until a trailing annotation can bind its slots. If an Origin of an inherited qualifier is absent from the final target, it is bound on that intermediate qualifier, as in `(Derived from (...)).Node`. Normalizing the final reference never removes intermediate validation obligations.
+`(ContainerPath{...}).member` binds an intermediate qualifier and creates no runtime value or duplicate candidate. Such annotations require parentheses: `(Outer<T>{a}).Inner<U>{b}` is valid; `Outer<T>{a}.Inner` is not. The qualifier requires a following member, including `.init`; standalone `(View<T>{a})` in Type position is ordinary grouping. Rejection of a missing Origin is deferred until a trailing annotation can bind its slots. An intermediate Origin absent from the final target must instead be bound at that qualifier, as in `(Derived{...}).Node`.
 
-`ref/(View<T>.Tag from (source => a)) from r` keeps the Container Origin `a` separate from the outer borrow `r`. An explicit associated projection is written `X.(ContractPath from (...)).Element`, and an associated specification `associate (ContractPath from (...)).Element is T`. Origin-free forms remain valid. Parentheses cannot bypass the restrictions on Origins, values, adaptation targets, Cases or runtime Contract Views.
+`ref{r}/(View<T>.Tag{source => a})` keeps the Container Origin `a` separate from the outer borrow `r`. An explicit associated projection is written `X.(ContractPath{...}).Element`, and an associated specification `associate (ContractPath{...}).Element is T`. Origin-free forms remain valid. Parentheses cannot bypass the restrictions on Origins, values, adaptation targets, Cases or runtime Contract Views.
+
+Normalize path bindings by Binding Identity. Bindings in the final schema may be moved to a final named list only when targets, visibility and obligations remain identical. Retain other intermediate bindings and validation obligations. A syntax-only formatter must not relocate arguments, and normalization never rewrites lexical Self bindings.
 
 #### 9.6.1.2. Access and ambiguity
 

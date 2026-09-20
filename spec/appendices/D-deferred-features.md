@@ -59,7 +59,7 @@ The initial [enum](../06-declarations-and-containers.md#63-enums) and [match](..
 
 | Extension | Required design |
 | --- | --- |
-| Struct Pattern | Distinguish Fields from computed operations and respect private storage and Move permissions. Getter-based decomposition needs explicit evaluation, effect and coverage rules; it is not inverse constructor execution. `{}` remains reserved. |
+| Struct Pattern | Distinguish Fields from computed operations and respect private storage and Move permissions. Getter-based decomposition needs explicit evaluation, effect and coverage rules; it is not inverse constructor execution. Any future spelling must be distinguishable from Origin braces. |
 | Named payload | Define stable element names and declaration order without changing positional payload meaning. |
 | Type Pattern | Share the runtime `is`/Effective Type rules, Type identity and Origin preservation; define Pattern binding and coverage separately. Do not infer exhaustive open hierarchies from known subclasses or require hidden dynamic metadata on value borrows. |
 | OR Pattern | Agree on binding names, Types, mutability and acquisition across alternatives; define the guard evaluation count. |
