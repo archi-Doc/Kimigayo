@@ -4,21 +4,21 @@ struct Family<T>
     public struct Cell
         public let value: T
 
-        public init(value: T)
+        public init(value?: T)
             self.value = value
 
     public enum Result
         Value(T)
 
     public group Helpers
-        public func identity(value: T) -> T => value
+        public func identity(value?: T) -> T => value
 
     public contract Sink
-        func put(value: T)
+        func put(value?: T)
 
 struct IntegerSink
     Self is Family<i32>.Sink
-    public func put(value: i32) => ()
+    public func put(value?: i32) => ()
 
 public func main()
     let cell = Family<i32>.Cell.init(42)

@@ -10,7 +10,7 @@ public class GuardEmissionTest
 {
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "Candidate", "func f(n: i32) -> string\n    return match n\n        let x if x < 0 => \"negative\"\n        let x if x == 0 => \"zero\"\n        _ => \"positive\"\nConsole.writeLine(f(-1))\nConsole.writeLine(f(0))\nConsole.writeLine(f(1))", "negative\nzero\npositive\n" },
+        { "Candidate", "func f(n?: i32) -> string\n    return match n\n        let x if x < 0 => \"negative\"\n        let x if x == 0 => \"zero\"\n        _ => \"positive\"\nConsole.writeLine(f(-1))\nConsole.writeLine(f(0))\nConsole.writeLine(f(1))", "negative\nzero\npositive\n" },
         { "Duplicate", "func test() -> bool\n    Console.writeLine(\"guard\")\n    return false\nmatch 0\n    0 if test() => ()\n    0 => Console.writeLine(\"ok\")\n    _ => ()", "guard\nok\n" },
         { "Mismatch", "func test() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch 1\n    0 if test() => ()\n    _ => Console.writeLine(\"ok\")", "ok\n" },
         { "Mutation", "var state = 0\nmatch 1\n    _ if (check: do\n        state = 7\n        exit to check: false\n    ) => ()\n    _ => if state == 7 => Console.writeLine(\"ok\")", "ok\n" },
@@ -18,14 +18,14 @@ public class GuardEmissionTest
         { "Unit", "match ()\n    let n if true => ()\n    () => ()\nConsole.writeLine(\"ok\")", "ok\n" },
         { "Boolean", "match false\n    true if true => ()\n    false if false => ()\n    true => ()\n    false => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Return", "func f() -> string\n    match 1\n        let n if (return \"ok\") => \"bad\"\n        _ => \"other\"\n    return \"after\"\nConsole.writeLine(f())", "ok\n" },
-        { "StringCondition", "func echo(text: string) -> string => text\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "StringCondition", "func echo(text?: string) -> string => text\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "ShortCircuit", "func test() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch 1\n    _ if false and test() => ()\n    _ if true or test() => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "BodyVar", "match 1\n    var n if n == 1\n        n += 1\n        if n == 2 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Nested", "match 1\n    let n if (match n\n        let x if x == 1 => true\n        _ => false\n    ) => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Loop", "var n = 0\nwhile n < 3\n    n += 1\n    match n\n        let x if x == 1 => continue\n        let x if x == 2 => Console.writeLine(\"two\")\n        _ => exit", "two\n" },
         { "Covered", "match 1\n    _ => Console.writeLine(\"ok\")\n    let x if x == 1 => Console.writeLine(\"bad\")", "ok\n" },
         { "OuterLoan", "let text = \"a\"\nif text == (match 1\n    let n if n == 1 => \"a\"\n    _ => \"b\"\n) => Console.writeLine(text)", "a\n" },
-        { "Arguments", "func same(a: i32, b: i32) -> bool => a == b\nmatch 3\n    let n if same(n, if true => n else => n) => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "Arguments", "func same(a?: i32, b?: i32) -> bool => a == b\nmatch 3\n    let n if same(n, if true => n else => n) => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Deferred", "defer\n    match 1\n        let x if x == 1 => Console.writeLine(\"ok\")\n        _ => ()", "ok\n" },
         { "DeferredSnapshot", "var flag = true\nmatch 1\n    _ if (check: do\n        defer => flag = false\n        exit to check: flag\n    ) => if not flag => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "OuterYield", "let result = outer: match 0\n    _ => match 1\n        _ if (yield 7) => 1\n        _ => 2\nif result == 7 => Console.writeLine(\"ok\")", "ok\n" },
@@ -104,14 +104,14 @@ public class GuardEmissionTest
     [InlineData("isize", "-9223372036854775808")]
     [InlineData("usize", "18446744073709551615")]
     public void CandidateWidth(string type, string literal)
-        => ScalarEmissionTest.EmitFixture("GuardWidth" + type, $"func f(value: {type}) -> bool\n    return match value\n        let n if n == {literal} => true\n        _ => false\nif f({literal}) => Console.writeLine(\"ok\")", "ok\n");
+        => ScalarEmissionTest.EmitFixture("GuardWidth" + type, $"func f(value?: {type}) -> bool\n    return match value\n        let n if n == {literal} => true\n        _ => false\nif f({literal}) => Console.writeLine(\"ok\")", "ok\n");
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void GuardTemporaryCleanupPrecedesEitherContinuation(bool success)
     {
-        var source = "func echo(text: string) -> string => text\nmatch 1\n    _ if echo(\"a\") == \"" + (success ? "a" : "b") + "\" => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
+        var source = "func echo(text?: string) -> string => text\nmatch 1\n    _ if echo(\"a\") == \"" + (success ? "a" : "b") + "\" => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
         var stdout = success ? "selected\n" : "fallback\n";
         var name = "GuardCleanup" + success;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
@@ -132,7 +132,7 @@ public class GuardEmissionTest
     [InlineData("boolean")]
     public void MalformedGuardPlansFailBeforeWriting(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze("func echo(text?: string) -> string => text\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         var arm = body.MatchArms[0];

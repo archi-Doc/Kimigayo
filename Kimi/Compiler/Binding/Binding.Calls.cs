@@ -811,6 +811,7 @@ public sealed partial class Binding
         }
 
         var next = 0;
+        var named = false;
         var contextualInputs = false;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
@@ -818,6 +819,7 @@ public sealed partial class Binding
             var slot = -1;
             if (label is not null)
             {
+                named = true;
                 for (var p = 0; p < function.Parameters.Count; p++)
                 {
                     if (function.Parameters[p].ExternalName == label)
@@ -829,6 +831,11 @@ public sealed partial class Binding
             }
             else
             {
+                if (named)
+                {
+                    return CandidateApplicability.Inapplicable;
+                }
+
                 while (next < function.Parameters.Count && used[next])
                 {
                     next++;
@@ -837,7 +844,8 @@ public sealed partial class Binding
                 slot = next++;
             }
 
-            if (slot < 0 || slot >= function.Parameters.Count || used[slot])
+            if (slot < 0 || slot >= function.Parameters.Count || used[slot] ||
+                (label is null && !function.Parameters[slot].IsNameOptional && slot != function.BoundSymbol!.ReceiverIndex))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -859,14 +867,11 @@ public sealed partial class Binding
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (!used[i] && !function.Parameters[i].IsOptional)
+            if (!used[i] && function.Parameters[i].DefaultValue is null)
             {
                 return CandidateApplicability.Inapplicable;
             }
-        }
 
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
             defaultsUsed += used[i] ? 0 : 1;
         }
 

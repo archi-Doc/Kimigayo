@@ -17,7 +17,7 @@ public class ForParseTest
     {
         var function = ParseSingleFunction(
             """
-            func ProcessAll(values: Values, dictionary: Dictionary)
+            func ProcessAll(values?: Values, dictionary?: Dictionary)
                 for x in values
                     process(x)
                 for (key, value) in dictionary
@@ -57,7 +57,7 @@ public class ForParseTest
 
         var function = ParseSingleFunction(
             """
-            func Identity(in: Values)
+            func Identity(in?: Values)
                 in
             """);
         Assert.Equal("in", Assert.Single(function.Parameters).InternalName);
@@ -72,7 +72,7 @@ public class ForParseTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         var source = """
-            func Recover(values: Values)
+            func Recover(values?: Values)
                 for item values
                     process(item)
                 for (key, value in values
@@ -94,7 +94,7 @@ public class ForParseTest
     public void PreservesForExpressionsThroughSerializationAndUnparse()
     {
         const string Source = """
-            func Iterate(values: Values, dictionary: Dictionary)
+            func Iterate(values?: Values, dictionary?: Dictionary)
                 for value in values
                     consume(value)
                 for (key, value) in dictionary

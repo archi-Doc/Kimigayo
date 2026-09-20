@@ -8,7 +8,7 @@ struct Counter
 
     deinit => Console.writeLine("Counter destroyed.")
 
-func finish(counter: Counter)
+func finish(counter?: Counter)
     defer => Console.writeLine("Leaving finish.")
     if counter.value != 55
         $abort("Unexpected sum")

@@ -17,7 +17,7 @@ public class ControlTransferParseTest
     {
         var function = ParseSingleFunction(
             """
-            func Control(value: i32, values: Values) -> i32
+            func Control(value?: i32, values?: Values) -> i32
                 if value < 0
                     return -1
 
@@ -103,7 +103,7 @@ public class ControlTransferParseTest
     public void PreservesLoopAndYieldThroughSerializationAndUnparse()
     {
         const string Source = """
-            func Preserve(value: i32) -> i32
+            func Preserve(value?: i32) -> i32
                 var selected = if value > 0
                     yield loop
                         if retry()

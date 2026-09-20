@@ -84,7 +84,7 @@ public class TerminalBranchReplayTest
     }
 
     private static string Source(string declaration, string early, string dead, string tail, string use, bool condition = true)
-        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c\n                " + early + "\n            else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
+        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c?: bool)\n    " + declaration + "\n    do\n        loop\n            if c\n                " + early + "\n            else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
     private const string Counter = "\nstruct Counter\n    public var value: i32 = 0";
 

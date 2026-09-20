@@ -101,7 +101,7 @@ public class MixedTargetContinuationTest
     public void LinearEffectsRetainSeparateTargets(string name, string declaration, string dead, string tail, string use, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedEffect" + Configuration + name,
-            Source(declaration, "loop\n            if c => return\n            else => exit\n            " + dead, tail, use, condition) + "\nConsole.writeLine(\"done\")\nfunc inspect(x: ref/string) => ()",
+            Source(declaration, "loop\n            if c => return\n            else => exit\n            " + dead, tail, use, condition) + "\nConsole.writeLine(\"done\")\nfunc inspect(x?: ref/string) => ()",
             condition ? "done\n" : string.Empty,
             condition ? 0 : 1,
             condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -159,7 +159,7 @@ public class MixedTargetContinuationTest
     [Fact]
     public void ReplayedCallsStillRejectConflictingArgumentLoans()
     {
-        var c = MinimalEmissionTest.Analyze(Source("let x = \"s\"", "loop\n            if c => return\n            else => exit\n            inspect(x, x)", "()", "()") + "\nfunc inspect(a: ref/string, b: string) => ()");
+        var c = MinimalEmissionTest.Analyze(Source("let x = \"s\"", "loop\n            if c => return\n            else => exit\n            inspect(x, x)", "()", "()") + "\nfunc inspect(a?: ref/string, b?: string) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -224,7 +224,7 @@ public class MixedTargetContinuationTest
     }
 
     private static string Source(string declaration, string body, string tail, string use, bool condition = true)
-        => Stop + "func f(c: bool)\n    " + declaration + "\n    do\n        " + body + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
+        => Stop + "func f(c?: bool)\n    " + declaration + "\n    do\n        " + body + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
 #if DEBUG
     private const string Configuration = "Debug";

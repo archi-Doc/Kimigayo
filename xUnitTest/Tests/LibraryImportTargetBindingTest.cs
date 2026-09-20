@@ -80,7 +80,7 @@ public class LibraryImportTargetBindingTest
     [Fact]
     public void ForeignFunctionSupportRemainsUnimplemented()
     {
-        var c = AnalyzeImport("group Native\n    #LibraryImport(\"library\", \"symbol\")\n    public unsafe func imported(value: i32) -> i32", "library");
+        var c = AnalyzeImport("group Native\n    #LibraryImport(\"library\", \"symbol\")\n    public unsafe func imported(value?: i32) -> i32", "library");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.False(c.Binding.Result.IsComplete);
@@ -117,8 +117,8 @@ public class LibraryImportTargetBindingTest
     [InlineData("#LibraryImport(\"codec\", \"_fltused\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"__kimi_entry\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"llvm.trap\")\n    public unsafe func imported() -> i32")]
-    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported(value: i32 = 1) -> i32")]
-    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported<T>(value: i32) -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported(value?: i32 = 1) -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported<T>(value?: i32) -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"first\")\n    #LibraryImport(\"codec\", \"second\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported() -> i32")]
     public void InvalidImportDeclarationsAreDiagnosed(string declaration)
@@ -129,13 +129,13 @@ public class LibraryImportTargetBindingTest
     }
 
     [Theory]
-    [InlineData("struct S\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value: i32) -> i32", false)]
+    [InlineData("struct S\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value?: i32) -> i32", false)]
     [InlineData("struct S\n    var value: i32\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func read(self: S) -> i32", true)]
     [InlineData("contract C\n    #LibraryImport(\"codec\", \"symbol\")\n    unsafe func required() -> i32", true)]
     [InlineData("group Native\n    func outer()\n        #LibraryImport(\"codec\", \"symbol\")\n        unsafe func local() -> i32", true)]
-    [InlineData("struct S<T>\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value: i32) -> i32", true)]
-    [InlineData("struct S<T>\n    public group Native\n        #LibraryImport(\"codec\", \"symbol\")\n        public unsafe func make(value: i32) -> i32", true)]
-    [InlineData("struct S\n    public group Native\n        #LibraryImport(\"codec\", \"symbol\")\n        public unsafe func make(value: i32) -> i32", false)]
+    [InlineData("struct S<T>\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value?: i32) -> i32", true)]
+    [InlineData("struct S<T>\n    public group Native\n        #LibraryImport(\"codec\", \"symbol\")\n        public unsafe func make(value?: i32) -> i32", true)]
+    [InlineData("struct S\n    public group Native\n        #LibraryImport(\"codec\", \"symbol\")\n        public unsafe func make(value?: i32) -> i32", false)]
     public void ImportPlacementIsRestricted(string source, bool invalid)
     {
         var c = AnalyzeImport(source, "codec");
@@ -167,12 +167,12 @@ public class LibraryImportTargetBindingTest
     }
 
     [Theory]
-    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: u32) -> u32", false)]
-    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: unsafe/i8) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: unsafe/f64) -> ()", false)]
-    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i64) -> i32", true)]
-    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()", true)]
-    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: f32) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()", true)]
-    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32, other: i32) -> ()", true)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: u32) -> u32", false)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: unsafe/i8) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: unsafe/f64) -> ()", false)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i64) -> i32", true)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> ()", true)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: f32) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> ()", true)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32, other?: i32) -> ()", true)]
     public void SameExternalSymbolRequiresOnePhysicalSignature(string first, string second, bool conflict)
     {
         var c = AnalyzeImport(first + "\n" + second, "codec");
@@ -219,8 +219,8 @@ public class LibraryImportTargetBindingTest
             ["codec2"] = new() { Kind = second },
         };
         Assert.True(c.Prepare(WindowsProfile.Target));
-        var source = "group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()\n" +
-            "group B\n    #LibraryImport(\"codec2\", \"shared\")\n    public unsafe func call(value: i32) -> ()";
+        var source = "group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> ()\n" +
+            "group B\n    #LibraryImport(\"codec2\", \"shared\")\n    public unsafe func call(value?: i32) -> ()";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd));
@@ -234,8 +234,8 @@ public class LibraryImportTargetBindingTest
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         Assert.True(c.Prepare(WindowsProfile.Target));
-        var source = "group A\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> unsafe/u8\n" +
-            "group B\n    #LibraryImport(\"codec\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> unsafe/u8";
+        var source = "group A\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func reserve(size?: u64) -> unsafe/u8\n" +
+            "group B\n    #LibraryImport(\"codec\", \"VirtualAlloc\")\n    public unsafe func reserve(size?: u64) -> unsafe/u8";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
 
@@ -249,8 +249,8 @@ public class LibraryImportTargetBindingTest
     public void SupplyKindsAgreeAcrossSourceModules()
     {
         var c = ModuleBindingTest.Create(
-            "func main() => ()\ngroup Root\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
-            "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
+            "func main() => ()\ngroup Root\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> ()",
+            "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> ()",
             configure: (root, library) =>
             {
                 root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
@@ -280,8 +280,8 @@ public class LibraryImportTargetBindingTest
     public void ImportSignaturesAreSharedAcrossSourceModules()
     {
         var c = ModuleBindingTest.Create(
-            "func main() => ()\ngroup Root\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i64) -> ()",
-            "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
+            "func main() => ()\ngroup Root\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i64) -> ()",
+            "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value?: i32) -> ()",
             configure: (root, library) =>
             {
                 root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
@@ -313,6 +313,20 @@ public class LibraryImportTargetBindingTest
             });
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
+    }
+
+    [Theory]
+    [InlineData("value: i32", false)]
+    [InlineData("value?: i32", false)]
+    [InlineData("value? => local: i32", false)]
+    [InlineData("value: i32 = 1", true)]
+    [InlineData("value?: i32 = 1", true)]
+    public void ImportNameOmissionIsIndependentOfForbiddenDefaults(string parameter, bool invalid)
+    {
+        var source = "group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported(" + parameter + ") -> i32";
+        var c = AnalyzeImport(source, "codec");
+        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Equal(invalid, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd));
     }
 
     private static Compilation AnalyzeImport(string source, string? requirement, bool combinedSupply = false)

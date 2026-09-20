@@ -16,7 +16,7 @@ public class SignatureInputFormationBindingTest
     public void NormalizedFunctionInputsControlCallValidity(string argument, bool result, bool valid)
     {
         var projected = "Source<" + argument + ">.Origin.Item";
-        var c = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take(x: " + (result ? "i32" : projected) + ") -> " + (result ? projected : "i32") + " => x\n    func call() -> i32 => take(1)");
+        var c = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take(x?: " + (result ? "i32" : projected) + ") -> " + (result ? projected : "i32") + " => x\n    func call() -> i32 => take(1)");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Call(c).BoundCall is not null);
@@ -59,7 +59,7 @@ public class SignatureInputFormationBindingTest
     }
 
     [Theory]
-    [InlineData("func f(x: i32) -> i32", "public func f(x: Source<string>.Origin.Item) -> i32 => x")]
+    [InlineData("func f(x?: i32) -> i32", "public func f(x?: Source<string>.Origin.Item) -> i32 => x")]
     [InlineData("property value: i32 has get", "public var value: Source<string>.Origin.Item")]
     public void InvalidSignatureInputsCannotSupplyConformanceWitnesses(string requirement, string implementation)
     {
@@ -72,7 +72,7 @@ public class SignatureInputFormationBindingTest
 
     [Theory]
     [InlineData("struct S<U>\n    U is i32\n    var value: Source<U>.Origin.Item")]
-    [InlineData("group G\n    func take<U>(x: Source<U>.Origin.Item) -> i32\n        U is i32\n        return x\n    func call() -> i32 => take<i32>(1)")]
+    [InlineData("group G\n    func take<U>(x?: Source<U>.Origin.Item) -> i32\n        U is i32\n        return x\n    func call() -> i32 => take<i32>(1)")]
     public void DependentInputsUseTheDefiningScope(string declaration)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + declaration);
@@ -82,7 +82,7 @@ public class SignatureInputFormationBindingTest
     [Fact]
     public void ReplacingInputRestoresSameCallPlan()
     {
-        const string source = Prefix + "group G\n    func take(x: Source<i32>.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)";
+        const string source = Prefix + "group G\n    func take(x?: Source<i32>.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var plan = Call(c).BoundCall;
@@ -101,7 +101,7 @@ public class SignatureInputFormationBindingTest
     [Fact]
     public void WarmSignatureInputChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix + "struct S\n    var value: Source<i32>.Origin.Item\ngroup G\n    func take(x: Source<i32>.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)");
+        var c = MinimalEmissionTest.Analyze(Prefix + "struct S\n    var value: Source<i32>.Origin.Item\ngroup G\n    func take(x?: Source<i32>.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

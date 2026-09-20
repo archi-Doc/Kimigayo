@@ -16,7 +16,7 @@ public class DocumentationMarkdownIntegrationTest
     public void ClassifiesExternalGenericSemanticsLengthAndOriginNamesFromRealDeclarations()
     {
         const string body = "- by: external\n- factor: internal\n- note: collision\n- self: ordinary\n- s: semantics\n- T: type\n- N: length\n- a: origin\n- return: result\n\n# note\n\nStandard section.";
-        var tree = DocumentationCommentTest.Parse(Comment(body) + "func sample<s/T, length N> {a}(by => factor: i32, note: i32, self: i32) => ()");
+        var tree = DocumentationCommentTest.Parse(Comment(body) + "func sample<s/T, length N> {a}(by => factor: i32, note?: i32, self: i32) => ()");
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         var doc = DocumentationMarkdownDocument.Parse(comment);
         Assert.All(doc.GetItemCandidates().ToArray().Take(9), item => Assert.Equal(DocumentationMarkdownItemKind.Unclassified, item.Kind));
@@ -34,7 +34,7 @@ public class DocumentationMarkdownIntegrationTest
     [InlineData("group G", "self: i32", false)]
     public void ReceiverExclusionUsesBindingRole(string container, string parameter, bool receiver)
     {
-        var source = container + "\n" + Comment("- self: description\n- note: description", "    ") + "    public func f(" + parameter + ", note: i32) => ()";
+        var source = container + "\n" + Comment("- self: description\n- note: description", "    ") + "    public func f(" + parameter + ", note?: i32) => ()";
         var tree = DocumentationCommentTest.Parse(source);
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
@@ -48,7 +48,7 @@ public class DocumentationMarkdownIntegrationTest
     [Fact]
     public void AmbiguityAcrossNamespacesDoesNotBecomeAStandardItem()
     {
-        var tree = DocumentationCommentTest.Parse(Comment("- note: ambiguous\n\n# note\n\nStandard") + "func f<note>(note: i32) => ()");
+        var tree = DocumentationCommentTest.Parse(Comment("- note: ambiguous\n\n# note\n\nStandard") + "func f<note>(note?: i32) => ()");
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         var doc = DocumentationMarkdownDocument.Parse(comment);
@@ -95,7 +95,7 @@ public class DocumentationMarkdownIntegrationTest
         var compilation = Compilation.CreateForTest();
         compilation.CollectDocumentation = true;
         Assert.True(compilation.Prepare(WindowsProfile.Target));
-        compilation.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n" + Comment("- windows: selected", "        ") + "        public func f(windows: i32) => ()\n    #case _\n" + Comment("- other: selected", "        ") + "        public func f(other: i32) => ()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n" + Comment("- windows: selected", "        ") + "        public func f(windows?: i32) => ()\n    #case _\n" + Comment("- other: selected", "        ") + "        public func f(other?: i32) => ()"));
         Assert.True(compilation.Bind().IsComplete);
         var original = Selected(compilation.Kotonoha);
         var oldDocument = DocumentationMarkdownDocument.Parse(original);
@@ -110,7 +110,7 @@ public class DocumentationMarkdownIntegrationTest
         Assert.Equal("other", Assert.Single(newDocument.GetItemCandidates().ToArray()).Name);
         Assert.Equal("windows", Assert.Single(oldItems).Name);
         Assert.NotEqual(oldDocument.Root, newDocument.Root);
-        var edited = DocumentationCommentTest.Parse(Comment("- windows: selected") + "func f(renamed: i32) => ()");
+        var edited = DocumentationCommentTest.Parse(Comment("- windows: selected") + "func f(renamed?: i32) => ()");
         Assert.True(edited.Compilation.Bind().IsComplete);
         var editedComment = Selected(edited);
         var editedDocument = DocumentationMarkdownDocument.Parse(editedComment);
@@ -123,7 +123,7 @@ public class DocumentationMarkdownIntegrationTest
     [Fact]
     public void PublicationAccessAndSpecializationAreAppliedBeforeMarkdownParsing()
     {
-        var tree = DocumentationCommentTest.Parse(Comment("**original**") + "public func weight<T>(value: ref/T) -> i32 => 1\n" + Comment("**implementation**") + "specialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n" + Comment("**private**", "    ") + "    public func f() => ()");
+        var tree = DocumentationCommentTest.Parse(Comment("**original**") + "public func weight<T>(value?: ref/T) -> i32 => 1\n" + Comment("**implementation**") + "specialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n" + Comment("**private**", "    ") + "    public func f() => ()");
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comments = Assert.Single(tree.DocumentationSources).Comments;
         var binding = tree.Compilation.Binding;

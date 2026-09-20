@@ -263,7 +263,7 @@ public static partial class Parser
                 goto NextParameter;
             }
 
-            var isOptional = reader.TryConsume(TokenKind.Question);
+            var isNameOptional = reader.TryConsume(TokenKind.Question);
 
             var internalName = externalName;
             if (reader.TryConsume(TokenKind.EqualsGreaterThan))
@@ -276,7 +276,7 @@ public static partial class Parser
                 }
             }
 
-            var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self" && !isOptional;
+            var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self" && !isNameOptional;
             var hasType = reader.TryConsume(TokenKind.Colon, out _, !anonymous && !allowsReceiverShorthand);
             if (!hasType && !anonymous && !allowsReceiverShorthand)
             {
@@ -290,9 +290,8 @@ public static partial class Parser
                 defaultValue = ParseRequiredExpression(ref reader);
             }
 
-            if ((anonymous && (isOptional || internalName != externalName || defaultValue is not null || parameterAttribute is not null)) ||
-                (specialization && (isOptional || defaultValue is not null || parameterAttribute is not null)) ||
-                (isOptional && defaultValue is null))
+            if ((anonymous && (isNameOptional || internalName != externalName || defaultValue is not null || parameterAttribute is not null)) ||
+                (specialization && (isNameOptional || defaultValue is not null || parameterAttribute is not null)))
             {
                 reader.Diagnostic.Add(externalNameToken.Span, DiagnosticCode.UnexpectedToken_Kd, "parameter");
             }
@@ -300,7 +299,7 @@ public static partial class Parser
             (parameters ??= new(4)).Add(new(
                 externalName,
                 internalName,
-                isOptional,
+                isNameOptional,
                 parameterType,
                 defaultValue,
                 parameterAttribute));
@@ -3591,6 +3590,7 @@ ProcessPrefix:
             }
             else if (hasLabels)
             {
+                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "positional argument after named argument");
                 labels.Add(null);
             }
 

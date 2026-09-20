@@ -31,7 +31,7 @@ public class ExpressionInputFormationBindingTest
     [InlineData("[2 of Source<string>.Origin.Item]")]
     public void InvalidRuntimeTargetInputsCannotCertify(string argument)
     {
-        var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
+        var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x?: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
@@ -52,7 +52,7 @@ public class ExpressionInputFormationBindingTest
         var call = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
         Assert.True(call.Binding.Result.IsComplete, MinimalEmissionTest.Describe(call, null));
         Assert.NotNull(Call(call).BoundCall);
-        var runtime = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
+        var runtime = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x?: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.True(runtime.Binding.Result.IsComplete, MinimalEmissionTest.Describe(runtime, null));
         Assert.NotNull(Test(runtime).BoundRuntimeTest);
         var restoredCall = Reload(call);
@@ -69,7 +69,7 @@ public class ExpressionInputFormationBindingTest
     public void DependentInputUsesCallerEvidence(bool runtime)
     {
         var source = runtime
-            ? "struct Target<T>\ngroup G\n    func call<U>(x: objref/Target<i32>) -> bool\n        U is i32\n        return x is Target<Source<U>.Origin.Item>"
+            ? "struct Target<T>\ngroup G\n    func call<U>(x?: objref/Target<i32>) -> bool\n        U is i32\n        return x is Target<Source<U>.Origin.Item>"
             : "group G\n    func take<T>() => ()\n    func call<U>()\n        U is i32\n        take<Source<U>.Origin.Item>()";
         var c = MinimalEmissionTest.Analyze(Prefix + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
@@ -82,7 +82,7 @@ public class ExpressionInputFormationBindingTest
     public void ReplacingInputRevokesAndRestoresCertificate(bool runtime)
     {
         var source = Prefix + (runtime
-            ? "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<Source<i32>.Origin.Item>"
+            ? "struct Target<T>\ngroup G\n    func call(x?: objref/Target<i32>) -> bool => x is Target<Source<i32>.Origin.Item>"
             : "group G\n    func take<T>() => ()\n    func call() => take<Source<i32>.Origin.Item>()");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
@@ -116,7 +116,7 @@ public class ExpressionInputFormationBindingTest
     [Fact]
     public void WarmExpressionInputChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func take<T>() => ()\n    func call() => take<Source<i32>.Origin.Item>()\n    func check(x: objref/Target<i32>) -> bool => x is Target<Source<i32>.Origin.Item>");
+        var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func take<T>() => ()\n    func call() => take<Source<i32>.Origin.Item>()\n    func check(x?: objref/Target<i32>) -> bool => x is Target<Source<i32>.Origin.Item>");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

@@ -51,7 +51,7 @@ public class OwnedPatternVerificationTest
             enum Packet
                 Empty
                 Pair(string, string)
-            func run(consume: bool)
+            func run(consume?: bool)
                 match (("first", "second"), Packet.Pair("third", "fourth"), "remaining")
                     (let pair, let packet, _)
                         if consume
@@ -78,7 +78,7 @@ public class OwnedPatternVerificationTest
             enum Item
                 Number(i32)
                 Text(string)
-            func classify(value: Item) -> i32
+            func classify(value?: Item) -> i32
                 return match value
                     .Text("a") => 1
                     .Text("a\0") => 2
@@ -103,7 +103,7 @@ public class OwnedPatternVerificationTest
     [InlineData("or", "true", "false", 1)]
     public void LogicalGuardsSkipOrDeliverTheTerminalRightOperand(string operation, string skipped, string taken, int normal)
     {
-        var source = "func run(value: bool) -> i32\n    return match true\n        let flag if value " + operation +
+        var source = "func run(value?: bool) -> i32\n    return match true\n        let flag if value " + operation +
             " (return 9) => 1\n        _ => 2\nif run(" + skipped + ") != " + normal +
             " => $abort(\"skipped\")\nif run(" + taken + ") != 9 => $abort(\"terminal\")";
         ScalarEmissionTest.EmitFixture("VerificationOwnedPatternLogical" + operation, source, string.Empty);

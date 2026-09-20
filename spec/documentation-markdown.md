@@ -199,7 +199,7 @@ Do not finalize list classification before declaration facts are available. Back
 ///
 /// # note
 /// This section describes the whole function.
-func echo(note: string) -> string => note
+func echo(note?: string) -> string => note
 
 group Samples
     /// Returns its input.

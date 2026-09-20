@@ -122,11 +122,11 @@ public class PartialLogicalReplayTest
         => ScalarEmissionTest.EmitFixture("NeverPartialLogical" + Configuration + name, source + "\nConsole.writeLine(\"done\")", condition ? "done\n" : string.Empty, condition ? 0 : 1, condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     private static string Source(string declaration, string expression, string after, string use, bool condition = true)
-        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            let b = " + expression + "\n            " + after + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")" + Helpers;
+        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c?: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            let b = " + expression + "\n            " + after + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")" + Helpers;
 
-    private const string Helpers = "\nfunc effect(x: ()) -> bool => true\nfunc take(s: string) -> bool => true\nfunc stopTake(s: string) -> Never => stop()";
+    private const string Helpers = "\nfunc effect(x?: ()) -> bool => true\nfunc take(s?: string) -> bool => true\nfunc stopTake(s?: string) -> Never => stop()";
     private const string Counter = "\nstruct Counter\n    public var value: i32 = 0";
-    private const string Truth = "\nfunc truth(x: i32) -> bool => true";
+    private const string Truth = "\nfunc truth(x?: i32) -> bool => true";
 
 #if DEBUG
     private const string Configuration = "Debug";

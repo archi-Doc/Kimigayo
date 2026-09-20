@@ -4,11 +4,11 @@ func defaultIndex() -> isize
     return 0
 
 func pick<length N, T> {source}(
-    values: ref{source}/[N of T], index?: isize = defaultIndex()) -> ref{source}/T
+    values?: ref{source}/[N of T], index?: isize = defaultIndex()) -> ref{source}/T
     return values[index]@ref/T
 
 func forward<length N, T> {source}(
-    values: ref{source}/[N of T]) -> ref{source}/T
+    values?: ref{source}/[N of T]) -> ref{source}/T
     // Forward the inferred length/Type/Origin; omission evaluates pick's default.
     return pick<N, T>(values)
 

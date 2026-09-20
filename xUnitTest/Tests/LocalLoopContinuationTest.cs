@@ -39,7 +39,7 @@ public class LocalLoopContinuationTest
     [InlineData("let x = \"s\"\nloop\n    let y = x\nConsole.writeLine(x)")]
     [InlineData("func f() => ()\nvar x = 1\nloop\n    f()\nlet y = x")]
     [InlineData("var x = 1\nloop\n    defer => ()\nlet y = x")]
-    [InlineData("func f(x: i32)\n    loop => return\n    let y = x\nf(1)")]
+    [InlineData("func f(x?: i32)\n    loop => return\n    let y = x\nf(1)")]
     public void EnclosingEffectsAndUnverifiedOperationsRemainGuarded(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

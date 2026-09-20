@@ -106,7 +106,7 @@ public class NamedAliasTest
     [Fact]
     public void OrdinaryCoreGroupAndExplicitStagesKeepTheirMeaning()
     {
-        var c = Parse("alias Core\ngroup Core\n    public func writeLine(text: string) => ()\nwriteLine(\"user\")\n::Kimi.Console.writeLine(\"library\")");
+        var c = Parse("alias Core\ngroup Core\n    public func writeLine(text?: string) => ()\nwriteLine(\"user\")\n::Kimi.Console.writeLine(\"library\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var calls = All(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
         Assert.NotSame(c.Library.WriteLine, calls[0].BoundCall!.Target);
@@ -132,7 +132,7 @@ public class NamedAliasTest
     [InlineData("alias A => G\nalias Open\ngroup G\n    public func f() => ()\ngroup Open\n    public group A\n        public func f() => ()\nA.f()", false)]
     [InlineData("alias G => G\ngroup G\n    public func f() => ()\nG.f()", true)]
     [InlineData("#if false\nalias A => Missing\nalias A => Kimi.Console\nA.writeLine(\"x\")", true)]
-    [InlineData("alias O => Kimi.Console\nstruct S\n    public func writeLine(self: ref/Self, text: string) => ()\nfunc call(O: ref/S) => O.writeLine(\"x\")", false)]
+    [InlineData("alias O => Kimi.Console\nstruct S\n    public func writeLine(self: ref/Self, text?: string) => ()\nfunc call(O?: ref/S) => O.writeLine(\"x\")", false)]
     public void LookupRetainsAccessStagesAndBothNamespaces(string source, bool valid)
     {
         var c = Parse(source);

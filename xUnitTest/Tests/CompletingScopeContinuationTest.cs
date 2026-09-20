@@ -38,7 +38,7 @@ public class CompletingScopeContinuationTest
     public void DefaultLocalBranchesPreserveCallerState()
         => ScalarEmissionTest.EmitFixture(
             "NeverCompletingScope" + Configuration + "Default",
-            "func value(c: bool, y?: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(true)\nlet y = x",
+            "func value(c?: bool, y?: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(true)\nlet y = x",
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -48,7 +48,7 @@ public class CompletingScopeContinuationTest
     [InlineData("if c\n            if c => return\n        stop()")]
     public void PartialTerminationJoinsEveryPath(string scoped)
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, x: i32)\n    do\n        " + scoped + "\n    let y = x\nf(true, 1)");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c?: bool, x?: i32)\n    do\n        " + scoped + "\n    let y = x\nf(true, 1)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
@@ -76,7 +76,7 @@ public class CompletingScopeContinuationTest
     }
 
     private static string Source(string declaration, string yes, string no, string tail)
-        => Stop + "func f(c: bool)\n    " + declaration + "\n    do\n        if c\n            " + yes + "\n        else\n            " + no + "\n        stop()\n    " + tail + "\nf(true)";
+        => Stop + "func f(c?: bool)\n    " + declaration + "\n    do\n        if c\n            " + yes + "\n        else\n            " + no + "\n        stop()\n    " + tail + "\nf(true)";
 
 #if DEBUG
     private const string Configuration = "Debug";

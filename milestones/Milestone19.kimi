@@ -7,19 +7,19 @@ struct NumberSource
     Self is Source
     associate Source.Element is i32
     let value: i32
-    public init(value: i32) => self.value = value
+    public init(value?: i32) => self.value = value
     public func read(self: ref/Self) -> i32 => self.value
 
 struct FlagSource
     Self is Source
     associate Source.Element is bool
     let value: bool
-    public init(value: bool) => self.value = value
+    public init(value?: bool) => self.value = value
     public func read(self: ref/Self) -> bool => self.value
 
 struct Wrapper<T>
     let value: T
-    public init(value: T) => self.value = value
+    public init(value?: T) => self.value = value
 
     // Storage is valid without this premise; the Source capability is conditional.
     Self is Source when T is Source
@@ -27,12 +27,12 @@ struct Wrapper<T>
         public func read(self: ref/Self) -> T.Source.Element
             return self.value.read()
 
-func readTwice<T>(source: ref/T) -> (T.Source.Element, T.Source.Element)
+func readTwice<T>(source?: ref/T) -> (T.Source.Element, T.Source.Element)
     T is Source
     let first: T.Source.Element = source.read()
     return (first, source.read())
 
-func readNumber<T>(source: ref/T) -> i32
+func readNumber<T>(source?: ref/T) -> i32
     T is Source
     T.Source.Element is i32
     return source.read()

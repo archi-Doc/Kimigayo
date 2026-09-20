@@ -10,7 +10,7 @@ namespace XunitTest;
 public class InheritedNameBindingTest
 {
     [Theory]
-    [InlineData("public func f(x: i32) => ()", "private func f(x: string) => ()")]
+    [InlineData("public func f(x?: i32) => ()", "private func f(x?: string) => ()")]
     [InlineData("public var f: i32", "public var f: i32")]
     [InlineData("protected func f(self: ref/Self) => ()", "public func f() => ()")]
     [InlineData("public var f: i32\n        private get", "private func f() => ()")]
@@ -33,7 +33,7 @@ public class InheritedNameBindingTest
     [Theory]
     [InlineData("private func f() => ()", "public func f() => ()")]
     [InlineData("private var f: i32", "public var f: i32")]
-    [InlineData("public func other() => ()", "public func f(x: i32) => ()\n    public func f(x: string) => ()")]
+    [InlineData("public func other() => ()", "public func f(x?: i32) => ()\n    public func f(x?: string) => ()")]
     public void InaccessibleNamesAndSameLayerOverloadsRemainValid(string parent, string child)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    " + parent + "\nstruct S: Base\n    " + child);
@@ -49,7 +49,7 @@ public class InheritedNameBindingTest
     {
         const string middle = "open struct Middle<U>: Base<U>\n    public func f() => ()\n";
         const string child = "struct S: Middle<i32>\n    Self is C\n";
-        var c = MinimalEmissionTest.Analyze("contract C\nopen struct Base<T>\n    public func f(x: T) => ()\n" + (reverseOrder ? child + middle : middle + child));
+        var c = MinimalEmissionTest.Analyze("contract C\nopen struct Base<T>\n    public func f(x?: T) => ()\n" + (reverseOrder ? child + middle : middle + child));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Type(c).BindingState);
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
@@ -80,7 +80,7 @@ public class InheritedNameBindingTest
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public func f() => ()\nstruct S: Base");
         Assert.True(c.Binding.Result.IsComplete);
-        c.Kotonoha.AddSource(new SourceDocument("fragment.kimi", "struct S\n    private func f(x: i32) => ()"));
+        c.Kotonoha.AddSource(new SourceDocument("fragment.kimi", "struct S\n    private func f(x?: i32) => ()"));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, Type(c)) && x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
@@ -104,7 +104,7 @@ public class InheritedNameBindingTest
     [Fact]
     public void WarmInheritedNameChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    private func f(x: T) => ()\nopen struct Middle<U>: Base<U>\nstruct S: Middle<i32>\n    public func f() => ()");
+        var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    private func f(x?: T) => ()\nopen struct Middle<U>: Base<U>\nstruct S: Middle<i32>\n    public func f() => ()");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

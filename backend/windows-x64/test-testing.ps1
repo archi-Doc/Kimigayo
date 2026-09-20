@@ -51,7 +51,7 @@ func flood()
         Console.writeLine("0123456789")
         index += 1
     $expect(false)
-func shared<T>(value: T)
+func shared<T>(value?: T)
     $expect(1 == 2, message: "shared helper")
 #Test
 func generic() => shared(1)

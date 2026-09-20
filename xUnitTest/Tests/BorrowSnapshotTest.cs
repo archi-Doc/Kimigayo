@@ -14,7 +14,7 @@ public class BorrowSnapshotTest(ITestOutputHelper output)
     [InlineData(8, true)]
     public void ManyLivePartLoansRetainIndependentInitialization(int count, bool checking)
     {
-        var source = new StringBuilder("struct Counter\n    public var value: i32 = 1\nfunc relay(p: uniq/Counter) -> uniq{p}/Counter => p\nfunc check()\n");
+        var source = new StringBuilder("struct Counter\n    public var value: i32 = 1\nfunc relay(p?: uniq/Counter) -> uniq{p}/Counter => p\nfunc check()\n");
         if (checking)
         {
             source.Append("    return\n");

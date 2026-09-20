@@ -32,7 +32,7 @@ public class EnumGenericConstraintBindingTest
     [Fact]
     public void InvalidPayloadTypeCannotPublishConstruction()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nenum E\n    Value(Box<string>)\ngroup Consumer\n    func make(value: Box<string>) -> E => .Value(value)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nenum E\n    Value(Box<string>)\ngroup Consumer\n    func make(value?: Box<string>) -> E => .Value(value)");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));

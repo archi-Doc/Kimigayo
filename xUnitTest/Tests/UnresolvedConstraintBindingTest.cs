@@ -41,10 +41,10 @@ public class UnresolvedConstraintBindingTest
                 public let value: i32
                 public let other: MissingField
                 public func wrong() -> i32 => true
-            func take<T>(value: ref/T) -> i32
+            func take<T>(value?: ref/T) -> i32
                 T is Marker
                 return 1
-            func use(value: ref/Reading) -> i32 => take(value)
+            func use(value?: ref/Reading) -> i32 => take(value)
             struct Contradiction<T>
                 T is i32
                 T is not i32

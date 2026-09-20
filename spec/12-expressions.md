@@ -185,7 +185,7 @@ let first = pair.0
 
 `callee(arg1, arg2)` invokes a function, method or function value. Zero arguments and a trailing comma are allowed. `callee<T, U>(args)` applies explicit Type arguments before the call.
 
-Argument mapping, Type adaptation, expected-result filtering, candidate comparison and final usage checks follow [overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference). Named arguments use `name: expression`, and positional arguments must precede them. Function values keep positional-only calling, and unsafe calls keep their [additional restrictions](07-functions-and-callable-values.md#75-unsafe-functions). Explicit function Type arguments must provide the entire required list.
+Argument mapping, Type adaptation, expected-result filtering, candidate comparison and final usage checks follow [overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference). Named arguments use `name: expression`; name and value omission follow [§7.2](07-functions-and-callable-values.md#72-parameters-and-defaults). Function values keep positional-only calling, and unsafe calls keep their [additional restrictions](07-functions-and-callable-values.md#75-unsafe-functions). Explicit function Type arguments must provide the entire required list.
 
 In an expression, a `<` that introduces Type arguments must be adjacent to the target name and have a matching `>`. Thus `f<T>(x)` applies Type arguments while `a < b` compares values. Nested Type arguments may split `>>` into two closing delimiters. Spaces around comparison operators avoid ambiguity.
 

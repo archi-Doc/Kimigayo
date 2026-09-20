@@ -1,4 +1,4 @@
-func same(left: ref/string, right: ref/string) -> bool
+func same(left?: ref/string, right?: ref/string) -> bool
     return left == right
 
 var pair = ("alpha", "beta")

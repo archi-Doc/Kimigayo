@@ -51,7 +51,7 @@ public class ExpressionProjectionCertificateBindingTest
         AssertCertificate(c, runtime, false);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single();
         var original = function.Parameters[1].Type;
-        var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.Hidden.Item", "x: i32", StringComparison.Ordinal));
+        var donor = MinimalEmissionTest.Analyze(source.Replace("x?: Local.Hidden.Item", "x?: i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single().Parameters[1].Type;
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.True(c.Bind().IsComplete);
@@ -101,8 +101,8 @@ public class ExpressionProjectionCertificateBindingTest
     }
 
     private static string Source(string access, bool runtime)
-        => access + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x\n" + (runtime
-            ? "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<Source.Origin.Item>"
+        => access + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x?: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x?: Local.Hidden.Item) -> i32 => x\n" + (runtime
+            ? "struct Target<T>\ngroup G\n    func call(x?: objref/Target<i32>) -> bool => x is Target<Source.Origin.Item>"
             : "group G\n    func take<T>() => ()\n    func call() => take<Source.Origin.Item>()");
 
     private static void AssertCertificate(Compilation c, bool runtime, bool valid)

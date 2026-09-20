@@ -72,7 +72,7 @@ public class DocumentationMarkdownTest
     [Fact]
     public void MatchesExternalNamesAndReportsUnmatchedItemsOutsideLanguageDiagnostics()
     {
-        var doc = Parse("- `value`: input\n- `by`: scale\n- `factor`: internal\n- `self`: receiver", "func scale(value: i32, by => factor: i32) -> i32 => value * factor");
+        var doc = Parse("- `value`: input\n- `by`: scale\n- `factor`: internal\n- `self`: receiver", "func scale(value?: i32, by => factor: i32) -> i32 => value * factor");
         Assert.Equal(new[] { 1, 1, 0, 0 }, doc.Items.ToArray().Select(x => x.ParameterMatchCount));
         Assert.Equal(2, doc.GetDiagnostics().Count());
         Assert.All(doc.GetDiagnostics(), x => Assert.Equal('`', x.Source.SourceText[x.Span.Start + 2]));
@@ -81,7 +81,7 @@ public class DocumentationMarkdownTest
     [Fact]
     public void KeepsAmbiguousNamespacesAndUnsafeObligations()
     {
-        var doc = Parse("- `T`: ambiguous", "unsafe func f<T>(T: i32) => ()");
+        var doc = Parse("- `T`: ambiguous", "unsafe func f<T>(T?: i32) => ()");
         Assert.Equal(2, Assert.Single(doc.Items.ToArray()).ParameterMatchCount);
         Assert.Equal(new[] { "AmbiguousDocumentationParameter", "MissingSafetyDocumentation" }, doc.GetDiagnostics().Select(x => x.Code));
         Assert.Empty(Parse("# safety\n\nKeep memory alive.", "unsafe func f() => ()").GetDiagnostics());

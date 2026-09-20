@@ -104,6 +104,6 @@ public class DeepRefinementPremiseBindingTest
             source.Append('\n');
         }
 
-        return source.Append("group G\n    func inspect<T>(value: T)\n        T is C").Append(depth).Append("\n        ()").ToString();
+        return source.Append("group G\n    func inspect<T>(value?: T)\n        T is C").Append(depth).Append("\n        ()").ToString();
     }
 }

@@ -73,5 +73,5 @@ public class PatternCoverageCompletionTest
     }
 
     private static string Source(string access)
-        => access + " contract Hidden\npublic struct Value\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\n    B\ngroup Consumer\n    func inspect(value: E<Value>) => match value\n        .A => ()";
+        => access + " contract Hidden\npublic struct Value\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\n    B\ngroup Consumer\n    func inspect(value?: E<Value>) => match value\n        .A => ()";
 }

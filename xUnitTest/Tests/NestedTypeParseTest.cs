@@ -35,7 +35,7 @@ public class NestedTypeParseTest
             var local: {type}
             struct Example
                 var property: {type}
-                func use(value: {type}) -> {type}
+                func use(value?: {type}) -> {type}
                     return value
             """);
         var written = Write(tree);
@@ -98,7 +98,7 @@ public class NestedTypeParseTest
     public void FunctionArrowRequiresAParameterList(string type)
     {
         // A bare Type cannot replace the Function Parameter List (SPEC 3.2); recovery still keeps the arrow.
-        var tree = Parse($"func use(value: {type}) => ()");
+        var tree = Parse($"func use(value?: {type}) => ()");
         Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
         var function = Assert.Single(tree.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>());
         Assert.IsType<FunctionTypeKoto>(Assert.Single(function.Parameters).Type);
@@ -152,7 +152,7 @@ public class NestedTypeParseTest
         Assert.Null(types.GetDeclaredType(ParseParameterType("(i32,)")));
         Assert.Null(types.GetDeclaredType(ParseParameterType("ref/ref/i32")));
         Assert.Equal(new ControlFlowType("unsafe/unsafe/i32"), types.GetDeclaredType(ParseParameterType("unsafe/(unsafe/i32)")));
-        Assert.NotEmpty(Parse("func f(x: unsafe/(unsafe{inner}/i32))").DiagnosticCollection.GetArray());
+        Assert.NotEmpty(Parse("func f(x?: unsafe/(unsafe{inner}/i32))").DiagnosticCollection.GetArray());
     }
 
     [Theory]
@@ -168,7 +168,7 @@ public class NestedTypeParseTest
     }
 
     private static Koto ParseParameterType(string type)
-        => Assert.Single(ParseSingleFunction($"func use(value: {type}) => ()").Parameters).Type!;
+        => Assert.Single(ParseSingleFunction($"func use(value?: {type}) => ()").Parameters).Type!;
 
     private static void AssertTree(Koto node)
     {

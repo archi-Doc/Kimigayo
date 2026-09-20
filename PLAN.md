@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The compiler-wide plan covers unfinished implementation Milestones and Checklist items. The current focused request integrates call borrow reservations into the formal specification and compiler, including explicit uniq/objuniq, approved object projections and shared inspection by defaults. The user also authorized one Japanese Design Change in draft/Changes. Earlier Origin/documentation work and timed continuations are historical. NativeAOT and other draft edits remain excluded.
+The compiler-wide plan covers unfinished implementation Milestones and Checklist items. The current focused request implements the parameter-name/default revision, consolidates the formal rules, and records one Japanese Design Change under draft/Changes. Call borrow reservations, Origin/documentation work and timed continuations are earlier checkpoints. NativeAOT and other draft edits remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -31,13 +31,18 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current focused work: **CR — Call borrow reservations**. The adopted rules live in §15.6.7. The requested Japanese Design Change is recorded under draft/Changes; formal rules do not depend on it. Earlier OSE checkpoints are preserved in [history](PLAN_HISTORY.md#call-reservation-predecessor-20260920).
+Current focused work: **PN — Parameter names and defaults**. The adopted rules live in §7.2 and §10.1; declaration context and verification rules are integrated into the owning chapters and Appendix A. [Decision record](PLAN_HISTORY.md#parameter-names-defaults-20260920). No design decision remains open for this revision.
 
 | Item | State | Acceptance / exact next action |
 | --- | --- | --- |
-| CR1 | DONE | Japanese Design Change and self-contained English specification integrated; immediate-exclusivity contradictions replaced by owning-section references. |
-| CR2 | DONE — implemented representations | Call-local reservations, simultaneous activation, parent authority, static disjointness, abandoned preparation and phase diagnostics. Covers direct/indirect/concrete Callable calls, constructors, supported generic borrows, defaults, whole-value updates and concrete object borrows/projections. |
-| CR3 | VERIFYING | Run warning-free Debug/Release solution builds, full managed regression, focused reservation/corruption/allocation checks and native O0/O2 fixtures. Record actual results in history. No NativeAOT. |
+| PN1 | DONE | Formal rules and examples integrated; owning sections replace duplicate explanations. The requested Japanese Design Change records the decision independently. |
+| PN2 | DONE — existing representations | Name permission separated from default presence throughout parsing, Binding, library validation and generation. Scalar defaults also pass through shared calls and supported specializations. Fixtures, executable examples and native source generators migrated; named-then-positional calls now rejected. |
+| PN3 | DONE | Warning-free Debug/Release builds and 10,814 tests per configuration; 24 new O0/O2 executions per configuration and 55 Release Milestone 11 CLI checks. Warm named-default Binding/ownership/IR allocation checks pass. [Evidence and boundaries](PLAN_HISTORY.md#parameter-names-implementation-20260920). No further PN action; general default/representation dependencies remain in I4/I5/I14/I18 and CR4. NativeAOT not run. |
+
+Call borrow reservation implementation checkpoints CR1–CR3 are preserved in [history](PLAN_HISTORY.md#call-reservations-20260920). The remaining dependencies are retained below. Earlier OSE checkpoints are in [history](PLAN_HISTORY.md#call-reservation-predecessor-20260920).
+
+| Item | State | Acceptance / exact next action |
+| --- | --- | --- |
 | CR4 | BACKLOG — existing representation/effect dependencies | Extend I5/I18/I24 plans before admitting generic by-value reference ABI, arbitrary effectful/borrow-producing defaults, general object views or collection mutation. Reservation rules apply to these required language features too; unsupported generation must continue to reject. |
 | OSE3 | IN_PROGRESS — backlog | Extend I5's declared-bound/principal solver and conditional proofs, then inherit explicit-Origin/constrained specialization contracts and complete I18 function-item/Callable support. Other OSE checkpoints are historical. |
 
@@ -66,7 +71,7 @@ Product rendering, structured URL mapping and declaration classification now con
 | P16-G | DONE | Enum layout, directed reference payload fitting and canonical call-Origin intersection substitution pass checked LLVM emission, verification, linking and native O0/O2 execution. |
 | P16-V | DONE | Warning-free Debug/Release solution builds; Debug full 9,151 plus the extended 13-case suite, Release full 9,157; 57 native target/variant/rejection checks per configuration and 90 Release regression checks for programs 1–15. Exact output, exit, stderr and source mutations verified. |
 
-Programs 1–16 have bounded completion; Programs 17–21 informed design only. General M/I obligations remain open as compiler backlog, separate from the focused documentation parser request. NativeAOT and draft edits other than the requested call-reservation Design Change remain excluded.
+Programs 1–16 have bounded completion; Programs 17–21 informed design only. General M/I obligations remain open as compiler backlog. Current focused authorization and exclusions are recorded in §1.
 
 ### Current milestone states
 
@@ -107,7 +112,7 @@ M4/M5/M7 are reconciled from stale TODO labels to IN_PROGRESS because recorded c
 | I11 | M4 / R11, R24 | IN_PROGRESS | Pure immutable integer/bool group literal reads execute. First-access mutable/effectful static storage, address identity, cycle/shutdown rules and inherited-environment storage keys/certificates remain. |
 | I12 | M5 / R12 | IN_PROGRESS | Concrete/finite symbolic enum storage is extended by owned string tuple/enum decomposition, Move cleanup/results and exact nested string literal Patterns. Focused checks cover these paths; borrowed composite candidates/Subjects, user destructors and full Pattern/regression closure remain. |
 | I13 | M6 / R5–R7, R13 | IN_PROGRESS | Conditional stored-field CopyOrMove, length-dependent storage and finite symbolic enum checking exist; broader universal operations/effects remain. |
-| I14 | M6 / R13 | IN_PROGRESS | Closed Type specialization selection/forwarding exists. Complete length/receiver/constrained/defaulted headers, explicit Origin binders and every retained selection path. |
+| I14 | M6 / R13 | IN_PROGRESS | Closed Type specialization selection/forwarding and inherited scalar defaults/name permissions exist. Complete length/receiver/constrained headers, general default lowering, explicit Origin binders and every retained selection path. |
 | I15 | M6 / R14 | IN_PROGRESS | Shared storage/selection/length bodies, concrete entries, fixed frames and bounded forwarding exist. G10a: shared bodies call ordinary concrete free functions (including Unit results) through their verified ABI, and bool/8–64-bit signed and unsigned integer leaves support checked `+ - * / %`, unary `- + not`, all comparisons and callback results. G10b/c add bool/integer Phi joins, owned string storage/output and concrete/generic forwarded string results. G10d–f add canonical Abort/require, Never calls/entries and bitwise/checked shifts. G10g/h add supported concrete constructor/receiver calls and checked 8–64-bit integer conversions. General compound fields/calls, broader receiver layouts/defaults, borrowed strings, floating-point/128-bit/character operations and resource contracts remain unfinished. |
 | I16 | M6 / R14, R28 | TODO | Add deterministic finite resource limits and bounded optional optimization; measure effects. Existing depth limits are not complete resource-contract coverage. |
 | I17 | M7 / R15 | IN_PROGRESS | P12-B/O/G adds bounded concrete, mutable, nested and consuming environments. P14 adds supported ref/uniq and obj captures with dependencies and call effects. Complete general aggregate/generic captures, result inference, receiver effects and wider erasure/ABI coverage; program completion does not close R15. |

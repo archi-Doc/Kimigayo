@@ -32,14 +32,33 @@ public sealed partial class Binding
 
         var result = this.InstantiateStorageType(inner.ReturnType, outer);
         var declaring = inner.DeclaringType is { } owner ? this.InstantiateStorageType(owner, outer) : null;
-        if (result is null || (inner.DeclaringType is not null && declaring is null) || inner.DefaultArguments.Length != 0)
+        if (result is null || (inner.DeclaringType is not null && declaring is null))
         {
             return null;
         }
 
-        var call = new BoundCall();
-        call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types, declaringType: declaring, origins: Origins(inner.Origins), inputOrigins: Origins(inner.InputOrigins), operations: inner.ArgumentOperations, receiverOperation: inner.ReceiverOperation, lengthArguments: lengths);
-        return call;
+        var defaults = this.defaultArgumentScratch.Rent(inner.DefaultArguments.Length);
+        try
+        {
+            for (var i = 0; i < inner.DefaultArguments.Length; i++)
+            {
+                var omitted = inner.DefaultArguments[i];
+                if (this.InstantiateStorageType(omitted.ParameterType, outer) is not { } parameterType)
+                {
+                    return null;
+                }
+
+                defaults[i] = omitted with { ParameterType = parameterType };
+            }
+
+            var call = new BoundCall();
+            call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types, declaringType: declaring, origins: Origins(inner.Origins), inputOrigins: Origins(inner.InputOrigins), operations: inner.ArgumentOperations, receiverOperation: inner.ReceiverOperation, lengthArguments: lengths, defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
+            return call;
+        }
+        finally
+        {
+            this.defaultArgumentScratch.Return(defaults, clearArray: true);
+        }
 
         BoundOrigin[] Origins(ReadOnlySpan<BoundOrigin> origins)
         {
@@ -107,7 +126,7 @@ public sealed partial class Binding
             // certificates. Do not accept their syntax by merely erasing the generic header.
             if (symbol.ReceiverIndex >= 0 || function.Modifier != ModifierKind.NoModifier || function.AttributeChain is not null ||
                 function.Origins.Count != 0 || function.TypeConstraints.Count != 0 || function.GenericArguments.Count == 0 ||
-                function.Parameters.Any(x => x.IsOptional || x.DefaultValue is not null || x.AttributeChain is not null))
+                function.Parameters.Any(x => x.IsNameOptional || x.DefaultValue is not null || x.AttributeChain is not null))
             {
                 Fail(function, BindingFailure.Unsupported, true);
                 continue;
@@ -161,7 +180,7 @@ public sealed partial class Binding
 
             var definition = (FunctionKoto)original!.Declaration;
             if (definition.Origins.Count != 0 || definition.TypeConstraints.Count != 0 || definition.AttributeChain is not null ||
-                definition.Parameters.Any(x => x.IsOptional || x.DefaultValue is not null || x.AttributeChain is not null))
+                definition.Parameters.Any(x => x.AttributeChain is not null))
             {
                 Fail(function, BindingFailure.Unsupported, true);
                 continue;

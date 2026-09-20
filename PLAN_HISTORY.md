@@ -7305,3 +7305,206 @@ Current focused work: **OSE — Origin syntax and elision integration**. Formal 
 | OSE6 | DONE | Surrounding-code review: grouped Container suffix before a function arrow, stamped enum storage after a failed case substitution, unchecked anonymous input slot writes, schema indexing bounds and unbounded requirement dependents corrected. `BoundType` subtree Origin summaries, consumer-stamped requirement edges and a `struct` `OriginArgument` keep warm Bind allocation-free while reducing cold allocation 5.1% and warm Bind time 3–4% on the pinned Origin workload. |
 
 The OSE3 remainder remains current in PLAN.md under I5/I18; this checkpoint does not complete it.
+
+<a id="call-reservations-20260920"></a>
+
+## Call borrow reservations — 2026-09-20
+
+The user approved call-local explicit `@uniq` reservations, the same treatment for
+`objuniq` and permitted exclusive object projections, no propagation through
+selection/scope results, and temporary shared inspection by defaults. The Japanese
+Design Change is `draft/Changes/2026-09-20 Call Borrow Reservations.md`. Formal rules
+are self-contained in §15.6.7; Chapters 4, 7, 8, 10, 13 and 21 and Appendix A refer
+to that section. No projection permission or ObjectCallCompatible requirement was
+relaxed. The earlier immediate-exclusive examples and intrinsic rules were corrected.
+
+### Implementation and review findings
+
+- One argument-preparation path serves direct, method, constructor, indirect and
+  whole-value calls. Direct explicit formation and the call-only Reborrow are fused.
+  Reservations use reusable value records and existing lexical Loan state. Each
+  activation links only its own reservations; each body-state replay is shared
+  across that activation's checks. No runtime reservation object or lock is emitted.
+- Typed Loan liveness checks reservation and activation separately. Existing parent
+  authority stays live through activation, preventing stored references and nested
+  call/if/match/do results from being demoted. Only the outer reserved dependency is
+  shared during preparation; nested stored dependencies keep their modes. Static
+  disjoint paths and original transfer/cleanup order are preserved.
+- Defaults inspect supported scalar fields through prepared ref/uniq slots. Lowering
+  validates the exact prepared argument identity and substituted Origin contract.
+  Fixes include preserving prepared borrow SSA values and the temporary receiver SSA
+  value for explicit callable borrows. Mutation and new borrow escape remain rejected.
+- Concrete obj-backed `objref`/`objuniq` creation, Reborrow and complete Sealed payload
+  projection now have Binding, ownership and native plans. Object references keep
+  the header pointer; payload projection derives its address without ownership
+  transfer. Shared-to-exclusive and immutable-owner acquisition remain invalid.
+- Independent-result callable signatures accept fresh direct uniq inputs as well as
+  ref inputs. Existing-value Copy-environment erasure checks the full supported
+  callable signature with per-call Origins. Wider callable contracts remain pending.
+- Reservation and activation conflicts have separate diagnostics. Generation rejects
+  malformed reservation IDs, activation positions, chains, targets and access modes.
+  Repeated deferred expansion uses invocation-local marks instead of retargeting
+  reservations created by an earlier expansion of the same syntax.
+
+The initial targeted failures exposed premature weakening of active parent Loans;
+activation liveness fixed those cases. Three prior assertions expected rejection
+of reads that are now legal; their coverage was changed to the adopted behavior.
+The old unsupported borrowed-object projection assertion now verifies its checked
+runtime support. An initial `dotnet test --filter` invocation ran zero tests and is
+not verification evidence; the direct xUnit v3 runner below was used. The final
+native Abort fixture initially inherited the integer-overflow stderr expectation;
+its explicit source-location/Abort expectation was corrected before the successful
+native run. No compiler workaround was added for that fixture error.
+
+### Verification
+
+| Gate | Result |
+| --- | --- |
+| Debug and Release solution builds | Zero warnings and errors in each |
+| Full managed regression | 10,745 passed, zero failed/skipped in each configuration |
+| Final focused reservation suite | 69 passed in each configuration |
+| LLVM verification, O0/O2 link and native execution | 37 fixtures, 74 successful executions; exact stdout/stderr/exit checks |
+| Warm ownership analysis and IR output | 128 measured repetitions allocate 0 bytes after warmup |
+| Whitespace check | `git diff --check` passes |
+| NativeAOT | Not run, as instructed |
+
+The full runs used the same compiler sources as the final focused/native runs;
+only the Abort fixture's expected stderr was corrected afterward. Compiler changes
+are in workspace commit `29fd174` (created externally during this task); the agent
+created no commit. Evidence: [Debug full](bin/call-reservation-full-debug.xml),
+[Release full](bin/call-reservation-full-release.xml),
+[Debug focused](bin/call-reservation-focused-debug.xml),
+[Release focused](bin/call-reservation-focused-release.xml), and
+[verification manifest](bin/call-reservation-verification.json). Native output is in
+`bin/call-reservation-native`; fixtures are in `bin/scalar-fixtures/CallReservation*`.
+The initial sandbox denied execution of LLVM; the same native script succeeded with
+execution permission. This is ordinary LLVM native verification, not NativeAOT.
+
+```powershell
+dotnet build Kimigayo.slnx -c Debug --no-restore -v quiet
+dotnet build Kimigayo.slnx -c Release --no-restore -v quiet
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -noLogo -parallelMode none -result-xml bin/call-reservation-full-debug.xml
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -noLogo -parallelMode none -result-xml bin/call-reservation-full-release.xml
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -noLogo -parallelMode none -class '*CallReservationTest' -result-xml bin/call-reservation-focused-debug.xml
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -noLogo -parallelMode none -class '*CallReservationTest' -result-xml bin/call-reservation-focused-release.xml
+./backend/windows-x64/test-scalars.ps1 -FixturePattern 'CallReservation*.ll' -OutputDirectory bin/call-reservation-native
+```
+
+### Support boundary
+
+This implements reservations on the documented existing representations plus the
+bounded object/callable/default extensions above. It does not certify general
+callee-effect summaries, dynamic collection mutation, the generic by-value reference
+storage ABI, arbitrary effectful/borrow-producing defaults, inherited object views
+or rc/arc/Weak. A dedicated test verifies that a direct explicit reservation passed
+as generic `T` can pass ownership while the unsupported storage ABI still rejects
+emission. These remain required implementation work; no language rule was narrowed.
+Current next actions are maintained only in PLAN CR4 and the linked I5/I18/I24 items.
+
+<a id="parameter-names-defaults-20260920"></a>
+
+## 2026-09-20 — Parameter names and defaults: specification decision
+
+The preceding focus ended with CR1 (formal call-reservation integration and the
+separately authorized Japanese Design Change), CR2 (implementation on the documented
+representations) and CR3 (Debug/Release: 10,745 full and 69 focused tests each,
+74 O0/O2 executions, zero warm analysis/IR allocations) complete. Detailed evidence
+and support limits remain in [the reservation record](#call-reservations-20260920).
+
+The user clarified that `?` was intended to permit omission of the external
+argument name, while a default permits omission of the argument value. Adopted
+the independent four-form matrix in §7.2 and declaration-order positional matching
+without skipping in §10.1. This supersedes the earlier required-parameter
+initializer rule: an initializer without `?` is now an executable omitted default.
+
+The user approved all three follow-up decisions: Contract function requirements
+permit `?` but no defaults and expose their own label permissions; function values
+erase labels/permissions/defaults and require every argument positionally; foreign
+imports permit `?` but retain the default prohibition and unchanged C ABI.
+External/internal renaming places the marker on the external name. Receiver syntax
+and positional unbound receiver calls are preserved; specializations inherit both
+permissions and defaults without restating them. Constructors and statically
+selected overrides follow the ordinary declaration rules.
+
+Updated formal syntax, verification requirements, examples and affected standard
+API signatures. Existing positionally called examples explicitly permit name
+omission. STATUS distinguishes these requirements from the unchanged compiler's
+older semantics; current implementation actions belong only to PLAN PN1–PN3.
+No compiler, executable fixture or draft migration was performed in this change.
+Verification consists of documentation diff/whitespace, stale-rule, syntax-example
+and local-link checks; no managed, native or NativeAOT tests were run.
+
+<a id="parameter-names-implementation-20260920"></a>
+
+## 2026-09-20 — Parameter names and defaults: implementation
+
+The follow-up request authorized compiler migration, surrounding fixes and one
+Japanese Design Change. PN1–PN3 are complete on the existing executable
+representations; remaining general compiler obligations stay in PLAN.
+
+### Changes and review findings
+
+- Replaced the ambiguous parameter flag with `IsNameOptional`. Default presence
+  alone controls missing arguments and default operations. Parsing/printing and
+  source-backed serialization retain both independently. External-name renaming,
+  receiver restrictions, requirements, foreign headers, specialization inheritance
+  and compiler-provided library shape checks use the appropriate rule.
+- Preserved positional matching order and combined missing-argument checking with
+  default counting in one pass. Named-then-positional calls were previously accepted;
+  both Parser and Binding now reject them. The new regression exposed this bug.
+- Removed the old blanket default restrictions from shared entry/definition
+  preparation. Verified scalar defaults use acquired caller slots, and shared direct
+  adapters check their source, declaration identity, slot order and substituted
+  Type. Forwarded calls preserve defaults through reused Binding scratch storage.
+  General unsupported effects/representations still fail ownership or generation.
+- Migrated standard declarations, source examples, benchmarks, tests and native
+  source generators. Anonymous functions and specialization headers keep their
+  separate syntax; renamed `with` arguments on replace/exchange remain required.
+- The first 10,745-test run had 18 failures: old expectations, stale source-repair
+  substrings, a positional ordinary parameter named `self`, and a Unicode function
+  declaration missed during fixture migration. After repair, the argument-order fix
+  exposed three parser fixtures that intentionally generated a named argument in
+  the middle of positional arguments. They now test a positional prefix and named
+  suffix. No rejection assertion was removed to accept invalid syntax.
+
+### Verification
+
+Debug and Release solution builds have zero warnings/errors. Each final full run
+passes **10,814 tests**, with no skips. `ParameterNameDefaultTest` contributes 64
+cases; five foreign-header cases distinguish name permission from forbidden defaults.
+Coverage includes all four declarations, renaming, no skipping, invalid contexts,
+function values, receiver and requirement calls, specialization inheritance,
+generic inference, declaration replacement, source reload and default evaluation.
+
+Twelve `ParameterName*.ll` fixtures pass **24 native executions per configuration**
+(LLVM verification, O0/O2, exact stdout/stderr and exit status): supplied/omitted
+defaults, required parameters after defaults, declaration order, constructors,
+generic entries, specializations, forwarding to generic/concrete/member callees,
+prepared-slot dependencies and declaration-site overflow. The first sandboxed
+native invocation could not execute LLVM; the authorized execution-permission
+rerun passed. NativeAOT was not run.
+
+The Release Milestone 11 CLI suite passes **55 checks**, including executable
+generic/specialization scenarios and rejection variants. Its report is
+[verification.json](bin/milestone11/Release/6ea97d6e0c6e41869fd05c9dcf14af54/verification.json).
+Warm named-default Binding, ownership analysis and IR output allocate **zero bytes**
+in the focused tests. No general throughput claim is made.
+
+Final logs/XML are under `bin/parameter-names/`: `build-debug.log`,
+`build-release.log`, `full-debug.xml`, `full-release.xml`, `focused-debug.xml`,
+`native-debug.log`, `native-release.log` and `milestone11-release.log`.
+
+```powershell
+dotnet build Kimigayo.slnx -c Debug --no-restore -v quiet
+dotnet build Kimigayo.slnx -c Release --no-restore -v quiet
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -noLogo -parallelMode none -result-xml bin/parameter-names/full-debug.xml
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -noLogo -parallelMode none -result-xml bin/parameter-names/full-release.xml
+# Run after the corresponding managed configuration generates its fixtures.
+./backend/windows-x64/test-scalars.ps1 -FixturePattern 'ParameterName*.ll' -OutputDirectory bin/parameter-names/native-debug
+./backend/windows-x64/test-scalars.ps1 -FixturePattern 'ParameterName*.ll' -OutputDirectory bin/parameter-names/native-release
+./backend/windows-x64/test-milestone11.ps1 -Configuration Release
+```
+
+General effectful/owned/borrow-producing defaults, arbitrary generic representations,
+foreign execution and length/receiver/constrained specialization generation retain
+their existing limits. These are not exceptions to the formal parameter rules.

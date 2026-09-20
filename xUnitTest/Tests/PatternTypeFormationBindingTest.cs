@@ -17,7 +17,7 @@ public class PatternTypeFormationBindingTest
     [InlineData("Box<string>", "let item")]
     public void InvalidSubjectTypesCannotPublishCoverage(string type, string pattern)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: " + type + ") => match value\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value?: " + type + ") => match value\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
@@ -33,7 +33,7 @@ public class PatternTypeFormationBindingTest
     [Fact]
     public void InvalidEnumContextCannotPublishWildcardCoverage()
     {
-        var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\n    public enum E\n        A\nfunc f(value: Invalid.E) => match value\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\n    public enum E\n        A\nfunc f(value?: Invalid.E) => match value\n    _ => ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
@@ -45,7 +45,7 @@ public class PatternTypeFormationBindingTest
     [InlineData("Option<Box<i32>>", ".Some(_)\n    .None")]
     public void ValidSubjectTypesRetainCoverage(string type, string pattern)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: " + type + ") => match value\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value?: " + type + ") => match value\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
         var restored = Reload(c);
@@ -56,14 +56,14 @@ public class PatternTypeFormationBindingTest
     [Fact]
     public void DependentSubjectUsesDefinitionEvidence()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f<U>(value: Box<U>)\n    U is i32\n    match value\n        _ => ()");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f<U>(value?: Box<U>)\n    U is i32\n    match value\n        _ => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
     public void RemovingInvalidOwnerRestoresRetainedPlan()
     {
-        var c = MinimalEmissionTest.Analyze("group Types\n    public enum E\n        A\nfunc f(value: Types.E) => match value\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze("group Types\n    public enum E\n        A\nfunc f(value?: Types.E) => match value\n    _ => ()");
         Assert.True(c.Binding.Result.IsComplete);
         var plan = Plan(c);
         c.Kotonoha.AddSource(new SourceDocument("marker.kimi", "#Unknown\ngroup Types"));
@@ -80,7 +80,7 @@ public class PatternTypeFormationBindingTest
     [Fact]
     public void LateEnumApiFailureInvalidatesEarlierCoverage()
     {
-        var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\nfunc f(value: E<Source>) => match value\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\nfunc f(value?: E<Source>) => match value\n    _ => ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
@@ -90,7 +90,7 @@ public class PatternTypeFormationBindingTest
     [Fact]
     public void UnrelatedInvalidContextPreservesValidPattern()
     {
-        var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\nfunc f(value: bool) => match value\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\nfunc f(value?: bool) => match value\n    _ => ()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
     }
@@ -98,7 +98,7 @@ public class PatternTypeFormationBindingTest
     [Fact]
     public void WarmPatternFormationChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: Option<Box<i32>>) => match value\n    .Some(_) => ()\n    .None => ()");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value?: Option<Box<i32>>) => match value\n    .Some(_) => ()\n    .None => ()");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

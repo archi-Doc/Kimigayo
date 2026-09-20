@@ -1,9 +1,9 @@
-func keep(value: u64) -> u64
+func keep(value?: u64) -> u64
     var result = value
     defer => result = 0
     return result
 
-func narrow(signed: i8, unsigned: u8) -> bool
+func narrow(signed?: i8, unsigned?: u8) -> bool
     return signed == -128 and unsigned == 200
 
 public func main() -> ()

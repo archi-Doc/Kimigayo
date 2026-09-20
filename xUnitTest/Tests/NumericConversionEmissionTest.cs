@@ -46,7 +46,7 @@ public class NumericConversionEmissionTest
         var low = Round((double)minimum);
         var high = Round((double)upper);
         double[] samples = [0.0, -0.0, 0.9, -0.9, 3.9, -3.9, low, Previous(low), Next(low), low - 0.75, low - 1.0, high, Previous(high), Next(high), high - 0.25];
-        var header = $"func convert(x: {floating}) -> {integer} => x@{integer}\n";
+        var header = $"func convert(x?: {floating}) -> {integer} => x@{integer}\n";
         var stem = "NumericConvertBoundary" + floating + integer;
         var positive = new List<string>();
         var seen = new HashSet<long>();
@@ -92,18 +92,18 @@ public class NumericConversionEmissionTest
         string Expected(BigInteger value) => FloatText(floating == "f32"
             ? float.Parse(value.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture)
             : double.Parse(value.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture));
-        var source = $"func convert(x: {integer}) -> {floating} => x@{floating}\nif convert({minimum}) == {Expected(minimum)} and convert({maximum}) == {Expected(maximum)} and convert(0) == 0.0 => Console.writeLine(\"ok\")";
+        var source = $"func convert(x?: {integer}) -> {floating} => x@{floating}\nif convert({minimum}) == {Expected(minimum)} and convert({maximum}) == {Expected(maximum)} and convert(0) == 0.0 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("NumericConvertInteger" + floating + integer, source, "ok\n");
     }
 
     [Theory]
-    [InlineData("NarrowSpecial", "func narrow(x: f64) -> f32 => x@f32\nlet z = 0.0\nlet nan = narrow(z / z)\nif nan != nan and narrow(1.0 / z) > 0.0 and narrow(-1.0 / z) < 0.0 and 1.0 / narrow(-0.0) < 0.0 => Console.writeLine(\"ok\")")]
-    [InlineData("NarrowUnderflow", "func narrow(x: f64) -> f32 => x@f32\nif narrow(1e-45) > 0.0 and narrow(-7e-46) == 0.0 and 1.0 / narrow(-7e-46) < 0.0 => Console.writeLine(\"ok\")")]
-    [InlineData("NarrowTies", "func narrow(x: f64) -> f32 => x@f32\nif narrow(1.000000059604644775390625) == 1.0 and narrow(1.000000178813934326171875) == 1.0000002384185791015625 => Console.writeLine(\"ok\")")]
+    [InlineData("NarrowSpecial", "func narrow(x?: f64) -> f32 => x@f32\nlet z = 0.0\nlet nan = narrow(z / z)\nif nan != nan and narrow(1.0 / z) > 0.0 and narrow(-1.0 / z) < 0.0 and 1.0 / narrow(-0.0) < 0.0 => Console.writeLine(\"ok\")")]
+    [InlineData("NarrowUnderflow", "func narrow(x?: f64) -> f32 => x@f32\nif narrow(1e-45) > 0.0 and narrow(-7e-46) == 0.0 and 1.0 / narrow(-7e-46) < 0.0 => Console.writeLine(\"ok\")")]
+    [InlineData("NarrowTies", "func narrow(x?: f64) -> f32 => x@f32\nif narrow(1.000000059604644775390625) == 1.0 and narrow(1.000000178813934326171875) == 1.0000002384185791015625 => Console.writeLine(\"ok\")")]
     [InlineData("IntegerLiteralBits", "if 0x20000000000001@f64 == 9007199254740992.0 and (-0)@f32 == 0.0 and 1.0 / (-0)@f32 > 0.0 and 18_014_399_583_223_809@f32 == 18014400656965632.0 => Console.writeLine(\"ok\")")]
     [InlineData("LiteralFraction", "if 3.9@i32 == 3 and -3.9@i32 == -3 => Console.writeLine(\"ok\")")]
     [InlineData("RoundingChain", "let x: f64 = 16777217.0\nif x@f32@f64 == 16777216.0 and x@f32@i32 == 16777216 => Console.writeLine(\"ok\")")]
-    [InlineData("CheckedPhi", "func convert(x: f64, flag: bool) -> i32\n    var result: i32 = 0\n    defer => result = 0\n    result = if flag => x@f32@i32 else => (-x)@i32\n    return result\nif convert(1.9, true) == 1 and convert(1.9, false) == -1 => Console.writeLine(\"ok\")")]
+    [InlineData("CheckedPhi", "func convert(x?: f64, flag?: bool) -> i32\n    var result: i32 = 0\n    defer => result = 0\n    result = if flag => x@f32@i32 else => (-x)@i32\n    return result\nif convert(1.9, true) == 1 and convert(1.9, false) == -1 => Console.writeLine(\"ok\")")]
     public void RoundingAndConsumersPreserveSemantics(string name, string source)
         => ScalarEmissionTest.EmitFixture("NumericConvert" + name, source, "ok\n");
 
@@ -121,7 +121,7 @@ public class NumericConversionEmissionTest
 
     [Theory]
     [InlineData("let x: f32 = 1")]
-    [InlineData("func f(x: f64) => ()\nf(1)")]
+    [InlineData("func f(x?: f64) => ()\nf(1)")]
     [InlineData("(5000000000 + 1)@f64")]
     [InlineData("-(5000000000)@f64")]
     public void ExplicitFittingDoesNotBroadenImplicitOrGeneralExpressionFitting(string source)
@@ -135,7 +135,7 @@ public class NumericConversionEmissionTest
     public void NarrowingChecksTheRoundingThresholdOnBothSides()
     {
         const double Threshold = 3.40282356779733661637539395458142568448e38;
-        const string Header = "func narrow(x: f64) -> f32 => x@f32\n";
+        const string Header = "func narrow(x?: f64) -> f32 => x@f32\n";
         var valid = FloatText(double.BitDecrement(Threshold));
         ScalarEmissionTest.EmitFixture("NumericConvertNarrowMaximum", Header + $"if narrow({valid}) == 3.4028234663852886e38 and narrow(-{valid}) == -3.4028234663852886e38 => Console.writeLine(\"ok\")", "ok\n");
         double[] invalid = [Threshold, -Threshold, double.BitIncrement(Threshold), -double.BitIncrement(Threshold), double.MaxValue, -double.MaxValue];
@@ -186,7 +186,7 @@ public class NumericConversionEmissionTest
     [Fact]
     public void WarmNumericAnalysisAndWritingAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("func convert(x: f64) -> u64 => x@f32@u64\nlet x = 5000000000@f64\nlet y = convert(x)@f32\nif y > 0.0 => Console.writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("func convert(x?: f64) -> u64 => x@f32@u64\nlet x = 5000000000@f64\nlet y = convert(x)@f32\nif y > 0.0 => Console.writeLine(\"ok\")");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);

@@ -13,7 +13,7 @@ public class ElementEmissionTest
         { "Array", "let a: [3 of i32] = [7, 42, 9]\nlet i: isize = 1\nif a[i] == 42 => Console.writeLine(\"ok\")" },
         { "Nested", "let a: [2 of [2 of i32]] = [[1, 2], [3, 42]]\nif a[1][1] == 42 => Console.writeLine(\"ok\")" },
         { "Mixed", "let pair = (\"kept\", ((1, 42), true))\nif pair.1.0.1 == 42 and pair.1.1 => Console.writeLine(\"ok\")" },
-        { "Parameter", "func get(a: [2 of i32], i: isize) -> i32 => a[i]\nlet a: [2 of i32] = [7, 42]\nif get(a, 1) == 42 => Console.writeLine(\"ok\")" },
+        { "Parameter", "func get(a?: [2 of i32], i?: isize) -> i32 => a[i]\nlet a: [2 of i32] = [7, 42]\nif get(a, 1) == 42 => Console.writeLine(\"ok\")" },
         { "Temporary", "func make() -> (string, i32) => (\"kept\", 42)\nif make().1 == 42 => Console.writeLine(\"ok\")" },
         { "Selection", "let a = (1, 42)\nlet b = (3, 4)\nif (if true => a else => b).1 == 42 => Console.writeLine(\"ok\")" },
         { "CopyAggregate", "let a = ((1, 42), \"kept\")\nlet b = a.0\nif b.1 + a.0.0 == 43 => Console.writeLine(\"ok\")" },
@@ -24,7 +24,7 @@ public class ElementEmissionTest
         { "ShortCircuit", "let a: [0 of i32] = []\nif false and a[0] == 0 => Console.writeLine(\"bad\")\nConsole.writeLine(\"ok\")" },
         { "Transfer", "func f() -> i32\n    let a: [1 of i32] = [1]\n    return a[(return 42)]\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "Widths", "let a: (i8, u8, i128, f64, char) = (-7, 200, -170141183460469231731687303715884105728, 2.5, '😀')\nif a.0 == -7 and a.1 == 200 and a.2 < 0 and a.3 == 2.5 and a.4 == '😀' => Console.writeLine(\"ok\")" },
-        { "TupleCopyReturn", "func get(p: ((i32, bool), string)) -> (i32, bool) => p.0\nlet p = ((42, true), \"held\")\nlet r = get(p)\nif r.0 == 42 and r.1 => Console.writeLine(\"ok\")" },
+        { "TupleCopyReturn", "func get(p?: ((i32, bool), string)) -> (i32, bool) => p.0\nlet p = ((42, true), \"held\")\nlet r = get(p)\nif r.0 == 42 and r.1 => Console.writeLine(\"ok\")" },
         { "IndexConversion", "let a: [1 of i32] = [42]\nlet i: u8 = 0\nif a[i@isize] == 42 => Console.writeLine(\"ok\")" },
         { "IndexSelection", "let a: [2 of i32] = [1, 42]\nif a[if true => 1 else => 0] == 42 => Console.writeLine(\"ok\")" },
         { "IndexRead", "let a: [2 of i32] = [1, 42]\nlet indices: [1 of isize] = [1]\nif a[indices[0]] == 42 => Console.writeLine(\"ok\")" },
@@ -60,7 +60,7 @@ public class ElementEmissionTest
 
     [Theory]
     [InlineData("var a: [1 of i32] = [1]\nlet n = a[(work: do\n    a = [2]\n    exit to work: 0\n)]")]
-    [InlineData("func take(a: (string, [1 of i32])) => ()\nlet a: (string, [1 of i32]) = (\"a\", [1])\nlet n = a.1[(work: do\n    take(a)\n    exit to work: 0\n)]")]
+    [InlineData("func take(a?: (string, [1 of i32])) => ()\nlet a: (string, [1 of i32]) = (\"a\", [1])\nlet n = a.1[(work: do\n    take(a)\n    exit to work: 0\n)]")]
     [InlineData("var a: [1 of i32] = [1]\nlet n = a[(work: do\n    defer => a = [2]\n    exit to work: 0\n)]")]
     public void ReceiverCannotChangeDuringIndexEvaluation(string source)
     {
@@ -174,7 +174,7 @@ public class ElementEmissionTest
     [Fact]
     public void WarmElementPreparationAllocatesNothing()
     {
-        const string Source = "func get(a: [2 of i32], i: isize) -> i32 => a[i]\nlet a: [2 of i32] = [1, 42]\nvar n = 0\nloop\n    defer => get(a, 1)\n    n += 1\n    if n < 3 => continue\n    exit\nlet p = ((42, true), \"held\")\nlet q = p.0\nif q.1 => get(a, 0)";
+        const string Source = "func get(a?: [2 of i32], i?: isize) -> i32 => a[i]\nlet a: [2 of i32] = [1, 42]\nvar n = 0\nloop\n    defer => get(a, 1)\n    n += 1\n    if n < 3 => continue\n    exit\nlet p = ((42, true), \"held\")\nlet q = p.0\nif q.1 => get(a, 0)";
         var c = MinimalEmissionTest.Analyze(Source);
         for (var i = 0; i < 100; i++)
         {

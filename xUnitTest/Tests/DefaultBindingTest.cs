@@ -82,7 +82,7 @@ public class DefaultBindingTest
     [Fact]
     public void NamedArgumentsKeepSourceOrderBeforeOmittedDefaults()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y?: i32 = x, z?: i32 = y) => ()\nf(z: 3, x: 1)");
+        var c = MinimalEmissionTest.Analyze("func f(x?: i32, y?: i32 = x, z?: i32 = y) => ()\nf(z: 3, x: 1)");
         Assert.True(c.Binding.Result.IsComplete);
         var call = Assert.Single(Calls(c));
         var plan = call.BoundCall!;
@@ -103,7 +103,7 @@ public class DefaultBindingTest
     [InlineData(true)]
     public void ChainedDefaultsRetainDeclarationSlotsEvenBeforeTheDeclaration(bool forward)
     {
-        const string Function = "func f(x: i32, y?: i32 = x, z?: i32 = y) => ()";
+        const string Function = "func f(x?: i32, y?: i32 = x, z?: i32 = y) => ()";
         var c = MinimalEmissionTest.Analyze(forward ? "f(1)\n" + Function : Function + "\nf(1)");
         Assert.True(c.Binding.Result.IsComplete);
         var plan = Assert.Single(Calls(c)).BoundCall!;
@@ -121,7 +121,7 @@ public class DefaultBindingTest
     [InlineData("S.f(1, x)", 2)]
     public void ReceiverPositionDoesNotBecomeAnOmittedDefault(string expression, int explicitCount)
     {
-        var c = MinimalEmissionTest.Analyze("struct S\n    public func f(first: i32, self: ref/Self, last?: i32 = first) => ()\nfunc use(x: ref/S) => " + expression);
+        var c = MinimalEmissionTest.Analyze("struct S\n    public func f(first?: i32, self: ref/Self, last?: i32 = first) => ()\nfunc use(x?: ref/S) => " + expression);
         Assert.True(c.Binding.Result.IsComplete);
         var plan = Assert.Single(Calls(c)).BoundCall!;
         var function = (FunctionKoto)plan.Target.Declaration;
@@ -132,7 +132,7 @@ public class DefaultBindingTest
     [Fact]
     public void DefaultsUseTheWinningCandidateAndKeepPerCallTypeSubstitutions()
     {
-        var c = MinimalEmissionTest.Analyze("func f<T>(x: T, y?: T = x)\n    T is Copy\n    ()\nfunc f(x: string, y?: string = x) => ()\nf<i32>(1)\nf<i64>(2)");
+        var c = MinimalEmissionTest.Analyze("func f<T>(x?: T, y?: T = x)\n    T is Copy\n    ()\nfunc f(x?: string, y?: string = x) => ()\nf<i32>(1)\nf<i64>(2)");
         Assert.True(c.Binding.Result.IsComplete);
         var calls = Calls(c).ToArray();
         Assert.Equal(2, calls.Length);
@@ -149,7 +149,7 @@ public class DefaultBindingTest
     [Fact]
     public void DefaultParameterOriginsAreSubstitutedFromExplicitInputs()
     {
-        var c = MinimalEmissionTest.Analyze("func f {a}(x: ref{a}/i32, y?: ref{a}/i32 = x) => ()\nfunc use {b}(x: ref{b}/i32) => f(x)");
+        var c = MinimalEmissionTest.Analyze("func f {a}(x?: ref{a}/i32, y?: ref{a}/i32 = x) => ()\nfunc use {b}(x?: ref{b}/i32) => f(x)");
         Assert.True(c.Binding.Result.IsComplete);
         var plan = Assert.Single(Calls(c)).BoundCall!;
         var omitted = Assert.Single(plan.DefaultArguments.ToArray());
@@ -160,7 +160,7 @@ public class DefaultBindingTest
     [Fact]
     public void InheritedTypeFunctionDefaultsKeepTheirDeclaringTypeSubstitution()
     {
-        var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is Copy\n    public func f(x: T, y?: T = x) => ()\nstruct D: Base<i32>\nD.f(1)");
+        var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is Copy\n    public func f(x?: T, y?: T = x) => ()\nstruct D: Base<i32>\nD.f(1)");
         Assert.True(c.Binding.Result.IsComplete);
         var plan = Assert.Single(Calls(c)).BoundCall!;
         Assert.Equal("Base", plan.DeclaringType!.Symbol!.Name);
@@ -170,11 +170,11 @@ public class DefaultBindingTest
     [Fact]
     public void ChangingTheSelectedDeclarationClearsOldDefaultOperations()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y?: i32 = x) => ()\nf(1)");
+        var c = MinimalEmissionTest.Analyze("func f(x?: i32, y?: i32 = x) => ()\nf(1)");
         var call = Assert.Single(Calls(c));
         var oldPlan = call.BoundCall!;
         var original = (FunctionKoto)oldPlan.Target.Declaration;
-        var replacementCompilation = MinimalEmissionTest.Analyze("func f(x: i32) => ()");
+        var replacementCompilation = MinimalEmissionTest.Analyze("func f(x?: i32) => ()");
         var replacement = Walk(replacementCompilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
@@ -187,20 +187,20 @@ public class DefaultBindingTest
     }
 
     [Fact]
-    public void RequiredInitializersAreNotEvaluatedAndCannotEnableOmission()
+    public void NamedDefaultsRunOnlyForOmittedArguments()
     {
-        var valid = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x) => ()\nf(1, 2)");
+        var valid = MinimalEmissionTest.Analyze("func f(x?: i32, y: i32 = x) => ()\nf(1, y: 2)");
         Assert.True(valid.Binding.Result.IsComplete);
         Assert.True(Assert.Single(Calls(valid)).BoundCall!.DefaultArguments.IsEmpty);
-        var invalid = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x) => ()\nf(1)");
-        Assert.False(invalid.Binding.Result.IsComplete);
-        Assert.Null(Assert.Single(Calls(invalid)).BoundCall);
+        var omitted = MinimalEmissionTest.Analyze("func f(x?: i32, y: i32 = x) => ()\nf(1)");
+        Assert.True(omitted.Binding.Result.IsComplete);
+        Assert.Equal(1, Assert.Single(Calls(omitted)).BoundCall!.DefaultArguments.Length);
     }
 
     [Fact]
     public void RebindingAndReloadRebuildDefaultPlansWithoutRetainingOldExpressions()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y?: i32 = x) => ()\nf(1)");
+        var c = MinimalEmissionTest.Analyze("func f(x?: i32, y?: i32 = x) => ()\nf(1)");
         Assert.True(c.Binding.Result.IsComplete);
         var plan = Assert.Single(Calls(c)).BoundCall!;
         var expression = plan.DefaultArguments[0].Expression;
@@ -225,7 +225,7 @@ public class DefaultBindingTest
     [Fact]
     public void WarmOmittedDefaultPlansReuseTheirStorage()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y?: i32 = x, z?: i32 = y) => ()\nf(1)\nf(z: 3, x: 1)");
+        var c = MinimalEmissionTest.Analyze("func f(x?: i32, y?: i32 = x, z?: i32 = y) => ()\nf(1)\nf(z: 3, x: 1)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);
@@ -241,12 +241,12 @@ public class DefaultBindingTest
     }
 
     [Theory]
-    [InlineData("func f(x: i32, y?: i32 = x + 1) => ()")]
+    [InlineData("func f(x?: i32, y?: i32 = x + 1) => ()")]
     [InlineData("func f(label => x: i32, y?: i32 = x) => ()")]
-    [InlineData("func f(x: i32, y?: i32 = x + 1, z?: i32 = y + x) => ()")]
-    [InlineData("func f<T>(x: T, y?: T = x)\n    T is Copy\n    ()")]
-    [InlineData("func f(x: i32, y: i32 = x) => ()\nf(1, 2)")]
-    [InlineData("func f(x: i32, y?: i32 = x) => ()\nf(1)")]
+    [InlineData("func f(x?: i32, y?: i32 = x + 1, z?: i32 = y + x) => ()")]
+    [InlineData("func f<T>(x?: T, y?: T = x)\n    T is Copy\n    ()")]
+    [InlineData("func f(x?: i32, y?: i32 = x) => ()\nf(1, 2)")]
+    [InlineData("func f(x?: i32, y?: i32 = x) => ()\nf(1)")]
     public void DefaultsBindPrecedingParametersInDeclarationScope(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -270,7 +270,7 @@ public class DefaultBindingTest
     [Theory]
     [InlineData("func f(x?: i32 = y, y?: i32 = 1) => ()")]
     [InlineData("func f(x?: i32 = x) => ()")]
-    [InlineData("func f(x: i32, y?: string = x) => ()\nf(1, \"supplied\")")]
+    [InlineData("func f(x?: i32, y?: string = x) => ()\nf(1, \"supplied\")")]
     [InlineData("func f(y?: i32 = caller) => ()\nlet caller = 7\nf()")]
     [InlineData("func f<T>(x?: T = 1) => ()\nf()")]
     public void EveryDefaultIsCheckedWithoutLaterOrSelfParameters(string source)
@@ -283,7 +283,7 @@ public class DefaultBindingTest
     [Fact]
     public void APrecedingParameterWinsOverAContainerMember()
     {
-        var c = MinimalEmissionTest.Analyze("group Defaults\n    let x = 7\n    func f(x: i32, y?: i32 = x) => ()");
+        var c = MinimalEmissionTest.Analyze("group Defaults\n    let x = 7\n    func f(x?: i32, y?: i32 = x) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var function = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>());
         Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.BoundSymbol);
@@ -292,7 +292,7 @@ public class DefaultBindingTest
     [Fact]
     public void RebindingAndReloadPreserveDefaultParameterIdentity()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y?: i32 = x) => ()");
+        var c = MinimalEmissionTest.Analyze("func f(x?: i32, y?: i32 = x) => ()");
         var function = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<FunctionKoto>());
         Assert.True(c.Bind().IsComplete);
         Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.BoundSymbol);
@@ -311,7 +311,7 @@ public class DefaultBindingTest
     [Fact]
     public void WarmDefaultBindingAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y?: i32 = x + 1) => ()");
+        var c = MinimalEmissionTest.Analyze("func f(x?: i32, y?: i32 = x + 1) => ()");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

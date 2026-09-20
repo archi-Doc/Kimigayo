@@ -30,7 +30,7 @@ public class IdentityAcquisitionEmissionTest
     [InlineData("Repair", "var pair = (\"first\", \"last\")\nlet first = pair.0@string\npair.0 = \"new\"\nlet whole = pair@owner", "first=1;last=1;new=1", new[] { 1, 2, 0 })]
     [InlineData("SelfReplace", "var value = \"value\"\nvalue = value@string", "value=1", new[] { 0 })]
     [InlineData("Temporary", "let value = (\"first\", \"last\")@owner@(string, string)", "first=1;last=1", new[] { 1, 0 })]
-    [InlineData("Parameter", "func take(value: (string, string)) -> string => value.0@owner\nlet result = take((\"first\", \"last\"))", "first=1;last=1", new[] { 1, 0 })]
+    [InlineData("Parameter", "func take(value?: (string, string)) -> string => value.0@owner\nlet result = take((\"first\", \"last\"))", "first=1;last=1", new[] { 1, 0 })]
     [InlineData("Deferred", "let value = \"value\"\ndefer\n    let taken = value@owner", "value=1", new[] { 0 })]
     public void AcquisitionTransfersExactlyOneDestructionResponsibility(string name, string source, string counts, int[] order)
     {
@@ -44,7 +44,7 @@ public class IdentityAcquisitionEmissionTest
     [InlineData("let pair = (\"first\", \"last\")\nlet first = pair.0\nlet whole = pair@owner", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f()\n    let value = \"value\"\n    return\n    let first = value@string\n    let twice = value@owner\nf()", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let value = \"value\"\nlet same = value == value@owner", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func same(a: ref/string, b: string) => ()\nlet value = \"value\"\nsame(value, value@owner)", OwnershipFailure.ComparisonLoanConflict)]
+    [InlineData("func same(a?: ref/string, b?: string) => ()\nlet value = \"value\"\nsame(value, value@owner)", OwnershipFailure.ComparisonLoanConflict)]
     [InlineData("var value: string\nlet taken = value@owner", OwnershipFailure.UninitializedUse)]
     public void IdentityRetainsOrdinaryOwnershipErrors(string source, OwnershipFailure failure)
     {
@@ -103,7 +103,7 @@ public class IdentityAcquisitionEmissionTest
     [Fact]
     public void RebindingAndReloadPreserveIdentityAcquisition()
     {
-        var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@owner\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@(string, i32)))");
+        var c = MinimalEmissionTest.Analyze("func take(value?: (string, i32)) -> string => value.0@owner\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@(string, i32)))");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
         c.Bind();
@@ -131,7 +131,7 @@ public class IdentityAcquisitionEmissionTest
     [Fact]
     public void WarmIdentityAnalysisAndWritingAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@owner\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@(string, i32)))");
+        var c = MinimalEmissionTest.Analyze("func take(value?: (string, i32)) -> string => value.0@owner\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@(string, i32)))");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);

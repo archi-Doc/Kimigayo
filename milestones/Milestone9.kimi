@@ -4,7 +4,7 @@ group Demo
         public struct Batch<T>
             let value: T
 
-            public init(value: T)
+            public init(value?: T)
                 self.value = value
 
             public func view(self: ref/Self) -> ref{self}/T
@@ -17,7 +17,7 @@ group Demo
             Found(isize, T)
             Missing
 
-        public func find<length N, T>(values: ref/[N of T], accepts: (T) -> bool) -> Hit<T>
+        public func find<length N, T>(values?: ref/[N of T], accepts?: (T) -> bool) -> Hit<T>
             T is Copy
             for index in values.indices
                 let value: T = values[index]

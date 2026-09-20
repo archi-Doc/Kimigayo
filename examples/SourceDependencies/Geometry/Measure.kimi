@@ -1,4 +1,4 @@
 alias Math.Arithmetic
 
 public group Measure
-    public func doubled(value: i32) -> i32 => twice(value)
+    public func doubled(value?: i32) -> i32 => twice(value)

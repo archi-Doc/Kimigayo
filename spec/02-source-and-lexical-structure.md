@@ -112,7 +112,7 @@ Consecutive documentation lines at the same indentation form one **documentation
 /// Returns a shared reference to the first element.
 ///
 /// - abort: `values` is empty.
-func first<T>(values: ref/Array<T>) -> ref{values}/T
+func first<T>(values?: ref/Array<T>) -> ref{values}/T
     return values[0]@ref
 ```
 
@@ -177,7 +177,7 @@ Use list items for short descriptions and headings for longer standard sections.
 /// ```kimi
 /// let total = add(2, 3)
 /// ```
-public func add(left: i32, right: i32) -> i32 => left + right
+public func add(left?: i32, right?: i32) -> i32 => left + right
 ````
 
 ### 2.3.6. Tooling and diagnostics

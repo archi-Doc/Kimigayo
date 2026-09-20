@@ -12,13 +12,13 @@ public class ConstantLengthBindingTest
     [InlineData("let Width: isize = 4\nlet row: [Width of u8] = [1, 2, 3, 4]", 4)]
     [InlineData("let Small = 4\nlet row: [(Small * 2) of u8]", 8)]
     [InlineData("let Width: isize = 4\nlet Height = Width - 1\nlet row: [(Width * Height) of u8]", 12)]
-    [InlineData("group Dimensions\n    public let Width: isize = 4\nfunc f(row: [Dimensions.Width of u8]) => ()", 4)]
+    [InlineData("group Dimensions\n    public let Width: isize = 4\nfunc f(row?: [Dimensions.Width of u8]) => ()", 4)]
     [InlineData("let Max: u128 = 340282366920938463463374607431768211455\nlet row: [(Max - Max) of u8]", 0)]
     [InlineData("let Min: i128 = -170141183460469231731687303715884105728\nlet row: [(Min - Min) of u8]", 0)]
     [InlineData("let Small: u8 = 1\nlet row: [((200 + 54) + Small) of u8]", 255)]
     [InlineData("let row: [((-9223372036854775808 + 9223372036854775807) + 1) of u8]", 0)]
-    [InlineData("group Dimensions\n    private let Width: isize = 4\n    public func f(row: [Width of u8]) => ()", 4)]
-    [InlineData("group Dimensions\n    public let Width: isize = Height + 1\n    private let Height: isize = 3\nfunc f(row: [Dimensions.Width of u8]) => ()", 4)]
+    [InlineData("group Dimensions\n    private let Width: isize = 4\n    public func f(row?: [Width of u8]) => ()", 4)]
+    [InlineData("group Dimensions\n    public let Width: isize = Height + 1\n    private let Height: isize = 3\nfunc f(row?: [Dimensions.Width of u8]) => ()", 4)]
     public void ConstantReadableBindingsFormLengths(string source, long expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -31,7 +31,7 @@ public class ConstantLengthBindingTest
     [InlineData("var N = 4\nlet row: [N of u8]")]
     [InlineData("let N: i32\nlet row: [N of u8]")]
     [InlineData("let row: [N of u8]\nlet N = 4")]
-    [InlineData("func f(N: i32)\n    let row: [N of u8]")]
+    [InlineData("func f(N?: i32)\n    let row: [N of u8]")]
     [InlineData("func get() -> i32 => 4\nlet N = get()\nlet row: [N of u8]")]
     [InlineData("let N = 4\nlet M: isize = 2\nlet row: [(N + M) of u8]")]
     [InlineData("let N = 2147483647\nlet row: [((N + 1) - N) of u8]")]
@@ -44,10 +44,10 @@ public class ConstantLengthBindingTest
     [InlineData("let N = -1\nlet row: [N of u8]")]
     [InlineData("let N: u64 = 9223372036854775808\nlet row: [N of u8]")]
     [InlineData("let N = true\nlet row: [N of u8]")]
-    [InlineData("group Dimensions\n    private let N = 4\nfunc f(row: [Dimensions.N of u8]) => ()")]
-    [InlineData("group Dimensions\n    public let N: i32 = 4\n        private get\nfunc f(row: [Dimensions.N of u8]) => ()")]
-    [InlineData("group Dimensions\n    public let N: i32 = 4\n        get() -> i32 => storage\nfunc f(row: [Dimensions.N of u8]) => ()")]
-    [InlineData("group Dimensions\n    public let N: i32 = M\n    public let M: i32 = N\nfunc f(row: [Dimensions.N of u8]) => ()")]
+    [InlineData("group Dimensions\n    private let N = 4\nfunc f(row?: [Dimensions.N of u8]) => ()")]
+    [InlineData("group Dimensions\n    public let N: i32 = 4\n        private get\nfunc f(row?: [Dimensions.N of u8]) => ()")]
+    [InlineData("group Dimensions\n    public let N: i32 = 4\n        get() -> i32 => storage\nfunc f(row?: [Dimensions.N of u8]) => ()")]
+    [InlineData("group Dimensions\n    public let N: i32 = M\n    public let M: i32 = N\nfunc f(row?: [Dimensions.N of u8]) => ()")]
     [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [N of u8]")]
     public void NonconstantOrInvalidArithmeticCannotFormLengths(string source)
     {
@@ -74,7 +74,7 @@ public class ConstantLengthBindingTest
     [Fact]
     public void SymbolicLengthsRetainExpandedPrivateConstants()
     {
-        var c = MinimalEmissionTest.Analyze("group Dimensions\n    private let Width: isize = 4\n    public func f<length N>(row: [(N + Width) of u8]) => ()");
+        var c = MinimalEmissionTest.Analyze("group Dimensions\n    private let Width: isize = 4\n    public func f<length N>(row?: [(N + Width) of u8]) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var array = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         var expression = array.BoundType!.LengthExpression!;

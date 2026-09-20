@@ -1,4 +1,4 @@
-func narrow(x: i32) -> u8
+func narrow(x?: i32) -> u8
     var value = x
     defer => value = -1
     return value@u8

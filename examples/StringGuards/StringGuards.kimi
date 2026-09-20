@@ -1,6 +1,6 @@
-func same(a: ref/string, b: ref/string) -> bool => a == b
+func same(a?: ref/string, b?: ref/string) -> bool => a == b
 
-func choose(text: string, wanted: ref/string) -> string
+func choose(text?: string, wanted?: ref/string) -> string
     return match text
         let value if same(value, wanted) => value
         _ => "other"

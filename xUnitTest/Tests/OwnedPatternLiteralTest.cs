@@ -14,7 +14,7 @@ public class OwnedPatternLiteralTest
             enum Packet
                 Empty
                 Text(string, i32)
-            func route(value: Packet) -> i32
+            func route(value?: Packet) -> i32
                 return match value
                     .Text("", _) => 1
                     .Text("é", let n) if n > 0 => n

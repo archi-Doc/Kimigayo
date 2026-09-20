@@ -1,7 +1,7 @@
 // Milestone 17: partial Move repair, whole-value updates, and result cleanup.
 struct Resource
     public let id: i32
-    public init(id: i32) => self.id = id
+    public init(id?: i32) => self.id = id
     deinit
         match self.id
             1 => Console.writeLine("Resource 1 destroyed.")

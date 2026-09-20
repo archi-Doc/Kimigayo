@@ -121,7 +121,7 @@ public class SpecRevisionAnalysisTest
     [Fact]
     public void BranchScopedCleanupDoesNotBlockOtherReturnPaths()
     {
-        var analysis = Analyze("func f(flag: bool) -> i32\n    if flag\n        defer\n            loop\n                continue\n        return \"text\"\n    return 1");
+        var analysis = Analyze("func f(flag?: bool) -> i32\n    if flag\n        defer\n            loop\n                continue\n        return \"text\"\n    return 1");
         var function = analysis.Nodes.Single(x => x.Key is FunctionKoto { IsGenerated: false }).Value;
         Assert.Equal("i32", function.TargetResultType!.Name);
         Assert.True(function.CanCompleteNormally);
@@ -179,8 +179,8 @@ public class SpecRevisionAnalysisTest
     [InlineData("let pointer: unsafe/i32 = null\nlet empty = pointer == null")]
     [InlineData("let pointer: unsafe/i32 = null\nlet empty = null != pointer")]
     [InlineData("let pointer: unsafe/i32 = null\nlet empty = pointer == (null)")]
-    [InlineData("func f(flag: bool, pointer: unsafe/i32) -> unsafe/i32 => if flag => pointer else => null")]
-    [InlineData("func f(flag: bool, pointer: unsafe/i32) -> unsafe/i32 => if flag => (null) else => pointer")]
+    [InlineData("func f(flag?: bool, pointer?: unsafe/i32) -> unsafe/i32 => if flag => pointer else => null")]
+    [InlineData("func f(flag?: bool, pointer?: unsafe/i32) -> unsafe/i32 => if flag => (null) else => pointer")]
     [InlineData("func f() -> unsafe/i32 => null")]
     public void NullIsAContextuallyTypedLiteral(string source)
     {
@@ -205,12 +205,12 @@ public class SpecRevisionAnalysisTest
         => Assert.NotEmpty(Analyze(source).Issues);
 
     [Theory]
-    [InlineData("unsafe func f(pointer: unsafe/i32) -> i32\n    return *pointer", false)]
-    [InlineData("func f(pointer: unsafe/i32) -> i32\n    unsafe => return *pointer", true)]
-    [InlineData("unsafe\n    func f(pointer: unsafe/i32) -> i32\n        return *pointer", false)]
-    [InlineData("func f(pointer: unsafe/i32)\n    unsafe\n        defer => *pointer", true)]
-    [InlineData("func f(pointer: unsafe/i32)\n    defer => unsafe => *pointer", true)]
-    [InlineData("func f(pointer: unsafe/i32)\n    defer => *pointer", false)]
+    [InlineData("unsafe func f(pointer?: unsafe/i32) -> i32\n    return *pointer", false)]
+    [InlineData("func f(pointer?: unsafe/i32) -> i32\n    unsafe => return *pointer", true)]
+    [InlineData("unsafe\n    func f(pointer?: unsafe/i32) -> i32\n        return *pointer", false)]
+    [InlineData("func f(pointer?: unsafe/i32)\n    unsafe\n        defer => *pointer", true)]
+    [InlineData("func f(pointer?: unsafe/i32)\n    defer => unsafe => *pointer", true)]
+    [InlineData("func f(pointer?: unsafe/i32)\n    defer => *pointer", false)]
     [InlineData("let pointer: unsafe/i32 = null\nlet next = pointer + 1", false)]
     [InlineData("let pointer: unsafe/i32 = null\nunsafe\n    let next = pointer + 1", true)]
     [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer[^1]", false)]

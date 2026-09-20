@@ -19,16 +19,16 @@ public class WideIntegerEmissionTest
     {
         { "WideLiteral", "let x: i128 = 1", string.Empty },
         { "WideFalse", "if false\n    let x: u128 = 1", string.Empty },
-        { "WideUnusedSignature", "func unused(x: i128) -> i128 => x\n()", string.Empty },
+        { "WideUnusedSignature", "func unused(x?: i128) -> i128 => x\n()", string.Empty },
         { "WideUnusedBody", "func unused() -> ()\n    let x: i128 = 1\n()", string.Empty },
         { "WideOldConversion", "let x = 1\nx@i128", string.Empty },
         { "WideEmptyArray", "let value: [0 of i128] = []", string.Empty },
         { "WideSignedZero", "let x: u128 = -0\nif x == 0 => Console.writeLine(\"ok\")", "ok\n" },
-        { "WideMatch", $"func f(x: u128) -> i128\n    return match x\n        {UnsignedMax} => {Min}\n        {High} => {Max}\n        _ => 0\nif f({UnsignedMax}) == {Min} and f({High}) == {Max} => Console.writeLine(\"ok\")", "ok\n" },
+        { "WideMatch", $"func f(x?: u128) -> i128\n    return match x\n        {UnsignedMax} => {Min}\n        {High} => {Max}\n        _ => 0\nif f({UnsignedMax}) == {Min} and f({High}) == {Max} => Console.writeLine(\"ok\")", "ok\n" },
         { "WideGuard", $"let x: u128 = {UnsignedMax}\nmatch x\n    let y if y == {High} => Console.writeLine(\"bad\")\n    let z if z == {UnsignedMax} => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")", "ok\n" },
         { "WideTuple", $"var x = (1@u128, \"old\", ({Min}@i128, true))\nlet y = x\nx = y\nConsole.writeLine(\"ok\")", "ok\n" },
         { "WideArray", $"let x: [2 of u128] = [{High}, {UnsignedMax}]\nlet y = x\nConsole.writeLine(\"ok\")", "ok\n" },
-        { "WideMixedAbi", $"func f(a: u8, b: i128, c: f64, d: u128, e: i128, f: string) -> u128\n    Console.writeLine(f)\n    if a == 255 and b == {Min} and c == 1.5 and e == {Max} => return d\n    return 0\nif f(255, {Min}, 1.5, {UnsignedMax}, {Max}, \"call\") == {UnsignedMax} => Console.writeLine(\"ok\")", "call\nok\n" },
+        { "WideMixedAbi", $"func f(a?: u8, b?: i128, c?: f64, d?: u128, e?: i128, f?: string) -> u128\n    Console.writeLine(f)\n    if a == 255 and b == {Min} and c == 1.5 and e == {Max} => return d\n    return 0\nif f(255, {Min}, 1.5, {UnsignedMax}, {Max}, \"call\") == {UnsignedMax} => Console.writeLine(\"ok\")", "call\nok\n" },
         { "WideOrder", "func left() -> u128\n    Console.writeLine(\"left\")\n    return 3\nfunc right() -> u128\n    Console.writeLine(\"right\")\n    return 7\nif left() * right() == 21 => Console.writeLine(\"ok\")", "left\nright\nok\n" },
         { "WideSkipped", $"var x: i128 = {Max}\nif true or x + 1 > 0 => Console.writeLine(\"ok\")", "ok\n" },
         { "WideCountOriginal", "var x: u8 = 1\nlet n: u128 = 7\nif (x << n) == 128 => Console.writeLine(\"ok\")", "ok\n" },
@@ -50,8 +50,8 @@ public class WideIntegerEmissionTest
 
             foreach (var floating in new[] { "f32", "f64" })
             {
-                yield return [$"func unused(x: {type}) => x@{floating}\n()"];
-                yield return [$"func unused(x: {floating}) => x@{type}\n()"];
+                yield return [$"func unused(x?: {type}) => x@{floating}\n()"];
+                yield return [$"func unused(x?: {floating}) => x@{type}\n()"];
                 yield return [$"if false\n    let x: {type} = 1\n    x@{floating}"];
                 yield return [$"if false\n    let x: {floating} = 1.0\n    x@{type}"];
             }
@@ -69,7 +69,7 @@ public class WideIntegerEmissionTest
     public void AllSupportedOperationsAndResultStorageExecute(string type, string minimum, string maximum)
     {
         var signed = type == "i128";
-        var source = $"func snapshot(x: {type}) -> {type}\n    var result = x\n    defer => result = 0\n    return result\n" +
+        var source = $"func snapshot(x?: {type}) -> {type}\n    var result = x\n    defer => result = 0\n    return result\n" +
             $"var x: {type} = 9\nx += 3\nx -= 2\nx *= 2\nx |= 4\nx &= 6\nx ^= 3\nx <<= 1\nx >>= 1\nlet old = x++\n++x\nlet current = --x\nx--\n" +
             $"let low: {type} = {minimum}\nlet high: {type} = {maximum}\nlet top: {type} = 1 << 127\nvar choice = true\nlet phi = if choice => snapshot(high) else => low\n" +
             $"if x == 7 and old == 7 and current == 8 and low < high and high > low and high >= high and low <= low and (top >> 127) == {(signed ? "-1" : "1")} and phi == high and snapshot(low) == low => Console.writeLine(\"ok\")";
@@ -144,7 +144,7 @@ public class WideIntegerEmissionTest
     [Fact]
     public void CorruptParameterHighBitsCannotAliasAValidIndex()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i128) -> i128 => x\nf(1)");
+        var c = MinimalEmissionTest.Analyze("func f(x?: i128) -> i128 => x\nf(1)");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Parameter);
@@ -192,7 +192,7 @@ public class WideIntegerEmissionTest
     [Fact]
     public void WarmWidePlansAndFormattingAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze($"func f(x: u128) -> u128 => x * 1\nvar x: u128 = {UnsignedMax}\nlet y = if true => f(x) else => 0\nlet z = y@i128");
+        var c = MinimalEmissionTest.Analyze($"func f(x?: u128) -> u128 => x * 1\nvar x: u128 = {UnsignedMax}\nlet y = if true => f(x) else => 0\nlet z = y@i128");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);

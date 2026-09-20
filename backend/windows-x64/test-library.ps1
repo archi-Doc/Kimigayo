@@ -47,7 +47,7 @@ try {
     $null = New-Item -ItemType Directory -Path $projectDirectory
     $project = Join-Path $projectDirectory 'Library.kimiproj'
     'OutputKind="Library" Targets={"x86_64-pc-windows-msvc"} LlvmBin="absent toolchain"' | Set-Content -LiteralPath $project -Encoding utf8
-    'public func main(value: i32) -> i32 => value + 1' | Set-Content -LiteralPath (Join-Path $projectDirectory 'Library.kimi') -Encoding utf8
+    'public func main(value?: i32) -> i32 => value + 1' | Set-Content -LiteralPath (Join-Path $projectDirectory 'Library.kimi') -Encoding utf8
     & dotnet $compiler emit $project 1> (Join-Path $work 'emit.stdout') 2> (Join-Path $work 'emit.stderr')
     if ($LASTEXITCODE -ne 0) { throw 'Library emit failed' }
     $manifestPath = Join-Path $projectDirectory 'bin/x86_64-pc-windows-msvc/Library.link.json'

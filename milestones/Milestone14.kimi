@@ -2,16 +2,16 @@
 group Pipeline
     public struct Job
         public let amount: i32
-        public init(amount: i32) => self.amount = amount
+        public init(amount?: i32) => self.amount = amount
 
     public struct Accumulator
         var total: i32 = 0
-        public func add(self: uniq/Self, amount: i32)
+        public func add(self: uniq/Self, amount?: i32)
             self.total = self.total + amount
         public func read(self: ref/Self) -> i32 => self.total
         deinit => Console.writeLine("Accumulator destroyed.")
 
-    public func run<T, F> {source}(items: Slice<T>{source}, visit: uniq/F, limit: isize) -> isize
+    public func run<T, F> {source}(items?: Slice<T>{source}, visit?: uniq/F, limit?: isize) -> isize
         F is Callable<uniq, (ref/T) -> bool>
         require limit > 0 else => return 0
         var iterator = items.iterate()
@@ -25,7 +25,7 @@ group Pipeline
                 .None => exit
         return accepted
 
-    public func finish(value: obj/Accumulator)
+    public func finish(value?: obj/Accumulator)
         require value.read() == 12 else => $abort("Unexpected object total")
         Console.writeLine("Object total is 12.")
         // This owned handle destroys the payload and releases object storage.

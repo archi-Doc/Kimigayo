@@ -23,8 +23,8 @@ public sealed record class FunctionParameterKoto
     /// <summary>Gets the parameter name used in the function body.</summary>
     public string InternalName { get; private set; } = string.Empty;
 
-    /// <summary>Gets a value indicating whether callers may omit the parameter.</summary>
-    public bool IsOptional { get; private set; }
+    /// <summary>Gets a value indicating whether direct callers may omit the external argument name.</summary>
+    public bool IsNameOptional { get; private set; }
 
     /// <summary>Gets the parameter type.</summary>
     public Koto Type { get; internal set; } = default!;
@@ -38,21 +38,21 @@ public sealed record class FunctionParameterKoto
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
     /// <param name="externalName">The caller-facing name.</param>
     /// <param name="internalName">The body-facing name.</param>
-    /// <param name="isOptional">Whether callers may omit the parameter.</param>
+    /// <param name="isNameOptional">Whether direct callers may omit the external argument name.</param>
     /// <param name="type">The parameter type.</param>
     /// <param name="defaultValue">The default value, if present.</param>
     /// <param name="attributeChain">The parameter attributes, if present.</param>
     public FunctionParameterKoto(
         string externalName,
         string internalName,
-        bool isOptional,
+        bool isNameOptional,
         Koto type,
         Koto? defaultValue,
         AttributeKoto? attributeChain = null)
     {
         this.ExternalName = externalName;
         this.InternalName = internalName;
-        this.IsOptional = isOptional;
+        this.IsNameOptional = isNameOptional;
         this.Type = type;
         this.DefaultValue = defaultValue;
         this.AttributeChain = attributeChain;
@@ -344,7 +344,7 @@ public sealed class FunctionKoto : DeclarationKoto
                 }
 
                 builder.Append(parameter.ExternalName);
-                if (parameter.IsOptional)
+                if (parameter.IsNameOptional)
                 {
                     builder.Append('?');
                 }

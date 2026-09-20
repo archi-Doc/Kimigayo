@@ -26,7 +26,7 @@ public class LateConstraintEnvironmentBindingTest
         AssertConsumers(restored, valid);
     }
 
-    private const string Consumers = "\ngroup G\n    func take<T>()\n        T is Copy\n        ()\n    func caller<T>(value: T)\n        T is Marker\n        take<T>()";
+    private const string Consumers = "\ngroup G\n    func take<T>()\n        T is Copy\n        ()\n    func caller<T>(value?: T)\n        T is Marker\n        take<T>()";
 
     [Theory]
     [InlineData("struct", false)]
@@ -51,7 +51,7 @@ public class LateConstraintEnvironmentBindingTest
     [InlineData(true)]
     public void LateFailureDoesNotInvalidateIndependentPremises(bool provisional)
     {
-        var c = MinimalEmissionTest.Analyze("public contract Marker: Copy\n    string is Copy" + Consumers + "\n    func independent<T>(value: T)\n        T is Copy\n        take<T>()");
+        var c = MinimalEmissionTest.Analyze("public contract Marker: Copy\n    string is Copy" + Consumers + "\n    func independent<T>(value?: T)\n        T is Copy\n        take<T>()");
         c.Binding.Bind(provisional ? BindingMode.Provisional : BindingMode.Final);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "independent");
         Assert.Equal(BindingState.Resolved, function.BindingState);

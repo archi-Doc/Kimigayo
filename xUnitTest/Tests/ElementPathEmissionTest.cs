@@ -22,8 +22,8 @@ public class ElementPathEmissionTest
         { "DynamicPrefix", "var a: ([1 of i32], [1 of i32]) = ([40], [2])\nvar i: isize = 0\na.0[i] += a.1[i]++\nif a.0[0] == 42 and a.1[0] == 3 => Console.writeLine(\"ok\")" },
         { "DynamicDescendant", "var a: [2 of [1 of i32]] = [[40], [2]]\nvar i: isize = 0\na[0][i] += a[1][i]\nif a[0][0] == 42 => Console.writeLine(\"ok\")" },
         { "Literals", "var a: [2 of i32] = [40, 2]\na[((0x0))] += a[(0b0_1)]\nif a[0] == 42 => Console.writeLine(\"ok\")" },
-        { "CopyAggregate", "func get(a: [1 of i32]) -> i32 => a[0]\nvar a: (i32, [1 of i32]) = (40, [2])\na.0 += get(a.1)\nif a.0 == 42 => Console.writeLine(\"ok\")" },
-        { "ZeroSizeSibling", "func amount(unit: ()) -> i32 => 2\nvar a = ((), 40)\na.1 += amount(a.0)\nif a.1 == 42 => Console.writeLine(\"ok\")" },
+        { "CopyAggregate", "func get(a?: [1 of i32]) -> i32 => a[0]\nvar a: (i32, [1 of i32]) = (40, [2])\na.0 += get(a.1)\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "ZeroSizeSibling", "func amount(unit?: ()) -> i32 => 2\nvar a = ((), 40)\na.1 += amount(a.0)\nif a.1 == 42 => Console.writeLine(\"ok\")" },
         { "IndexRead", "var a: (i32, [1 of i32], isize) = (41, [1], 0)\na.0 += a.1[a.2]++\nif a.0 == 42 and a.1[0] == 2 => Console.writeLine(\"ok\")" },
         { "Transfer", "func f() -> i32\n    var a = (40, 2)\n    defer\n        if a.0 == 40 and a.1 == 3 => Console.writeLine(\"ok\")\n    a.0 += (work: do\n        a.1++\n        return 42\n    )\n    return 0\nf()" },
         { "Deferred", "var a: [2 of i32] = [0, 14]\nvar i = 0\nloop\n    defer => a[0] += a[1]\n    i += 1\n    if i < 3 => continue\n    exit\nif a[0] == 42 => Console.writeLine(\"ok\")" },
@@ -71,7 +71,7 @@ public class ElementPathEmissionTest
     [InlineData("let n = a[(work: do\n    a[1] = 1\n    exit to work: 0\n)]")]
     public void OverlappingOrUnprovenPathsProduceNoIr(string expression)
     {
-        var c = MinimalEmissionTest.Analyze("func get(a: [2 of i32]) -> i32 => a[0]\nvar a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
+        var c = MinimalEmissionTest.Analyze("func get(a?: [2 of i32]) -> i32 => a[0]\nvar a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         using var writer = new StringWriter();
@@ -80,7 +80,7 @@ public class ElementPathEmissionTest
     }
 
     [Theory]
-    [InlineData("func get(a: [2 of i32]) -> i32 => a[1]\nvar a: [1 of [2 of i32]] = [[40, 2]]\na[0][0] += get(a[0])")]
+    [InlineData("func get(a?: [2 of i32]) -> i32 => a[1]\nvar a: [1 of [2 of i32]] = [[40, 2]]\na[0][0] += get(a[0])")]
     [InlineData("var a: [2 of [2 of i32]] = [[40, 2], [0, 0]]\nvar i: isize = 0\nvar j: isize = 1\na[i][0] += a[j][1]")]
     [InlineData("func f()\n    return\n    var a: [2 of i32] = [40, 2]\n    a[0] += a[0]")]
     public void AncestorsAndUnknownPrefixesRemainProtected(string source)

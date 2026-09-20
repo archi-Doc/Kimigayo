@@ -10,7 +10,7 @@ public class OwnedPathBorrowTest
 
     private const string Outer = "struct Counter\n    public var value: i32 = 1\nstruct Inner\n    public var c: Counter = Counter.init()\n    public var d: Counter = Counter.init()\nstruct Outer\n    public var tag: i32 = 7\n    public var inner: Inner = Inner.init()\n";
 
-    private const string Calls = "struct Counter\n    public var value: i32 = 1\n    public func bump(self: uniq/Self)\n        self.value += 1\nstruct Pair\n    public var left: Counter = Counter.init()\n    public var right: Counter = Counter.init()\nfunc g(c: uniq/Counter)\n    c.value += 1\nfunc h(a: uniq/Counter, b: uniq/Counter)\n    a.value += b.value\nfunc r(a: ref/Counter, b: ref/Counter) -> i32 => a.value + b.value\n";
+    private const string Calls = "struct Counter\n    public var value: i32 = 1\n    public func bump(self: uniq/Self)\n        self.value += 1\nstruct Pair\n    public var left: Counter = Counter.init()\n    public var right: Counter = Counter.init()\nfunc g(c?: uniq/Counter)\n    c.value += 1\nfunc h(a?: uniq/Counter, b?: uniq/Counter)\n    a.value += b.value\nfunc r(a?: ref/Counter, b?: ref/Counter) -> i32 => a.value + b.value\n";
 
     // SPEC 15.6: explicit borrows of inline parts of owned locals and parameters.
     [Theory]
@@ -20,7 +20,7 @@ public class OwnedPathBorrowTest
     [InlineData("Shared", Pair + "let pair = Pair.init()\nlet a = pair.left@ref\nlet b = pair.left@ref\nrequire a.value + b.value + pair.left.value == 3 else => $abort(\"value\")")]
     [InlineData("Nested", Outer + "var o = Outer.init()\nlet a = o.inner.c@uniq\nlet b = o.inner.d@uniq\no.tag += 1\nb.value += 1\na.value += b.value + o.tag\nrequire o.inner.c.value == 11 and o.inner.d.value == 2 and o.tag == 8 else => $abort(\"value\")")]
     [InlineData("Tuple", Pair + "var t: (i32, (Counter, Counter)) = (5, (Counter.init(), Counter.init()))\nlet a = t.1.0@uniq\nt.0 += 1\na.value += t.0\nrequire t.1.0.value == 7 and t.1.1.value == 1 else => $abort(\"value\")")]
-    [InlineData("Parameter", Pair + "func f(p: Pair) -> i32\n    let a = p.left@ref\n    let b = p.right@ref\n    return a.value + b.value\nrequire f(Pair.init()) == 2 else => $abort(\"value\")")]
+    [InlineData("Parameter", Pair + "func f(p?: Pair) -> i32\n    let a = p.left@ref\n    let b = p.right@ref\n    return a.value + b.value\nrequire f(Pair.init()) == 2 else => $abort(\"value\")")]
     [InlineData("Release", Pair + "var pair = Pair.init()\nlet a = pair.left@uniq\na.value += 1\npair.left.value += 1\nlet whole = pair@ref\nrequire whole.left.value == 3 else => $abort(\"value\")")]
     [InlineData("Arguments", Calls + "var pair = Pair.init()\ng(pair.left@uniq)\ng(pair.left)\nrequire pair.left.value == 3 else => $abort(\"value\")")]
     [InlineData("SiblingArguments", Calls + "var pair = Pair.init()\nh(pair.left, pair.right)\nrequire pair.left.value == 2 and pair.right.value == 1 else => $abort(\"value\")")]

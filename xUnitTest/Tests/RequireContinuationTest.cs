@@ -11,7 +11,7 @@ public class RequireContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
     private const string Counter = "\nstruct Counter\n    public var value: i32 = 0";
-    private const string Default = "func value(c: bool, y?: i32 = (do\n    var n: i32\n    do\n        require c else\n            n = 1\n            loop => continue\n        n = 2\n        loop => continue\n    n\n)) -> i32 => y\n";
+    private const string Default = "func value(c?: bool, y?: i32 = (do\n    var n: i32\n    do\n        require c else\n            n = 1\n            loop => continue\n        n = 2\n        loop => continue\n    n\n)) -> i32 => y\n";
 
     [Theory]
     [InlineData("Return", "var x: i32", "require c else\n            x = 1\n            return", "x = 2\n        stop()", "let y = x", false, "done\n")]
@@ -49,14 +49,14 @@ public class RequireContinuationTest
     [InlineData("Exit", "exit", false)]
     [InlineData("Return", "return", true)]
     public void FailureTransfersKeepTheirOriginalTarget(string name, string transfer, bool condition)
-        => ScalarEmissionTest.EmitFixture("NeverRequire" + Configuration + name + "Target", Stop + "func f(c: bool)\n    var x: i32\n    do\n        loop\n            require c else\n                x = 1\n                " + transfer + "\n            exit\n        x = 2\n        return\n    let y = x\nf(" + (condition ? "true" : "false") + ")\nConsole.writeLine(\"done\")", "done\n");
+        => ScalarEmissionTest.EmitFixture("NeverRequire" + Configuration + name + "Target", Stop + "func f(c?: bool)\n    var x: i32\n    do\n        loop\n            require c else\n                x = 1\n                " + transfer + "\n            exit\n        x = 2\n        return\n    let y = x\nf(" + (condition ? "true" : "false") + ")\nConsole.writeLine(\"done\")", "done\n");
 
     [Theory]
     [InlineData("exit", true)]
     [InlineData("return", false)]
     public void OnlyTransfersEscapingTheScopeContributeToItsJoin(string transfer, bool accepted)
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool)\n    var x: i32\n    do\n        loop\n            require c else => " + transfer + "\n            exit\n        x = 2\n        return\n    let y = x\nf(true)");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c?: bool)\n    var x: i32\n    do\n        loop\n            require c else => " + transfer + "\n            exit\n        x = 2\n        return\n    let y = x\nf(true)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
         if (accepted)
@@ -86,7 +86,7 @@ public class RequireContinuationTest
 
     [Fact]
     public void DefaultFailureCanDeliverToItsEnclosingScope()
-        => ScalarEmissionTest.EmitFixture("NeverRequire" + Configuration + "DefaultResult", "func value(c: bool, y?: i32 = (choice: do\n    require c else => exit to choice: 4\n    exit to choice: 7\n)) -> i32 => y\nrequire value(false) == 4 else => $abort(\"failure\")\nrequire value(true) == 7 else => $abort(\"success\")\nrequire value(false, 9) == 9 else => $abort(\"supplied\")\nConsole.writeLine(\"done\")", "done\n");
+        => ScalarEmissionTest.EmitFixture("NeverRequire" + Configuration + "DefaultResult", "func value(c?: bool, y?: i32 = (choice: do\n    require c else => exit to choice: 4\n    exit to choice: 7\n)) -> i32 => y\nrequire value(false) == 4 else => $abort(\"failure\")\nrequire value(true) == 7 else => $abort(\"success\")\nrequire value(false, 9) == 9 else => $abort(\"supplied\")\nConsole.writeLine(\"done\")", "done\n");
 
     [Theory]
     [InlineData("let x: i32\nvalue(true)\nlet y = x", OwnershipFailure.UninitializedUse)]
@@ -112,7 +112,7 @@ public class RequireContinuationTest
     [Fact]
     public void FailureFactsDoNotFlowIntoTheSuccessor()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool)\n    var x: i32\n    require c else\n        x = 1\n        return\n    let y = x\nf(true)");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c?: bool)\n    var x: i32\n    require c else\n        x = 1\n        return\n    let y = x\nf(true)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -142,7 +142,7 @@ public class RequireContinuationTest
     }
 
     private static string Source(string declaration, string require, string tail, string use, bool condition = false)
-        => Stop + "func f(c: bool)\n    " + declaration + "\n    do\n        " + require + "\n        " + tail + "\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
+        => Stop + "func f(c?: bool)\n    " + declaration + "\n    do\n        " + require + "\n        " + tail + "\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
 #if DEBUG
     private const string Configuration = "Debug";

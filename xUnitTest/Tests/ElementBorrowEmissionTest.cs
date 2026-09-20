@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class ElementBorrowEmissionTest
 {
-    private const string Same = "func same(left: ref/string, right: ref/string) -> bool => left == right\n";
+    private const string Same = "func same(left?: ref/string, right?: ref/string) -> bool => left == right\n";
 
     public static TheoryData<string, string> Fixtures => new()
     {
@@ -17,23 +17,23 @@ public class ElementBorrowEmissionTest
         { "Nested", "let a: [1 of (string, [1 of string])] = [(\"first\", [\"first\"])]\nif same(a[0].0, a[0].1[0]) => Console.writeLine(\"ok\")" },
         { "Partial", "let a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0.1\nif same(a.0.0, a.0.0) => Console.writeLine(\"ok\")" },
         { "Repair", "var a = (\"first\", \"last\")\nlet taken = a.0\na.0 = \"new\"\nif same(a.0, a.0) => Console.writeLine(\"ok\")\nlet whole = a" },
-        { "SiblingMove", "func inspect(left: ref/string, right: string) -> bool => left == left\nlet a = (\"first\", \"last\")\nif inspect(a.0, a.1) => Console.writeLine(\"ok\")" },
+        { "SiblingMove", "func inspect(left?: ref/string, right?: string) -> bool => left == left\nlet a = (\"first\", \"last\")\nif inspect(a.0, a.1) => Console.writeLine(\"ok\")" },
         { "SiblingReplace", "var a = (\"first\", \"last\")\nif a.0 == (work: do\n    a.1 = \"new\"\n    exit to work: \"first\"\n) => Console.writeLine(\"ok\")" },
         { "SiblingUpdate", "var a = (\"first\", 40)\na.1 += if a.0 == \"first\" => 2 else => 0\nif a.1 == 42 => Console.writeLine(\"ok\")" },
-        { "DynamicSibling", "func inspect(left: ref/string, ignored: ()) -> bool => left == left\nvar a: (string, [1 of string]) = (\"first\", [\"last\"])\nvar i: isize = 0\nif inspect(a.0, a.1[i] = \"new\") => Console.writeLine(\"ok\")" },
+        { "DynamicSibling", "func inspect(left?: ref/string, ignored?: ()) -> bool => left == left\nvar a: (string, [1 of string]) = (\"first\", [\"last\"])\nvar i: isize = 0\nif inspect(a.0, a.1[i] = \"new\") => Console.writeLine(\"ok\")" },
         { "CallRelease", "var a = (\"first\", \"last\")\nlet equal = same(a.0, a.0)\na.0 = \"new\"\nlet whole = a\nif equal => Console.writeLine(\"ok\")" },
         { "CompareRelease", "var a = (\"first\", \"last\")\nlet equal = a.0 == \"first\"\na.0 = \"new\"\nlet whole = a\nif equal => Console.writeLine(\"ok\")" },
-        { "NestedCall", "func identity(value: bool) -> bool => value\nlet a = (\"first\", \"last\")\nif identity(same(a.0, a.0)) and same(a.1, a.1) => Console.writeLine(\"ok\")" },
+        { "NestedCall", "func identity(value?: bool) -> bool => value\nlet a = (\"first\", \"last\")\nif identity(same(a.0, a.0)) and same(a.1, a.1) => Console.writeLine(\"ok\")" },
         { "Named", "let a = (\"first\", \"first\")\nif same(right: a.1, left: a.0) => Console.writeLine(\"ok\")" },
         { "MixedTemporary", "let a = (\"first\", 0)\nif same(a.0, (work: do\n    exit to work: \"first\"\n)) => Console.writeLine(\"ok\")" },
         { "Loop", "var a = (\"first\", \"last\")\nvar i = 0\nloop\n    if not same(a.0, a.0) => exit\n    a.0 = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nif i == 3 => Console.writeLine(\"ok\")" },
         { "Defer", "func f()\n    let a = (\"first\", \"last\")\n    defer\n        if same(a.0, a.0) => Console.writeLine(\"ok\")\n    let taken = a.1\nf()" },
-        { "ConditionalPartial", "func f(take: bool) -> bool\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.1\n    return same(a.0, a.0)\nif f(true) and f(false) => Console.writeLine(\"ok\")" },
-        { "AggregateResult", "func inspect(a: ref/string) -> (string, i32) => (\"new\", 42)\nvar a = (\"first\", 0)\nlet result = inspect(a.0)\na.0 = \"last\"\nif result.1 == 42 => Console.writeLine(\"ok\")" },
+        { "ConditionalPartial", "func f(take?: bool) -> bool\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.1\n    return same(a.0, a.0)\nif f(true) and f(false) => Console.writeLine(\"ok\")" },
+        { "AggregateResult", "func inspect(a?: ref/string) -> (string, i32) => (\"new\", 42)\nvar a = (\"first\", 0)\nlet result = inspect(a.0)\na.0 = \"last\"\nif result.1 == 42 => Console.writeLine(\"ok\")" },
         { "Dead", "func f()\n    return\n    let a = (\"first\", 0)\n    let equal = same(a.0, a.0)\nf()\nConsole.writeLine(\"ok\")" },
         { "Covered", "let a = (\"first\", 0)\nmatch true\n    _ => ()\n    true => (work: do\n        let equal = same(a.0, a.0)\n    )\nConsole.writeLine(\"ok\")" },
         { "GuardCandidate", "let a = (\"first\", 0)\nmatch \"other\"\n    let s if same(a.0, s) => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"ok\")" },
-        { "NestedGuardCandidate", "func three(a: ref/string, b: ref/string, c: ref/string) -> bool => b == c\nlet a = (\"first\", 0)\nmatch \"other\"\n    let s if three(a.0, s, \"other\") => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")" },
+        { "NestedGuardCandidate", "func three(a?: ref/string, b?: ref/string, c?: ref/string) -> bool => b == c\nlet a = (\"first\", 0)\nmatch \"other\"\n    let s if three(a.0, s, \"other\") => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")" },
     };
 
     [Theory]
@@ -61,16 +61,16 @@ public class ElementBorrowEmissionTest
     }
 
     [Theory]
-    [InlineData("func take(a: string) -> string => a\nlet a = (\"first\", 0)\nlet equal = a.0 == take(a.0)")]
-    [InlineData("func inspect(a: ref/string, b: string) => ()\nlet a = (\"first\", 0)\ninspect(a.0, a.0)")]
-    [InlineData("func inspect(a: ref/string, b: (string, i32)) => ()\nlet a = (\"first\", 0)\ninspect(a.0, a)")]
-    [InlineData("func inspect(a: ref/string, b: ()) => ()\nvar a = (\"first\", 0)\ninspect(a.0, a.0 = \"new\")")]
-    [InlineData("func inspect(a: ref/string, b: ()) => ()\nvar a = (\"first\", 0)\ninspect(a.0, a = (\"new\", 1))")]
+    [InlineData("func take(a?: string) -> string => a\nlet a = (\"first\", 0)\nlet equal = a.0 == take(a.0)")]
+    [InlineData("func inspect(a?: ref/string, b?: string) => ()\nlet a = (\"first\", 0)\ninspect(a.0, a.0)")]
+    [InlineData("func inspect(a?: ref/string, b?: (string, i32)) => ()\nlet a = (\"first\", 0)\ninspect(a.0, a)")]
+    [InlineData("func inspect(a?: ref/string, b?: ()) => ()\nvar a = (\"first\", 0)\ninspect(a.0, a.0 = \"new\")")]
+    [InlineData("func inspect(a?: ref/string, b?: ()) => ()\nvar a = (\"first\", 0)\ninspect(a.0, a = (\"new\", 1))")]
     [InlineData("var a = ((\"first\", \"last\"), 0)\nlet equal = a.0.0 == (work: do\n    a.0 = (\"new\", \"last\")\n    exit to work: \"first\"\n)")]
     [InlineData("var a: [2 of string] = [\"first\", \"last\"]\nvar i: isize = 1\nlet equal = a[0] == (work: do\n    a[i] = \"new\"\n    exit to work: \"first\"\n)")]
     [InlineData("var a = (\"first\", 0)\nlet equal = a.0 == (work: do\n    defer => a.0 = \"new\"\n    exit to work: \"first\"\n)")]
     [InlineData("var a = (\"first\", 0)\nlet equal = a.0 == (work: do\n    let nested = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work: \"first\"\n)")]
-    [InlineData("func inspect(a: ref/string, b: bool) => ()\nvar a = (\"first\", 0)\ninspect(a.0, (work: do\n    let nested = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work: nested\n))")]
+    [InlineData("func inspect(a?: ref/string, b?: bool) => ()\nvar a = (\"first\", 0)\ninspect(a.0, (work: do\n    let nested = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work: nested\n))")]
     [InlineData("var a: (string, [1 of i32]) = (\"first\", [0])\nlet x = a.1[(work: do\n    let equal = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work: 0\n)]")]
     public void OverlappingLoansAreRejected(string source)
         => Reject(Same + source, OwnershipFailure.ComparisonLoanConflict);
@@ -79,7 +79,7 @@ public class ElementBorrowEmissionTest
     [InlineData("let a = (\"first\", 0)\nlet taken = a.0\nlet equal = a.0 == \"first\"")]
     [InlineData("let a = (\"first\", 0)\nlet taken = a.0\nlet equal = same(a.0, a.0)")]
     [InlineData("let a = ((\"first\", \"last\"), 0)\nlet taken = a.0\nlet equal = same(a.0.0, a.0.0)")]
-    [InlineData("func f(take: bool)\n    let a = (\"first\", 0)\n    if take\n        let taken = a.0\n    let equal = same(a.0, a.0)")]
+    [InlineData("func f(take?: bool)\n    let a = (\"first\", 0)\n    if take\n        let taken = a.0\n    let equal = same(a.0, a.0)")]
     [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0\n    let equal = same(a.0, a.0)")]
     public void MissingElementsAreRejected(string source)
         => Reject(Same + source, OwnershipFailure.PossiblyMovedUse);
@@ -98,8 +98,8 @@ public class ElementBorrowEmissionTest
 
     [Theory]
     [InlineData("Comparison", "func f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    a.0 == (return \"ok\")\n    return \"bad\"\nConsole.writeLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
-    [InlineData("Argument", "func inspect(a: ref/string, b: bool) => ()\nfunc f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    inspect(a.0, (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
-    [InlineData("ReturnResult", "func inspect(a: ref/string) -> string\n    defer\n        if a == a => Console.writeLine(\"cleanup\")\n    return \"ok\"\nlet a = (\"held\", \"sibling\")\nConsole.writeLine(inspect(a.0))", "held=1;sibling=1;cleanup=1;ok=1", new[] { 2, 3, 1, 0 })]
+    [InlineData("Argument", "func inspect(a?: ref/string, b?: bool) => ()\nfunc f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    inspect(a.0, (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
+    [InlineData("ReturnResult", "func inspect(a?: ref/string) -> string\n    defer\n        if a == a => Console.writeLine(\"cleanup\")\n    return \"ok\"\nlet a = (\"held\", \"sibling\")\nConsole.writeLine(inspect(a.0))", "held=1;sibling=1;cleanup=1;ok=1", new[] { 2, 3, 1, 0 })]
     public void CleanupRetainsResponsibilityAndOrdering(string name, string source, string destructions, int[] order)
     {
         var stdout = name == "ReturnResult" ? "cleanup\nok\n" : "ok\n";
@@ -140,14 +140,14 @@ public class ElementBorrowEmissionTest
     [Fact]
     public void LaterBoundsAbortDoesNotRunCleanup()
     {
-        const string Source = "func inspect(a: ref/string, b: i32) => ()\nlet a = (\"held\", \"sibling\")\nlet empty: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\ninspect(a.0, empty[0])";
+        const string Source = "func inspect(a?: ref/string, b?: i32) => ()\nlet a = (\"held\", \"sibling\")\nlet empty: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\ninspect(a.0, empty[0])";
         const string Error = "Hello.kimi:5:14: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowBounds", Source, string.Empty, 1, Error);
         StringEmissionTest.WriteAuditedFixture("ElementBorrowBounds", Source, ir, string.Empty, "held=0;sibling=0;bad=0", 1, Error);
     }
 
     [Theory]
-    [InlineData("Call", "func forever(a: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)")]
+    [InlineData("Call", "func forever(a?: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)")]
     [InlineData("Cleanup", "func f() -> string\n    let a = (\"held\", 0)\n    defer => loop => ()\n    a.0 == (return \"ok\")\n    return \"bad\"\nConsole.writeLine(f())")]
     public void NonterminationCannotReleaseOrDeliverNormally(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
@@ -201,7 +201,7 @@ public class ElementBorrowEmissionTest
     [Fact]
     public void WarmBindingAndBorrowEmissionAllocateNothing()
     {
-        const string Source = Same + "func f(take: bool)\n    var a: (string, [1 of string], i32) = (\"held\", [\"sibling\"], 40)\n    if take\n        let moved = a.1[0]\n    defer\n        if same(a.0, a.0) => a.2 += 1\n    a.2 += if a.0 == \"held\" => 1 else => 0\n    a.1[0] = \"new\"\nf(true)\nf(false)";
+        const string Source = Same + "func f(take?: bool)\n    var a: (string, [1 of string], i32) = (\"held\", [\"sibling\"], 40)\n    if take\n        let moved = a.1[0]\n    defer\n        if same(a.0, a.0) => a.2 += 1\n    a.2 += if a.0 == \"held\" => 1 else => 0\n    a.1[0] = \"new\"\nf(true)\nf(false)";
         var c = MinimalEmissionTest.Analyze(Source);
         for (var i = 0; i < 100; i++)
         {

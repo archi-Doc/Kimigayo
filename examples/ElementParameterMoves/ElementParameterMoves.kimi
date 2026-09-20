@@ -1,9 +1,9 @@
-func first(pair: (string, string)) -> string => pair.0
+func first(pair?: (string, string)) -> string => pair.0
 
-func choose(pair: (string, string), takeFirst: bool) -> string
+func choose(pair?: (string, string), takeFirst?: bool) -> string
     return if takeFirst => pair.0 else => pair.1
 
-func middle(values: [3 of string]) -> string => values[1]
+func middle(values?: [3 of string]) -> string => values[1]
 
 Console.writeLine(first(("first", "unused")))
 Console.writeLine(choose(("unused", "last"), false))

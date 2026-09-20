@@ -25,7 +25,7 @@ public class ElementReplacementEmissionTest
         { "SiblingAggregate", "var a = (40, (\"old\", 0))\na.0 += work: do\n    a.1 = (\"new\", 2)\n    exit to work: a.1.1\nif a.0 == 42 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "ZeroSize", "var a: ([0 of string], i32) = ([], 42)\nlet empty: [0 of string] = []\na.0 = empty\nif a.1 == 42 => Console.writeLine(\"ok\")", "ok=1" },
         { "EmptyString", "var a = (\"old\", 42)\na.0 = \"\"\nConsole.writeLine(\"ok\")", "old=1;=1;ok=1" },
-        { "ConditionalSource", "func f(replace: bool)\n    var a = (\"old\", 42)\n    let text = \"new\"\n    if replace => a.0 = text\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "old=2;new=2;ok=1" },
+        { "ConditionalSource", "func f(replace?: bool)\n    var a = (\"old\", 42)\n    let text = \"new\"\n    if replace => a.0 = text\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "old=2;new=2;ok=1" },
         { "ReinitializeSource", "var a: [1 of string] = [\"old\"]\nvar text = \"new\"\na[(work: do\n    text = \"again\"\n    exit to work: 0\n)] = text\nConsole.writeLine(\"ok\")", "old=1;new=1;again=1;ok=1" },
         { "RestoreParent", "var a = (\"old\", 0)\na.0 = work: do\n    a = (\"intermediate\", 42)\n    exit to work: \"new\"\nif a.1 == 42 => Console.writeLine(\"ok\")", "old=1;intermediate=1;new=1;ok=1" },
         { "CoveredArm", "var a = (\"old\", 0)\nmatch true\n    _ => a.0 = \"new\"\n    true => a.0 = \"unused\"\nConsole.writeLine(\"ok\")", "old=1;new=1;ok=1" },
@@ -109,7 +109,7 @@ public class ElementReplacementEmissionTest
     [InlineData("let a = (\"old\", 0)\na.0 = \"new\"")]
     [InlineData("var a = (\"old\", 0)\nlet moved = a\na.0 = \"new\"")]
     [InlineData("var a = (40, \"old\")\na.0 += work: do\n    a = (0, \"new\")\n    exit to work: 2")]
-    [InlineData("func f(a: [1 of string])\n    a[0] = \"new\"")]
+    [InlineData("func f(a?: [1 of string])\n    a[0] = \"new\"")]
     [InlineData("func make() -> [1 of string] => [\"old\"]\nmake()[0] = \"new\"")]
     [InlineData("var a: [1 of string] = [\"old\"]\nlet text = \"new\"\na[(work: do\n    Console.writeLine(text)\n    exit to work: 0\n)] = text")]
     [InlineData("func f()\n    return\n    var a = (\"old\", 0)\n    let text = \"new\"\n    a.0 = text\n    Console.writeLine(text)")]

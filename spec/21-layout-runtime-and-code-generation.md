@@ -375,10 +375,10 @@ Sharing and budget changes preserve semantic acceptance, selected implementation
 Scalar arithmetic and typed loads and stores may use small typed helpers while a larger body remains shared; helpers keep the original checks, failure order and source location. No policy grants writes through `ref`, implicit Copy through `uniq`, or pointer comparison in place of a required referent operation. Unsupported paths are diagnosed before emission rather than generating a semantic substitute.
 
 ~~~kimi
-func classify<T>(value: ref/T) -> i32 => 0
+func classify<T>(value?: ref/T) -> i32 => 0
 specialize func classify<i32>(value: ref/i32) -> i32 => 1
 
-func forward<T>(value: ref/T) -> i32 => classify<T>(value)
+func forward<T>(value?: ref/T) -> i32 => classify<T>(value)
 // forward<i32> calls the explicit implementation even with specialization budget 0.
 ~~~
 
@@ -434,7 +434,7 @@ Metadata only runs acquisition plans already proven valid under §8.10. A condit
 The Copy/Move and duplication examples of §8.10 also apply to shared lowering. In contrast, a pure borrow transfer can omit referent metadata entirely:
 
 ~~~kimi
-func keepBorrow<T>(value: ref/T) -> ref/T from value => value
+func keepBorrow<T>(value?: ref/T) -> ref/T from value => value
 // No referent access, so no T metadata is required.
 ~~~
 
@@ -496,9 +496,9 @@ Length meaning and formation proofs remain owned by §4.4:
 Length requirements are identified by normalized expressions and definition-side bindings. Type formation is proven from declared premises and concrete evaluation is checked; body-only Type formation cannot wait for favorable arguments. `N` is never inferred from size and stride, and a body never reads `N` through TypeContext. Keeping `N` both in body slots and in destruction metadata is permitted when both readers need it.
 
 ~~~kimi
-func keepArray<length N, T>(value: [N of T]) -> [N of T] => value
+func keepArray<length N, T>(value?: [N of T]) -> [N of T] => value
 
-func lengthAfterOffset<length N>(value: ref/[(N + 4) of u8]) -> isize
+func lengthAfterOffset<length N>(value?: ref/[(N + 4) of u8]) -> isize
     return N + 4
 
 func twiceLength<length N>() -> isize => N * 2
@@ -510,7 +510,7 @@ func twiceLength<length N>() -> isize => N * 2
 Authorized transfers follow §21.4.5, and fixing a length alone does not remove unrelated arithmetic checks. For example, specializing this loop for a small `N` may remove proven bounds checks or unroll the loop, but must keep any unproven total-overflow check:
 
 ~~~kimi
-func sum<length N>(values: ref/[N of i32]) -> i64
+func sum<length N>(values?: ref/[N of i32]) -> i64
     var total: i64 = 0
     for i in values.indices
         total += values[i]@i64
@@ -658,9 +658,9 @@ An ABI change must update every affected definition, caller, adapter and compile
 
 ```kimi
 group Samples
-    func isPositive(value: i32) -> bool => value > 0
-    func echo(text: string) -> string => text
-    func echoPair(value: (string, i32)) -> (string, i32) => value
+    func isPositive(value?: i32) -> bool => value > 0
+    func echo(text?: string) -> string => text
+    func echoPair(value?: (string, i32)) -> (string, i32) => value
 ```
 
 ```llvm

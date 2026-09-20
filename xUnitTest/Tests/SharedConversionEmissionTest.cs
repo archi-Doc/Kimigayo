@@ -15,7 +15,7 @@ public class SharedConversionEmissionTest
     [InlineData("SameRepresentation", "isize", "i64", "-7")]
     public void ExecutesValidConversions(string name, string sourceType, string targetType, string value)
     {
-        var source = $"func convert<T>(value: ref/T, n: {sourceType}) -> {targetType} => n@{targetType}\nlet v = true\nrequire convert(v, {value}) == {value} else => $abort(\"conversion\")";
+        var source = $"func convert<T>(value?: ref/T, n?: {sourceType}) -> {targetType} => n@{targetType}\nlet v = true\nrequire convert(v, {value}) == {value} else => $abort(\"conversion\")";
         ScalarEmissionTest.EmitFixture("SharedConversion" + name, source, string.Empty);
     }
 
@@ -26,7 +26,7 @@ public class SharedConversionEmissionTest
     [InlineData("WidenNegative", "i8", "u16", "-1")]
     public void InvalidConversionsAbort(string name, string sourceType, string targetType, string value)
     {
-        var header = $"func convert<T>(value: ref/T, n: {sourceType}) -> {targetType} => n@{targetType}";
+        var header = $"func convert<T>(value?: ref/T, n?: {sourceType}) -> {targetType} => n@{targetType}";
         var source = header + $"\nlet v = true\nlet result = convert(v, {value})";
         var column = header.IndexOf("n@", StringComparison.Ordinal) + 1;
         ScalarEmissionTest.EmitFixture("SharedConversion" + name, source, string.Empty, 1, $"Hello.kimi:1:{column}: abort KIMI_E_INT_CONVERSION: Integer conversion out of range\n");
@@ -34,5 +34,5 @@ public class SharedConversionEmissionTest
 
     [Fact]
     public void ConditionalConversionsPreserveChecksAndResultArrivals()
-        => ScalarEmissionTest.EmitFixture("SharedConversionPhi", "func convert<T>(value: ref/T, flag: bool, n: i64) -> u8 => if flag => n@u8 else => 0\nlet v = true\nrequire convert(v, true, 255) == 255 and convert(v, false, -1) == 0 else => $abort(\"result\")", string.Empty);
+        => ScalarEmissionTest.EmitFixture("SharedConversionPhi", "func convert<T>(value?: ref/T, flag?: bool, n?: i64) -> u8 => if flag => n@u8 else => 0\nlet v = true\nrequire convert(v, true, 255) == 255 and convert(v, false, -1) == 0 else => $abort(\"result\")", string.Empty);
 }

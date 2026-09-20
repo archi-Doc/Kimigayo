@@ -83,8 +83,8 @@ public class ProjectedConstraintCallBindingTest
     public void LateInvalidWitnessCannotMakeNormalizedConstraintUsable(string access, bool valid)
     {
         var source = access + " contract Hidden\n    associate Value\npublic struct Local\n    Self is Hidden\n    associate Hidden.Value is i32\n" + Source("Source.Origin.Item", "i32")
-            .Replace("associate Item", "associate Item\n    func f(self: ref/Self, x: i32) -> i32", StringComparison.Ordinal)
-            .Replace("associate Origin.Item is i32", "associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.Hidden.Value) -> i32 => x", StringComparison.Ordinal);
+            .Replace("associate Item", "associate Item\n    func f(self: ref/Self, x?: i32) -> i32", StringComparison.Ordinal)
+            .Replace("associate Origin.Item is i32", "associate Origin.Item is i32\n    public func f(self: ref/Self, x?: Local.Hidden.Value) -> i32 => x", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         AssertCall(c, valid);

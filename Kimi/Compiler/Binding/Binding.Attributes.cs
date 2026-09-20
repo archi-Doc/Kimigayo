@@ -131,7 +131,7 @@ public sealed partial class Binding
         }
 
         // SPEC 22.3.1: a direct group or receiverless struct type function without
-        // generic/Origin parameters, specializations or default/optional arguments.
+        // generic/Origin parameters, specializations or argument defaults.
         static bool IsImportShape(FunctionKoto function)
         {
             if ((function.Modifier & ModifierKind.Unsafe) == 0 || function.BoundSymbol is not { ReceiverIndex: < 0 } symbol ||
@@ -143,7 +143,7 @@ public sealed partial class Binding
 
             foreach (var parameter in function.Parameters)
             {
-                if (parameter.IsOptional || parameter.DefaultValue is not null)
+                if (parameter.DefaultValue is not null)
                 {
                     return false;
                 }

@@ -612,7 +612,7 @@ public sealed partial class Binding
             if (symbol.ReceiverIndex >= 0)
             {
                 var receiver = function.Parameters[symbol.ReceiverIndex];
-                if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.IsOptional || receiver.DefaultValue is not null)
+                if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.IsNameOptional || receiver.DefaultValue is not null)
                 {
                     Fail(function, BindingFailure.InvalidTypeFormation);
                 }

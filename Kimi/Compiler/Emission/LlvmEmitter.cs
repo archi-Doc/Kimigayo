@@ -253,7 +253,7 @@ public sealed class LlvmEmitter
             {
                 var parameter = function.Parameters[i];
                 if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
-                    ((parameter.IsOptional || parameter.DefaultValue is not null) && !ScalarDefaults.Supports(function, i)) ||
+                    (parameter.DefaultValue is not null && !ScalarDefaults.Supports(function, i)) ||
                     (ReferenceTypes.IsString(parameter.Type.BoundType) && (parameter.Type.BoundType!.Origin is not { Kind: OriginKind.Input } origin ||
                         !ReferenceEquals(origin.Binder, function) || origin.Slot != i)))
                 {

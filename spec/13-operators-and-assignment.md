@@ -103,7 +103,7 @@ Built-in comparisons do not implicitly adapt an owned operand to match a safe-bo
 On normal completion, comparison-only Loans end after the comparison, and the `bool` result keeps no operand Loan. They also end if a control transfer abandons the comparison. Existing Loans keep their own lifetimes, and temporary operands keep their [normal temporary lifetimes](03-types-and-values.md#362-lifetime-and-borrowing); ending an inspection Loan does not destroy a temporary early. Abort follows §17.3.
 
 ```kimi
-func take(text: string) -> string => text
+func take(text?: string) -> string => text
 
 let text = "a"
 let same = text == "a" // Shared inspection; text is not Moved.
@@ -113,7 +113,7 @@ Console.writeLine(text) // Allowed: the completed comparison's Loan has ended.
 ```
 
 ```kimi
-func same(left: ref/string, right: ref/string) -> bool
+func same(left?: ref/string, right?: ref/string) -> bool
     return left == right // UTF-8 contents, not reference addresses.
 
 let text = "hello"
@@ -304,10 +304,10 @@ Ordinary initialization, access, reborrow, Loan and Origin checks apply. Shared 
 The effective static Type and declared constraints are used; an inventory of derived Types or an optimizer's guess of the Dynamic Type is not Sealed evidence. Open Views, runtime Contract Views and base subobjects do not qualify. No ordinary argument receives an implicit payload projection; only a selected same-complete-Type borrowed receiver may use the implicit path of §12.4.4.
 
 ```kimi
-func borrowPayload<T>(source: objref/T) -> ref{source}/T
+func borrowPayload<T>(source?: objref/T) -> ref{source}/T
     T is Sealed
     return source@ref/T
-func borrowPayloadMut<T>(source: objuniq/T) -> uniq{source}/T
+func borrowPayloadMut<T>(source?: objuniq/T) -> uniq{source}/T
     T is Sealed
     return source@uniq/T
 
@@ -424,7 +424,7 @@ A checked cast (§13.6.2) is needed when the source view cannot guarantee the ta
 
 ### 13.5.8. Object ownership creation and sharing
 
-These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. `T` is a valid concrete object payload Core, and `S` a valid complete `rc`/`arc` handle Type. Eligibility is an intrinsic formation rule, not a user Contract, and does not extend the current object and runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
+These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. Both labels permit name omission (`value?` or `build?` in declarations); every argument value is required. The Weak operations in §13.5.9 likewise permit omission of their `value` label. `T` is a valid concrete object payload Core, and `S` a valid complete `rc`/`arc` handle Type. Eligibility is an intrinsic formation rule, not a user Contract, and does not extend the current object and runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
 
 | API | Input -> result | Contract |
 | --- | --- | --- |
@@ -477,7 +477,7 @@ Full-Type Origins and actual Loan provenance are preserved through generic calls
 ```kimi
 struct Item
     let value: i32
-    public init(value: i32)
+    public init(value?: i32)
         self.value = value
 
 func expired() -> Weak<rc/Item>
@@ -494,7 +494,7 @@ let moved = other // Move, with no count increment.
 ```kimi
 struct Node
     public let selfWeak: Weak<rc/Node>
-    public init(selfWeak: Weak<rc/Node>)
+    public init(selfWeak?: Weak<rc/Node>)
         self.selfWeak = selfWeak
 
 let build = func [] (weak: Weak<rc/Node>) -> Node

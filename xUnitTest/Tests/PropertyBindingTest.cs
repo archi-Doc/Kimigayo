@@ -246,14 +246,14 @@ public class PropertyBindingTest
     [InlineData("++value.item")]
     public void StandardWritesAndUpdatesRequireTheSetterPermission(string expression)
     {
-        var c = Parse($"struct S\n    public var item: i32\n        private set\nfunc write(value: uniq/S)\n    {expression}");
+        var c = Parse($"struct S\n    public var item: i32\n        private set\nfunc write(value?: uniq/S)\n    {expression}");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void SimpleWriteDoesNotRequireTheGetterPermission()
     {
-        var c = Parse("struct S\n    public var item: i32\n        private get\nfunc write(value: uniq/S)\n    value.item = 1");
+        var c = Parse("struct S\n    public var item: i32\n        private get\nfunc write(value?: uniq/S)\n    value.item = 1");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -319,7 +319,7 @@ public class PropertyBindingTest
     [Fact]
     public void OrdinaryLookupSharesInheritedPropertyTypeSubstitution()
     {
-        var c = Parse("open struct Base<T>\n    public var item: T\nstruct S: Base<i32>\nfunc read(value: ref/S) -> i32 => value.item");
+        var c = Parse("open struct Base<T>\n    public var item: T\nstruct S: Base<i32>\nfunc read(value?: ref/S) -> i32 => value.item");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var member = Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(x => x.Right.ToString() == "item");
         Assert.Same(Property(c, "Base", "item").Symbol, member.BoundSymbol);
@@ -329,7 +329,7 @@ public class PropertyBindingTest
     [Fact]
     public void CallablePropertyUseRemainsPendingUntilExpressionOperationChecking()
     {
-        var c = Parse("struct S\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 0\nfunc read(value: ref/S) -> i32 => value.item");
+        var c = Parse("struct S\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 0\nfunc read(value?: ref/S) -> i32 => value.item");
         Assert.False(c.Bind().IsComplete);
         Assert.True(Property(c, "S", "item").IsVerified);
     }

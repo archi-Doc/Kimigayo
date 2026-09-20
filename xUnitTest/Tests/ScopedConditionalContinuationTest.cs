@@ -9,8 +9,8 @@ namespace XunitTest;
 [TestClass(DisableParallelization = true)]
 public class ScopedConditionalContinuationTest
 {
-    private const string Default = "func value(c: bool, y?: i32 = (scope: do\n    var n: i32\n    if c\n        loop => continue\n        n = 1\n    else\n        loop => continue\n        n = 2\n    exit to scope: n\n)) -> i32 => y\n";
-    private const string MissingConditionDefault = "func value(c: bool, y?: i32 = (do => if (loop => continue) => 1 else => 2)) -> i32 => y\n";
+    private const string Default = "func value(c?: bool, y?: i32 = (scope: do\n    var n: i32\n    if c\n        loop => continue\n        n = 1\n    else\n        loop => continue\n        n = 2\n    exit to scope: n\n)) -> i32 => y\n";
+    private const string MissingConditionDefault = "func value(c?: bool, y?: i32 = (do => if (loop => continue) => 1 else => 2)) -> i32 => y\n";
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
 
     [Theory]
@@ -48,7 +48,7 @@ public class ScopedConditionalContinuationTest
     [InlineData("return", "Console.writeLine(s)\n            return")]
     public void ScopedBranchMovesReachTheOuterContinuation(string yes, string no)
     {
-        var c = MinimalEmissionTest.Analyze("func f(c: bool, s: string)\n    do\n        if c\n            " + yes + "\n        else\n            " + no + "\n    Console.writeLine(s)");
+        var c = MinimalEmissionTest.Analyze("func f(c?: bool, s?: string)\n    do\n        if c\n            " + yes + "\n        else\n            " + no + "\n    Console.writeLine(s)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -58,7 +58,7 @@ public class ScopedConditionalContinuationTest
     public void NestedScopesRetainTheJoinedCheckingAssignments()
         => ScalarEmissionTest.EmitFixture(
             "NeverScopedConditional" + Configuration + "Nested",
-            "func f(c: bool)\n    var x: i32\n    do\n        do\n            if c\n                return\n                x = 1\n            else\n                return\n                x = 2\n    let y = x\n    Console.writeLine(\"bad\")\nf(true)\nf(false)\nConsole.writeLine(\"done\")",
+            "func f(c?: bool)\n    var x: i32\n    do\n        do\n            if c\n                return\n                x = 1\n            else\n                return\n                x = 2\n    let y = x\n    Console.writeLine(\"bad\")\nf(true)\nf(false)\nConsole.writeLine(\"done\")",
             "done\n");
 
     [Theory]
@@ -102,7 +102,7 @@ public class ScopedConditionalContinuationTest
     [Theory]
     [InlineData("BothWrite", "var x: i32\ndo\n    if stop() => x = 1 else => x = 2\nlet y = x")]
     [InlineData("NoElse", "var x = 1\ndo\n    if stop() => ()\nlet y = x")]
-    [InlineData("Borrow", "func inspect(s: ref/string, b: bool) => ()\nvar s = \"s\"\ninspect(s, do => if stop() => true else => false)\ns = \"new\"\nConsole.writeLine(s)")]
+    [InlineData("Borrow", "func inspect(s?: ref/string, b?: bool) => ()\nvar s = \"s\"\ninspect(s, do => if stop() => true else => false)\ns = \"new\"\nConsole.writeLine(s)")]
     public void ScopedMissingConditionsHaveNoRuntimeSuccessor(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverScopedCondition" + Configuration + name, Stop + source, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 

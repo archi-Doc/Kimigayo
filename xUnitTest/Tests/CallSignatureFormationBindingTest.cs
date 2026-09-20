@@ -16,7 +16,7 @@ public class CallSignatureFormationBindingTest
     [InlineData("() -> Box<string>")]
     public void InvalidSignatureCannotPublishCall(string type)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value?: " + type + ") -> " + type + " => value\n    func call(value?: " + type + ") => take(value)");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Call(c).BoundCall);
@@ -41,7 +41,7 @@ public class CallSignatureFormationBindingTest
     [InlineData("(Box<i32>, i32)")]
     public void ValidSignaturesRemainCallable(string type)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value?: " + type + ") -> " + type + " => value\n    func call(value?: " + type + ") => take(value)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(Call(c).BoundCall);
         Assert.True(Reload(c).Bind().IsComplete);
@@ -50,7 +50,7 @@ public class CallSignatureFormationBindingTest
     [Fact]
     public void GenericSignatureUsesItsDefinitionConstraints()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<U>(value: Box<U>)\n        U is i32\n        ()\n    func call(value: Box<i32>) => take(value)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<U>(value?: Box<U>)\n        U is i32\n        ()\n    func call(value?: Box<i32>) => take(value)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(Call(c).BoundCall);
     }
@@ -83,7 +83,7 @@ public class CallSignatureFormationBindingTest
     [Fact]
     public void WarmSignatureChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: unsafe/Box<i32>) => ()\n    func call(value: unsafe/Box<i32>) => take(value)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value?: unsafe/Box<i32>) => ()\n    func call(value?: unsafe/Box<i32>) => take(value)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

@@ -51,7 +51,7 @@ Types are normalized by resolved Symbol and Kotonoha/version, expanding transpar
 
 These rewrites apply recursively, and comparison is by structural alpha-equivalence. There is no simplification from accidental equality after instantiation or from arbitrary Constraint proofs. The pair target `T` alone is not `Slot(i)`. Slot kind controls binding and validation but cannot alone distinguish overloads: `f<T>(value: T)` and `f<s/U>(value: s/U)` conflict. `ref/T` and `uniq/T`, including as receivers, remain distinct. Applied Semantics distinguish use-site Types, not Container identities.
 
-For Signature comparison only, Origin names, lists and lifetime relations are excluded; complete Types and Origin contracts are kept for semantic checks. Return Types, external and internal parameter names, defaults, optionality, access, `unsafe` and Constraints cannot independently distinguish overloads.
+For Signature comparison only, Origin names, lists and lifetime relations are excluded; complete Types and Origin contracts are kept for semantic checks. Return Types, external and internal parameter names, defaults, name-omission permissions, access, `unsafe` and Constraints cannot independently distinguish overloads.
 
 An **API signature**, used for [accessibility checks](#932-api-signature-accessibility), includes the Types and requirements a declaration exposes, including results and Constraints. It is broader than the Signature used for overload identity; exclusion from overload identity does not exempt a component from accessibility checking.
 
@@ -60,8 +60,8 @@ struct Reader
     func read(self: ref/Self) -> i32 => 0
     func read(self: uniq/Self) -> i32 => 0 // Distinct receiver Semantics.
 
-func identity<T>(value: T) -> T => value
-func identity<U>(value: U) -> U => value // Error: same normalized Signature.
+func identity<T>(value?: T) -> T => value
+func identity<U>(value?: U) -> U => value // Error: same normalized Signature.
 ```
 
 Duplicate Signatures are declaration errors. Distinct Symbols imported from different Containers may have the same shape; a use is then ambiguous unless the overload rules select one. Header-name agreement between fragments is separate from parameter-name normalization between different function declarations.
@@ -175,14 +175,14 @@ public group Api
     private struct Hidden
     public struct Box<T>
 
-    public func identity<T>(value: T) -> T => value
-    public func expose(value: Box<Hidden>) -> () => () // Error.
-    internal func leak(value: Hidden) -> () => ()      // Error: wider than Hidden.
-    private func keep(value: Hidden) -> Hidden
+    public func identity<T>(value?: T) -> T => value
+    public func expose(value?: Box<Hidden>) -> () => () // Error.
+    internal func leak(value?: Hidden) -> () => ()      // Error: wider than Hidden.
+    private func keep(value?: Hidden) -> Hidden
         return identity<Hidden>(value) // Allowed: Hidden is accessible here.
 
     private group Implementation
-        public func keep(value: Hidden) -> Hidden => value
+        public func keep(value?: Hidden) -> Hidden => value
         // Allowed: both keep and Hidden are accessible only within Api's body.
 ```
 
@@ -240,9 +240,9 @@ After lookup stops, wrong Type arguments, labels, constraints or argument Types,
 
 ```kimi
 group Outer
-    func f(value: i32) -> i32 => value
+    func f(value?: i32) -> i32 => value
     group Inner
-        func f(value: string) -> string => value
+        func f(value?: string) -> string => value
         func test() -> ()
             f(1)           // Error: Inner.f requires string.
             ::Outer.f(1)   // Explicitly selects Outer.f.
@@ -287,7 +287,7 @@ group Config
     public var count: i32 = 3
 
 // Settings has a public instance Property count.
-func read(Config: ref/Settings) -> i32
+func read(Config?: ref/Settings) -> i32
     return Config.count     // Error: both Type and Value paths succeed.
 // ::Config.count selects the group; renaming the parameter selects the value.
 ```
@@ -347,7 +347,7 @@ struct View<T> {source}
     public contract Source
         func read(self: ref/Self) -> ref{source}/T
 
-func inspect<T> {a}(value: View<T>.Tag{source => a}) => ()
+func inspect<T> {a}(value?: View<T>.Tag{source => a}) => ()
 ```
 
 `View<T>.Source{source => a}` keeps the same inherited binding; an inner declaration's own Origin slots use the same trailing list. Ordinary Type annotations use the position-specific Origin omission rules. Contract references, aliases and standalone Container qualifiers must explicitly supply any unbound Origins; `static` is never invented and a lexical Self environment is never modified.

@@ -136,14 +136,14 @@ Dependencies=
 ```kimi
 // Math/Arithmetic.kimi
 public group Arithmetic
-    public func twice(value: i32) -> i32 => value + value
+    public func twice(value?: i32) -> i32 => value + value
 ```
 
 ```kimi
 // Geometry/Measure.kimi
 alias Math.Arithmetic
 public group Measure
-    public func doubled(value: i32) -> i32 => twice(value)
+    public func doubled(value?: i32) -> i32 => twice(value)
 ```
 
 `PackageSources` is an array of `{PackageId, PackageVersion, Package}` or `{Store}` records; a Store is a directory. For an unfixed SourceId, the explicit packages and the store release tables are candidates for the exact ID/version. Exactly one candidate SourceId is required; conflicting candidates are errors, not first-match choices. Release tables are lookup indexes, not integrity or semantic proof, so the selected manifest and bytes are validated.

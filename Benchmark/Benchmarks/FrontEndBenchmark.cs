@@ -14,11 +14,11 @@ public class FrontEndBenchmark
             struct Buffer<s/T>
                 T is Comparable
                 var count: i32
-                func get(index: i32) -> T
+                func get(index?: i32) -> T
                     if index < 0
                         return fallback
                     return values[index]
-        func transform<T>(value: T) -> T
+        func transform<T>(value?: T) -> T
             T is Comparable
             let pair: (T, T) = (value, value)
             let text = "result: \(pair.0)"
@@ -37,11 +37,11 @@ public class FrontEndBenchmark
             property count: i32 has get
         open struct Parent
         struct Child : Parent
-            init(value: i32) : base(value)
+            init(value?: i32) : base(value)
                 return
             deinit
                 return
-        func transform<length N, T>(values: [N of T]) -> [N of T]
+        func transform<length N, T>(values?: [N of T]) -> [N of T]
             T is Comparable
             require valid else return fallback
             let visit = func[values@ref, var count](x) => x

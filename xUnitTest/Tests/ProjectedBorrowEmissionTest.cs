@@ -7,11 +7,11 @@ namespace XunitTest;
 
 public class ProjectedBorrowEmissionTest
 {
-    private const string Batch = "struct Batch\n    let prefix: i64\n    let values: [2 of i32]\n    public init(values: [2 of i32])\n        self.prefix = 99\n        self.values = values\n    public func view(self: ref/Self) -> ref{self}/[2 of i32] => self.values@ref/[2 of i32]\n";
+    private const string Batch = "struct Batch\n    let prefix: i64\n    let values: [2 of i32]\n    public init(values?: [2 of i32])\n        self.prefix = 99\n        self.values = values\n    public func view(self: ref/Self) -> ref{self}/[2 of i32] => self.values@ref/[2 of i32]\n";
 
     [Theory]
     [InlineData("Field", "let b = Batch.init(values)\nlet r = b.view()\nrequire r[0] == 6 and r[1] == 7 else => $abort(\"projection\")")]
-    [InlineData("Forward", "func forward(b: ref/Batch) -> ref{b}/[2 of i32] => b.view()\nlet b = Batch.init(values)\nrequire forward(b@ref)[1] == 7 else => $abort(\"forward\")")]
+    [InlineData("Forward", "func forward(b?: ref/Batch) -> ref{b}/[2 of i32] => b.view()\nlet b = Batch.init(values)\nrequire forward(b@ref)[1] == 7 else => $abort(\"forward\")")]
     [InlineData("Repeated", "let b = Batch.init(values)\nvar n = 0\nfor i in b.view().indices => n += b.view()[i]\nrequire n == 13 else => $abort(\"repeat\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("ProjectedBorrow" + name, Batch + "let values: [2 of i32] = [6, 7]\n" + source, string.Empty);
@@ -21,7 +21,7 @@ public class ProjectedBorrowEmissionTest
     [InlineData("Empty", "[0 of i32]", "[]", "require r.length == 0 else => $abort(\"generic\")")]
     public void GenericField(string name, string type, string value, string check)
     {
-        var source = "struct Box<T>\n    let prefix: isize\n    let values: T\n    public init(prefix: isize, values: T)\n        self.prefix = prefix\n        self.values = values\n    public func view(self: ref/Self) -> ref{self}/T => self.values@ref/T\n" +
+        var source = "struct Box<T>\n    let prefix: isize\n    let values: T\n    public init(prefix?: isize, values?: T)\n        self.prefix = prefix\n        self.values = values\n    public func view(self: ref/Self) -> ref{self}/T => self.values@ref/T\n" +
             $"let values: {type} = {value}\nlet b = Box<{type}>.init(99, values)\nlet r = b.view()\n{check}";
         ScalarEmissionTest.EmitFixture("ProjectedBorrowGeneric" + name, source, string.Empty);
     }
@@ -32,7 +32,7 @@ public class ProjectedBorrowEmissionTest
     public void RejectsCorruptProjectedAddressAndReanalysisRecovers(bool generic)
     {
         var declaration = generic
-            ? "struct Box<T>\n    let values: T\n    public init(values: T) => self.values = values\n    public func view(self: ref/Self) -> ref{self}/T => self.values@ref/T\n"
+            ? "struct Box<T>\n    let values: T\n    public init(values?: T) => self.values = values\n    public func view(self: ref/Self) -> ref{self}/T => self.values@ref/T\n"
             : Batch;
         var source = declaration + "let values: [2 of i32] = [6, 7]\nlet b = " + (generic ? "Box<[2 of i32]>" : "Batch") + ".init(values)\nlet r = b.view()\nlet n = r[1]";
         var c = MinimalEmissionTest.Analyze(source);

@@ -22,12 +22,12 @@ public class MatchEmissionTest
         { "Duplicate", "let text = match 0\n    0 => \"ok\"\n    -0 => \"bad\"\n    _ => \"other\"\nConsole.writeLine(text)", "ok\n" },
         { "BoolCovered", "let text = match false\n    true => \"bad\"\n    false => \"ok\"\n    _ => \"other\"\nConsole.writeLine(text)", "ok\n" },
         { "Nested", "let text = match 1\n    0 => \"bad\"\n    _ => match true\n        true => \"ok\"\n        false => \"bad\"\nConsole.writeLine(text)", "ok\n" },
-        { "Return", "func f(n: i32) -> string\n    match n\n        0 => return \"zero\"\n        _ => return \"other\"\nConsole.writeLine(f(0))", "zero\n" },
+        { "Return", "func f(n?: i32) -> string\n    match n\n        0 => return \"zero\"\n        _ => return \"other\"\nConsole.writeLine(f(0))", "zero\n" },
         { "Loop", "var n = 0\nwhile n < 3\n    match n\n        1 => Console.writeLine(\"one\")\n        _ => ()\n    n += 1", "one\n" },
         { "Grouping", "match 1\n    ((1)) => Console.writeLine(\"ok\")\n    (let other) => ()", "ok\n" },
         { "AllReturnCovered", "func f() -> i32\n    match 0\n        _ => return 1\n        0 => ()\n    return 2\nif f() == 1 => Console.writeLine(\"ok\")", "ok\n" },
         { "CoveredNestedPhi", "let text = match 0\n    _ => \"ok\"\n    0 => if true => \"bad\" else => \"other\"\nConsole.writeLine(text)", "ok\n" },
-        { "CoveredCall", "func echo(text: string) -> string => text\nlet text = match 0\n    _ => \"ok\"\n    0 => echo(\"bad\")\nConsole.writeLine(text)", "ok\n" },
+        { "CoveredCall", "func echo(text?: string) -> string => text\nlet text = match 0\n    _ => \"ok\"\n    0 => echo(\"bad\")\nConsole.writeLine(text)", "ok\n" },
         { "ComparisonLoan", "let text = \"a\"\nif text == (match 0\n    0 => \"a\"\n    _ => \"b\"\n) => Console.writeLine(text)", "a\n" },
         { "Unicode", "match \"日本語\\0\"\n    \"日本語\" => Console.writeLine(\"bad\")\n    \"日本語\\0\" => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Continue", "var n = 0\nwhile n < 3\n    n += 1\n    match n\n        1 => continue\n        2 => Console.writeLine(\"two\")\n        _ => exit", "two\n" },
@@ -50,7 +50,7 @@ public class MatchEmissionTest
         { "OwnedBinding", "let text = \"a\"\nmatch text\n    let other => Console.writeLine(other)", "a\n", "a=1" },
         { "OwnedWildcard", "match \"a\"\n    _ => Console.writeLine(\"ok\")", "ok\n", "a=1;ok=1" },
         { "OwnedResult", "let result = match \"a\"\n    let other => other\nConsole.writeLine(result)", "a\n", "a=1" },
-        { "OwnedCall", "func echo(text: string) -> string => text\nmatch echo(\"a\")\n    let other => Console.writeLine(other)", "a\n", "a=1" },
+        { "OwnedCall", "func echo(text?: string) -> string => text\nmatch echo(\"a\")\n    let other => Console.writeLine(other)", "a\n", "a=1" },
         { "OwnedSelection", "match (if true => \"a\" else => \"b\")\n    let other => Console.writeLine(other)", "a\n", "a=1;b=0" },
         { "Replacement", "var text = \"a\"\ntext = match text\n    \"b\" => \"c\"\n    let other => other\nConsole.writeLine(text)", "a\n", "a=1;b=0;c=0" },
         { "OwnedLoop", "var n = 0\nwhile n < 3\n    match \"a\"\n        \"b\" => ()\n        let text => Console.writeLine(text)\n    n += 1", "a\na\na\n", "a=3;b=0" },
@@ -92,7 +92,7 @@ public class MatchEmissionTest
         {
             "abrupt" => "func f()\n    match (return)\n        _ => Console.writeLine(\"unused\")\nf()",
             "covered" => "match 0\n    _ => ()\n    0\n        var text = \"a\"\n        if true => Console.writeLine(text)\n        text = \"b\"",
-            _ => "func echo(text: string) -> string => text\nlet result = match echo(\"a\")\n    \"b\" => \"other\"\n    let text => text\nConsole.writeLine(result)",
+            _ => "func echo(text?: string) -> string => text\nlet result = match echo(\"a\")\n    \"b\" => \"other\"\n    let text => text\nConsole.writeLine(result)",
         };
         var c = MinimalEmissionTest.Analyze(source);
         for (var i = 0; i < 100; i++)
@@ -126,7 +126,7 @@ public class MatchEmissionTest
     [InlineData("usize", "18446744073709551615")]
     public void FullWidthPatterns(string type, string literal)
     {
-        ScalarEmissionTest.EmitFixture("MatchWidth" + type, $"func f(n: {type}) -> string\n    return match n\n        {literal} => \"ok\"\n        _ => \"bad\"\nConsole.writeLine(f({literal}))", "ok\n");
+        ScalarEmissionTest.EmitFixture("MatchWidth" + type, $"func f(n?: {type}) -> string\n    return match n\n        {literal} => \"ok\"\n        _ => \"bad\"\nConsole.writeLine(f({literal}))", "ok\n");
     }
 
     [Theory]
@@ -177,7 +177,7 @@ public class MatchEmissionTest
     [Fact]
     public void SubjectAliasesAcquiredStorageAndFinalArmHasNoTest()
     {
-        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text\nmatch echo(\"a\")\n    \"\" => ()\n    let text => Console.writeLine(text)");
+        var c = MinimalEmissionTest.Analyze("func echo(text?: string) -> string => text\nmatch echo(\"a\")\n    \"\" => ()\n    let text => Console.writeLine(text)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count > 0);
         var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.SlotAddresses.Count == body.Places.Count);

@@ -170,7 +170,7 @@ public class BlockSyntaxParseTest
     public void ParsesUnsafeFunctionModifierWithoutReservingNamesOrSemantics()
     {
         var tree = ParseSuccess("""
-            public unsafe func read(pointer: unsafe/i32) -> i32
+            public unsafe func read(pointer?: unsafe/i32) -> i32
                 unsafe => return *pointer
             """);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(Items(tree)));

@@ -26,14 +26,14 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref{source}/T`; backing Origin is explicit or inferred under ordinary rules |
 | `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and consuming Iterable conformance |
 | `Stringify` | `func stringify(self: ref/Self) -> string`; returns an independent owned string |
-| `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
-| `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
+| `Equatable` | `func equals(self: ref/Self, other?: ref/Self) -> bool` |
+| `Comparable: Equatable` | `func compare(self: ref/Self, other?: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
 | `Iterator` | `associate Element`; `func next(self: uniq/Self) -> Option<Self.Element>` |
 | `Iterable` | `associate Element`; `associate Iterator is ::Kimi.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
 | Copy, Owned, Callable, Sealed | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
 | Whole-value update intrinsics | `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts |
-| `Console.writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
+| `Console.writeLine` | `public func writeLine(text?: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
 | `Test.tempDirectory` | `public func tempDirectory() -> string`; independently owned case-directory path, restricted to test-only bodies under the [test profile](testing-profile.md#environment-and-temporary-directory) |
 
 Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
@@ -186,12 +186,12 @@ Shared code reaches a key through a supplied initialize-and-address operation (�
 
 `#LibraryImport("library", "symbol")` on a bodyless unsafe func selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is a case-sensitive logical native requirement name belonging to the defining Kotonoha (§20.8.2), not a consumer alias or DLL path. Requirements may come from NativeRequirements or a self-targeted combined NativeLibraries record. The second argument is the exact external symbol, independently of the source function name. Actual supply/kind and member-closure validation occur under §20.8.2 without replacing the following source/ABI obligations.
 
-Allow imports only directly in group/rootgroup or as receiverless struct type functions. Reject receivers, generic/Origin parameters, default/optional arguments, varargs, specializations, and executable bodies. Calls are direct only; unsafe functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
+Allow imports only directly in group/rootgroup or as receiverless struct type functions. Reject receivers, generic/Origin parameters, parameter defaults, varargs, specializations, and executable bodies. Ordinary parameter-name rules, including `?` and external/internal renaming, apply; name omission changes source argument matching only, not the foreign ABI. Every argument value is required. Ordinary parameter-name rules, including `?` and external/internal renaming, apply; name omission changes source argument matching only, not the foreign ABI. Every argument value is required. Calls are direct only; unsafe functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
 
 ```kimi
 group Native
     #LibraryImport("observer", "observe_record")
-    public unsafe func observe(record: unsafe/NativeRecord) -> ()
+    public unsafe func observe(record?: unsafe/NativeRecord) -> ()
 ```
 
 NativeRecord can be the C-layout example in §21.1.3; the corresponding C declaration is `void observe_record(NativeRecord *record);`. The raw pointer is not read-only. Layout, validity, lifetime, writes, retention, ownership, and active Loans remain the caller's contract; this example supplies no new pointer-acquisition or raw-storage construction API.
@@ -239,7 +239,7 @@ writeLine("Hello")
 
 There is no `Kimi.writeLine`, old `Core` compatibility reference, or forwarding API. `Core` is an ordinary user name. Console is a group, not a value or special syntax. An intrinsic is a declaration whose Identity has compiler-recognized meaning; no public `Intrinsic` namespace or `Kimi.Intrinsic` group is introduced. Aliases retain that Identity. `$abort`, `$expect`, `$require`, and the Composition Root retain their existing roles.
 
-Kimi provides the public ordinary function `writeLine(text: string) -> ()` as a direct member of its ordinary public `group Console`. The mandatory Kimi default alias makes `Console.writeLine` available. It does not recursively open Console. `::Kimi.Console.writeLine` identifies the required Symbol regardless of local shadowing. It is a safe, nongeneric function with one required owned string argument and no receiver, defaults, formatting parameters, or result borrow. The compiler/runtime supplies its implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
+Kimi provides the public ordinary function `writeLine(text?: string) -> ()` as a direct member of its ordinary public `group Console`. The mandatory Kimi default alias makes `Console.writeLine` available. It does not recursively open Console. `::Kimi.Console.writeLine` identifies the required Symbol regardless of local shadowing. It is a safe, nongeneric function with one required owned string argument and no receiver, defaults, formatting parameters, or result borrow. The compiler/runtime supplies its implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
 
 Acquire text once under Copy/Move rules and write all its UTF-8 bytes plus one LF to standard output. NUL is data. Preserve contents without normalization, CRLF conversion, or locale encoding. Failure may leave partial output; no rollback or device atomicity is promised. Return Unit after host acceptance and flushing this call’s runtime buffer, not necessarily display or durable storage. Failure to complete initiates Abort under normal diagnostic/termination rules, even if stdout is unavailable. Destroy the acquired argument on normal return. Diagnose an unsupported target/feature if the backend cannot provide this operation.
 

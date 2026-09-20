@@ -81,7 +81,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void UsesOriginalSpecializationContractAndEffectiveAccess()
     {
-        var tree = DocumentationCommentTest.Parse("/// original\npublic func weight<T>(value: ref/T) -> i32 => 1\n/// implementation\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n    /// private container\n    public func f() => ()");
+        var tree = DocumentationCommentTest.Parse("/// original\npublic func weight<T>(value?: ref/T) -> i32 => 1\n/// implementation\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n    /// private container\n    public func f() => ()");
         var c = tree.RootKoto.CodeContext.Compilation;
         Assert.True(c.Bind().IsComplete);
         var comments = Assert.Single(tree.DocumentationSources).Comments;
@@ -130,7 +130,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void DocumentationDoesNotChangeBindingAnalysisLoweringOrEmission()
     {
-        const string source = "/// Documentation <T>\n/// - missing: text\nfunc twice(x: i32) -> i32 => x * 2\n/// Local\nlet value = twice(21)\nConsole.writeLine(\"ok\")";
+        const string source = "/// Documentation <T>\n/// - missing: text\nfunc twice(x?: i32) -> i32 => x * 2\n/// Local\nlet value = twice(21)\nConsole.writeLine(\"ok\")";
         var ordinary = Compile(false);
         var documented = Compile(true);
         Assert.Equal(ordinary, documented);

@@ -19,7 +19,7 @@ public class RuntimeTypeTest
     [InlineData("objuniq")]
     public void ObjectSemanticsUseSharedAccess(string semantics)
     {
-        var c = Parse($"open struct Animal\nstruct Dog: Animal\nfunc f(x: {semantics}/Animal) -> bool => x is not Dog");
+        var c = Parse($"open struct Animal\nstruct Dog: Animal\nfunc f(x?: {semantics}/Animal) -> bool => x is not Dog");
         AssertBound(c);
         var test = Test(c);
         Assert.True(test.IsNegated);
@@ -41,13 +41,13 @@ public class RuntimeTypeTest
     [InlineData("x is not Dog", true)]
     public void RoundTripRetainsTypeSyntaxAndNegation(string expression, bool negated)
     {
-        var c = Parse("struct Dog\nfunc f(x: objref/Dog) -> bool => " + expression);
+        var c = Parse("struct Dog\nfunc f(x?: objref/Dog) -> bool => " + expression);
         var test = Test(c);
         Assert.True(test.IsRuntimeTest);
         Assert.Equal(negated, test.IsNegated);
         Assert.IsType<IdentifierNameKoto>(test.Right);
         Assert.Equal(expression, test.ToString());
-        var roundTrip = Parse("struct Dog\nfunc f(x: objref/Dog) -> bool => " + test);
+        var roundTrip = Parse("struct Dog\nfunc f(x?: objref/Dog) -> bool => " + test);
         Assert.Equal(negated, Test(roundTrip).IsNegated);
         AssertBound(roundTrip);
         var flow = c.AnalyzeControlFlow();
@@ -59,12 +59,12 @@ public class RuntimeTypeTest
     [Fact]
     public void PrefixNotKeepsItsOrdinaryPrecedence()
     {
-        var c = Parse("struct Dog\nfunc f(x: objref/Dog) -> bool => not x is Dog");
+        var c = Parse("struct Dog\nfunc f(x?: objref/Dog) -> bool => not x is Dog");
         var test = Test(c);
         Assert.IsType<NotKoto>(test.Left);
         Assert.False(test.IsNegated);
         Assert.False(c.Bind().IsComplete);
-        var grouped = Parse("struct Dog\nfunc f(x: objref/Dog) -> bool => not (x is Dog)");
+        var grouped = Parse("struct Dog\nfunc f(x?: objref/Dog) -> bool => not (x is Dog)");
         AssertBound(grouped);
         Assert.Empty(grouped.AnalyzeControlFlow(grouped.Binding.TypeSystem).Issues);
     }
@@ -74,7 +74,7 @@ public class RuntimeTypeTest
     [InlineData("let b = if flag => x is Dog else => x is not Dog\n    return b")]
     public void TestsSupplyBooleanInference(string body)
     {
-        var c = Parse("struct Dog\nfunc f(x: objref/Dog, flag: bool) -> bool\n    " + body);
+        var c = Parse("struct Dog\nfunc f(x?: objref/Dog, flag?: bool) -> bool\n    " + body);
         AssertBound(c);
         Assert.Same(BoundType.Boolean, Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "b").BoundType);
         Assert.Empty(c.AnalyzeControlFlow(c.Binding.TypeSystem).Issues);
@@ -90,15 +90,15 @@ public class RuntimeTypeTest
     [InlineData("Choice", "x")]
     public void NonObjectOperandsAreRejected(string type, string operand)
     {
-        var c = Parse($"struct Dog\nenum Choice\n    A\nfunc f(x: {type}) -> bool => {operand} is Dog");
+        var c = Parse($"struct Dog\nenum Choice\n    A\nfunc f(x?: {type}) -> bool => {operand} is Dog");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
         Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
     [Theory]
-    [InlineData("contract C\nfunc f(x: objref/C) -> bool => x is Dog")]
-    [InlineData("func f<T>(x: obj/T) -> bool => x is Dog")]
+    [InlineData("contract C\nfunc f(x?: objref/C) -> bool => x is Dog")]
+    [InlineData("func f<T>(x?: obj/T) -> bool => x is Dog")]
     public void UnsupportedObjectCoresCannotBeCertified(string source)
     {
         var c = Parse("struct Dog\n" + source);
@@ -111,7 +111,7 @@ public class RuntimeTypeTest
     [InlineData("Dog")]
     public void ConcreteSelfResolvesToItsStruct(string target)
     {
-        var c = Parse($"struct Dog\n    func f(x: objref/Self) -> bool => x is {target}");
+        var c = Parse($"struct Dog\n    func f(x?: objref/Self) -> bool => x is {target}");
         AssertBound(c);
         Assert.Equal("Dog", Test(c).BoundRuntimeTest!.Value.TargetType.Name);
     }
@@ -123,7 +123,7 @@ public class RuntimeTypeTest
     [InlineData("T", false)]
     public void TargetsRequireExplicitClosedTypeArguments(string target, bool valid)
     {
-        var c = Parse($"struct Animal\nstruct Dog<T>\nfunc f<T>(x: objref/Animal) -> bool => x is {target}");
+        var c = Parse($"struct Animal\nstruct Dog<T>\nfunc f<T>(x?: objref/Animal) -> bool => x is {target}");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
         Assert.Equal(valid, Test(c).BoundRuntimeTest.HasValue);
         if (target is "Dog<T>" or "T")
@@ -138,7 +138,7 @@ public class RuntimeTypeTest
     [InlineData("", "Missing")]
     public void NonStructOrMissingTargetsAreRejected(string declarations, string target)
     {
-        var c = Parse($"struct Dog\n{declarations}\nfunc f(x: objref/Dog) -> bool => x is {target}");
+        var c = Parse($"struct Dog\n{declarations}\nfunc f(x?: objref/Dog) -> bool => x is {target}");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
     }
@@ -149,7 +149,7 @@ public class RuntimeTypeTest
     [InlineData("public", "private", false)]
     public void TargetAndTypeArgumentAccessAreChecked(string targetAccess, string argumentAccess, bool valid)
     {
-        var c = Parse($"struct Animal\ngroup G\n    {targetAccess} struct Dog<T>\n    {argumentAccess} struct Item\nfunc f(x: objref/Animal) -> bool => x is G.Dog<G.Item>");
+        var c = Parse($"struct Animal\ngroup G\n    {targetAccess} struct Dog<T>\n    {argumentAccess} struct Item\nfunc f(x?: objref/Animal) -> bool => x is G.Dog<G.Item>");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
         Assert.Equal(valid, Test(c).BoundRuntimeTest.HasValue);
     }
@@ -157,7 +157,7 @@ public class RuntimeTypeTest
     [Fact]
     public void AssociatedProjectionIsNotAQualifiedStructName()
     {
-        var c = Parse("struct Dog\ncontract C\n    associate Item\nfunc f<T>(x: objref/Dog) -> bool\n    T is C\n    return x is T.Item");
+        var c = Parse("struct Dog\ncontract C\n    associate Item\nfunc f<T>(x?: objref/Dog) -> bool\n    T is C\n    return x is T.Item");
         Assert.False(c.Bind().IsComplete);
         var test = Test(c);
         Assert.Null(test.BoundRuntimeTest);
@@ -168,7 +168,7 @@ public class RuntimeTypeTest
     [Fact]
     public void RebindingUsesTheCurrentAliasAndClearsAnInvalidatedTest()
     {
-        const string Source = "alias A\nstruct Animal\ngroup A\n    public struct Dog\ngroup B\n    public struct Dog\nfunc f(x: objref/Animal) -> bool => x is not Dog";
+        const string Source = "alias A\nstruct Animal\ngroup A\n    public struct Dog\ngroup B\n    public struct Dog\nfunc f(x?: objref/Animal) -> bool => x is not Dog";
         var c = Parse(Source);
         AssertBound(c);
         var test = Test(c);
@@ -196,7 +196,7 @@ public class RuntimeTypeTest
     [Fact]
     public void AGenericSelfRetainsItsUnresolvedArguments()
     {
-        var c = Parse("struct Dog<T>\n    func f(x: objref/Self) -> bool => x is Self");
+        var c = Parse("struct Dog<T>\n    func f(x?: objref/Self) -> bool => x is Self");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
         Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == DiagnosticCode.UnsupportedBinding_Kd);
@@ -205,7 +205,7 @@ public class RuntimeTypeTest
     [Fact]
     public void SourceOriginsAndUnreachableResultsAreRetained()
     {
-        var c = Parse("struct Dog\nfunc f {a}(x: objref{a}/Dog) -> bool\n    return true\n    return (x) is not Dog");
+        var c = Parse("struct Dog\nfunc f {a}(x?: objref{a}/Dog) -> bool\n    return true\n    return (x) is not Dog");
         AssertBound(c);
         var test = Test(c);
         Assert.NotNull(test.BoundRuntimeTest!.Value.OperandType.Origin);
@@ -213,7 +213,7 @@ public class RuntimeTypeTest
         Assert.Empty(flow.Issues);
         Assert.Equal(ControlFlowType.Boolean, flow.Nodes[test].ExpressionType);
         Assert.False(flow.Nodes.ContainsKey(test.Right));
-        var invalid = Parse("struct Dog\nfunc f(x: objref/Dog) -> i32\n    return 0\n    return x is Dog");
+        var invalid = Parse("struct Dog\nfunc f(x?: objref/Dog) -> i32\n    return 0\n    return x is Dog");
         Assert.False(invalid.Bind().IsComplete);
     }
 
@@ -250,14 +250,14 @@ public class RuntimeTypeTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, $"struct Dog\nfunc f(x: objref/Dog) -> bool => x is {target}");
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, $"struct Dog\nfunc f(x?: objref/Dog) -> bool => x is {target}");
         Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !c.Bind().IsComplete);
     }
 
     [Fact]
     public void SemanticsSlashRemainsAnOuterOperator()
     {
-        var c = Parse("struct Dog\nfunc f(x: objref/Dog) -> bool => x is obj/Dog");
+        var c = Parse("struct Dog\nfunc f(x?: objref/Dog) -> bool => x is obj/Dog");
         var test = Test(c);
         Assert.Equal("obj", test.Right.ToString());
         Assert.IsType<SlashKoto>(test.Parent);
@@ -267,7 +267,7 @@ public class RuntimeTypeTest
     [Fact]
     public void RootQualifiedTargetUsesTypeLookup()
     {
-        var c = Parse("struct Animal\ngroup G\n    public struct Dog\nfunc f(x: objref/Animal) -> bool => x is ::G.Dog");
+        var c = Parse("struct Animal\ngroup G\n    public struct Dog\nfunc f(x?: objref/Animal) -> bool => x is ::G.Dog");
         AssertBound(c);
         Assert.Equal("Dog", Test(c).BoundRuntimeTest!.Value.TargetType.Name);
     }
@@ -277,7 +277,7 @@ public class RuntimeTypeTest
     [InlineData("or")]
     public void ShortCircuitConditionsVisitOnlyValueOperands(string operation)
     {
-        var c = Parse($"struct Dog\nfunc f(x: objref/Dog, flag: bool) -> bool\n    require x is not Dog {operation} flag else => return false\n    return true");
+        var c = Parse($"struct Dog\nfunc f(x?: objref/Dog, flag?: bool) -> bool\n    require x is not Dog {operation} flag else => return false\n    return true");
         AssertBound(c);
         var test = Test(c);
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
@@ -289,7 +289,7 @@ public class RuntimeTypeTest
     [Fact]
     public void RequiredCleanupCanStopAValidObjectTypedOperand()
     {
-        var c = Parse("struct Dog\nfunc f(x: objref/Dog) -> bool => (work: do\n    defer => loop => ()\n    exit to work: x\n) is Dog");
+        var c = Parse("struct Dog\nfunc f(x?: objref/Dog) -> bool => (work: do\n    defer => loop => ()\n    exit to work: x\n) is Dog");
         AssertBound(c);
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);
@@ -299,7 +299,7 @@ public class RuntimeTypeTest
     [Fact]
     public void GenericLeadingConstraintContextIsSelectedBeforeLookup()
     {
-        const string Source = "struct Dog\nfunc f<T>(x: objref/Dog)\n    x is Dog\n    ()";
+        const string Source = "struct Dog\nfunc f<T>(x?: objref/Dog)\n    x is Dog\n    ()";
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Source);
         Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
@@ -313,7 +313,7 @@ public class RuntimeTypeTest
     [Fact]
     public void ConstraintNegationRetainsItsRequirementTree()
     {
-        var c = Parse("func f<T>(x: T)\n    T is not Copy\n    ()");
+        var c = Parse("func f<T>(x?: T)\n    T is not Copy\n    ()");
         c.Bind();
         var clause = Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Single();
         Assert.False(clause.IsRuntimeTest);
@@ -326,7 +326,7 @@ public class RuntimeTypeTest
     [Fact]
     public void OwnershipExplicitlyRejectsTheTestAndNeverReadsItsType()
     {
-        var c = Parse("struct Dog\nfunc f(x: objref/Dog) -> bool => x is not Dog");
+        var c = Parse("struct Dog\nfunc f(x?: objref/Dog) -> bool => x is not Dog");
         AssertBound(c);
         Assert.False(c.Ownership.Analyze().IsVerified);
         var test = Test(c);
@@ -341,7 +341,7 @@ public class RuntimeTypeTest
     [Fact]
     public void EvaluationRetainsCallEffectsExactlyOnce()
     {
-        var c = Parse("struct Dog\nfunc obtain(s: string) -> obj/Dog => obtain(s)\nfunc f(s: string) -> bool => obtain(s) is Dog");
+        var c = Parse("struct Dog\nfunc obtain(s?: string) -> obj/Dog => obtain(s)\nfunc f(s?: string) -> bool => obtain(s) is Dog");
         AssertBound(c);
         c.Ownership.Analyze();
         var test = Test(c);
@@ -354,10 +354,10 @@ public class RuntimeTypeTest
     [Fact]
     public void TrivialTestsRetainBothPathsAndDoNotRefineNames()
     {
-        var c = Parse("struct Dog\nfunc f(x: objref/Dog) -> i32\n    if x is Dog => return 1");
+        var c = Parse("struct Dog\nfunc f(x?: objref/Dog) -> i32\n    if x is Dog => return 1");
         c.Bind();
         Assert.NotEmpty(c.AnalyzeControlFlow(c.Binding.TypeSystem).Issues);
-        var refinement = Parse("open struct Animal\nstruct Dog: Animal\n    public func bark(self: objref/Self) -> bool => true\nfunc f(x: objref/Animal) -> bool\n    require x is Dog else => return false\n    return x.bark()");
+        var refinement = Parse("open struct Animal\nstruct Dog: Animal\n    public func bark(self: objref/Self) -> bool => true\nfunc f(x?: objref/Animal) -> bool\n    require x is Dog else => return false\n    return x.bark()");
         Assert.False(refinement.Bind().IsComplete);
         Assert.NotNull(Test(refinement).BoundRuntimeTest);
     }
@@ -368,7 +368,7 @@ public class RuntimeTypeTest
     [InlineData(128)]
     public void WarmBindingReusesRetainedTypesWithoutAllocation(int count)
     {
-        var source = new StringBuilder("struct Dog<T>\nfunc f(x: objref/Dog<i32>)\n");
+        var source = new StringBuilder("struct Dog<T>\nfunc f(x?: objref/Dog<i32>)\n");
         for (var i = 0; i < count; i++)
         {
             source.Append("    let b").Append(i).Append(" = x is not Dog<i32>\n");

@@ -57,7 +57,7 @@ public class ScalarEnumContinuationTest
     }
 
     private static string Source(string type, string value, string arms, string declaration, string tail)
-        => "enum E<T>\n    Some(T)\n    None\nfunc stop() -> Never => $abort(\"enum continuation\")\nfunc f(c: bool)\n    " + declaration +
+        => "enum E<T>\n    Some(T)\n    None\nfunc stop() -> Never => $abort(\"enum continuation\")\nfunc f(c?: bool)\n    " + declaration +
             "\n    let subject: " + type + " = " + value + "\n    do\n        loop\n            if c => return else => exit\n            match subject\n                " + arms +
             "\n        stop()\n    " + tail + "\nf(true)";
 }

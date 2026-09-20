@@ -158,10 +158,9 @@ internal sealed partial class GenericStoragePlan
         failure = null;
         var function = body.Function;
         var noReturn = ReferenceEquals(function.BoundSymbol?.Type, BoundType.Never);
-        if (!body.IsVerified || function.IsAnonymous || function.IsSpecialization || function.IsDestructor || function.AttributeChain is not null ||
-            function.Parameters.Any(x => x.DefaultValue is not null || x.IsOptional))
+        if (!body.IsVerified || function.IsAnonymous || function.IsSpecialization || function.IsDestructor || function.AttributeChain is not null)
         {
-            return Fail("Generic storage generation requires a verified ordinary definition without captures, defaults or Origins.", out failure);
+            return Fail("Generic storage generation requires a verified ordinary definition without captures or declaration attributes.", out failure);
         }
 
         if (body.Operations.Count == 0 || body.Operations[0].Kind != OwnershipOperationKind.Entry || body.Places.Count == 0 ||
@@ -716,27 +715,33 @@ internal sealed partial class GenericStoragePlan
                         var abort = ReferenceEquals(direct.Target, binding.Library.Abort);
                         var testTemp = ReferenceEquals(direct.Target, binding.Library.GetSymbol(KimiDeclarationId.TestTempDirectory));
                         if (direct.Target.Declaration is not FunctionKoto directTarget || !(IsGeneric(directTarget) || IsConcreteDirect(direct) || writeLine || abort || testTemp) ||
-                            direct.DefaultArguments.Length != 0 ||
-                            arguments.Count != directTarget.Parameters.Count || arguments.Count != directSyntax.ArgumentNodes.Count + (direct.Receiver is null ? 0 : 1) ||
+                            arguments.Count != directTarget.Parameters.Count || arguments.Count != directSyntax.ArgumentNodes.Count + direct.DefaultArguments.Length + (direct.Receiver is null ? 0 : 1) ||
                             direct.ArgumentOperations.Length != directSyntax.ArgumentNodes.Count || direct.ArgumentToParameter.Length != directSyntax.ArgumentNodes.Count ||
                             !(directTarget.IsConstructor ? ReferenceEquals(direct.DeclaringType, direct.ReturnType) : ReferenceTypes.CallTypeMatches(binding.InstantiateStorageType(directTarget.BoundSymbol!.Type!, direct), direct.ReturnType, direct)) ||
                             !(op.Place < 0 ? ReferenceEquals(direct.ReturnType, BoundType.Unit) || ReferenceEquals(direct.ReturnType, BoundType.Never) : ReferenceEquals(body.Places[op.Place].Type, direct.ReturnType)) ||
                             !ReferenceEquals(directSyntax.BoundType, direct.ReturnType))
                         {
-                            return Fail($"Shared direct call to '{direct.Target.Name}' requires a checked generic function and explicit arguments.", out failure);
+                            return Fail($"Shared direct call to '{direct.Target.Name}' requires a checked function and prepared arguments.", out failure);
                         }
 
                         var slots = new int[arguments.Count];
                         Array.Fill(slots, -1);
+                        var previousDefault = -1;
                         for (var a = 0; a < arguments.Count; a++)
                         {
                             var acquired = body.Operations[arguments[a]];
                             var receiverArgument = direct.Receiver is not null && a == 0;
                             var argumentIndex = a - (direct.Receiver is null ? 0 : 1);
-                            var adaptation = receiverArgument ? direct.ReceiverOperation : direct.ArgumentOperations[argumentIndex];
-                            var argumentSource = receiverArgument ? direct.Receiver! : directSyntax.ArgumentNodes[argumentIndex];
-                            var p = receiverArgument ? direct.Target.ReceiverIndex : direct.ArgumentToParameter[argumentIndex];
+                            var isDefault = argumentIndex >= directSyntax.ArgumentNodes.Count;
+                            var omitted = isDefault ? direct.DefaultArguments[argumentIndex - directSyntax.ArgumentNodes.Count] : default;
+                            var p = receiverArgument ? direct.Target.ReceiverIndex : isDefault ? omitted.Parameter.Slot : direct.ArgumentToParameter[argumentIndex];
+                            var adaptation = receiverArgument ? direct.ReceiverOperation : isDefault
+                                ? new BoundArgumentOperation(omitted.Expression, omitted.Expression.BoundType, omitted.ParameterType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: p)
+                                : direct.ArgumentOperations[argumentIndex];
+                            var argumentSource = receiverArgument ? direct.Receiver! : isDefault ? omitted.Expression : directSyntax.ArgumentNodes[argumentIndex];
                             if ((uint)p >= (uint)slots.Length || slots[p] != -1 || adaptation.ParameterIndex != p ||
+                                (isDefault && (p <= previousDefault || !ReferenceEquals(directTarget.Parameters[p].DefaultValue, omitted.Expression) ||
+                                    !ReferenceEquals(omitted.Parameter.Scope.Owner, directTarget) || !ScalarDefaults.SupportsValue(omitted.ParameterType))) ||
                                 adaptation.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
                                 !ReferenceEquals(acquired.Source, directSyntax) || !ReferenceEquals(adaptation.Source, argumentSource) ||
                                 !ReferenceEquals(adaptation.SourceType, argumentSource.BoundType) ||
@@ -748,6 +753,10 @@ internal sealed partial class GenericStoragePlan
                             }
 
                             slots[p] = acquired.Place;
+                            if (isDefault)
+                            {
+                                previousDefault = p;
+                            }
                         }
 
                         arguments.Clear();
@@ -1272,11 +1281,6 @@ internal sealed partial class GenericStoragePlan
         var body = template.Body;
         var target = body.Function;
         var binding = compilation.Binding;
-        if (call.DefaultArguments.Length != 0)
-        {
-            return Fail("Shared entries do not yet lower Origin or default substitution.", out failure);
-        }
-
         var parameters = new BoundType[target.Parameters.Count];
         var values = new ValueLowering[parameters.Length];
         var abiParameters = new List<AbiParameter>();

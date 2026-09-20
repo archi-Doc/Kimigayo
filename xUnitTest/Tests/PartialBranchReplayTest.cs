@@ -29,7 +29,7 @@ public class PartialBranchReplayTest
     [InlineData("MissingCondition", "var x: i32", "inner: if c => x = 3 else if truth(stop()) => yield to inner else => x = 4\n            let y = x")]
     [InlineData("LocalLoan", "var counter = Counter.init()", "inner: if c\n                let r = counter@ref\n                let n = r.value\n                yield to inner\n            else => ()\n            counter.value = 9")]
     public void CaughtSelectionArrivalsIncludeCleanupAndExcludeLaterDeadEffects(string name, string declaration, string dead)
-        => Emit("CaughtNormal" + name, Source(declaration, dead, "()", "()") + Counter + "\nfunc truth(x: i32) -> bool => true");
+        => Emit("CaughtNormal" + name, Source(declaration, dead, "()", "()") + Counter + "\nfunc truth(x?: i32) -> bool => true");
 
     [Theory]
     [InlineData("var x: i32", "inner: if c\n                yield to inner\n                x = 3\n            else => x = 4\n            let y = x", OwnershipFailure.UninitializedUse)]
@@ -160,7 +160,7 @@ public class PartialBranchReplayTest
         => ScalarEmissionTest.EmitFixture("NeverPartialBranch" + Configuration + name, source + "\nConsole.writeLine(\"done\")", condition ? "done\n" : string.Empty, condition ? 0 : 1, condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     private static string Source(string declaration, string dead, string tail, string use, bool condition = true)
-        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
+        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c?: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
     private const string Counter = "\nstruct Counter\n    public var value: i32 = 0";
 

@@ -21,7 +21,7 @@ public class ControlFlowConformanceTest
     [InlineData("if a => b()\n\nelse => c()")]
     [InlineData("if a\n    b()\n// comment\nelse\n    c()")]
     [InlineData("require ready\nelse => return")]
-    [InlineData("func f(a: bool) -> i32 => match a\n    true => 1\n    false => 2")]
+    [InlineData("func f(a?: bool) -> i32 => match a\n    true => 1\n    false => 2")]
     [InlineData("for x in xs => if a => b()")]
     [InlineData("require a else => if b => return")]
     [InlineData("match x\n    .A => if b => 1 else => 2\n    _ => ()")]
@@ -92,8 +92,8 @@ public class ControlFlowConformanceTest
     [InlineData("func f()\n    loop\n        do\n            exit\n        ()")]
     [InlineData("func f()\n    require true else => loop => ()")]
     [InlineData("func f()\n    while true => exit ()")]
-    [InlineData("func f(left: i32, right: i32)\n    left == right")]
-    [InlineData("func f(flag: bool) -> i32 => match flag\n    true => 1\n    false => 2")]
+    [InlineData("func f(left?: i32, right?: i32)\n    left == right")]
+    [InlineData("func f(flag?: bool) -> i32 => match flag\n    true => 1\n    false => 2")]
     [InlineData("func f() -> i32\n    return if true\n        yield 1\n    else => 2")]
     public void AcceptsSpecifiedResults(string source)
     {
@@ -115,7 +115,7 @@ public class ControlFlowConformanceTest
     [InlineData("func f()\n    defer => continue")]
     [InlineData("func f() -> i32\n    return 1\n    return \"x\"")]
     [InlineData("let v = if true => 1 else => \"x\"")]
-    [InlineData("func f(flag: bool) -> i32\n    flag and (return 1)")]
+    [InlineData("func f(flag?: bool) -> i32\n    flag and (return 1)")]
     [InlineData("func f()\n    require true else => ()")]
     [InlineData("func f()\n    require true else\n        loop => exit")]
     [InlineData("func f()\n    require true else => while true => ()")]
@@ -141,8 +141,8 @@ public class ControlFlowConformanceTest
     }
 
     [Theory]
-    [InlineData("func f(a: i32)\n    (a, 1)", true)]
-    [InlineData("func g() -> i32 => 1\nfunc f(a: i32)\n    (a, g())", false)]
+    [InlineData("func f(a?: i32)\n    (a, 1)", true)]
+    [InlineData("func g() -> i32 => 1\nfunc f(a?: i32)\n    (a, g())", false)]
     [InlineData("enum Direction\n    Self is Copy\n    North\n    South\nfunc f()\n    Direction.North", true)]
     [InlineData("enum Kind\n    North\nfunc f()\n    Kind.North", false)]
     public void EffectFreeDiscardCoversTuplesAndCopyCases(string source, bool warns)

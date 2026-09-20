@@ -13,7 +13,7 @@ public class CallCompletionBindingTest
     [InlineData("i32", "Source.Hidden.Element")]
     public void LateApiFailureInvalidatesEarlierCallPlan(string input, string result)
     {
-        var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic group Api\n    public func identity(value: " + input + ") -> " + result + " => value\ngroup Consumer\n    func call() => Api.identity(1)");
+        var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic group Api\n    public func identity(value?: " + input + ") -> " + result + " => value\ngroup Consumer\n    func call() => Api.identity(1)");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
@@ -51,7 +51,7 @@ public class CallCompletionBindingTest
     [Fact]
     public void UnrelatedApiFailureDoesNotDiscardValidCall()
     {
-        var c = MinimalEmissionTest.Analyze(Source("internal", "public").Replace("Api.identity(1)", "take(1)", StringComparison.Ordinal) + "\n    func take(value: i32) -> i32 => value");
+        var c = MinimalEmissionTest.Analyze(Source("internal", "public").Replace("Api.identity(1)", "take(1)", StringComparison.Ordinal) + "\n    func take(value?: i32) -> i32 => value");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.NotNull(Call(c).BoundCall);
@@ -97,7 +97,7 @@ public class CallCompletionBindingTest
     }
 
     private static string Source(string contractAccess, string apiAccess)
-        => contractAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n" + apiAccess + " group Api\n    public func identity(value: i32) -> Source.Hidden.Element => value\ngroup Consumer\n    func call() => Api.identity(1)";
+        => contractAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n" + apiAccess + " group Api\n    public func identity(value?: i32) -> Source.Hidden.Element => value\ngroup Consumer\n    func call() => Api.identity(1)";
 
     private static Compilation Reload(Compilation c)
     {

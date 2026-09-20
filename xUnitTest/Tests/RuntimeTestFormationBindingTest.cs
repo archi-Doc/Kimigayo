@@ -13,7 +13,7 @@ public class RuntimeTestFormationBindingTest
     [InlineData("objref/Box<string>", "Box<i32>")]
     public void InvalidInputConstraintsCannotRetainRuntimeTest(string operand, string target)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup G\n    func f(x: " + operand + ") -> bool => x is " + target);
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup G\n    func f(x?: " + operand + ") -> bool => x is " + target);
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
@@ -31,7 +31,7 @@ public class RuntimeTestFormationBindingTest
     [InlineData("[2 of Box<string>]")]
     public void NestedTargetArgumentsCannotRetainRuntimeTest(string argument)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x?: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
@@ -43,7 +43,7 @@ public class RuntimeTestFormationBindingTest
     [InlineData("open struct Base<T>\n    T is i32\nstruct Invalid: Base<string>", "Invalid")]
     public void LateInvalidDeclarationsCannotRetainRuntimeTest(string declarations, string target)
     {
-        var c = MinimalEmissionTest.Analyze("struct Valid\n" + declarations + "\ngroup G\n    func f(x: objref/Valid) -> bool => x is " + target);
+        var c = MinimalEmissionTest.Analyze("struct Valid\n" + declarations + "\ngroup G\n    func f(x?: objref/Valid) -> bool => x is " + target);
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
@@ -56,7 +56,7 @@ public class RuntimeTestFormationBindingTest
     [InlineData("[2 of Box<i32>]")]
     public void ValidNestedTargetsStillCertify(string argument)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x?: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
         var restored = Reload(c);
@@ -75,7 +75,7 @@ public class RuntimeTestFormationBindingTest
     [Fact]
     public void IndependentMemberErrorDoesNotInvalidateRuntimeType()
     {
-        var c = MinimalEmissionTest.Analyze("struct Hidden\npublic struct Target\n    public let field: Hidden\ngroup G\n    func f(x: objref/Target) -> bool => x is Target");
+        var c = MinimalEmissionTest.Analyze("struct Hidden\npublic struct Target\n    public let field: Hidden\ngroup G\n    func f(x?: objref/Target) -> bool => x is Target");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.True(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
         Assert.NotNull(Test(c).BoundRuntimeTest);
@@ -84,7 +84,7 @@ public class RuntimeTestFormationBindingTest
     [Fact]
     public void ReplacingTargetRestoresRuntimePlan()
     {
-        const string source = "struct Box<T>\n    T is i32\ngroup G\n    func f(x: objref/Box<i32>) -> bool => x is Box<i32>";
+        const string source = "struct Box<T>\n    T is i32\ngroup G\n    func f(x?: objref/Box<i32>) -> bool => x is Box<i32>";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var test = Test(c);
@@ -103,7 +103,7 @@ public class RuntimeTestFormationBindingTest
     [Fact]
     public void WarmFormationChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup G\n    func f(x: objref/Box<i32>) -> bool => x is Box<i32>");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup G\n    func f(x?: objref/Box<i32>) -> bool => x is Box<i32>");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

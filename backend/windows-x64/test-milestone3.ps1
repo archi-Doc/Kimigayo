@@ -108,9 +108,9 @@ foreach ($level in @('O0', 'O2')) {
 }
 
 $invalid = [ordered]@{
-    WrongArgument = "func f(x: i32) => ()`npublic func main() => f(true)"
-    MissingArgument = "func f(x: i32) => ()`npublic func main() => f()"
-    ExtraArgument = "func f(x: i32) => ()`npublic func main() => f(1, 2)"
+    WrongArgument = "func f(x?: i32) => ()`npublic func main() => f(true)"
+    MissingArgument = "func f(x?: i32) => ()`npublic func main() => f()"
+    ExtraArgument = "func f(x?: i32) => ()`npublic func main() => f(1, 2)"
     WrongReturn = "func f() -> i32 => return true`npublic func main() => f()"
     MissingReturn = "func f() -> i32`n    let x: i32 = 1`npublic func main() => f()"
     InvalidMain = 'public func main() -> i32 => 0'

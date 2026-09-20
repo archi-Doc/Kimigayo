@@ -27,9 +27,9 @@ public class SpecReviewTest
     }
 
     [Theory]
-    [InlineData("func make(a: ref/A, b: ref/B)\n    -> Pair<A, B>{\n        left => a,\n        right => b}\n    return a")]
-    [InlineData("func make(a: ref/A, b: ref/B)\n    -> Pair<A, B>{\n        left => a,\n        right => b\n    }\n    return a")]
-    [InlineData("func make(a: ref/A)\n    -> View<A>{\n        source => a} => .Some(a)\nlet next = 1")]
+    [InlineData("func make(a?: ref/A, b?: ref/B)\n    -> Pair<A, B>{\n        left => a,\n        right => b}\n    return a")]
+    [InlineData("func make(a?: ref/A, b?: ref/B)\n    -> Pair<A, B>{\n        left => a,\n        right => b\n    }\n    return a")]
+    [InlineData("func make(a?: ref/A)\n    -> View<A>{\n        source => a} => .Some(a)\nlet next = 1")]
     [InlineData("func f()\n    -> i32\n    return 1\nlet next = 2")]
     public void ArrowHeaderContinuationNestsDelimitersFromItsOwnLine(string source)
     {
@@ -45,7 +45,7 @@ public class SpecReviewTest
         => Assert.NotEmpty(Parse("func f()\n    -> i32\n    => 1").DiagnosticCollection.GetArray());
 
     [Theory]
-    [InlineData("func store<T> {a, b : a}(value: ref{b}/T) => ()")]
+    [InlineData("func store<T> {a, b : a}(value?: ref{b}/T) => ()")]
     [InlineData("struct Holder<T> {stored, other : static}\n    let value: ref{stored}/T")]
     public void OriginBoundsParseAndRoundTrip(string source)
     {
@@ -71,9 +71,9 @@ public class SpecReviewTest
     }
 
     [Theory]
-    [InlineData("func f<T> {a, b : a}(x: ref{a}/T, y: ref{b}/T) => ()", DiagnosticCode.UnsupportedBinding_Kd)]
-    [InlineData("func f<T> {a : static}(x: ref{a}/T) => ()", DiagnosticCode.UnsupportedBinding_Kd)]
-    [InlineData("func f<T> {a, b : missing}(x: ref{a}/T, y: ref{b}/T) => ()", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("func f<T> {a, b : a}(x?: ref{a}/T, y?: ref{b}/T) => ()", DiagnosticCode.UnsupportedBinding_Kd)]
+    [InlineData("func f<T> {a : static}(x?: ref{a}/T) => ()", DiagnosticCode.UnsupportedBinding_Kd)]
+    [InlineData("func f<T> {a, b : missing}(x?: ref{a}/T, y?: ref{b}/T) => ()", DiagnosticCode.InvalidOriginBinding_Kd)]
     public void OriginBoundsResolveButAreNeverCertifiedWithoutProofs(string source, DiagnosticCode code)
     {
         var c = Compilation.CreateForTest();
@@ -89,7 +89,7 @@ public class SpecReviewTest
     public void UnboundedOriginsStillBindCompletely()
     {
         var c = Compilation.CreateForTest();
-        c.Kotonoha.AddSource(new SourceDocument("origins.kimi", "func f<T> {a, b}(x: ref{a}/T, y: ref{b}/T) => ()"));
+        c.Kotonoha.AddSource(new SourceDocument("origins.kimi", "func f<T> {a, b}(x?: ref{a}/T, y?: ref{b}/T) => ()"));
         Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues.Select(x => x.Code)));
     }
 

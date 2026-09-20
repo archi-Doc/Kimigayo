@@ -19,12 +19,12 @@ alias Kimi.Base
 alias Kimi.Windows
 
 public group Program
-    public func runExample(arg: string) -> ()
+    public func runExample(arg?: string) -> ()
         var array = [0, 1, 2,]
         var map = [0:"Zero", 1:"One", ]
         return
 
-    func getString<s/T>(value: s/T) -> string
+    func getString<s/T>(value?: s/T) -> string
         s is ref or obj
         T is Comparable
 

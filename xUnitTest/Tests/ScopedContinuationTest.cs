@@ -18,7 +18,7 @@ public class ScopedContinuationTest
     [InlineData("let s = \"s\"\ndo\n    Console.writeLine(s)\n    stop()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let s = \"s\"\ndo\n    Console.writeLine(s)\n    loop => continue\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let s = \"s\"\ndo\n    stop()\n    Console.writeLine(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func take(s: string) -> Never => stop()\nlet s = \"s\"\ndo => take(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func take(s?: string) -> Never => stop()\nlet s = \"s\"\ndo => take(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void TerminalScopeStatePreservesInvalidatedFacts(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
@@ -32,7 +32,7 @@ public class ScopedContinuationTest
     [InlineData("Initialized", "let n = 1\ndo => stop()\nlet y = n")]
     [InlineData("CheckingWrite", "var n: i32\ndo\n    stop()\n    n = 2\nlet y = n")]
     [InlineData("Nested", "var n: i32\ndo\n    do => stop()\n    n = 2\nlet y = n")]
-    [InlineData("Borrow", "func inspect(s: ref/string) -> Never => stop()\nvar s = \"s\"\ndo => inspect(s)\ns = \"new\"\nConsole.writeLine(s)")]
+    [InlineData("Borrow", "func inspect(s?: ref/string) -> Never => stop()\nvar s = \"s\"\ndo => inspect(s)\ns = \"new\"\nConsole.writeLine(s)")]
     public void CheckingScopeEffectsHaveNoRuntimeSuccessor(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverScope" + Configuration + name, Stop + source, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
@@ -44,7 +44,7 @@ public class ScopedContinuationTest
     public void OuterTransferDoesNotExecuteLaterArgumentEffects()
         => ScalarEmissionTest.EmitFixture(
             "NeverScope" + Configuration + "OuterTransfer",
-            "func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = outer: do\n    f((inner: do => exit to outer: 7), x++)\nif y == 7 and x == 1 => Console.writeLine(\"ok\") else => Console.writeLine(\"bad\")",
+            "func f(a?: i32, b?: i32) -> i32 => a + b\nvar x = 1\nlet y = outer: do\n    f((inner: do => exit to outer: 7), x++)\nif y == 7 and x == 1 => Console.writeLine(\"ok\") else => Console.writeLine(\"bad\")",
             "ok\n");
 
     [Theory]
@@ -62,7 +62,7 @@ public class ScopedContinuationTest
     [Fact]
     public void DivergentCleanupRetainsItsGuard()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(x: i32)\n    work: do\n        defer => loop => ()\n        exit to work\n    let y = x");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(x?: i32)\n    work: do\n        defer => loop => ()\n        exit to work\n    let y = x");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }

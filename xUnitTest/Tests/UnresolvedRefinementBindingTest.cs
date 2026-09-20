@@ -16,7 +16,7 @@ public class UnresolvedRefinementBindingTest
     public void MissingParentIsPendingUntilSourceIsAppended(bool qualified, bool indirect)
     {
         var name = indirect ? "Leaf" : "Child";
-        var c = Parse((qualified ? "public group Api\n" : string.Empty) + "public contract Child: " + (qualified ? "Api.Future" : "Future") + "\n" + (indirect ? "public contract Leaf: Child\n" : string.Empty) + "public struct Target\n    Self is " + name + "\ngroup G\n    func inspect<T>(value: T)\n        T is " + name + "\n        ()");
+        var c = Parse((qualified ? "public group Api\n" : string.Empty) + "public contract Child: " + (qualified ? "Api.Future" : "Future") + "\n" + (indirect ? "public contract Leaf: Child\n" : string.Empty) + "public struct Target\n    Self is " + name + "\ngroup G\n    func inspect<T>(value?: T)\n        T is " + name + "\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var contract = Container(c, name);
         Assert.Equal(BindingState.Unresolved, contract.BindingState);
@@ -56,7 +56,7 @@ public class UnresolvedRefinementBindingTest
     [InlineData(true)]
     public void IncompleteRefinementCannotSupplyAKnownAncestor(bool independent)
     {
-        var c = Parse("public contract Child: Copy, Future\ngroup G\n    func inspect<T>(value: T)\n        T is Child" + (independent ? "\n        T is Copy" : string.Empty) + "\n        ()");
+        var c = Parse("public contract Child: Copy, Future\ngroup G\n    func inspect<T>(value?: T)\n        T is Child" + (independent ? "\n        T is Copy" : string.Empty) + "\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Container(c, "G").Members.OfType<FunctionKoto>().Single();
         Assert.Equal(independent ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));

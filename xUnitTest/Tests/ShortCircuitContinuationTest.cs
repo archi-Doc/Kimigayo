@@ -9,7 +9,7 @@ namespace XunitTest;
 [TestClass(DisableParallelization = true)]
 public class ShortCircuitContinuationTest
 {
-    private const string Helpers = "\nfunc take(x: string) -> bool => true\nfunc truth(x: i32) -> bool => true\nfunc effect(x: ()) -> bool => true";
+    private const string Helpers = "\nfunc take(x?: string) -> bool => true\nfunc truth(x?: i32) -> bool => true\nfunc effect(x?: ()) -> bool => true";
 
     [Theory]
     [InlineData("And", "if c and c => x = 3", true)]
@@ -109,7 +109,7 @@ public class ShortCircuitContinuationTest
     [InlineData("let s = \"s\"", "truth(stop()) and take(s)", "()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void TerminalRightEffectsReachOnlyEnclosingJoins(string declaration, string expression, string after, string tail, string use, OwnershipFailure failure)
     {
-        var c = MinimalEmissionTest.Analyze(Source(declaration, "return", "let b = " + expression + "\n            " + after, tail, use) + Helpers + "\nfunc stopTake(s: string) -> Never => stop()");
+        var c = MinimalEmissionTest.Analyze(Source(declaration, "return", "let b = " + expression + "\n            " + after, tail, use) + Helpers + "\nfunc stopTake(s?: string) -> Never => stop()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -118,7 +118,7 @@ public class ShortCircuitContinuationTest
 
     [Fact]
     public void TerminalRightMoveDoesNotPolluteTheSkippedSuccessor()
-        => ScalarEmissionTest.EmitFixture("NeverMixedLogicalRight" + Configuration + "SkippedMove", Source("let s = \"s\"", "return", "let b = c and truth(stopTake(s))\n            Console.writeLine(s)", "()", "()") + "\nConsole.writeLine(\"done\")" + Helpers + "\nfunc stopTake(s: string) -> Never => stop()", "done\n");
+        => ScalarEmissionTest.EmitFixture("NeverMixedLogicalRight" + Configuration + "SkippedMove", Source("let s = \"s\"", "return", "let b = c and truth(stopTake(s))\n            Console.writeLine(s)", "()", "()") + "\nConsole.writeLine(\"done\")" + Helpers + "\nfunc stopTake(s?: string) -> Never => stop()", "done\n");
 
     [Theory]
     [InlineData("c")]
@@ -171,7 +171,7 @@ public class ShortCircuitContinuationTest
     }
 
     private static string Source(string declaration, string early, string dead, string tail, string use, bool condition = true)
-        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c\n                " + early + "\n            else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
+        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c?: bool)\n    " + declaration + "\n    do\n        loop\n            if c\n                " + early + "\n            else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
 #if DEBUG
     private const string Configuration = "Debug";

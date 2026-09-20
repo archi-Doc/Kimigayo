@@ -1,5 +1,5 @@
 // Milestone 3: function arguments/results, return, and deferred cleanup.
-func sumTo(limit: i32) -> i32
+func sumTo(limit?: i32) -> i32
     defer => Console.writeLine("Leaving sumTo.")
     if limit < 0
         $abort("Limit must be nonnegative")

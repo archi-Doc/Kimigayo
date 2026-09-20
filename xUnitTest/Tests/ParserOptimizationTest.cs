@@ -68,7 +68,7 @@ public class ParserOptimizationTest
     [InlineData(20)]
     public void RebuildsCompactArgumentsAndBlocksFromSerializedSources(int count)
     {
-        var arguments = string.Join(", ", Enumerable.Range(0, count).Select(i => i == count / 2 ? $"label: {i}" : i.ToString()));
+        var arguments = string.Join(", ", Enumerable.Range(0, count).Select(i => i >= count / 2 ? $"label{i}: {i}" : i.ToString()));
         var types = string.Join(", ", Enumerable.Range(0, Math.Max(1, count)).Select(i => $"T{i}"));
         var source = $"func Run()\n    call<{types}>({arguments})";
         var compilation = Compilation.CreateForTest();
@@ -105,7 +105,7 @@ public class ParserOptimizationTest
             for (var i = 0; i < count; i++)
             {
                 Assert.Equal(i.ToString(), mutableArguments[i].ToString());
-                Assert.Equal(i == count / 2 ? "label" : null, invocation.GetArgumentLabel(i));
+                Assert.Equal(i >= count / 2 ? $"label{i}" : null, invocation.GetArgumentLabel(i));
             }
         }
     }

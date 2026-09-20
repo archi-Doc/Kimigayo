@@ -11,15 +11,15 @@ namespace XunitTest;
 public class DefaultOwnershipTest
 {
     [Theory]
-    [InlineData("func f(x: (string, i32), y?: string = x.0) => ()")]
-    [InlineData("func f(x: ((i32, string), i32), y?: string = x.0.1) => ()")]
-    [InlineData("func f(x: [2 of string], y?: string = x[0]) => ()")]
-    [InlineData("func f(x: [2 of string], i: isize, y?: string = x[i]) => ()")]
-    [InlineData("struct S\n    public let text: string\nfunc f(x: S, y?: string = x.text) => ()")]
-    [InlineData("func f(x: string, y?: (string, i32) = (x, 1)) => ()")]
-    [InlineData("func f(x: string, y?: [1 of string] = [x]) => ()")]
-    [InlineData("func f(x: string, y?: Option<string> = .Some(x)) => ()")]
-    [InlineData("func f(x: string, y?: string = (scope: do\n    var local = \"a\"\n    local = x\n    exit to scope: local\n)) => ()")]
+    [InlineData("func f(x?: (string, i32), y?: string = x.0) => ()")]
+    [InlineData("func f(x?: ((i32, string), i32), y?: string = x.0.1) => ()")]
+    [InlineData("func f(x?: [2 of string], y?: string = x[0]) => ()")]
+    [InlineData("func f(x?: [2 of string], i?: isize, y?: string = x[i]) => ()")]
+    [InlineData("struct S\n    public let text: string\nfunc f(x?: S, y?: string = x.text) => ()")]
+    [InlineData("func f(x?: string, y?: (string, i32) = (x, 1)) => ()")]
+    [InlineData("func f(x?: string, y?: [1 of string] = [x]) => ()")]
+    [InlineData("func f(x?: string, y?: Option<string> = .Some(x)) => ()")]
+    [InlineData("func f(x?: string, y?: string = (scope: do\n    var local = \"a\"\n    local = x\n    exit to scope: local\n)) => ()")]
     public void OwnedSubplacesAndAggregateInputsCannotMoveInDefaults(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -31,12 +31,12 @@ public class DefaultOwnershipTest
     }
 
     [Theory]
-    [InlineData("func f(x: (string, i32), y?: i32 = x.1) => ()")]
-    [InlineData("func f(x: (string, i32), y?: bool = x.0 == \"a\") => ()")]
-    [InlineData("func inspect(value: ref/string) -> i32 => 1\nfunc f(x: [2 of string], y?: i32 = inspect(x[0])) => ()")]
-    [InlineData("func f(x: i32, y?: (i32, i32) = (x, x)) => ()")]
-    [InlineData("func f(x: i32, y?: Option<i32> = .Some(x)) => ()")]
-    [InlineData("struct S\n    public let text: string\nfunc f(x: ref/S, y?: string = x.text) => ()")]
+    [InlineData("func f(x?: (string, i32), y?: i32 = x.1) => ()")]
+    [InlineData("func f(x?: (string, i32), y?: bool = x.0 == \"a\") => ()")]
+    [InlineData("func inspect(value?: ref/string) -> i32 => 1\nfunc f(x?: [2 of string], y?: i32 = inspect(x[0])) => ()")]
+    [InlineData("func f(x?: i32, y?: (i32, i32) = (x, x)) => ()")]
+    [InlineData("func f(x?: i32, y?: Option<i32> = .Some(x)) => ()")]
+    [InlineData("struct S\n    public let text: string\nfunc f(x?: ref/S, y?: string = x.text) => ()")]
     public void SubplaceCopiesAndInspectionDoNotMove(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -45,17 +45,17 @@ public class DefaultOwnershipTest
     }
 
     [Theory]
-    [InlineData("func f(x: string, y?: string = x) => ()")]
-    [InlineData("func f(x: string, y?: string = x) => ()\nf(\"a\", \"b\")")]
-    [InlineData("func f(x: string, y: string = x) => ()\nf(\"a\", \"b\")")]
-    [InlineData("func f(x: string, y?: string = ((x))) => ()")]
-    [InlineData("func f(x: string, y?: string = (if false => x else => \"ok\")) => ()")]
-    [InlineData("func f(x: string, y?: string = (do => x)) => ()")]
-    [InlineData("func f(x: string, y?: string = (loop => exit x)) => ()")]
-    [InlineData("func take(value: string) -> i32 => 1\nfunc f(x: string, y?: i32 = take(x)) => ()")]
-    [InlineData("contract C\n    func f(x: string, y?: string = x)")]
-    [InlineData("func f(x: string, y?: string = x@string) => ()")]
-    [InlineData("struct S\n    public func take(self: Self) -> i32 => 1\nfunc f(x: S, y?: i32 = x.take()) => ()")]
+    [InlineData("func f(x?: string, y?: string = x) => ()")]
+    [InlineData("func f(x?: string, y?: string = x) => ()\nf(\"a\", \"b\")")]
+    [InlineData("func f(x?: string, y: string = x) => ()\nf(\"a\", y: \"b\")")]
+    [InlineData("func f(x?: string, y?: string = ((x))) => ()")]
+    [InlineData("func f(x?: string, y?: string = (if false => x else => \"ok\")) => ()")]
+    [InlineData("func f(x?: string, y?: string = (do => x)) => ()")]
+    [InlineData("func f(x?: string, y?: string = (loop => exit x)) => ()")]
+    [InlineData("func take(value?: string) -> i32 => 1\nfunc f(x?: string, y?: i32 = take(x)) => ()")]
+    [InlineData("contract C\n    func f(x?: string, y?: string = x)")]
+    [InlineData("func f(x?: string, y?: string = x@string) => ()")]
+    [InlineData("struct S\n    public func take(self: Self) -> i32 => 1\nfunc f(x?: S, y?: i32 = x.take()) => ()")]
     public void DefinitePreparedArgumentMovesAreDeclarationErrors(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -72,12 +72,12 @@ public class DefaultOwnershipTest
     }
 
     [Theory]
-    [InlineData("func f(x: i32, y?: i32 = x) => ()\nf(1)")]
-    [InlineData("func f(x: string, y?: bool = x == \"a\") => ()")]
-    [InlineData("func f(x: string, y?: string = \"independent\") => ()")]
-    [InlineData("func f<T>(x: T, y?: T = x)\n    T is Copy\n    ()")]
-    [InlineData("func inspect(value: ref/string) -> i32 => 1\nfunc f(x: string, y?: i32 = inspect(x)) => ()")]
-    [InlineData("func f {a}(x: ref{a}/string, y?: ref{a}/string = x) => ()")]
+    [InlineData("func f(x?: i32, y?: i32 = x) => ()\nf(1)")]
+    [InlineData("func f(x?: string, y?: bool = x == \"a\") => ()")]
+    [InlineData("func f(x?: string, y?: string = \"independent\") => ()")]
+    [InlineData("func f<T>(x?: T, y?: T = x)\n    T is Copy\n    ()")]
+    [InlineData("func inspect(value?: ref/string) -> i32 => 1\nfunc f(x?: string, y?: i32 = inspect(x)) => ()")]
+    [InlineData("func f {a}(x?: ref{a}/string, y?: ref{a}/string = x) => ()")]
     public void CopyAndInspectionDoNotBecomeDefaultMoveErrors(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -88,7 +88,7 @@ public class DefaultOwnershipTest
     [Fact]
     public void ReanalysisAndReloadDoNotLoseOrDuplicateDefaultErrors()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: string, y?: string = x) => ()");
+        var c = MinimalEmissionTest.Analyze("func f(x?: string, y?: string = x) => ()");
         for (var i = 0; i < 3; i++)
         {
             Assert.True(c.Bind().IsComplete);

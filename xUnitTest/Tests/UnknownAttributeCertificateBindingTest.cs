@@ -13,7 +13,7 @@ public class UnknownAttributeCertificateBindingTest
     [InlineData("#Unknown\ncontract Marker\nstruct S\n    Self is Marker")]
     [InlineData("contract Marker\n    func act(self: ref/Self)\nstruct S\n    Self is Marker\n    #Unknown\n    public func act(self: ref/Self) => ()")]
     [InlineData("contract Marker\n    property value: i32 has get\nstruct S\n    Self is Marker\n    #Unknown\n    public var value: i32 = 0")]
-    [InlineData("contract Marker\n    func act(self: ref/Self, value: i32)\nstruct S\n    Self is Marker\n    public func act(self: ref/Self, #Unknown value: i32) => ()")]
+    [InlineData("contract Marker\n    func act(self: ref/Self, value?: i32)\nstruct S\n    Self is Marker\n    public func act(self: ref/Self, #Unknown value: i32) => ()")]
     [InlineData("contract Marker\n#Unknown\n#Layout(\"C\")\nstruct S\n    Self is Marker")]
     [InlineData("contract Marker\n#Layout(\"C\")\n#Unknown\nstruct S\n    Self is Marker")]
     public void UnknownAttributeCannotCertifyConformance(string source)

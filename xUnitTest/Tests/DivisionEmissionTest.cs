@@ -174,7 +174,7 @@ public class DivisionEmissionTest
     [InlineData("(-9223372036854775807 - 1) % 1", true)]
     public void RequiredConstantLengthsRejectExceptionalInputs(string expression, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"func f(x: [({expression}) of i32]) => ()");
+        var c = MinimalEmissionTest.Analyze($"func f(x?: [({expression}) of i32]) => ()");
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
 
@@ -193,7 +193,7 @@ public class DivisionEmissionTest
             expression = $"({expression}) + 2147483647 + 1";
         }
 
-        c.Kotonoha.AddSource(new SourceDocument("Length.kimi", $"func f(x: [({expression}) of i32]) => ()"));
+        c.Kotonoha.AddSource(new SourceDocument("Length.kimi", $"func f(x?: [({expression}) of i32]) => ()"));
         Assert.Equal(valid, c.Bind().IsComplete);
         if (!valid)
         {

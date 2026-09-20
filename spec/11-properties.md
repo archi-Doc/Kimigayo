@@ -116,10 +116,10 @@ Standard accessors need no Copy constraint. A stored custom getter needs a proof
 struct Box<T>
     public var item: T
 
-func view<T>(box: ref/Box<T>) -> ref{box}/T
+func view<T>(box?: ref/Box<T>) -> ref{box}/T
     return box.item@ref/T
 
-func readCopy<T>(box: ref/Box<T>) -> T
+func readCopy<T>(box?: ref/Box<T>) -> T
     T is Copy
     return box.item
 
@@ -134,7 +134,7 @@ struct AssignedBox<T>
 When Copy is unproven, the conditional Copy/Move state is verified under §8.10. Runtime Copy values still Copy, and the result Type remains `T`. A later use must be valid in both cases; reinitialization or explicit borrowing may establish valid continued use. Overload selection is not retried after a Move or Loan failure.
 
 ```kimi
-func test<T>(box: Box<T>) -> ()
+func test<T>(box?: Box<T>) -> ()
     let x = box.item
     inspect(box@ref) // Error: box may be incomplete after non-Copy Move.
 // Adding T is Copy makes this subsequent shared use valid.
@@ -142,7 +142,7 @@ func test<T>(box: Box<T>) -> ()
 
 ## 11.2. Accessor functions
 
-Custom and computed accessors declare their input and result Types explicitly; only the receiver may use the fixed shorthand below, and bodies infer none of these Types. Both accessors use the common Body (§14.2). A single-item getter follows its fixed declared return Type; a setter discards its single-item expression and completes with Unit. Explicit returns must still fit the declared result. Default and optional parameters are forbidden. Static accessors have no receiver. A setter's `value` parameter is an initialized immutable binding with ordinary argument acquisition and cleanup.
+Custom and computed accessors declare their input and result Types explicitly; only the receiver may use the fixed shorthand below, and bodies infer none of these Types. Both accessors use the common Body (§14.2). A single-item getter follows its fixed declared return Type; a setter discards its single-item expression and completes with Unit. Explicit returns must still fit the declared result. Parameter defaults and `?` markers are forbidden; Property access supplies the receiver and setter value through its dedicated syntax, without ordinary argument labels. Static accessors have no receiver. A setter's `value` parameter is an initialized immutable binding with ordinary argument acquisition and cleanup.
 
 **Receiver shorthand.** In an instance Property, an accessor signature without a written receiver gets `self: ref/Self` inserted for `get`, and `self: uniq/Self` before `value` for `set`. This applies to stored custom accessors, computed accessors and explicit Contract requirement signatures: `get() -> T` and `set(value: U) -> ()` keep an instance receiver and bind contextual `self` in their bodies and Origin annotations. The containing Property determines instance or static kind, so group and rootgroup accessors remain receiverless. An explicit receiver Type remains available and must satisfy the accessor restrictions. Parameter lists, setter input Types and result Types are still required in custom and explicit requirement signatures; bare `get`/`set` keep their standard-accessor rules. No receiver Type is inferred from the body, and operations needing a stronger receiver do not change the default. Origin completion, signature matching and call/borrow behavior are those of the expanded signature, with the receiver as input slot zero.
 
@@ -309,7 +309,7 @@ Actual slot access triggers initialization. Calling a custom or computed accesso
 
 ## 11.4. Contract property requirements
 
-A `property` requirement is instance-only and promises operations, not storage. The header Type `T` is its getter result. `get` is mandatory and `set` optional, each at most once. Requirements have no accessor access modifiers, Attributes, default or optional parameters, initializer, storage or body.
+A `property` requirement is instance-only and promises operations, not storage. The header Type `T` is its getter result. `get` is mandatory and `set` optional, each at most once. Requirements have no accessor access modifiers, Attributes, parameter defaults or `?` markers, initializer, storage or body.
 
 ```kimi
 contract Counted

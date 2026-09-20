@@ -159,7 +159,7 @@ public class ModuleBindingTest
     public void AliasesCombineOverloadsWithoutChangingSymbolIdentity(bool reverse)
     {
         var aliases = reverse ? "alias Lib.Second\nalias Lib.First" : "alias Lib.First\nalias Lib.Second";
-        var compilation = Create(aliases + "\npublic func main()\n    choose(1@i32)\n    choose(true)", "public group First\n    public func choose(value: i32) => ()\npublic group Second\n    public func choose(value: bool) => ()");
+        var compilation = Create(aliases + "\npublic func main()\n    choose(1@i32)\n    choose(true)", "public group First\n    public func choose(value?: i32) => ()\npublic group Second\n    public func choose(value?: bool) => ()");
         Assert.True(compilation.Bind().IsComplete);
         compilation.Binding.CheckStartup(OutputKind.Application);
         Assert.True(compilation.Ownership.Analyze().IsVerified);
@@ -202,7 +202,7 @@ public class ModuleBindingTest
     [InlineData(true)]
     public void InaccessibleOverloadsDoNotHideAccessibleCandidates(bool defaults)
     {
-        var compilation = Create((defaults ? string.Empty : "alias Lib.Api\n") + "public func main() => choose(1@i32)", "public group Api\n    private func choose(value: bool) => ()\n    public func choose(value: i32) => ()", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var compilation = Create((defaults ? string.Empty : "alias Lib.Api\n") + "public func main() => choose(1@i32)", "public group Api\n    private func choose(value?: bool) => ()\n    public func choose(value?: i32) => ()", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Assert.True(compilation.Bind().IsComplete);
     }
 
@@ -234,12 +234,12 @@ public class ModuleBindingTest
     }
 
     [Theory]
-    [InlineData("func f(x: Lib.Api.Box, y: Lib.Api.Box<i32>) => ()", false, true)]
-    [InlineData("func f(x: ::Lib.Api.Box, y: ::Lib.Api.Box<i32>) => ()", false, true)]
-    [InlineData("alias Lib.Api\nfunc f(x: Box, y: Box<i32>) => ()", false, true)]
-    [InlineData("func f(x: Box, y: Box<i32>) => ()", true, true)]
-    [InlineData("struct Box<T, U>\nfunc f(x: Box<i32>) => ()", true, false)]
-    [InlineData("alias Local\ngroup Local\n    public struct Box<T, U>\nfunc f(x: Box<i32>) => ()", true, false)]
+    [InlineData("func f(x?: Lib.Api.Box, y?: Lib.Api.Box<i32>) => ()", false, true)]
+    [InlineData("func f(x?: ::Lib.Api.Box, y?: ::Lib.Api.Box<i32>) => ()", false, true)]
+    [InlineData("alias Lib.Api\nfunc f(x?: Box, y?: Box<i32>) => ()", false, true)]
+    [InlineData("func f(x?: Box, y?: Box<i32>) => ()", true, true)]
+    [InlineData("struct Box<T, U>\nfunc f(x?: Box<i32>) => ()", true, false)]
+    [InlineData("alias Local\ngroup Local\n    public struct Box<T, U>\nfunc f(x?: Box<i32>) => ()", true, false)]
     public void ModuleTypeAritiesUseTheCommittedLookupStage(string source, bool defaults, bool expected)
     {
         var c = Create(source, "public group Api\n    public struct Box\n    public struct Box<T>", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
@@ -248,8 +248,8 @@ public class ModuleBindingTest
     }
 
     [Theory]
-    [InlineData("public", false, "func expose(value: Source.C.Element) => ()")]
-    [InlineData("internal", true, "func expose(value: Source.C.Element) => ()")]
+    [InlineData("public", false, "func expose(value?: Source.C.Element) => ()")]
+    [InlineData("internal", true, "func expose(value?: Source.C.Element) => ()")]
     [InlineData("public", false, "let value: Source.C.Element = 1")]
     [InlineData("internal", true, "let value: Source.C.Element = 1")]
     [InlineData("public", false, "enum Result\n        Item(Source.C.Element)")]
@@ -281,7 +281,7 @@ public class ModuleBindingTest
     [InlineData(true, "Source.C.Element")]
     public void ImportedProjectionUsesTheOriginalDomains(bool defaults, string type)
     {
-        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "public group Export\n    public func identity(value: " + type + ") -> i32 => value", "public group Api\n    public contract C\n        associate Element\n    public struct Source\n        Self is C\n        associate C.Element is i32", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "public group Export\n    public func identity(value?: " + type + ") -> i32 => value", "public group Api\n    public contract C\n        associate Element\n    public struct Source\n        Self is C\n        associate C.Element is i32", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues.Select(x => x.Code)));
         Assert.True(c.Bind().IsComplete);
     }
@@ -327,8 +327,8 @@ public class ModuleBindingTest
     [InlineData(true, "internal", false)]
     public void ImportedCallTypesObserveLateLibraryApiValidation(bool defaults, string access, bool valid)
     {
-        var library = "public group Api\n    " + access + " contract Hidden\n    public struct Source\n        Self is Hidden\n    public enum E<T>\n        T is Hidden\n        A\n    public func take(value: E<Source>) -> E<Source> => value";
-        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "group Consumer\n    func call(value: E<Source>) => take(value)", library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var library = "public group Api\n    " + access + " contract Hidden\n    public struct Source\n        Self is Hidden\n    public enum E<T>\n        T is Hidden\n        A\n    public func take(value?: E<Source>) -> E<Source> => value";
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "group Consumer\n    func call(value?: E<Source>) => take(value)", library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Verify();
         foreach (var module in c.SourceModules)
         {
@@ -358,7 +358,7 @@ public class ModuleBindingTest
     public void ImportedPropertyAndPatternTypesObserveLateLibraryApiValidation(bool defaults, string access, bool valid)
     {
         var library = "public group Api\n    " + access + " contract Hidden\n    public struct Source\n        Self is Hidden\n    public enum E<T>\n        T is Hidden\n        A";
-        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "struct Storage\n    var value: E<Source>\ngroup Consumer\n    func inspect(value: E<Source>) => match value\n        _ => ()", library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "struct Storage\n    var value: E<Source>\ngroup Consumer\n    func inspect(value?: E<Source>) => match value\n        _ => ()", library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Verify();
         foreach (var module in c.SourceModules)
         {
@@ -467,7 +467,7 @@ public class ModuleBindingTest
     [InlineData(true, "string", false)]
     public void ImportedRuntimeTestTargetsRequireValidInputs(bool defaults, string argument, bool valid)
     {
-        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "group Consumer\n    func f(x: objref/Box<i32>) -> bool => x is Box<" + argument + ">", "public group Api\n    public struct Box<T>\n        T is i32", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "group Consumer\n    func f(x?: objref/Box<i32>) -> bool => x is Box<" + argument + ">", "public group Api\n    public struct Box<T>\n        T is i32", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Verify();
         foreach (var module in c.SourceModules)
         {
@@ -512,7 +512,7 @@ public class ModuleBindingTest
     [InlineData(true, true, "internal", false)]
     public void ImportedExpressionProjectionsRetainWitnessValidity(bool defaults, bool runtime, string access, bool valid)
     {
-        var library = "public group Api\n    " + access + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x";
+        var library = "public group Api\n    " + access + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x?: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x?: Local.Hidden.Item) -> i32 => x";
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + ProjectionConsumer(runtime, "Source.Origin.Item"), library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         VerifyImportedProjectionCertificate(c, runtime, valid);
     }
@@ -548,10 +548,10 @@ public class ModuleBindingTest
     [InlineData(6, true, true)]
     public void ImportedDeclarationProjectionsRetainLateWitnessValidity(int form, bool defaults, bool valid)
     {
-        var library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public open struct Base<T>\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x";
+        var library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public open struct Base<T>\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x?: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x?: Local.Hidden.Item) -> i32 => x";
         var consumer = form switch
         {
-            0 => "group Consumer\n    func take(x: Source.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)",
+            0 => "group Consumer\n    func take(x?: Source.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)",
             1 => "struct S\n    var field: Source.Origin.Item",
             2 => "contract C\nenum S\n    A(Source.Origin.Item)\n    Self is C",
             3 => "contract C\nstruct S: Base<Source.Origin.Item>\n    Self is C",
@@ -618,7 +618,7 @@ public class ModuleBindingTest
         string consumer;
         if (form < 2)
         {
-            library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x";
+            library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x?: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x?: Local.Hidden.Item) -> i32 => x";
             consumer = form == 0
                 ? "group Consumer\n    func take<T>()\n        T is Source.Origin.Item\n        ()\n    func call() => take<i32>()"
                 : "contract C\nstruct S<T>\n    Self is C when T is Source.Origin.Item";
@@ -784,7 +784,7 @@ public class ModuleBindingTest
     public void ImportedLateContractFailuresRevokeExpandedPremises(bool defaults, bool valid)
     {
         var library = "public group Api\n    public contract Marker: Copy\n        string is " + (valid ? "not Copy" : "Copy");
-        const string consumer = "group Consumer\n    func take<T>()\n        T is Copy\n        ()\n    func call<T>(value: T)\n        T is Marker\n        take<T>()";
+        const string consumer = "group Consumer\n    func take<T>()\n        T is Copy\n        ()\n    func call<T>(value?: T)\n        T is Marker\n        take<T>()";
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         for (var pass = 0; pass < 2; pass++)
         {
@@ -825,7 +825,7 @@ public class ModuleBindingTest
     public void ImportedPendingRefinementsPreserveIndependentEvidence(bool defaults, bool independent)
     {
         const string library = "public group Api\n    public contract Origin\n    public struct Source\n    public contract Marker: Copy\n        Source is Origin\n    public contract Child: Marker";
-        var consumer = "group Consumer\n    func take<T>()\n        T is Copy\n        ()\n    func call<T>(value: T)\n        T is Child" + (independent ? "\n        T is Copy" : string.Empty) + "\n        take<T>()";
+        var consumer = "group Consumer\n    func take<T>()\n        T is Copy\n        ()\n    func call<T>(value?: T)\n        T is Child" + (independent ? "\n        T is Copy" : string.Empty) + "\n        take<T>()";
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
@@ -885,7 +885,7 @@ public class ModuleBindingTest
     public void ImportedAssociatedRefinementsSupplyIntrinsicCallEvidence(bool defaults, string capability)
     {
         var library = "public group Api\n    public contract Trait: " + capability + "\n    public contract Elements\n        associate Item is Trait";
-        var consumer = "group Consumer\n    func take<U>()\n        U is " + capability + "\n        ()\n    func call<T>(value: T.Item)\n        T is Elements\n        take<T.Item>()";
+        var consumer = "group Consumer\n    func take<U>()\n        U is " + capability + "\n        ()\n    func call<T>(value?: T.Item)\n        T is Elements\n        take<T.Item>()";
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         for (var pass = 0; pass < 2; pass++)
         {
@@ -951,7 +951,7 @@ public class ModuleBindingTest
 
     private static string ProjectionConsumer(bool runtime, string argument)
         => runtime
-            ? "struct Target<T>\ngroup Consumer\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">"
+            ? "struct Target<T>\ngroup Consumer\n    func call(x?: objref/Target<i32>) -> bool => x is Target<" + argument + ">"
             : "group Consumer\n    func take<T>() => ()\n    func call() => take<" + argument + ">()";
 
     private static void VerifyImportedProjectionCertificate(Compilation c, bool runtime, bool valid)

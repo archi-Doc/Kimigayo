@@ -28,7 +28,7 @@ public class OriginSyntaxRevisionTest
     [InlineData("[2 of View<i32>]")]
     public void AggregateInputOmissionIsIndependentAndStable(string input)
     {
-        var c = MinimalEmissionTest.Analyze(View + $"func inspect(left: {input}, right: {input}) => ()");
+        var c = MinimalEmissionTest.Analyze(View + $"func inspect(left?: {input}, right?: {input}) => ()");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var function = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single();
         var left = Origins(function.Parameters[0].Type.BoundType!).Where(x => x.Kind == OriginKind.Input).ToArray();
@@ -40,16 +40,16 @@ public class OriginSyntaxRevisionTest
     }
 
     [Theory]
-    [InlineData("func identity(value: View<i32>) -> View<i32> => value", false)]
-    [InlineData("func identity(value: View<i32>) -> View<i32>{value.source} => value", true)]
-    [InlineData("func identity {a}(value: View<i32>{a}) -> View<i32>{a} => value", true)]
-    [InlineData("func inspect(callback: (View<i32>) -> ()) => ()", false)]
-    [InlineData("func inspect {a}(callback: (View<i32>{a}) -> ()) => ()", true)]
-    [InlineData("func inspect(value: ref/ref/i32) => ()", false)]
-    [InlineData("func inspect {a}(value: ref/ref{a}/i32) => ()", true)]
-    [InlineData("func empty<T>(value: T) -> View<i32> => $abort(\"unreachable\")", false)]
-    [InlineData("func empty<T>(value: T) -> View<i32>\n    T is Owned\n    $abort(\"unreachable\")", true)]
-    [InlineData("func empty(value: i32) -> View<i32> => $abort(\"unreachable\")", true)]
+    [InlineData("func identity(value?: View<i32>) -> View<i32> => value", false)]
+    [InlineData("func identity(value?: View<i32>) -> View<i32>{value.source} => value", true)]
+    [InlineData("func identity {a}(value?: View<i32>{a}) -> View<i32>{a} => value", true)]
+    [InlineData("func inspect(callback?: (View<i32>) -> ()) => ()", false)]
+    [InlineData("func inspect {a}(callback?: (View<i32>{a}) -> ()) => ()", true)]
+    [InlineData("func inspect(value?: ref/ref/i32) => ()", false)]
+    [InlineData("func inspect {a}(value?: ref/ref{a}/i32) => ()", true)]
+    [InlineData("func empty<T>(value?: T) -> View<i32> => $abort(\"unreachable\")", false)]
+    [InlineData("func empty<T>(value?: T) -> View<i32>\n    T is Owned\n    $abort(\"unreachable\")", true)]
+    [InlineData("func empty(value?: i32) -> View<i32> => $abort(\"unreachable\")", true)]
     public void OmissionKeepsSignatureBoundariesAndResultContracts(string declaration, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(View + declaration);
@@ -59,26 +59,26 @@ public class OriginSyntaxRevisionTest
     [Theory]
     [InlineData("func f {}() => ()")]
     [InlineData("func f origin a() => ()")]
-    [InlineData("func f {a}(value: ref/i32 from a) => ()")]
-    [InlineData("func f {a}(value: (ref/i32){a}) => ()")]
-    [InlineData("func f {a}(value: obj{a}/i32) => ()")]
-    [InlineData("func f {a}(value: ref{source => a}/i32) => ()")]
-    [InlineData("func f {a, b}(value: View<i32>{a, b}) => ()")]
-    [InlineData("func f {a}(value: View<i32>{a}{a}) => ()")]
+    [InlineData("func f {a}(value?: ref/i32 from a) => ()")]
+    [InlineData("func f {a}(value?: (ref/i32){a}) => ()")]
+    [InlineData("func f {a}(value?: obj{a}/i32) => ()")]
+    [InlineData("func f {a}(value?: ref{source => a}/i32) => ()")]
+    [InlineData("func f {a, b}(value?: View<i32>{a, b}) => ()")]
+    [InlineData("func f {a}(value?: View<i32>{a}{a}) => ()")]
     public void RejectsOldAndWrongRoleSyntax(string declaration)
         => Assert.NotEmpty(ParseTestHelper.Parse(View + declaration).DiagnosticCollection.GetArray());
 
     [Theory]
     [InlineData("struct S\n    init {a,}(value: ref{a,}/i32) => ()")]
     [InlineData("struct S\n    computed item: i32\n        get {a}(self: ref{a}/Self) -> i32 => 1")]
-    [InlineData("struct Pair {a, b}\n    let first: ref{a}/i32\n    let second: ref{b}/i32\nfunc f {x}(value: Pair{a => x,}) => ()")]
-    [InlineData("struct Outer {a}\n    public struct Inner {b}\nfunc f(value: (Outer{static}).Inner{static}) => ()")]
-    [InlineData("func f<s/T, U>(first: s/T, second: s/U)\n    s is ref\n    ()\nlet value: i32 = 1\nf(value@ref, value@ref)")]
-    [InlineData("func f<s/T, U>(first: s/T, second: s/U)\n    s is owner\n    ()\nf<i32, i32>(1, 2)")]
-    [InlineData("func f<s/T, U>(first: s/T, second: s/U) -> s/U\n    s is ref\n    return second")]
-    [InlineData("func f<s/T, U>(first: s/T, second: s/U) -> s/U\n    s is uniq\n    return second")]
-    [InlineData("func f<s/T, U>(first: s/T, second: s/U)\n    s is ref\n    let local: s/U = second")]
-    [InlineData("func origin(from: i32) -> i32 => from")]
+    [InlineData("struct Pair {a, b}\n    let first: ref{a}/i32\n    let second: ref{b}/i32\nfunc f {x}(value?: Pair{a => x,}) => ()")]
+    [InlineData("struct Outer {a}\n    public struct Inner {b}\nfunc f(value?: (Outer{static}).Inner{static}) => ()")]
+    [InlineData("func f<s/T, U>(first?: s/T, second?: s/U)\n    s is ref\n    ()\nlet value: i32 = 1\nf(value@ref, value@ref)")]
+    [InlineData("func f<s/T, U>(first?: s/T, second?: s/U)\n    s is owner\n    ()\nf<i32, i32>(1, 2)")]
+    [InlineData("func f<s/T, U>(first?: s/T, second?: s/U) -> s/U\n    s is ref\n    return second")]
+    [InlineData("func f<s/T, U>(first?: s/T, second?: s/U) -> s/U\n    s is uniq\n    return second")]
+    [InlineData("func f<s/T, U>(first?: s/T, second?: s/U)\n    s is ref\n    let local: s/U = second")]
+    [InlineData("func origin(from?: i32) -> i32 => from")]
     public void NewDeclarationAndApplicationFormsBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -109,7 +109,7 @@ public class OriginSyntaxRevisionTest
     {
         // Required explicit names are declared only when they are not fixed static.
         var requiredDeclarations = required == "{a}" ? " {a}" : string.Empty;
-        var source = View + $"contract C\n    func inspect{requiredDeclarations}(self, value: View<i32>{required}) -> ()\nstruct S\n    Self is C\n    public func inspect {declarations}(self, value: View<i32>{implementation}) -> () => ()";
+        var source = View + $"contract C\n    func inspect{requiredDeclarations}(self, value?: View<i32>{required}) -> ()\nstruct S\n    Self is C\n    public func inspect {declarations}(self, value?: View<i32>{implementation}) -> () => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
@@ -117,7 +117,7 @@ public class OriginSyntaxRevisionTest
     [Fact]
     public void SpecializationInheritsTheOriginalResultOrigin()
     {
-        var c = MinimalEmissionTest.Analyze(View + "group G\n    func identity<T>(value: View<T>) -> View<T>{value.source} => value\n    specialize func identity<i32>(value: View<i32>) -> View<i32> => value");
+        var c = MinimalEmissionTest.Analyze(View + "group G\n    func identity<T>(value?: View<T>) -> View<T>{value.source} => value\n    specialize func identity<i32>(value: View<i32>) -> View<i32> => value");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var functions = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G")).OfType<FunctionKoto>().ToArray();
         Assert.Equal(Origins(functions[0].Parameters[0].Type.BoundType!).Select(x => x.Slot), Origins(functions[1].Parameters[0].Type.BoundType!).Select(x => x.Slot));
@@ -125,11 +125,11 @@ public class OriginSyntaxRevisionTest
     }
 
     [Theory]
-    [InlineData("func inspect(value: View<i32>) => ()\nlet f: (View<i32>{static}) -> () = inspect", true)]
-    [InlineData("func inspect(value: ref{static}/i32) => ()\nlet f: (ref/i32) -> () = inspect", false)]
-    [InlineData("func inspect(value: ref/i32) => ()\nlet f: (ref{static}/i32) -> () = inspect", true)]
+    [InlineData("func inspect(value?: View<i32>) => ()\nlet f: (View<i32>{static}) -> () = inspect", true)]
+    [InlineData("func inspect(value?: ref{static}/i32) => ()\nlet f: (ref/i32) -> () = inspect", false)]
+    [InlineData("func inspect(value?: ref/i32) => ()\nlet f: (ref{static}/i32) -> () = inspect", true)]
     [InlineData("func inspect() -> i32 => 1\nlet f: (i32) -> i32 = inspect", false)]
-    [InlineData("func inspect(value: i32) -> i32 => value\nlet f: (i32) -> bool = inspect", false)]
+    [InlineData("func inspect(value?: i32) -> i32 => value\nlet f: (i32) -> bool = inspect", false)]
     public void FunctionReferencesCheckCompleteOriginContracts(string source, bool valid)
     {
         var compilation = MinimalEmissionTest.Analyze(View + source);
@@ -140,7 +140,7 @@ public class OriginSyntaxRevisionTest
     [Fact]
     public void SpecializationWithAnAnonymousAggregateOriginExecutes()
     {
-        const string Source = "struct Counter\n    public var value: i32 = 7\nstruct View<T> {source}\n    public let value: ref{source}/T\n    public init(value: ref{source}/T) => self.value = value\nfunc read<T>(view: ref/View<T>) -> i32 => 1\nspecialize func read<Counter>(view: ref/View<Counter>) -> i32 => view.value.value\nlet counter = Counter.init()\nlet view = View<Counter>.init(counter@ref)\nif read(view@ref) != 7 => $abort(\"specialization\")\n";
+        const string Source = "struct Counter\n    public var value: i32 = 7\nstruct View<T> {source}\n    public let value: ref{source}/T\n    public init(value?: ref{source}/T) => self.value = value\nfunc read<T>(view?: ref/View<T>) -> i32 => 1\nspecialize func read<Counter>(view: ref/View<Counter>) -> i32 => view.value.value\nlet counter = Counter.init()\nlet view = View<Counter>.init(counter@ref)\nif read(view@ref) != 7 => $abort(\"specialization\")\n";
         var compilation = MinimalEmissionTest.Analyze(Source);
         Assert.True(compilation.Ownership.Result.IsVerified, string.Join("\n", compilation.Binding.Obligations) + "\n" + string.Join("\n", compilation.Ownership.ControlFlow!.PendingBinding));
         ScalarEmissionTest.EmitFixture("AnonymousOriginSpecialization", Source, string.Empty);
@@ -149,7 +149,7 @@ public class OriginSyntaxRevisionTest
     [Fact]
     public void AnonymousAggregateBorrowExecutesAndKeepsItsLoan()
     {
-        const string Source = "struct Counter\n    public var value: i32 = 7\nstruct View {source}\n    public let counter: ref{source}/Counter\n    public init(counter: ref{source}/Counter) => self.counter = counter\nfunc read(view: ref/View) -> i32 => view.counter.value\nvar counter = Counter.init()\nlet view = View.init(counter@ref)\nif read(view@ref) != 7 => $abort(\"bad value\")\n";
+        const string Source = "struct Counter\n    public var value: i32 = 7\nstruct View {source}\n    public let counter: ref{source}/Counter\n    public init(counter?: ref{source}/Counter) => self.counter = counter\nfunc read(view?: ref/View) -> i32 => view.counter.value\nvar counter = Counter.init()\nlet view = View.init(counter@ref)\nif read(view@ref) != 7 => $abort(\"bad value\")\n";
         var valid = MinimalEmissionTest.Analyze(Source);
         Assert.True(valid.Ownership.Result.IsVerified, string.Join("\n", valid.Binding.Obligations) + "\n" + string.Join("\n", valid.Ownership.ControlFlow!.Issues) + "\n" + string.Join("\n", valid.Ownership.ControlFlow.PendingBinding));
         ScalarEmissionTest.EmitFixture("AnonymousAggregateOrigin", Source, string.Empty);

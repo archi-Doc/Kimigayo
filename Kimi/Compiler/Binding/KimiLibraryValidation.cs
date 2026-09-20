@@ -171,7 +171,7 @@ public sealed partial class KimiLibrary
             var parameter = function.Parameters[i];
             var name = swap ? (i == 0 ? "first" : "second") : (i == 0 ? "target" : "value");
             if (parameter.InternalName != name || parameter.ExternalName != (!swap && i == 1 ? "with" : name) ||
-                parameter.IsOptional || parameter.DefaultValue is not null || parameter.AttributeChain is not null ||
+                parameter.IsNameOptional != (swap || i == 0) || parameter.DefaultValue is not null || parameter.AttributeChain is not null ||
                 !Type(parameter.Type, swap || i == 0))
             {
                 return false;
@@ -204,7 +204,7 @@ public sealed partial class KimiLibrary
         function.AttributeChain is null && !function.IsRequirement && !function.IsGenerated && !function.IsSpecialization &&
         function.Parameters[0] is
         {
-            ExternalName: "text", InternalName: "text", IsOptional: false, DefaultValue: null, AttributeChain: null,
+            ExternalName: "text", InternalName: "text", IsNameOptional: true, DefaultValue: null, AttributeChain: null,
             Type: TypeSemanticsKoto { Type: null, Identifier: "string", SemanticsKind: SemanticsKind.Owner, OriginExpression: null, OriginName: null, OriginArguments: null },
         };
 
@@ -215,7 +215,7 @@ public sealed partial class KimiLibrary
         declaration.Members[0] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1, AttributeChain: null } associated &&
         associated.Operands[0] is IdentifierNameKoto { IdentifierName: "Element" } &&
         declaration.Members[1] is FunctionKoto { Name: "next", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function &&
-        function.Parameters[0] is { InternalName: "self", ExternalName: "self", IsOptional: false, DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: TypeSemanticsKoto { Identifier: "Self", Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null } } } &&
+        function.Parameters[0] is { InternalName: "self", ExternalName: "self", IsNameOptional: false, DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: TypeSemanticsKoto { Identifier: "Self", Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null } } } &&
         BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") &&
         BareType(option.TypeArguments[0]) is MemberAccessKoto element && BareName(element.Left, "Self") && BareName(element.Right, "Element");
 
@@ -273,7 +273,7 @@ public sealed partial class KimiLibrary
         ReferenceEquals(this.MakeObj.Declaration.Parent, this.Intrinsics) &&
         this.MakeObj.Declaration is FunctionKoto { Name: "makeObj", Modifier: ModifierKind.Public, AttributeChain: null, GenericArguments.Count: 1, Parameters.Count: 1, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false } f &&
         f.GenericArguments[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
-        f.Parameters[0] is { InternalName: "value", ExternalName: "value", IsOptional: false, DefaultValue: null, AttributeChain: null } p &&
+        f.Parameters[0] is { InternalName: "value", ExternalName: "value", IsNameOptional: true, DefaultValue: null, AttributeChain: null } p &&
         BareName(p.Type, "T") && f.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: { } inner } && BareName(inner, "T");
 
     private bool Valid(BindingSymbol symbol, IntrinsicKind kind)

@@ -16,7 +16,7 @@ public class CompositeMatchTest
     [InlineData("TwoCandidates", "let x: (i32, i64) = (7, 5)\nlet y = match x\n    (let a, let b) if a == 7 and b == 5 => a\n    (_, _) => 0\nrequire y == 7 else => $abort(\"bad\")")]
     [InlineData("NestedEnum", "enum E<T>\n    A(T)\n    B\nlet x: E<E<(u8, i64)>> = .A(.A((3, 9)))\nlet y = match x\n    .A(.A((let n, 9))) if n == 3 => n\n    .A(_) => 0\n    .B => 0\nrequire y == 3 else => $abort(\"bad\")")]
     [InlineData("Wide", "let x: (u8, u128) = (3, 340282366920938463463374607431768211455)\nlet y = match x\n    (3, let n) => n\n    (_, _) => 0\nrequire y == 340282366920938463463374607431768211455 else => $abort(\"bad\")")]
-    [InlineData("GuardEffects", "func check(n: i32) -> bool\n    Console.writeLine(\"guard\")\n    return n > 0\nlet x = (-1, true)\nlet y = match x\n    (let n, false) if check(n) => 1\n    (let n, true) if check(n) => 2\n    (_, _) => 3\nrequire y == 3 else => $abort(\"bad\")")]
+    [InlineData("GuardEffects", "func check(n?: i32) -> bool\n    Console.writeLine(\"guard\")\n    return n > 0\nlet x = (-1, true)\nlet y = match x\n    (let n, false) if check(n) => 1\n    (let n, true) if check(n) => 2\n    (_, _) => 3\nrequire y == 3 else => $abort(\"bad\")")]
     [InlineData("ArrayTuple", "let a: [2 of (i32, bool)] = [(2, true), (3, false)]\nvar total = 0\nfor item in a\n    match item\n        (let n, _) => total += n\nrequire total == 5 else => $abort(\"bad\")")]
     [InlineData("ArrayUnit", "let a: [3 of ()] = [(), (), ()]\nvar total = 0\nfor item in a\n    total += 1\nrequire total == 3 else => $abort(\"bad\")")]
     [InlineData("EmptyArray", "let a: [0 of (i32, bool)] = []\nfor item in a\n    $abort(\"bad\")")]
@@ -30,11 +30,11 @@ public class CompositeMatchTest
     }
 
     [Theory]
-    [InlineData("func f(x: (i32, bool)) -> i32 => match x\n    (let n, true) if n > 0 => n\n    (_, _) => 0")]
-    [InlineData("func f(x: Option<(i32, bool)>) -> i32 => match x\n    .Some((let n, true)) if n > 0 => n\n    .Some(_) => 0\n    .None => -1")]
-    [InlineData("func f(x: (i32, i32)) -> i32 => match x\n    (let a, let b) if a > b => a\n    (_, let b) => b")]
-    [InlineData("func f(x: ((i32, bool), i32)) -> i32 => match x\n    ((let a, true), let b) if a > b => a\n    (_, _) => 0")]
-    [InlineData("func f(x: (string, i32)) -> string => match x\n    (let s, _) => s")]
+    [InlineData("func f(x?: (i32, bool)) -> i32 => match x\n    (let n, true) if n > 0 => n\n    (_, _) => 0")]
+    [InlineData("func f(x?: Option<(i32, bool)>) -> i32 => match x\n    .Some((let n, true)) if n > 0 => n\n    .Some(_) => 0\n    .None => -1")]
+    [InlineData("func f(x?: (i32, i32)) -> i32 => match x\n    (let a, let b) if a > b => a\n    (_, let b) => b")]
+    [InlineData("func f(x?: ((i32, bool), i32)) -> i32 => match x\n    ((let a, true), let b) if a > b => a\n    (_, _) => 0")]
+    [InlineData("func f(x?: (string, i32)) -> string => match x\n    (let s, _) => s")]
     public void OwnedNestedPatternsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -43,9 +43,9 @@ public class CompositeMatchTest
     }
 
     [Theory]
-    [InlineData("func f(x: (i32, bool)) => match x\n    (var n, _) if (n = 1) => ()\n    (_, _) => ()")]
-    [InlineData("func f(x: (i32, bool)) -> i32 => match x\n    (let n, true) if n > 0 => n")]
-    [InlineData("func f(x: Option<(i32, bool)>) => match x\n    .Some((let n, let n)) => ()\n    .None => ()")]
+    [InlineData("func f(x?: (i32, bool)) => match x\n    (var n, _) if (n = 1) => ()\n    (_, _) => ()")]
+    [InlineData("func f(x?: (i32, bool)) -> i32 => match x\n    (let n, true) if n > 0 => n")]
+    [InlineData("func f(x?: Option<(i32, bool)>) => match x\n    .Some((let n, let n)) => ()\n    .None => ()")]
     public void InvalidNestedPatternsAreRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

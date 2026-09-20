@@ -40,7 +40,7 @@ public class FunctionParameterIdentityBindingTest
             builder.Dispose();
         }
 
-        var signatures = MinimalEmissionTest.Analyze("group G\n    func f(a: " + left + ", b: " + right + ") => ()");
+        var signatures = MinimalEmissionTest.Analyze("group G\n    func f(a?: " + left + ", b?: " + right + ") => ()");
         Assert.True(signatures.Binding.Result.IsComplete, MinimalEmissionTest.Describe(signatures, null));
         var function = signatures.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>().Single();
         var a = function.Parameters[0].Type.BoundType!;
@@ -71,7 +71,7 @@ public class FunctionParameterIdentityBindingTest
     [InlineData("((i32, bool))", "(i32, bool)", false)]
     public void OverloadIdentityPreservesParameterArity(string left, string right, bool duplicate)
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: " + left + " -> bool) => ()\nfunc f(x: " + right + " -> bool) => ()");
+        var c = MinimalEmissionTest.Analyze("func f(x?: " + left + " -> bool) => ()\nfunc f(x?: " + right + " -> bool) => ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(!duplicate, c.Binding.Result.IsComplete);
         Assert.Equal(duplicate, c.Binding.Issues.Any(x => x.Node.BindingFailure == BindingFailure.Duplicate));
@@ -83,7 +83,7 @@ public class FunctionParameterIdentityBindingTest
     [InlineData("((T,))", "((i32,))", true)]
     public void SubstitutionRetainsParameterListStructure(string parameters, string required, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + parameters + " -> bool is " + required + " -> bool\npublic func use(value: Target<i32>) => ()");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + parameters + " -> bool is " + required + " -> bool\npublic func use(value?: Target<i32>) => ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Reload(c).Bind().IsComplete);

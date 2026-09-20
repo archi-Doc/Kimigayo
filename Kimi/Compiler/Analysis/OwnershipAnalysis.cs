@@ -249,7 +249,7 @@ public sealed partial class OwnershipAnalysis
                 this.SetValue(initialized, OwnershipValueKind.Parameter, [], constant: i);
             }
 
-            if (declarationDefault < 0 && (parameter.IsOptional || parameter.DefaultValue is not null) && !ScalarDefaults.Supports(function, i))
+            if (declarationDefault < 0 && parameter.DefaultValue is not null && !ScalarDefaults.Supports(function, i))
             {
                 this.Unsupported(parameter.DefaultValue ?? parameter.Type);
             }

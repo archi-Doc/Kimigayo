@@ -1,4 +1,4 @@
-func masked(value: i32, mask: i32) -> i32 => value & mask
+func masked(value?: i32, mask?: i32) -> i32 => value & mask
 
 func snapshot() -> i32
     var value = 3

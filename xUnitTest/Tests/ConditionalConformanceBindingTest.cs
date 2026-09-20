@@ -14,7 +14,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("string", ConstraintProof.Refuted)]
     public void ConditionsControlEvidenceWithoutRestrictingFormation(string argument, ConstraintProof expected)
     {
-        var c = Parse($"contract C\n    func f()\nstruct S<T>\n    Self is C when T is Copy\n    public func f() => ()\nfunc use(x: S<{argument}>) => ()");
+        var c = Parse($"contract C\n    func f()\nstruct S<T>\n    Self is C when T is Copy\n    public func f() => ()\nfunc use(x?: S<{argument}>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         var type = use.Parameters[0].Type.BoundType!;
@@ -36,14 +36,14 @@ public class ConditionalConformanceBindingTest
     [InlineData("string", false)]
     public void GenericCallDischargesSubstitutedConditions(string argument, bool valid)
     {
-        var c = Parse($"contract C\nstruct S<T>\n    Self is C when T is Copy\nfunc take<T>(x: T)\n    T is C\n    ()\nfunc use(x: S<{argument}>) => take(x)");
+        var c = Parse($"contract C\nstruct S<T>\n    Self is C when T is Copy\nfunc take<T>(x?: T)\n    T is C\n    ()\nfunc use(x?: S<{argument}>) => take(x)");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
     [Fact]
     public void TheSameGenericTypeUsesTheCallersProofEnvironment()
     {
-        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\nfunc yes<T>(x: S<T>)\n    T is Copy\n    ()\nfunc unknown<T>(x: S<T>) => ()");
+        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\nfunc yes<T>(x?: S<T>)\n    T is Copy\n    ()\nfunc unknown<T>(x?: S<T>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var contract = Container(c, "C").BoundSymbol!;
         foreach (var name in new[] { "yes", "unknown", "yes", "unknown" })
@@ -56,7 +56,7 @@ public class ConditionalConformanceBindingTest
     [Fact]
     public void StandardGetterCanUseTheConformanceCondition()
     {
-        var c = Parse("struct Box<T>\n    Self is Copy when T is Copy\n    var value: T\ncontract C\n    associate E\n    property item: E has get\nstruct S<T>\n    Self is C when T is Copy\n    associate C.E is Box<T>\n    public var item: Box<T>\nfunc use(x: S<i32>) => ()");
+        var c = Parse("struct Box<T>\n    Self is Copy when T is Copy\n    var value: T\ncontract C\n    associate E\n    property item: E has get\nstruct S<T>\n    Self is C when T is Copy\n    associate C.E is Box<T>\n    public var item: Box<T>\nfunc use(x?: S<i32>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(use.Parameters[0].Type.BoundType!, Container(c, "C").BoundSymbol!, use, out var path));
@@ -64,11 +64,11 @@ public class ConditionalConformanceBindingTest
     }
 
     [Theory]
-    [InlineData("public func f(x: T) -> T => copy(x)")]
+    [InlineData("public func f(x?: T) -> T => copy(x)")]
     [InlineData("public var item: T\n        get(self: ref/Self) -> T => storage")]
     public void ConditionsDoNotLeakIntoOutsideMemberDeclarationsOrBodies(string member)
     {
-        var c = Parse($"contract C\nfunc copy<U>(x: U) -> U\n    U is Copy\n    return x\nstruct S<T>\n    Self is C when T is Copy\n    {member}");
+        var c = Parse($"contract C\nfunc copy<U>(x?: U) -> U\n    U is Copy\n    return x\nstruct S<T>\n    Self is C when T is Copy\n    {member}");
         Assert.False(c.Bind().IsComplete);
     }
 
@@ -79,7 +79,7 @@ public class ConditionalConformanceBindingTest
     {
         var parent = "    Self is Parent when T is Copy\n";
         var child = "    Self is Child when T is Owned\n";
-        var c = Parse("contract Parent\n    func f()\ncontract Child: Parent\nstruct S<T>\n" + (reversed ? child + parent : parent + child) + "    public func f() => ()\nfunc use(x: S<string>) => ()");
+        var c = Parse("contract Parent\n    func f()\ncontract Child: Parent\nstruct S<T>\n" + (reversed ? child + parent : parent + child) + "    public func f() => ()\nfunc use(x?: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(use.Parameters[0].Type.BoundType!, Container(c, "Parent").BoundSymbol!, use, out var path));
@@ -129,7 +129,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("string", false)]
     public void AssociatedProjectionRequiresAProvenConditionalPath(string argument, bool valid)
     {
-        var c = Parse($"contract C\n    associate E is i32\nstruct S<T>\n    Self is C when T is Copy\nfunc use(x: S<{argument}>.C.E) -> i32 => x");
+        var c = Parse($"contract C\n    associate E is i32\nstruct S<T>\n    Self is C when T is Copy\nfunc use(x?: S<{argument}>.C.E) -> i32 => x");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
@@ -138,7 +138,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("T.C.E is Copy, T is C")]
     public void ConditionsCanDependOnAssociatedProjections(string conditions)
     {
-        var c = Parse($"contract C\n    associate E\ncontract D\nstruct V\n    Self is C\n    associate C.E is i32\nstruct S<T>\n    Self is D when {conditions}\nfunc use(x: S<V>) => ()");
+        var c = Parse($"contract C\n    associate E\ncontract D\nstruct V\n    Self is C\n    associate C.E is i32\nstruct S<T>\n    Self is D when {conditions}\nfunc use(x?: S<V>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(use.Parameters[0].Type.BoundType!, Container(c, "D").BoundSymbol!, use, out _));
@@ -178,14 +178,14 @@ public class ConditionalConformanceBindingTest
     {
         var a = "struct A<T>\n    Self is C when T is Copy\n    associate C.E is B<T>\n";
         var b = "struct B<T>\n    Self is C when T is Copy\n    associate C.E is Leaf\n";
-        var c = Parse("contract C\n    associate E\nstruct Leaf\n" + (reverse ? b + a : a + b) + "func use(x: A<i32>) => ()");
+        var c = Parse("contract C\n    associate E\nstruct Leaf\n" + (reverse ? b + a : a + b) + "func use(x?: A<i32>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]
     public void AnInvalidAlternativeIsNotHiddenByASuccessfulPath()
     {
-        var c = Parse("contract A\ncontract B: A\nstruct S<T>\n    Self is A when T is Copy\n    Self is B when T is Missing\nfunc use(x: S<i32>) => ()");
+        var c = Parse("contract A\ncontract B: A\nstruct S<T>\n    Self is A when T is Copy\n    Self is B when T is Missing\nfunc use(x?: S<i32>) => ()");
         Assert.False(c.Bind().IsComplete);
         var use = Function(c, "use");
         Assert.Equal(ConstraintProof.Error, c.Binding.ResolveConformance(use.Parameters[0].Type.BoundType!, Container(c, "A").BoundSymbol!, use, out var path));
@@ -195,21 +195,21 @@ public class ConditionalConformanceBindingTest
     [Fact]
     public void OrdinaryConstraintsStillRestrictFormation()
     {
-        var c = Parse("contract C\nstruct S<T>\n    T is Copy\n    Self is C when T is Owned\nfunc use(x: S<string>) => ()");
+        var c = Parse("contract C\nstruct S<T>\n    T is Copy\n    Self is C when T is Owned\nfunc use(x?: S<string>) => ()");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void RequirementPremisesAndConformanceConditionsAreCombined()
     {
-        var c = Parse("contract C\n    func f<U>(x: U)\n        U is Copy\nstruct S<T>\n    Self is C when T is Owned\n    public func f<V>(x: V)\n        V is Copy\n        ()");
+        var c = Parse("contract C\n    func f<U>(x?: U)\n        U is Copy\nstruct S<T>\n    Self is C when T is Owned\n    public func f<V>(x?: V)\n        V is Copy\n        ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]
     public void ConditionalRefinementRetainsIntrinsicCopyDerivation()
     {
-        var c = Parse("contract C: Copy\nstruct S<T>\n    Self is C when T is Copy\n    let value: T\nfunc use(x: S<i32>, y: S<string>) => ()");
+        var c = Parse("contract C: Copy\nstruct S<T>\n    Self is C when T is Copy\n    let value: T\nfunc use(x?: S<i32>, y?: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(use.Parameters[0].Type.BoundType!, use));
@@ -230,7 +230,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("T is i32", "i32", ConstraintProof.Proven)]
     public void ConditionsAcceptEnclosingSemanticsAndTargetProjections(string condition, string argument, ConstraintProof expected)
     {
-        var c = Parse($"contract C\nstruct S<s/T>\n    Self is C when {condition}\nfunc use(x: S<{argument}>) => ()");
+        var c = Parse($"contract C\nstruct S<s/T>\n    Self is C when {condition}\nfunc use(x?: S<{argument}>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(expected, c.Binding.ResolveConformance(use.Parameters[0].Type.BoundType!, Container(c, "C").BoundSymbol!, use, out _));
@@ -254,7 +254,7 @@ public class ConditionalConformanceBindingTest
     [Fact]
     public void IdenticalTypeArgumentsDoNotShareProofBetweenConditionalAndOuterScopes()
     {
-        var c = Parse("contract C\ncontract D\nstruct S<T>\n    Self is C when T is Copy\nstruct Outer<T>\n    Self is D when T is Copy\n    public func inspect(x: S<T>) => ()");
+        var c = Parse("contract C\ncontract D\nstruct S<T>\n    Self is C when T is Copy\nstruct Outer<T>\n    Self is D when T is Copy\n    public func inspect(x?: S<T>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var inspect = Function(c, "inspect");
         var type = inspect.Parameters[0].Type.BoundType!;
@@ -281,7 +281,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("Copy")]
     public void ChangedConditionsInvalidateEarlierSuccessfulAndFailedQueries(string contractName)
     {
-        var c = Parse($"contract C\nstruct S<T>\n    Self is {contractName} when T is Copy\nfunc use(x: S<string>) => ()");
+        var c = Parse($"contract C\nstruct S<T>\n    Self is {contractName} when T is Copy\nfunc use(x?: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var syntax = Container(c, "S").Members.OfType<SyntaxFormKoto>().Single();
         var original = ((IsKoto)((SyntaxFormKoto)syntax.Operands[1]).Operands[0]).Right;
@@ -305,7 +305,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("string", ConstraintProof.Refuted)]
     public void GenericEnumsUseTheSameConditionalConformanceValidation(string argument, ConstraintProof expected)
     {
-        var c = Parse($"contract C\n    func f()\nenum S<T>\n    Self is C when T is Copy\n    None\n    Some(T)\n    public func f() => ()\nfunc use(x: S<{argument}>) => ()");
+        var c = Parse($"contract C\n    func f()\nenum S<T>\n    Self is C when T is Copy\n    None\n    Some(T)\n    public func f() => ()\nfunc use(x?: S<{argument}>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(expected, c.Binding.ResolveConformance(use.Parameters[0].Type.BoundType!, Container(c, "C").BoundSymbol!, use, out _));
@@ -314,7 +314,7 @@ public class ConditionalConformanceBindingTest
     [Fact]
     public void DisjointEvidenceMayRetainDifferentAssociatedBindings()
     {
-        var c = Parse("contract A\n    associate E\ncontract B: A\n    Self.A.E is i32\ncontract C: A\n    Self.A.E is string\nstruct S<T>\n    Self is B when T is i32\n    Self is C when T is string\nfunc use(x: S<i32>, y: S<string>) => ()");
+        var c = Parse("contract A\n    associate E\ncontract B: A\n    Self.A.E is i32\ncontract C: A\n    Self.A.E is string\nstruct S<T>\n    Self is B when T is i32\n    Self is C when T is string\nfunc use(x?: S<i32>, y?: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         var a = Container(c, "A").BoundSymbol!;
@@ -330,7 +330,7 @@ public class ConditionalConformanceBindingTest
     [InlineData(true)]
     public void RebindingInvalidatesAndRestoresEvidence(bool condition)
     {
-        var c = Parse("contract C\n    func f()\nstruct S<T>\n    Self is C when T is Copy\n    public func f() => ()\nfunc use(x: S<i32>) => ()");
+        var c = Parse("contract C\n    func f()\nstruct S<T>\n    Self is C when T is Copy\n    public func f() => ()\nfunc use(x?: S<i32>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         var contract = Container(c, "C").BoundSymbol!;

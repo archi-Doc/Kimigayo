@@ -1,4 +1,4 @@
-func classify(text: string) -> string
+func classify(text?: string) -> string
     return match text
         "ok" => "accepted"
         let other => other

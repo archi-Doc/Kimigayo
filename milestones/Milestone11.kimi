@@ -3,13 +3,13 @@ group Weights
     // Group members are static; no static modifier is used.
     public let defaultWeight: i32 = 1
 
-    public func weight<T>(value: ref/T) -> i32 => defaultWeight
+    public func weight<T>(value?: ref/T) -> i32 => defaultWeight
     specialize func weight<i32>(value: ref/i32) -> i32 => 2
 
     // A generic forwarding call must retain the selected specialization.
-    public func forward<T>(value: ref/T) -> i32 => weight<T>(value)
+    public func forward<T>(value?: ref/T) -> i32 => weight<T>(value)
 
-    public func total<length N, T>(values: ref/[N of T]) -> i32
+    public func total<length N, T>(values?: ref/[N of T]) -> i32
         var result: i32 = 0
         for index in values.indices
             result = result + forward<T>(values[index]@ref/T)

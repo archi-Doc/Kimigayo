@@ -1,11 +1,11 @@
-func same(left: ref/string, right: ref/string) -> bool => left == right
+func same(left?: ref/string, right?: ref/string) -> bool => left == right
 
 func make() -> (string, i32) => ("held", 42)
 
-func inspect(pair: (string, i32)) -> bool
+func inspect(pair?: (string, i32)) -> bool
     return same(pair.0, pair.0)
 
-func conditional(flag: bool) -> bool
+func conditional(flag?: bool) -> bool
     return flag and (if flag => make() else => ("other", 0)).0 == "held"
 
 if inspect(make())

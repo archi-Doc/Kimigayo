@@ -71,7 +71,7 @@ internal sealed partial class BodyLowering
             var sourceArgument = i < 0 ? plan.Receiver! : isDefault ? omitted.Expression : call.ArgumentNodes[i];
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
                 !ReferenceEquals(acquisition.Source, sourceArgument) ||
-                (isDefault && (parameter <= previousDefault || !target.Parameters[parameter].IsOptional || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
+                (isDefault && (parameter <= previousDefault || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
                     !ReferenceEquals(omitted.Parameter.Scope.Owner, target) || !ScalarDefaults.SupportsValue(omitted.ParameterType))) ||
                 acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection) || acquisition.ParameterIndex != parameter ||
                 !ReferenceTypes.CallTypeMatches(generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, acquisition.ParameterType, plan) ||

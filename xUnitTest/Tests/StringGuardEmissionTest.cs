@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class StringGuardEmissionTest
 {
-    private const string Same = "func same(a: ref/string, b: ref/string) -> bool => a == b\n";
+    private const string Same = "func same(a?: ref/string, b?: ref/string) -> bool => a == b\n";
 
     [Theory]
     [InlineData("Candidate", "match \"a\"\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
@@ -17,8 +17,8 @@ public class StringGuardEmissionTest
     [InlineData("Wildcard", "match \"a\"\n    _ if false => ()\n    _ if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
     [InlineData("Mismatch", "func bad() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch \"a\"\n    \"b\" if bad() => ()\n    \"a\" if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
     [InlineData("BodyVar", "match \"a\"\n    var s if same(s, \"a\")\n        s = \"b\"\n        Console.writeLine(s)\n    _ => ()", "b\n")]
-    [InlineData("Return", "func choose(text: string, wanted: ref/string) -> string\n    return match text\n        let s if same(s, wanted) => s\n        _ => \"other\"\nConsole.writeLine(choose(\"a\", \"a\"))", "a\n")]
-    [InlineData("CallSubject", "func echo(s: string) -> string => s\nmatch echo(\"a\")\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("Return", "func choose(text?: string, wanted?: ref/string) -> string\n    return match text\n        let s if same(s, wanted) => s\n        _ => \"other\"\nConsole.writeLine(choose(\"a\", \"a\"))", "a\n")]
+    [InlineData("CallSubject", "func echo(s?: string) -> string => s\nmatch echo(\"a\")\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("Covered", "match \"a\"\n    _ => Console.writeLine(\"ok\")\n    let s if same(s, s) => Console.writeLine(s)", "ok\n")]
     [InlineData("ShortCircuit", "match \"a\"\n    let s if false and same(s, s) => ()\n    let s if true or same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("Deferred", "defer\n    match \"a\"\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()\nConsole.writeLine(\"ok\")", "ok\na\n")]
@@ -33,7 +33,7 @@ public class StringGuardEmissionTest
 
     [Theory]
     [InlineData("func forever() -> bool\n    loop => ()\nmatch \"held\"\n    let s if forever() => Console.writeLine(s)\n    _ => ()")]
-    [InlineData("func forever(a: ref/string) -> bool\n    loop => ()\nmatch \"held\"\n    let s if forever(s) => Console.writeLine(s)\n    _ => ()")]
+    [InlineData("func forever(a?: ref/string) -> bool\n    loop => ()\nmatch \"held\"\n    let s if forever(s) => Console.writeLine(s)\n    _ => ()")]
     public void DivergentGuardHasNoAcquisitionOrCleanup(string source)
     {
         var suffix = source.Contains("forever(s)", StringComparison.Ordinal) ? "Borrow" : "Plain";
@@ -154,7 +154,7 @@ public class StringGuardEmissionTest
     public void AbortDoesNotUnwindGuardOrBorrowedTemporary(bool temporary)
     {
         var source = temporary
-            ? "func fail(a: ref/string) -> bool\n    let n: i32 = 2147483647 + 1\n    return true\nfail(\"held\")"
+            ? "func fail(a?: ref/string) -> bool\n    let n: i32 = 2147483647 + 1\n    return true\nfail(\"held\")"
             : "func fail() -> bool\n    let n: i32 = 2147483647 + 1\n    return true\nmatch \"held\"\n    let s if fail() => Console.writeLine(s)\n    _ => ()";
         const string Error = "Hello.kimi:2:18: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var name = temporary ? "StringGuardTemporaryAbort" : "StringGuardAbort";

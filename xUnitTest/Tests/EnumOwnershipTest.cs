@@ -20,14 +20,14 @@ public class EnumOwnershipTest
     [InlineData("let x: Option<Result<i32, string>> = .Some(.Err(\"error\"))")]
     [InlineData("let x = Option<i32>.Some(1)\nlet y = x\nlet z = x")]
     [InlineData("let x = Result<i32, i32>.Ok(1)\nlet y = x")]
-    [InlineData("func echo(x: Option<string>) -> Option<string> => x\nlet y = echo(Option<string>.Some(\"text\"))")]
-    [InlineData("func echo(x: Option<string>) -> Option<string>\n    return x\nlet y = echo(Option<string>.None)")]
-    [InlineData("func choose(c: bool) -> Option<string> => if c => Option<string>.Some(\"a\") else => Option<string>.None")]
-    [InlineData("func f(c: bool)\n    let x: Option<string>\n    if c\n        x = Option<string>.None\n    else\n        x = Option<string>.Some(\"a\")\n    let y = x")]
+    [InlineData("func echo(x?: Option<string>) -> Option<string> => x\nlet y = echo(Option<string>.Some(\"text\"))")]
+    [InlineData("func echo(x?: Option<string>) -> Option<string>\n    return x\nlet y = echo(Option<string>.None)")]
+    [InlineData("func choose(c?: bool) -> Option<string> => if c => Option<string>.Some(\"a\") else => Option<string>.None")]
+    [InlineData("func f(c?: bool)\n    let x: Option<string>\n    if c\n        x = Option<string>.None\n    else\n        x = Option<string>.Some(\"a\")\n    let y = x")]
     [InlineData("enum E\n    Wrapped(())\nlet x = E.Wrapped(())")]
     [InlineData("let x = Option<i8>.Some(-128)")]
     [InlineData("let x = Option<f32>.Some(1.5)")]
-    [InlineData("enum E\n    Value(string)\nfunc echo(x: E) -> E => x\nlet x: E = echo(E.Value(\"a\"))")]
+    [InlineData("enum E\n    Value(string)\nfunc echo(x?: E) -> E => x\nlet x: E = echo(E.Value(\"a\"))")]
     public void SupportedEnumProgramsVerify(string source)
     {
         var c = Parse(source);
@@ -66,8 +66,8 @@ public class EnumOwnershipTest
     [InlineData("let x = Option<string>.None\nx = Option<string>.Some(\"a\")", OwnershipFailure.ReassignedLet)]
     [InlineData("let x = Option<string>.None\nlet y = x\nx = Option<string>.None", OwnershipFailure.ReassignedLet)]
     [InlineData("enum E\n    Both(string, string)\nlet s = \"a\"\nlet x = E.Both(s, s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    let x = Option<string>.None\n    if c\n        let y = x\n    let z = x", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    let x = Option<string>.None\n    while c\n        let y = x", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(c?: bool)\n    let x = Option<string>.None\n    if c\n        let y = x\n    let z = x", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(c?: bool)\n    let x = Option<string>.None\n    while c\n        let y = x", OwnershipFailure.PossiblyMovedUse)]
     public void EnumStateErrorsAreRejected(string source, OwnershipFailure expected)
     {
         var c = Parse(source);
@@ -98,7 +98,7 @@ public class EnumOwnershipTest
     [Fact]
     public void AbandonmentInterleavesPlacedPayloadsAndSurvivingTemporaries()
     {
-        var c = Parse("enum E\n    Make(bool, string, i32)\nfunc makeText() -> string => \"temporary\"\nfunc use(c: bool)\n    let t = \"comparison\"\n    E.Make(makeText() == t, \"payload\", if c => return else => 1)");
+        var c = Parse("enum E\n    Make(bool, string, i32)\nfunc makeText() -> string => \"temporary\"\nfunc use(c?: bool)\n    let t = \"comparison\"\n    E.Make(makeText() == t, \"payload\", if c => return else => 1)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var construction = Assert.Single(body.Constructions);
@@ -113,7 +113,7 @@ public class EnumOwnershipTest
     [Fact]
     public void NestedAbandonmentCleansInnerPayloadThenOuterPayload()
     {
-        var c = Parse("enum E\n    Inner(string, i32)\nenum Outer\n    Both(string, E)\nfunc use(c: bool)\n    Outer.Both(\"outer\", E.Inner(\"inner\", if c => return else => 1))");
+        var c = Parse("enum E\n    Inner(string, i32)\nenum Outer\n    Both(string, E)\nfunc use(c?: bool)\n    Outer.Both(\"outer\", E.Inner(\"inner\", if c => return else => 1))");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var outer = body.Constructions[0];
@@ -128,7 +128,7 @@ public class EnumOwnershipTest
     [Fact]
     public void ReturnInsidePayloadCleansLocalBeforeEarlierPayload()
     {
-        var c = Parse("enum E\n    Both(string, i32)\nfunc use(c: bool)\n    E.Both(\n        \"outer\",\n        if c\n            let inner = \"inner\"\n            return\n        else => 1\n    )");
+        var c = Parse("enum E\n    Both(string, i32)\nfunc use(c?: bool)\n    E.Both(\n        \"outer\",\n        if c\n            let inner = \"inner\"\n            return\n        else => 1\n    )");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var steps = ReturnDestruction(body);
@@ -140,7 +140,7 @@ public class EnumOwnershipTest
     [Fact]
     public void ReturningAnEnumSecuresResultBeforeAbandonedConstructionCleanup()
     {
-        var c = Parse("enum E\n    Both(string, i32)\nfunc use(c: bool) -> Option<string>\n    E.Both(\"outer\", if c => return Option<string>.Some(\"result\") else => 1)\n    return Option<string>.None");
+        var c = Parse("enum E\n    Both(string, i32)\nfunc use(c?: bool) -> Option<string>\n    E.Both(\"outer\", if c => return Option<string>.Some(\"result\") else => 1)\n    return Option<string>.None");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var cleanup = ReturnDestruction(body).Single(x => x.Place == body.Constructions[0].PayloadStart);
@@ -154,7 +154,7 @@ public class EnumOwnershipTest
     [InlineData("exit")]
     public void LoopTransferAbandonsConstructionAndResetsPayloads(string transfer)
     {
-        var c = Parse($"enum E\n    Both(string, i32)\nfunc use(c: bool)\n    while c\n        E.Both(\"a\", if c => {transfer} else => 1)");
+        var c = Parse($"enum E\n    Both(string, i32)\nfunc use(c?: bool)\n    while c\n        E.Both(\"a\", if c => {transfer} else => 1)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var construction = Assert.Single(body.Constructions);
@@ -193,7 +193,7 @@ public class EnumOwnershipTest
     [Fact]
     public void ConditionalReplacementAndCleanupUseWholeEnumState()
     {
-        var c = Parse("func use(c: bool)\n    var x: Option<string>\n    if c\n        x = Option<string>.Some(\"a\")\n    x = Option<string>.None\n    if c\n        let y = x");
+        var c = Parse("func use(c?: bool)\n    var x: Option<string>\n    if c\n        x = Option<string>.Some(\"a\")\n    x = Option<string>.None\n    if c\n        let y = x");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var local = body.Places.Single(x => x.Source is FieldKoto field && field.NameKoto.IdentifierName == "x");
@@ -204,7 +204,7 @@ public class EnumOwnershipTest
     [Fact]
     public void CompletedTemporaryRegistersAfterItsConditionTemporaries()
     {
-        var c = Parse("enum E\n    Both(bool, i32)\nfunc makeText() -> string => \"condition\"\nfunc use(c: bool)\n    let t = \"test\"\n    E.Both((if makeText() == t => \"yes\" else => \"no\") == t, if c => return else => 1)");
+        var c = Parse("enum E\n    Both(bool, i32)\nfunc makeText() -> string => \"condition\"\nfunc use(c?: bool)\n    let t = \"test\"\n    E.Both((if makeText() == t => \"yes\" else => \"no\") == t, if c => return else => 1)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var steps = ReturnDestruction(body);
@@ -235,8 +235,8 @@ public class EnumOwnershipTest
     [InlineData("enum E<T>\n    Empty\n    Again(E<E<T>>)\nlet x = E<i32>.Empty")]
     [InlineData("enum A\n    Empty\n    Again(B)\nenum B\n    Again(A)\nlet x = A.Empty")]
     [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
-    [InlineData("func f(x: ref{static}/i32) -> Option<ref{static}/i32> => .Some(x)")]
-    [InlineData("func f(x: uniq/i32) -> Option<uniq{x}/i32> => .Some(x)")]
+    [InlineData("func f(x?: ref{static}/i32) -> Option<ref{static}/i32> => .Some(x)")]
+    [InlineData("func f(x?: uniq/i32) -> Option<uniq{x}/i32> => .Some(x)")]
     public void UnsupportedPayloadTypesCannotBeHiddenByAnEmptyCase(string source)
     {
         var c = Parse(source);
@@ -255,7 +255,7 @@ public class EnumOwnershipTest
     [Fact]
     public void SymbolicEnumPayloadHasUniversalOwnership()
     {
-        var c = Parse("func f<T>(x: T) -> Option<T> => .Some(x)");
+        var c = Parse("func f<T>(x?: T) -> Option<T> => .Some(x)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
     }
 
@@ -265,7 +265,7 @@ public class EnumOwnershipTest
     [InlineData(128)]
     public void WarmEnumAnalysisReusesStateAndPlans(int count)
     {
-        var source = "func use(c: bool)\n" + string.Join('\n', Enumerable.Range(0, count).Select(i => $"    var x{i} = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let y{i} = x{i}"));
+        var source = "func use(c?: bool)\n" + string.Join('\n', Enumerable.Range(0, count).Select(i => $"    var x{i} = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let y{i} = x{i}"));
         var c = Parse(source);
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
