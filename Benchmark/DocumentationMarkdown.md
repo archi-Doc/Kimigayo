@@ -10,6 +10,29 @@ the DM3 implementation at commit `4c53331`. The existing Markdig-backed product
 entry point remains unchanged. These measurements cover syntax parsing and the
 implemented query APIs; they do not measure complete documentation generation.
 
+## Simple parser benchmark
+
+[DocumentationMarkdownBenchmark.cs](Benchmarks/DocumentationMarkdownBenchmark.cs)
+provides a small BenchmarkDotNet comparison using the existing Markdig 1.3.2
+dependency. Run from the repository root:
+
+```powershell
+dotnet run --project Benchmark/Benchmark.csproj -c Release -- --filter '*DocumentationMarkdownBenchmark*' --job short
+```
+
+The three inputs are a plain summary (`Short`), a documentation comment containing
+headings, emphasis, lists, a quote, a link and fenced code (`Typical`), and 64 copies
+of that comment (`Long`). Both parsers receive identical LF text. Markdig disables
+raw HTML and enables precise source locations; its pipeline and the inputs are
+created in `GlobalSetup`, outside measurement. The methods return their syntax trees.
+HTML rendering, item extraction, compiler initialization and file I/O are excluded.
+
+The table reports time, ratio relative to Markdig, GC collections and allocated
+bytes per parse. Markdig supports a broader language and has a different syntax
+tree, so these fixtures do not establish overall Markdown performance or parity.
+For an execution smoke check, replace `--job short` with `--job dry`; dry-run timings
+are not performance results. Detailed historical measurements follow below.
+
 ## Second tuning round (2026-09-20, after DM4)
 
 A review of `Kimi/Compiler/Documentation` after DM4 (baseline commit `cde175c`)
