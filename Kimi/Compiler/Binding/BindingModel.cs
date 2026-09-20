@@ -99,6 +99,10 @@ internal enum BindingFailure : byte
     MissingNativeRequirement,
     UnsupportedImportSignature,
     ConflictingImportSignature,
+    ConflictingRuntimeSymbol,
+    ConflictingImportSupply,
+    UnsafeFunctionValue,
+    UnavailableReservedImport,
     SplitCLayoutStorage,
 }
 

@@ -6,6 +6,7 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Compiler continuation: import symbol agreement (2026-09-20)](#compiler-continuation-20260920-import-symbols)
 - [Documentation Markdown product switch (2026-09-20)](#documentation-markdown-product-switch-20260920)
 - [Documentation Markdown second tuning round (2026-09-20)](#documentation-markdown-tuning-20260920)
 - [Documentation Markdown benchmarks and improvements (2026-09-20)](#documentation-markdown-benchmarks-20260920)
@@ -39,6 +40,129 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 - [STATUS area snapshot and 2026-09-14/15 verification](#status-area-snapshot)
 
 <a id="documentation-markdown-product-switch-20260920"></a>
+
+<a id="compiler-continuation-20260920-import-symbols"></a>
+
+## Compiler continuation: import symbol agreement — 2026-09-20
+
+Entry baseline `7d2a8cb` with a clean tree; the plan's recorded `d871d45` baseline
+was the DM5 predecessor commit. The request authorized unfinished implementation
+Milestones and Checklist items, excluding Milestone Programs, draft edits and
+NativeAOT. I26 was selected from the recorded next action. No specification or
+draft file was changed.
+
+**T26f — runtime declaration collisions (SPEC 21.5.2, 22.5.6).** The generated
+module emits seven `declare dllimport` kernel32 APIs, and the test runtime adds
+`GetEnvironmentVariableA` and `SetHandleInformation`. A `#LibraryImport` naming one
+of those nine now shares that declaration only through the reserved `kernel32`
+supply and with the declaration's exact physical signature; any other provider or
+signature is `ConflictingRuntimeSymbol_Kd`. The two test-runtime declarations are
+included because one source is compiled in both the product and the test build, so
+accepting a disagreeing declaration would only move the collision to `kimi test`. `ExitProcess` is recorded as
+unshareable because its declaration is `noreturn`, an ABI attribute no import can
+express. The other generated definitions (user bodies `__kimi_f<n>`, runtime
+helpers, `__kimi_start`, `_fltused` and the backend-provided symbols) are already
+unnameable through the existing reserved-name rejection, so no further collision
+class remained at this stage. `WindowsProfile.RuntimeDeclarations` records the
+table, and `Kernel32ImportsTest.RuntimeDeclarationTableMatchesTheEmittedDeclarations`
+re-derives every code from `WindowsRuntime.ll.in` and `Kimi/Testing/TestRuntime.ll`
+so the table cannot drift from either template.
+
+**T26g — one supply kind per external symbol (SPEC 20.8.2.1, 21.5.2).** Requirement
+resolution moved ahead of the symbol-table update, so each declaration carries the
+`Kind` of its defining module's requirement after self-targeted supply expansion,
+with `kernel32` fixed to `import` and `kimi_backend` to `static`. Declarations of
+one external symbol that agree on the physical signature but disagree on `Kind`
+cannot share one `dllimport` setting and are `ConflictingImportSupply_Kd`. An
+unresolved kind reports only the existing `MissingNativeRequirement_Kd`; the
+previous acceptance of a record without a `Kind`, which project validation already
+rejects, was preserved rather than converted into a second diagnostic. The final
+symbol table is one `Dictionary<string, (string Signature, string? Kind)>` created
+only when an import with a complete signature exists.
+
+**T26h — one import declaration per function (SPEC 22.3.1).** Two `#LibraryImport`
+attributes on one function previously left both attributes unresolved, reporting only
+`UnresolvedBinding_Kd`, which is indistinguishable from the unimplemented-import
+boundary. A repeated import is now an invalid declaration
+(`InvalidLibraryImport_Kd`), because one declaration selects one external symbol; the
+reproducer was added first and failed for that reason before the fix. Repetition of
+the identical pair is rejected as well, following the existing Layout precedent.
+
+Actual provider identity was deliberately left open: §20.8.2.3 does not merge
+different modules' logical names by spelling, and two names may still designate one
+supply, so the decision needs resolved supplies and belongs with direct-call
+lowering and linking, not Binding.
+
+Verification, all against the built sources above:
+
+| Check | Configuration | Result |
+| --- | --- | --- |
+| `dotnet build Kimigayo.slnx -c Release` | Release | PASS, 0 warnings / 0 errors |
+| `dotnet build Kimi/Kimi.csproj`, `xUnitTest/xUnitTest.csproj` | Debug | PASS, 0 warnings / 0 errors |
+| `dotnet test xUnitTest/xUnitTest.csproj --no-build` | Debug | PASS, 10,602 / 10,602 |
+| `dotnet test xUnitTest/xUnitTest.csproj --no-build` | Release | PASS, 10,602 / 10,602 |
+| Focused `LibraryImportTargetBindingTest`, `Kernel32ImportsTest` | Debug | PASS, 94 / 94 |
+| Focused `UnsafeFunctionValueBindingTest` | Debug | PASS, 12 / 12 |
+| `kimi.exe check` of `examples/Counter` and `examples/Hello` | Release | PASS, exit 0, no diagnostics |
+
+The suite grew from the recorded 10,561 by the 41 added cases (13 runtime-symbol
+rows, the declaration-table check, 4 kind rows, the reserved-kind case, the
+cross-module kind case, 2 repeated-declaration rows, 5 reserved-catalog rows, 2
+reserved-name rows and 12 unsafe-value rows). Every new negative case names a diagnostic introduced by
+this change, so it could not have passed before it. Fixture generation, LLVM
+verification, native execution and performance measurement were NOT_RUN: no
+generation or runtime path changed, and imports still cannot complete Binding.
+NativeAOT was NOT_RUN.
+
+**Out-of-scope finding (G10): unchecked named function values.** While checking
+whether §22.3.1's "unsafe functions cannot be acquired as values" was enforced, a
+temporary probe bound these sources through `MinimalEmissionTest.Analyze` and
+printed `Binding.Result.IsComplete` with the issue codes. The probe was removed
+after the investigation; the recorded results were:
+
+| Source | Result |
+| --- | --- |
+| `func safe() -> i32 => 1` / `let g: () -> i32 = safe` | complete, no issue |
+| `func safe() -> i32 => 1` / `let g: (i32) -> i32 = safe` | complete, no issue (wrong arity) |
+| `unsafe func raw() -> i32 => 1` / `let g: () -> i32 = raw` / `let v = g()` | complete, no issue |
+| `unsafe func raw() -> i32 => 1` / `let g = raw` | incomplete, `UnresolvedBinding_Kd` |
+| `let g: () -> i32 = doesNotExist` | incomplete, `UnresolvedBinding_Kd` |
+
+`BindReference` resolves a function group with a null Type for call selection, and
+`BindVariable` runs `CheckTypeUse` only when the initializer Type is not null, so a
+declared Function Type accepts any function group, including an unsafe one whose
+value can then be called without an unsafe context. That is an acceptance hole in
+I18's unimplemented function-item acquisition, not in the import work of this
+execution, and a guard at the single initializer site would leave assignment and
+argument positions unchanged. It is recorded as G10 in PLAN.md §5 with I18 as the
+owning item.
+
+**T26i — a reserved supply provides only its catalog (SPEC 20.8.2.4, 21.5.7).**
+A `kernel32` import naming a symbol outside the embedded, hash-verified
+`backend/windows-x64/kernel32.def` was accepted and would have failed later at link
+time. It is now `UnavailableReservedImport_Kd`, which states that extending the
+reserved supply needs a reviewed definition and profile update. The same rule applies
+to `kimi_backend` against `WindowsProfile.ProvidedSymbols`; because every entry of that
+catalog is already a reserved external name, no valid `kimi_backend` import remains.
+Nothing is read from disk: both catalogs are embedded. The
+existing reserved-name rejection now reads `WindowsProfile.FloatMarker` and
+`WindowsProfile.ProvidedSymbols` instead of repeating their spellings, with two added
+rows covering `__chkstk` and `_fltused`; the accepted and rejected sets are unchanged.
+
+**T18a — unsafe functions are not values (SPEC 7.7).** The unambiguous part of that
+finding was fixed here: `BindReference` now rejects a reference to an unsafe named
+function in a value position — a declaration initializer, an assignment source, a
+call argument, a transferred `return`/`exit` result, an expression body or an
+array/tuple literal element, including through a qualified member reference — with
+the new `UnsafeFunctionValue_Kd`. Direct calls, including qualified calls inside an `unsafe`
+block, keep their existing binding, and safe function groups are untouched. The
+signature-checking half of G10 was deliberately not attempted: it is the I18
+acquisition path, and guessing it here would fix acceptance in one syntactic place
+while leaving the same hole elsewhere. Twelve cases in
+`xUnitTest/Tests/UnsafeFunctionValueBindingTest.cs` cover both directions.
+
+Documentation: [STATUS.md](STATUS.md) records the new boundary, and the README
+native-requirements section states the agreement rules and the unchanged limits.
 
 ## Documentation Markdown DM5 — 2026-09-20
 

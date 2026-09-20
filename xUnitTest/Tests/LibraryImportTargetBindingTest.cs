@@ -113,10 +113,14 @@ public class LibraryImportTargetBindingTest
     [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported() -> i32 => 1")]
     [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"memcpy\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"__chkstk\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"_fltused\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"__kimi_entry\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"llvm.trap\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported(value: i32 = 1) -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported<T>(value: i32) -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"first\")\n    #LibraryImport(\"codec\", \"second\")\n    public unsafe func imported() -> i32")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported() -> i32")]
     public void InvalidImportDeclarationsAreDiagnosed(string declaration)
     {
         var c = AnalyzeImport("group Native\n    " + declaration, "codec");
@@ -174,6 +178,102 @@ public class LibraryImportTargetBindingTest
         var c = AnalyzeImport(first + "\n" + second, "codec");
         Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.UnsupportedImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+    }
+
+    [Theory]
+    [InlineData("kernel32", "GetLastError", "()", "i32", null, false)]
+    [InlineData("kernel32", "GetProcessHeap", "()", "unsafe/u8", null, false)]
+    [InlineData("kernel32", "GetStdHandle", "(which: i32)", "unsafe/u8", null, false)]
+    [InlineData("kernel32", "WriteFile", "(handle: unsafe/u8, data: unsafe/u8, length: u32, written: unsafe/u32, overlapped: unsafe/u8)", "i32", null, false)]
+    [InlineData("kernel32", "GetLastError", "()", "i64", null, true)]
+    [InlineData("kernel32", "GetStdHandle", "(which: i32)", "()", null, true)]
+    [InlineData("kernel32", "ExitProcess", "(code: i32)", "()", null, true)]
+    [InlineData("kernel32", "GetEnvironmentVariableA", "(name: unsafe/u8, buffer: unsafe/u8, size: u32)", "i32", null, false)]
+    [InlineData("kernel32", "SetHandleInformation", "(handle: unsafe/u8, mask: u32, flags: u32)", "u32", null, false)]
+    [InlineData("kernel32", "SetHandleInformation", "(handle: unsafe/u8, mask: u32, flags: u32)", "i64", null, true)]
+    [InlineData("kernel32", "VirtualAlloc", "()", "unsafe/u8", null, false)]
+    [InlineData("codec", "GetLastError", "()", "i32", "codec", true)]
+    [InlineData("codec", "symbol", "()", "i32", "codec", false)]
+    public void RuntimeDeclarationsAreSharedOnlyByAgreeingImports(string library, string symbol, string parameters, string result, string? requirement, bool conflict)
+    {
+        var c = AnalyzeImport(
+            "group Native\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func imported" + parameters + " -> " + result,
+            requirement);
+        Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingRuntimeSymbol_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.UnsupportedImportSignature_Kd or
+            DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Theory]
+    [InlineData("static", "static", false)]
+    [InlineData("import", "import", false)]
+    [InlineData("static", "import", true)]
+    [InlineData("import", "static", true)]
+    public void OneExternalSymbolRequiresOneSupplyKind(string first, string second, bool conflict)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        {
+            ["codec"] = new() { Kind = first },
+            ["codec2"] = new() { Kind = second },
+        };
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var source = "group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()\n" +
+            "group B\n    #LibraryImport(\"codec2\", \"shared\")\n    public unsafe func call(value: i32) -> ()";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+        Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.UnsupportedImportSignature_Kd or
+            DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+    }
+
+    [Fact]
+    public void ReservedSupplyKindsParticipateInSymbolAgreement()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var source = "group A\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> unsafe/u8\n" +
+            "group B\n    #LibraryImport(\"codec\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> unsafe/u8";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+
+        // The generated kernel32 import library is an import supply; the static requirement disagrees.
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.ConflictingImportSignature_Kd or
+            DiagnosticCode.ConflictingRuntimeSymbol_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+    }
+
+    [Fact]
+    public void SupplyKindsAgreeAcrossSourceModules()
+    {
+        var c = ModuleBindingTest.Create(
+            "func main() => ()\ngroup Root\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
+            "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
+            configure: (root, library) =>
+            {
+                root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
+            });
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+    }
+
+    [Theory]
+    [InlineData("kernel32", "VirtualAlloc", false)]
+    [InlineData("kernel32", "GetLastError", false)]
+    [InlineData("kernel32", "CreateFileA", true)]
+    [InlineData("kernel32", "VirtualQuery", true)]
+    [InlineData("kimi_backend", "kimi_helper", true)]
+    public void AReservedSupplyProvidesOnlyItsCatalog(string library, string symbol, bool unavailable)
+    {
+        // The backend catalog itself is made of reserved external names, so no kimi_backend import remains.
+        var c = AnalyzeImport("group Native\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func imported() -> i32", null);
+        Assert.Equal(unavailable, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnavailableReservedImport_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+        Assert.False(c.Binding.Result.IsComplete);
     }
 
     [Fact]

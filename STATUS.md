@@ -1,5 +1,30 @@
 # Kimigayo Implementation Status
 
+The **2026-09-20 foreign-import symbol agreement continuation** extends
+`#LibraryImport` checking to the §21.5.2 final symbol table. An import that names
+one of the nine kernel32 declarations the generated runtimes emit (the seven of
+§22.5.6 plus the two test-runtime APIs) is accepted only through the reserved
+`kernel32` supply with that declaration's exact physical signature, and never for the `noreturn` `ExitProcess` declaration
+(`ConflictingRuntimeSymbol_Kd`). Declarations of one external symbol must also
+agree on the requirement `Kind` that selects dllimport generation, across source
+modules and including the reserved `kernel32`/`kimi_backend` kinds
+(`ConflictingImportSupply_Kd`). A repeated `#LibraryImport` on one function is now an
+invalid declaration instead of an unresolved one, because one declaration selects one
+external symbol (§22.3.1), and an import of a reserved supply outside its catalog —
+the reviewed kernel32 definition or the backend's provided symbols — is rejected
+(`UnavailableReservedImport_Kd`, §20.8.2.4, §21.5.7). A recorded declaration table is checked against both
+emitted runtime IR templates, so they cannot drift. The same continuation rejects an unsafe
+function acquired as a value in a declaration initializer, an assignment source, a
+call argument, a transferred result, an expression body or an array/tuple literal
+element (`UnsafeFunctionValue_Kd`, SPEC 7.7); direct calls are unchanged, and a
+safe function group is still accepted against a declared Function Type without a
+signature check, recorded as a known gap. Debug/Release solution builds are
+warning-free and **all 10,602 managed tests** pass per configuration. Actual
+provider identity after supply resolution, direct-call lowering, linking and
+native execution of imports remain unimplemented; no native fixtures were
+regenerated and NativeAOT was NOT_RUN.
+[Evidence](PLAN_HISTORY.md#compiler-continuation-20260920-import-symbols).
+
 The **2026-09-20 documentation Markdown product migration** switches the product
 facade to the independent limited-profile parser. Immutable nodes/items, Binding
 receiver roles and parameter classification, source-mapped optional item diagnostics,
@@ -305,7 +330,7 @@ Evidence: OwnershipAnalysis, CurrentControlFlow, ControlFlowConformance, Referen
 | Static members | Verified immutable group integer/bool literal reads with no observable initialization effect can fold | Mutable/effectful statics, static address identity, first-access/shutdown/cycles, Origin-erased inherited-environment keys, uniform initializer/destructor certificates and shared initialize-and-address/lazy lifetime protocol are specified but unimplemented. |
 | Sequences | Two-word Slice/range handles, backing Origins/Copy, scalar Copy reads and indices snapshots; full and explicit half-open Slice views check bounds before pointer arithmetic. Slice iteration and explicit indexing borrows retain shared backing dependencies; program 13 preserves its first Sample reference across later next calls and exhaustion. Views use pointer/length storage without an element buffer. Built-in ResolvedRange, shared range and supported Copy-array iteration remain implemented subsets | General Index/from-end/saved or inclusive Range/Slice APIs, collection/consuming iteration, tuple iteration bindings, general user Iterable/Iterator dispatch and arbitrary Slice element results remain incomplete. Generic Slice generation currently covers copied fields, length and explicit element borrows; not every concrete/shared form is executable. Mixed Slice provenance widens conservatively. The current suites and native sequence fixtures cover the selected negative/bounds/zero-size paths; this does not certify every Slice API. |
 | Exclusive objects | Concrete makeObj acquisition, a 16-byte header, 48-byte payload ValueMetadata, 24-byte ObjectDescriptor, deterministic nonzero Type keys, complete Sealed payload projection and borrowed member calls. Exchange preserves the containing object; final cleanup destroys the dynamic payload before freeing the original allocation. obj captures can transfer through a Consuming closure | The Windows profile and existing finite payload-layout limits apply. Generic-body factories, inherited/base/Contract views, rc/arc/Weak and general refinement are not implemented. Full ObjectCallCompatible inference/publication/release stages remain deferred. |
-| Collections/FFI | Collection/pointer syntax, declaration constraints and runtime `is` Binding have foundations. Binding diagnoses `#LibraryImport` argument forms, §22.3.1 declaration shape/placement, §21.5.2 reserved external names (`InvalidLibraryImport_Kd`), §22.3.2 signature Types (`UnsupportedImportSignature_Kd`), conflicting physical signatures for one external symbol across source modules (`ConflictingImportSignature_Kd`) and names without a requirement of the defining module for the current target (`MissingNativeRequirement_Kd`); imports still cannot complete Binding | Dynamic Array/Dictionary mutation and cost contracts and complete C/pointer/import execution are not established. Runtime Contract Views remain deferred. |
+| Collections/FFI | Collection/pointer syntax, declaration constraints and runtime `is` Binding have foundations. Binding diagnoses `#LibraryImport` argument forms, §22.3.1 declaration shape/placement, §21.5.2 reserved external names (`InvalidLibraryImport_Kd`), §22.3.2 signature Types (`UnsupportedImportSignature_Kd`), conflicting physical signatures for one external symbol across source modules (`ConflictingImportSignature_Kd`), collisions with the generated runtime's own kernel32 declarations (`ConflictingRuntimeSymbol_Kd`, shared only through the reserved kernel32 supply with an equal physical signature) and names without a requirement of the defining module for the current target (`MissingNativeRequirement_Kd`); imports still cannot complete Binding | Dynamic Array/Dictionary mutation and cost contracts and complete C/pointer/import execution are not established. Runtime Contract Views remain deferred. |
 
 Generation validates typed inputs, exact Type identity, constants, dominance, result arrivals, live flags, Loans and cleanup plans. The Writer does not reinterpret syntax. Strings use a 24-byte handle; tuples use physical alignment order separately from logical destruction order; arrays use stride-based layout. Current aggregate layout retains depth 64 and size/count limits of int.MaxValue; PLAN G7 requires checking these against the specified resource rules. These are internal representations, not a general external ABI. Measured hot-path reuse does not establish allocation-free module preparation.
 

@@ -41,6 +41,34 @@ public sealed partial class Binding
         return node.BoundSymbol?.MutableCapture == true || node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true };
     }
 
+    // SPEC 7.7 acquisition positions: a declaration initializer, an assignment source, a call
+    // argument, a transferred result, an expression body and an array or tuple literal element.
+    // Remaining positions are tracked as G10.
+    private static bool IsValuePosition(Koto node)
+    {
+        var target = node;
+        while (target.Parent is ParenthesizedKoto or MemberAccessKoto)
+        {
+            if (target.Parent is MemberAccessKoto member && !ReferenceEquals(member.Right, target))
+            {
+                return false;
+            }
+
+            target = target.Parent;
+        }
+
+        return target.Parent switch
+        {
+            VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
+            JumpKoto jump => ReferenceEquals(jump.Expression, target),
+            FunctionKoto body => ReferenceEquals(body.ExpressionBody, target),
+            ArrayLiteralKoto or TupleLiteralKoto => true,
+            InvocationKoto invocation => !ReferenceEquals(invocation.Method, target),
+            BinaryKoto binary => !ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals,
+            _ => false,
+        };
+    }
+
     private static bool CanInitializeLocal(Koto node, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -593,6 +621,12 @@ public sealed partial class Binding
         if (symbol.Kind == BindingSymbolKind.Function)
         {
             this.BindHeader(symbol);
+            if (symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValuePosition(node))
+            {
+                // SPEC 7.7: an unsafe function supports direct calls only.
+                return Fail(node, BindingFailure.UnsafeFunctionValue);
+            }
+
             // A function group is resolved for call selection, but not an inferred first-class value.
             node.BindingState = BindingState.Resolved;
             return null;

@@ -134,6 +134,10 @@ public enum DiagnosticCode
     MissingNativeRequirement_Kd,
     UnsupportedImportSignature_Kd,
     ConflictingImportSignature_Kd,
+    ConflictingRuntimeSymbol_Kd,
+    ConflictingImportSupply_Kd,
+    UnsafeFunctionValue_Kd,
+    UnavailableReservedImport_Kd,
     SplitCLayoutStorage_Kd,
 
     UnavailableFeature_Kd,
