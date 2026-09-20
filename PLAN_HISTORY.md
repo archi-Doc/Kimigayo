@@ -6,6 +6,7 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Compiler continuation: unsafe function value positions (2026-09-20)](#compiler-continuation-20260920-unsafe-value-positions)
 - [Origin surrounding-code review (2026-09-20)](#origin-review-20260920)
 - [Origin syntax and elision integration (2026-09-20)](#origin-syntax-elision-20260920)
 - [Documentation Markdown parser review (2026-09-20)](#documentation-markdown-review-20260920)
@@ -99,6 +100,59 @@ Design documents, decision records and change records are stored in `draft/` (fo
 | [Testing](draft/Design/2026-09-13%20Testing.md) | [Test declarations](spec/06-declarations-and-containers.md#651-test-definitions), [verification](spec/17-failure-handling.md#175-test-verification-operations), [inputs](spec/18-modules-and-dependencies.md#188-product-and-test-inputs), [discovery and CLI](spec/20-compilation-configuration.md#209-test-command-and-discovery), [generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), [execution and reporting](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting), [Appendix A.17](spec/appendices/A-compiler-requirements.md#a17-test-verification-and-runner-requirements) | §17.5 supersedes the draft's earlier `$require` return behavior. The adopted [test profile](spec/testing-profile.md) defines public execution interfaces; future extensions remain in [Appendix D.4](spec/appendices/D-deferred-features.md#d4-testing-extensions). |
 
 <a id="documentation-markdown-product-switch-20260920"></a>
+
+<a id="compiler-continuation-20260920-unsafe-value-positions"></a>
+
+## Compiler continuation: unsafe function value positions — 2026-09-20
+
+Entry baseline `0f7fdf0` with a clean tree. The request authorized unfinished
+implementation Milestones and Checklist items, excluding Milestone Programs, draft
+edits and NativeAOT. The second recorded next action's T18a half was selected:
+extend the unsafe rejection from its listed positions to every remaining value
+position. No specification or draft file was changed.
+
+**T18b — the unsafe rejection is the complement of the callee position (SPEC 7.7).**
+`IsValuePosition` combined two unrelated questions: which positions the bounded
+function-item acquisition path supports, and where an unsafe function name is used as
+a value. As a list it could only grow one position at a time, so every unlisted
+position silently escaped the §7.7 rejection. The two questions are now separate
+predicates over one shared name root. `TryNameRoot` walks out through parentheses, the
+member-access right side and an explicit type-argument list — the parts that still
+belong to the referenced name — and reports a member-access receiver as having no
+enclosing root, because that is already a value use. `IsAcquisitionPosition` keeps the
+previously supported acquisition list unchanged and still gates
+`BindFunctionReference`, so no new acceptance is introduced. `IsValueUse` is true
+unless the name root is the `Method` of an `InvocationKoto`, so no position stays
+unchecked. `GenericsKoto` was added to the walk because `f<i32>()` places the name
+under the type-argument list rather than directly under the invocation.
+
+The seven added negative rows were run against the pre-change assembly first and all
+seven failed for the intended reason (no `UnsafeFunctionValue_Kd`, Binding complete or
+failing on an unrelated code): an `if` expression branch, a `match` arm result, an
+`==` operand, a member-access receiver, an index argument, a range operand and a
+parameter default. The added positive row `(raw)()` keeps a parenthesized direct call
+accepted inside an `unsafe` context.
+
+Verification, all against the built sources above:
+
+| Check | Configuration | Result |
+| --- | --- | --- |
+| `dotnet build xUnitTest/xUnitTest.csproj -c Debug` | Debug | PASS, 0 warnings / 0 errors |
+| `dotnet build Kimigayo.slnx -c Release` | Release | PASS, 0 warnings / 0 errors |
+| `dotnet test xUnitTest/xUnitTest.csproj --no-build` | Debug | PASS, 10,822 / 10,822 |
+| `dotnet test xUnitTest/xUnitTest.csproj --no-build` | Release | PASS, 10,822 / 10,822 |
+| Focused `UnsafeFunctionValueBindingTest` | Debug | PASS, 20 / 20 |
+| Same focused theory before the production change | Debug | FAIL, 7 / 7 as intended |
+
+The suite grew from the recorded 10,814 by the 8 added rows. Fixture generation, LLVM
+verification, native execution and performance measurement were NOT_RUN: the change is
+a Binding-stage rejection only, reachable code paths lost no acceptance, and function
+items still cannot complete Binding outside the bounded OSE shapes. NativeAOT was
+NOT_RUN.
+
+This does not complete I18. Acquisition selection against an expected signature,
+retained generic/Origin bindings, environments and erasure remain, and the acquisition
+position list is still bounded. G10 keeps I18 as its owning item.
 
 <a id="compiler-continuation-20260920-import-symbols"></a>
 

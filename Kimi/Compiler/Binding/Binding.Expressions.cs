@@ -41,20 +41,14 @@ public sealed partial class Binding
         return node.BoundSymbol?.MutableCapture == true || node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true };
     }
 
-    // SPEC 7.7 acquisition positions: a declaration initializer, an assignment source, a call
-    // argument, a transferred result, an expression body and an array or tuple literal element.
-    // Remaining positions are tracked as G10.
-    private static bool IsValuePosition(Koto node)
+    // SPEC 7.7 acquisition positions currently supported by function-item Binding: a declaration
+    // initializer, an assignment source, a call argument, a transferred result, an expression body
+    // and an array or tuple literal element. Wider selection shapes remain G10/I18.
+    private static bool IsAcquisitionPosition(Koto node)
     {
-        var target = node;
-        while (target.Parent is ParenthesizedKoto or MemberAccessKoto)
+        if (!TryNameRoot(node, out var target))
         {
-            if (target.Parent is MemberAccessKoto member && !ReferenceEquals(member.Right, target))
-            {
-                return false;
-            }
-
-            target = target.Parent;
+            return false;
         }
 
         return target.Parent switch
@@ -67,6 +61,37 @@ public sealed partial class Binding
             BinaryKoto binary => !ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals,
             _ => false,
         };
+    }
+
+    // SPEC 7.7: an unsafe function supports direct calls only, so every appearance of its name
+    // that is not the callee of a direct call acquires it as a value. This is the complement of
+    // the callee position, not a list of acquisition positions, so no position stays unchecked.
+    private static bool IsValueUse(Koto node)
+        => !TryNameRoot(node, out var target) || target.Parent is not InvocationKoto invocation || !ReferenceEquals(invocation.Method, target);
+
+    // Parentheses, the member-access right side and an explicit type-argument list stay part of the
+    // referenced name. Any other enclosing node consumes the name itself. A name used as a
+    // member-access receiver is already a value use, so it has no enclosing name root.
+    private static bool TryNameRoot(Koto node, out Koto root)
+    {
+        var target = node;
+        while (true)
+        {
+            switch (target.Parent)
+            {
+                case ParenthesizedKoto:
+                case MemberAccessKoto member when ReferenceEquals(member.Right, target):
+                case GenericsKoto generics when ReferenceEquals(generics.Identifier, target):
+                    target = target.Parent!;
+                    continue;
+                case MemberAccessKoto:
+                    root = target;
+                    return false;
+                default:
+                    root = target;
+                    return true;
+            }
+        }
     }
 
     private static bool CanInitializeLocal(Koto node, BindingScope scope)
@@ -161,7 +186,7 @@ public sealed partial class Binding
     {
         var actual = this.BindNodeCore(node, scope, expected);
         if (actual is null && expected?.Kind == BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
-            node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsValuePosition(node))
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsAcquisitionPosition(node))
         {
             return this.BindFunctionReference(node, symbol, expected);
         }
@@ -627,7 +652,7 @@ public sealed partial class Binding
         if (symbol.Kind == BindingSymbolKind.Function)
         {
             this.BindHeader(symbol);
-            if (symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValuePosition(node))
+            if (symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
             {
                 // SPEC 7.7: an unsafe function supports direct calls only.
                 return Fail(node, BindingFailure.UnsafeFunctionValue);

@@ -14,8 +14,9 @@ includes prepared i32 defaults, concrete/shared callees and receiver positions.
 General effectful, owned or borrow-producing defaults and foreign execution retain
 their existing limitations; name/default syntax does not bypass those checks.
 
-Debug/Release builds have zero warnings/errors and each passes **10,814 managed
-tests**. Twelve new fixtures pass **24 O0/O2 executions per configuration**, and
+Debug/Release builds have zero warnings/errors and each passes **10,822 managed
+tests** (10,814 at that checkpoint, plus the 8 rows of the later unsafe
+value-position rejection). Twelve new fixtures pass **24 O0/O2 executions per configuration**, and
 the Release Milestone 11 CLI suite passes 55 checks. Warm Binding, ownership and IR
 writing allocate zero for the measured named-default workload. Detailed scope,
 failures/fixes and commands are in [the implementation record](PLAN_HISTORY.md#parameter-names-implementation-20260920).
@@ -93,9 +94,11 @@ external symbol (§22.3.1), and an import of a reserved supply outside its catal
 the reviewed kernel32 definition or the backend's provided symbols — is rejected
 (`UnavailableReservedImport_Kd`, §20.8.2.4, §21.5.7). A recorded declaration table is checked against both
 emitted runtime IR templates, so they cannot drift. The same continuation rejects an unsafe
-function acquired as a value in a declaration initializer, an assignment source, a
-call argument, a transferred result, an expression body or an array/tuple literal
-element (`UnsafeFunctionValue_Kd`, SPEC 7.7); direct calls are unchanged, and a
+function acquired as a value; the rejection now covers every use that is not the
+callee of a direct call, rather than a list of positions
+(`UnsafeFunctionValue_Kd`, SPEC 7.7). Parentheses, the member-access right side and
+an explicit type-argument list still form part of the called name, so direct calls
+are unchanged. A
 safe function group was then accepted against a declared Function Type without a
 signature check (the OSE revision above repairs the supported comparison path).
 At that checkpoint, Debug/Release solution builds were
