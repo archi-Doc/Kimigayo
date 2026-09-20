@@ -101,9 +101,14 @@ NativeLibraries=
 ```
 
 `kernel32` and `kimi_backend` are reserved and need no entry; a `kernel32` entry is an
-error. The old `NativeBindings` setting is rejected with migration guidance. Imports are
-checked for requirement names, declaration shape and the initial Windows C ABI Types, but
-foreign calls are not generated or linked yet, and supplies for another package
+error, and an import of a reserved supply is limited to its catalog: the reviewed
+project-owned kernel32 definition or the backend's provided symbols.
+The old `NativeBindings` setting is rejected with migration guidance. Imports are
+checked for requirement names, declaration shape and the initial Windows C ABI Types.
+Declarations of one external symbol must also agree on their physical signature and on
+the requirement `Kind` that selects dllimport generation, and an import of a kernel32 API
+the runtime itself declares must use the reserved `kernel32` supply with that exact
+signature. Foreign calls are not generated or linked yet, and supplies for another package
 (`Package=`/`Name=` records) are not accepted yet.
 
 ### Using kimi

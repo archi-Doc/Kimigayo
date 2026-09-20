@@ -14,11 +14,9 @@ public class Program
             return;
         }
 
-        var b = new ParseBenchmark();
-        b.Test1();
-
         var switcher = new BenchmarkSwitcher(new[]
         {
+            typeof(DocumentationMarkdownBenchmark),
             typeof(ParseBenchmark),
             typeof(BindingBenchmark),
             typeof(PatternBindingBenchmark),

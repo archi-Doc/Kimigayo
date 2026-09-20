@@ -30,8 +30,25 @@ public static class WindowsProfile
     /// <summary>Gets the helper symbols supplied by the backend archive, in catalog order.</summary>
     internal static readonly string[] ProvidedSymbols = ["__chkstk", "memcmp", "memcpy", "memmove", "memset"];
 
-    /// <summary>Gets the seven Windows APIs imported by the generated runtime (SPEC 22.5.6).</summary>
+    /// <summary>Gets the seven Windows APIs imported by the generated runtime (SPEC 22.5.6), followed by the two used by the test runtime.</summary>
     internal static readonly string[] RuntimeImports = ["GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess", "GetEnvironmentVariableA", "SetHandleInformation"];
+
+    /// <summary>Gets the kernel32 declarations the generated runtimes emit, with their import-ABI physical
+    /// signatures: the ordinary runtime of SPEC 22.5.6 and the two test-runtime APIs, which one source can
+    /// reach in either build. A null signature marks a declaration no expressible LibraryImport can share:
+    /// the ExitProcess declaration is noreturn, an ABI attribute no import carries (SPEC 21.5.2).</summary>
+    internal static readonly (string Symbol, string? Signature)[] RuntimeDeclarations =
+    [
+        ("GetProcessHeap", "p"),
+        ("HeapAlloc", "pp48"),
+        ("HeapFree", "4p4p"),
+        ("GetStdHandle", "p4"),
+        ("WriteFile", "4pp4pp"),
+        ("GetLastError", "4"),
+        ("ExitProcess", null),
+        ("GetEnvironmentVariableA", "4pp4"),
+        ("SetHandleInformation", "4p44"),
+    ];
 
     public static string LlvmVersion { get; }
 

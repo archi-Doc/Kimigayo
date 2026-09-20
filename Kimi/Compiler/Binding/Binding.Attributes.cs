@@ -44,7 +44,7 @@ public sealed partial class Binding
     private void ValidateLibraryImports()
     {
         string? target = null;
-        Dictionary<string, string>? signatures = null;
+        Dictionary<string, (string Signature, string? Kind)>? symbols = null;
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } attribute ||
@@ -53,12 +53,49 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (function.Body is not null || function.ExpressionBody is not null || !IsImportShape(function) ||
+            if (function.Body is not null || function.ExpressionBody is not null || !IsImportShape(function) || RepeatedImport(function) ||
                 attribute.Operand is not InvocationKoto { ArgumentNodes.Count: 2 } call ||
                 !IsImportName(call, 0, out var name) || !IsImportName(call, 1, out var symbol) || IsReservedExternalName(symbol))
             {
                 Fail(attribute, BindingFailure.InvalidLibraryImport);
                 continue;
+            }
+
+            // SPEC 20.8.2.1/20.8.2.4: the Kind of the defining module's requirement, after self-targeted
+            // supply expansion, decides dllimport generation; reserved supplies have their fixed kinds.
+            string? kind = null;
+            if (name is Kernel32Imports.LibraryName)
+            {
+                kind = "import"; // The generated kernel32 import library (SPEC 20.8.2.4).
+                if (Array.IndexOf(Kernel32Imports.Symbols, symbol) < 0)
+                {
+                    // SPEC 20.8.2.4: the reserved supply exports only the reviewed project-owned definition.
+                    Fail(attribute, BindingFailure.UnavailableReservedImport);
+                }
+            }
+            else if (name is WindowsProfile.BackendLibrary)
+            {
+                kind = "static"; // The compiler-managed backend archive (SPEC 20.8.2.4).
+                if (Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) < 0)
+                {
+                    // SPEC 21.5.7: the backend archive supplies only its catalog, whose names are reserved above.
+                    Fail(attribute, BindingFailure.UnavailableReservedImport);
+                }
+            }
+            else
+            {
+                target ??= this.compilation.TargetTriple.ToString();
+                var configuration = this.compilation.Configuration(attribute.CodeContext.Kotonoha);
+                var requirement = configuration is not null && configuration.NativeRequirements.TryGetValue(target, out var requirements) ? requirements.GetValueOrDefault(name) : null;
+                var supply = configuration is not null && configuration.NativeLibraries.TryGetValue(target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
+                if (requirement is null && supply is null)
+                {
+                    Fail(attribute, BindingFailure.MissingNativeRequirement);
+                }
+                else
+                {
+                    kind = requirement?.Kind ?? supply?.Kind;
+                }
             }
 
             if (!this.TryGetImportAbi(function, out var signature))
@@ -67,26 +104,29 @@ public sealed partial class Binding
             }
             else if (signature is not null)
             {
-                // SPEC 21.5.2: one final symbol table; same-named declarations share only an equal physical Type.
-                signatures ??= new(StringComparer.Ordinal);
-                if (!signatures.TryAdd(symbol, signature) && signatures[symbol] != signature)
+                // SPEC 21.5.2/22.5.6: the runtime's own kernel32 declarations share the same final symbol
+                // table; an import joins one only through the reserved kernel32 supply with an equal
+                // physical Type, and never a declaration carrying an inexpressible ABI attribute.
+                if (IsRuntimeDeclaration(symbol, out var declared) && (name != Kernel32Imports.LibraryName || declared != signature))
                 {
-                    Fail(attribute, BindingFailure.ConflictingImportSignature);
+                    Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
                 }
-            }
 
-            if (name is Kernel32Imports.LibraryName or WindowsProfile.BackendLibrary)
-            {
-                continue; // Reserved supplies need no requirement (SPEC 20.8.2.4).
-            }
-
-            target ??= this.compilation.TargetTriple.ToString();
-            var configuration = this.compilation.Configuration(attribute.CodeContext.Kotonoha);
-            if (configuration is null ||
-                !((configuration.NativeRequirements.TryGetValue(target, out var requirements) && requirements.ContainsKey(name)) ||
-                (configuration.NativeLibraries.TryGetValue(target, out var supplies) && supplies.ContainsKey(name))))
-            {
-                Fail(attribute, BindingFailure.MissingNativeRequirement);
+                // SPEC 21.5.2: one final symbol table; same-named declarations share only an equal physical
+                // Type and dllimport setting. An unresolved kind already has its own diagnostic.
+                symbols ??= new(StringComparer.Ordinal);
+                if (!symbols.TryAdd(symbol, (signature, kind)))
+                {
+                    var previous = symbols[symbol];
+                    if (previous.Signature != signature)
+                    {
+                        Fail(attribute, BindingFailure.ConflictingImportSignature);
+                    }
+                    else if (kind is not null && previous.Kind is not null && previous.Kind != kind)
+                    {
+                        Fail(attribute, BindingFailure.ConflictingImportSupply);
+                    }
+                }
             }
         }
 
@@ -121,10 +161,42 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 21.5.2 reserves compiler, LLVM and profile-supply external names.
+        // SPEC 22.3.1: one declaration selects one external symbol, so a repeated import is invalid.
+        static bool RepeatedImport(FunctionKoto function)
+        {
+            var imports = 0;
+            for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+            {
+                if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "LibraryImport" } && ++imports > 1)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // SPEC 22.5.6 declarations generated beside the runtime; the signature is null when none can agree.
+        static bool IsRuntimeDeclaration(string symbol, out string? declared)
+        {
+            foreach (var declaration in WindowsProfile.RuntimeDeclarations)
+            {
+                if (string.Equals(declaration.Symbol, symbol, StringComparison.Ordinal))
+                {
+                    declared = declaration.Signature;
+                    return true;
+                }
+            }
+
+            declared = null;
+            return false;
+        }
+
+        // SPEC 21.5.2 reserves compiler, LLVM and profile-supply external names; the supply names
+        // are the profile's own catalog, so the two cannot drift apart.
         static bool IsReservedExternalName(string symbol)
             => symbol.StartsWith("__kimi_", StringComparison.Ordinal) || symbol.StartsWith("llvm.", StringComparison.Ordinal) ||
-                symbol is "_fltused" or "__chkstk" or "memcmp" or "memcpy" or "memmove" or "memset";
+                symbol == WindowsProfile.FloatMarker || Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) >= 0;
 
         static bool IsImportName(InvocationKoto call, int index, out string value)
         {

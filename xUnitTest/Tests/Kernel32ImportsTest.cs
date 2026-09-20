@@ -39,6 +39,47 @@ public sealed class Kernel32ImportsTest
         }
     }
 
+    [Fact]
+    public void RuntimeDeclarationTableMatchesTheEmittedDeclarations()
+    {
+        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../.."));
+        var runtime = File.ReadAllText(Path.Combine(repo, "Kimi/Compiler/Emission/WindowsRuntime.ll.in")) +
+            File.ReadAllText(Path.Combine(repo, "Kimi/Testing/TestRuntime.ll"));
+        var declared = new List<string>();
+        foreach (Match match in Regex.Matches(runtime, @"(?m)^declare dllimport (\S+) @(\w+)\(([^)]*)\)(.*)$"))
+        {
+            var symbol = match.Groups[2].Value;
+            declared.Add(symbol);
+            var entry = Assert.Single(WindowsProfile.RuntimeDeclarations, x => x.Symbol == symbol);
+
+            // A noreturn declaration is unshareable; otherwise the recorded import-ABI codes must agree.
+            if (match.Groups[4].Value.Contains("noreturn", StringComparison.Ordinal))
+            {
+                Assert.Null(entry.Signature);
+                continue;
+            }
+
+            var codes = Code(match.Groups[1].Value) + string.Concat(match.Groups[3].Value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(Code));
+            Assert.Equal(codes, entry.Signature);
+        }
+
+        Assert.Equal(declared, WindowsProfile.RuntimeDeclarations.Select(x => x.Symbol));
+
+        static string Code(string type) => type switch
+        {
+            "ptr" => "p",
+            "i8" => "1",
+            "i16" => "2",
+            "i32" => "4",
+            "i64" => "8",
+            "float" => "f",
+            "double" => "d",
+            "void" => "v",
+            _ => type,
+        };
+    }
+
     [Theory]
     [InlineData("generator", "other")]
     [InlineData("dll", "OTHER.dll")]
