@@ -351,7 +351,7 @@ Allocation count and location are not language guarantees. Elision need not repr
 
 ## 21.3. Generic code generation
 
-This section integrates the adopted [Generic Sharing and Specialization design](../draft/Design/2026-09-13%20Generic%20Sharing%20and%20Specialization.md), which takes precedence over earlier specifications within its scope. The rules here and in §21.4.6 are normative; [Appendix B.7](appendices/B-reference-models.md#b7-generic-generation-and-specialization-strategy) records initial compiler guidance. Internal names describe plans, not new syntax, reflection, JIT or a stable external ABI.
+The rules here and in §21.4.6 define generic sharing and specialization; [Appendix B.7](appendices/B-reference-models.md#b7-generic-generation-and-specialization-strategy) records non-normative compiler guidance. Internal names describe plans, not new syntax, reflection, JIT or a stable external ABI.
 
 ### 21.3.1. Policy and sharing conditions
 

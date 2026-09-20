@@ -1,6 +1,6 @@
 # Documentation Markdown verification data
 
-The authority is the adopted [limited profile](../../../draft/Design/2026-09-19%20Documentation%20Markdown.md), with unchanged syntax defined by CommonMark 0.31.2. Markdig 1.3.2 is a comparison implementation, not the oracle. Tests are offline and embed the JSON fixtures; no data download or external executable is needed for managed conformance tests.
+The authority is the formal [Documentation Markdown profile](../../../spec/documentation-markdown.md), with unchanged syntax defined by CommonMark 0.31.2. Markdig 1.3.2 is a comparison implementation, not the oracle. Tests are offline and embed the JSON fixtures; no data download or external executable is needed for managed conformance tests.
 
 ## Upstream corpus and attribution
 
@@ -30,7 +30,7 @@ All 652 examples also receive tree and source-range invariant checks (selected e
 | Suite | Scope |
 | --- | --- |
 | `DocumentationMarkdownConformanceTest` | 372 official conformance cases, 372 Markdig comparisons, 320 exact official non-link HTML expectations through the product renderer, manifest audit, and 592 deterministic delimiter/link combinations |
-| `DocumentationMarkdownDifferenceTest` | Every §2.2 row, the five-space list case, and explicitly recorded Markdig output differences |
+| `DocumentationMarkdownDifferenceTest` | Every profile §2.4 boundary row, the five-space list case, and explicitly recorded Markdig output differences |
 | `DocumentationMarkdownBoundaryTest` | Container 3/4-column boundaries, partial tabs, exact decoded/multiline/EOF ranges under LF/CR/CRLF, Unicode 15 under en-US/ja-JP/tr-TR cultures, non-NFC/case-sensitive names, character-reference limits, GC stability, cancellation and concurrent publication |
 | `DocumentationMarkdownIntegrationTest` | Actual external/generic/Semantics/length/Origin names, Binding receiver roles, namespace ambiguity, independent fragments, generated provenance, configuration reload, edited declarations, effective access/specialization, interrupted Markdown without language errors |
 | `DocumentationMarkdownOutputTest` | URL components, one-pass UTF-8 decoding, source/output mapping and project identity, display page versus HTML base, generated references, rewrite validation, escaping, deep/concurrent/reentrant/cancelled output, Binding-based classification and assembly dependency isolation |
@@ -68,3 +68,11 @@ environment. [Product API](../../../Kimi/Compiler/Documentation/README.md),
 [execution evidence](../../../PLAN_HISTORY.md#documentation-markdown-product-switch-20260920)
 record conditions and limits; current next actions belong in
 [PLAN.md](../../../PLAN.md#2-execution-state).
+
+## 2026-09-20 parser review
+
+`DocumentationMarkdownReviewTest` adds focused regressions for original delimiter-run lengths in emphasis, NUL replacement in links and delimiter classification, exact empty-link depth, bounded node formatting and UTF-8 URL output. It also validates structure/ranges and an official-output digest for 10,000 deterministic inline inputs.
+
+The generator in that test uses `Random(20260920)` and its fixed token list. Expected output was generated with the official [commonmark.js 0.31.2](https://github.com/commonmark/commonmark.js/tree/0.31.2) distribution (SHA-256 `4D124568B8D4490DF72FEA8AA0F9A144C5B581B0DE0EB63D3A996104B2797EDC`). Each input and HTML result is hashed as UTF-8 followed by one zero byte. The input digest pins generation as well as the output digest. The tests remain offline; no JavaScript runtime or new product dependency is needed.
+
+Markdig differs from the official implementation for partially escaped backtick runs and some partially consumed emphasis runs. An escaped first backtick can leave a code-span opener; Markdig keeps some such runs literal. These differences were investigated rather than adopted as expected behavior. The generated inputs contain no omitted block features, reference links, images, raw HTML or version-sensitive Unicode characters; broader profile and Unicode coverage remains in the existing suites.

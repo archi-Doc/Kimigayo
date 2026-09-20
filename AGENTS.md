@@ -8,6 +8,7 @@
 # Documentation Responsibilities
 
 - `SPEC.md` and its referenced specification chapters define required language behavior. Implementation limitations must not weaken these requirements.
+- The `draft` folder contains proposals. Once finalized, their content is incorporated into `SPEC.md` and its referenced specification chapters. This flow is one-way: do not propagate changes from the formal specification back to `draft`. The formal specification must be self-contained and must not reference or depend on `draft`; do not use `draft` as an authority for required language behavior.
 - `PLAN.md` records the current implementation plan: scope, acceptance criteria, item states, dependencies, unresolved issues, and exact next actions.
 - `STATUS.md` summarizes product-wide implemented capabilities, verified support boundaries, and remaining limitations. Do not describe planned or unverified work as completed support.
 - `PLAN_HISTORY.md` preserves past execution checkpoints, verification results, failures and fixes, decisions, and superseded approaches. Historical instructions and deadlines are not current execution instructions.

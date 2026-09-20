@@ -109,7 +109,17 @@ public sealed partial class DocumentationMarkdownDocument
                 tag = null;
                 if (node.Kind == DocumentationMarkdownKind.AutoLink)
                 {
-                    Escape(output, node.Document.Text.AsSpan(node.Span.Start, node.Span.Length), token);
+                    var spelling = node.Document.Text.AsSpan(node.Span.Start, node.Span.Length);
+                    int nul;
+                    while ((nul = spelling.IndexOf('\0')) >= 0)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        Escape(output, spelling[..nul], token);
+                        output.Append('\uFFFD');
+                        spelling = spelling[(nul + 1)..];
+                    }
+
+                    Escape(output, spelling, token);
                     return false;
                 }
             }

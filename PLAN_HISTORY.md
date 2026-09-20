@@ -6,6 +6,9 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Documentation Markdown parser review (2026-09-20)](#documentation-markdown-review-20260920)
+- [Documentation Markdown formal specification integration (2026-09-20)](#documentation-markdown-specification-20260920)
+
 - [Documentation Markdown product switch (2026-09-20)](#documentation-markdown-product-switch-20260920)
 - [Documentation Markdown second tuning round (2026-09-20)](#documentation-markdown-tuning-20260920)
 - [Documentation Markdown benchmarks and improvements (2026-09-20)](#documentation-markdown-benchmarks-20260920)
@@ -37,6 +40,61 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 - [Plan changes, reverted approaches and out-of-scope findings](#plan-changes)
 - [STATUS dated records](#status-record-index)
 - [STATUS area snapshot and 2026-09-14/15 verification](#status-area-snapshot)
+
+<a id="documentation-markdown-review-20260920"></a>
+
+## Documentation Markdown parser review — 2026-09-20
+
+DM6 reviewed `Kimi/Compiler/Documentation` against the formal profile, including block/inline boundaries, source slices/mappings, candidate classification, immutable publication, resource limits and URL output. Existing documentation integration edits and the user's AGENTS.md change were preserved; no draft files were changed.
+
+| Finding | Correction and regression |
+| --- | --- |
+| Emphasis used remaining delimiter counts for the rule of three, changing matches after inner emphasis consumed markers. | Retain the original length modulo three. Two byte fields replace the old character field, keeping delimiter scratch at 20 bytes. Explicit three/four-marker cases and generated official-output checks cover the change. |
+| NUL stopped bare destinations/autolinks and had the wrong punctuation classification beside emphasis. | Treat it as U+FFFD during recognition, preserve original text/ranges, share the replaced autolink label/destination, and replace it in disabled-autolink output. Numeric-reference and backslash handling stay separate. |
+| An empty link was counted one tree level too deep. | Compute wrapper height from actual children, allowing `[](u)` at depth 2 while preserving nonempty/nested limits. |
+| Generated record formatting recursed through parent/child relationships until stack overflow, including during failed assertion formatting. | Provide a bounded node `ToString`, also safe for the default value and item formatting. |
+| URL encoding allocated two temporary strings for each encoded scalar. | Write UTF-8 bytes and percent escapes through four stack bytes into the existing builder. Existing URL escapes and components are preserved. |
+
+Initial failing tests reproduced NUL recognition and empty-link depth; failed assertion formatting also exposed the stack overflow. A 10,000-input fixed-seed comparison exposed partial-emphasis errors. Markdig also differed from official CommonMark behavior: an attempted change to escaped backtick handling was reverted after checking the official implementation. Expected results use [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/) and the pinned official commonmark.js output, not Markdig as an oracle. All 10,000 final structural HTML outputs matched; their input/output digests and the reference distribution hash are documented in the [verification data](xUnitTest/TestData/DocumentationMarkdown/README.md#2026-09-20-parser-review). Focused regressions also cover exact ranges, NUL normalization equivalence, deep formatting and Unicode URL output.
+
+Validation: `dotnet build Kimigayo.slnx --no-restore -c Release -v:q` and the corresponding Debug build both finished with zero warnings/errors. Each configuration's `xUnitTest.dll -parallelMode none -failSkips` passed all 10,589 tests, with zero failures/skips (Release 46.618 s; Debug 55.941 s). This includes existing conformance, Markdig comparison, Kimigayo integration, Unicode, source-position, cancellation and resource tests. Logs are under `bin/DocumentationReview/`. NativeAOT and separate native fixtures were not run.
+
+The local measurement probe initially failed because loading two compiler versions with shared Tinyhand registration state caused type-identifier collisions. It was corrected to isolate each assembly and its dependencies; only successful final samples are reported. A standalone probe restore was blocked from reading the user NuGet configuration; reusing the existing project assets allowed the probe to build without restore. [Final samples and limitations](Benchmark/DocumentationMarkdown.md#dm6-parser-review-2026-09-20) record the successful paired run. These checks do not establish exhaustive conformance or compiler-wide speedups.
+
+<a id="documentation-markdown-specification-20260920"></a>
+
+## Documentation Markdown formal specification integration — 2026-09-20
+
+DM1 follow-up: the profile had been adopted through a normative reference to the [2026-09-19 design](draft/Design/2026-09-19%20Documentation%20Markdown.md), but its detailed rules still lived outside the formal specification. Integrated those rules into concise English specification sections with examples, preserving the finalized behavior and leaving all draft files unchanged.
+
+| Design content | Formal owner |
+| --- | --- |
+| §§2–5: syntax and boundary rules | [Documentation Markdown profile §2](spec/documentation-markdown.md#2-syntax) |
+| §6: summaries, items, classification and writing diagnostics | [Profile §3](spec/documentation-markdown.md#3-summary-and-documentation-items), [§2.3.5–6](spec/02-source-and-lexical-structure.md#235-writing-and-extracting-items) |
+| §7: HTML, reference bases, logical paths and URL output | [Profile §4](spec/documentation-markdown.md#4-html-and-links) |
+| §8: immutable API, source positions, publication, reuse and resources | [Profile §5](spec/documentation-markdown.md#5-syntax-api-and-processing-guarantees) |
+| §9: conformance, differential, integration and resource verification | [Appendix A.21](spec/appendices/A-compiler-requirements.md#a21-documentation-comments) |
+| §§10–11: integration and optional algorithms | Formal entry points now own the rules; product types remain independent of Markdig and concrete algorithms remain optional. Existing DM2–DM5 evidence is unchanged. |
+
+Removed duplicate detailed rules from §2.3.4–6 and corrected two stale STATUS rows that still described the pre-DM5 product path. Test-data authority now points to the formal profile. This was a documentation-only change; no new implementation or runtime verification is claimed.
+
+Verification: manually matched the design's adopted rules and acceptance criteria to the owners above; checked local Markdown targets, heading anchors and fenced blocks across the eight edited current documents. All documentation targets passed; 15 existing links in STATUS point to historical `bin/` reports absent from this checkout and were left unchanged. The formal SPEC/spec files have no remaining proposal references. No compiler tests were rerun for this documentation-only integration.
+
+The updated AGENTS.md requires formal specifications to be independent of proposals. The former SPEC design-record index is preserved below as historical provenance, along with the former §21.3 reference to the [Generic Sharing and Specialization design](draft/Design/2026-09-13%20Generic%20Sharing%20and%20Specialization.md). These records and their old precedence notices no longer provide normative authority; the owning formal sections do. No unrelated language behavior was changed.
+
+### Former SPEC design-record index (historical)
+
+Design documents, decision records and change records are stored in `draft/` (formerly `doc/`); the rename does not change the precedence notices below. Each record listed here is integrated into the named sections. Where a record states that its changes take precedence, they override earlier restrictions. Features of a record that are not integrated are not adopted.
+
+| Record | Integrated into | Notes |
+| --- | --- | --- |
+| [Documentation Markdown](draft/Design/2026-09-19%20Documentation%20Markdown.md) | [Limited Markdown profile, links and items](spec/02-source-and-lexical-structure.md#234-markdown-and-links), [Appendix A.21](spec/appendices/A-compiler-requirements.md#a21-documentation-comments) | Adopted limited profile; its explicit changes take precedence over the earlier Documentation Comments record. Unicode 15.0.0, lowercase standard items, declaration-dependent classification, immutable syntax and structured URL rules are requirements, independently of implementation status. |
+| [Documentation Comments](draft/Design/2026-09-17%20Documentation%20Comments.md) | [Documentation syntax and association](spec/02-source-and-lexical-structure.md#231-documentation-text), [processing by use](spec/02-source-and-lexical-structure.md#236-tooling-and-diagnostics), [Appendix A.21](spec/appendices/A-compiler-requirements.md#a21-documentation-comments) | The finalized design takes precedence. Collection is disabled for ordinary compilation and enabled for documentation tooling; source-reading Mods retain raw-source dependencies. |
+| [Whole-value replacement](draft/Changes/2026-09-17%20Whole%20Value%20Replacement.md) | [Sealed](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees), [payload projection](spec/13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow), [receiver compatibility](spec/12-expressions.md#1244-object-receiver-compatibility), [whole-value updates](spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates), and the corresponding destruction, refinement, artifact and code-generation rules | Its Section 6 changes take precedence. |
+| [Kimi library and named aliases](draft/Changes/2026-09-17%20Kimi%20Library%20and%20Named%20Aliases.md) | [Source aliases and effective defaults](spec/18-modules-and-dependencies.md#181-external-references-and-aliases), [name lookup](spec/09-names-signatures-and-access.md#941-named-aliases-collisions-and-warnings), [the Kimi library](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) | Core remains the name of the Type component. |
+| [Declaration Container nesting](draft/Changes/2026-09-17%20Declaration%20Container%20Nesting.md) | [Container placement](spec/06-declarations-and-containers.md#611-root-and-nested-containers), [bound Contract references](spec/08-generics-constraints-and-contracts.md#849-bound-contracts-collisions-and-proof-paths), [qualified lookup](spec/09-names-signatures-and-access.md#961-bound-container-paths), [static storage](spec/22-core-execution-and-foreign-functions.md#2224-static-storage-in-inherited-environments) | Its changed rules take precedence. Runtime Contract Views and user-declared Contract parameters are not introduced. |
+| [Dependencies and artifacts](draft/Design/2026-09-13%20Dependencies%20and%20Artifacts.md) | [Chapter 18](spec/18-modules-and-dependencies.md), [native build and commands](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution), [product/test generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), [Appendix A.16](spec/appendices/A-compiler-requirements.md#a16-dependencies-artifacts-and-bounded-reuse) | Source-first distribution, exact-version resolution, locks, pack/publish, content stores, semantic reuse and native input validation. |
+| [Testing](draft/Design/2026-09-13%20Testing.md) | [Test declarations](spec/06-declarations-and-containers.md#651-test-definitions), [verification](spec/17-failure-handling.md#175-test-verification-operations), [inputs](spec/18-modules-and-dependencies.md#188-product-and-test-inputs), [discovery and CLI](spec/20-compilation-configuration.md#209-test-command-and-discovery), [generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), [execution and reporting](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting), [Appendix A.17](spec/appendices/A-compiler-requirements.md#a17-test-verification-and-runner-requirements) | §17.5 supersedes the draft's earlier `$require` return behavior. The adopted [test profile](spec/testing-profile.md) defines public execution interfaces; future extensions remain in [Appendix D.4](spec/appendices/D-deferred-features.md#d4-testing-extensions). |
 
 <a id="documentation-markdown-product-switch-20260920"></a>
 

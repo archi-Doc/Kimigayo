@@ -334,6 +334,10 @@ public readonly record struct DocumentationMarkdownNode
 
     public ChildrenEnumerable Children => new(this.document, this.Data.First);
 
+    // The generated record formatter follows Parent/FirstChild recursively.
+    // Keep diagnostics and debugger display bounded even for cyclic relations.
+    public override string ToString() => this.document is null ? "DocumentationMarkdownNode (default)" : $"{this.Kind} #{this.id} {this.Span}";
+
     private ref readonly MarkdownNodeData Data => ref this.document.GetData(this.id);
 
     public readonly struct ChildrenEnumerable : IEnumerable<DocumentationMarkdownNode>

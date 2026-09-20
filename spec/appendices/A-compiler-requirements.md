@@ -382,38 +382,60 @@ Exercise both accepted and rejected programs. Parsing or reference interning alo
 
 ## A.21. Documentation Comments
 
-Implement the optional §2.3.1–6 path in five layers: lexical range collection,
-Parser association, lazy text/source mapping, Markdown rendering/extraction, and
-selection/access/provenance queries with separate documentation diagnostics.
-Use the ordinary lexer, including interpolation expression lexing; do not infer
-comment syntax with an independent regular-expression scanner. Keep executable
-tokens and language diagnostics identical with collection enabled or disabled.
-Binding supplies declaration identity, effective access and specialization facts;
-Analysis, Lowering and Emit require no documentation metadata.
+### A.21.1. Implementation boundaries
 
-Keep source-ordered ranges per immutable SourceDocument, not per-line objects or
-extra tokens. Disabled collection adds no allocations; a source without candidates
-needs no documentation buffer. Avoid whole-file scans per declaration. Never retain
-pooled tokenizer storage after disposal. Text caches depend on the source snapshot;
-Markdown caches additionally depend on parser settings; publication caches depend
-on configuration and declaration inputs. Rebuild changed layers, discard removed
-generated-source associations, and permit concurrent reads only of completed
-snapshots. Structured documentation access does not narrow observable-source Mod
-dependencies (§18.7.4, §20.7.5).
+Implement the optional [§2.3.1–6](../02-source-and-lexical-structure.md#231-documentation-text) path and the [Documentation Markdown profile](../documentation-markdown.md). Keep collection, association, text/source mapping, Markdown processing and publication separate:
+
+```text
+SourceDocument
+  -> ordinary lexer: optional comment ranges
+  -> Parser: declaration-fragment association
+  -> on-demand text and source mapping
+  -> independent Markdown syntax
+       -> summary and item candidates
+       -> declaration-dependent classification <- Binding facts
+       -> HTML and links <- renderer settings and output mapping
+  -> selected publication and optional documentation diagnostics
+```
+
+Use ordinary lexing, including interpolation expression lexing, rather than an independent regular-expression comment scanner. Keep source-ordered ranges per immutable SourceDocument, not per-line objects or extra executable tokens. Binding supplies declaration identity, effective access and specialization facts. Analysis, Lowering and Emit require no documentation metadata. Collection and dependency boundaries remain in §2.3.6; syntax lifetime, reuse and resource requirements are in [profile §5](../documentation-markdown.md#5-syntax-api-and-processing-guarantees).
+
+### A.21.2. Correctness and differential tests
+
+The formal profile is the authority. Use applicable official CommonMark 0.31.2 examples for unchanged rules and explicit expected results for profile differences. Markdig may be retained in tests/benchmarks as a comparison implementation; it does not define correctness. Pin comparison versions and settings, accounting for Unicode, URL policy, heading placement and rendering options. Normalize only documented, irrelevant layout differences; investigate other mismatches rather than accepting the comparison output automatically.
+
+Assert syntax structure, item classification, node identity and source ranges directly, not only HTML output. If optional per-character mappings are exposed, verify them too. Cover these groups:
 
 | Area | Required verification |
 | --- | --- |
 | Lexing and text | Recognized/ordinary/trailing comments, literals/interpolation/block comments, all line endings, EOF, empty text, whitespace, non-BMP text and original UTF-16 mappings |
 | Association | Every target, same-line/multiline Attributes and their interiors, nearest/empty/misindented candidates, headers, scope/file boundaries and syntax recovery |
 | Selection | Incomplete False #if syntax, reached #switch arms with nested exclusions, no migration to surviving declarations, no extra excluded-region parsing |
-| Markdown | Adopted limited-profile cases from [Documentation Markdown §§2–9](../../draft/Design/2026-09-19%20Documentation%20Markdown.md), selected CommonMark 0.31.2 examples and intentional differences; Unicode 15.0.0; lowercase/plain-or-code names and parameter precedence; immutable node identity, exact ranges, cancellation/depth interruption, escaping and structured URL rules. Markdig is an optional comparison implementation, not the authority. |
-| Integration | Fragment order and provenance, rootgroup leaf, associated Types, overloads/specialization, effective access, generated sources, unresolved links and source-mapped diagnostics |
-| Reuse and performance | Edits, configuration changes, generated replacement/removal and serialization/reparse without stale results; zero disabled overhead allocations, token/diagnostic equality and measured time/allocation baselines |
+| Markdown blocks and inlines | Every retained feature and interaction; every [profile §2.4 difference](../documentation-markdown.md#24-omitted-syntax-and-boundary-examples); three/four-column starts inside and outside containers, marker widths and five-space list padding, explicit continuation, tight/loose lists, closed/unclosed fences and incomplete delimiters |
+| Character processing | Escapes and numeric/five named references, code exclusions, literal fallback and no reparsing; pinned Unicode 15.0.0 across cultures/runtimes, whitespace/symbol/unassigned and supplementary characters, including classifications that differ across Unicode versions |
+| Summary and items | First-block rule; plain/code names, decoded colons and exact whitespace, case and non-NFC names, duplicate/overlapping descriptions, root-only extraction, parameter/standard-name collisions, external/generic/Origin names, receiver roles, ambiguous/unknown and not-yet-classified candidates |
+| Positions and publication | Exact half-open body/source ranges under LF/CR/CRLF, empty/EOF positions, decoded spellings and partial tabs; stable identity, concurrent requests, eager/lazy equivalence, interrupted work, retry and preservation of completed results |
+| Reuse | Each [profile §5.2 dependency](../documentation-markdown.md#52-completion-concurrency-and-reuse), including identical text in different source paths/projects, declaration/receiver changes, parser/Unicode/settings changes, configuration selection, generated replacement/removal, serialization/reparse and uncacheable callbacks |
+| Kimigayo integration | Fragment order/provenance and independent Markdown scopes, rootgroup leaf, associated Types, overloads/specialization, effective access, ordinary/generated sources, unresolved links and source-mapped diagnostics |
 
-Run targeted tests and existing lexical, Parser, source, Attribute and directive
-regressions, followed by ordinary builds and the complete managed suite. Compare
-Binding, ownership, checked lowering and emitted output with collection on/off;
-documentation-only edits may change positions or source-observing Mod results,
-but otherwise preserve program meaning. NativeAOT requires an explicit request.
-No new CLI, formatter, dedicated Mod query, `kimi:` link or doctest facility is
-required. Formatting through an existing tool must preserve text and association.
+Link and HTML tests must cover the separate stages in [profile §4](../documentation-markdown.md#4-html-and-links):
+
+| Stage | Required verification |
+| --- | --- |
+| Recognition and base | All reference kinds; allowed/disallowed and mixed-case schemes; ordinary/generated sources; display page versus HTML base; empty/query-only/fragment-only destinations; absent versus empty components |
+| Logical resolution | Project identity, ordinary logical source names containing `%`, `?` or `#`, split-before-decode, valid/invalid UTF-8, dot segments, root escape, encoded separators/controls and exactly-once decoding |
+| Output mapping | Changed page layout/base, unavailable mapping, independently encoded path/query/fragment, literal percent data versus existing URL escapes, first-segment colon, one leading slash versus `//`, and preservation of reference kind |
+| Validation and display | Checks before and after mapping/rewriting, whitespace and controls, malformed percent escapes, backslashes, `https:` without `//host`, scheme-specific failures, attribute/text/code escaping, decorated disabled labels and original disabled autolink spelling |
+
+Run targeted tests and existing lexical, Parser, source, Attribute and directive regressions, followed by ordinary builds and the complete managed suite. Compare tokens, language diagnostics, Binding, ownership, checked lowering and emitted output with collection on/off. Documentation-only edits may change positions or source-observing Mod results, but otherwise preserve program meaning. NativeAOT requires an explicit request. No new CLI, formatter, dedicated Mod query, `kimi:` link or doctest facility is required; an existing formatter must preserve text and association.
+
+### A.21.3. Performance and resource verification
+
+Before implementation or optimization, record the environment, input data, procedure and concrete acceptance gates in the implementation plan. Compare elapsed time and allocations for equivalent work; report differences in supported features and output separately. Measure:
+
+- Short summaries, parameter lists, long code blocks, deep lists/quotes and incomplete or adversarial delimiters/links.
+- Parsing, summary/item queries, source mapping and HTML separately; first use and repeated use, and the supported eager/lazy, cache and optional-diagnostic modes. Tests do not require implementing an otherwise unused optimization.
+- Allocated bytes, retained-result memory and peak memory, alongside elapsed time. Include duplicate work from concurrent requests and interrupted/retried processing.
+- Increasing input length, nesting depth and concurrent request count. Inspect for repeated scans, quadratic growth and stack exhaustion in parsing, extraction, output and diagnostics. Timing alone does not prove a complexity bound; review algorithms too. Internal work counters are optional.
+
+Verify zero documentation-specific allocations with collection disabled and no dedicated candidate buffer when none is needed. Include an ordinary-compilation baseline; parser-only improvements do not establish a compiler-wide speedup. Keep external callbacks, declaration/source-name inputs, generated output and optional fine-grained mappings visible in resource accounting. No unconditional speedup or fixed parser architecture is required; observed costs must meet the profile's bounds and the recorded acceptance gates.

@@ -8,7 +8,7 @@ This is the index of the Kimigayo specification. The chapter files under `spec/`
 
 | Part | Status |
 | --- | --- |
-| Chapters 1–22 and the linked [test execution profile](spec/testing-profile.md) | Normative language rules and implementation contracts. |
+| Chapters 1–22, the [Documentation Markdown profile](spec/documentation-markdown.md) and the [test execution profile](spec/testing-profile.md) | Normative language rules and implementation contracts. |
 | Appendix A | Normative compiler requirements. |
 | Appendix B | Non-normative reference models (optional algorithms). |
 | Appendix C | Pointer to the separate implementation status; not part of the language. |
@@ -24,6 +24,7 @@ Implementation coverage is recorded separately in [STATUS.md](STATUS.md). Parser
 
 - [1. Overview](spec/01-overview.md)
 - [2. Source and lexical structure](spec/02-source-and-lexical-structure.md)
+  - [Documentation Markdown profile](spec/documentation-markdown.md): syntax, items, HTML/links, source positions and processing guarantees.
 
 ### Part II. Types, values, and sequences
 
@@ -98,19 +99,9 @@ This table indexes the required declarations in [§22.1](spec/22-core-execution-
 
 These are specification requirements, not a list of completed compiler features. [STATUS.md](STATUS.md#kimi-library-and-whole-value-updates) lists current declarations, compiler-supplied helpers such as `SliceIterator`, and runtime limits. `$abort` is a separate language built-in, not a Kimi Function.
 
-## Integrated design records
+## Specification boundaries
 
-Design documents, decision records and change records are stored in `draft/` (formerly `doc/`); the rename does not change the precedence notices below. Each record listed here is integrated into the named sections. Where a record states that its changes take precedence, they override earlier restrictions. Features of a record that are not integrated are not adopted.
-
-| Record | Integrated into | Notes |
-| --- | --- | --- |
-| [Documentation Markdown](draft/Design/2026-09-19%20Documentation%20Markdown.md) | [Limited Markdown profile, links and items](spec/02-source-and-lexical-structure.md#234-markdown-and-links), [Appendix A.21](spec/appendices/A-compiler-requirements.md#a21-documentation-comments) | Adopted limited profile; its explicit changes take precedence over the earlier Documentation Comments record. Unicode 15.0.0, lowercase standard items, declaration-dependent classification, immutable syntax and structured URL rules are requirements, independently of implementation status. |
-| [Documentation Comments](draft/Design/2026-09-17%20Documentation%20Comments.md) | [Documentation syntax and association](spec/02-source-and-lexical-structure.md#231-documentation-text), [processing by use](spec/02-source-and-lexical-structure.md#236-tooling-and-diagnostics), [Appendix A.21](spec/appendices/A-compiler-requirements.md#a21-documentation-comments) | The finalized design takes precedence. Collection is disabled for ordinary compilation and enabled for documentation tooling; source-reading Mods retain raw-source dependencies. |
-| [Whole-value replacement](draft/Changes/2026-09-17%20Whole%20Value%20Replacement.md) | [Sealed](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees), [payload projection](spec/13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow), [receiver compatibility](spec/12-expressions.md#1244-object-receiver-compatibility), [whole-value updates](spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates), and the corresponding destruction, refinement, artifact and code-generation rules | Its Section 6 changes take precedence. |
-| [Kimi library and named aliases](draft/Changes/2026-09-17%20Kimi%20Library%20and%20Named%20Aliases.md) | [Source aliases and effective defaults](spec/18-modules-and-dependencies.md#181-external-references-and-aliases), [name lookup](spec/09-names-signatures-and-access.md#941-named-aliases-collisions-and-warnings), [the Kimi library](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) | Core remains the name of the Type component. |
-| [Declaration Container nesting](draft/Changes/2026-09-17%20Declaration%20Container%20Nesting.md) | [Container placement](spec/06-declarations-and-containers.md#611-root-and-nested-containers), [bound Contract references](spec/08-generics-constraints-and-contracts.md#849-bound-contracts-collisions-and-proof-paths), [qualified lookup](spec/09-names-signatures-and-access.md#961-bound-container-paths), [static storage](spec/22-core-execution-and-foreign-functions.md#2224-static-storage-in-inherited-environments) | Its changed rules take precedence. Runtime Contract Views and user-declared Contract parameters are not introduced. |
-| [Dependencies and artifacts](draft/Design/2026-09-13%20Dependencies%20and%20Artifacts.md) | [Chapter 18](spec/18-modules-and-dependencies.md), [native build and commands](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution), [product/test generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), [Appendix A.16](spec/appendices/A-compiler-requirements.md#a16-dependencies-artifacts-and-bounded-reuse) | Source-first distribution, exact-version resolution, locks, pack/publish, content stores, semantic reuse and native input validation. |
-| [Testing](draft/Design/2026-09-13%20Testing.md) | [Test declarations](spec/06-declarations-and-containers.md#651-test-definitions), [verification](spec/17-failure-handling.md#175-test-verification-operations), [inputs](spec/18-modules-and-dependencies.md#188-product-and-test-inputs), [discovery and CLI](spec/20-compilation-configuration.md#209-test-command-and-discovery), [generation](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), [execution and reporting](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting), [Appendix A.17](spec/appendices/A-compiler-requirements.md#a17-test-verification-and-runner-requirements) | §17.5 supersedes the draft's earlier `$require` return behavior. The adopted [test profile](spec/testing-profile.md) defines public execution interfaces; future extensions remain in [Appendix D.4](spec/appendices/D-deferred-features.md#d4-testing-extensions). |
+The owning formal sections define required behavior. Proposal and migration history is kept separately in [PLAN_HISTORY.md](PLAN_HISTORY.md); it does not override this specification.
 
 The Composition Root Entry/Provider design was withdrawn; its declarations and final selection remain unsettled. [§13.8](spec/13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax) defines the reserved root and the independently specified built-ins; it neither redirects `Kimi.Console.writeLine` nor introduces composition Bindings.
 

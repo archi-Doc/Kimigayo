@@ -158,42 +158,27 @@ Documentation belongs to its syntactic declaration. Related declarations—an in
 
 ### 2.3.4. Markdown and links
 
-Use the **limited documentation Markdown profile**, based on CommonMark 0.31.2 and finalized in [Documentation Markdown §§2–8](../draft/Design/2026-09-19%20Documentation%20Markdown.md). That adopted design is normative and overrides the earlier CommonMark-without-HTML profile and the earlier Documentation Comments design where explicitly changed. Unchanged rules remain required; implementation limits do not narrow the profile.
-
-The profile retains paragraphs and breaks, ATX headings, fenced/inline code, lists, explicitly continued quotes, emphasis/strong emphasis, inline links/autolinks, backslash escapes, numeric character references, and the five case-sensitive named references `amp`, `lt`, `gt`, `quot`, `apos`. Markdown character classification uses Unicode 15.0.0, independent of the host runtime.
-
-Do not recognize Setext headings, indented code blocks, thematic breaks, reference links/definitions, images, raw HTML, or extensions. Lists require their CommonMark content indentation; every quote line requires its marker. Lazy paragraph continuation is disabled. Retain CommonMark's other start/interrupt conditions, including the three-column block-start indentation limit. Unrecognized syntax is processed by the remaining rules: it is not protected as an opaque literal. Thus `![x](guide.md)` is `!` plus an inline link, and a four-column-indented `# example` is a paragraph. HTML-looking text does not suppress following Markdown and must be escaped on output.
-
-Heading hierarchy is relative to the enclosing declaration. Fence language `kimi` is a highlighting hint, not execution. Inline code names are not automatically resolved as declarations; no `kimi:` convention is introduced.
-
-Link interpretation and output follow the adopted design §7.2: distinguish empty-path/page-relative references, output-root-relative references, source-relative logical paths and absolute URLs. Source-relative paths require an ordinary logical source name and project identity; generated sources have no such base. Keep logical path, query and fragment separate, decode path segments once, reject invalid encodings/separators and traversal outside the project, and let the rendering tool map logical targets to output URLs. Empty-path references (including empty destinations, query-only and fragment-only references) use the display page, also for generated sources. Preserve absent versus empty query/fragment values.
-
-Rendering settings own permitted schemes (default `http`, `https`, `mailto`) and deterministic output mapping. Validate input and rewritten output under the design's URL rules; do not reinterpret encoded path data as URL structure. Unavailable ordinary links retain their displayed content and formatting; unavailable autolinks retain their escaped original spelling including angle brackets.
+Use the normative [Documentation Markdown profile](documentation-markdown.md). Its [syntax rules](documentation-markdown.md#2-syntax) define the adopted CommonMark subset and explicit boundary behavior; its [HTML and link rules](documentation-markdown.md#4-html-and-links) define escaping, reference bases, logical source targets, output mapping and URL validation. Full CommonMark compatibility is not required.
 
 ### 2.3.5. Writing and extracting items
 
-Recommend a short opening paragraph explaining purpose; use it as the summary only if it is the first Markdown block. Explain meaning, boundaries, effects, ordering, complexity and safety without mechanically repeating declaration facts. Documentation does not prove obligations, override declarations or introduce deprecation metadata.
+Recommend a short opening paragraph explaining purpose. Explain meaning, boundaries, effects, ordering, complexity and safety without mechanically repeating declaration facts. Documentation does not prove obligations, override declarations or introduce deprecation metadata.
 
-Standard names are case-sensitive: `return`, `abort`, `safety`, `note`, `warning`, `example`. Old spellings such as `Returns` are not aliases. Short explanations use list items; longer standard sections use headings. Unknown names and free headings remain ordinary text.
+Use list items for short descriptions and headings for longer standard sections. The profile's [summary and item rules](documentation-markdown.md#3-summary-and-documentation-items) own standard names, extraction, description ranges and declaration-dependent classification.
 
-```kimi
+````kimi
 /// Adds two values.
 ///
 /// - left: Left value.
 /// - right: Right value.
 /// - return: Their sum.
+///
+/// # example
+/// ```kimi
+/// let total = add(2, 3)
+/// ```
 public func add(left: i32, right: i32) -> i32 => left + right
-```
-
-A name is either unformatted text (including decoded escapes/adopted character references) or one inline-code span. Backticks are optional for both standard items and parameters. Do not mix plain text and code within a name, trim the decoded value, fold its case, normalize Unicode, or revalidate it as a language identifier. Code-span whitespace processing still applies.
-
-Inspect only root-level lists and headings. A list item's first block must be a paragraph beginning with a nonempty name and ASCII `:`; after the decoded colon require U+0020, tab, newline or paragraph end. For plain names use the first colon; for code names require the colon immediately after the code span. A root heading is extracted only when its entire decoded name matches a standard name. Do not extract from quotes, code or nested lists.
-
-List candidates remain unclassified until declaration information is available. Match ordinary parameters by external name and generic Type/Semantics/constant and Origin parameters by declared name. Exclude receivers by declaration role, not the string `self`. Exactly one match makes a parameter item; multiple matches are ambiguous and do not fall back to a standard item; with no match, recognize a standard name or retain an unknown candidate. Headings recognize standard names independently of parameter collisions.
-
-Preserve original node identity, source order, duplicates and containment. List descriptions extend from immediately after the source spelling of the colon to the item end, including children. Heading descriptions extend after the heading to the next root heading of equal or higher level, or EOF. Ranges are half-open UTF-16 ranges in normalized text, mapped to minimal enclosing source intervals; diagnostic positions remain exact across escapes, character references, tabs and normalized line endings. See the adopted design §8 for immutable publication, cancellation, depth limits and resource requirements.
-
-Missing or incomplete `abort` prose does not guarantee other Aborts are impossible. `safety` explains existing unsafe obligations; its presence or absence changes neither unsafe designation nor calling permission. Optional documentation diagnostics remain separate from language validity.
+````
 
 ### 2.3.6. Tooling and diagnostics
 
@@ -207,11 +192,13 @@ Select documentation processing by use:
 
 Documentation metadata may be omitted from the Parser's executable syntax tree; Type checking, Analysis, Lowering and Emit do not require it. This does not remove comment text from the original SourceDocument available to source-reading consumers.
 
-When documentation processing is enabled, retain the target fragment and original SourceDocument/range. Publication scope is configurable; public output follows effective accessibility. Optional documentation diagnostics cover unattached/ignored documentation, missing/ambiguous items, missing unsafe Safety prose and unresolved links. Diagnose ignored `///` only where lexing identified an actual line comment, respecting §2.3.3 exclusions. Documentation diagnostics never affect ordinary language validity, although a separate CI gate may fail. Do not downgrade existing encoding/layout/syntax errors to lint.
+When documentation processing is enabled, retain the target fragment and original SourceDocument/range. Publication scope is configurable; public output follows effective accessibility. Optional documentation diagnostics cover unattached/ignored documentation, missing/ambiguous items, missing unsafe `safety` prose and unresolved links. Diagnose ignored `///` only where lexing identified an actual line comment, respecting §2.3.3 exclusions. Documentation diagnostics never affect ordinary language validity, although a separate CI gate may fail. Do not downgrade existing encoding/layout/syntax errors to lint.
+
+Optional writing diagnostics may suggest adopted syntax when text resembles omitted features, such as Setext headings or indented code. Such resemblance is not a definite syntax error. Exhaustive detection and a comparison parser are not required. Tab and trailing-space advice is separate: hard-break spaces remain meaningful. Do not collect diagnostic-only data when these checks are disabled; measure their added cost when enabled.
 
 Canonical formatting uses `/// ` for nonempty lines and `///` for empty ones, preserving extracted text. Moving blocks before Attributes must preserve every block's association and text. No new formatter or command syntax is required.
 
-Disabled collection adds no documentation-specific allocations or retained text/Markdown trees; no candidates means no dedicated candidate buffer. Enabled processing uses source-ordered ranges and original-source mappings without whole-file rescans per declaration or runtime metadata. Never retain disposed tokenizer buffers. Snapshot-local caches include observed source/configuration/selection/rendering inputs; replacement/removal invalidates generated-document associations. Structured documentation queries alone cannot narrow raw-source Mod dependencies. See Appendix A.21 for required verification.
+Disabled collection adds no documentation-specific allocations or retained text/Markdown trees; no candidates means no dedicated candidate buffer. Enabled processing uses source-ordered ranges and original-source mappings without whole-file rescans per declaration or runtime metadata. Never retain disposed tokenizer buffers. Replacement/removal invalidates generated-document associations. Structured documentation queries alone cannot narrow raw-source Mod dependencies. The profile's [processing guarantees](documentation-markdown.md#5-syntax-api-and-processing-guarantees) own immutable publication, positions, reuse, cancellation and resource bounds; [Appendix A.21](appendices/A-compiler-requirements.md#a21-documentation-comments) owns verification.
 
 ## 2.4. Tokens, separators, and punctuation
 

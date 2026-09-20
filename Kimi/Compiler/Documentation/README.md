@@ -4,7 +4,7 @@
 assemblies and packages have no Markdig dependency; Markdig remains a private
 dependency of comparison tests and benchmarks only. The adopted language rules
 are in [§2.3](../../../spec/02-source-and-lexical-structure.md#231-documentation-text)
-and the design referenced there.
+and the [Documentation Markdown profile](../../../spec/documentation-markdown.md).
 
 ## Parsing and declaration context
 

@@ -361,6 +361,7 @@ public static class DocumentationLinks
     {
         StringBuilder? output = null;
         var copied = 0;
+        Span<byte> utf8 = stackalloc byte[4];
         foreach (var rune in value.EnumerateRunes())
         {
             var c = rune.Value;
@@ -368,7 +369,12 @@ public static class DocumentationLinks
             if (!allowed)
             {
                 output ??= new StringBuilder(value.Length + 16).Append(value.AsSpan(0, copied));
-                output.Append(Uri.EscapeDataString(rune.ToString()));
+                var length = rune.EncodeToUtf8(utf8);
+                const string Hex = "0123456789ABCDEF";
+                for (var i = 0; i < length; i++)
+                {
+                    output.Append('%').Append(Hex[utf8[i] >> 4]).Append(Hex[utf8[i] & 15]);
+                }
             }
             else if (output is not null)
             {

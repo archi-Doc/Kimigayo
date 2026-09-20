@@ -410,3 +410,38 @@ explicit: no Markdig public types, lowercase standard items, current Binding rol
 root-relative default source placement, and configurable structured mapping.
 NativeAOT and native fixture execution were not run in DM5; managed integration
 checks collection-on/off emitted IR after invoking the product output path.
+
+## DM6 parser review (2026-09-20)
+
+The review fixes syntax, NUL, depth-limit and node-formatting defects. Its focused
+performance change replaces per-scalar `Rune.ToString`/`Uri.EscapeDataString`
+temporaries with four stack bytes and direct percent-escape output. URL behavior
+is covered by existing and new Unicode/component tests.
+
+The [raw paired samples](Results/DocumentationMarkdown/2026-09-20-review.json)
+compare pre-review and final Release assemblies on Windows x64 / .NET 10.0.12.
+Each version and its dependencies use a separate assembly load context. Identical
+compiled delegate wrappers call `DocumentationLinks.Resolve` with default options
+or `DocumentationMarkdownDocument.Parse` with depth 256. Each input has a 500 ms
+alternating warmup followed by seven samples, alternating version order; the JSON
+records operations per sample, elapsed ns/op, allocated B/op and assembly hashes.
+Tiered compilation uses runtime defaults. No assertions or reflection invocation
+occur inside the timed loops; URL results are checked for equality beforehand.
+
+| Workload | Before → after ns/op (median) | Before → after B/op |
+| --- | ---: | ---: |
+| ASCII URL | 186.04 → 202.50 | 312 → 312 |
+| Unicode URL | 14,290.00 → 7,017.70 | 55,640 → 20,824 |
+| Mixed URL | 375.58 → 305.76 | 1,496 → 1,096 |
+| Plain paragraph parse | 40.38 → 38.33 | 192 → 192 |
+| Rich paragraph parse | 567.73 → 556.74 | 536 → 536 |
+
+Inputs are `/guide/api.html?view=full#section`; `/` followed by 128 repetitions of
+`日本語😀`; `/guide/日本語/😀?q=あ%20b#é`; and the existing `Summary` and
+`Rich-summary` strings in `DocumentationMarkdownMeasurements.Inputs`. The Unicode
+workload uses about 49% of the previous time and 37% of its allocation; the mixed
+workload uses 81% of the time and 73% of its allocation. ASCII URL time was about
+9% higher in this small run, while its allocation and both parse allocations were
+unchanged. These are bounded microbenchmarks, not a uniform throughput improvement
+or a whole-compiler speed claim. The local probe and intermediate reports are in
+`bin/DocumentationReview/`; the final samples are retained above.

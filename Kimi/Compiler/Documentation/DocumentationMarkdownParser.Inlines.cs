@@ -19,8 +19,8 @@ internal ref partial struct DocumentationMarkdownParser
 
     private static readonly SearchValues<char> ParenthesisCharacters = SearchValues.Create("()\\");
 
-    // Space, ASCII controls and DEL end a bare link destination.
-    private static readonly SearchValues<char> DestinationStops = SearchValues.Create("\0\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\t\n\u000B\u000C\r\u000E\u000F\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F \u007F");
+    // NUL is logically U+FFFD, not a destination-ending control character.
+    private static readonly SearchValues<char> DestinationStops = SearchValues.Create("\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\t\n\u000B\u000C\r\u000E\u000F\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F \u007F");
 
     private void ParseInlines(int parent)
     {
@@ -229,6 +229,8 @@ internal ref partial struct DocumentationMarkdownParser
 
                 var before = MarkdownUnicode.Before(input, position);
                 var after = MarkdownUnicode.After(input, runEnd);
+                before = before == 0 ? 0xFFFD : before;
+                after = after == 0 ? 0xFFFD : after;
                 var beforeSpace = MarkdownUnicode.IsWhitespace(before);
                 var afterSpace = MarkdownUnicode.IsWhitespace(after);
                 var beforePunctuation = MarkdownUnicode.IsPunctuation(before);
@@ -236,7 +238,7 @@ internal ref partial struct DocumentationMarkdownParser
                 var left = !afterSpace && (!afterPunctuation || beforeSpace || beforePunctuation);
                 var right = !beforeSpace && (!beforePunctuation || afterSpace || afterPunctuation);
                 var node = this.AddInlineText(parent, input, position, runEnd);
-                var delimiter = this.delimiters.Add(new() { Node = node, Previous = this.lastDelimiter, Character = character, Count = runEnd - position, CanOpen = left && (character == '*' || !right || beforePunctuation), CanClose = right && (character == '*' || !left || afterPunctuation), });
+                var delimiter = this.delimiters.Add(new() { Node = node, Previous = this.lastDelimiter, Character = (byte)character, Count = runEnd - position, OriginalRemainder = (byte)((runEnd - position) % 3), CanOpen = left && (character == '*' || !right || beforePunctuation), CanClose = right && (character == '*' || !left || afterPunctuation), });
                 this.delimiters[this.lastDelimiter].Next = delimiter;
                 this.lastDelimiter = delimiter;
                 position = runEnd;
@@ -273,7 +275,7 @@ internal ref partial struct DocumentationMarkdownParser
                         this.links[node].Last = firstChild == 0 ? 0 : lastChild;
                         this.nodes[node].Next = 0;
                         this.links[parent].Last = node;
-                        var height = 1;
+                        var height = 0;
                         if (firstChild != 0)
                         {
                             this.links[firstChild].Previous = 0;
@@ -298,8 +300,22 @@ internal ref partial struct DocumentationMarkdownParser
             else if (character == '<' && TryAutoLink(input, position, out var autoEnd, out var email))
             {
                 var node = this.AddNode(DocumentationMarkdownKind.AutoLink, parent, this.MapStart(position), this.MapEnd(autoEnd));
-                this.nodes[node].Argument = this.values.Add(email ? new(string.Concat("mailto:", input[(position + 1)..(autoEnd - 1)])) : this.SliceValue(input, position + 1, autoEnd - 1));
-                this.SetInlineText(node, input, position + 1, autoEnd - 1, this.MapStart(position + 1), this.MapEnd(autoEnd - 1), normalizeCode: false);
+                var target = input[(position + 1)..(autoEnd - 1)];
+                if (this.inlineHasNul && target.Contains('\0'))
+                {
+                    // Email syntax cannot contain NUL. URI autolinks share one
+                    // replaced value for destination and label; do not decode
+                    // their backslashes or character references.
+                    var value = this.values.Add(new(this.CreateText(target, normalizeCode: false)));
+                    this.nodes[node].Argument = value;
+                    this.nodes[node].TextStart = ~value;
+                    this.nodes[node].TextLength = target.Length;
+                }
+                else
+                {
+                    this.nodes[node].Argument = this.values.Add(email ? new(string.Concat("mailto:", target)) : this.SliceValue(input, position + 1, autoEnd - 1));
+                    this.SetInlineText(node, input, position + 1, autoEnd - 1, this.MapStart(position + 1), this.MapEnd(autoEnd - 1), normalizeCode: false);
+                }
                 lastLinkStart = position;
                 position = autoEnd;
             }
@@ -329,12 +345,14 @@ internal ref partial struct DocumentationMarkdownParser
                 continue;
             }
 
-            var bucket = (close.Character == '*' ? 0 : 6) + (close.CanOpen ? 3 : 0) + (close.Count % 3);
+            // The rule of three uses original physical run lengths even after
+            // some markers have been consumed by an inner emphasis node.
+            var bucket = (close.Character == '*' ? 0 : 6) + (close.CanOpen ? 3 : 0) + close.OriginalRemainder;
             var opener = close.Previous;
             while (opener > openersBottom[bucket])
             {
                 var open = this.delimiters[opener];
-                if (open.CanOpen && open.Character == close.Character && (!(open.CanClose || close.CanOpen) || (open.Count + close.Count) % 3 != 0 || (open.Count % 3 == 0 && close.Count % 3 == 0)))
+                if (open.CanOpen && open.Character == close.Character && (!(open.CanClose || close.CanOpen) || (open.OriginalRemainder + close.OriginalRemainder) % 3 != 0 || (open.OriginalRemainder == 0 && close.OriginalRemainder == 0)))
                 {
                     break;
                 }
@@ -482,7 +500,8 @@ internal ref partial struct DocumentationMarkdownParser
 
     private void SetInlineText(int id, ReadOnlySpan<char> input, int start, int end, int sourceStart, int sourceEnd, bool normalizeCode)
     {
-        // Only code spans can hold a NUL or line ending: every other run stops at them.
+        // NUL-containing autolinks are handled above; other non-code runs stop
+        // at NULs and line endings. Only code needs normalization here.
         var special = !normalizeCode ? -1 : this.inlineHasNul ? input[start..end].IndexOfAny('\n', '\0') : this.inlineMultiline ? input[start..end].IndexOf('\n') : -1;
         if (special < 0 && sourceEnd - sourceStart == end - start)
         {
@@ -697,7 +716,7 @@ internal ref partial struct DocumentationMarkdownParser
         else
         {
             // A bare destination may not start with '<' but may contain one later.
-            while (position < input.Length && input[position] > ' ' && input[position] is not (')' or '\u007F'))
+            while (position < input.Length && (input[position] > ' ' || input[position] == '\0') && input[position] is not (')' or '\u007F'))
             {
                 if (input[position] == '\\' && position + 1 < input.Length && MarkdownUnicode.IsAsciiPunctuation(input[position + 1]))
                 {
@@ -812,7 +831,7 @@ internal ref partial struct DocumentationMarkdownParser
     {
         end = start + 1;
         email = false;
-        while (end < input.Length && input[end] > ' ' && input[end] is not ('<' or '>'))
+        while (end < input.Length && (input[end] > ' ' || input[end] == '\0') && input[end] is not ('<' or '>'))
         {
             end++;
         }
@@ -1046,7 +1065,9 @@ internal ref partial struct DocumentationMarkdownParser
 
         internal int Count;
 
-        internal char Character;
+        internal byte Character;
+
+        internal byte OriginalRemainder;
 
         internal bool CanOpen;
 
