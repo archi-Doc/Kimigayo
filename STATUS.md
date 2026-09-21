@@ -1,5 +1,23 @@
 # Kimigayo Implementation Status
 
+**Milestone Program 17** now builds and executes unchanged with Debug/Release
+compilers at O0/O2. Static fixed-array element borrows share the existing inline
+path, completeness, Loan and address plans, including nested field/Tuple/array
+paths. Partial Move repair, element exchange/swap/replace, secured array return,
+defer order and exactly-once resource destruction are verified. Immutable,
+incomplete and conflicting update targets reject. Match storage pruning also
+handles the dedicated constructor/destructor receiver correctly.
+
+Warning-free Debug/Release solution builds each pass **10,961 managed tests**,
+including 31 new cases. The [Program 17 harness](backend/windows-x64/test-milestone17.ps1)
+passes 57 checks per configuration (39 execution checks and 18 rejections).
+Related native regression passes 323 fixture sets / 646 O0/O2 executions; all
+1,615 fixture files match between Debug and Release. Programs 1–16 also pass 96
+Release O0/O2 regression checks.
+See [evidence and scope](PLAN_HISTORY.md#program17-completion). This does not add
+general dynamic-index update borrows, generic resource operations or arbitrary
+interprocedural effects. NativeAOT was not run.
+
 The **2026-09-21 Origin redesign** is integrated into the formal specification and
 the compiler's supported paths. Closed struct/enum headers (including `{}`), one
 implicit Type slot, implicit signature Origins, fresh binding-set names, safe
@@ -179,8 +197,8 @@ The **2026-09-18 restructuring audit** passes a warning-free Release compiler/te
 build, 57 alias/syntax tests, 577 existing milestone harness checks and two native
 O0/O2 executions of program 13. Programs 1–14 retain executable coverage after
 the source spelling change. At that checkpoint programs 15–21 failed native O2
-build probes; programs 15–16 are now superseded by the completions above. Programs
-17–21 retain their recorded limitations; 22–38 remain uncreated. The restructuring
+build probes; programs 15–17 are now superseded by the completions above. Programs
+18–21 retain their recorded limitations; 22–38 remain uncreated. The restructuring
 itself added no compiler feature.
 [Audit and limits](PLAN_HISTORY.md#programs38-restructure) distinguish current
 source hashes from earlier combined-program evidence. Debug, the full managed
@@ -468,6 +486,15 @@ Complete initialized local var elements support replacement of strings/supported
 
 Constructed owned tuple/array locals support static Non-Copy Move, sibling use, local var repair and whole acquisition after all missing parts are repaired. Construction and current completeness are separate. Sparse referenced paths and untracked remainders avoid array-length expansion; remaining parts destroy in reverse logical order with flags only where conditional. Unconstructed element writes, let repair, missing-part reads and dynamic accesses that may reach missing parts reject. Dynamic Non-Copy and temporary-element Moves remain unsupported.
 
+Literal-only fixed-array paths also support in-place shared/exclusive borrows and
+whole-value updates for supported scalar/aggregate referents. Nested inline paths
+retain their actual Loan footprints; disjoint elements can be borrowed together,
+and an initialized element can be updated while a sibling remains Moved. Storage
+permission follows the containing Place, so an immutable element cannot be
+silently copied into a mutable temporary for an exclusive update. Unknown index
+relationships do not prove disjointness. Program 17 verifies the complete repaired
+array's return and caller cleanup without extra element allocations.
+
 <a id="49-static-string-element-comparisons-and-shared-arguments-2026-09-15"></a>
 
 ### 4.9. Static String Element Comparisons and Shared Arguments
@@ -529,12 +556,13 @@ Supported source-module common generation is verified for transitive calls, shar
 | CI and distribution | `.github/workflows/test.yml` explicitly selects Linux Release, xUnitTest project, nonzero-test minimum and serial tests. `publish.yml` retains a less explicit test command and manual NuGet pack/push. These workflows are distinct; neither execution nor publication was performed by this migration. Windows native/PR coverage and evidence retention still need review. |
 | Performance | Binding/type/CFG/ABI/layout/constant buffers reuse capacity; targeted warm tests measure zero allocation on their own workloads. Shared module preparation, graph loading, process startup and every Binding path are not allocation-free guarantees. Historical require-expression Binding measured 72 bytes/pass; front-end samples did not establish a speedup. The original extended benchmark input failure remains a separate finding. |
 
-Programs 1–16 have Release target-level native coverage, including Debug/Release O0/O2 target and variant coverage for programs 15–16. Programs 17–21 retain failed O2 build probes, not executable support. Programs 22–38 are planned. Parser coverage and adopted documentation do not establish end-to-end executability. User constructor, closure, generic, reference and sequence support should be read from the bounded areas above, not older blanket omissions.
+Programs 1–17 have Release target-level native coverage, including Debug/Release O0/O2 target and variant coverage for programs 15–17. Programs 18–21 retain failed O2 build probes, not executable support. Programs 22–38 are planned. Parser coverage and adopted documentation do not establish end-to-end executability. User constructor, closure, generic, reference and sequence support should be read from the bounded areas above, not older blanket omissions.
 
 ## 7. Verification Records
 
 | Verification scope | Saved result / code state | Evidence and limits |
 | --- | --- | --- |
+| Program 17 | PASS: warning-free Debug/Release builds, 10,961 managed tests each, 57 target/variant/rejection checks each, 323 fixture sets / 646 native O0/O2 executions, 96 program 1–16 regression checks | [Final identity audit](bin/milestone17-work/verification.json), [history and commands](PLAN_HISTORY.md#program17-completion). Unchanged target, exact output/exit/destruction order, pinned LLVM 22.1.8. NativeAOT NOT_RUN. |
 | Kimi library organization (KL) | Warning-free Debug/Release builds; 8,998 managed tests each; eight frozen fixtures / 16 native O0/O2 runs; warm Bind allocation remains zero | [History and bounded performance comparison](PLAN_HISTORY.md#kimi-library-organization). Final generated fixture bytes match the executed inputs. Source/API organization does not add rc/arc/Weak runtime support. NativeAOT NOT_RUN. |
 | 38-program restructuring | PASS: warning-free Release build, 57 alias/syntax tests, 577 program 1–12/14 harness checks and two program-13 O0/O2 runs; programs 15–21 O2 builds FAIL | [Record](PLAN_HISTORY.md#programs38-restructure), [input/report manifest](bin/milestones38-20260918-212937/verification.json). Sources 1–21 exist; 22–38 remain planned. No compiler feature changes; Debug/full managed/NativeAOT NOT_RUN. |
 | Historical programs 18–20 authoring (before split) | Release compiler/test-project build PASS, zero warnings/errors; one existing syntax-catalog test PASS; three native O2 builds FAIL, native tests NOT_RUN | [Record and commands](PLAN_HISTORY.md#programs18-20-design), [input hashes/logs](bin/milestones18-20-design-20260918/verification.json). No compiler changes in this task. Debug, O0, full managed regressions and NativeAOT NOT_RUN. |

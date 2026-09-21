@@ -109,23 +109,24 @@ internal static class ElementAccess
         return null;
     }
 
-    // SPEC 15.6: a direct inline field/Tuple path whose root is an owned local
+    // SPEC 15.6: a direct inline field/Tuple/static-array path whose root is an owned local
     // or parameter Name. Returns that Name, or null for other forms.
-    internal static IdentifierNameKoto? OwnedPathRoot(MemberAccessKoto field)
+    internal static IdentifierNameKoto? OwnedPathRoot(BinaryKoto field)
     {
         for (var depth = 0; depth < 64; depth++)
         {
-            if (!IsSyntax(field) || !TryType(field, out _, out var position) || position < 0)
+            if (!IsSyntax(field) || StaticSelector(field) < 0)
             {
                 return null;
             }
 
-            if (field.Left is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } root)
+            var receiver = KotoHelper.UnwrapParentheses(field.Left);
+            if (receiver is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } root)
             {
                 return root;
             }
 
-            if (field.Left is not MemberAccessKoto parent)
+            if (receiver is not BinaryKoto parent)
             {
                 return null;
             }
@@ -137,7 +138,7 @@ internal static class ElementAccess
     }
 
     // The stored position of one path level and the aggregate that contains it.
-    internal static int PathSelector(MemberAccessKoto field, out BoundType? owner, out BoundType? element)
+    internal static int PathSelector(BinaryKoto field, out BoundType? owner, out BoundType? element)
     {
         var left = field.Left.BoundType;
         element = null;
@@ -163,7 +164,7 @@ internal static class ElementAccess
         }
 
         owner = left;
-        return TryType(field, out element, out var position) ? position : -1;
+        return TryType(field, out element, out _) ? StaticSelector(field) : -1;
     }
 
     internal static bool TryBorrowedTupleElement(BinaryKoto source, out BoundType? element, out int position)

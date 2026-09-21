@@ -4,7 +4,7 @@ Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md
 Programs 1–21 have source files; programs 22–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 17–21 are specification targets beyond current
+not an execution claim. Milestones 18–21 are specification targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -39,7 +39,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-19**, after the 38-program restructuring and program 16 completion. Build means a native
+As of **2026-09-21**, after the 38-program restructuring and program 17 completion. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -62,7 +62,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 14 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 15 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
 | 16 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
-| 17 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedOwnership_Kd for element update targets; Move/Loan diagnostics |
+| 17 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
 | 18 | YES | FAIL (Release/O2) | NOT_RUN | GenerationFailed_Kd: invalid shared storage/projection |
 | 19 | YES | FAIL (Release/O2) | NOT_RUN | InvalidPattern_Kd / UnprovenConstraint_Kd for associated results/nested conformance |
 | 20 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedBinding_Kd when dereferencing generic returned element borrows |
@@ -90,7 +90,7 @@ identities and exact commands: Release compiler/test-project build PASS with zer
 warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
 program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
 The syntax-catalog test includes all 21 existing milestone sources. That audit's
-failed program-15/16 probes are superseded by their completions. Programs 17–21
+failed program-15/16/17 probes are superseded by their completions. Programs 18–21
 retain failed build probes; their expected output remains specification-derived.
 Programs 22–38 have no source files or executed tests yet. Debug, full managed
 regressions and NativeAOT were not run for this restructuring.
@@ -943,7 +943,7 @@ Exchange transfers Resource 2 into old without destroying it, swap transfers
 Resources 3/4 without destruction, and replace destroys Resource 3 at its target.
 Literal indices 0 and 1 provide disjoint static paths for the simultaneous Loans.
 
-Expected stdout (not execution evidence):
+Verified stdout (Debug/Release compilers, O0/O2):
 
 ```text
 Exchange scope finished.
@@ -972,13 +972,24 @@ Separate rejection exercises:
 - Add a defer that reads items before return: deferred execution would read the
   source after return has Moved it.
 
-Future verification should separately cover incomplete-array cleanup without
-repair/whole return (only remaining initialized elements are destroyed), cleanup
-through early transfer, and Abort during replacement destruction (no subsequent
-placement or ordinary cleanup). Resource ids and exact output detect duplicate,
-missing or reordered destruction; inspect generated updates to exclude extra
-element allocations. Borrowed-content updates, generic storage and general
-interprocedural effects remain broader requirements.
+The [dedicated tests](../xUnitTest/Tests/StaticElementUpdateTest.cs) also cover
+incomplete-array cleanup, early return, nested paths, retained disjoint borrows,
+replacement destruction that Aborts, and serialized reload. Resource identities
+and exact output detect duplicate, missing or reordered destruction. Updates use
+the existing inline storage and transfer instructions. Generic storage, arbitrary
+borrowed-content dependencies and general interprocedural effects remain broader
+requirements.
+
+```powershell
+./backend/windows-x64/test-milestone17.ps1 -Configuration Release
+./backend/windows-x64/test-milestone17.ps1 -Configuration Debug
+```
+
+Each run has 57 checks: the unchanged target, byte-identical O0/O2 renamed copies,
+name/value/implicit/typed/literal-index variants, and nine rejection cases at both
+optimization levels. Reports include compiler/source hashes, exact output and
+exit checks; [the completion record](../PLAN_HISTORY.md#program17-completion)
+describes the managed and native regression scope. NativeAOT is not used.
 
 Focus: [partial Move](../spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move),
 [whole-value updates](../spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates),

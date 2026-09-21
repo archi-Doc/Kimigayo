@@ -11,7 +11,8 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             if ((plan.Target.CompilerFunction == CompilerFunctionKind.Swap || plan.ArgumentOperations[i].ParameterIndex == 0) &&
-                ReferenceTypes.IsStorage(call.ArgumentNodes[i].BoundType))
+                (ReferenceTypes.IsStorage(call.ArgumentNodes[i].BoundType) ||
+                    (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is BinaryKoto path && ElementAccess.OwnedPathRoot(path) is not null)))
             {
                 return this.BorrowedWholeValueUpdate(call, plan);
             }

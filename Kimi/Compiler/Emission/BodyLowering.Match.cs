@@ -56,8 +56,10 @@ internal sealed partial class BodyLowering
             {
                 function.Subslots.RemoveAt(i);
             }
-            else
+            else if (slot.Parent >= 0)
             {
+                // Parent -1 denotes the dedicated init/deinit receiver address,
+                // which has no local storage slot to retain.
                 this.UseMatchStorage(function, slot.Parent);
             }
         }

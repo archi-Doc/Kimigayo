@@ -7788,3 +7788,116 @@ The same review pattern applied to `CompileTimeSettings`, `Dependencies` and `Te
 The first full run after this change failed one existing case, `CompilationSpecificationTest.ProjectFileLoadingRejectsDuplicateDecodedSettingNames` (`CompileTimeSettings={Feature=…} CompileTimeSettings={Feature=…}`): the input was still rejected, but the new message lacked the established "Duplicate" wording the test checks. The new messages now read "Duplicate <key> setting."; the test was not changed.
 
 **Final checkpoint verification:** `dotnet build Kimigayo.slnx -c Debug -m:1` and `-c Release` PASS with 0 warnings; full managed suites Debug **10,930/10,930** and Release **10,930/10,930** PASS (`dotnet xUnitTest/bin/<Configuration>/net10.0/xUnitTest.dll -parallelMode none -failSkips`). `git diff --check` clean. Configuration-only changes: no native execution applies; NativeAOT not run; no draft edits.
+
+<a id="program17-completion"></a>
+## Program 17: static element updates and ordered cleanup (2026-09-21)
+
+The user explicitly selected Program 17 and superseded the previous timed
+compiler-wide continuation. P17 IDs are independent of implementation M/I/T IDs.
+The starting tree was clean (`bin/milestone17-work/baseline-{head,status}.txt`);
+no pre-existing edits needed preservation. Later programs 18–21 were read for
+prerequisite boundaries, not implemented. The target source and formal
+specification remain unchanged; no draft edits or NativeAOT tests.
+
+Failure progression and fixes:
+
+1. Fresh Release build passed. The unchanged target first failed ownership at
+   `items[1]@uniq` on line 20, followed by Move and call-reservation diagnostics
+   (`baseline-target.log`). Existing related tests passed 781 cases; three new
+   explicit/implicit/literal-index reproducers failed (`repro-tests.log`).
+2. Extended existing inline borrow paths with literal-only fixed-array selectors,
+   including nested field/Tuple/array paths. The same selectors drive initialized
+   subtree checks, Loan disjointness and checked physical offsets. Intrinsic
+   updates consume the resulting borrowed addresses. The remaining swap error
+   was a false overlap when the update's prepared first receiver was compared
+   with its disjoint second receiver; both reservations still activate separately.
+3. Once ownership passed, native generation exposed an existing match storage
+   pruning exception: a used deinit field has parent -1, the dedicated receiver,
+   not a local slot index. Kept that external address while retaining ordinary
+   local-parent storage (`emission-repro-tests.log` includes the stack trace).
+4. Negative coverage exposed an immutable array element admitted by Binding's
+   temporary-borrow fallback. Propagated element storage permissions and excluded
+   exclusive element access from that fallback. A first overly broad exclusion
+   regressed 21 shared string-element temporary cases; narrowing it preserved the
+   existing shared borrowing path (`storage-tests.log`). The preceding affected
+   Binding/match/borrow suite passed 903 cases.
+5. Auxiliary test design initially encountered existing string-field observation
+   and scalar-reference dereference limitations. Dedicated ownership tests use
+   scalar resource identities and ordinary reference calls to isolate Program 17;
+   these unrelated capabilities remain backlog, with no new support claim.
+6. LLVM input generation passed; the first sandbox native attempt could not run
+   `toolchain/opt.exe` (permission denied). This is an execution restriction,
+   distinct from a compiler or LLVM verification failure. Native checks continue
+   with the required execution permission.
+
+Evidence paths above are relative to `bin/milestone17-work/`. Final verification
+and exact reproduction commands are recorded below.
+
+The first native harness attempt passed the unchanged target and six O0 variants,
+then rejected the auxiliary `ImplicitReturn` variant. That was a test expectation
+error: direct expressions in indented bodies have Discard Context (§14.2).
+The harness now checks omission of `return` as an invalid input. Final uninterrupted
+runs supersede that partial report; no compiler change was needed for this case.
+
+Final verified gates:
+
+| Gate | Result / evidence |
+| --- | --- |
+| Debug / Release solution builds | PASS, zero warnings/errors; `debug-build.log`, `release-build.log` |
+| Full managed suites | PASS, 10,961 tests per configuration, including 31 new cases; `debug-tests.log`, `release-tests.log` |
+| Program 17 | PASS, 57 checks per configuration: unchanged O2 source plus six O0/O2 target/variant inputs, each directly executed and checked through both CLI run forms; nine invalid inputs at each optimization reject before IR/executable publication |
+| Debug target report | `bin/milestone17/Debug/3a16346b265947fba12377f8f22d1934/verification.json` |
+| Release target report | `bin/milestone17/Release/3b2ead1aae45483abe1ddca6ed9e4ebc/verification.json` |
+| Programs 1–16 | PASS, 96 Release regression checks over byte-identical O0/O2 source copies; `bin/milestone17-work/program-regressions/Release/ffb85917a8274e09b9cc29dc07601be4/verification.json` |
+| Fixture identity | 323 IR/oracle/source sets, 1,615 files: final Debug regeneration is byte-identical to the frozen Release inputs; `frozen-fixture-hashes.json` |
+| Target identity / storage | `Milestone17.kimi` matches HEAD. Its four generated program functions contain no calls to `__kimi_alloc` or `HeapAlloc`; elements use inline storage and existing transfer instructions. |
+
+Native target reports check exact UTF-8/LF stdout, empty stderr, exit 0 and the
+nine-line destructor/defer/result sequence. Resource identities 1–5 each appear
+once in their specified destruction positions. Values, names, explicit/implicit
+and typed borrows, and literal-equivalent indices vary independently. Required
+rejections cover missing repair, moved reads, identical targets, reserved Move,
+post-return deferred reads, immutable targets, retained conflicting borrows,
+unknown-index overlap and missing return. LLVM 22.1.8 verifies input and optimized
+O2 IR before linking. The initial tool execution restriction was resolved; it is
+not an outstanding verification gap.
+
+The standalone batch also **PASSes all 323 fixture sets / 646 O0/O2 executions**
+(`bin/milestone17-work/native-fixtures.log`). It covers StaticElementUpdate,
+WholeValue, ElementMove, ElementBorrow (including owner/temporary families),
+ElementReplacement, CallReservation, DisjointBorrowedProjection and
+BorrowedFieldUpdate. The 14 new executable fixtures include nested/mixed roots,
+retained borrows, incomplete-array cleanup, early return and Abort during old-value
+replacement destruction. No optimized execution resumes placement, defer or other
+ordinary cleanup after that Abort. The normal toolchain verifies every input IR
+and optimized O2 IR. Frozen files stayed unchanged during execution and match final
+Debug output; shared inputs are executed once per optimization, not counted twice.
+
+[Final audit](bin/milestone17-work/verification.json) is PASS. It checks both
+compiler identities, the unchanged target hash, target/regression reports, managed
+counts, all 1,615 frozen/current fixture hashes and the final native success log.
+Required Windows x64 verification is complete. NativeAOT is NOT_RUN as instructed.
+Program 18 was not started; formal specification and all milestone sources remain
+unchanged. Current state and stopping action are in PLAN P17-O/P17-G/P17-V.
+
+Exact final commands (repository root; ordinary LLVM execution permission required):
+
+```powershell
+$env:DOTNET_CLI_HOME = Join-Path $env:TEMP 'kimigayo-p17-dotnet'
+dotnet build Kimigayo.slnx -c Release --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -parallelMode none -failSkips
+dotnet build Kimigayo.slnx -c Debug --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -parallelMode none -failSkips
+./backend/windows-x64/test-milestone17.ps1 -Configuration Release
+./backend/windows-x64/test-milestone17.ps1 -Configuration Debug
+./bin/milestone17-work/program-regressions.ps1 -Configuration Release
+./backend/windows-x64/test-scalars.ps1 -FixtureDirectory bin/milestone17-work/frozen-fixtures -OutputDirectory bin/milestone17-work/native-fixtures
+./bin/milestone17-work/audit.ps1
+```
+
+The frozen directory was copied from the complete Release suite's
+`bin/scalar-fixtures`, selecting all sidecars for the eight fixture prefixes above,
+before Debug regenerated those files. To regenerate the new feature cases alone,
+run the managed runner with `-class '*StaticElementUpdateTest'`, then
+`test-scalars.ps1 -FixturePattern 'StaticElementUpdate*.ll'`. This reproduces the
+new native cases; it is not a substitute for the recorded full regression scope.

@@ -401,7 +401,7 @@ public sealed partial class OwnershipBody
 
     private static int ValuePlaceForBorrow(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
 
-    private static int Selector(MemberAccessKoto field) => ElementAccess.PathSelector(field, out _, out _);
+    private static int Selector(BinaryKoto field) => ElementAccess.PathSelector(field, out _, out _);
 
     // A compound/increment update reborrows its base once; its footprint is the
     // updated inline field path (SPEC 15.6.2), not the whole base.
@@ -418,9 +418,9 @@ public sealed partial class OwnershipBody
             (field.Parent is BinaryKoto binary ? ReferenceEquals(KotoHelper.UnwrapParentheses(binary.Left), field) : field.Parent is UnaryKoto) ? field : null;
     }
 
-    private static bool AddPath(MemberAccessKoto field, Koto root, Span<int> selectors, ref int depth)
+    private static bool AddPath(BinaryKoto field, Koto root, Span<int> selectors, ref int depth)
     {
-        for (var level = field; ; level = (MemberAccessKoto)level.Left)
+        for (var level = field; ;)
         {
             if (depth == selectors.Length || Selector(level) is not (>= 0 and var selector))
             {
@@ -428,10 +428,18 @@ public sealed partial class OwnershipBody
             }
 
             selectors[depth++] = selector;
-            if (ReferenceEquals(level.Left, root))
+            var receiver = KotoHelper.UnwrapParentheses(level.Left);
+            if (ReferenceEquals(receiver, KotoHelper.UnwrapParentheses(root)))
             {
                 return true;
             }
+
+            if (receiver is not BinaryKoto parent)
+            {
+                return false;
+            }
+
+            level = parent;
         }
     }
 
@@ -553,7 +561,7 @@ public sealed partial class OwnershipBody
     private bool TryOwnedBorrowState(OwnershipOperation operation, out PlaceState state)
     {
         state = PlaceState.None;
-        if (operation.Source is not MemberAccessKoto part || ElementAccess.OwnedPathRoot(part) is not { } owner)
+        if (operation.Source is not BinaryKoto part || ElementAccess.OwnedPathRoot(part) is not { } owner)
         {
             return false;
         }
@@ -635,7 +643,7 @@ public sealed partial class OwnershipBody
         (this.Places[place].Kind == OwnershipPlaceKind.Temporary || this.Places[place] is { Kind: OwnershipPlaceKind.Local, Mutable: false });
 
     // SPEC 15.6.2: distinct inline field/Tuple selectors under the same root
-    // designate disjoint places. Unknown steps, array subscripts and different
+    // designate disjoint places. Unknown steps, nonliteral subscripts and different
     // roots conservatively overlap.
     private bool IsDisjointProjection(int access, int place)
     {
@@ -667,7 +675,13 @@ public sealed partial class OwnershipBody
 
             leftRoot = this.Projections[projection].Root;
         }
-        else if (node.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate)
+        else if (node.Kind == OwnershipValueKind.BorrowedUpdate)
+        {
+            // This access is through the first prepared receiver. Other targets
+            // are independently checked when their reservations activate.
+            value = this.ValueOperands[node.Start];
+        }
+        else if (node.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite)
         {
             var source = KotoHelper.UnwrapParentheses(this.Operations[access].Source);
             source = source switch
@@ -736,7 +750,7 @@ public sealed partial class OwnershipBody
                 if (node.Count == 0)
                 {
                     // An owned inline part's footprint is its static path below the root.
-                    return KotoHelper.UnwrapParentheses(operation.Source) is MemberAccessKoto part && ElementAccess.OwnedPathRoot(part) is { } owner &&
+                    return KotoHelper.UnwrapParentheses(operation.Source) is BinaryKoto part && ElementAccess.OwnedPathRoot(part) is { } owner &&
                         !AddPath(part, owner, selectors, ref depth) ? -1 : operation.Place;
                 }
 

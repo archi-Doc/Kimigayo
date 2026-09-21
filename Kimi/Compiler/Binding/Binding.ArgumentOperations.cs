@@ -97,6 +97,11 @@ public sealed partial class Binding
             return !exclusive;
         }
 
+        if (source is IndexKoto index && ReferenceTypes.IsArray(index.Left.BoundType))
+        {
+            return !exclusive || index.Left.BoundType!.Semantics == SemanticsKind.Uniq;
+        }
+
         if (source is MemberAccessKoto element && ReferenceTypes.IsTuple(element.Left.BoundType))
         {
             return ElementAccess.TryBorrowedTupleElement(element, out _, out _) &&
@@ -123,6 +128,11 @@ public sealed partial class Binding
             }
 
             return true;
+        }
+
+        if (source is BinaryKoto part && ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _))
+        {
+            return this.BorrowablePlace(part.Left, scope, exclusive);
         }
 
         return source is IdentifierNameKoto && source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage && (!exclusive || Writable(source));
@@ -177,6 +187,7 @@ public sealed partial class Binding
         }
         else if (actual.Semantics == SemanticsKind.Owner && (this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) ||
             ((source.BoundSymbol is null || KotoHelper.UnwrapParentheses(source) is InvocationKoto) &&
+                (target != SemanticsKind.Uniq || !(KotoHelper.UnwrapParentheses(source) is BinaryKoto stored && ElementAccess.IsSyntax(stored))) &&
                 !(KotoHelper.UnwrapParentheses(source) is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
                 KotoHelper.UnwrapParentheses(source) is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) ||
             (target == SemanticsKind.Ref && IsUnfittedLiteral(source))))

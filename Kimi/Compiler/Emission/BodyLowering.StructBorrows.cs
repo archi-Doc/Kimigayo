@@ -121,7 +121,7 @@ internal sealed partial class BodyLowering
 
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
             }
-            else if (operation.Source is MemberAccessKoto path && ElementAccess.OwnedPathRoot(path) is { } owner)
+            else if (operation.Source is BinaryKoto path && ElementAccess.OwnedPathRoot(path) is { } owner)
             {
                 if (value.Count != 0 || this.aggregatePlaces[operation.Place] is null || !ReferenceEquals(owner.BoundType, type) ||
                     !ReferenceEquals(path.BoundType, output.Components[0]) || !this.TryBorrowedPathOffset(path, owner, out var pathOffset))
@@ -218,23 +218,31 @@ internal sealed partial class BodyLowering
 
     // Inline parts are contiguous in their containing layout: sum each
     // validated level's stored offset from the borrowed base.
-    private bool TryBorrowedPathOffset(MemberAccessKoto field, Koto root, out int offset)
+    private bool TryBorrowedPathOffset(BinaryKoto field, Koto root, out int offset)
     {
         offset = 0;
-        for (var level = field; ; level = (MemberAccessKoto)level.Left)
+        for (var level = field; ;)
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);
             var layout = owner is null ? null : this.aggregateLayouts.Get(owner);
-            if (layout is null || position < 0 || !ReferenceEquals(element, level.BoundType))
+            if (layout is null || (uint)position >= (uint)layout.Count || !ReferenceEquals(element, level.BoundType))
             {
                 return false;
             }
 
             offset = checked(offset + layout.Offset(position));
-            if (ReferenceEquals(level.Left, root))
+            var receiver = KotoHelper.UnwrapParentheses(level.Left);
+            if (ReferenceEquals(receiver, KotoHelper.UnwrapParentheses(root)))
             {
                 return true;
             }
+
+            if (receiver is not BinaryKoto parent)
+            {
+                return false;
+            }
+
+            level = parent;
         }
     }
 }
