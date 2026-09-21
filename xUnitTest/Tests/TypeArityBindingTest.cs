@@ -10,10 +10,10 @@ namespace XunitTest;
 public class TypeArityBindingTest
 {
     [Theory]
-    [InlineData("struct Box\nstruct Box<T>")]
-    [InlineData("struct Box<T>\nstruct Box")]
-    [InlineData("struct Box<T, U>\nstruct Box\nstruct Box<T>")]
-    [InlineData("struct Box<T>\nstruct Box\nstruct Box<T>\nstruct Box")]
+    [InlineData("struct Box {}\nstruct Box<T> {}")]
+    [InlineData("struct Box<T> {}\nstruct Box {}")]
+    [InlineData("struct Box<T, U> {}\nstruct Box {}\nstruct Box<T> {}")]
+    [InlineData("struct Box<T> {}\nstruct Box {}\nstruct Box<T> {}\nstruct Box {}")]
     public void ExplicitAritiesSelectDistinctDeclarations(string declarations)
     {
         var c = Parse(declarations + "\nfunc plain(x?: Box) => ()\nfunc generic(x?: Box<i32>) => ()");
@@ -40,25 +40,25 @@ public class TypeArityBindingTest
     [Fact]
     public void ImportStageSelectsArityBeforeDeclaringAmbiguity()
     {
-        var c = Parse("alias A\nalias B\ngroup A\n    public struct Box\ngroup B\n    public struct Box<T>\nfunc f(x?: Box, y?: Box<i32>) => ()");
+        var c = Parse("alias A\nalias B\ngroup A\n    public struct Box {}\ngroup B\n    public struct Box<T> {}\nfunc f(x?: Box, y?: Box<i32>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]
     public void NearerWrongArityBlocksOuterDeclaration()
     {
-        var c = Parse("struct Box<T>\ngroup G\n    struct Box<T, U>\n    func f(x?: Box<i32>) => ()");
+        var c = Parse("struct Box<T> {}\ngroup G\n    struct Box<T, U> {}\n    func f(x?: Box<i32>) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
     [Theory]
-    [InlineData("struct Box\nstruct Box<T, U>\nstruct Box<T>", "func f(x?: Box<i32, u8>) => ()")]
+    [InlineData("struct Box {}\nstruct Box<T, U> {}\nstruct Box<T> {}", "func f(x?: Box<i32, u8>) => ()")]
     [InlineData("enum Box\n    A\nenum Box<T>\n    B(T)", "func f(x?: Box, y?: Box<i32>) => ()")]
-    [InlineData("struct Box\n    public func value() -> i32 => 1\nstruct Box<T>\n    public func value() -> i64 => 2", "func f() -> i32 => Box.value()\nfunc g() -> i64 => Box<i32>.value()")]
-    [InlineData("open struct Base\n    public func value() -> i64 => 1\nopen struct Base<T>\n    public func value() -> i32 => 2\nstruct Derived: Base<i32>", "func f() -> i32 => Derived.value()")]
-    [InlineData("#Layout(\"C\")\nstruct Box\n    var a: i32\n#Layout(\"Kimigayo\")\nstruct Box<T>\n    var a: i32\nstruct Box<T>\n    var b: i32", "func f(x?: Box, y?: Box<i32>) => ()")]
-    [InlineData("struct Box<T>\n#if false\n    struct Box<T>\n        var a: Missing\nstruct Box", "func f(x?: Box, y?: Box<i32>) => ()")]
+    [InlineData("struct Box {}\n    public func value() -> i32 => 1\nstruct Box<T> {}\n    public func value() -> i64 => 2", "func f() -> i32 => Box.value()\nfunc g() -> i64 => Box<i32>.value()")]
+    [InlineData("open struct Base {}\n    public func value() -> i64 => 1\nopen struct Base<T> {}\n    public func value() -> i32 => 2\nstruct Derived {}: Base<i32>", "func f() -> i32 => Derived.value()")]
+    [InlineData("#Layout(\"C\")\nstruct Box {}\n    var a: i32\n#Layout(\"Kimigayo\")\nstruct Box<T> {}\n    var a: i32\nstruct Box<T> {}\n    var b: i32", "func f(x?: Box, y?: Box<i32>) => ()")]
+    [InlineData("struct Box<T> {}\n#if false\n    struct Box<T> {}\n        var a: Missing\nstruct Box {}", "func f(x?: Box, y?: Box<i32>) => ()")]
     public void AritySelectionPreservesRelatedSemantics(string declarations, string use)
     {
         var c = Parse(declarations + "\n" + use);
@@ -68,15 +68,15 @@ public class TypeArityBindingTest
     }
 
     [Theory]
-    [InlineData("group Box\nstruct Box<T>", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("struct Box<T>\ngroup Box", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("struct Box\nenum Box<T>\n    A", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("struct Box<T>\nstruct Box\nstruct Box<U>", DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("group Box\nstruct Box<T> {}", DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("struct Box<T> {}\ngroup Box", DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("struct Box {}\nenum Box<T>\n    A", DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("struct Box<T> {}\nstruct Box {}\nstruct Box<U> {}", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("enum Box<T>\n    A\nenum Box\n    B\nenum Box<T>\n    C", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("struct Box\nstruct Box<T>\nfunc f(x?: Box<i32, u8>) => ()", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("struct Box<T>\nstruct Box<T, U>\nfunc f(x?: Box) => ()", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("alias A\nalias B\ngroup A\n    public struct Box<T>\ngroup B\n    public struct Box<T>\nfunc f(x?: Box<i32>) => ()", DiagnosticCode.AmbiguousBinding_Kd)]
-    [InlineData("struct Box<T>\ngroup G\n    struct Box<T, U>\n    func f(x?: Box<i32>) => ()", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("struct Box {}\nstruct Box<T> {}\nfunc f(x?: Box<i32, u8>) => ()", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("struct Box<T> {}\nstruct Box<T, U> {}\nfunc f(x?: Box) => ()", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("alias A\nalias B\ngroup A\n    public struct Box<T> {}\ngroup B\n    public struct Box<T> {}\nfunc f(x?: Box<i32>) => ()", DiagnosticCode.AmbiguousBinding_Kd)]
+    [InlineData("struct Box<T> {}\ngroup G\n    struct Box<T, U> {}\n    func f(x?: Box<i32>) => ()", DiagnosticCode.TypeMismatch_Kd)]
     public void InvalidAritiesAndDeclarationsRemainErrors(string source, DiagnosticCode expected)
     {
         var c = Parse(source);
@@ -93,8 +93,8 @@ public class TypeArityBindingTest
     public void SourceOrderReloadAndCanonicalWritingRetainEveryArity(bool reverse)
     {
         var c = Parse(string.Empty);
-        var first = new SourceDocument("one.kimi", "struct Box\n    var a: i32\nstruct Box<T>\n    var a: i64");
-        var second = new SourceDocument("two.kimi", "struct Box<T>\n    var b: u8\nstruct Box\n    var b: u16\nfunc f(x?: Box, y?: Box<i32>) => ()");
+        var first = new SourceDocument("one.kimi", "struct Box {}\n    var a: i32\nstruct Box<T> {}\n    var a: i64");
+        var second = new SourceDocument("two.kimi", "struct Box<T> {}\n    var b: u8\nstruct Box {}\n    var b: u16\nfunc f(x?: Box, y?: Box<i32>) => ()");
         c.Kotonoha.AddSource(reverse ? second : first);
         c.Kotonoha.AddSource(reverse ? first : second);
         Assert.True(c.Bind().IsComplete, Describe(c));
@@ -118,17 +118,17 @@ public class TypeArityBindingTest
     [Fact]
     public void ReplacingAnArityRebuildsFragmentLookupWithoutLosingItsSibling()
     {
-        var c = Parse("struct Box\nstruct Box<T>\nstruct Box<T, U>");
+        var c = Parse("struct Box {}\nstruct Box<T> {}\nstruct Box<T, U> {}");
         Assert.True(c.Bind().IsComplete);
         var root = c.Kotonoha.RootKoto;
         var original = root.NestedContainers.Single(x => x.GenericParameterNodes.Count == 1);
-        var replacement = Assert.Single(Parse("struct Box<T>\n    var a: i32").Kotonoha.RootKoto.NestedContainers);
+        var replacement = Assert.Single(Parse("struct Box<T> {}\n    var a: i32").Kotonoha.RootKoto.NestedContainers);
         Assert.True(KotoHelper.Replace(root, original, replacement));
-        c.Kotonoha.AddSource(new SourceDocument("later.kimi", "struct Box<T>\n    var b: i32\nfunc f(x?: Box, y?: Box<i32>, z?: Box<i32, u8>) => ()"));
+        c.Kotonoha.AddSource(new SourceDocument("later.kimi", "struct Box<T> {}\n    var b: i32\nfunc f(x?: Box, y?: Box<i32>, z?: Box<i32, u8>) => ()"));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(3, root.NestedContainers.Count);
         Assert.Equal(2, replacement.Members.Count);
-        var duplicate = Assert.Single(Parse("struct Box").Kotonoha.RootKoto.NestedContainers);
+        var duplicate = Assert.Single(Parse("struct Box {}").Kotonoha.RootKoto.NestedContainers);
         Assert.False(KotoHelper.Replace(root, replacement, duplicate));
         Assert.True(c.Bind().IsComplete);
     }
@@ -136,7 +136,7 @@ public class TypeArityBindingTest
     [Fact]
     public void WarmArityBindingAllocatesNothing()
     {
-        var c = Parse("alias A\nalias B\ngroup A\n    public struct Box\ngroup B\n    public struct Box<T>\nfunc f(x?: Box, y?: Box<i32>) => ()");
+        var c = Parse("alias A\nalias B\ngroup A\n    public struct Box {}\ngroup B\n    public struct Box<T> {}\nfunc f(x?: Box, y?: Box<i32>) => ()");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

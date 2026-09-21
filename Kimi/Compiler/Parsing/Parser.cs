@@ -228,7 +228,7 @@ public static partial class Parser
             genericArguments = ParseGenericArguments(ref reader, allowLength: true, specialization: specialization);
         }
 
-        var origins = ParseOriginParameters(ref reader);
+        var origins = RejectCallableOriginList(ref reader);
 
         if (!reader.TryConsume(TokenKind.OpenParenthesis, out _, true))
         {
@@ -493,11 +493,6 @@ Exit:
 
         var list = new OriginNameList();
         reader.SkipSeparators();
-        if (reader.CurrentTokenKind == TokenKind.CloseBrace)
-        {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
-        }
-
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
         {
             var token = reader.Read();
@@ -511,15 +506,8 @@ Exit:
             list.Add(reader.GetIdentifier(token), token.Span);
             if (reader.TryConsume(TokenKind.Colon))
             {
-                var target = reader.CurrentToken;
-                if (!target.Kind.IsIdentifierOrContextualKeyword())
-                {
-                    reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
-                    break;
-                }
-
-                reader.Advance();
-                list.SetLastBound(reader.GetIdentifier(target), target.Span);
+                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "write an Origin relation under the declaration");
+                reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBrace, TokenKind.EndBlock);
             }
 
             reader.SkipSeparators();
@@ -603,6 +591,8 @@ Exit:
         {
             fieldKoto.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         }
+
+        ParseAttachedOriginBlock(ref reader, fieldKoto);
 
         if (!allowParenthesizedTerminator ||
             reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Yield))
@@ -782,6 +772,7 @@ Exit:
     private static bool ParsePropertyAccessorBlock(ref TokenReader reader, PropertyKoto property)
     {
         var unavailableAccessor = false;
+        var seenAccessor = false;
         var blockStart = reader.CurrentTokenRange;
         reader.Advance();
         while (reader.CanRead)
@@ -796,6 +787,19 @@ Exit:
                 return unavailableAccessor;
             }
 
+            if (IsOriginRelationStart(ref reader))
+            {
+                var relation = ParseOriginRelation(ref reader);
+                if (seenAccessor)
+                {
+                    relation.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Origin clauses precede accessors");
+                }
+
+                OriginClauses.Add(property, relation);
+                continue;
+            }
+
+            seenAccessor = true;
             if (TryConsumeUnavailableModifiers(ref reader, accessor: true))
             {
                 unavailableAccessor = true;
@@ -814,7 +818,7 @@ Exit:
             }
 
             reader.Advance();
-            var origins = ParseOriginParameters(ref reader);
+            var origins = RejectCallableOriginList(ref reader);
             var hasSignature = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
             if (origins is not null && !hasSignature)
             {
@@ -841,6 +845,17 @@ Exit:
                 reader.Diagnostic.Add(returnType.Span, DiagnosticCode.UnexpectedToken_Kd, "setter result must be ()");
             }
 
+            var accessor = new PropertyAccessorKoto(
+                ref reader,
+                SourceSpan.FromBounds(start, Math.Max(signatureEnd, returnType?.Span.End ?? accessorToken.Span.End)),
+                modifier,
+                accessorKind,
+                null,
+                returnType,
+                hasSignature,
+                receiverType,
+                valueType,
+                origins);
             Koto? body = default;
             if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
             {
@@ -848,7 +863,8 @@ Exit:
             }
             else if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
-                body = ParseBlock(ref reader);
+                var block = ParseFunctionBlock(ref reader, null, accessor);
+                body = property.IsContractRequirement && block.Items.Count == 0 ? null : block;
             }
 
             if (property.IsContractRequirement)
@@ -864,18 +880,7 @@ Exit:
                 reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, "custom accessor requires an explicit signature and body");
             }
 
-            var end = Math.Max(Math.Max(accessorToken.Span.End, signatureEnd), Math.Max(returnType?.Span.End ?? 0, body?.Span.End ?? 0));
-            var accessor = new PropertyAccessorKoto(
-                ref reader,
-                SourceSpan.FromBounds(start, end),
-                modifier,
-                accessorKind,
-                body,
-                returnType,
-                hasSignature,
-                receiverType,
-                valueType,
-                origins);
+            accessor.SetBody(body);
             AddPropertyAccessor(ref reader, property, accessor, accessorToken);
 
             if (body is not CodeBlockKoto &&
@@ -1427,7 +1432,7 @@ CloseParameters:
                 }
 
                 var attribute = reader.PopAttribute();
-                var type = ParseType(ref reader, parseOrigin: allowNestedOrigins, disambiguateGenerics: disambiguateGenerics, allowNestedOrigins: allowNestedOrigins);
+                var type = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: disambiguateGenerics, allowNestedOrigins: allowNestedOrigins);
                 if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null, OriginName: null, OriginExpression: null, OriginArguments: null } transparentType)
                 {
                     type = transparentType.Type;
@@ -1503,6 +1508,12 @@ CloseParameters:
 
         var annotated = type as TypeSemanticsKoto ?? new TypeSemanticsKoto(ref reader, type.Span, type);
         annotated.SetOrigin(origin.Expression, origin.Arguments, origin.End);
+        if (origin.Arguments is not null || origin.Expression is not IdentifierNameKoto { IdentifierName: not ("static" or "_") })
+        {
+            reader.Diagnostic.Add(type.Span, DiagnosticCode.UnexpectedToken_Kd, "a Type suffix names one Origin binding set");
+        }
+
+        annotated.MarkBindingSet();
         return annotated;
     }
 
@@ -1524,6 +1535,7 @@ CloseParameters:
         {
             if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
             {
+                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Origin mappings were removed; name a binding set and attach relations");
                 var name = reader.GetIdentifier(reader.Read());
                 reader.Advance();
                 if (expression is not null)
@@ -1588,6 +1600,19 @@ CloseParameters:
 
         static Koto ParseQualifiedOrigin(ref TokenReader reader)
         {
+            if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
+            {
+                var open = reader.Read().Span;
+                var inner = ParseOriginExpression(ref reader);
+                var end = inner.Span.End;
+                if (reader.TryConsume(TokenKind.CloseParenthesis, out var close, true))
+                {
+                    end = close.End;
+                }
+
+                return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open.Start, end), inner);
+            }
+
             if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
             {
                 reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
@@ -2393,7 +2418,7 @@ CloseParameters:
     public static CodeBlockKoto ParseBlock(ref TokenReader reader)
         => ParseFunctionBlock(ref reader, null);
 
-    internal static CodeBlockKoto ParseFunctionBlock(ref TokenReader reader, FunctionKoto? function)
+    internal static CodeBlockKoto ParseFunctionBlock(ref TokenReader reader, FunctionKoto? function, Koto? originOwner = null)
     {
         var start = reader.CurrentTokenRange;
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
@@ -2470,6 +2495,21 @@ CloseParameters:
                 var caseGroup = ParseCompileTimeSwitch(ref reader);
                 AddSelectedItems(ref items, caseGroup);
                 seenExecutableItem = true;
+                continue;
+            }
+
+            if (IsOriginRelationStart(ref reader))
+            {
+                var relation = ParseOriginRelation(ref reader);
+                if ((function ?? originOwner) is { } owner && !seenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true } and not { IsSpecialization: true })
+                {
+                    OriginClauses.Add(owner, relation);
+                }
+                else
+                {
+                    relation.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Origin clauses belong to the declaration's leading contract");
+                }
+
                 continue;
             }
 
@@ -3207,8 +3247,8 @@ CloseParameters:
                 }
                 else
                 {
-                    // Origins in executable conversions are inferred, not declared here.
-                    typeKoto = ParseType(ref reader, parseOrigin: false, disambiguateGenerics: true, allowNestedOrigins: false);
+                    // Borrow Origins are inferred; aggregate binding sets may attach to the enclosing declaration.
+                    typeKoto = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: true, allowNestedOrigins: false);
                 }
 
                 left = new ConversionKoto(
@@ -4173,7 +4213,7 @@ Loop:
                     continue;
                 }
 
-                var element = ParseDeclarationType(ref reader, parseOrigin: allowNestedOrigins, allowNestedOrigins: allowNestedOrigins);
+                var element = ParseDeclarationType(ref reader, parseOrigin: true, allowNestedOrigins: allowNestedOrigins);
                 firstElement ??= element;
                 lastEnd = element.Span.End;
                 elements.Add(element);
@@ -4234,7 +4274,7 @@ Loop:
         }
 
         reader.Advance();
-        var returnType = ParseDeclarationType(ref reader, parseOrigin: allowNestedOrigins, allowNestedOrigins: allowNestedOrigins);
+        var returnType = ParseDeclarationType(ref reader, parseOrigin: true, allowNestedOrigins: allowNestedOrigins);
         return new FunctionTypeKoto(
             ref reader,
             SourceSpan.FromBounds(type.Span.Start, Math.Max(arrowRange.End, returnType.Span.End)),

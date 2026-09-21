@@ -127,7 +127,9 @@ public sealed class GroupKoto : DeclarationContainerKoto
                         reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
                     }
 
-                    this.AddLast(new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax));
+                    var alias = new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax);
+                    Parser.ParseAttachedOriginBlock(ref reader, alias);
+                    this.AddLast(alias);
                 }
 
                 continue;

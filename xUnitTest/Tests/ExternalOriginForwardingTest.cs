@@ -43,7 +43,10 @@ public class ExternalOriginForwardingTest
     [InlineData("self.left")]
     public void RejectsInsufficientReturnOrigin(string origin)
     {
-        var c = MinimalEmissionTest.Analyze(Source().Replace("Selection{self.left and self.right}", "Selection from " + origin, StringComparison.Ordinal));
+        var source = Source();
+        var changed = source.Replace("origin selection.source == self.left and self.right", "origin selection.source == " + origin, StringComparison.Ordinal);
+        Assert.NotEqual(source, changed);
+        var c = MinimalEmissionTest.Analyze(changed);
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }

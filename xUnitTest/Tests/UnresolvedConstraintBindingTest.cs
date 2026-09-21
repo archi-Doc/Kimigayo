@@ -14,7 +14,7 @@ public class UnresolvedConstraintBindingTest
     public void MissingConformanceReportsItsNameWithoutDerivedDeclarationErrors(bool missingFirst)
     {
         var clauses = missingFirst ? "    Self is Missing\n    Self is Copy\n" : "    Self is Copy\n    Self is Missing\n";
-        var c = Parse("public struct Reading\n" + clauses + "    public let value: i32");
+        var c = Parse("public struct Reading {}\n" + clauses + "    public let value: i32");
         Assert.False(c.Bind().IsComplete);
         var reading = Container(c, "Reading");
         Assert.Equal(BindingState.Invalid, reading.BindingState);
@@ -34,7 +34,7 @@ public class UnresolvedConstraintBindingTest
     {
         var c = Parse("""
             public contract Marker
-            public struct Reading
+            public struct Reading {}
                 Self is Copy
                 Self is Missing
                 Self is Marker
@@ -45,7 +45,7 @@ public class UnresolvedConstraintBindingTest
                 T is Marker
                 return 1
             func use(value?: ref/Reading) -> i32 => take(value)
-            struct Contradiction<T>
+            struct Contradiction<T> {}
                 T is i32
                 T is not i32
             """);
@@ -67,7 +67,7 @@ public class UnresolvedConstraintBindingTest
     [Fact]
     public void ConformanceDiagnosticCausesAreRebuiltAfterSourceChanges()
     {
-        var c = Parse("public struct Reading\n    Self is Copy\n    Self is Missing\n    public let value: i32");
+        var c = Parse("public struct Reading {}\n    Self is Copy\n    Self is Missing\n    public let value: i32");
         Assert.False(c.Bind().IsComplete);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract Missing"));
         Assert.True(c.Bind().IsComplete);
@@ -80,8 +80,8 @@ public class UnresolvedConstraintBindingTest
     [Fact]
     public void MissingConformanceInAnotherFragmentKeepsItsOwnLocation()
     {
-        var c = Parse("public struct Reading\n    public let value: i32");
-        c.Kotonoha.AddSource(new SourceDocument("Other.kimi", "public struct Reading\n    Self is Copy\n    Self is Missing\n    public let other: i32"));
+        var c = Parse("public struct Reading {}\n    public let value: i32");
+        c.Kotonoha.AddSource(new SourceDocument("Other.kimi", "public struct Reading {}\n    Self is Copy\n    Self is Missing\n    public let other: i32"));
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Other.kimi").GetArray());
         Assert.False(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
@@ -94,7 +94,7 @@ public class UnresolvedConstraintBindingTest
     [Fact]
     public void MultipleMissingConformanceNamesRemainSeparateCauses()
     {
-        var c = Parse("public struct Reading\n    Self is Copy\n    Self is Missing and Other\n    public let value: i32");
+        var c = Parse("public struct Reading {}\n    Self is Copy\n    Self is Missing and Other\n    public let value: i32");
         Assert.False(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
         var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray();
@@ -106,7 +106,7 @@ public class UnresolvedConstraintBindingTest
     [Fact]
     public void WarmMissingConformanceBindingReusesDiagnosticCauseStorage()
     {
-        var c = Parse("public struct Reading\n    Self is Copy\n    Self is Missing\n    public let value: i32");
+        var c = Parse("public struct Reading {}\n    Self is Copy\n    Self is Missing\n    public let value: i32");
         for (var i = 0; i < 100; i++)
         {
             Assert.False(c.Bind().IsComplete);
@@ -128,7 +128,7 @@ public class UnresolvedConstraintBindingTest
     {
         const string Missing = "    Self is Missing\n";
         const string Inputs = "    T is i32\n    T is not i32\n";
-        var c = Parse("public struct Reading<T>\n" + (missingFirst ? Missing + Inputs : Inputs + Missing));
+        var c = Parse("public struct Reading<T> {}\n" + (missingFirst ? Missing + Inputs : Inputs + Missing));
         Assert.False(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
         var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray();
@@ -137,18 +137,18 @@ public class UnresolvedConstraintBindingTest
     }
 
     [Theory]
-    [InlineData("public struct Target\n    Future is Copy", "public struct Future\n    Self is Copy", true)]
-    [InlineData("public contract Target\n    Future is Copy", "public struct Future\n    Self is Copy", true)]
-    [InlineData("public enum Target\n    Future is Copy\n    A", "public struct Future\n    Self is Copy", true)]
-    [InlineData("public struct Target\n    i32 is Future", "public struct Future", false)]
-    [InlineData("public struct Target<T>\n    T is Future", "public contract Future", true)]
+    [InlineData("public struct Target {}\n    Future is Copy", "public struct Future {}\n    Self is Copy", true)]
+    [InlineData("public contract Target\n    Future is Copy", "public struct Future {}\n    Self is Copy", true)]
+    [InlineData("public enum Target\n    Future is Copy\n    A", "public struct Future {}\n    Self is Copy", true)]
+    [InlineData("public struct Target {}\n    i32 is Future", "public struct Future {}", false)]
+    [InlineData("public struct Target<T> {}\n    T is Future", "public contract Future", true)]
     [InlineData("group G\n    func take<T>()\n        T is Future\n        ()", "public contract Future", true)]
-    [InlineData("public struct Target\n    [2 of Future] is Copy", "public struct Future\n    Self is Copy", true)]
-    [InlineData("public struct Target\n    (Future, i32) is Copy", "public struct Future\n    Self is Copy", true)]
-    [InlineData("public struct Target\n    (Future) -> i32 is Owned", "public struct Future", true)]
-    [InlineData("public struct Target<T>\n    T is [2 of Future]", "public struct Future", true)]
-    [InlineData("public struct Target\n    Self is Future", "public contract Future", true)]
-    [InlineData("public struct Target<T>\n    T is not Future", "public contract Future", true)]
+    [InlineData("public struct Target {}\n    [2 of Future] is Copy", "public struct Future {}\n    Self is Copy", true)]
+    [InlineData("public struct Target {}\n    (Future, i32) is Copy", "public struct Future {}\n    Self is Copy", true)]
+    [InlineData("public struct Target {}\n    (Future) -> i32 is Owned", "public struct Future {}", true)]
+    [InlineData("public struct Target<T> {}\n    T is [2 of Future]", "public struct Future {}", true)]
+    [InlineData("public struct Target {}\n    Self is Future", "public contract Future", true)]
+    [InlineData("public struct Target<T> {}\n    T is not Future", "public contract Future", true)]
     public void MissingDeclarationsRemainUnresolvedUntilFinalBinding(string source, string generated, bool valid)
     {
         var c = Parse(source);
@@ -162,10 +162,10 @@ public class UnresolvedConstraintBindingTest
     }
 
     [Theory]
-    [InlineData("public struct Target\n    Future is Copy")]
+    [InlineData("public struct Target {}\n    Future is Copy")]
     [InlineData("public contract Target\n    Future is Copy")]
     [InlineData("public enum Target\n    Future is Copy\n    A")]
-    [InlineData("public struct Target<T>\n    T is Future")]
+    [InlineData("public struct Target<T> {}\n    T is Future")]
     [InlineData("group G\n    func take<T>()\n        T is Future\n        ()")]
     public void FinalBindingRejectsNamesThatRemainMissing(string source)
     {
@@ -178,10 +178,10 @@ public class UnresolvedConstraintBindingTest
     }
 
     [Theory]
-    [InlineData("public group Future\npublic struct Target\n    i32 is Future")]
-    [InlineData("public group Invalid\npublic struct Target\n    (Future, Invalid) is Copy")]
-    [InlineData("public group Invalid\npublic struct Target<T>\n    T is Future or Invalid")]
-    [InlineData("public struct Target<s/T>\n    s is Future")]
+    [InlineData("public group Future\npublic struct Target {}\n    i32 is Future")]
+    [InlineData("public group Invalid\npublic struct Target {}\n    (Future, Invalid) is Copy")]
+    [InlineData("public group Invalid\npublic struct Target<T> {}\n    T is Future or Invalid")]
+    [InlineData("public struct Target<s/T> {}\n    s is Future")]
     public void AvailableViolationsRemainInvalidInProvisionalBinding(string source)
     {
         var c = Parse(source);
@@ -195,7 +195,7 @@ public class UnresolvedConstraintBindingTest
     [InlineData("not ((not Copy) and Future)")]
     public void ATrueBooleanBranchDoesNotCompleteAnUnformedRequirement(string requirement)
     {
-        var c = Parse("public contract Marker\npublic struct Target\n    i32 is " + requirement + "\n    Self is Marker");
+        var c = Parse("public contract Marker\npublic struct Target {}\n    i32 is " + requirement + "\n    Self is Marker");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var target = Container(c, "Target");
         Assert.Equal(BindingState.Unresolved, target.BindingState);
@@ -224,7 +224,7 @@ public class UnresolvedConstraintBindingTest
     [Fact]
     public void MissingPropositionsAreNotAddedAsAssumptions()
     {
-        var c = Parse("public struct Target<T>\n    T is Future\n    T is not Other");
+        var c = Parse("public struct Target<T> {}\n    T is Future\n    T is not Other");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var target = Container(c, "Target");
         foreach (var clause in target.ConstraintNodes)
@@ -250,7 +250,7 @@ public class UnresolvedConstraintBindingTest
     [Fact]
     public void WarmMissingNamePassesAllocateNothing()
     {
-        var c = Parse("public struct Target\n    [2 of Future] is Copy");
+        var c = Parse("public struct Target {}\n    [2 of Future] is Copy");
         for (var i = 0; i < 100; i++)
         {
             Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);

@@ -178,7 +178,7 @@ Adaptation Target
     -> complete result Type retains target, Semantics, and Origin
 ```
 
-**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. The remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target. Generic adjacency follows §12.4.2, and written Origins are forbidden at every target layer. A following slash is division only after that head is complete and cannot begin another Semantics prefix.
+**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. The remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target. Generic adjacency follows §12.4.2, and written direct borrow annotations are forbidden at every target layer; named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
 
 `a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses the target `T/b` and fails Semantics lookup if `T` is only a Core; whitespace cannot change this. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping, as in `x@(i32)`, preserves the adaptation. Group a complete Function Type target, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and is never retried after a conversion failure.
 
@@ -290,7 +290,7 @@ Rounding and checks apply at every `@` in a chain; an intermediate result is nev
 
 #### 13.5.5.1. Complete object payload projection
 
-A fully specified `@ref/T` or `@uniq/T` may project a complete object payload when `T is Kimi.Sealed` is Proven (§8.4.7.1). The source View Target and the immediate result Referent Type must be exactly the same complete `T`, including generic arguments and internal Origins; only the outer borrow lifetime may shorten. The target contains no explicit Origin; the result's Origin is inferred from the source and keeps both the referent and the owning-handle dependencies.
+A fully specified `@ref/T` or `@uniq/T` may project a complete object payload when `T is Kimi.Sealed` is Proven (§8.4.7.1). The source View Target and the immediate result Referent Type must be exactly the same complete `T`, including generic arguments and internal Origins; only the outer borrow lifetime may shorten. The target contains no written direct borrow annotation; the result's Origin is inferred from the source and keeps both the referent and the owning-handle dependencies.
 
 | Input | Explicit target | Result |
 | --- | --- | --- |
@@ -345,7 +345,7 @@ let slot = reference@ref/ref/i32     // ref/ref/i32; also depends on reference's
 // reference = other@ref            // Error while slot's Loan is live.
 ```
 
-For `reference: ref/i32`, `reference@uniq/ref/i32` borrows the writable slot exclusively; it grants no mutable access to `number`. A `let` reference slot cannot be exclusively borrowed this way. `reference@ref@ref` remains `ref/i32`. Explicit Origins remain forbidden anywhere in an Adaptation Target, including grouped and generic inner Types; their dependencies are inferred or kept from existing Types.
+For `reference: ref/i32`, `reference@uniq/ref/i32` borrows the writable slot exclusively; it grants no mutable access to `number`. A `let` reference slot cannot be exclusively borrowed this way. `reference@ref@ref` remains `ref/i32`. Direct borrow annotations remain forbidden in an Adaptation Target, including grouped and generic inner Types. Binding-set names are allowed, and any attached relations belong to the enclosing declaration; actual result dependencies are inferred or kept from existing Types.
 
 A new Borrow depends on the target Place and on the owner's validity. Copying a shared reference preserves its referent Origins rather than using the lifetime of the variable holding it. A Reborrow lends referent capability without moving the parent reference; while the child Loan is live, conflicting access through the parent is forbidden. A `let` binding holding an exclusive reference does not by itself prevent Reborrow. Ordinary by-value acquisition transfers a Non-Copy reference itself.
 

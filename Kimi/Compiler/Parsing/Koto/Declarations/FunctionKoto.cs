@@ -326,7 +326,6 @@ public sealed class FunctionKoto : DeclarationKoto
             builder.Append('>');
         }
 
-        OriginNameList.WriteTo(this.Origins, ref builder);
         builder.Append('(');
         if (this.parameters is { } parameters)
         {
@@ -387,11 +386,12 @@ public sealed class FunctionKoto : DeclarationKoto
             builder.Append(" => ");
             this.ExpressionBody.WriteTo(ref builder);
         }
-        else if (this.typeConstraints is { Count: > 0 })
+        else if (this.typeConstraints is { Count: > 0 } || OriginClauses.Get(this).Count != 0)
         {
             builder.AppendLine();
             builder.IncrementIndent();
-            foreach (var constraint in this.typeConstraints)
+            OriginClauses.Write(this, ref builder, false);
+            foreach (var constraint in this.TypeConstraints)
             {
                 constraint.WriteTo(ref builder);
                 builder.AppendLine();

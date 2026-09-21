@@ -45,15 +45,15 @@ public class IntrinsicCapabilityTest
     [InlineData("objuniq/S", ConstraintProof.Refuted)]
     public void CopyUsesOnlyTheOuterSemantics(string type, ConstraintProof expected)
     {
-        var c = Parse($"struct S\nfunc inspect {{a, b}}(x?: {type}) => ()");
+        var c = Parse($"struct S\nfunc inspect(x?: {type}) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
     }
 
     [Theory]
-    [InlineData("struct S\n    let x: i32", ConstraintProof.Refuted)]
-    [InlineData("struct S\n    Self is Copy\n    let x: i32", ConstraintProof.Proven)]
+    [InlineData("struct S {}\n    let x: i32", ConstraintProof.Refuted)]
+    [InlineData("struct S {}\n    Self is Copy\n    let x: i32", ConstraintProof.Proven)]
     [InlineData("enum S\n    A\n    B", ConstraintProof.Refuted)]
     [InlineData("enum S\n    Self is Copy\n    A\n    B(i32)", ConstraintProof.Proven)]
     public void NominalCopyRequiresExplicitOptIn(string declaration, ConstraintProof expected)
@@ -66,10 +66,10 @@ public class IntrinsicCapabilityTest
     }
 
     [Theory]
-    [InlineData("struct S\n    Self is Copy\n    let x: string")]
+    [InlineData("struct S {}\n    Self is Copy\n    let x: string")]
     [InlineData("enum S\n    Self is Copy\n    A(string)")]
-    [InlineData("struct S<T>\n    Self is Copy\n    let x: T")]
-    [InlineData("struct S\n    Self is Copy\n    deinit\n        ()")]
+    [InlineData("struct S<T> {}\n    Self is Copy\n    let x: T")]
+    [InlineData("struct S {}\n    Self is Copy\n    deinit\n        ()")]
     public void InvalidCopyPromisesFailDefinitionChecking(string source)
     {
         var c = Parse(source);
@@ -80,7 +80,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void GenericDerivationUsesDeclaredInputs()
     {
-        var c = Parse("struct Box<T>\n    T is Copy\n    Self is Copy\n    let value: T\nfunc inspect(x?: Box<i32>) => ()");
+        var c = Parse("struct Box<T> {}\n    T is Copy\n    Self is Copy\n    let value: T\nfunc inspect(x?: Box<i32>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -89,7 +89,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void InferredStoredTypesAreReadyBeforeNominalCapabilityQueries()
     {
-        var c = Parse("group G\n    public func value<T>(x?: T) -> T\n        T is Copy\n        return x\nstruct S\n    Self is Copy\n    let x = G.value(1)\nfunc inspect(x?: S) => ()");
+        var c = Parse("group G\n    public func value<T>(x?: T) -> T\n        T is Copy\n        return x\nstruct S {}\n    Self is Copy\n    let x = G.value(1)\nfunc inspect(x?: S) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -141,11 +141,11 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void DirectBaseParticipatesInCopyDerivation()
     {
-        var c = Parse("open struct Base\n    Self is Copy\n    let x: i32\nstruct Derived: Base\n    Self is Copy\n    let y: bool\nfunc inspect(x?: Derived) => ()");
+        var c = Parse("open struct Base {}\n    Self is Copy\n    let x: i32\nstruct Derived {}: Base\n    Self is Copy\n    let y: bool\nfunc inspect(x?: Derived) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
-        var bad = Parse("open struct Base\n    let text: string\nstruct Derived: Base\n    Self is Copy");
+        var bad = Parse("open struct Base {}\n    let text: string\nstruct Derived {}: Base\n    Self is Copy");
         Assert.False(bad.Bind().IsComplete);
         Assert.Contains(bad.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
     }
@@ -153,7 +153,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void ComputedMembersDoNotContributeStorage()
     {
-        var c = Parse("struct S\n    Self is Copy\n    computed text: string\n        get(self: ref/Self) -> string => \"text\"\nfunc inspect(x?: S) => ()");
+        var c = Parse("struct S {}\n    Self is Copy\n    computed text: string\n        get(self: ref/Self) -> string => \"text\"\nfunc inspect(x?: S) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -162,7 +162,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void UnknownOriginsDoNotProveNegatedOwned()
     {
-        var c = Parse("func reject<T>(x?: T)\n    T is not Owned\n    ()\nfunc inspect {a}(x?: ref{a}/i32)\n    reject(x)");
+        var c = Parse("func reject<T>(x?: T)\n    T is not Owned\n    ()\nfunc inspect(x?: ref{a}/i32)\n    reject(x)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is InvocationKoto);
     }
@@ -170,7 +170,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void CopyCycleTerminatingAtAPointerIsProven()
     {
-        var c = Parse("struct A\n    Self is Copy\n    let b: B\nstruct B\n    Self is Copy\n    let a: unsafe/A\nfunc inspect(x?: A) => ()");
+        var c = Parse("struct A {}\n    Self is Copy\n    let b: B\nstruct B {}\n    Self is Copy\n    let a: unsafe/A\nfunc inspect(x?: A) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -179,7 +179,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void RecursiveOwnedPropagatesAReachableOrigin()
     {
-        var c = Parse("struct Node {source}\n    let next: obj/Node{source}\n    let value: ref{source}/i32\nfunc inspect {a}(x?: Node{a}) => ()");
+        var c = Parse("struct Node {source}\n    let next: obj/Node{node}\n        origin node.source == source\n    let value: ref{source}/i32\nfunc inspect(x?: Node) => ()");
         c.Bind();
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -188,7 +188,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void ExpandingGenericRecursionRemainsUnknownWithoutUnboundedExpansion()
     {
-        var c = Parse("struct Chain<T>\n    let next: obj/Chain<(T, T)>\nfunc inspect(x?: Chain<i32>) => ()");
+        var c = Parse("struct Chain<T> {}\n    let next: obj/Chain<(T, T)>\nfunc inspect(x?: Chain<i32>) => ()");
         c.Bind();
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -197,7 +197,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void FiniteNestedInstancesOfOneDeclarationAreNotTreatedAsExpandingRecursion()
     {
-        var c = Parse("struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nfunc inspect(x?: Box<Box<i32>>) => ()");
+        var c = Parse("struct Box<T> {}\n    Self is Copy when T is Copy\n    let value: T\nfunc inspect(x?: Box<Box<i32>>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -207,7 +207,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void RecursiveGenericStorageCanStabilizeAtAFixedInstance()
     {
-        var c = Parse("struct Node<T>\n    let next: obj/Node<(i32, i32)>\nfunc inspect(x?: Node<i32>) => ()");
+        var c = Parse("struct Node<T> {}\n    let next: obj/Node<(i32, i32)>\nfunc inspect(x?: Node<i32>) => ()");
         c.Bind();
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -216,7 +216,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void MultipleConditionalPremisesAreConjoined()
     {
-        var c = Parse("struct Pair<T, U>\n    Self is Copy when T is Copy, U is Copy and Owned\n    let first: T\n    let second: U\nfunc inspect(x?: Pair<i32, bool>, y?: Pair<i32, string>) => ()");
+        var c = Parse("struct Pair<T, U> {}\n    Self is Copy when T is Copy, U is Copy and Owned\n    let first: T\n    let second: U\nfunc inspect(x?: Pair<i32, bool>, y?: Pair<i32, string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -234,7 +234,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void OwnedDoesNotPermitStoredStaticBorrowsInGlobalStorage()
     {
-        var c = Parse("struct View {source}\n    let value: ref{source}/i32\nfunc inspect(x?: View{static}) => ()\ngroup Globals\n    var value: View{static}");
+        var c = Parse("struct View {source}\n    let value: ref{source}/i32\nfunc inspect(x?: View)\n    origin x.source == static\n    ()\ngroup Globals\n    var value: View{v}\n        origin v.source == static");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -243,7 +243,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void IncompleteStorageDoesNotSupplyNegativeCopyEvidence()
     {
-        var c = Parse("struct S\n    let x: Missing\nfunc inspect(x?: S) => ()");
+        var c = Parse("struct S {}\n    let x: Missing\nfunc inspect(x?: S) => ()");
         c.Bind();
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -289,7 +289,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void ConditionalCopyAtMemberPositionUsesSeparatePremises()
     {
-        var c = Parse("struct Box<T>\n    let value: T\n    Self is Copy when T is Copy\nfunc inspect(x?: Box<string>) => ()");
+        var c = Parse("struct Box<T> {}\n    let value: T\n    Self is Copy when T is Copy\nfunc inspect(x?: Box<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(Function(c, "inspect").Parameters[0].Type.BoundType!, Function(c, "inspect")));
     }
@@ -304,18 +304,31 @@ public class IntrinsicCapabilityTest
     }
 
     [Fact]
-    public void UnusedTypeArgumentsAndPointerPointeesAreNotStoredDependencies()
+    public void UnusedTypeArgumentsAndPointerPointeesRetainOwnedDependencies()
     {
-        var c = Parse("struct Phantom<T>\nstruct Pointer<T>\n    let value: unsafe/T\nfunc inspect {a}(x?: Phantom<ref{a}/i32>, y?: Pointer<ref{a}/i32>) => ()");
+        var c = Parse("struct Phantom<T> {}\nstruct Pointer<T> {}\n    let value: unsafe/T\nfunc inspect(x?: Phantom<ref{a}/i32>, y?: Pointer<ref{a}/i32>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.All(f.Parameters, p => Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(p.Type.BoundType!, f)));
+        Assert.All(f.Parameters, p => Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(p.Type.BoundType!, f)));
+    }
+
+    [Fact]
+    public void FunctionOwnedClosesOnlyItsOwnQuantifiedOrigins()
+    {
+        var c = Parse("func inspect(callback?: (ref/i32) -> ref/i32, fixed?: (ref{a}/i32) -> (), seed?: ref{a}/i32) => ()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var f = Function(c, "inspect");
+        var signature = f.Parameters[0].Type.BoundType!;
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(signature, f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(signature.Components[0].Components[0], f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(signature.Components[1], f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[1].Type.BoundType!, f));
     }
 
     [Fact]
     public void OwnedSubstitutesStoredGenericTypesAndNamedOrigins()
     {
-        var c = Parse("struct View<T> {source}\n    let value: ref{source}/T\nfunc inspect {a}(x?: View<i32>{static}, y?: View<i32>{a}) => ()");
+        var c = Parse("struct View<T> {source}\n    let value: ref{source}/T\nfunc inspect(x?: View<i32>, y?: View<i32>)\n    origin x.source == static\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -323,18 +336,18 @@ public class IntrinsicCapabilityTest
     }
 
     [Fact]
-    public void StaticOuterBorrowDoesNotEraseAnInnerDependency()
+    public void StaticOuterBorrowRequiresTheInnerDependencyToBeStatic()
     {
-        var c = Parse("func inspect {a}(x?: ref{static}/(ref{a}/i32)) => ()");
+        var c = Parse("func inspect(x?: ref{static}/(ref{a}/i32)) => ()");
         c.Bind();
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
     }
 
     [Fact]
     public void RecursiveCopyDoesNotProveItself()
     {
-        var c = Parse("struct A\n    Self is Copy\n    let b: B\nstruct B\n    Self is Copy\n    let a: A");
+        var c = Parse("struct A {}\n    Self is Copy\n    let b: B\nstruct B {}\n    Self is Copy\n    let a: A");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
     }
@@ -342,7 +355,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void RecursiveOwnedUsesReachableStorage()
     {
-        var c = Parse("struct Node\n    let next: obj/Node\nfunc inspect(x?: Node) => ()");
+        var c = Parse("struct Node {}\n    let next: obj/Node\nfunc inspect(x?: Node) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -371,7 +384,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void RebindingInvalidatesSuccessfulDerivationAfterStorageAppend()
     {
-        var c = Parse("struct S\n    Self is Copy\n    let x: i32\nfunc inspect(x?: S) => ()");
+        var c = Parse("struct S {}\n    Self is Copy\n    let x: i32\nfunc inspect(x?: S) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var core = c.Library.Copy;
         var s = c.Kotonoha.RootKoto.NestedContainers.Single();
@@ -385,7 +398,7 @@ public class IntrinsicCapabilityTest
     [InlineData(true)]
     public void WarmCapabilityBindingReusesWorkStorage(bool storedTypes)
     {
-        var declarations = storedTypes ? "struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nvar input: Box<i32>\n" : "struct S\n    Self is Copy\n    let x: i32\n";
+        var declarations = storedTypes ? "struct Box<T> {}\n    Self is Copy when T is Copy\n    let value: T\nvar input: Box<i32>\n" : "struct S {}\n    Self is Copy\n    let x: i32\n";
         var c = Parse(declarations + "func id<T>(x?: T) -> T\n    T is Copy and Owned\n    return x\n" + string.Join('\n', Enumerable.Range(0, 128).Select(i => $"let x{i} = id({(storedTypes ? "input" : i.ToString())})")));
         for (var i = 0; i < 8; i++)
         {

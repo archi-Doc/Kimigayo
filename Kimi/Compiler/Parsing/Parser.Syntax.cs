@@ -218,6 +218,12 @@ public static partial class Parser
                 return;
             }
 
+            if (IsOriginRelationStart(ref reader))
+            {
+                OriginClauses.Add(function, ParseOriginRelation(ref reader));
+                continue;
+            }
+
             if (!IsTypeConstraintStart(ref reader))
             {
                 reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "constraint");
@@ -282,7 +288,7 @@ public static partial class Parser
             // The placeholder is forbidden in generic arguments and other compound element Types (SPEC 4.3).
             var allowInference = reader.AllowArrayElementInference;
             reader.AllowArrayElementInference = allowInference && reader.CurrentTokenKind == TokenKind.OpenBracket;
-            element = ParseDeclarationType(ref reader, parseOrigin: allowOrigins, allowNestedOrigins: allowOrigins);
+            element = ParseDeclarationType(ref reader, parseOrigin: true, allowNestedOrigins: allowOrigins);
             reader.AllowArrayElementInference = allowInference;
         }
 
@@ -354,7 +360,7 @@ public static partial class Parser
             return ParseArrayLength(ref reader);
         }
 
-        return ParseDeclarationType(ref reader, parseOrigin: allowOrigins, allowNestedOrigins: allowOrigins);
+        return ParseDeclarationType(ref reader, parseOrigin: true, allowNestedOrigins: allowOrigins);
     }
 
     private static bool IsLengthExpression(ref TokenReader reader)
@@ -539,6 +545,7 @@ public static partial class Parser
         var tuple = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, end), KotoKind.EnumCase, payload ? "(" : string.Empty, fields.ToArray(), suffix: payload ? ")" : string.Empty);
         var declaration = new SyntaxFormKoto(ref reader, tuple.Span, KotoKind.EnumCase, string.Empty, [name, tuple], separator: string.Empty);
         reader.Document(declaration, tuple.Span);
+        ParseAttachedOriginBlock(ref reader, declaration);
         return declaration;
     }
 

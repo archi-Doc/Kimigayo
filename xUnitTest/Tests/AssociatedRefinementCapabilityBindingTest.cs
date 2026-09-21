@@ -33,13 +33,13 @@ public class AssociatedRefinementCapabilityBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         var condition = "\n    Source is Origin";
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source\npublic contract Trait: Copy" + (outer ? string.Empty : condition) + "\npublic contract Elements" + (outer ? condition : string.Empty) + "\n    associate Item is Trait\ngroup G\n    func inspect<T>(value?: T.Item)\n        T is Elements\n        ()"));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source {}\npublic contract Trait: Copy" + (outer ? string.Empty : condition) + "\npublic contract Elements" + (outer ? condition : string.Empty) + "\n    associate Item is Trait\ngroup G\n    func inspect<T>(value?: T.Item)\n        T is Elements\n        ()"));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Function(c);
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
+        c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source {}\n    Self is Origin"));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
     }

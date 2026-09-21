@@ -6,6 +6,8 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Origin redesign integration (2026-09-21)](#origin-redesign-20260921)
+
 - [Compiler continuation: unsafe function value positions (2026-09-20)](#compiler-continuation-20260920-unsafe-value-positions)
 - [Origin surrounding-code review (2026-09-20)](#origin-review-20260920)
 - [Origin syntax and elision integration (2026-09-20)](#origin-syntax-elision-20260920)
@@ -7562,3 +7564,110 @@ dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -noLogo -parallelMode none -r
 General effectful/owned/borrow-producing defaults, arbitrary generic representations,
 foreign execution and length/receiver/constrained specialization generation retain
 their existing limits. These are not exceptions to the formal parameter rules.
+
+<a id="origin-redesign-20260921"></a>
+## Origin redesign integration (2026-09-21)
+
+The user authorized integrating the finalized 2026-09-21 Origin design with
+precedence over conflicting older rules, then updating the compiler. The approved
+proposal remained unchanged. SPEC and its owning chapters now define the complete
+requirements without a dependency on proposal files. Current remaining work is in
+[PLAN §2](PLAN.md#2-execution-state); this record describes the integration checkpoint.
+
+### Changes and review
+
+- Replaced function/accessor Origin lists and aggregate Origin application/mapping
+  with implicit signature scalars, closed Type schemas (including `{}`), fresh
+  binding sets, projections and attached equality/outlives clauses. Headerless Types
+  admit at most one implicit scalar; fragments repeat the same closed header.
+- Centralized declaration collection/completion, fixed versus quantified slots,
+  expression normalization, scoped proof and variance-aware call inference. Names
+  are resolved by scope and role, independently of discovery order. Stored/local
+  clauses cannot prove their own residual obligations. Nested signatures retain
+  their per-call boundary and require fixed aggregate input bindings.
+- Kept Origin and Loan identity separate. Call preparation retains the actual
+  source dependency when fitting several inputs to a common Origin; independent
+  exclusive borrows pass and overlapping borrows fail. Checked lowering accepts
+  proven lifetime shortening without changing the physical calling convention.
+- Preserved complete dependencies in Owned, including unused generic arguments,
+  raw-pointer pointees and fixed callable Origins. A Function Type closes only its
+  own per-call Origins; querying an individual component retains its dependency.
+  General phantom slots remain invariant. Compiler-verified Slice metadata is
+  retained despite its absence of safe stored reference Fields.
+- Migrated Slice declarations, affected milestones and test sources. Corrected
+  Milestone 16 and external-Origin rejection mutations that no longer changed the
+  source. Examples required no Origin syntax edits. Source round trips and artifact
+  reload retain the new contracts and explicit empty headers.
+
+Regression review found and corrected premature completion of nested signature
+slots, scope collisions with later locals and unqualified Fields, stale accessor
+symbol Types after relation completion, recursive-call confusion between actual
+rigid Origins and implementation inference variables, and temporary-borrow argument
+plans retaining pre-inference binders. Fitted literals now contribute their Origin
+evidence before final argument Types are published. The earlier direct-only local
+inference and separate constrained-result solver were removed in favor of the shared
+completion/inference paths.
+
+The first full migration run exposed obsolete fixtures as well as these defects.
+Intermediate runs are not completion evidence. In particular, a broad shared-ref
+representation change inadvertently admitted unsupported static borrow cases and
+was narrowed to retain the previous verified representation boundary. New scalar
+fixtures use supported struct-field reads; they do not claim general raw scalar
+reference dereference support.
+
+### Verification and limits
+
+Final commands, with DOTNET_CLI_HOME set to a task directory under TEMP:
+
+```powershell
+dotnet build Kimigayo.slnx --no-restore -c Debug -v quiet
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -noLogo -parallelMode none -result-xml bin/origin-redesign-debug.xml
+dotnet build Kimigayo.slnx --no-restore -c Release -v quiet
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -noLogo -parallelMode none -result-xml bin/origin-redesign-release.xml
+```
+
+Build logs are `bin/origin-redesign-build-debug.log` and
+`bin/origin-redesign-build-release.log`; managed run logs have the corresponding
+`origin-redesign-debug.log` and `origin-redesign-release.log` names. These are local
+ignored verification artifacts, not shipped runtime dependencies.
+
+Both final solution builds completed with zero warnings and errors. Debug passed
+all **10,889** managed tests in 66.529 seconds; Release passed all **10,889** in
+33.773 seconds, with zero failures, errors, skips or tests not run in either
+configuration. These wall times are verification observations, not a benchmark
+comparison (the Debug run overlapped the Release build).
+
+Focused coverage includes positive/negative declarations, completion, inference,
+contract comparison, lexical/callable boundaries, rebinding, serialization, actual
+exclusive Loan conflicts and checked IR generation. The three
+`OriginRedesignImplicit`, `OriginRedesignEquality` and `OriginRedesignRelation`
+fixtures are generated under `bin/scalar-fixtures` with expected output/exit files.
+Generation does not establish native execution or LLVM optimizer verification.
+
+Warm allocation measurements retain a strict zero-allocation check for fragmented
+schema rebinding. For the new two-exclusive-input equality workload, eight measured
+passes allocate 2,304 bytes in Binding (288 per pass), zero in ownership analysis
+and zero in IR writing to TextWriter.Null. This is a bounded workload result, not
+universal zero allocation or a whole-compiler throughput claim. Schema/expression
+interning, reusable declaration and inference storage, index-based traversal and
+scratch buffers avoid repeated general allocation. Temporary allocation probes
+were removed from the product and tests.
+
+Formal-document review checked 782 local Markdown link occurrences outside fenced
+examples: 780 resolve, including their anchors, and two `guide.md` links are literal
+inline examples in the Documentation Markdown profile. No formal chapter refers to
+the proposal directory. `git diff --check` passes and the finalized proposal has no
+diff.
+
+The native command `backend/windows-x64/test-scalars.ps1 -FixturePattern
+'OriginRedesign*.ll' -OutputDirectory bin/origin-redesign-native` could not run:
+`toolchain/opt.exe` from required LLVM 22.1.8 is absent, and no alternative configured
+LLVM installation was found. No O0/O2 native pass is claimed for this checkpoint.
+NativeAOT was not run.
+
+General mixed/cyclic principal inference, conditional Semantics proofs,
+named-Origin/constrained specialization inheritance, general function-item/Callable
+execution and custom-accessor generation retain implementation limitations. Existing
+supported specialization/accessor contracts are tested; this checkpoint does not
+certify all generalized forms. The formal specification was not weakened to match
+these boundaries.

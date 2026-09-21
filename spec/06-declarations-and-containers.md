@@ -69,7 +69,7 @@ struct Parser
 
 Group and struct declarations may be split into fragments, even within one file. Same-parent, same-name fragments are collected; a declaration is identified by its originating Kotonoha, parent Symbol, name, kind and generic arity. Conflicting kinds, such as a group and a struct with the same name, are rejected. Different arities, such as `Box` and `Box<T>`, are different Types. Fragments never merge across Kotonoha libraries, and an extension is never a fragment of its target declaration. Applied `ref`/`uniq` Semantics do not change Container identity.
 
-Matching fragments must agree on generic parameter count, kinds, order and names; Origin count, order, names and declared bounds; declaration kind; semantic modifiers; and accessibility after defaults. Origin bounds are repeated in every fragment, and their resolved binder identities are compared; each occurrence resolves in its own source environment. Conflicting accessibility is not widened. Exactly one fragment may define the Container's Constraint Clauses, even if duplicate clauses would be identical; the other fragments omit them and share that definition's Constraints, which resolve in their defining fragment's source environment.
+Matching fragments must agree on generic parameter count, kinds, order and names; declaration kind; semantic modifiers; and accessibility after defaults. Every struct fragment writes the same closed Origin header, including `{}` for no own slots; names, order and count must match. Conflicting accessibility is not widened. Exactly one fragment may supply the shared Constraint region, including Type Constraints and `origin` relations, even if duplicate clauses would be identical. The other fragments share that contract; each clause resolves in its defining SourceDocument.
 
 For structures, `open` must agree across all fragments. At most one fragment supplies the base clause; the others share that base without repeating it. The base resolves in its fragment's source environment, and then the complete merged inheritance relationship is validated.
 
@@ -99,7 +99,7 @@ Three kinds of context are kept separate:
 
 | Context | Contents | Part of reference bindings? |
 | --- | --- | --- |
-| Argument bindings | Type/Semantics arguments, Origins inside Types, explicit Origin arguments | Yes |
+| Argument bindings | Type/Semantics arguments and complete Origin slot bindings | Yes |
 | Proof context | Input conditions, Origin bounds, obligations, evidence and dependencies | No |
 | Lookup context | Definition-site lexical scope, each fragment's aliases, access context | No |
 
@@ -204,7 +204,7 @@ Explicit ordinary base-member invocation and additional ordinary derived/base co
 
 #### 6.2.3.1. Declaration
 
-A constructor is a dedicated structure declaration: an optional access specification, `init`, an optional Origin declaration list, a parameter list, an optional `: base(arguments)` clause, and a common executable Body (§14.2), either single-item or indented. It has no ordinary Name, explicit receiver, separate generic parameters, or result annotation; unavailable modifiers follow §2.5.1. It uses the containing structure's Type parameters, Origins and Constraints. Its own `init {a}(...)` Origins bind per call; they do not add hidden result slots. Input omission follows §15.4 and is never inferred backward from field assignments. Parameter labels, name-omission permissions, defaults and Type checking follow ordinary function parameters. Access defaults to `private`, and constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions and executable Blocks may not.
+A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a common executable Body (§14.2), either single-item or indented. It has no ordinary Name, explicit receiver, separate generic parameters, or result annotation; unavailable modifiers follow §2.5.1. It uses the containing structure's Type parameters, Origins and Constraints. Its directly written borrow annotations may introduce implicit per-call scalar Origins (§15.3.4); there is no list after `init`. Attached Origin relations precede executable items and do not add hidden result slots. Input omission follows §15.4 and is never inferred backward from field assignments. Parameter labels, name-omission permissions, defaults and Type checking follow ordinary function parameters. Access defaults to `private`, and constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions and executable Blocks may not.
 
 ```kimi
 public open struct Named
@@ -289,7 +289,7 @@ public enum Message
 
 Each Case is written on its own line, without a `case` keyword; PascalCase is conventional. Case names are unique within the enum and cannot be overloaded by payload Type or arity. A payload element declares one complete Type, in positional order, without a binding name, `let`/`var`, default or variadic form. `Quit` has no payload, and `Quit()` is invalid, whereas `Wrapped(())` has one Unit payload.
 
-The header supports ordinary generic and Origin parameters. The body permits Cases, Constraint Clauses, associated-Type specifications for declared conformances, ordinary functions and their full specializations, conditional conformances (§8.4.8), and compile-time directives selecting these items. Constraints follow the ordinary declaration rules, and `Self` denotes the enum Core. Function access and explicit receivers follow the ordinary rules. Fields, computed members, `init`, `deinit`, nested Declaration Containers, structure inheritance, `open enum` and external Case additions are not permitted. Enums cannot have [declaration fragments](#612-container-fragments), and every instantiation must keep at least one Case after compile-time selection. Empty enums and uninhabited-value elimination are deferred.
+The header supports ordinary generic parameters and an optional closed Origin schema, including `{}`. Without a header, at most one own scalar Origin may be discovered across all payload Types (§15.3.2). The body permits Cases, Constraint Clauses, associated-Type specifications for declared conformances, ordinary functions and their full specializations, conditional conformances (§8.4.8), and compile-time directives selecting these items. Constraints follow the ordinary declaration rules, and `Self` denotes the enum Core. Function access and explicit receivers follow the ordinary rules. Fields, computed members, `init`, `deinit`, nested Declaration Containers, structure inheritance, `open enum` and external Case additions are not permitted. Enums cannot have [declaration fragments](#612-container-fragments), and every instantiation must keep at least one Case after compile-time selection. Empty enums and uninhabited-value elimination are deferred.
 
 **Access.** Each Case has the enum's effective access domain, rather than the ordinary member default of `private`; Cases and payload elements take no access modifiers. Anyone allowed to use the enum may construct and decompose every Case, and each payload Type must satisfy [API signature accessibility](09-names-signatures-and-access.md#932-api-signature-accessibility) for the enum's domain. A Case that collides with another Value declaration, including a function, is a declaration error. Adding or removing a public Case is a potentially breaking source API change: additions can break exhaustive matches, and removals can break Case references.
 
@@ -305,10 +305,12 @@ enum MutView<T> {source}
     None
 
 func makeView<T>(value?: ref/T)
-    -> View<T>{source => value} => .Some(value)
+    -> View<T>{result}
+    origin result.source == value
+    return .Some(value)
 ```
 
-The result annotation maps the enum's abstract `source` to the input's Origin. It describes borrows stored in an owned enum, whereas `ref{value}/T` annotates a direct result borrow. The [single-Origin shorthand](15-ownership-and-lifetime-analysis.md#1531-origin-arguments) also permits `View<T>{value}`; the named mapping makes the assignment explicit.
+The result annotation maps the enum's abstract `source` to the input's Origin. It describes borrows stored in an owned enum, whereas `ref{value}/T` annotates a direct result borrow. The [single-Origin shorthand](15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets) also permits `View<T>{value}`; the named mapping makes the assignment explicit.
 
 At construction, payload dependencies bind to the enum's Origin arguments, and every stored value is validated against that contract. Variance and Loan requirements are inferred from the occurrences in all Cases under the ordinary fixed-point rules. Selecting a Case does not weaken the Type's Origin contract. Storing or moving out a `uniq/T` payload transfers the exclusive reference value, not its referent; a shared read reborrows it and suspends conflicting exclusive access. The ordinary storage, lifetime and unique Loan-anchor rules still apply.
 
@@ -340,10 +342,11 @@ let move: Message = Message.Move(10, 20)
 let some: Option<i32> = Option<i32>.Some(42)
 let none: Option<i32> = .None
 // value: ref/T
-let view: View<T>{source => value} = View<T>.Some(value)
+let view: View<T> = View<T>.Some(value)
+    origin view.source == value
 ```
 
-`.Case` resolves only within the already known expected enum: the owned expected Type for construction, or the Type determined at the [Pattern position](14-control-flow.md#1481-patterns) for matching. It never searches all enums by Case name, retries another expected Type, or changes a matched value's Origin contract; this is not general expected-Type member lookup. `let bad = .None` has no known enum Type, and `View<T>{source => value}.Some(...)` is not a Case reference.
+`.Case` resolves only within the already known expected enum: the owned expected Type for construction, or the Type determined at the [Pattern position](14-control-flow.md#1481-patterns) for matching. It never searches all enums by Case name, retries another expected Type, or changes a matched value's Origin contract; this is not general expected-Type member lookup. `let bad = .None` has no known enum Type, and `View<T>{v}.Some(...)` is not a Case reference.
 
 A payload-free Case produces its value without parentheses. A payload Case requires all positional arguments in declaration order. Omitted or named arguments, partial application, and acquiring a Case constructor as a function value are invalid.
 
@@ -363,7 +366,7 @@ let limit: i32 = 10
 var current = 0
 ```
 
-A local's Type must be fixed at its declaration, even without an initializer. An explicit local Type that omits a borrow Origin or a required Origin argument needs a declaration initializer under [Origin inference](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts); a later first assignment cannot supply the missing information. A fully specified Type may omit its initializer under the ordinary initialization rules. A local becomes visible after its declaration, so the initializer of `let x = x` refers to an outer `x`; duplicate and forward-reference rules follow [name visibility](09-names-signatures-and-access.md#92-namespaces-roles-and-visibility). `let` permits only its first initialization, and a Move never resets that history. Definite initialization and permitted reinitialization follow the [initialization-state rules](15-ownership-and-lifetime-analysis.md#1511-storage-state-and-responsibility).
+A local's Type must be fixed at its declaration, even without an initializer. An explicit local Type that omits a borrow Origin or a required Origin argument needs a declaration initializer under [Origin inference](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision); a later first assignment cannot supply the missing information. A fully specified Type may omit its initializer under the ordinary initialization rules. A local becomes visible after its declaration, so the initializer of `let x = x` refers to an outer `x`; duplicate and forward-reference rules follow [name visibility](09-names-signatures-and-access.md#92-namespaces-roles-and-visibility). `let` permits only its first initialization, and a Move never resets that history. Definite initialization and permitted reinitialization follow the [initialization-state rules](15-ownership-and-lifetime-analysis.md#1511-storage-state-and-responsibility).
 
 ## 6.5. Attributes
 

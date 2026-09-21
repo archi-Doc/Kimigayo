@@ -88,12 +88,12 @@ public class EnumBindingTest
     }
 
     [Theory]
-    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x?: ref/T) -> V<T>{x} => V<T>.Some(x)")]
+    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x?: ref/T) -> V<T>{result}\n    origin result.a == x\n    return V<T>.Some(x)")]
     [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x?: ref/T)\n    let v = V<T>.Some(x)")]
     [InlineData("func f<T>(x?: ref/T) -> Option<ref{x}/T> => .Some(x)")]
     [InlineData("func f<T>(x?: uniq/T) -> Option<uniq{x}/T> => .Some(x)")]
     [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
-    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x?: ref/T) -> V<T>{x} => .None")]
+    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x?: ref/T) -> V<T>{result}\n    origin result.a == x\n    return .None")]
     public void PreservesPayloadOriginContracts(string source)
     {
         var c = Parse(source);
@@ -105,12 +105,12 @@ public class EnumBindingTest
 
     [Theory]
     [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nlet v = V<i32>.None")]
-    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f<T>(x?: ref/T) -> V<T>{static} => .Some(x)")]
+    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f<T>(x?: ref/T) -> V<T>{result}\n    origin result.a == static\n    return .Some(x)")]
     [InlineData("enum V\n    Some(ref/i32)")]
     [InlineData("enum E\n    A\n    A(i32)")]
     [InlineData("enum E\n    A\n    func A() => ()")]
     [InlineData("enum E\n    func A() => ()\n    A")]
-    [InlineData("struct Hidden\npublic enum E\n    A(Hidden)")]
+    [InlineData("struct Hidden {}\npublic enum E\n    A(Hidden)")]
     [InlineData("enum E\n    A\nenum E\n    B")]
     [InlineData("enum E<T>\n    A(T)\nenum E<T>\n    B")]
     [InlineData("enum E<T>\n    T is Copy\n    A(T)\nlet x = E.A(\"text\")")]
@@ -234,7 +234,7 @@ public class EnumBindingTest
     [InlineData("    property value: i32 { get }")]
     [InlineData("    init() => ()")]
     [InlineData("    deinit() => ()")]
-    [InlineData("    struct Nested")]
+    [InlineData("    struct Nested {}")]
     public void ForbiddenEnumMembersCannotPassParsingAndBinding(string member)
     {
         var c = Compilation.CreateForTest();

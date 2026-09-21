@@ -38,6 +38,8 @@ public sealed class BoundValueCall
 
 public sealed partial class Binding
 {
+    private readonly BorrowAnnotationVisitor borrowAnnotationVisitor = new();
+
     private BoundConstraint BindCallableRequirement(Koto node, BoundType subject, BindingScope scope, BindingSymbol target)
     {
         var syntax = UnwrapTypeSyntax(node);
@@ -60,8 +62,15 @@ public sealed partial class Binding
             Complete(generic.TypeArguments[0], BoundType.Unit);
         }
 
+        if (scope.Owner is FunctionKoto { BoundSymbol: { } function } && !function.HeaderBound)
+        {
+            this.BindHeader(function);
+        }
+
         var signature = this.BindType(generic.TypeArguments[^1], scope);
-        if (signature?.Kind != BoundTypeKind.Function || !PerCallSignature(signature))
+        this.borrowAnnotationVisitor.Found = false;
+        this.borrowAnnotationVisitor.Visit(generic.TypeArguments[^1]);
+        if (signature?.Kind != BoundTypeKind.Function || this.borrowAnnotationVisitor.Found)
         {
             return this.InternConstraint(new(ConstraintKind.Error));
         }
@@ -70,6 +79,20 @@ public sealed partial class Binding
         Complete(generic.Identifier, BoundType.Unit);
         Complete(generic, BoundType.Boolean);
         return this.InternConstraint(new(ConstraintKind.Callable, subject, signature, mask: receiver));
+    }
+
+    private sealed class BorrowAnnotationVisitor : KotoVisitor
+    {
+        internal bool Found { get; set; }
+
+        public override void Visit(Koto node)
+        {
+            this.Found |= node is TypeSemanticsKoto { HasOrigin: true, BindingSetName: null };
+            if (!this.Found)
+            {
+                node.VisitChildren(this);
+            }
+        }
     }
 
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver)

@@ -736,6 +736,7 @@ public sealed partial class Binding
         Array.Clear(used, 0, function.Parameters.Count);
         Array.Clear(origins, 0, function.Origins.Count);
         Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
+        OriginInference? originInference = null;
 
         if (function.IsSpecialization)
         {
@@ -884,9 +885,25 @@ public sealed partial class Binding
         if (expected is not null && function.BoundSymbol?.Type is { } returnPattern)
         {
             this.Infer(this.MemberType(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), declaringType)!, expected, function, arguments, lengths: lengths);
+            this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
+            if (returnPattern.CarriesOrigin)
+            {
+                originInference ??= this.BeginOriginInference(call, function);
+                this.CollectOriginInference(returnPattern, expected, originInference, result: true);
+            }
         }
 
         if (contextualInputs && !InferAggregateInputs(true))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
+        if (originInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+        {
+            originInference = this.BeginOriginInference(call, function);
+        }
+
+        if (originInference is not null && !this.SolveOriginInference(originInference, origins, inputs, call, declaringType))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -899,7 +916,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Pending;
             }
 
-            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind) || !FitsType(adaptedReceiver, requiredReceiver))
+            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind) || !this.FitsTypeAt(adaptedReceiver, requiredReceiver, call))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1003,7 +1020,7 @@ public sealed partial class Binding
 
                 var quality = ArgumentAdaptation.Literal;
                 var kind = ArgumentOperationKind.Value;
-                if (argument.BoundType is { } actual && (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !FitsType(adapted, type)))
+                if (argument.BoundType is { } actual && (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !this.FitsTypeAt(adapted, type, call)))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
@@ -1012,12 +1029,28 @@ public sealed partial class Binding
             }
         }
 
+        // Fitted literals can add Origin evidence after the first contextual pass.
+        // Publish only the final substituted parameter Types, never preliminary binders.
+        if (originInference is not null && !this.SolveOriginInference(originInference, origins, inputs, call, declaringType))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var completed = this.CallType(function.Parameters[i].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
             if (completed is null || !this.ProveTypeLengths(completed, scope.Function))
             {
                 return CandidateApplicability.Inapplicable;
+            }
+        }
+
+        for (var i = 0; i < operations.Length; i++)
+        {
+            if (operations[i] is { Source: not null, ParameterIndex: >= 0 } operation)
+            {
+                var completed = this.CallType(function.Parameters[operation.ParameterIndex].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths)!;
+                operations[i] = operation with { ParameterType = completed };
             }
         }
 
@@ -1034,12 +1067,17 @@ public sealed partial class Binding
             return result is null && CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
         }
 
+        if (!this.CheckCallOriginRelations(function, origins, inputs, call, declaringType))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
         if (function.IsConstructor)
         {
             result = declaringType!;
         }
 
-        if (expected is not null && !FitsType(result, this.ContractType(expected, scope)))
+        if (expected is not null && !this.FitsTypeAt(result, this.ContractType(expected, scope), call))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -1122,6 +1160,12 @@ public sealed partial class Binding
             }
 
             this.MatchInputOrigins(pattern, actual, function, origins, inputs);
+            if (pattern.CarriesOrigin && actual.CarriesOrigin)
+            {
+                originInference ??= this.BeginOriginInference(call, function);
+                this.CollectOriginInference(pattern, actual, originInference);
+            }
+
             pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
             return this.Infer(pattern, actual, function, arguments, true, lengths);
         }

@@ -66,7 +66,7 @@ public class StartupBindingTest
     [InlineData("public func main(x?: i32) => ()")]
     [InlineData("public func main(self: i32) => ()")]
     [InlineData("public func main<T>() => ()")]
-    [InlineData("public func main {a}() => ()")]
+    [InlineData("public func main(x?: ref{a}/i32) => ()")]
     [InlineData("public func main() -> i32 => 1")]
     [InlineData("public unsafe func main() => ()")]
     public void ApplicationMainRestrictionsDoNotLeakIntoLibraryBinding(string source)

@@ -244,7 +244,7 @@ public sealed class LlvmEmitter
             if ((!body.IsConcrete && !BodyLowering.CanEraseReceiver(body)) || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
                 (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
                 (function.IsAnonymous && function.BoundClosure is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
-                (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.Origins.Count != 0 || function.TypeConstraints.Count != 0)
+                (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.TypeConstraints.Count != 0)
             {
                 return "A selected function requires unsupported signature, capture or implementation lowering.";
             }
@@ -254,8 +254,7 @@ public sealed class LlvmEmitter
                 var parameter = function.Parameters[i];
                 if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
                     (parameter.DefaultValue is not null && !ScalarDefaults.Supports(function, i)) ||
-                    (ReferenceTypes.IsString(parameter.Type.BoundType) && (parameter.Type.BoundType!.Origin is not { Kind: OriginKind.Input } origin ||
-                        !ReferenceEquals(origin.Binder, function) || origin.Slot != i)))
+                    (ReferenceTypes.IsString(parameter.Type.BoundType) && parameter.Type.BoundType!.Origin is null))
                 {
                     return "Parameters require verified value, owned-slot or shared-string representations and supported scalar defaults.";
                 }

@@ -16,13 +16,13 @@ public enum PropertyAccessorKind : byte
 }
 
 /// <summary>Represents a Property accessor declaration.</summary>
-public sealed class PropertyAccessorKoto : Koto
+public sealed class PropertyAccessorKoto : DeclarationKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PropertyAccessor;
 
     /// <summary>Gets the accessor's per-call Origin parameters.</summary>
-    public IReadOnlyList<string> Origins { get; }
+    public IReadOnlyList<string> Origins { get; internal set; }
 
     /// <summary>Gets the accessor access restriction.</summary>
     public ModifierKind Modifier { get; private set; }
@@ -94,7 +94,6 @@ public sealed class PropertyAccessorKoto : Koto
     {
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append(this.AccessorText);
-        OriginNameList.WriteTo(this.Origins, ref builder);
 
         if (this.HasExplicitSignature)
         {
@@ -125,7 +124,15 @@ public sealed class PropertyAccessorKoto : Koto
             returnType.WriteTo(ref builder);
         }
 
-        if (this.Body is CodeBlockKoto block)
+        if (OriginClauses.Get(this).Count != 0)
+        {
+            builder.AppendLine();
+            builder.IncrementIndent();
+            OriginClauses.Write(this, ref builder, false);
+            this.Body?.WriteTo(ref builder);
+            builder.DecrementIndent();
+        }
+        else if (this.Body is CodeBlockKoto block)
         {
             block.WriteIndentedTo(ref builder);
         }
@@ -134,6 +141,13 @@ public sealed class PropertyAccessorKoto : Koto
             builder.Append(" => ");
             this.Body.WriteTo(ref builder);
         }
+    }
+
+    internal void SetBody(Koto? body)
+    {
+        this.Body = body;
+        this.Adopt(body);
+        this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, body?.Span.End ?? 0));
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

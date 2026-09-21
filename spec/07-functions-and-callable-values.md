@@ -2,7 +2,7 @@
 
 [Specification index](../SPEC.md)
 
-A function declaration begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters `{...}` and a parenthesized parameter list. A result Type follows `->`; omitting it in a named function means Unit (`()`), regardless of accessibility or body form. Definitions use the common Body forms (§7.1). Anonymous functions have separate [inference rules](#761-syntax-and-inference).
+A function declaration begins with `func`, its Name, optional generic parameters and a parenthesized parameter list. A result Type follows `->`; omitting it in a named function means Unit (`()`), regardless of accessibility or body form. Functions have no Origin parameter list: directly written borrow annotations can introduce implicit scalar Origins under §15.3.4. Declaration-attached `origin` relations precede executable items, at the same indentation as Type Constraints. Definitions use the common Body forms (§7.1). Anonymous functions have separate [inference rules](#761-syntax-and-inference).
 
 The declared function Name is a single, unqualified Name, and the declaration belongs to the lexical Container or executable scope in which it appears. A member is declared inside the relevant Container body, including a permitted fragment; `func View.get(...)` and other qualified declaration names are compile-time errors. A qualified declaration cannot attach a function to another Container, introduce an extension, or obtain that Container's private access or generic bindings. Qualified Names at use sites and explicit receivers follow their own rules.
 

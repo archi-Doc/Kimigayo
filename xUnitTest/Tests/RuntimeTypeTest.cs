@@ -205,7 +205,7 @@ public class RuntimeTypeTest
     [Fact]
     public void SourceOriginsAndUnreachableResultsAreRetained()
     {
-        var c = Parse("struct Dog\nfunc f {a}(x?: objref{a}/Dog) -> bool\n    return true\n    return (x) is not Dog");
+        var c = Parse("struct Dog\nfunc f(x?: objref{a}/Dog) -> bool\n    return true\n    return (x) is not Dog");
         AssertBound(c);
         var test = Test(c);
         Assert.NotNull(test.BoundRuntimeTest!.Value.OperandType.Origin);

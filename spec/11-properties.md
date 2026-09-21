@@ -253,7 +253,7 @@ let edit = holder.item@uniq/Resource // Error: direct exclusive access.
 
 A setter may return without updating the storage. Unconsumed input is destroyed normally; transferred input is neither destroyed twice nor automatically restored to the caller. Use a result-returning function when acceptance or rejection must be reported. These restrictions do not prohibit a legal whole-receiver Move or destruction. Initial placement does not invoke validation (§11.3.1).
 
-Explicit accessor signatures may declare per-call Origins immediately after `get` or `set`: `get {a}(...) -> T`, `set {a}(...) -> ()`. Bodyless standard accessors have no declaration list. Inherited Origin names cannot be redeclared. The same rules apply to explicit Contract requirement signatures.
+Explicit accessor signatures introduce per-call scalar Origins through their borrow annotations, following §15.3.4. There is no list after `get` or `set`. Their attached `origin` clauses precede executable items; a Property's own clauses precede its accessor declarations. Inherited names cannot be redeclared. The same rules apply to explicit Contract requirement signatures.
 
 ## 11.3. Types and Origins
 

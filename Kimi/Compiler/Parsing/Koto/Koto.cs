@@ -348,6 +348,9 @@ public enum KotoKind : byte
     /// <summary>A standalone expect/require verification.</summary>
     TestVerification,
 
+    /// <summary>A declaration-attached Origin relation.</summary>
+    OriginRelation,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -389,6 +392,11 @@ public abstract class Koto
             if (this.AttributeChain is not null)
             {
                 yield return this.AttributeChain;
+            }
+
+            foreach (var clause in OriginClauses.Get(this))
+            {
+                yield return clause;
             }
 
             foreach (var child in this.GetChildNodes())
@@ -499,6 +507,12 @@ public abstract class Koto
             visitor.Visit(attribute);
         }
 
+        var originClauses = OriginClauses.Get(this);
+        for (var i = 0; i < originClauses.Count; i++)
+        {
+            visitor.Visit(originClauses[i]);
+        }
+
         this.VisitChildrenCore(visitor);
     }
 
@@ -575,7 +589,7 @@ public abstract class Koto
 
             this.AttributeChain = attribute;
         }
-        else if (!this.ReplaceChildCore(oldKoto, newKoto))
+        else if (!ReplaceInList(OriginClauses.Get(this), oldKoto, newKoto) && !this.ReplaceChildCore(oldKoto, newKoto))
         {
             return false;
         }

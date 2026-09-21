@@ -18,7 +18,7 @@ This is the index of the Kimigayo specification. The chapter files under `spec/`
 
 Implementation coverage is recorded separately in [STATUS.md](STATUS.md). Parser support alone establishes neither Binding, constant evaluation, ownership checking, nor execution. Implementation limits never narrow the rules of this specification.
 
-Origin syntax, prefix attachment, input omission and canonical contracts are defined in [§15.3–4](spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins), with generic reconstruction in [§8.1.2](spec/08-generics-constraints-and-contracts.md#812-reconstruction-and-origin-annotations).
+Origin schemas, binding sets, projections, relations and completion are defined in [§15.3–4](spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations), with generic reconstruction in [§8.1.2](spec/08-generics-constraints-and-contracts.md#812-reconstruction-and-origin-annotations).
 
 Independent parameter-name omission (`?`) and argument omission (a default expression) are defined in [§7.2](spec/07-functions-and-callable-values.md#72-parameters-and-defaults), with positional matching in [§10.1](spec/10-overload-resolution-and-inference.md#101-candidate-applicability).
 
@@ -84,7 +84,7 @@ Implementation coverage, verified support boundaries and the status of the execu
 
 ## Where to start
 
-- **Origins:** [declarations, application and canonical contracts](spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins), [prefix attachment](spec/03-types-and-values.md#336-nested-semantics-and-type-grouping), and [position-specific omission](spec/15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts).
+- **Origins:** [schemas, names, relations and canonical contracts](spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations), [prefix attachment](spec/03-types-and-values.md#336-nested-semantics-and-type-grouping), and [completion and omission](spec/15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision).
 - **Standard declarations and functions:** [Kimi declaration and function reference](#kimi-declaration-and-function-reference).
 - **First executable program:** [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output and native build](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution).
 - **Source commands:** [input resolution and implicit single-source projects](spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects); [lock files](spec/18-modules-and-dependencies.md#185-lock-files-and-input-records) for `restore` and `check --locked`.

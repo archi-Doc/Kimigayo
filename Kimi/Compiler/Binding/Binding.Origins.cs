@@ -265,6 +265,7 @@ public sealed partial class Binding
 
             var symbol = node.BoundSymbol!;
             var scope = this.scopes[node];
+            origins = this.DiscoverOriginNames(node, origins, scope);
             var inherited = node is DeclarationContainerKoto && node.Parent is DeclarationContainerKoto parent ? parent.BoundSymbol?.Schema : null;
             var genericCount = parameters.Count + (inherited?.GenericSlots.Count ?? 0);
             var originCount = origins.Count + (inherited?.Origins.Count ?? 0);
@@ -293,7 +294,7 @@ public sealed partial class Binding
                 for (var i = 0; inherited is not null && i < inherited.Origins.Count; i++)
                 {
                     var outer = inherited.Origins[i];
-                    bindings[origins.Count + i] = new(outer.Name, outer.Slot, outer.Origin, outer.Span) { Bound = outer.Bound };
+                    bindings[origins.Count + i] = new(outer.Name, outer.Slot, outer.Origin, outer.Span);
                 }
 
                 symbol.Schema = schema = new(slots, bindings);
@@ -301,7 +302,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < schema.GenericSlots.Count; i++)
             {
-                schema.GenericSlots[i].OriginVariance = i < parameters.Count ? OriginVariance.Unused : OriginVariance.Covariant;
+                schema.GenericSlots[i].OriginVariance = OriginVariance.Unused;
                 if (i >= parameters.Count)
                 {
                     continue;
@@ -317,8 +318,8 @@ public sealed partial class Binding
             for (var i = 0; i < schema.Origins.Count; i++)
             {
                 var origin = schema.Origins[i];
-                origin.Variance = i < origins.Count ? OriginVariance.Unused : OriginVariance.Covariant;
-                origin.LoanRequirement = i < origins.Count ? LoanRequirement.None : LoanRequirement.Ref;
+                origin.Variance = OriginVariance.Unused;
+                origin.LoanRequirement = LoanRequirement.None;
                 if (i < origins.Count && scope.Parent is { } enclosing && FindAbstractOrigin(origin.Name, enclosing) is not null)
                 {
                     Fail(node, BindingFailure.Duplicate);
@@ -329,22 +330,6 @@ public sealed partial class Binding
                 {
                     Fail(node, BindingFailure.Duplicate);
                 }
-            }
-
-            // Bind the whole list before resolving `name : target`; targets are static or visible abstract Origins.
-            for (var i = 0; i < origins.Count; i++)
-            {
-                var origin = schema.Origins[i];
-                origin.Bound = null;
-                if (OriginNameList.GetBound(origins, i, out _) is not { } target)
-                {
-                    continue;
-                }
-
-                origin.Bound = target == "static" ? BoundOrigin.Static : FindAbstractOrigin(target, scope);
-                // Declaration and use-site bound proofs (SPEC 15.3.4) are not implemented, so a bounded
-                // declaration is never certified (Invalid survives later node completion); an unknown target is an ordinary error.
-                Fail(node, origin.Bound is null ? BindingFailure.InvalidOrigin : BindingFailure.Unsupported);
             }
         }
 
@@ -417,36 +402,20 @@ public sealed partial class Binding
             return BoundOrigin.Static;
         }
 
-        for (var current = scope; current is not null; current = current.Parent)
+        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier))
         {
-            if (current.Origins?.TryGetValue(name, out var origin) == true)
+            if (scalar is not null)
+            {
+                return scalar;
+            }
+
+            if (carrier is { Origin: { } origin } && IsBorrow(carrier.Semantics))
             {
                 return origin;
             }
 
-            var owner = current.Owner;
-            var inputCount = InputCount(owner);
-            for (var i = 0; i < inputCount; i++)
-            {
-                if (InputName(owner, i) != name)
-                {
-                    continue;
-                }
-
-                var type = BoundInputType(owner, i);
-                if (type is null && InputType(owner, i) is { } inputSyntax && !ReferenceEquals(inputSyntax, use))
-                {
-                    type = this.BindType(inputSyntax, current);
-                }
-
-                if (type?.Origin is { } input && IsBorrow(type.Semantics))
-                {
-                    return input;
-                }
-
-                Fail(use, BindingFailure.InvalidOrigin);
-                return null;
-            }
+            Fail(use, BindingFailure.InvalidOrigin);
+            return null;
         }
 
         Fail(use, BindingFailure.MissingOrigin, true);
@@ -475,56 +444,27 @@ public sealed partial class Binding
         }
         else if (syntax is MemberAccessKoto member && member.Left is IdentifierNameKoto input && member.Right is IdentifierNameKoto target)
         {
-            // Only a declared input carrier introduces this Origin path; there is no Value lookup fallback.
-            for (var current = scope; current is not null && result is null; current = current.Parent)
+            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type))
             {
-                var owner = current.Owner;
-                var inputCount = InputCount(owner);
-                for (var i = 0; i < inputCount; i++)
+                while (type is { Kind: BoundTypeKind.Semantics } && IsBorrow(type.Semantics))
                 {
-                    if (InputName(owner, i) != input.IdentifierName)
-                    {
-                        continue;
-                    }
+                    type = type.Components[0];
+                }
 
-                    var type = BoundInputType(owner, i) ?? (InputType(owner, i) is { } inputSyntax ? this.BindType(inputSyntax, current) : null);
-                    if (type is { Kind: BoundTypeKind.Semantics })
+                var schema = type?.Symbol?.Schema;
+                for (var i = 0; schema is not null && i < schema.Origins.Count; i++)
+                {
+                    if (schema.Origins[i].Name == target.IdentifierName)
                     {
-                        type = type.Components[0];
-                    }
-
-                    var schema = type?.Symbol?.Schema;
-                    if (schema is null)
-                    {
+                        result = type!.Kind == BoundTypeKind.Slice ? type.Origin : i < type.OriginArguments.Count ? type.OriginArguments[i] : null;
                         break;
                     }
+                }
 
-                    for (var j = 0; j < schema.Origins.Count; j++)
-                    {
-                        if (schema.Origins[j].Name == target.IdentifierName && j < type!.OriginArguments.Count)
-                        {
-                            result = type.OriginArguments[j];
-                            break;
-                        }
-                    }
-
-                    if (result is not null)
-                    {
-                        if (owner is FunctionKoto function)
-                        {
-                            input.BoundSymbol = this.symbols[function.Parameters[i]];
-                        }
-                        else if (owner is PropertyAccessorKoto accessor)
-                        {
-                            var operation = Accessor(accessor);
-                            input.BoundSymbol = i == 0 ? operation.SelfSymbol : operation.ValueSymbol;
-                        }
-
-                        target.BoundOrigin = result;
-                        input.BindingState = target.BindingState = BindingState.Resolved;
-                    }
-
-                    break;
+                if (result is not null)
+                {
+                    input.BindingState = target.BindingState = BindingState.Resolved;
+                    target.BoundOrigin = result;
                 }
             }
         }
@@ -535,8 +475,13 @@ public sealed partial class Binding
         }
         else
         {
+            result = this.OriginAtUse(result, syntax);
             syntax.BindingState = BindingState.Resolved;
             syntax.BoundOrigin = result;
+            if (!OriginVisible(result, syntax))
+            {
+                Fail(syntax, BindingFailure.InvalidOrigin);
+            }
         }
 
         return result;
@@ -551,6 +496,11 @@ public sealed partial class Binding
             {
                 return origin;
             }
+        }
+
+        if (this.PendingOrigin(use, scope, context, requirement, aggregateSlot) is { } pending)
+        {
+            return pending;
         }
 
         if (aggregateSlot >= 0 && context.Position == TypePosition.Parameter &&
@@ -584,7 +534,7 @@ public sealed partial class Binding
 
         if (context.Position == TypePosition.Local && context.Owner is VariableKoto { InitializerKoto: not null })
         {
-            var origin = this.OriginAtom(use, OriginKind.Inference, context.Slot);
+            var origin = this.OriginAtom(use, OriginKind.Inference, aggregateSlot);
             this.AddObligation(new(BindingObligationKind.OriginInference, use, BindingDeadline.BodyOrigins, Longer: origin));
             return origin;
         }

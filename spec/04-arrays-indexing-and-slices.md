@@ -151,7 +151,7 @@ Fixed arrays and Array expose public read-only `length: isize` and `indices: Res
 
 A fixed array is Copy exactly when its complete element Type is Copy. Owned is derived, and element Origins and Loans are retained, recursively. Partial Move follows [Move Paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move). [Aggregate cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup) destroys the remaining initialized elements in decreasing index order, including abandoned construction on an ordinary control transfer; Uninitialized and Moved parts are skipped, and partly built elements are cleaned recursively. Abort does not guarantee cleanup.
 
-Array is Non-Copy and accepts any valid complete element Type with a representable element layout; neither Owned nor Copy is required. Its Type preserves `T`'s Origin dependencies and Loan requirements, and its values keep the acquired elements' Loans under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts), including after removal, replacement and clear (§4.7.5). To obtain a shared view of either owning array form, slice it explicitly.
+Array is Non-Copy and accepts any valid complete element Type with a representable element layout; neither Owned nor Copy is required. Its Type preserves `T`'s Origin dependencies and Loan requirements, and its values keep the acquired elements' Loans under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), including after removal, replacement and clear (§4.7.5). To obtain a shared view of either owning array form, slice it explicitly.
 
 The element position preserves Origin variance, and nested variance composes normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. No covariance between different element Cores is added. The Kimi dynamic mutation operations (§4.7) require exclusive access to the whole Array, independently of reallocation. Ordinary indexing gains no Non-Copy Move operation.
 
@@ -344,13 +344,13 @@ Under [static Place analysis](15-ownership-and-lifetime-analysis.md#1562-place-o
 
 A Slice owns no elements; copying or destroying the handle neither copies nor destroys them. `T` need not be Owned, and all dependencies inside `T` remain intact. `source` may be shortened but never lengthened; the Slice's own Owned classification follows [OwnedOrigins](15-ownership-and-lifetime-analysis.md#1523-static-and-owned), including `source` and `T`.
 
-**Storage and escape.** A Slice may be kept in local aggregates, Array elements and concrete object payloads under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts), preserving its backing Loan and nested element dependencies. Static storage requires Owned and a valid static source under the [static storage rules](11-properties.md#1132-static-storage). Copying or storing a Slice never extends the backing lifetime.
+**Storage and escape.** A Slice may be kept in local aggregates, Array elements and concrete object payloads under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), preserving its backing Loan and nested element dependencies. Static storage requires Owned and a valid static source under the [static storage rules](11-properties.md#1132-static-storage). Copying or storing a Slice never extends the backing lifetime.
 
 Borrowing a temporary never extends its [lifetime](03-types-and-values.md#36-temporary-values-places-and-lifetimes). An unused binding is not rejected solely because it contains a temporary borrow; the check is whether a later use, return or retention requires the expired dependency.
 
 ```kimi
 func makeArray() -> Array<i32> => [1, 2, 3]
-func inspect<T> {source}(values?: Slice<T>{source}) => ()
+func inspect<T>(values?: Slice<T>) => ()
 
 inspect(makeArray()[..]) // Temporary array survives through the call.
 let escaped = makeArray()[..]
@@ -364,17 +364,17 @@ A `var` Slice permits only handle reassignment, and `uniq/Slice<T>` exclusively 
 
 ### 4.6.6. Slice operations and element results
 
-For `s: Slice<T>{source}`, members receive and Copy the handle by value. Element and partial-Slice results retain `source` rather than borrowing the handle variable used in the call. All listed operations are public.
+For `s: Slice<T>`, members receive and Copy the handle by value. Element and partial-Slice results retain `s.source` rather than borrowing the handle variable used in the call. All listed operations are public. In the table, each resulting Slice keeps that same source binding.
 
 | Operation | Result and conditions |
 | --- | --- |
 | `s.length: isize` / `s.isEmpty: bool` | Read-only count / whether the count is zero |
 | `s.indices: ResolvedRange` | Read-only snapshot under the metadata rules |
 | `s[index]` | Shared element access; accepts `isize` or `Index` |
-| `s[range]` | `Slice<T>{source}`; accepts `Range` or `ResolvedRange`, checked against the current length |
-| `s.tryGet(index)` | `Option<ref{source}/T>`; separate `isize` and `Index` overloads |
-| `s.trySlice(range)` | `Option<Slice<T>{source}>`; separate `Range` and `ResolvedRange` overloads |
-| `s.splitAt(index)` | `(Slice<T>{source}, Slice<T>{source})`, covering `[0, p)` and `[p, length)` |
+| `s[range]` | `Slice<T>` retaining `s.source`; accepts `Range` or `ResolvedRange`, checked against the current length |
+| `s.tryGet(index)` | `Option<ref{s.source}/T>`; separate `isize` and `Index` overloads |
+| `s.trySlice(range)` | `Option<Slice<T>>` retaining `s.source`; separate `Range` and `ResolvedRange` overloads |
+| `s.splitAt(index)` | `(Slice<T>, Slice<T>)`, both retaining `s.source`, covering `[0, p)` and `[p, length)` |
 | `s.trySplitAt(index)` | `Option` of that Tuple |
 
 Both split operations have `isize` and `Index` overloads and accept the boundaries zero and length. Invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`; `tryGet` and `trySlice` likewise return `None` on their own invalid bounds. `tryGet` deliberately has a fixed reference result, independent of `T`'s Copy capability.
@@ -399,14 +399,14 @@ For `s: Slice<Result<i32, i32>>`, `s[0]` is an owned Copy `Result`, while `s[0]@
 For an unknown `T`, the correlated result Type, acquisition effect and Origins are kept as the internal family `SharedReadResult(T, source)`, which is not a source-spellable Type. The body is verified for all admitted cases; unknown is neither assumed to mean Non-Copy nor deferred until a favorable instantiation. An operation or result that does not fit every case requires a constraint or an explicit borrow.
 
 ```kimi
-func first<T> {source}(s?: Slice<T>{source}) -> T
+func first<T>(s?: Slice<T>) -> T
     T is Copy
     return s[0]
 
-func firstRef<T> {source}(s?: Slice<T>{source}) -> ref{source}/T
+func firstRef<T>(s?: Slice<T>) -> ref{s.source}/T
     return s[0]@ref // Borrow the slot regardless of T's Copy capability.
 
-func head<T, E> {source}(s?: Slice<Result<T, E>>{source}) -> ref{source}/Result<T, E>
+func head<T, E>(s?: Slice<Result<T, E>>) -> ref{s.source}/Result<T, E>
     return s[0]@ref // Plain s[0] fails definition checking: Copy bindings return a value.
 
 let values: [4 of i32] = [10, 20, 30, 40]
@@ -420,7 +420,8 @@ match s.tryGet(10)
     .Some(let value) => ()
     .None => ()
 
-func tryTail<T> {source}(values?: Slice<T>{source}) -> Option<Slice<T>{source}>
+func tryTail<T>(values?: Slice<T>) -> Option<Slice<T>{tail}>
+    origin tail.source == values.source
     return values.trySlice(1..) // None for an empty Slice; no static length condition.
 ```
 

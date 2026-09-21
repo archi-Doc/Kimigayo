@@ -11,7 +11,7 @@ group Pipeline
         public func read(self: ref/Self) -> i32 => self.total
         deinit => Console.writeLine("Accumulator destroyed.")
 
-    public func run<T, F> {source}(items?: Slice<T>{source}, visit?: uniq/F, limit?: isize) -> isize
+    public func run<T, F>(items?: Slice<T>, visit?: uniq/F, limit?: isize) -> isize
         F is Callable<uniq, (ref/T) -> bool>
         require limit > 0 else => return 0
         var iterator = items.iterate()

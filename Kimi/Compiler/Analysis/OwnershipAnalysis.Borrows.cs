@@ -17,6 +17,11 @@ public sealed partial class OwnershipAnalysis
                 continue; // Definition conditions and each call's substituted lengths were checked by Binding.
             }
 
+            if (this.compilation.Binding.IsVerifiedOriginObligation(obligation))
+            {
+                continue;
+            }
+
             // A well-formed borrowed input guarantees its nested stored Origins
             // outlive that input. Call-site borrow formation checks the concrete
             // nested dependencies, including deinit uses, in VerifyBorrows.

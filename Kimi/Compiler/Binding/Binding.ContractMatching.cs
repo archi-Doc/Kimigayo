@@ -536,6 +536,41 @@ public sealed partial class Binding
         }
     }
 
+    private void MatchResultOrigins(BoundType pattern, BoundType expected, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    {
+        if (!pattern.CarriesOrigin || !expected.CarriesOrigin)
+        {
+            return;
+        }
+
+        if (pattern.Origin is { } p && expected.Origin is { } a)
+        {
+            Match(p, a);
+        }
+
+        for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, expected.OriginArguments.Count); i++)
+        {
+            Match(pattern.OriginArguments[i], expected.OriginArguments[i]);
+        }
+
+        for (var i = 0; i < Math.Min(pattern.Components.Count, expected.Components.Count); i++)
+        {
+            this.MatchResultOrigins(pattern.Components[i], expected.Components[i], binder, origins, inputs);
+        }
+
+        void Match(BoundOrigin parameter, BoundOrigin value)
+        {
+            if (ReferenceEquals(parameter.Binder, binder) && parameter.Kind is OriginKind.Parameter or OriginKind.Input)
+            {
+                var target = parameter.Kind == OriginKind.Parameter ? origins : inputs;
+                if ((uint)parameter.Slot < (uint)target.Length && target[parameter.Slot] is null)
+                {
+                    target[parameter.Slot] = value;
+                }
+            }
+        }
+    }
+
     private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)

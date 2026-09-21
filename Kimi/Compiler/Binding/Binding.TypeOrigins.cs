@@ -42,7 +42,19 @@ public sealed partial class Binding
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
-        var written = annotation is { HasOrigin: true };
+        var bindingSet = annotation?.BindingSetName is not null;
+        var written = annotation is { HasOrigin: true } && !bindingSet;
+        if (bindingSet)
+        {
+            if (type.Symbol?.Schema is not { Origins.Count: > 0 })
+            {
+                return Fail(use, BindingFailure.InvalidOrigin);
+            }
+
+            annotation!.OriginExpression!.BindingState = BindingState.Resolved;
+            context = context with { SuppressOuter = false };
+        }
+
         if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
         {
             return Fail(use, BindingFailure.InvalidOrigin);
@@ -106,6 +118,11 @@ public sealed partial class Binding
         }
         else
         {
+            if (written)
+            {
+                return Fail(use, BindingFailure.InvalidOrigin);
+            }
+
             var target = type;
             var objectLayer = type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc;
             if (objectLayer)
@@ -129,76 +146,6 @@ public sealed partial class Binding
                     for (var i = 0; i < target.OriginArguments.Count; i++)
                     {
                         arguments[i] = target.OriginArguments[i];
-                    }
-
-                    if (annotation?.OriginArguments is { } named)
-                    {
-                        // A supplied mapping is checked against declaration slots, independently of source order.
-                        var seen = this.flagScratch.Rent(count);
-                        Array.Clear(seen, 0, count);
-                        try
-                        {
-                            for (var i = 0; i < named.Length; i++)
-                            {
-                                var slot = -1;
-                                for (var j = 0; j < count; j++)
-                                {
-                                    if (schema!.Origins[j].Name == named[i].Name)
-                                    {
-                                        slot = j;
-                                        break;
-                                    }
-                                }
-
-                                if (slot < 0 || seen[slot] || arguments[slot] is not null)
-                                {
-                                    Fail(use, BindingFailure.InvalidOrigin);
-                                    return null;
-                                }
-
-                                seen[slot] = true;
-                                var bound = this.BindOrigin(named[i].Value, scope);
-                                if (bound is null)
-                                {
-                                    return null;
-                                }
-
-                                arguments[slot] = bound;
-                            }
-                        }
-                        finally
-                        {
-                            this.flagScratch.Return(seen);
-                        }
-                    }
-                    else if (written)
-                    {
-                        var slot = -1;
-                        for (var i = 0; i < count; i++)
-                        {
-                            if (arguments[i] is null)
-                            {
-                                if (slot >= 0)
-                                {
-                                    return Fail(use, BindingFailure.InvalidOrigin);
-                                }
-
-                                slot = i;
-                            }
-                        }
-
-                        if (slot < 0)
-                        {
-                            return Fail(use, BindingFailure.InvalidOrigin);
-                        }
-
-                        var bound = annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
-                        if (bound is null)
-                        {
-                            return null;
-                        }
-
-                        arguments[slot] = bound;
                     }
 
                     for (var i = 0; i < count; i++)
@@ -325,7 +272,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
+            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (type.Kind == BoundTypeKind.Constructed && declared is { } target && i < target.GenericSlots.Count)
             {
                 var variance = target.GenericSlots[i].OriginVariance;

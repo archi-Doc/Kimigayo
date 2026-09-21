@@ -4,35 +4,15 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-/// <summary>Preserves Origin declaration locations and optional outlives bounds without allocating storage on Origin-free nodes.</summary>
+/// <summary>Preserves Origin declaration locations without allocating storage on Origin-free nodes.</summary>
 internal sealed class OriginNameList : List<string>
 {
-    // Allocated only when a declaration writes `name : target` (SPEC 15.3); indexed like the names.
-    private List<(string? Name, SourceSpan Span)>? bounds;
-
     internal List<SourceSpan> Spans { get; } = new();
 
-    /// <summary>Gets a declared bound target, or null when the parameter has none.</summary>
-    /// <param name="origins">Declared Origin parameters.</param>
-    /// <param name="index">The parameter index.</param>
-    /// <param name="span">The bound target span.</param>
-    /// <returns>The bound target name.</returns>
-    internal static string? GetBound(IReadOnlyList<string> origins, int index, out SourceSpan span)
-    {
-        if (origins is OriginNameList { bounds: { } bounds } && index < bounds.Count)
-        {
-            span = bounds[index].Span;
-            return bounds[index].Name;
-        }
-
-        span = default;
-        return null;
-    }
-
-    /// <summary>Compares declared names and bounds, as fragments must repeat both (SPEC 6.1.2, 15.3).</summary>
+    /// <summary>Compares names and order, which fragments must repeat (SPEC 6.1.2, 15.3).</summary>
     /// <param name="a">The first parameter list.</param>
     /// <param name="b">The second parameter list.</param>
-    /// <returns>Whether both lists declare the same binders and bounds.</returns>
+    /// <returns>Whether both lists declare the same binders.</returns>
     internal static bool SameParameters(IReadOnlyList<string> a, IReadOnlyList<string> b)
     {
         if (a.Count != b.Count)
@@ -42,7 +22,7 @@ internal sealed class OriginNameList : List<string>
 
         for (var i = 0; i < a.Count; i++)
         {
-            if (a[i] != b[i] || GetBound(a, i, out _) != GetBound(b, i, out _))
+            if (a[i] != b[i])
             {
                 return false;
             }
@@ -51,12 +31,13 @@ internal sealed class OriginNameList : List<string>
         return true;
     }
 
-    /// <summary>Writes <c> {a, b : a}</c>, or nothing for an empty list.</summary>
+    /// <summary>Writes <c> {a, b}</c>, retaining explicitly empty headers.</summary>
     /// <param name="origins">Declared Origin parameters.</param>
     /// <param name="builder">The destination builder.</param>
-    internal static void WriteTo(IReadOnlyList<string> origins, ref IndentedStringBuilder builder)
+    /// <param name="explicitHeader">Whether an empty closed header must be written.</param>
+    internal static void WriteTo(IReadOnlyList<string> origins, ref IndentedStringBuilder builder, bool explicitHeader = false)
     {
-        if (origins.Count == 0)
+        if (origins.Count == 0 && !explicitHeader)
         {
             return;
         }
@@ -70,11 +51,6 @@ internal sealed class OriginNameList : List<string>
             }
 
             builder.Append(origins[i]);
-            if (GetBound(origins, i, out _) is { } bound)
-            {
-                builder.Append(" : ");
-                builder.Append(bound);
-            }
         }
 
         builder.Append('}');
@@ -84,37 +60,15 @@ internal sealed class OriginNameList : List<string>
     {
         this.Add(name);
         this.Spans.Add(span);
-        this.bounds?.Add(default);
     }
 
-    /// <summary>Records the bound of the most recently added Origin parameter.</summary>
-    /// <param name="target">The outlived Origin name or <c>static</c>.</param>
-    /// <param name="span">The target's source span.</param>
-    internal void SetLastBound(string target, SourceSpan span)
-    {
-        if (this.bounds is null)
-        {
-            this.bounds = new(this.Count);
-            for (var i = 0; i < this.Count; i++)
-            {
-                this.bounds.Add(default);
-            }
-        }
-
-        this.bounds[^1] = (target, span);
-    }
-
-    /// <summary>Appends parsed parameters into this exposed list, keeping spans and bounds.</summary>
+    /// <summary>Appends parsed parameters into this exposed list, keeping spans.</summary>
     /// <param name="source">The parsed parameters.</param>
     internal void AppendFrom(IReadOnlyList<string> source)
     {
         for (var i = 0; i < source.Count; i++)
         {
             this.Add(source[i], source is OriginNameList located && i < located.Spans.Count ? located.Spans[i] : default);
-            if (GetBound(source, i, out var span) is { } bound)
-            {
-                this.SetLastBound(bound, span);
-            }
         }
     }
 }

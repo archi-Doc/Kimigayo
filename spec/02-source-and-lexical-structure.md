@@ -221,7 +221,7 @@ Only when closing syntactically recognized generic Type arguments or parameters 
 
 The [notation table](01-overview.md#12-conventions-and-notation) summarizes the meaning of punctuation. Expression grouping, generic/comparison boundaries and the token rules for `@` follow [precedence and associativity](13-operators-and-assignment.md#131-precedence-and-associativity).
 
-Origin lists use `{` and `}` as one delimiter pair, with the ordinary continuation rules. They create no executable scope or body baseline. `origin` and `from` are ordinary Names, not Origin keywords. Empty `{}` and old `origin ...` / `from ...` annotations are rejected; see §15.3.
+Origin braces use `{` and `}` as one delimiter pair, with ordinary continuation rules and no executable scope. Their role is fixed by position: a Type declaration header, one borrow Origin expression, or a binding-set name on a Type occurrence. Only a Type declaration header permits empty `{}`. `origin` introduces a declaration-attached relation and `outlives` is contextual within that relation; elsewhere they remain ordinary Names. `from` has no Origin role. See §15.3.
 
 ## 2.5. Names
 

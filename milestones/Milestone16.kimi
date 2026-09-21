@@ -15,7 +15,8 @@ struct Pair {left, right}
         self.first = first
         self.second = second
 
-    public func choose(self: ref/Self, useFirst?: bool) -> Selection{self.left and self.right}
+    public func choose(self: ref/Self, useFirst?: bool) -> Selection{selection}
+        origin selection.source == self.left and self.right
         if useFirst
             return .Found(self.first)
         return .Found(self.second)

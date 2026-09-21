@@ -59,6 +59,9 @@ public sealed partial class Binding
 
     internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Slot : 0;
 
+    internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
+        => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PlaceOrigin(source));
+
     private static ConstraintProof ProjectedReceiverProof(BindingSymbol implementation)
         // Until Access Effect verification supplies callee/returned-Loan summaries, no body or signature is evidence.
         => implementation.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;

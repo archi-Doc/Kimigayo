@@ -3,7 +3,7 @@ func defaultIndex() -> isize
     Console.writeLine("Default index evaluated.")
     return 0
 
-func pick<length N, T> {source}(
+func pick<length N, T>(
     values?: ref{source}/[N of T], index?: isize = defaultIndex()) -> ref{source}/T
     return values[index]@ref/T
 
@@ -13,7 +13,7 @@ specialize func pick<3, i32>(
     require index >= 0 and index < 3 else => $abort("Invalid specialized index")
     return values[2 - index]@ref/i32
 
-func forward<length N, T> {source}(
+func forward<length N, T>(
     values?: ref{source}/[N of T]) -> ref{source}/T
     // Selection must survive a dependent call; omission uses pick's default.
     return pick<N, T>(values)

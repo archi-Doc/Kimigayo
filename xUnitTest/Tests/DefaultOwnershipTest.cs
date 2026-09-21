@@ -77,7 +77,7 @@ public class DefaultOwnershipTest
     [InlineData("func f(x?: string, y?: string = \"independent\") => ()")]
     [InlineData("func f<T>(x?: T, y?: T = x)\n    T is Copy\n    ()")]
     [InlineData("func inspect(value?: ref/string) -> i32 => 1\nfunc f(x?: string, y?: i32 = inspect(x)) => ()")]
-    [InlineData("func f {a}(x?: ref{a}/string, y?: ref{a}/string = x) => ()")]
+    [InlineData("func f(x?: ref{a}/string, y?: ref{a}/string = x) => ()")]
     public void CopyAndInspectionDoNotBecomeDefaultMoveErrors(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

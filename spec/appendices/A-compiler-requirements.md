@@ -120,7 +120,7 @@ Verify fragment/selection deinit duplicates; forbidden placement, modifiers, and
 
 ## A.8. Callable and object verification
 
-Verify OwnedOrigins through raw pointees, unused Type/Origin slots, captures, and recursive payloads; test `a : static`, unresolved abstract Origins, Function Item bound arguments, and fixed callable signature Origins versus per-call binders. Reject mutable-static borrows at Owned boundaries, including after capture and across modules. Checked casts may supply only proof-covered fixed Origin bindings as static; preserve outer handle Origins and never bind per-call callable Origins. None of these checks may depend on a private body being available to a client.
+Verify OwnedOrigins through raw pointees, unused Type/Origin slots, captures, and recursive payloads; test `a outlives static`, unresolved abstract Origins, Function Item bound arguments, and fixed callable signature Origins versus per-call binders. Reject mutable-static borrows at Owned boundaries, including after capture and across modules. Checked casts may supply only proof-covered fixed Origin bindings as static; preserve outer handle Origins and never bind per-call callable Origins. None of these checks may depend on a private body being available to a client.
 
 Verify input-derived Callable results for all three receivers: per-call Origins, multiple-input meets, retained result Loans, rejection of a shared-to-exclusive upgrade, and rejection of hidden-receiver or call-local result dependencies. Common Function Type compatibility uses the same argument/result relation while retaining its separate Owned-environment restriction.
 
@@ -156,7 +156,7 @@ Verification must cover at least these boundaries; neither parsing nor optimizat
 | Duplicate names, wrong Case/arity/Type, `.Some` or `.None()` construction | Errors regardless of reachability |
 | `i8` literals `-128`, `128`, `-129`; `i32` arms `0`, `-0`, `0x00` | Fit after sign; reject the two out-of-range values; warn on the two later equal unguarded values |
 | Origin-bearing ref/uniq payload construction, acquisition, cleanup | Preserve dependencies/capabilities; never destroy borrowed referents |
-| Named/single-Origin mapping and `View<T>.Some` | Equivalent mapping; reject the enum's own Origin annotation in the Case qualifier |
+| Binding-set relations and `View<T>.Some` | Equivalent completed bindings; reject an Origin suffix directly in the Case qualifier |
 | Unconditional Copy with unconstrained T / constrained T / only ref/T payloads | Declaration error / valid derivation / no referent Copy premise |
 | Conditional Copy when T is Copy | Type remains usable for non-Copy T; Copy is available only when its condition is Proven |
 | Kimi Option/Result conditional Copy | Check both Result payloads, nesting and complete Semantics; active Case does not change capability. Verify reuse versus Move, Unknown versus Refuted, and borrow dependencies after Copy |
@@ -204,9 +204,11 @@ DeferredObligation
 
 Use Origin schemas for argument correspondence, fragment-header matching, and artifact compatibility, not overload identity. Preserve Binding Identities through alias expansion and Signature normalization. Prove role restrictions before using a projection, or retain only a legitimate obligation. Semantic metadata must not discard Origin information merely because runtime descriptors omit it.
 
-Parse each Origin brace list once, then validate its declaration, reference-argument or borrow-prefix role (§15.3.1). Preserve prefix attachment through parse/write/parse and artifact reload. Cover empty/mixed lists, trailing commas, partial named arguments, inherited slots, grouped qualifiers, old-syntax rejection and Origin-free adaptation/runtime targets.
+Parse each brace group once, then validate its closed-schema, binding-set or borrow-prefix role (§15.3.1). Preserve explicit empty headers, prefix attachment, set labels and attached relations through parse/write/parse and artifact reload. Reject removed function/accessor lists and mappings. Cover headerless single-slot discovery, typo-induced second names, nearest-scope wrong-role errors, isolated field sets, split closed headers and intermediate qualifier obligations.
 
-Retain §15.3.5's canonical contract, including independent anonymous slots for each input Type occurrence, conditional reconstructed-pair slots and fixed nested dependencies. Apply stored/specialized contract inheritance before omission. Verify anonymous versus explicit correspondence, rigid required binders, fixed `static` counterexamples, nested signature boundaries, Owned-based aggregate result defaults and absence of body-derived input conditions. Origin conditions must survive rechecking, separate compilation and cache invalidation; inactive slots must not erase inner dependencies.
+Verify equality substitution before result completion, normalized nontrivial explicit outlives relations, and deterministic fallback for result equality classes. Test tautologies, both orientations of equality, upper/lower/composite bounds, declaration-fixed result quantification, and rejection of nested callable input quantification. Composite right-hand meets must not become independent edges. Verify local initializer inference, equality-complete declarations without initializers, and no reopening from later assignments. Fields may not introduce hidden public preconditions, and Phantom Origins may not manufacture Loans.
+
+Retain §15.3.7's canonical contract, including independent anonymous slots for each input Type occurrence, conditional reconstructed-pair slots and fixed nested dependencies. Apply stored/specialized contract inheritance before omission. Verify anonymous versus explicit correspondence, rigid required binders, fixed `static` counterexamples, nested signature boundaries, Owned-based aggregate result defaults and absence of body-derived input conditions. Origin conditions must survive rechecking, separate compilation and cache invalidation; inactive slots must not erase inner dependencies.
 
 Lower and emit only after Origin/Loan obligations are verified. Test positive execution and rejected escapes/conflicting mutation with omitted aggregate Origins, including nested occurrences and multiple inputs. Origins add neither runtime payload fields nor machine-code copies solely for different Origin bindings.
 

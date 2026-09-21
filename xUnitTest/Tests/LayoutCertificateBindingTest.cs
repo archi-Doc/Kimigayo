@@ -10,10 +10,10 @@ namespace XunitTest;
 public class LayoutCertificateBindingTest
 {
     [Theory]
-    [InlineData("#Layout(\"bad\")\nstruct S\n    Self is Marker")]
-    [InlineData("#Layout(\"C\")\n#Layout(\"C\")\nstruct S\n    Self is Marker")]
-    [InlineData("#Layout(\"C\")\nstruct S\n    Self is Marker\n#Layout(\"Kimigayo\")\nstruct S")]
-    [InlineData("#Layout(\"C\")\nstruct S\n    Self is Marker\n    var a: i32\nstruct S\n    var b: i32")]
+    [InlineData("#Layout(\"bad\")\nstruct S {}\n    Self is Marker")]
+    [InlineData("#Layout(\"C\")\n#Layout(\"C\")\nstruct S {}\n    Self is Marker")]
+    [InlineData("#Layout(\"C\")\nstruct S {}\n    Self is Marker\n#Layout(\"Kimigayo\")\nstruct S {}")]
+    [InlineData("#Layout(\"C\")\nstruct S {}\n    Self is Marker\n    var a: i32\nstruct S {}\n    var b: i32")]
     public void InvalidLayoutCannotCertifyConformance(string declaration)
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\n" + declaration);
@@ -35,9 +35,9 @@ public class LayoutCertificateBindingTest
     }
 
     [Theory]
-    [InlineData("contract Marker\n    func act(self: ref/Self)\nstruct S\n    Self is Marker\n    #Layout(\"C\")\n    public func act(self: ref/Self) => ()")]
-    [InlineData("contract Marker\n    property value: i32 has get\nstruct S\n    Self is Marker\n    #Layout(\"C\")\n    public var value: i32 = 0")]
-    [InlineData("#Layout(\"C\")\ncontract Marker\nstruct S\n    Self is Marker")]
+    [InlineData("contract Marker\n    func act(self: ref/Self)\nstruct S {}\n    Self is Marker\n    #Layout(\"C\")\n    public func act(self: ref/Self) => ()")]
+    [InlineData("contract Marker\n    property value: i32 has get\nstruct S {}\n    Self is Marker\n    #Layout(\"C\")\n    public var value: i32 = 0")]
+    [InlineData("#Layout(\"C\")\ncontract Marker\nstruct S {}\n    Self is Marker")]
     public void WrongLayoutTargetsCannotSupplyWitnesses(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -52,8 +52,8 @@ public class LayoutCertificateBindingTest
     [InlineData(true)]
     public void InvalidLayoutBaseInvalidatesDerivedConformance(bool reverseOrder)
     {
-        const string invalidBase = "#Layout(\"bad\")\nopen struct Base\n";
-        const string derived = "struct S: Base\n    Self is Marker\n";
+        const string invalidBase = "#Layout(\"bad\")\nopen struct Base {}\n";
+        const string derived = "struct S {}: Base\n    Self is Marker\n";
         var c = MinimalEmissionTest.Analyze("contract Marker\n" + (reverseOrder ? derived + invalidBase : invalidBase + derived));
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
@@ -63,11 +63,11 @@ public class LayoutCertificateBindingTest
     [Fact]
     public void RemovingConflictRestoresConformanceAfterRebind()
     {
-        var c = MinimalEmissionTest.Analyze("contract Marker\n#Layout(\"C\")\nstruct S\n    Self is Marker");
+        var c = MinimalEmissionTest.Analyze("contract Marker\n#Layout(\"C\")\nstruct S {}\n    Self is Marker");
         Assert.True(c.Binding.Result.IsComplete);
         var definition = Definition(c);
         Assert.True(definition.IsVerified);
-        c.Kotonoha.AddSource(new SourceDocument("conflict.kimi", "#Layout(\"Kimigayo\")\nstruct S"));
+        c.Kotonoha.AddSource(new SourceDocument("conflict.kimi", "#Layout(\"Kimigayo\")\nstruct S {}"));
         Assert.False(c.Bind().IsComplete);
         Assert.False(definition.IsVerified);
         Assert.False(Definition(c).IsVerified);

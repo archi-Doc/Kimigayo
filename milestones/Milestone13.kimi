@@ -6,10 +6,12 @@ struct Sample
 struct Cursor<T> {source}
     Self is Iterator
     associate Iterator.Element is ref{source}/T
-    let values: Slice<T>{source}
+    let values: Slice<T>{slice}
+        origin slice.source == source
     var position: isize = 0
 
-    public init(values?: Slice<T>{source})
+    public init(values?: Slice<T>)
+        origin values.source == source
         self.values = values
 
     public func next(self: uniq/Self) -> Option<ref{source}/T>

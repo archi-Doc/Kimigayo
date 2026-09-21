@@ -20,7 +20,7 @@ public class NestedTypeParseTest
     [InlineData("ref{outer}/ref/ref/T")]
     [InlineData("ref{outer}/(ref{inner}/T)")]
     [InlineData("uniq{c}/(ref{b}/(ref{a}/T))")]
-    [InlineData("ref{outer}/(View<T>{source => inner})")]
+    [InlineData("ref{outer}/(View<T>{view})")]
     [InlineData("ref{outer}/(ref{inner}/A.B<List<T>>)")]
     [InlineData("List<ref{outer}/(ref{inner}/i32)>")]
     [InlineData("s/ref/T")]

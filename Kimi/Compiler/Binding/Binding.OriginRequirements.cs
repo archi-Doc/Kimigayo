@@ -32,6 +32,15 @@ public sealed partial class Binding
                 continue;
             }
 
+            if (ReferenceEquals(node, this.Library.Slice.Declaration) && schema.Origins.Count == 1 && schema.GenericSlots.Count == 1)
+            {
+                // The validated intrinsic has compiler-managed shared storage, not a
+                // user Phantom Origin; preserve its published dependency metadata.
+                schema.Origins[0].Variance = OriginVariance.Covariant;
+                schema.Origins[0].LoanRequirement = LoanRequirement.Ref;
+                schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
+            }
+
             if (!this.originRequirementNodes.TryGetValue(node, out var work))
             {
                 this.originRequirementNodes.Add(node, work = new(node, schema));
@@ -52,25 +61,56 @@ public sealed partial class Binding
             this.VisitRequirementTypes(this.activeOriginRequirements[i], collectEdges: true);
         }
 
-        // Only changed summaries wake their consumers; long declaration chains do not rescan the tree.
-        while (this.originRequirementQueue.TryDequeue(out var work))
+        // First discover structural variance. Then close unproven phantom positions as
+        // invariant and propagate that fact through all consumers using the same queue.
+        for (var phase = 0; phase < 2; phase++)
         {
-            work.Queued = false;
-            if (!this.VisitRequirementTypes(work, collectEdges: false))
+            if (phase == 1)
             {
-                continue;
+                foreach (var item in this.activeOriginRequirements)
+                {
+                    for (var i = 0; i < item.Schema.Origins.Count; i++)
+                    {
+                        var origin = item.Schema.Origins[i];
+                        if (origin.Variance == OriginVariance.Unused)
+                        {
+                            origin.Variance = OriginVariance.Invariant;
+                        }
+                    }
+
+                    for (var i = 0; i < item.Schema.GenericSlots.Count; i++)
+                    {
+                        var slot = item.Schema.GenericSlots[i];
+                        if (slot.OriginVariance == OriginVariance.Unused)
+                        {
+                            slot.OriginVariance = OriginVariance.Invariant;
+                        }
+                    }
+
+                    item.Queued = true;
+                    this.originRequirementQueue.Enqueue(item);
+                }
             }
 
-            for (var i = 0; i < work.Dependents.Count; i++)
+            while (this.originRequirementQueue.TryDequeue(out var work))
             {
-                var dependent = work.Dependents[i];
-                if (dependent.Queued)
+                work.Queued = false;
+                if (!this.VisitRequirementTypes(work, collectEdges: false))
                 {
                     continue;
                 }
 
-                dependent.Queued = true;
-                this.originRequirementQueue.Enqueue(dependent);
+                for (var i = 0; i < work.Dependents.Count; i++)
+                {
+                    var dependent = work.Dependents[i];
+                    if (dependent.Queued)
+                    {
+                        continue;
+                    }
+
+                    dependent.Queued = true;
+                    this.originRequirementQueue.Enqueue(dependent);
+                }
             }
         }
     }

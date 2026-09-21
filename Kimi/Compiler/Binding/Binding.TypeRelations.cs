@@ -16,7 +16,11 @@ public sealed partial class Binding
     /// <param name="actual">The supplied complete type.</param>
     /// <param name="expected">The required complete type.</param>
     /// <returns>Whether the implemented rules prove the relation.</returns>
-    public static bool FitsType(BoundType actual, BoundType expected)
+    public static bool FitsType(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null);
+
+    internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
+
+    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false)
     {
         if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))
         {
@@ -33,7 +37,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null || !OriginOutlives(actual.Origin, expected.Origin)))
+        if (!ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
+            !OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))
         {
             return false;
         }
@@ -48,7 +53,8 @@ public sealed partial class Binding
             }
 
             var variance = actual.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
-            if (variance == OriginVariance.Covariant ? !OriginOutlives(a, b) : variance == OriginVariance.Contravariant ? !OriginOutlives(b, a) : true)
+            if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused ?
+                !OriginFits(a, b) || !OriginFits(b, a) : variance == OriginVariance.Covariant ? !OriginFits(a, b) : !OriginFits(b, a))
             {
                 return false;
             }
@@ -61,7 +67,8 @@ public sealed partial class Binding
             if (actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema)
             {
                 var variance = schema.GenericSlots[i].OriginVariance;
-                if (variance == OriginVariance.Covariant ? !FitsType(a, b) : variance == OriginVariance.Contravariant ? !FitsType(b, a) : !ReferenceEquals(a, b))
+                if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused ?
+                    !FitsTypeCore(a, b, binding, use, true) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use) : !FitsTypeCore(b, a, binding, use))
                 {
                     return false;
                 }
@@ -69,32 +76,34 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe)
+            if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe)
             {
-                if (!ReferenceEquals(a, b))
+                if (!FitsTypeCore(a, b, binding, use, true))
                 {
                     return false;
                 }
             }
             else if (actual.Kind == BoundTypeKind.Function && i == 0)
             {
-                if (!FitsType(b, a))
+                if (!FitsTypeCore(b, a, binding, use))
                 {
                     return false;
                 }
             }
-            else if (!FitsType(a, b))
+            else if (!FitsTypeCore(a, b, binding, use))
             {
                 return false;
             }
         }
 
         return true;
+
+        bool OriginFits(BoundOrigin a, BoundOrigin b) => binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
     }
 
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
     {
-        if (FitsType(actual, expected))
+        if (this.FitsTypeAt(actual, expected, use))
         {
             return true;
         }

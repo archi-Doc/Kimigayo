@@ -13,8 +13,7 @@ internal sealed partial class BodyLowering
     {
         var formal = target.Parameters[parameter].Type.BoundType;
         return ReferenceTypes.IsString(formal) && ReferenceTypes.IsString(acquisition.ParameterType) &&
-            formal!.Origin is { Kind: OriginKind.Input } origin && ReferenceEquals(origin.Binder, target) && origin.Slot == parameter &&
-            (uint)parameter < (uint)call.InputOrigins.Length && ReferenceEquals(acquisition.ParameterType!.Origin, call.InputOrigins[parameter]);
+            ReferenceTypes.CallTypeMatches(formal, acquisition.ParameterType, call);
     }
 
     private bool PrepareReferences(OwnershipBody body, out string? failure)

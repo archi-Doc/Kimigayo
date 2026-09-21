@@ -406,8 +406,10 @@ public sealed class AsKoto : BinaryKoto
 }
 
 /// <summary>Represents an <c>is</c> expression.</summary>
-public sealed class IsKoto : BinaryKoto
+public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
 {
+    List<OriginRelationKoto>? IOriginClauseOwner.OriginClauses { get; set; }
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Is;
 
@@ -445,6 +447,7 @@ public sealed class IsKoto : BinaryKoto
         }
 
         base.WriteTo(ref builder);
+        OriginClauses.Write(this, ref builder);
     }
 }
 

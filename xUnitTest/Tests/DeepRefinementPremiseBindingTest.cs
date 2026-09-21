@@ -32,11 +32,11 @@ public class DeepRefinementPremiseBindingTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source\n" + Source(32, diamond, "Source is Origin")));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source {}\n" + Source(32, diamond, "Source is Origin")));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single();
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
-        c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
+        c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source {}\n    Self is Origin"));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
     }
@@ -44,7 +44,7 @@ public class DeepRefinementPremiseBindingTest
     [Fact]
     public void FlattenedTraversalRetainsClosedObligationCycleGuards()
     {
-        var c = MinimalEmissionTest.Analyze("public struct Source\n    Self is C32\n" + Source(32, true, "Source is C32"));
+        var c = MinimalEmissionTest.Analyze("public struct Source {}\n    Self is C32\n" + Source(32, true, "Source is C32"));
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
     }
@@ -70,7 +70,7 @@ public class DeepRefinementPremiseBindingTest
     [Fact]
     public void WarmDeepConformanceVerificationAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Source(16, true) + "\npublic struct Target\n    Self is Copy\n    Self is C16");
+        var c = MinimalEmissionTest.Analyze(Source(16, true) + "\npublic struct Target {}\n    Self is Copy\n    Self is C16");
         for (var i = 0; i < 20; i++)
         {
             Assert.True(c.Bind().IsComplete);

@@ -113,6 +113,17 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets declared Origin names without allocating empty storage.</summary>
     public IReadOnlyList<string> OriginNames => this.OriginList ?? (IReadOnlyList<string>)Array.Empty<string>();
 
+    internal void SetImplicitOrigins(List<string> names)
+    {
+        if (!this.HasOriginHeader)
+        {
+            this.OriginList = names;
+        }
+    }
+
+    /// <summary>Gets a value indicating whether this Type explicitly closes its own Origin schema, including with an empty header.</summary>
+    public bool HasOriginHeader { get; private set; }
+
     internal bool HasIncompatibleBindingHeader { get; private set; }
 
     private DeclarationContainerKoto? nextArity;
@@ -208,6 +219,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         this.HasIncompatibleBindingHeader |= this.TokenKind != kind;
         if (this.hasBindingHeader)
         {
+            this.HasIncompatibleBindingHeader |= this is StructKoto && (!this.HasOriginHeader || origins is null);
             // Enums and contracts are closed declarations, even when repeated headers agree.
             this.HasIncompatibleBindingHeader |= this is EnumKoto or ContractKoto;
             var previous = this.Modifier.ExtractAccessibilityModifiers() == ModifierKind.NoModifier ? this.Modifier | ModifierKind.Private : this.Modifier;
@@ -226,6 +238,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         this.hasBindingHeader = true;
+        this.HasOriginHeader = origins is not null;
         // Synthesized path groups have no header and acquire their first explicit modifiers.
         this.Modifier = modifier;
         if (this.SupportsGenerics && genericArguments is not null && this.genericArguments is not { Count: > 0 })
@@ -302,7 +315,10 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             builder.Append('>');
         }
 
-        OriginNameList.WriteTo(this.OriginNames, ref builder);
+        if (this.HasOriginHeader)
+        {
+            OriginNameList.WriteTo(this.OriginNames, ref builder, true);
+        }
 
         if (this.bases is { Length: > 0 } bases)
         {
@@ -339,6 +355,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     public void Clear()
     {
         this.hasBindingHeader = false;
+        this.HasOriginHeader = false;
+        ((IOriginClauseOwner)this).OriginClauses?.Clear();
         this.fragmentOrdinal = 0;
         this.AttributeChain = null;
         this.HasIncompatibleBindingHeader = false;
@@ -379,6 +397,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             containerDeclared = true;
         }
 
+        OriginClauses.Write(this, ref builder, false);
         if (this.typeConstraints is { Count: > 0 } typeConstraints)
         {
             foreach (var constraint in typeConstraints)
@@ -506,7 +525,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         this.WriteTo(ref builder);
         var containers = this.NestedContainers;
-        if (this.typeConstraints is not { Count: > 0 } && this.kotoList is not { Count: > 0 } && containers.Count == 0)
+        if (this.typeConstraints is not { Count: > 0 } && this.kotoList is not { Count: > 0 } && containers.Count == 0 && OriginClauses.Get(this).Count == 0)
         {
             return;
         }
@@ -514,6 +533,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         builder.AppendLine();
         builder.IncrementIndent();
         var hasPrevious = false;
+        foreach (var relation in OriginClauses.Get(this))
+        {
+            WriteSeparator(ref builder, ref hasPrevious);
+            relation.WriteTo(ref builder);
+        }
+
         if (this.typeConstraints is not null)
         {
             foreach (var constraint in this.typeConstraints)
@@ -574,7 +599,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         ConsumeBlockStart(ref reader);
         var declarationOrder = DeclarationOrder.None;
-        var acceptsTypeConstraints = parseTypeConstraints && this.typeConstraints is not { Count: > 0 };
+        var acceptsTypeConstraints = parseTypeConstraints && this.typeConstraints is not { Count: > 0 } && OriginClauses.Get(this).Count == 0;
         while (TryBeginDeclaration(ref reader))
         {
             if (reader.IsExcluded)
@@ -594,6 +619,19 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             {
                 var body = Parser.ParseDeclarationDirectiveBody(ref reader, this);
                 this.AddLast(body);
+                continue;
+            }
+
+            if (Parser.IsOriginRelationStart(ref reader))
+            {
+                var relation = Parser.ParseOriginRelation(ref reader);
+                if (!acceptsTypeConstraints)
+                {
+                    relation.AddDiagnostic(DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
+                }
+
+                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
+                OriginClauses.Add(this, relation);
                 continue;
             }
 
@@ -812,6 +850,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 if (associated is not null)
                 {
                     associated.IsAssociatedConstraint = true;
+                    Parser.ParseAttachedOriginBlock(ref reader, associated);
                     reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
                     if (this is ContractKoto)
                     {

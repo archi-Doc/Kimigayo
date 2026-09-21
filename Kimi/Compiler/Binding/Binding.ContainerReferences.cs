@@ -126,6 +126,11 @@ public sealed partial class Binding
 
     private BoundType? BindContainerQualifier(Koto syntax, BindingSymbol symbol, BindingScope scope, TypeBindingContext context)
     {
+        if (syntax.BoundType is { } known)
+        {
+            return known;
+        }
+
         if (syntax is ParenthesizedTypeKoto grouped)
         {
             return Complete(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));

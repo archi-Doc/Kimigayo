@@ -41,12 +41,12 @@ public class OriginSyntaxRevisionTest
 
     [Theory]
     [InlineData("func identity(value?: View<i32>) -> View<i32> => value", false)]
-    [InlineData("func identity(value?: View<i32>) -> View<i32>{value.source} => value", true)]
-    [InlineData("func identity {a}(value?: View<i32>{a}) -> View<i32>{a} => value", true)]
+    [InlineData("func identity(value?: View<i32>) -> View<i32>{r}\n    origin r.source == value.source\n    return value", true)]
+    [InlineData("func identity(value?: View<i32>{v}) -> View<i32>{r}\n    origin r.source == v.source\n    return value", true)]
     [InlineData("func inspect(callback?: (View<i32>) -> ()) => ()", false)]
-    [InlineData("func inspect {a}(callback?: (View<i32>{a}) -> ()) => ()", true)]
+    [InlineData("func inspect(callback?: (View<i32>{c}) -> (), value?: View<i32>)\n    origin c.source == value.source\n    ()", true)]
     [InlineData("func inspect(value?: ref/ref/i32) => ()", false)]
-    [InlineData("func inspect {a}(value?: ref/ref{a}/i32) => ()", true)]
+    [InlineData("func inspect(value?: ref/ref{a}/i32) => ()", true)]
     [InlineData("func empty<T>(value?: T) -> View<i32> => $abort(\"unreachable\")", false)]
     [InlineData("func empty<T>(value?: T) -> View<i32>\n    T is Owned\n    $abort(\"unreachable\")", true)]
     [InlineData("func empty(value?: i32) -> View<i32> => $abort(\"unreachable\")", true)]
@@ -69,10 +69,10 @@ public class OriginSyntaxRevisionTest
         => Assert.NotEmpty(ParseTestHelper.Parse(View + declaration).DiagnosticCollection.GetArray());
 
     [Theory]
-    [InlineData("struct S\n    init {a,}(value: ref{a,}/i32) => ()")]
-    [InlineData("struct S\n    computed item: i32\n        get {a}(self: ref{a}/Self) -> i32 => 1")]
-    [InlineData("struct Pair {a, b}\n    let first: ref{a}/i32\n    let second: ref{b}/i32\nfunc f {x}(value?: Pair{a => x,}) => ()")]
-    [InlineData("struct Outer {a}\n    public struct Inner {b}\nfunc f(value?: (Outer{static}).Inner{static}) => ()")]
+    [InlineData("struct S\n    init(value: ref{a,}/i32) => ()")]
+    [InlineData("struct S\n    computed item: i32\n        get(self: ref{a}/Self) -> i32 => 1")]
+    [InlineData("struct Pair {a, b}\n    let first: ref{a}/i32\n    let second: ref{b}/i32\nfunc f(value?: Pair, source?: ref/i32)\n    origin value.a == source\n    ()")]
+    [InlineData("struct Outer {a}\n    public struct Inner {b}\nfunc f(value?: (Outer{outer}).Inner{inner})\n    origin outer.a == static\n    origin inner.b == static\n    ()")]
     [InlineData("func f<s/T, U>(first?: s/T, second?: s/U)\n    s is ref\n    ()\nlet value: i32 = 1\nf(value@ref, value@ref)")]
     [InlineData("func f<s/T, U>(first?: s/T, second?: s/U)\n    s is owner\n    ()\nf<i32, i32>(1, 2)")]
     [InlineData("func f<s/T, U>(first?: s/T, second?: s/U) -> s/U\n    s is ref\n    return second")]
@@ -101,23 +101,24 @@ public class OriginSyntaxRevisionTest
     }
 
     [Theory]
-    [InlineData("", "{a}", "{a}", true)]
-    [InlineData("{a}", "", "", true)]
-    [InlineData("", "", "{static}", false)]
-    [InlineData("{static}", "", "", true)]
-    public void ContractComparisonUsesQuantificationNotSpelling(string required, string declarations, string implementation, bool valid)
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public void ContractComparisonUsesQuantificationNotSpelling(bool requiredStatic, bool implementationStatic, bool valid)
     {
-        // Required explicit names are declared only when they are not fixed static.
-        var requiredDeclarations = required == "{a}" ? " {a}" : string.Empty;
-        var source = View + $"contract C\n    func inspect{requiredDeclarations}(self, value?: View<i32>{required}) -> ()\nstruct S\n    Self is C\n    public func inspect {declarations}(self, value?: View<i32>{implementation}) -> () => ()";
+        var required = requiredStatic ? "\n        origin value.source == static" : string.Empty;
+        var implementation = implementationStatic ? "\n        origin value.source == static" : string.Empty;
+        var source = View + $"contract C\n    func inspect(self, value?: View<i32>) -> (){required}\nstruct S\n    Self is C\n    public func inspect(self, value?: View<i32>) -> (){implementation}\n        ()";
         var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Kotonoha.HasSourceErrors);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
 
     [Fact]
     public void SpecializationInheritsTheOriginalResultOrigin()
     {
-        var c = MinimalEmissionTest.Analyze(View + "group G\n    func identity<T>(value?: View<T>) -> View<T>{value.source} => value\n    specialize func identity<i32>(value: View<i32>) -> View<i32> => value");
+        var c = MinimalEmissionTest.Analyze(View + "group G\n    func identity<T>(value?: View<T>) -> View<T>{result}\n        origin result.source == value.source\n        return value\n    specialize func identity<i32>(value: View<i32>) -> View<i32> => value");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var functions = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G")).OfType<FunctionKoto>().ToArray();
         Assert.Equal(Origins(functions[0].Parameters[0].Type.BoundType!).Select(x => x.Slot), Origins(functions[1].Parameters[0].Type.BoundType!).Select(x => x.Slot));
@@ -125,7 +126,7 @@ public class OriginSyntaxRevisionTest
     }
 
     [Theory]
-    [InlineData("func inspect(value?: View<i32>) => ()\nlet f: (View<i32>{static}) -> () = inspect", true)]
+    [InlineData("func inspect(value?: View<i32>) => ()\nlet f: (View<i32>{v}) -> () = inspect\n    origin v.source == static", true)]
     [InlineData("func inspect(value?: ref{static}/i32) => ()\nlet f: (ref/i32) -> () = inspect", false)]
     [InlineData("func inspect(value?: ref/i32) => ()\nlet f: (ref{static}/i32) -> () = inspect", true)]
     [InlineData("func inspect() -> i32 => 1\nlet f: (i32) -> i32 = inspect", false)]

@@ -58,6 +58,7 @@ public sealed class AliasKoto : DeclarationKoto
         if (this.TargetSyntax is { } target)
         {
             target.WriteTo(ref builder);
+            OriginClauses.Write(this, ref builder);
             return;
         }
 
@@ -70,6 +71,8 @@ public sealed class AliasKoto : DeclarationKoto
 
             builder.Append(this.QualifiedName[i]);
         }
+
+        OriginClauses.Write(this, ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

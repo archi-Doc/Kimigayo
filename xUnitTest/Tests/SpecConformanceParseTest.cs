@@ -24,8 +24,8 @@ public class SpecConformanceParseTest
     [InlineData("ref{self.source}/T")]
     [InlineData("ref{x and y.source}/T")]
     [InlineData("ref{static}/T")]
-    [InlineData("Pair<A, B>{left => a, right => b.source and c}")]
-    [InlineData("View<T>{source => s}")]
+    [InlineData("Pair<A, B>{pair}")]
+    [InlineData("View<T>{view}")]
     [InlineData("has")]
     public void TypeSyntaxWorksInEveryDeclarationPosition(string type)
     {
@@ -45,7 +45,7 @@ public class SpecConformanceParseTest
     public void ParsesFunctionOriginsAndSeparatesConstraintsFromExecutableBody()
     {
         var parsed = Parse("""
-            func unwrap<s/T> {source, owner}(value?: s{source}/T)
+            func unwrap<s/T>(value?: s{source}/T)
                 -> ref{value and owner}/T
                 s is ref or obj
                 T is Comparable and (Equatable or Hashable)
@@ -55,7 +55,7 @@ public class SpecConformanceParseTest
         AssertValid(parsed);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
         Assert.Equal("unwrap", function.Name);
-        Assert.Equal(["source", "owner"], function.Origins);
+        Assert.Empty(function.Origins); // Binding, not parsing, discovers implicit scalar names.
         Assert.Equal(2, function.TypeConstraints.Count);
         Assert.IsType<ReturnKoto>(Assert.Single(function.Body!.Items));
         Assert.All(function.TypeConstraints, constraint => Assert.Same(function, constraint.Parent));

@@ -82,6 +82,7 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
+            var inference = this.BeginOriginInference(use, function);
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 if (function.Parameters[i].Type.BoundType is not { } parameter)
@@ -92,18 +93,30 @@ public sealed partial class Binding
                 // Only the implementation's per-call binders are inferred; the
                 // required signature's quantifiers and fixed Origins remain rigid.
                 this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
+                this.CollectOriginInference(parameter, parameters.Components[i], inference);
+            }
+
+            if (symbol.Type is { } produced)
+            {
+                this.CollectOriginInference(produced, required.Components[1], inference, result: true);
+            }
+
+            if (!this.SolveOriginInference(inference, origins, inputs, use))
+            {
+                return Fail(use, BindingFailure.TypeMismatch);
             }
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = Substitute(function.Parameters[i].Type.BoundType!);
-                if (HasUnsubstitutedOrigin(parameter, function) || !FitsType(parameters.Components[i], parameter))
+                if (HasUnsubstitutedOrigin(parameter, function) || !this.FitsTypeAt(parameters.Components[i], parameter, use))
                 {
                     return Fail(use, BindingFailure.TypeMismatch);
                 }
             }
 
-            if (symbol.Type is not { } result || HasUnsubstitutedOrigin(result = Substitute(result), function) || !FitsType(result, required.Components[1]))
+            if (!this.CheckCallOriginRelations(function, origins, inputs, use, null) ||
+                symbol.Type is not { } result || HasUnsubstitutedOrigin(result = Substitute(result), function) || !this.FitsTypeAt(result, required.Components[1], use))
             {
                 return Fail(use, BindingFailure.TypeMismatch);
             }

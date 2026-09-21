@@ -10,21 +10,17 @@ namespace XunitTest;
 public class OriginFragmentBindingTest
 {
     [Theory]
-    [InlineData("a, b", -1, -1)]
-    [InlineData("a : static, b", -2, -1)]
-    [InlineData("a, b : a", -1, 0)]
-    [InlineData("a : b, b", 1, -1)]
-    [InlineData("a : a, b", 0, -1)]
-    [InlineData("a : b, b : a", 1, 0)]
-    public void MatchingFragmentsResolveToSharedSlotsAcrossSources(string origins, int firstTarget, int secondTarget)
+    [InlineData("")]
+    [InlineData("a")]
+    [InlineData("a, b")]
+    public void ClosedFragmentsShareSchemaAcrossSourcesAndReload(string origins)
     {
         foreach (var reverse in new[] { false, true })
         {
             var c = Create();
-            AddFragments(c, $"struct S<a> {{{origins}}}", $"struct S<a> {{{origins}}}", reverse);
+            AddFragments(c, $"struct S {{{origins}}}", $"struct S {{{origins}}}", reverse);
             Verify(c);
             Verify(Reload(c));
-
             var builder = default(IndentedStringBuilder);
             try
             {
@@ -43,113 +39,73 @@ public class OriginFragmentBindingTest
         {
             for (var pass = 0; pass < 2; pass++)
             {
-                var bounded = firstTarget != -1 || secondTarget != -1;
-                Assert.Equal(!bounded, c.Bind().IsComplete);
-                Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Duplicate);
-                Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidOrigin);
+                Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
                 var declaration = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
+                Assert.True(declaration.HasOriginHeader);
                 Assert.False(declaration.HasIncompatibleBindingHeader);
-                Assert.Equal(bounded ? BindingFailure.Unsupported : BindingFailure.None, declaration.BindingFailure);
-                var schema = declaration.BoundSymbol!.Schema!;
-                Assert.Equal(2, schema.Origins.Count);
-                CheckBound(0, firstTarget);
-                CheckBound(1, secondTarget);
-
-                void CheckBound(int slot, int target)
-                {
-                    Assert.Same(declaration, schema.Origins[slot].Origin.Binder);
-                    Assert.Equal(slot, schema.Origins[slot].Origin.Slot);
-                    Assert.Same(target == -1 ? null : target == -2 ? BoundOrigin.Static : schema.Origins[target].Origin, schema.Origins[slot].Bound);
-                }
+                Assert.Equal(origins.Length == 0 ? 0 : origins.Split(',').Length, declaration.BoundSymbol!.Schema!.Origins.Count);
+                Assert.All(declaration.BoundSymbol.Schema.Origins, x => Assert.Same(declaration, x.Origin.Binder));
             }
         }
     }
 
     [Theory]
-    [InlineData("a, b : a", "a, b")]
-    [InlineData("a, b : a", "a, b : static")]
-    [InlineData("a, b : a", "a, b : b")]
-    [InlineData("a : b, b : a", "a : a, b : b")]
-    [InlineData("a : static, b", "a, b : static")]
-    [InlineData("a, b", "b, a")]
-    [InlineData("a, b", "a, c")]
-    [InlineData("a, b", "a")]
-    public void IncompatibleOriginHeadersAreRejectedInEitherOrder(string first, string second)
+    [InlineData("struct S {a, b}", "struct S {b, a}")]
+    [InlineData("struct S {a, b}", "struct S {a, c}")]
+    [InlineData("struct S {a, b}", "struct S {a}")]
+    [InlineData("struct S {}", "struct S {a}")]
+    [InlineData("struct S", "struct S {}")]
+    [InlineData("struct S", "struct S")]
+    public void IncompatibleOrOpenFragmentsAreRejectedInEitherOrder(string first, string second)
     {
         foreach (var reverse in new[] { false, true })
         {
             var c = Create();
-            AddFragments(c, $"struct S {{{first}}}", $"struct S {{{second}}}", reverse);
-            Verify(c);
-            Verify(Reload(c));
-        }
-
-        static void Verify(Compilation c)
-        {
+            AddFragments(c, first, second, reverse);
             Assert.False(c.Bind().IsComplete);
-            var declaration = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-            Assert.True(declaration.HasIncompatibleBindingHeader);
-            Assert.Equal(BindingFailure.Duplicate, declaration.BindingFailure);
+            Assert.Equal(BindingFailure.Duplicate, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").BindingFailure);
+            Assert.False(Reload(c).Bind().IsComplete);
         }
     }
 
     [Theory]
-    [InlineData("a : missing", false)]
-    [InlineData("a : b", false)]
-    [InlineData("a, a", true)]
-    public void MatchingInvalidHeadersNeverBecomeValidThroughMerging(string origins, bool duplicate)
+    [InlineData("a : static")]
+    [InlineData("a : b, b")]
+    [InlineData("static")]
+    [InlineData("a.source")]
+    public void HeaderBoundsAndExpressionsAreRejected(string header)
+        => Assert.NotEmpty(ParseTestHelper.Parse($"struct S {{{header}}}").DiagnosticCollection.GetArray());
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OriginRelationsHaveOneSharedDefiningRegion(bool reverse)
     {
         var c = Create();
-        AddFragments(c, $"struct S {{{origins}}}", $"struct S {{{origins}}}", false);
-        Verify(c);
-        Verify(Reload(c));
-
-        void Verify(Compilation c)
-        {
-            Assert.False(c.Bind().IsComplete);
-            var declaration = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-            Assert.Equal(duplicate ? BindingFailure.Duplicate : BindingFailure.InvalidOrigin, declaration.BindingFailure);
-            Assert.All(declaration.BoundSymbol!.Schema!.Origins, x => Assert.Null(x.Bound));
-        }
+        AddFragments(c, "struct S {a, b}\n    origin a outlives b", "struct S {a, b}", reverse);
+        Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
+        Assert.True(Reload(c).Bind().IsComplete);
+        c.Kotonoha.AddSource(new SourceDocument("third.kimi", "struct S {a, b}\n    origin a outlives b"));
+        Assert.True(c.Kotonoha.HasSourceErrors);
     }
 
     [Fact]
-    public void SameSpelledOriginsOnDifferentTypeIdentitiesRemainDistinct()
+    public void SameSpelledOriginsOnDifferentTypesRemainDistinct()
     {
         var c = Create();
-        AddFragments(c, "struct S {a, b : a}", "struct S<T> {a, b : a}", false);
-        Assert.False(c.Bind().IsComplete);
+        AddFragments(c, "struct S {a, b}", "struct S<T> {a, b}", false);
+        Assert.True(c.Bind().IsComplete);
         var declarations = c.Kotonoha.RootKoto.NestedContainers.Where(x => x.Name == "S").ToArray();
         Assert.Equal(2, declarations.Length);
-        var left = declarations[0].BoundSymbol!.Schema!;
-        var right = declarations[1].BoundSymbol!.Schema!;
-        Assert.Same(left.Origins[0].Origin, left.Origins[1].Bound);
-        Assert.Same(right.Origins[0].Origin, right.Origins[1].Bound);
-        Assert.NotSame(left.Origins[1].Bound, right.Origins[1].Bound);
+        Assert.NotSame(declarations[0].BoundSymbol!.Schema!.Origins[0].Origin, declarations[1].BoundSymbol!.Schema!.Origins[0].Origin);
     }
 
     [Fact]
-    public void AddingABoundedFragmentInvalidatesTheUnboundedDeclaration()
+    public void WarmFragmentBindingAllocatesNothing()
     {
         var c = Create();
-        c.Kotonoha.AddSource(new SourceDocument("first.kimi", "struct S {a, b}"));
+        AddFragments(c, "struct S {a, b}\n    origin a outlives b", "struct S {a, b}", false);
         Assert.True(c.Bind().IsComplete);
-        c.Kotonoha.AddSource(new SourceDocument("second.kimi", "struct S {a, b : a}"));
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.Duplicate, Assert.Single(c.Kotonoha.RootKoto.NestedContainers).BindingFailure);
-        Assert.False(Reload(c).Bind().IsComplete);
-    }
-
-    [Fact]
-    public void WarmUnboundedFragmentBindingAllocatesNothing()
-    {
-        var c = Create();
-        AddFragments(c, "struct S {a, b}", "struct S {a, b}", false);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -161,9 +117,8 @@ public class OriginFragmentBindingTest
 
     private static void AddFragments(Compilation c, string first, string second, bool reverse)
     {
-        c.Kotonoha.AddSource(new SourceDocument("types.kimi", "group Left\n    public struct a\n    public struct b\ngroup Right\n    public struct a\n    public struct b"));
-        var left = new SourceDocument("left.kimi", "alias Left\n" + first);
-        var right = new SourceDocument("right.kimi", "alias Right\n" + second);
+        var left = new SourceDocument("left.kimi", first);
+        var right = new SourceDocument("right.kimi", second);
         c.Kotonoha.AddSource(reverse ? right : left);
         c.Kotonoha.AddSource(reverse ? left : right);
         Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());

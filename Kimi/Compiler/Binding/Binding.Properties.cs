@@ -123,6 +123,7 @@ public sealed partial class Binding
         }
 
         var scope = this.scopes[syntax!];
+        this.BeginOriginDeclaration(syntax!, scope);
         if (syntax!.ReceiverType is { } receiver)
         {
             accessor.Receiver = this.BindType(receiver, scope);
@@ -176,6 +177,21 @@ public sealed partial class Binding
 
         accessor.Result = syntax!.ReturnType is { } result ? this.BindType(result, scope) : accessor.Kind == PropertyAccessorKind.Get ? property.Type : BoundType.Unit;
         accessor.SignatureSymbol!.Type = accessor.Result;
+        this.CompleteOriginDeclaration(this.originDeclarations.GetValueOrDefault(syntax));
+        accessor.Receiver = syntax.ReceiverType?.BoundType ?? accessor.Receiver;
+        accessor.Input = syntax.ValueType?.BoundType ?? accessor.Input;
+        accessor.Result = syntax.ReturnType?.BoundType ?? accessor.Result;
+        accessor.SignatureSymbol.Type = accessor.Result;
+        if (accessor.SelfSymbol is { } self)
+        {
+            self.Type = accessor.Receiver;
+        }
+
+        if (accessor.ValueSymbol is { } value)
+        {
+            value.Type = accessor.Input;
+        }
+
         if (accessor.StorageSymbol is { } storage)
         {
             storage.Type = property.Type;
@@ -370,7 +386,7 @@ public sealed partial class Binding
             var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
             structural.Clear();
             if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
-                actual is not null && accessor.Result is { } result && !FitsType(actual, result))
+                actual is not null && accessor.Result is { } result && !this.FitsTypeAt(actual, result, syntax))
             {
                 Fail(body, BindingFailure.TypeMismatch);
             }

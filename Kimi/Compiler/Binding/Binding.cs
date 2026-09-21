@@ -181,10 +181,12 @@ public sealed partial class Binding
             }
 
             this.ValidateDefaultAliases();
+            this.PrepareOriginDeclarations();
             this.BindSchemas();
             this.PrepareAliases();
             this.PrepareContracts();
             this.BindConstraints();
+            this.BindTypeOriginContracts();
             for (var i = 0; i < this.nodes.Count; i++)
             {
                 if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
@@ -231,6 +233,7 @@ public sealed partial class Binding
             }
 
             this.ClearCapabilityResults();
+            this.ValidateOriginRelations();
             this.ValidateCopyDeclarations(mode);
             this.ComputeOriginRequirements();
             this.ValidateOriginRequirements();
@@ -601,6 +604,7 @@ public sealed partial class Binding
         if (symbol.Declaration is FunctionKoto function)
         {
             var scope = this.scopes[function];
+            var originDeclaration = this.BeginOriginDeclaration(function, scope);
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
@@ -609,6 +613,12 @@ public sealed partial class Binding
 
             // Named signatures never infer a result from their body or callers (SPEC 10.5).
             symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
+            this.CompleteOriginDeclaration(originDeclaration);
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
+            }
+
             if (symbol.ReceiverIndex >= 0)
             {
                 var receiver = function.Parameters[symbol.ReceiverIndex];

@@ -189,8 +189,8 @@ public class SourceDocumentAndDiagnosticTest
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
-        var first = new SourceDocument("first.kimi", "struct Reading<T>\n    T is i32\n    T is not i32\n    public let value: i32\n");
-        var second = new SourceDocument("second.kimi", "struct Reading<T>\n    public let other: i32\n");
+        var first = new SourceDocument("first.kimi", "struct Reading<T> {}\n    T is i32\n    T is not i32\n    public let value: i32\n");
+        var second = new SourceDocument("second.kimi", "struct Reading<T> {}\n    public let other: i32\n");
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, first);
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, second);

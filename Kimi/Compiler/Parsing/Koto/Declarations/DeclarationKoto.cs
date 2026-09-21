@@ -6,8 +6,10 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Provides the base representation of a declaration node.</summary>
-public abstract class DeclarationKoto : Koto
+public abstract class DeclarationKoto : Koto, IOriginClauseOwner
 {
+    List<OriginRelationKoto>? IOriginClauseOwner.OriginClauses { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="DeclarationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The declaration source span.</param>

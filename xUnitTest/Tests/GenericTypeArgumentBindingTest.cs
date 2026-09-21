@@ -72,7 +72,7 @@ public class GenericTypeArgumentBindingTest
     [InlineData("([2 of ref{static}/i32])")]
     public void NestedBorrowTypesRetainTheirOrigins(string type)
     {
-        var c = Parse($"struct Box<T>\nfunc f {{a}}(value?: Box<{type}>) => ()");
+        var c = Parse($"struct Box<T>\nfunc f(value?: Box<{type}>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
         var array = Assert.Single(f.Parameters[0].Type.BoundType!.Components);

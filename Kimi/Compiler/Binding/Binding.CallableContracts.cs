@@ -13,6 +13,7 @@ public sealed partial class Binding
             return ConstraintProof.Refuted;
         }
 
+        var inference = this.BeginOriginInference(requirement.Binder, implementation.Binder);
         for (var i = 0; i < requirement.InputCount; i++)
         {
             var required = requirement.Input(i);
@@ -44,6 +45,21 @@ public sealed partial class Binding
             }
 
             this.MatchInputOrigins(actual, required, implementation.Binder, origins, inputs);
+            this.CollectOriginInference(actual, required, inference);
+        }
+
+        if (implementation.Result is { } produced && requirement.Result is { } demanded)
+        {
+            var actual = this.ProjectCallableType(produced, declaringType);
+            if (actual is not null)
+            {
+                this.CollectOriginInference(actual, this.ContractType(demanded, scope, self), inference, result: true);
+            }
+        }
+
+        if (!this.SolveOriginInference(inference, origins, inputs, requirement.Binder, declaringType))
+        {
+            return ConstraintProof.Refuted;
         }
 
         for (var i = 0; i < requirement.InputCount; i++)
@@ -64,15 +80,20 @@ public sealed partial class Binding
             }
 
             var actual = Translate(implementation.Input(i)!);
-            if (actual is null || !FitsType(required, actual))
+            if (actual is null || !this.FitsTypeAt(required, actual, requirement.Binder))
             {
                 return ConstraintProof.Refuted;
             }
         }
 
+        if (!this.CheckCallOriginRelations(implementation.Binder, origins, inputs, requirement.Binder, declaringType))
+        {
+            return ConstraintProof.Refuted;
+        }
+
         var result = implementation.Result is { } output ? Translate(output) : null;
         var expected = requirement.Result is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
-        return result is null || expected is null ? ConstraintProof.Unknown : FitsType(result, expected) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+        return result is null || expected is null ? ConstraintProof.Unknown : this.FitsTypeAt(result, expected, requirement.Binder) ? ConstraintProof.Proven : ConstraintProof.Refuted;
 
         BoundType? Translate(BoundType type)
         {

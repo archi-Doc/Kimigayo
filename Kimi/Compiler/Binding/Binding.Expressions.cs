@@ -426,7 +426,7 @@ public sealed partial class Binding
                 if (jump is not ContinueKoto)
                 {
                     targetResult?.Sources.Add(actual);
-                    if (actual is not null && resultType is not null && !Compatible(actual, resultType))
+                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node))
                     {
                         Fail(jump, BindingFailure.TypeMismatch);
                     }
@@ -522,7 +522,7 @@ public sealed partial class Binding
                 var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
                 structural.Clear();
                 if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
-                    symbol.Type is { } expected && result is not null && !Compatible(result, expected))
+                    symbol.Type is { } expected && result is not null && !this.FitsTypeAt(result, expected, function))
                 {
                     Fail(expression, BindingFailure.TypeMismatch);
                 }
@@ -556,25 +556,24 @@ public sealed partial class Binding
             this.InferArrayAnnotation(annotation, arrayInitializer, scope);
         }
 
+        var originDeclaration = this.BeginOriginDeclaration(variable, scope);
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
+        if (originDeclaration is not null)
+        {
+            foreach (var set in originDeclaration.Sets.Values)
+            {
+                this.BindOriginSetType(set, scope);
+            }
+
+            this.CompleteOriginDeclaration(originDeclaration);
+            declared = variable.TypeKoto?.BoundType ?? declared;
+        }
+
         var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
         symbol.Resolving = false;
-        if (declared?.Origin is { Kind: OriginKind.Inference } pendingOrigin && inferred?.Origin is { } actualOrigin)
+        if (symbol.Kind == BindingSymbolKind.Local && declared is not null && inferred is not null)
         {
-            var completed = this.WithOrigins(declared, actualOrigin, (BoundOrigin[])declared.OriginArguments);
-            if (FitsType(inferred, completed))
-            {
-                declared = completed;
-                Complete(variable.TypeKoto!, completed);
-                for (var i = this.obligations.Count - 1; i >= 0; i--)
-                {
-                    if (this.obligations[i] is { Kind: BindingObligationKind.OriginInference } obligation && ReferenceEquals(obligation.Longer, pendingOrigin))
-                    {
-                        this.obligationSet.Remove(obligation);
-                        this.obligations.RemoveAt(i);
-                    }
-                }
-            }
+            declared = this.InferLocalOrigins(declared, inferred, variable, scope);
         }
 
         if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))

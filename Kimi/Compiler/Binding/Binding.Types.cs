@@ -208,10 +208,10 @@ public sealed partial class Binding
             this.aliasResolutionDepth++;
             try
             {
+                var originDeclaration = this.BeginOriginDeclaration(alias, scope);
                 var symbol = this.TypeName(targetSyntax, scope, false);
                 if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
-                    this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference ||
-                    reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
+                    this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
                 {
                     Fail(alias, BindingFailure.InvalidTypeFormation, true);
                     return null;
@@ -219,6 +219,14 @@ public sealed partial class Binding
 
                 alias.BoundSymbol = symbol;
                 Complete(alias, reference);
+                this.CompleteOriginDeclaration(originDeclaration);
+                reference = alias.BoundType!;
+                if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
+                {
+                    Fail(alias, BindingFailure.InvalidOrigin);
+                    return null;
+                }
+
                 this.aliasTargets[alias] = this.scopes[symbol.Declaration];
                 return this.aliasTargets[alias];
             }
@@ -396,6 +404,8 @@ public sealed partial class Binding
 
         try
         {
+            var owner = OriginOwner(syntax);
+            var originDeclaration = owner is not null and not (FunctionKoto or PropertyAccessorKoto) ? this.BeginOriginDeclaration(owner, scope) : null;
             var type = this.BindTypeStructure(syntax, scope, context);
             if (type is null)
             {
@@ -404,7 +414,9 @@ public sealed partial class Binding
 
             var annotated = syntax as TypeSemanticsKoto;
             type = this.CompleteOrigins(type, annotated, syntax, scope, context);
-            return Complete(syntax, type);
+            Complete(syntax, type);
+            this.CompleteOriginDeclaration(originDeclaration);
+            return syntax.BoundType;
         }
         finally
         {

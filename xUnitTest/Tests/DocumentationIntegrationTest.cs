@@ -14,21 +14,21 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
 {
     [Theory]
     [InlineData("/// d\ngroup G")]
-    [InlineData("/// d\nstruct S")]
+    [InlineData("/// d\nstruct S {}")]
     [InlineData("/// d\nenum E\n    A")]
     [InlineData("/// d\ncontract C")]
     [InlineData("/// d\npublic func main() => ()")]
     [InlineData("/// d\n#Test func f() => ()")]
-    [InlineData("struct S\n    /// d\n    init() => ()")]
-    [InlineData("struct S\n    /// d\n    deinit => ()")]
+    [InlineData("struct S {}\n    /// d\n    init() => ()")]
+    [InlineData("struct S {}\n    /// d\n    deinit => ()")]
     [InlineData("contract C\n    /// d\n    func f(self)")]
     [InlineData("contract C\n    /// d\n    property value: i32 has get")]
-    [InlineData("struct S\n    /// d\n    var value: i32 = 0")]
+    [InlineData("struct S {}\n    /// d\n    var value: i32 = 0")]
     [InlineData("group G\n    /// d\n    computed value: i32\n        get() -> i32 => 0")]
     [InlineData("func f()\n    /// d\n    let value = 0")]
     [InlineData("enum E\n    /// d\n    A(i32)")]
     [InlineData("contract C\n    /// d\n    associate Item")]
-    [InlineData("struct S\n    /// d\n    associate C.Item is i32")]
+    [InlineData("struct S {}\n    /// d\n    associate C.Item is i32")]
     [InlineData("/// d\nspecialize func f<i32>(value: i32) => ()")]
     public void CoversEveryDeclarationTarget(string source)
     {
@@ -67,10 +67,10 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         c.CollectDocumentation = true;
         var tree = c.Kotonoha;
         var context = tree.CreateCodeContext();
-        context.Parse(tree.RootKoto, new SourceDocument("z.kimi", "/// z\npublic struct S"));
-        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated2\npublic struct S"), "b", 2);
-        context.Parse(tree.RootKoto, new SourceDocument("a.kimi", "/// a\npublic struct S"));
-        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated1\npublic struct S"), "b", 1);
+        context.Parse(tree.RootKoto, new SourceDocument("z.kimi", "/// z\npublic struct S {}"));
+        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated2\npublic struct S {}"), "b", 2);
+        context.Parse(tree.RootKoto, new SourceDocument("a.kimi", "/// a\npublic struct S {}"));
+        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated1\npublic struct S {}"), "b", 1);
         ParseTestHelper.AssertValid(tree);
         Assert.True(c.Bind().IsComplete);
         var target = tree.DocumentationSources.First().Comments[0].Declaration!;
@@ -81,7 +81,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void UsesOriginalSpecializationContractAndEffectiveAccess()
     {
-        var tree = DocumentationCommentTest.Parse("/// original\npublic func weight<T>(value?: ref/T) -> i32 => 1\n/// implementation\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n    /// private container\n    public func f() => ()");
+        var tree = DocumentationCommentTest.Parse("/// original\npublic func weight<T>(value?: ref/T) -> i32 => 1\n/// implementation\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden {}\n    /// private container\n    public func f() => ()");
         var c = tree.RootKoto.CodeContext.Compilation;
         Assert.True(c.Bind().IsComplete);
         var comments = Assert.Single(tree.DocumentationSources).Comments;
@@ -109,7 +109,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void AssociatedSpecificationsDoNotCopyRequirementDocumentation()
     {
-        var tree = DocumentationCommentTest.Parse("public contract C\n    /// requirement\n    associate Item\npublic struct S\n    Self is C\n    /// implementation\n    associate C.Item is i32");
+        var tree = DocumentationCommentTest.Parse("public contract C\n    /// requirement\n    associate Item\npublic struct S {}\n    Self is C\n    /// implementation\n    associate C.Item is i32");
         Assert.True(tree.Compilation.Bind().IsComplete);
         foreach (var comment in Assert.Single(tree.DocumentationSources).Comments)
         {
@@ -120,7 +120,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void PrivateImplementationsDoNotExposeAssociatedDocumentation()
     {
-        var tree = DocumentationCommentTest.Parse("public contract C\n    associate Item\nstruct Hidden\n    Self is C\n    /// private implementation\n    associate C.Item is i32");
+        var tree = DocumentationCommentTest.Parse("public contract C\n    associate Item\nstruct Hidden {}\n    Self is C\n    /// private implementation\n    associate C.Item is i32");
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         Assert.Empty(tree.Compilation.Binding.GetDocumentation(comment.Declaration!, true));
@@ -197,7 +197,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
         var tree = c.Kotonoha;
-        tree.CreateCodeContext().Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated\npublic struct S"), "mod", 3);
+        tree.CreateCodeContext().Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated\npublic struct S {}"), "mod", 3);
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(tree))!;
         restored.OnDeserialized(c);
         var old = Assert.Single(restored.DocumentationSources);
@@ -218,7 +218,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n        /// windows\n        public struct S\n    #case _\n        /// other\n        public struct S"));
+        c.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n        /// windows\n        public struct S {}\n    #case _\n        /// other\n        public struct S {}"));
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         var target = Compilation.CreateForTest();
         target.CollectDocumentation = true;
@@ -227,7 +227,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         restored.OnDeserialized(target);
         Assert.Equal("other", Assert.Single(Assert.Single(restored.DocumentationSources).Comments, x => x.IsSelected).GetText().Text);
         Assert.Equal("windows", Assert.Single(Assert.Single(c.Kotonoha.DocumentationSources).Comments, x => x.IsSelected).GetText().Text);
-        var edited = DocumentationCommentTest.Parse("/// edited\nstruct S");
+        var edited = DocumentationCommentTest.Parse("/// edited\nstruct S {}");
         Assert.Equal("edited", Assert.Single(Assert.Single(edited.DocumentationSources).Comments).GetText().Text);
     }
 

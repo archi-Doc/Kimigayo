@@ -20,7 +20,7 @@ Both parameter forms consume **one complete Type argument**. Binding preserves t
          o = OuterOrigin(W)       // Present only for an outer safe borrow.
 ```
 
-`WholeType`, the projection functions and `o` are explanatory notation, not source bindings. `<s/T>` declares only `s` and `T`; the original `s/T` keeps `W`'s Origins without naming them. Source Origin names use the separate [Origin parameter schema](15-ownership-and-lifetime-analysis.md#153-abstract-origins).
+`WholeType`, the projection functions and `o` are explanatory notation, not source bindings. `<s/T>` declares only `s` and `T`; the original `s/T` keeps `W`'s Origins without naming them. Source Origin names use the separate [Origin schema and naming rules](15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations).
 
 An ordinary `T` denotes a complete value Type, not only a bare Core. The pair's `T` has the fixed internal kind **SemanticsTarget**, whose value is a complete value Type or an Object View Target. Using it as a standalone value Type in a generic body requires proof of that role under the declared Constraints at definition checking; only the remaining proven symbolic substitution may be a [deferred obligation](#810-generic-body-checking-and-deferred-obligations). Its kind does not change at instantiation.
 
@@ -34,7 +34,7 @@ Before projection, transparent aliases, resolved associated-Type projections, gr
 | `objref`, `objuniq` | Supported Core or valid runtime Contract View Target; borrowing requirements are preserved | Required |
 | `unsafe` | Complete pointee Type; adds no safe-borrow lifetime guarantee | None |
 
-These rows do not extend the current runtime-Contract or callable restrictions. The absence of an outer Origin does not erase payload dependencies: in `ref{b}/(View<i32>{source => a})`, `a` belongs to the inner Type and `b` to the outer borrow.
+These rows do not extend the current runtime-Contract or callable restrictions. The absence of an outer Origin does not erase payload dependencies: in `ref{b}/(View<i32>{v})`, `v.source` belongs to the inner Type and `b` to the outer borrow.
 
 A Proven `T is Sealed` establishes a valid owner Core and a supported object View Target (§8.4.7.1). This evidence is available during generic signature formation; it does not flatten nested Type or Origin layers.
 
@@ -44,17 +44,17 @@ Within one parameter list, every bound name must be distinct: `<T, T>`, `<s/T, s
 
 After transparent alias expansion, the original pair expression `s/T` refers to its WholeType `W`. This correspondence is determined by the declared bindings, not by two targets becoming equal after instantiation. `s/U` with another binding applies only the Semantics kind to `U` and does not copy `W`'s outer Origin. Once formed, equal complete Types acquire no identity differences from their construction history.
 
-An explicit Origin annotation follows the ordinary Type-formation rules. Otherwise the original `s/T` keeps `W`'s Origins, and another `s/U` uses the [position-specific Origin rules](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts). Storing a Type in a pair slot creates no additional omission permission.
+An explicit Origin annotation follows the ordinary Type-formation rules. Otherwise the original `s/T` keeps `W`'s Origins, and another `s/U` uses the [position-specific Origin rules](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision). Storing a Type in a pair slot creates no additional omission permission.
 
 For `W = ref{a}/i32`, `s{b}/T` forms `ref{b}/i32`. Formation requires no relationship between `W`'s old outer Origin `a` and the new `b`, and performs no value conversion, but it still validates `b`'s binding, its annotation position, and the formed Type's own inner-Origin outlives constraints. Fitting an actual `{a}` value to this Type separately checks the permitted shortening (`a : b`), acquisition and Loans. In particular, `uniq/V` keeps `V` invariant and any required Move or Reborrow; an annotation neither creates nor removes a Reborrow.
 
 For another target `s/U`, omitted Origins follow position rules symbolically even when `s` is unknown. At a direct input, record an independent outer-Origin slot at definition, active only when `s` is a safe borrow. In non-borrow cases it contributes no binding or constraint; all dependencies of `U` remain, and `owner/U` normalizes to `U`. Fields and nested borrow layers gain no new omission permission. Type formation and body legality must hold for every admitted binding. Explicit `s{a}/T` or `s{a}/U` requires proof that `s` is a safe borrow. The original unannotated `s/T` retains WholeType and receives no new Origin.
 
-Conditional slots and result plans are retained in the [canonical contract](15-ownership-and-lifetime-analysis.md#1535-canonical-origin-contracts). Instantiation substitutes that plan; it does not introduce binders or discover missing definition proofs.
+Conditional slots and result plans are retained in the [canonical contract](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification). Instantiation substitutes that plan; it does not introduce binders or discover missing definition proofs.
 
 ### 8.1.3. Argument validity
 
-**WellFormedGenericTypeArgument(A)** requires a valid resolved complete Type, or a legitimately dependent Type with retained obligations. Access, Semantics application, generic and associated-Type arguments, Origin mappings and Constraints are checked before any Origin-erased comparison key is used.
+**WellFormedGenericTypeArgument(A)** requires a valid resolved complete Type, or a legitimately dependent Type with retained obligations. Access, Semantics application, generic and associated-Type arguments, Origin bindings, relations and Constraints are checked before any Origin-erased comparison key is used.
 
 | Argument | Rule |
 | --- | --- |
@@ -69,7 +69,7 @@ Conditional slots and result plans are retained in the [canonical contract](15-o
 
 An explicit argument list supplies every slot in declaration order, with an optional trailing comma. Omitting the entire list uses only the inference supported by that construct. Partial lists, `_` placeholders, defaults, variadic slots and general Const generics are not introduced; only [function length slots](04-arrays-indexing-and-slices.md#44-function-length-parameters) admit length arguments. `<s/T, U>` takes two arguments, such as `<ref{a}/i32, string>`; `<ref, i32>` cannot supply one pair. Origin parameters have a separate schema and consume no Type argument slots.
 
-A valid Type argument is not permission to use it in every role: constraints on base Types, associated Types, finite layout, Copy derivation and object payload erasure remain. Ordinary storage preserves complete Type-argument dependencies under the [storage contracts](15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts), without an Owned or Storable requirement. Static storage instead requires Owned and the [static-source rules](11-properties.md#1132-static-storage).
+A valid Type argument is not permission to use it in every role: constraints on base Types, associated Types, finite layout, Copy derivation and object payload erasure remain. Ordinary storage preserves complete Type-argument dependencies under the [storage contracts](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), without an Owned or Storable requirement. Static storage instead requires Owned and the [static-source rules](11-properties.md#1132-static-storage).
 
 ## 8.2. Constraints
 
@@ -141,7 +141,7 @@ This revision defines static conformance checking and generic use. User-defined 
 
 ### 8.4.1. Function requirements
 
-A function requirement declares a Name, optional function generic and Origin parameters, explicitly typed parameters and an optional result Type, whose omission means Unit. A requirement with a receiver is an instance function; one without a receiver is a Type function. Receiver, parameter labels, ownership, Origins and safe/unsafe conditions follow the ordinary function rules.
+A function requirement declares a Name, optional function generic parameters, implicitly introduced signature Origins (§15.3.4), explicitly typed parameters and an optional result Type, whose omission means Unit. A requirement with a receiver is an instance function; one without a receiver is a Type function. Receiver, parameter labels, ownership, Origins and safe/unsafe conditions follow the ordinary function rules.
 
 Function-specific Constraints occupy an optional indented region immediately after the header. The region contains one or more Constraint Clauses, with no executable statements, `return`, local declarations or single-item body. Its subjects are the function's generic parameters or associated-Type projections rooted in them. Contract-wide Constraints belong at the Contract body level.
 
@@ -303,7 +303,7 @@ Zero candidates means a missing implementation; multiple candidates mean ambigui
 | Access | Usable throughout the [conformance's effective domain](09-names-signatures-and-access.md#934-conformance-accessibility). |
 | Calling context and Effects | No stronger calling context or effects than the requirement permits. |
 
-Origin contracts use the [common compatibility procedure](15-ownership-and-lifetime-analysis.md#1535-canonical-origin-contracts), preserving ordinary variance and Loan rules, including invariance where required. A requirement that admits a call-local borrow cannot be implemented by a function requiring that input to be `static`. Origin-free identification neither erases dependencies nor relaxes exclusive access.
+Origin contracts use the [common compatibility procedure](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification), preserving ordinary variance and Loan rules, including invariance where required. A requirement that admits a call-local borrow cannot be implemented by a function requiring that input to be `static`. Origin-free identification neither erases dependencies nor relaxes exclusive access.
 
 The existing Safety, ownership, Origin and Access Effect checks apply; no new effect system is defined here. A safe requirement cannot require an unsafe calling context. Result compatibility inserts no numeric or user conversion, Copy, Borrow/Reborrow or erasure. Core inheritance alone does not prove compatibility of complete Types. On a compatibility failure, the conformance error is reported without searching for another implementation. Properties use the corresponding [accessor rules](11-properties.md#114-contract-property-requirements).
 
@@ -530,7 +530,7 @@ Only requirements accessible through `Speaker` are available from that view. Lif
 
 The admitted Types are Function Items, concrete Closures and common Function Types with [compatible signatures](10-overload-resolution-and-inference.md#107-callable-signature-compatibility); no user `call` member is searched. `S` is a contract, not a conversion to an erased container. `F`'s complete dependencies are preserved under generic substitution, and neither Copy nor Owned is required of `F`. (`owner` denotes acquisition, whereas `Owned` denotes the absence of non-static dependencies.) The result restriction does not constrain direct concrete-Closure calls.
 
-**Per-call input Origins.** An omitted Origin on each direct `ref/T` or `uniq/T` parameter of `S` is bound independently **per call**, for all three receiver kinds. Conformance must hold for every valid call-time Origin under the ordinary Type and Loan rules, not for one fixed long-lived Origin. Origins nested within `T`, and capture-derived Origins within `F`, remain fixed and are not quantified. This limited input-borrow quantification adds neither general higher-ranked Origin syntax nor written Origin declarations/arguments inside `S`; obtain fixed dependencies through complete bound Types (§15.4).
+**Per-call input Origins.** An omitted Origin on each direct `ref/T` or `uniq/T` parameter of `S` is bound independently **per call**, for all three receiver kinds. Conformance must hold for every valid call-time Origin under the ordinary Type and Loan rules, not for one fixed long-lived Origin. Origins nested within `T`, and capture-derived Origins within `F`, remain fixed and are not quantified. This adds no general higher-ranked Origin binder syntax. No new named scalar Origin is introduced inside `S`, and Callable signatures retain their ban on written direct borrow annotations. Aggregate occurrences may introduce binding-set names owned by the containing declaration; their input slots must be fixed by complete Types or equality to outer Origin expressions. Result slots follow that signature's ordinary completion rules (§15.4), without exposing its internal per-call binders through an external projection.
 
 Omitted result Origins are completed under §15.4 from those per-call input Origins, keeping already-bound dependencies; the receiver of `F` is not an elision input. For example, `Callable<(ref/T) -> ref/T>` returns a borrow valid for its argument's Origin. With several direct borrowed inputs, result elision uses their meet and keeps all input Loans. A result requiring exclusive access must also preserve the corresponding exclusive Loan; shortening an Origin grants no access capability.
 

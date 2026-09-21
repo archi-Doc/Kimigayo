@@ -58,7 +58,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice)
+        if (type.Kind == BoundTypeKind.ResolvedRange || (type.Kind == BoundTypeKind.Slice && kind == IntrinsicKind.Copy))
         {
             result = kind == IntrinsicKind.Copy || type.Kind == BoundTypeKind.ResolvedRange ? ConstraintProof.Proven : ConstraintProof.Refuted;
             return true;
@@ -69,7 +69,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Function)
+        if (type.Kind == BoundTypeKind.Primitive || (type.Kind == BoundTypeKind.Function && kind == IntrinsicKind.Copy))
         {
             result = kind == IntrinsicKind.Owned || (type.Kind == BoundTypeKind.Primitive && type.Name != "string") ? ConstraintProof.Proven : ConstraintProof.Refuted;
             return true;
@@ -81,13 +81,25 @@ public sealed partial class Binding
             return true;
         }
 
-        if (kind == IntrinsicKind.Owned && type.Semantics == SemanticsKind.Unsafe)
+        return false;
+    }
+
+    private static FunctionTypeKoto? OwnFunctionBinder(BoundType type, BoundType signature)
+    {
+        if (type.Origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto binder } && ReferenceEquals(binder.BoundType, signature))
         {
-            result = ConstraintProof.Proven;
-            return true;
+            return binder;
         }
 
-        return false;
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (OwnFunctionBinder(type.Components[i], signature) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private int CapabilityTypeDepth(BoundType type)
@@ -273,7 +285,8 @@ public sealed partial class Binding
         }
         else
         {
-            var origin = type.Origin is null || type.Origin.Kind == OriginKind.Static ? ConstraintProof.Proven : ConstraintProof.Unknown;
+            var origin = type.Origin is null ||
+                this.ProvesOriginOutlives(type.Origin, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown;
             return CombineProof(origin, this.StructuralCapability(work), true);
         }
 
@@ -325,6 +338,25 @@ public sealed partial class Binding
 
     private ConstraintProof StructuralCapability(CapabilityWork work)
     {
+        if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Kind == BoundTypeKind.Function &&
+            OwnFunctionBinder(work.Type, work.Type) is { } binder)
+        {
+            // Only this signature's own quantified Origins are closed. Querying a
+            // component separately must still observe its free lifetime dependency.
+            var count = InputOriginCount(binder);
+            var inputs = this.originScratch.Rent(count);
+            try
+            {
+                inputs.AsSpan(0, count).Fill(BoundOrigin.Static);
+                var closed = this.SubstituteStoredOrigins(work.Type, binder, [], inputs.AsSpan(0, count));
+                return this.RequestCapability(closed, work.Intrinsic, work.Scope);
+            }
+            finally
+            {
+                this.originScratch.Return(inputs, clearArray: true);
+            }
+        }
+
         if (work.Type.Symbol?.Declaration is DeclarationContainerKoto container)
         {
             return this.storageShapes.TryGetValue(container, out var shape) ? this.StoredCapability(work, shape) : ConstraintProof.Unknown;
@@ -344,15 +376,15 @@ public sealed partial class Binding
         var result = ConstraintProof.Proven;
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Symbol?.Declaration is DeclarationContainerKoto declaration)
         {
-            // Enclosing arguments are retained by the nested Type even without storage.
-            for (var i = declaration.GenericParameterNodes.Count; i < work.Type.Components.Count; i++)
+            // Every complete Type argument is retained, including unused and inherited slots.
+            for (var i = 0; i < work.Type.Components.Count; i++)
             {
                 result = CombineProof(result, this.RequestCapability(work.Type.Components[i], work.Intrinsic, work.Scope), true);
             }
 
-            for (var i = declaration.OriginNames.Count; i < work.Type.OriginArguments.Count; i++)
+            for (var i = 0; i < work.Type.OriginArguments.Count; i++)
             {
-                result = CombineProof(result, work.Type.OriginArguments[i]?.Kind == OriginKind.Static ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+                result = CombineProof(result, work.Type.OriginArguments[i] is { } origin && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
             }
         }
 
@@ -426,7 +458,11 @@ public sealed partial class Binding
                     }
                     else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Unsafe)
                     {
-                        evidence = ConstraintProof.Proven;
+                        var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
+                        if (target is not null && !ReferenceEquals(target, work.Type))
+                        {
+                            evidence = this.RequestCapability(target, work.Intrinsic, work.Scope);
+                        }
                     }
                 }
 
@@ -474,7 +510,7 @@ public sealed partial class Binding
         }
 
         private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
-            => intrinsic.Intrinsic == IntrinsicKind.Owned && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Semantics
+            => intrinsic.Intrinsic == IntrinsicKind.Owned && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
                 ? ConstraintProof.Proven
                 : ConstraintProof.Unknown;
     }

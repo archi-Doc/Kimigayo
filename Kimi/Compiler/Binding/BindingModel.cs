@@ -315,6 +315,8 @@ internal sealed class BindingScope(Koto owner)
 
     internal Dictionary<string, BoundOrigin>? Origins { get; set; }
 
+    internal Dictionary<string, TypeSemanticsKoto>? OriginSets { get; set; }
+
     internal ConstraintEnvironment? Constraints { get; set; }
 
     internal BoundConformancePath? ConformancePath { get; set; }
@@ -324,6 +326,7 @@ internal sealed class BindingScope(Koto owner)
         this.Types.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
+        this.OriginSets?.Clear();
         this.Constraints?.Reset();
     }
 }

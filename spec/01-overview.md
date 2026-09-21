@@ -49,11 +49,11 @@ User-defined Types, Contracts and Declaration Containers conventionally use Pasc
 | `[]` | Array and Dictionary construction, fixed-array Types, indexing, Range-based slicing, and anonymous-function Capture Lists. |
 | `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions, and operator precedence. |
 | `<>` | Type arguments and [function length arguments](04-arrays-indexing-and-slices.md#44-function-length-parameters). |
-| `{...}` | Nonempty Origin declaration/argument lists; borrow Origins precede `/`. Not a body or collection. |
+| `{...}` | Closed struct/enum Origin schema (possibly empty), one borrow expression before `/`, or a fresh binding-set name after a Type. Not a body or collection. |
 | `=` | Initialization, parameter defaults, or assignment, depending on context. Acquisition follows [Copy and Move](03-types-and-values.md#35-copy-and-move). |
 | `@` | Explicit Type/Semantics adaptation; see [explicit operations](13-operators-and-assignment.md#135-explicit-operations). |
 | `->` | Introduces the result Type of a function declaration or Function Type. |
-| `=>` | Introduces a single-item executable Body. It also maps parameter names and named Origin arguments in their own grammars. |
+| `=>` | Introduces a single-item executable Body, a parameter-name mapping, or a Container-alias target, according to context. |
 | `:` | Separates names from Types, argument names from values, Dictionary keys from values, labels from constructs, and named transfer targets from values. It also introduces structure bases, Contract parents and constructor `: base(...)`, but never an executable Body. In Origin relations, `a : b` means that `a` outlives `b`, including equal lifetimes. |
 | `#` | A compile-time construct. Lowercase reserved directives such as `#if` differ from PascalCase Attributes such as `#Inline`. |
 | `$` | Selects a language-provided Composition Root operation; see [§13.8](13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |

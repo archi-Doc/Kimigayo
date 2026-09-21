@@ -95,7 +95,7 @@ public class ConstraintBindingTest
     [Fact]
     public void PropositionIdentityPreservesOrigins()
     {
-        var c = Parse("func query<T>(value?: T)\n    T is ref{static}/i32\n    ()\nfunc context {a}(value?: ref{a}/i32) => ()");
+        var c = Parse("func query<T>(value?: T)\n    T is ref{static}/i32\n    ()\nfunc context(value?: ref{a}/i32) => ()");
         c.Bind();
         var query = Function(c, "query");
         var context = Function(c, "context");

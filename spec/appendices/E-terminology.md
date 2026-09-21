@@ -54,7 +54,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Environment Condition | A Boolean directive expression over fixed target and Project settings. | [Condition evaluation](../19-compile-time-directives.md#193-condition-evaluation-and-selection) |
 | Finalization | Acceptance of a declaration, layout, specialization, or body after required checks are resolved. | [Compiler terminology](A-compiler-requirements.md#appendix-a-compiler-implementation-requirements) |
 | Function Item / common Function Type | Concrete declaration identity / shared erased calling contract | [Callable Types](../03-types-and-values.md#321-callable-value-types) |
-| GenericArity / OriginArity | Generic slot count (including function lengths) / explicitly declared Origin count; one pair consumes one slot. | [Signatures](../09-names-signatures-and-access.md#91-signatures) |
+| GenericArity / OriginArity | Generic slot count (one pair consumes one slot) / a Type's own scalar Origin schema size. | [Signatures](../09-names-signatures-and-access.md#91-signatures) |
 | Getter result Type | The declared result of custom/computed/required get; matches its Property header Type. | [Accessor contracts](../11-properties.md#112-accessor-functions) |
 | Instantiation / explicit full specialization / automatic specialization | Argument binding / mandatory user implementation selection / meaning-preserving Type-specific code generation. | [Generic code generation](../21-layout-runtime-and-code-generation.md#213-generic-code-generation) |
 | Koto | A compiler syntax-tree node. | [Compiler terminology](A-compiler-requirements.md#appendix-a-compiler-implementation-requirements) |
@@ -76,6 +76,9 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Complete payload projection | A same-target Sealed object payload borrowed as ordinary ref/uniq with retained owner and referent dependencies | [Payload projection](../13-operators-and-assignment.md#13551-complete-object-payload-projection) |
 | Owned / OwnedOrigins | Lifetime independence from non-static dependencies / the conservative Origin closure proving it | [static and Owned](../15-ownership-and-lifetime-analysis.md#1523-static-and-owned) |
 | Origin | A set of program points where a borrow is guaranteed valid. | [Origin expressions](../15-ownership-and-lifetime-analysis.md#1521-origin-expressions) |
+| Origin binding set | A Type occurrence's mapping from schema slots to Origins; a suffix may name it. | [Binding sets](../15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets) |
+| Origin projection | Selection of a declared slot from a binding set or value Type, without runtime evaluation. | [Projection](../15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets) |
+| Origin relation | Declaration-attached equality or outlives requirement; it creates no Loan authority. | [Relations](../15-ownership-and-lifetime-analysis.md#1533-declaration-attached-relations) |
 | Partial Move | Transfer of an aggregate's part, leaving the aggregate incomplete. | [Move Paths](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) |
 | Pattern / Guard | Structural or binding syntax / an optional Boolean test selecting a match arm | [Match](../14-control-flow.md#148-match-expressions-and-patterns) |
 | Place | A storage location that can hold a value. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |

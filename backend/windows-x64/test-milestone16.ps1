@@ -106,8 +106,8 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    StaticResult = $original.Replace('Selection from self.left and self.right', 'Selection from static')
-    IncompleteIntersection = $original.Replace('Selection from self.left and self.right', 'Selection from self.left')
+    StaticResult = $original.Replace('origin selection.source == self.left and self.right', 'origin selection.source == static')
+    IncompleteIntersection = $original.Replace('origin selection.source == self.left and self.right', 'origin selection.source == self.left')
     FirstWrite = $original.Replace('        require selected.value', "        first.value = 99`n        require selected.value")
     SecondWrite = $original.Replace('        require selected.value', "        second.value = 99`n        require selected.value")
     ParentWrite = $original.Replace('        child.value =', "        target.value = 99`n        child.value =")
@@ -115,6 +115,7 @@ $invalid = [ordered]@{
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {
+        if ($entry.Value -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
         $name = $entry.Key
         $directory = Join-Path $work "$level/$name"
         New-Item -ItemType Directory -Path $directory -Force | Out-Null

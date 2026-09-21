@@ -37,7 +37,7 @@ A Signature determines whether declarations may coexist in one scope:
 | Field / computed / Property Requirement | Name |
 | Enum Case | Name within its enum; no payload overloads |
 
-**GenericArity** counts generic argument slots, including function length slots; a pair counts as one. **OriginArity** counts explicitly declared Origin parameters, excluding anonymous input Origins, Origins projected from a Type slot and inference variables. It is not a callable-contract equality test (§15.3.5). Origin schemas govern binding and fragment compatibility, not additional overloads: `View<T> {source}` and `View<T> {left, right}` cannot coexist as same-name, same-arity Type overloads.
+**GenericArity** counts generic argument slots, including function length slots; a pair counts as one. **OriginArity** counts a Type declaration's own scalar schema slots, whether explicit or implicitly discovered. Inherited slots and internal Type-argument dependencies are separate. Function contracts are compared by their completed quantifiers and relations, not a written binder count. It is not a callable-contract equality test (§15.3.7). Origin schemas govern binding and fragment compatibility, not additional overloads: `View<T> {source}` and `View<T> {left, right}` cannot coexist as same-name, same-arity Type overloads.
 
 Types are normalized by resolved Symbol and Kotonoha/version, expanding transparent aliases and resolved associated-Type projections and removing grouping and redundant `owner` prefixes. Every Semantics layer is preserved. Generic expressions are represented structurally by declared binder and slot position:
 
@@ -338,7 +338,7 @@ Inherited lookup keeps the defining declaration and the substituted base environ
 
 #### 9.6.1.1. Origins on paths
 
-The effective explicit Origin list combines the inherited and own slots; redeclaring an inherited Origin name is an error. Origins inside Type arguments stay inside those Types and are not added again. One trailing `{...}` binds the final effective slots by resolved binder identity. Unknown, duplicate or already-bound slots are rejected, and `{a}` is shorthand only when there is exactly one unbound effective slot.
+A nested declaration's effective Origin schema contains its own and inherited slots; internal dependencies of Type arguments, Fields and bases are not flattened into it. A suffix names the complete binding set of that occurrence. Slots are completed from inherited bindings, relations and the position rules of §15.3–4.
 
 ```kimi
 struct View<T> {source}
@@ -347,21 +347,21 @@ struct View<T> {source}
     public contract Source
         func read(self: ref/Self) -> ref{source}/T
 
-func inspect<T> {a}(value?: View<T>.Tag{source => a}) => ()
+func inspect<T>(value?: View<T>.Tag{tag}, item?: ref/T)
+    origin tag.source == item
+    ()
 ```
 
-`View<T>.Source{source => a}` keeps the same inherited binding; an inner declaration's own Origin slots use the same trailing list. Ordinary Type annotations use the position-specific Origin omission rules. Contract references, aliases and standalone Container qualifiers must explicitly supply any unbound Origins; `static` is never invented and a lexical Self environment is never modified.
+Independent Contract references, alias targets and Container qualifiers must have a complete Origin contract. Their enclosing declaration supplies attached relations where inference or inherited bindings are insufficient; no arbitrary expression-level constraint block or implicit `static` is added.
 
-`(ContainerPath{...}).member` binds an intermediate qualifier and creates no runtime value or duplicate candidate. Such annotations require parentheses: `(Outer<T>{a}).Inner<U>{b}` is valid; `Outer<T>{a}.Inner` is not. The qualifier requires a following member, including `.init`; standalone `(View<T>{a})` in Type position is ordinary grouping. Rejection of a missing Origin is deferred until a trailing annotation can bind its slots. An intermediate Origin absent from the final target must instead be bound at that qualifier, as in `(Derived{...}).Node`.
+`(Outer<T>{outer}).Inner<U>{inner}` names an intermediate qualifier and a final occurrence without creating runtime values. The parenthesized qualifier must be followed by a member, including `.init`; standalone `(View<T>{v})` is ordinary Type grouping. Preserve and validate intermediate dependencies even when they are absent from the final schema. An associated selector may similarly use `X.(ContractPath{c}).Element`.
 
-`ref{r}/(View<T>.Tag{source => a})` keeps the Container Origin `a` separate from the outer borrow `r`. An explicit associated projection is written `X.(ContractPath{...}).Element`, and an associated specification `associate (ContractPath{...}).Element is T`. Origin-free forms remain valid. Parentheses cannot bypass the restrictions on Origins, values, adaptation targets, Cases or runtime Contract Views.
-
-Normalize path bindings by Binding Identity. Bindings in the final schema may be moved to a final named list only when targets, visibility and obligations remain identical. Retain other intermediate bindings and validation obligations. A syntax-only formatter must not relocate arguments, and normalization never rewrites lexical Self bindings.
+Normalize by declaration and binding identity while retaining every intermediate obligation. Binding-set labels have lexical scope and are not Type arguments; a formatter must not relocate them or their relations. Lexical `Self` bindings remain fixed. Case and runtime View restrictions retain their own rules.
 
 #### 9.6.1.2. Access and ambiguity
 
 Inner declarations may access outer private declarations, although instance operations still need an explicit receiver. Parents have no privilege to access a child's private members, and merged fragments share their declaration's access rights. Effective reference and API access include the parent Containers and concrete outer arguments; conformance access is the intersection of the conforming Type and the bound Contract reference.
 
-Protected Containers may be declared directly in structs; protected access is forbidden on declarations directly in groups. Non-instance declarations have no protected receiver restriction. Type parameters conflict with nested declarations in the same declaration namespace, and ordinary ancestor shadowing does not remove inherited slots. Origin names occupy a separate namespace.
+Protected Containers may be declared directly in structs; protected access is forbidden on declarations directly in groups. Non-instance declarations have no protected receiver restriction. Type parameters conflict with nested declarations in the same declaration namespace, and ordinary ancestor shadowing does not remove inherited slots. Origin-context lookup combines scalar names, binding-set names and eligible value carriers by the nearest lexical scope, with the role and collision rules of §15.3.4. It never falls back past a wrong-role candidate.
 
 A nested Type is not an associated Type and adds no conformance or specification. If `T.Element` resolves both ways, the ambiguity is diagnosed. `T.(C).Element` explicitly selects a Contract; the unparenthesized `T.C.Element` remains valid, but ambiguous successful interpretations are errors. Associated candidates are deduplicated only by defining declaration plus bound defining Contract reference; distinct bindings remain separate even when their resulting Types coincide, and explicit selection must still leave one candidate.

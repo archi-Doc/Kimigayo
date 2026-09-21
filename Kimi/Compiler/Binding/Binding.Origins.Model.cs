@@ -22,6 +22,7 @@ public enum OriginKind : byte
     Inference,
     Intersection,
     Projection,
+    Unbound,
 }
 
 public enum OriginVariance : byte
@@ -78,9 +79,6 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
     public BoundOrigin Origin { get; } = origin;
 
     public SourceSpan Span { get; } = span;
-
-    /// <summary>Gets the declared outlived Origin (SPEC 15.3), resolved by the latest Bind.</summary>
-    public BoundOrigin? Bound { get; internal set; }
 
     public OriginVariance Variance { get; internal set; }
 

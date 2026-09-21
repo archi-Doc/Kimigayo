@@ -40,7 +40,7 @@ internal sealed partial class BodyLowering
         var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) : null;
         var creation = operation.Source is InvocationKoto { BoundCall: { } objectCall } ? this.ObjectCalls?.GetValueOrDefault(objectCall) : null;
         if (operation.Source is not InvocationKoto { AttributeChain: null, BoundCall: { } plan } call ||
-            (generic is null && creation is null && (plan.TypeArguments.Length != 0 || plan.Origins.Length != 0)) ||
+            (generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
             !ReferenceEquals(call.BoundType, plan.ReturnType) || !ReferenceTypes.CallTypeMatches(generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), plan.ReturnType, plan))
@@ -102,7 +102,8 @@ internal sealed partial class BodyLowering
             var entry = this.arguments[cursor++];
             var place = body.Operations[entry].Place;
             var type = body.Places[place].Type;
-            if (!ReferenceEquals(body.Operations[entry].Source, call) || !ReferenceEquals(type, acquisition.ParameterType))
+            if (!ReferenceEquals(body.Operations[entry].Source, call) ||
+                (acquisition.ParameterType is not { } required || !call.CodeContext.Compilation.Binding.FitsTypeAt(type, required, call)))
             {
                 return Fail("Call entry does not match its argument Type or call.", out failure);
             }

@@ -409,7 +409,7 @@ match result
     .Err(let error) => report(error)
 ```
 
-Each nested Case's expected Type comes from the payload Type at its position, using [Case resolution](06-declarations-and-containers.md#632-case-construction-and-resolution). Case qualifiers are plain Container paths: the enum's own and inherited explicit Origin arguments are omitted and bound from the matched Type, and outer Type arguments must already be known (§9.6.1). Complete Types inside generic arguments keep their Origins, and parenthesized bound qualifiers cannot bypass the Case restrictions.
+Each nested Case's expected Type comes from the payload Type at its position, using [Case resolution](06-declarations-and-containers.md#632-case-construction-and-resolution). Case qualifiers are plain Container paths: the enum's own and inherited Origin slots are bound from the matched Type, without binding-set suffixes, and outer Type arguments must already be known (§9.6.1). Complete Types inside generic arguments keep their Origins, and parenthesized bound qualifiers cannot bypass the Case restrictions.
 
 Bare names, constants, Properties, calls and arbitrary expressions are invalid Patterns. Use `let x` to bind, `.Some(...)` or `Option<T>.Some(...)` for a Case, and `let x if x == expected` for comparison with an existing value; a misspelling never becomes a catch-all. Pattern execution invokes no constructor, getter, conversion or user-defined operator.
 

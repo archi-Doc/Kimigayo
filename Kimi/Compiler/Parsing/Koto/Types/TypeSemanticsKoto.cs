@@ -63,6 +63,16 @@ public sealed class TypeSemanticsKoto : TypeKoto
     /// <see cref="OriginArguments"/> together, in one field read.</remarks>
     internal bool HasOrigin => this.origin is not null;
 
+    internal string? BindingSetName => this.origin is { IsBindingSet: true } set ? set.Name : null;
+
+    internal void MarkBindingSet()
+    {
+        if (this.origin is { } annotation)
+        {
+            annotation.IsBindingSet = true;
+        }
+    }
+
     internal bool IsTransparentWrapper => this.isTransparentWrapper;
 
     /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a simple named or primitive type with owner semantics.</summary>
@@ -301,6 +311,8 @@ public sealed class TypeSemanticsKoto : TypeKoto
     /// <summary>Stores the Origin annotation of a type layer.</summary>
     private sealed class Origin
     {
+        public bool IsBindingSet { get; set; }
+
         public string? Name { get; set; }
 
         public Koto? Expression { get; set; }

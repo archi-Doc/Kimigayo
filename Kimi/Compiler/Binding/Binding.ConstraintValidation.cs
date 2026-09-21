@@ -82,6 +82,7 @@ public sealed partial class Binding
         }
 
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ? ConstraintProof.Unknown : ConstraintProof.Proven;
+        proof = CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
         for (var i = 0; i < type.Components.Count; i++)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(type.Components[i], scope), true);

@@ -30,7 +30,7 @@ public class PatternBindingTest
     [InlineData("func f(x?: ref{static}/i32) => match x\n    let r => ()")]
     [InlineData("func f(x?: uniq/i32) => match x\n    _ => ()")]
     [InlineData("func f(x?: Option<ref{static}/i32>) => match x\n    .Some(let r) => ()\n    .None => ()")]
-    [InlineData("func f {a}(x?: Option<uniq{a}/i32>) => match x\n    .Some(let r) => ()\n    .None => ()")]
+    [InlineData("func f(x?: Option<uniq{a}/i32>) => match x\n    .Some(let r) => ()\n    .None => ()")]
     [InlineData("func f(x?: Option<Option<i32>>) -> i32 => match x\n    .Some(let inner) => match inner\n        .Some(let n) => n\n        .None => 0\n    .None => 0")]
     [InlineData("func f(x?: Option<i32>) -> i32 => match x\n    .Some(let Option) => Option\n    Option<i32>.None => 0")]
     public void SupportedPatternsBindAndCheckFlow(string source)
@@ -55,9 +55,9 @@ public class PatternBindingTest
     [InlineData("func f(x?: uniq/i32) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("func f(x?: ref{static}/(ref{static}/i32)) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("func f(x?: unsafe/i32) => match x\n    0 => ()\n    _ => ()")]
-    [InlineData("func f {a}(x?: Option<uniq{a}/i32>) => match x\n    .Some(0) => ()\n    _ => ()")]
+    [InlineData("func f(x?: Option<uniq{a}/i32>) => match x\n    .Some(0) => ()\n    _ => ()")]
     [InlineData("struct Data\nfunc f(x?: obj/Data) => match x\n    () => ()\n    _ => ()")]
-    [InlineData("func f {a, b}(x?: ref{a}/(uniq{b}/i32)) => match x\n    0 => ()\n    _ => ()")]
+    [InlineData("func f(x?: ref{a}/(uniq{b}/i32)) => match x\n    0 => ()\n    _ => ()")]
     public void InvalidPatternsSuppressCoverageCascades(string source)
     {
         var c = Parse(source);
@@ -263,7 +263,7 @@ public class PatternBindingTest
     [Fact]
     public void StoredReferenceBindingsRetainOriginsAndOwnedAccess()
     {
-        var c = Parse("enum View {a}\n    Some(ref{a}/i32)\nfunc f(x?: View{static}) => match x\n    .Some(let r) => ()");
+        var c = Parse("enum View {a}\n    Some(ref{a}/i32)\nfunc f(x?: View)\n    origin x.a == static\n    match x\n        .Some(let r) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var binding = Assert.Single(Plan(c).Positions, p => p.Kind == BoundPatternKind.Binding);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);

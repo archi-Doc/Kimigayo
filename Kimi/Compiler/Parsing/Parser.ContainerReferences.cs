@@ -50,7 +50,7 @@ public static partial class Parser
         {
             reader.Advance();
             var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                ? ParseDeclarationType(ref reader, parseOrigin: allowOrigins, parseFunctionType: false, allowNestedOrigins: allowOrigins, parseContainerSuffix: false)
+                ? ParseDeclarationType(ref reader, parseOrigin: true, parseFunctionType: false, allowNestedOrigins: allowOrigins, parseContainerSuffix: false)
                 : ParseMemberName(ref reader);
             type = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, member.Span.End), type, member);
             if (reader.CurrentTokenKind == TokenKind.LessThan)
