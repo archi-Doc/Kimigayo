@@ -43,8 +43,8 @@ internal sealed partial class BodyLowering
             var expected = value.Kind switch
             {
                 OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection => 0,
-                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField or OwnershipValueKind.ClosureErasure => 1,
-                OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => 2,
+                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField or OwnershipValueKind.ClosureErasure or OwnershipValueKind.PointerLoad => 1,
+                OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.PointerStore => 2,
                 OwnershipValueKind.Address => value.Count is >= 0 and <= 2 ? value.Count : -1,
                 OwnershipValueKind.Sequence => value.Count is 0 or 1 ? value.Count : -1,
                 OwnershipValueKind.Phi or OwnershipValueKind.Closure => value.Count,
@@ -172,6 +172,17 @@ internal sealed partial class BodyLowering
                     continue;
                 }
 
+                if (ReferenceTypes.IsPointer(type) || operation.Source is Parsing.NullLiteralKoto)
+                {
+                    // SPEC 5.1: null is the only pointer literal.
+                    if (!ReferenceTypes.IsPointer(type) || !ReferenceEquals(type, operation.Source.BoundType) || operation.Source is not Parsing.NullLiteralKoto || value.Constant != 0)
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
                 var width = ScalarTypes.Width(type);
                 if (ReferenceEquals(type, BoundType.Boolean) ? value.Constant < 0 || value.Constant > 1 : width == 0 || ScalarTypes.Normalize(value.Constant, width) != value.Constant)
                 {
@@ -209,7 +220,8 @@ internal sealed partial class BodyLowering
             ReferenceEquals(source!.Components[0], target!.Components[0]) && Binding.FitsType(source, target));
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
-        => binding == ConversionBinding.Integer ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :
+        => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :
+            binding == ConversionBinding.Integer ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :
             binding == ConversionBinding.Floating ? FloatingTypes.Supports(source) && FloatingTypes.Supports(target) :
             binding == ConversionBinding.Numeric &&
             ((FloatingTypes.Supports(source) && ScalarTypes.Width(target, 64) is > 0 and <= 64) ||

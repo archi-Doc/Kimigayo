@@ -24,6 +24,9 @@ internal enum EmissionOpcode : byte
     SwapScalars,
     Scalar,
     Convert,
+    PointerOffset,
+    LoadPointer,
+    StorePointer,
     Phi,
 
     /// <summary>First placement of a Static string literal into <c>Place</c>'s slot; <c>Constant</c> is -1 for the empty literal.</summary>
@@ -205,6 +208,9 @@ internal sealed class EmissionModule
 
     internal List<ObjectCreation> Objects { get; } = new();
 
+    /// <summary>Gets the foreign functions (SPEC 22.3), one per external symbol; each call shares its physical signature.</summary>
+    internal List<ExternalFunction> Externals { get; } = new();
+
     internal bool IsComplete { get; private set; }
 
     internal string? TestRuntime { get; set; }
@@ -227,6 +233,7 @@ internal sealed class EmissionModule
         this.SharedBodies.Clear();
         this.SharedEntries.Clear();
         this.Objects.Clear();
+        this.Externals.Clear();
     }
 
     internal EmissionFunction AddFunction(FunctionAbi abi, bool exported)
@@ -259,3 +266,6 @@ internal sealed class EmissionModule
         LlvmModuleWriter.Write(this, output);
     }
 }
+
+/// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.8.2.1).</summary>
+internal readonly record struct ExternalFunction(FunctionAbi Abi, bool DllImport);

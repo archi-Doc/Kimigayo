@@ -25,7 +25,10 @@ internal static class ReferenceTypes
 
     internal static bool IsBorrow(BoundType? type) => IsStorage(type) || ObjectTypes.IsBorrow(type);
 
-    internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsBorrow(type);
+    // SPEC 5.1: a raw pointer is a Copy address value; null is its only literal.
+    internal static bool IsPointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 };
+
+    internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsBorrow(type) || IsPointer(type);
 
     internal static bool CallTypeMatches(BoundType? formal, BoundType? actual, BoundCall call)
     {

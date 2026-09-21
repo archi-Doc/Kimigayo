@@ -208,7 +208,8 @@ public sealed partial class Binding
         {
             this.floatingIntegerLiteral = fit && literal && target is { IsFloatingPoint: true }
                 ? operand as NumberLiteralKoto ?? ((UnaryKoto)operand).Operand as NumberLiteralKoto : null;
-            source = this.BindNode(conversion.Left, scope, fit ? target : null);
+            // SPEC 5.4: an integer literal pointer-cast input is first fitted to usize.
+            source = this.BindNode(conversion.Left, scope, fit ? target : literal && ReferenceTypes.IsPointer(target) ? BoundType.USize : null);
         }
         finally
         {
@@ -224,6 +225,19 @@ public sealed partial class Binding
         {
             conversion.ConversionBinding = ConversionBinding.Abrupt;
             return Complete(conversion, BoundType.Never);
+        }
+
+        if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
+        {
+            // SPEC 5.4-5.5: a pointer converts to another pointer Type or usize, and usize to a pointer.
+            if ((ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) ||
+                (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)))
+            {
+                conversion.ConversionBinding = ConversionBinding.Pointer;
+                return Complete(conversion, target);
+            }
+
+            return Fail(conversion, BindingFailure.TypeMismatch);
         }
 
         if (!plain)

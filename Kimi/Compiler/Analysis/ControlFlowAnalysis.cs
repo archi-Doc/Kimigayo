@@ -153,7 +153,7 @@ public sealed class ControlFlowAnalysis
     internal bool ReachesTarget(JumpKoto jump) => this.normalTransferArrivals.Contains(jump);
 
     private static bool IsPointer(ControlFlowType? type)
-        => type?.Name.StartsWith(PointerPrefix, StringComparison.Ordinal) == true;
+        => type is BoundType bound ? ReferenceTypes.IsPointer(bound) : type?.Name.StartsWith(PointerPrefix, StringComparison.Ordinal) == true;
 
     private static bool IsNullLiteral(Koto node)
         => KotoHelper.UnwrapParentheses(node) is NullLiteralKoto;
@@ -608,7 +608,8 @@ public sealed class ControlFlowAnalysis
                 var destinationType = this.types.GetDeclaredType(conversion.Right);
                 var sourcePointer = IsPointer(sourceType);
                 var destinationPointer = IsPointer(destinationType);
-                if (sourcePointer || destinationPointer)
+                // SPEC 5.4: same-Type acquisition needs no unsafe context.
+                if ((sourcePointer || destinationPointer) && !(sourceType is BoundType && ReferenceEquals(sourceType, destinationType)))
                 {
                     this.CheckUnsafePermission(conversion);
                     if ((sourcePointer && destinationType is not null && !destinationPointer && destinationType.Name != "usize") ||
@@ -1298,6 +1299,11 @@ public sealed class ControlFlowAnalysis
 
     private ControlFlowType PointeeType(ControlFlowType pointer)
     {
+        if (pointer is BoundType bound)
+        {
+            return bound.Components[0];
+        }
+
         if (!this.pointeeTypes.TryGetValue(pointer.Name, out var pointee))
         {
             pointee = new(pointer.Name[PointerPrefix.Length..]);

@@ -138,6 +138,38 @@ internal static partial class LlvmModuleWriter
                 return;
             case EmissionOpcode.Scalar:
                 break;
+            case EmissionOpcode.StorePointer:
+                output.Write("  store ");
+                output.Write(type);
+                output.Write(' ');
+                WriteOperand(output, operands[0]);
+                output.Write(", ptr ");
+                WriteOperand(output, operands[1]);
+                WriteAlignment(output, instruction.Representation!.Layout.Alignment);
+                return;
+            case EmissionOpcode.LoadPointer:
+                Name(output, "  %v", id);
+                output.Write(" = load ");
+                output.Write(type);
+                output.Write(", ptr ");
+                WriteOperand(output, operands[0]);
+                WriteAlignment(output, instruction.Representation!.Layout.Alignment);
+                return;
+            case EmissionOpcode.PointerOffset:
+                // SPEC 5.3: count * signed stride bytes; out-of-allocation results are the program's undefined
+                // behavior, so no inbounds, nsw or other attribute is claimed.
+                Name(output, "  %offset", id);
+                output.Write(" = mul i64 ");
+                WriteOperand(output, operands[1]);
+                output.Write(", ");
+                WriteNumber(output, instruction.Constant);
+                output.Write('\n');
+                Name(output, "  %v", id);
+                output.Write(" = getelementptr i8, ptr ");
+                WriteOperand(output, operands[0]);
+                Name(output, ", i64 %offset", id);
+                output.Write('\n');
+                return;
             case EmissionOpcode.Convert:
                 WriteConversion(output, constants, instruction, operands);
                 return;

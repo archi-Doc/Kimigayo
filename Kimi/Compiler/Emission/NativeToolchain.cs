@@ -120,6 +120,7 @@ internal static partial class NativeToolchain
             }
 
             string path;
+            string? stagedHash = null;
             if (name == Kernel32Imports.LibraryName)
             {
                 Kernel32Imports.ValidateManifest(item);
@@ -136,13 +137,25 @@ internal static partial class NativeToolchain
             }
             else
             {
-                path = ResolvePath(item.GetProperty("input").GetString()!, outputDirectory);
+                path = StageInput(ResolvePath(item.GetProperty("input").GetString()!, outputDirectory), paths.Stem, out stagedHash);
             }
 
-            var hash = Hash(path);
+            var hash = stagedHash ?? Hash(path);
             if ((name == Kernel32Imports.LibraryName && kind != "import") || (name == WindowsProfile.BackendLibrary && (kind != "static" || hash != WindowsProfile.BackendSha256)))
             {
                 throw new InvalidDataException("Native library kind or backend SHA-256 mismatch.");
+            }
+
+            // SPEC 20.8.2.1-2: another supply must be this project's own, with its expanded Kind and the
+            // requirement/supply hash assertions checked against the actual bytes that are linked.
+            if (name is not (Kernel32Imports.LibraryName or WindowsProfile.BackendLibrary))
+            {
+                var supply = project.ProjectFile.NativeLibraries.TryGetValue(WindowsProfile.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
+                var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(project.ProjectFile, WindowsProfile.Target, name, supply);
+                if (supply is null || expectedKind != kind || (expectedHash is not null && !expectedHash.Equals(hash, StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new InvalidDataException($"Native library '{name}' does not match its NativeLibraries Kind or Sha256 assertion.");
+                }
             }
 
             libraries.Add(path);
@@ -172,10 +185,20 @@ internal static partial class NativeToolchain
         var obj = paths.Stem + ".obj";
         await Tool("llc", "-" + project.ProjectFile.Optimization, "-filetype=obj", "-mtriple=" + WindowsProfile.Target, "-mcpu=" + WindowsProfile.Cpu, "-mattr=" + WindowsProfile.Features, "-relocation-model=" + WindowsProfile.RelocationModel, "-code-model=" + WindowsProfile.CodeModel, selectedIr, "-o", Path.GetFileName(obj));
         var undefined = await Tool("llvm-nm", "--undefined-only", "--format=posix", obj);
+        Dictionary<string, bool>? declared = null;
         foreach (var line in undefined.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
             var separator = line.AsSpan().IndexOfAny(' ', '\t');
-            if (!AllowedUndefined.Contains(separator < 0 ? line : line[..separator]))
+            var symbol = separator < 0 ? line : line[..separator];
+            if (AllowedUndefined.Contains(symbol))
+            {
+                continue;
+            }
+
+            // SPEC 22.3: a foreign import is referenced through __imp_ when dllimport and directly otherwise.
+            declared ??= ReadExternalDeclarations(paths.Ir);
+            var imported = symbol.StartsWith("__imp_", StringComparison.Ordinal);
+            if (!declared.TryGetValue(imported ? symbol[6..] : symbol, out var dllimport) || dllimport != imported)
             {
                 throw new InvalidDataException("Unsupported actual object dependency: " + line);
             }
@@ -365,6 +388,48 @@ internal static partial class NativeToolchain
 
             return builder.Append(text, copied, text.Length - copied).ToString();
         }
+    }
+
+    // SPEC 20.8.2.2: the linker receives a fixed snapshot named by its content hash, never the mutable
+    // original; a staged copy is reused only when its bytes still have that hash.
+    private static string StageInput(string input, string stem, out string hash)
+    {
+        var directory = stem + ".native";
+        Directory.CreateDirectory(directory);
+        var temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            File.Copy(input, temporary);
+            hash = Hash(temporary);
+            var staged = Path.Combine(directory, hash + ".lib");
+            if (!File.Exists(staged) || Hash(staged) != hash)
+            {
+                File.Move(temporary, staged, true);
+            }
+
+            return staged;
+        }
+        finally
+        {
+            File.Delete(temporary);
+        }
+    }
+
+    // The external functions of the hash-verified pre-optimization IR, keyed by symbol, with their dllimport form.
+    private static Dictionary<string, bool> ReadExternalDeclarations(string ir)
+    {
+        var declared = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var line in File.ReadLines(ir))
+        {
+            // A quoted name escapes every quote, so its closing quote is the next one.
+            if (line.StartsWith("declare ", StringComparison.Ordinal) && line.IndexOf('@') is var at and >= 0 &&
+                (at + 1 < line.Length && line[at + 1] == '"' ? line.IndexOf('"', at + 2) + 1 : line.IndexOf('(', at)) is var end and > 0)
+            {
+                declared[LlvmModuleWriter.SymbolFromName(line.AsSpan(at + 1, end - at - 1))] = line.StartsWith("declare dllimport ", StringComparison.Ordinal);
+            }
+        }
+
+        return declared;
     }
 
     private static HashSet<string> CreateAllowedUndefined()

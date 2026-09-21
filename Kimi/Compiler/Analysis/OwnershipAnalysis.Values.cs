@@ -108,7 +108,12 @@ public sealed partial class OwnershipAnalysis
 
         if (kind == OwnershipOperationKind.Produce)
         {
-            if (source is BoolLiteralKoto boolean)
+            if (source is NullLiteralKoto)
+            {
+                // SPEC 5.1: the null address; lowering gives pointer constants their own operand form.
+                this.SetValue(id, OwnershipValueKind.Constant, [], constant: 0);
+            }
+            else if (source is BoolLiteralKoto boolean)
             {
                 this.SetValue(id, OwnershipValueKind.Constant, [], constant: boolean.Value ? 1 : 0);
             }

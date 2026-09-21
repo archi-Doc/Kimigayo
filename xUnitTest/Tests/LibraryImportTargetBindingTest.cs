@@ -78,12 +78,14 @@ public class LibraryImportTargetBindingTest
     }
 
     [Fact]
-    public void ForeignFunctionSupportRemainsUnimplemented()
+    public void ValidImportDeclarationCompletesBinding()
     {
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"library\", \"symbol\")\n    public unsafe func imported(value: i32) -> i32", "library");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var import = Assert.Single(c.Binding.LibraryImports);
+        Assert.Equal(("library", "symbol", "import"), (import.Library, import.Symbol, import.Kind));
     }
 
     [Theory]
@@ -97,8 +99,9 @@ public class LibraryImportTargetBindingTest
         var c = AnalyzeImport("group Native\n    " + attribute + "\n    public unsafe func imported() -> i32", requirement, combinedSupply);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd);
         Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Bind().IsComplete);
+        var complete = !missing && !attribute.Contains("ExitProcess", StringComparison.Ordinal);
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        Assert.Equal(complete, c.Bind().IsComplete);
         Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
     }
 
@@ -140,7 +143,7 @@ public class LibraryImportTargetBindingTest
     {
         var c = AnalyzeImport(source, "codec");
         Assert.Equal(invalid, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd));
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(!invalid, c.Binding.Result.IsComplete);
     }
 
     [Theory]
@@ -163,7 +166,7 @@ public class LibraryImportTargetBindingTest
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> " + result, "codec");
         Assert.Equal(unsupported, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnsupportedImportSignature_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(!unsupported, c.Binding.Result.IsComplete);
     }
 
     [Theory]
@@ -202,7 +205,7 @@ public class LibraryImportTargetBindingTest
         Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingRuntimeSymbol_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.UnsupportedImportSignature_Kd or
             DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(!conflict, c.Binding.Result.IsComplete);
     }
 
     [Theory]
@@ -273,7 +276,7 @@ public class LibraryImportTargetBindingTest
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func imported() -> i32", null);
         Assert.Equal(unavailable, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnavailableReservedImport_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(!unavailable, c.Binding.Result.IsComplete);
     }
 
     [Fact]
@@ -311,7 +314,7 @@ public class LibraryImportTargetBindingTest
                     library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
                 }
             });
-        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(!missing, c.Bind().IsComplete);
         Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
     }
 

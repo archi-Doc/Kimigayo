@@ -233,6 +233,74 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.False(diagnostics.HasErrors);
     }
 
+    [Fact]
+    public void ImportedSuppliesAreListedInOrdinalOrder()
+    {
+        var c = this.CreateForeign(
+            "group Native\n    #LibraryImport(\"zlib\", \"inflate\")\n    public unsafe func inflate(value: i32) -> i32\n" +
+            "    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n    #LibraryImport(\"codec\", \"decode\")\n    public unsafe func decode(value: i32) -> i32\n" +
+            "public func main()\n    var v: i32 = 0\n    unsafe => v = Native.inflate(Native.encode(Native.decode(1)))",
+            settings => settings.NativeLibraries[WindowsProfile.Target] = new()
+            {
+                ["zlib"] = new() { Kind = "import", Input = "zlib.lib" },
+                ["codec"] = new() { Kind = "static", Input = "native/codec.lib" },
+                ["unused"] = new() { Kind = "static", Input = "unused.lib" },
+            });
+        Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+        var libraries = manifest.RootElement.GetProperty("libraries");
+        Assert.Equal(["codec", "kernel32", "kimi_backend", "zlib"], libraries.EnumerateArray().Select(x => x.GetProperty("name").GetString()));
+        Assert.Equal(("static", Path.Combine("..", "native", "codec.lib")), (libraries[0].GetProperty("kind").GetString(), libraries[0].GetProperty("input").GetString()));
+        Assert.Equal(("import", "zlib.lib"), (libraries[3].GetProperty("kind").GetString(), libraries[3].GetProperty("input").GetString()));
+        Assert.Contains("declare dllimport i32 @inflate(i32)\n", File.ReadAllText(path!));
+    }
+
+    [Fact]
+    public void RequiredNameWithoutSupplyCannotPublish()
+    {
+        var c = this.CreateForeign(
+            "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\npublic func main() => ()",
+            settings => settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
+        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
+        Assert.Null(path);
+        Assert.Contains("has no NativeLibraries supply", error);
+        Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void DependencyModuleSuppliesAreNotLinkedYet()
+    {
+        var c = ModuleBindingTest.Create(
+            "public func main() => ()",
+            "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32",
+            configure: (root, library) => library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        c.Project.Directory = this.directory;
+        c.Project.Name = "Hello";
+        c.Project.ProjectFile.OutputPath = "out/Hello.ll";
+        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
+        Assert.Null(path);
+        Assert.Contains("dependency modules", error);
+        Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
+    }
+
+    private Compilation CreateForeign(string source, Action<ProjectFile> configure)
+    {
+        var c = Compilation.CreateForTest();
+        configure(c.Project.ProjectFile);
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        c.Project.Directory = this.directory;
+        c.Project.Name = "Hello";
+        c.Project.ProjectFile.OutputPath = "out/Hello.ll";
+        return c;
+    }
+
     private Compilation Create()
     {
         var c = MinimalEmissionTest.Analyze("::Kimi.Console.writeLine(\"Hello, world!\")");

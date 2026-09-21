@@ -354,6 +354,12 @@ internal enum OwnershipValueKind : byte
     Closure,
     Capture,
     ClosureErasure,
+
+    // SPEC 5.2: a Copy read through a raw pointer; the input is the pointer value.
+    PointerLoad,
+
+    // SPEC 5.2: a Copy write through a raw pointer; inputs are the pointer and the stored value.
+    PointerStore,
 }
 
 internal enum SequenceOperation : byte

@@ -191,5 +191,75 @@ foreach ($command in @('build', 'run', 'emit')) {
 }
 Remove-Item -LiteralPath $singleStem
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'run without compilation', 'failure invalidates old success', 'toolchain policy', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'source run without compilation', 'exact path precedence', 'invalid selection never falls back') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+# A self-targeted static supply links #LibraryImport calls with mixed scalar arguments (SPEC 20.8.2, 22.3).
+$foreignDirectory = Join-Path $work 'foreign supply'
+$foreignNative = Join-Path $foreignDirectory 'native'
+New-Item -ItemType Directory -Path $foreignNative -Force | Out-Null
+@'
+static int total;
+double mix(signed char a, unsigned short b, int c, long long d, float e, double f) { return a + b + c + d + e + f; }
+void notify(unsigned int value) { total += (int)value; }
+int read_total(void) { return total; }
+int mangled(void) __asm__("?value@@YAHXZ");
+int mangled(void) { return 42; }
+'@ | Set-Content -LiteralPath (Join-Path $foreignNative 'codec.c') -Encoding ascii
+& (Join-Path $ToolchainRoot 'clang.exe') --target=x86_64-pc-windows-msvc -O2 -fno-autolink -fno-stack-protector -c (Join-Path $foreignNative 'codec.c') -o (Join-Path $foreignNative 'codec.obj')
+if ($LASTEXITCODE -ne 0) { throw 'clang failed for the foreign supply' }
+& (Join-Path $ToolchainRoot 'llvm-lib.exe') "/out:$(Join-Path $foreignNative 'codec.lib')" (Join-Path $foreignNative 'codec.obj')
+if ($LASTEXITCODE -ne 0) { throw 'llvm-lib failed for the foreign supply' }
+$foreignProject = Join-Path $foreignDirectory 'Foreign.kimiproj'
+function Write-ForeignProject([string] $Level, [string] $Supply) {
+    @"
+Targets=
+  "x86_64-pc-windows-msvc"
+OutputKind="Application"
+Optimization="$Level"
+$Supply
+"@ | Set-Content -LiteralPath $foreignProject -Encoding utf8
+}
+$foreignSupply = "NativeLibraries=`n  `"x86_64-pc-windows-msvc`"=`n    codec={ Kind=`"static`" Input=`"native/codec.lib`" }"
+@'
+group Native
+    #LibraryImport("codec", "mix")
+    public unsafe func mix(a: i8, b: u16, c: i32, d: i64, e: f32, f: f64) -> f64
+    #LibraryImport("codec", "notify")
+    public unsafe func notify(value: u32) -> ()
+    #LibraryImport("codec", "read_total")
+    public unsafe func readTotal() -> i32
+    #LibraryImport("codec", "?value@@YAHXZ")
+    public unsafe func mangled() -> i32
+public func main()
+    var total: f64 = 0.0
+    unsafe => total = Native.mix(-1, 65535, 3, -4, 0.5, 2.25)
+    require total == 65535.75 else => $abort("mix")
+    unsafe => Native.notify(7)
+    unsafe => Native.notify(5)
+    var sum: i32 = 0
+    unsafe => sum = Native.readTotal()
+    require sum == 12 else => $abort("notify")
+    var answer: i32 = 0
+    unsafe => answer = Native.mangled()
+    require answer == 42 else => $abort("mangled")
+    Console.writeLine("foreign ok")
+'@ | Set-Content -LiteralPath (Join-Path $foreignDirectory 'Foreign.kimi') -Encoding utf8
+foreach ($level in @('O0', 'O2')) {
+    Write-ForeignProject $level $foreignSupply
+    $output = Invoke-Kimi @('build', $foreignProject)
+    $output = Invoke-Kimi @('run', $foreignProject)
+    if (-not $output.Contains('foreign ok')) { throw "Foreign static supply failed at $level`: $output" }
+}
+$foreignRecord = Get-Content -LiteralPath (Join-Path $foreignDirectory 'bin/x86_64-pc-windows-msvc/Foreign.link.build.json') -Raw | ConvertFrom-Json
+$codecRecord = $foreignRecord.libraries | Where-Object name -ceq 'codec'
+$codecHash = (Get-FileHash (Join-Path $foreignNative 'codec.lib')).Hash.ToLowerInvariant()
+if ($codecRecord.sha256 -cne $codecHash -or -not $codecRecord.path.Replace('\', '/').EndsWith(".native/$codecHash.lib")) { throw "Foreign supply was not linked from its staged snapshot: $($codecRecord | ConvertTo-Json)" }
+$foreignManifest = Get-Content -LiteralPath (Join-Path $foreignDirectory 'bin/x86_64-pc-windows-msvc/Foreign.link.json') -Raw | ConvertFrom-Json
+if (($foreignManifest.libraries | ForEach-Object name) -join ',' -cne 'codec,kernel32,kimi_backend' -or $foreignManifest.libraries[0].kind -cne 'static') { throw 'Foreign supply manifest entries are not sorted/complete' }
+Write-ForeignProject 'O0' ($foreignSupply.Replace('Input=', 'Sha256="' + ('0' * 64) + '" Input='))
+$output = Invoke-Kimi @('build', $foreignProject) 1
+if (-not $output.Contains('Sha256 assertion')) { throw "Foreign Sha256 assertion was not checked: $output" }
+Write-ForeignProject 'O0' "NativeRequirements=`n  `"x86_64-pc-windows-msvc`"=`n    codec={ Kind=`"static`" }"
+$output = Invoke-Kimi @('emit', $foreignProject) 1
+if (-not $output.Contains('has no NativeLibraries supply')) { throw "A required foreign supply was not diagnosed: $output" }
+
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'run without compilation', 'failure invalidates old success', 'toolchain policy', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'source run without compilation', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"

@@ -13,6 +13,12 @@ public sealed partial class Binding
     private static bool Writable(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
+        // SPEC 5.2: binding mutability does not decide pointee write permission.
+        if (node is DereferenceKoto dereference)
+        {
+            return ReferenceTypes.IsPointer(dereference.Operand.BoundType);
+        }
+
         if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
         {
             return false;
@@ -776,7 +782,7 @@ public sealed partial class Binding
             return Complete(unary, type);
         }
 
-        var operand = this.BindNode(unary.Operand, scope, unary.Akind == KotoKind.Not ? BoundType.Boolean : expected);
+        var operand = this.BindNode(unary.Operand, scope, unary.Akind == KotoKind.Not ? BoundType.Boolean : unary.Akind == KotoKind.Dereference ? null : expected);
         if (operand is null)
         {
             return Complete(unary, null);
@@ -800,6 +806,9 @@ public sealed partial class Binding
                 // Increment and decrement do not apply to floats (SPEC 13.2).
                 var destination = ElementAccess.DestinationType(unary.Operand, operand);
                 return destination?.IsInteger == true ? Complete(unary, destination) : Fail(unary, BindingFailure.TypeMismatch);
+            case KotoKind.Dereference:
+                // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
+                return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : Fail(unary, BindingFailure.TypeMismatch);
             default:
                 return Fail(unary, BindingFailure.Unsupported, true);
         }
@@ -846,7 +855,8 @@ public sealed partial class Binding
                 left = ElementAccess.DestinationType(binary.Left, left);
             }
 
-            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : left);
+            // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
+            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : left);
         }
 
         if (left is null || right is null)
@@ -882,6 +892,14 @@ public sealed partial class Binding
                 : Fail(binary, BindingFailure.TypeMismatch);
         }
 
+        if (ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus)
+        {
+            // Arithmetic needs a positive stride: unsafe/() is invalid here; lowering rejects other zero strides.
+            return (ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)) && !ReferenceEquals(left.Components[0], BoundType.Unit)
+                ? Complete(binary, result)
+                : Fail(binary, BindingFailure.TypeMismatch);
+        }
+
         if (!Compatible(right, left))
         {
             return Fail(binary, BindingFailure.TypeMismatch);
@@ -895,6 +913,12 @@ public sealed partial class Binding
         // Only built-in primitive operations are decided here. User Types need Contract mappings or
         // pointer rules (SPEC 13.4.1, 5.3), which are not bound yet.
         var primitive = left.Kind == BoundTypeKind.Primitive && !ReferenceEquals(left, BoundType.Never);
+        if (comparison && ReferenceTypes.IsPointer(left))
+        {
+            // SPEC 5.1: same-Type pointers, or a pointer and null, compare addresses; ordering is not defined.
+            return operation is KotoKind.EqualsEquals or KotoKind.ExclamationEquals ? Complete(binary, BoundType.Boolean) : Fail(binary, BindingFailure.TypeMismatch);
+        }
+
         if (comparison)
         {
             // bool and Unit support equality only; numbers, char, and string are also ordered (SPEC 13.4).

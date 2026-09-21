@@ -108,7 +108,16 @@ checked for requirement names, declaration shape and the initial Windows C ABI T
 Declarations of one external symbol must also agree on their physical signature and on
 the requirement `Kind` that selects dllimport generation, and an import of a kernel32 API
 the runtime itself declares must use the reserved `kernel32` supply with that exact
-signature. Foreign calls are not generated or linked yet.
+signature. Calls inside an `unsafe` block are generated for integer, `f32`/`f64` and
+raw-pointer signatures, with a `dllimport` declaration for `import` supplies. `build`
+links the project's own `NativeLibraries` supplies that its imports require and checks
+`Sha256` assertions against a staged copy that is linked instead of the original;
+actual archive member kinds are not checked yet. Raw pointers can be passed, returned,
+stored, compared with `==`/`!=` (including `null`), converted with `@` to other pointer
+Types or `usize`, and displaced with `p + n`, `p - n`, `p += n` or `p -= n` (`n: isize`);
+`*p` reads and writes non-`bool` scalar and pointer pointees; compound writes through
+pointers, indexing and C layout are not generated yet. Any external symbol spelling is
+supported, including MSVC-mangled names; supplies required by dependency modules are not.
 
 A target may instead list `Name`/`Input` records. A record with `Package=` supplies a
 native name required by that dependency module; it cannot declare `Kind`, and when the

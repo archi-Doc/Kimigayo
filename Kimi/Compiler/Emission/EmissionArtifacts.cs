@@ -42,6 +42,7 @@ public static class EmissionArtifacts
             var manifest = paths.Manifest;
             var outputDirectory = Path.GetDirectoryName(destination)!;
             var backend = ResolveBackend(settings);
+            var foreign = ResolveForeignSupplies(compilation, settings);
             if (backend is not null && HasDirectory(backend.Input))
             {
                 var actual = Hash(Path.GetFullPath(backend.Input, directory));
@@ -71,7 +72,7 @@ public static class EmissionArtifacts
             using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
             {
-                WriteManifest(json, settings, compilation.Binding.Startup.OutputKind, backend, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
+                WriteManifest(json, settings, compilation.Binding.Startup.OutputKind, backend, foreign, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
             }
 
             File.Move(tempIr, destination, true);
@@ -131,6 +132,50 @@ public static class EmissionArtifacts
         return backend;
     }
 
+    // SPEC 20.8.3: libraries required by external declarations, sorted by Ordinal name. Only the root
+    // module's own self-targeted supplies connect yet: a logical name alone cannot identify another
+    // module's requirement, and combined-module native records are not generated.
+    private static List<(string Name, string Kind, string Input)>? ResolveForeignSupplies(Compilation compilation, ProjectFile settings)
+    {
+        List<(string Name, string Kind, string Input)>? result = null;
+        var imports = compilation.Binding.LibraryImports;
+        for (var i = 0; i < imports.Count; i++)
+        {
+            var import = imports[i];
+            if (import.Library == Kernel32Imports.LibraryName)
+            {
+                continue;
+            }
+
+            if (!ReferenceEquals(import.Function.CodeContext.Kotonoha, compilation.Kotonoha))
+            {
+                throw new InvalidDataException("Native supplies required by dependency modules are not linked yet.");
+            }
+
+            var known = false;
+            for (var j = 0; j < (result?.Count ?? 0) && !known; j++)
+            {
+                known = result![j].Name == import.Library;
+            }
+
+            if (known)
+            {
+                continue;
+            }
+
+            var supply = settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries) ? libraries.GetValueOrDefault(import.Library) : null;
+            if (supply is null)
+            {
+                throw new InvalidDataException($"Native requirement '{import.Library}' has no NativeLibraries supply for {WindowsProfile.Target}.");
+            }
+
+            (result ??= new()).Add((import.Library, import.Kind, supply.Input));
+        }
+
+        result?.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
+        return result;
+    }
+
     private static void CheckLibraryPath(string input)
     {
         CheckPath(input);
@@ -140,7 +185,7 @@ public static class EmissionArtifacts
         }
     }
 
-    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, OutputKind outputKind, NativeLibraryInput? backend, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
+    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, OutputKind outputKind, NativeLibraryInput? backend, List<(string Name, string Kind, string Input)>? foreign, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
     {
         json.WriteStartObject();
         json.WriteNumber("schemaVersion", 3);
@@ -169,6 +214,8 @@ public static class EmissionArtifacts
         json.WriteString("entry", outputKind == OutputKind.Library ? null : WindowsProfile.EntrySymbol);
         json.WriteString("subsystem", outputKind == OutputKind.Library ? null : WindowsProfile.Subsystem);
         json.WriteStartArray("libraries");
+        var next = 0;
+        WriteForeign(Kernel32Imports.LibraryName);
         json.WriteStartObject();
         json.WriteString("name", Kernel32Imports.LibraryName);
         json.WriteString("kind", "import");
@@ -176,6 +223,7 @@ public static class EmissionArtifacts
         json.WriteString("dll", Kernel32Imports.Dll);
         json.WriteString("definitionSha256", Kernel32Imports.DefinitionSha256);
         json.WriteEndObject();
+        WriteForeign(WindowsProfile.BackendLibrary);
         json.WriteStartObject();
         json.WriteString("name", WindowsProfile.BackendLibrary);
         json.WriteString("kind", "static");
@@ -189,6 +237,7 @@ public static class EmissionArtifacts
         }
 
         json.WriteEndObject();
+        WriteForeign(null);
         json.WriteEndArray();
         WriteStrings(json, "providedRuntimeSymbols", [WindowsProfile.FloatMarker]);
         WriteStrings(json, "expectedUndefinedSymbols", []);
@@ -200,6 +249,20 @@ public static class EmissionArtifacts
         }
 
         json.WriteEndObject();
+
+        // Writes the supplies ordered before the reserved name (all remaining ones for null).
+        void WriteForeign(string? before)
+        {
+            for (; next < (foreign?.Count ?? 0) && (before is null || string.CompareOrdinal(foreign![next].Name, before) < 0); next++)
+            {
+                var (name, kind, input) = foreign![next];
+                json.WriteStartObject();
+                json.WriteString("name", name);
+                json.WriteString("kind", kind);
+                json.WriteString("input", HasDirectory(input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input, projectDirectory)) : input);
+                json.WriteEndObject();
+            }
+        }
     }
 
     private static void WriteStrings(Utf8JsonWriter json, string name, ReadOnlySpan<string> values)

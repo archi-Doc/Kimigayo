@@ -584,7 +584,7 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 return this.Use(node, this.Local(node), use, acquisition);
-            case StringLiteralKoto or NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto or UnitLiteralKoto:
+            case StringLiteralKoto or NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto or UnitLiteralKoto or NullLiteralKoto:
                 return this.Temporary(node);
             case TupleLiteralKoto tuple when tuple.Elements.Count == 0:
                 return this.Temporary(node);
@@ -678,6 +678,17 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 return this.RegisterTemporary(blockValue);
+            case DereferenceKoto dereference when !ReferenceEquals(dereference.BoundType, BoundType.Boolean) && (ScalarTypes.Supports(dereference.BoundType) || ReferenceTypes.IsPointer(dereference.BoundType)):
+                // SPEC 5.2: a Copy read through a raw pointer needs no Loan; validity is the unsafe caller's obligation.
+                var pointer = this.Expression(dereference.Operand, PlaceUseKind.Read);
+                if (pointer < 0)
+                {
+                    return -1;
+                }
+
+                var loaded = this.Temporary(dereference);
+                this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(pointer)]);
+                return loaded;
             case UnaryKoto unary when node.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus or KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 return this.UnaryValue(unary);
             default:
@@ -707,12 +718,29 @@ public sealed partial class OwnershipAnalysis
                 return binary.Akind == KotoKind.Equals ? this.AssignElement(binary, element) : this.UpdateElement(binary, element);
             }
 
+            if (target is DereferenceKoto dereference && binary.Akind == KotoKind.Equals && !ReferenceEquals(dereference.BoundType, BoundType.Boolean) &&
+                (ScalarTypes.Supports(dereference.BoundType) || ReferenceTypes.IsPointer(dereference.BoundType)))
+            {
+                // SPEC 5.2: a Copy write through a raw pointer; the value is evaluated before the pointer.
+                var value = this.Expression(binary.Right);
+                var pointer = value < 0 ? -1 : this.Expression(dereference.Operand, PlaceUseKind.Read);
+                if (pointer < 0)
+                {
+                    return -1;
+                }
+
+                var stored = this.Temporary(dereference);
+                this.SetValue(this.Value(stored), OwnershipValueKind.PointerStore, [this.Value(pointer), this.Value(value)]);
+                return this.Temporary(binary);
+            }
+
             var previous = -1;
             var op = KotoHelper.CompoundOperation(binary.Akind);
             if (binary.Akind != KotoKind.Equals)
             {
                 previous = this.Value(this.Expression(binary.Left, PlaceUseKind.Read));
-                if (binary.Left.BoundType?.IsNumeric != true || op == KotoKind.Invalid)
+                // SPEC 5.3: p += n and p -= n displace a pointer local like p + n and p - n.
+                if (!(binary.Left.BoundType?.IsNumeric == true || (ReferenceTypes.IsPointer(binary.Left.BoundType) && op is KotoKind.Plus or KotoKind.Minus)) || op == KotoKind.Invalid)
                 {
                     this.Unsupported(binary);
                 }

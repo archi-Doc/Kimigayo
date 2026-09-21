@@ -18,6 +18,10 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
     public override ControlFlowType? GetExpressionType(Koto expression)
         => expression.BindingState == BindingState.Resolved ? FlowType(expression.ErasedFunctionType ?? expression.BoundType) : null;
 
+    // SPEC 5.1: Binding types null only from an expected raw-pointer Type, such as a call argument's parameter.
+    public override ControlFlowType? GetExpectedType(Koto expression)
+        => expression is NullLiteralKoto { BindingState: BindingState.Resolved } && ReferenceTypes.IsPointer(expression.BoundType) ? FlowType(expression.BoundType) : null;
+
     public override ControlFlowType? GetDeclaredType(Koto? syntax)
         => syntax?.BindingState == BindingState.Resolved ? FlowType(syntax.BoundType) : null;
 

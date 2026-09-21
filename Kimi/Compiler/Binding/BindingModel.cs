@@ -243,6 +243,7 @@ public sealed record BoundType : ControlFlowType
     internal static readonly BoundType F64 = Primitives["f64"];
 
     internal static readonly BoundType ISize = Primitives["isize"];
+    internal static readonly BoundType USize = Primitives["usize"];
 
     internal static readonly BoundType ResolvedRange = new("ResolvedRange", BoundTypeKind.ResolvedRange);
     internal static readonly BoundType Range = new("Range", BoundTypeKind.Range);
@@ -339,3 +340,7 @@ public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount,
 {
     public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0;
 }
+
+/// <summary>A validated <c>#LibraryImport</c> declaration: its external symbol and the supply kind that
+/// selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.8.2.1, 22.3).</summary>
+internal readonly record struct LibraryImport(FunctionKoto Function, string Library, string Symbol, string Kind);

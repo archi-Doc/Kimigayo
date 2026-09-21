@@ -128,6 +128,13 @@ public sealed partial class Binding
                     }
                 }
             }
+
+            // A failure above already made the attribute Invalid; Complete keeps that state.
+            Complete(attribute, BoundType.Unit);
+            if (attribute.BindingState == BindingState.Resolved && signature is not null && kind is not null)
+            {
+                this.libraryImports.Add(new(function, name, symbol, kind));
+            }
         }
 
         // SPEC 22.3.1: a direct group or receiverless struct type function without

@@ -66,6 +66,7 @@ internal static partial class LlvmModuleWriter
 
         output.Write(module.TestRuntime is null ? Runtime : TestRuntimeBase);
         output.Write(module.TestRuntime);
+        WriteExternals(module, output);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
         if (module.Aggregates.Count != 0 || module.SharedBodies.Count != 0 || module.TestRuntime is not null)
@@ -91,6 +92,110 @@ internal static partial class LlvmModuleWriter
         WriteObjects(module, output);
 
         output.Write(Footer);
+    }
+
+    // The LLVM spelling after @ of an external symbol: the plain identifier, or a quoted
+    // name whose UTF-8 bytes other than printable ASCII, " and \ are written as \XX.
+    internal static string ExternalName(string symbol)
+    {
+        var plain = symbol.Length != 0 && !char.IsAsciiDigit(symbol[0]);
+        foreach (var c in symbol)
+        {
+            plain &= char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '$' or '-';
+        }
+
+        if (plain)
+        {
+            return symbol;
+        }
+
+        var text = new StringBuilder(symbol.Length + 8).Append('"');
+        foreach (var b in Encoding.UTF8.GetBytes(symbol))
+        {
+            if (b is >= 0x20 and < 0x7F and not (byte)'"' and not (byte)'\\')
+            {
+                text.Append((char)b);
+            }
+            else
+            {
+                text.Append('\\').Append(b.ToString("X2", CultureInfo.InvariantCulture));
+            }
+        }
+
+        return text.Append('"').ToString();
+    }
+
+    // Recovers the external symbol from its ExternalName spelling.
+    internal static string SymbolFromName(ReadOnlySpan<char> name)
+    {
+        if (name.Length < 2 || name[0] != '"' || name[^1] != '"')
+        {
+            return name.ToString();
+        }
+
+        name = name[1..^1];
+        var bytes = new byte[name.Length];
+        var count = 0;
+        for (var i = 0; i < name.Length; i++)
+        {
+            if (name[i] == '\\' && i + 2 < name.Length && byte.TryParse(name.Slice(i + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var escaped))
+            {
+                bytes[count++] = escaped;
+                i += 2;
+            }
+            else
+            {
+                bytes[count++] = (byte)name[i];
+            }
+        }
+
+        return Encoding.UTF8.GetString(bytes, 0, count);
+    }
+
+    // SPEC 22.3: one declaration per foreign symbol. A kernel32 import that the written runtime already
+    // declares shares that declaration; Binding proved their physical Types equal (SPEC 21.5.2).
+    private static void WriteExternals(EmissionModule module, TextWriter output)
+    {
+        foreach (var external in module.Externals)
+        {
+            var abi = external.Abi;
+            if (Declares(module.TestRuntime is null ? Runtime : TestRuntimeBase, abi.Name) || (module.TestRuntime is { } test && Declares(test, abi.Name)))
+            {
+                continue;
+            }
+
+            output.Write(external.DllImport ? "declare dllimport " : "declare ");
+            output.Write(abi.Result);
+            output.Write(" @");
+            output.Write(abi.Name);
+            output.Write('(');
+            for (var i = 0; i < abi.Parameters.Length; i++)
+            {
+                if (i != 0)
+                {
+                    output.Write(", ");
+                }
+
+                output.Write(abi.Parameters[i].Type);
+            }
+
+            output.Write(")\n");
+        }
+
+        static bool Declares(string runtime, string name)
+        {
+            for (var index = runtime.IndexOf(name, StringComparison.Ordinal); index >= 0; index = runtime.IndexOf(name, index + 1, StringComparison.Ordinal))
+            {
+                var end = index + name.Length;
+                if (index != 0 && runtime[index - 1] == '@' && end < runtime.Length && runtime[end] == '(' &&
+                    runtime.LastIndexOf('\n', index) is var line && runtime.AsSpan(line + 1).StartsWith("declare ", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)

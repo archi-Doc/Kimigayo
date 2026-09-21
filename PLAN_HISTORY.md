@@ -6,6 +6,7 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Foreign import calls (2026-09-22)](#foreign-import-calls-20260922)
 - [Named argument boundary (2026-09-22)](#named-argument-boundary-20260922)
 - [Origin redesign native verification (2026-09-21)](#origin-redesign-native-20260921)
 - [Origin redesign integration (2026-09-21)](#origin-redesign-20260921)
@@ -8136,3 +8137,87 @@ receiver/constrained-specialization, callable and foreign-execution gaps remain
 under I4/I5/I14/I18/CR4/OSE3. Base-call syntax is covered, not new inherited
 constructor execution. Their formal requirements are unchanged; this revision
 does not report those prior gaps as completed support.
+
+<a id="foreign-import-calls-20260922"></a>
+## Foreign import calls — T26j (2026-09-22)
+
+Timed continuation started 2026-09-22 00:46:35 local time under the request to continue unfinished M/I items (Milestone Programs excluded). Resumed I26 from the reverted 2026-09-21 probe.
+
+- Binding: a `#LibraryImport` attribute on a function is indexed like `#Layout`; its operand is validated by `ValidateLibraryImports` and never evaluated, so a valid import completes Binding. Valid imports are published as `Binding.LibraryImports` (function, library, symbol, Kind), cleared on every Bind and invalidation. Ownership already treated bodyless imports as signature-only callees.
+- Emission: `LlvmEmitter.RegisterImports` creates one `FunctionAbi` per external symbol (plain Windows x64 C ABI, no extension attributes; same-named imports share it); `EmissionModule.Externals` carries it with the dllimport choice from Kind; `LlvmModuleWriter.WriteExternals` writes `declare [dllimport]` unless the written product/test runtime already declares the symbol. Symbols that are not plain LLVM identifiers and raw-pointer parameters/results fail generation explicitly.
+- Tests: new `ForeignEmissionTest` (7 cases: kernel32 runtime-declaration sharing with native fixture `ForeignLastError`, static/import declarations and six-argument mixed scalar call operands, shared symbol, unsupported spelling, unsupported pointer signature, stale import removal). `LibraryImportTargetBindingTest` assertions that valid imports leave Binding incomplete were corrected to the specified outcome (complete unless the case's own diagnostic applies); `ForeignFunctionSupportRemainsUnimplemented` became `ValidImportDeclarationCompletesBinding`.
+
+Verification (PASS): Debug and Release `dotnet build Kimigayo.slnx --no-restore -m:1` with 0 warnings/errors; `dotnet xUnitTest/bin/<Config>/net10.0/xUnitTest.dll -parallelMode none -failSkips` 11,078/11,078 in each configuration. `ForeignLastError.ll` (SHA-256 `EE8C43A321144A04DE5E925F327C9F6A50DAED9A9D9F32D8363B69B5DD3806A0`, identical after the Release run) passes `opt -passes=verify` and `test-scalars.ps1 -FixturePattern 'ForeignLastError.ll'` (2 O0/O2 executions). A hand-written copy of the emitted `mix`/`notify` declaration and call forms verifies with `opt` and `llc -O2` places arguments 5–6 on the stack and calls `*__imp_mix(%rip)` for dllimport. NOT_RUN: native static-supply linking (manifest entries do not exist yet; T28g), NativeAOT.
+
+### T28g — root-module supplies in the link manifest (2026-09-22)
+
+- `EmissionArtifacts.ResolveForeignSupplies` collects the non-kernel32 libraries of `Binding.LibraryImports`; each must be defined in the root module and have a self-targeted `NativeLibraries` supply for the target, otherwise publication fails with no files ("has no NativeLibraries supply" / "dependency modules"). `WriteManifest` merges `{name, kind, input}` entries with the reserved ones in Ordinal order; inputs with a directory are rewritten manifest-relative, search names are preserved.
+- `NativeToolchain.Build`: a non-reserved entry must name a project supply whose expanded Kind equals the entry kind and whose Sha256 assertion (supply or requirement) equals the actual input hash. An undefined object symbol outside the fixed allowance is admitted only as `__imp_S` for `declare dllimport ... @S(` or as `S` for a plain `declare`, read lazily from the hash-verified pre-optimization IR.
+- Tests: `EmissionArtifactsTest` +3 (ordering with an unused supply omitted and a search-name input, missing supply, dependency-module import). `backend/windows-x64/test-cli.ps1` gains a foreign-supply scenario: Clang (`--target=x86_64-pc-windows-msvc -O2 -fno-autolink -fno-stack-protector`) and `llvm-lib` build `codec.lib` (`mix` with i8/u16/i32/i64/f32/f64 arguments, `notify`, `read_total` with static state); the Kimi project builds and runs at O0 and O2 printing `foreign ok`, the manifest lists `codec,kernel32,kimi_backend`, a wrong `Sha256` fails `build`, and a requirement without supply fails `emit`.
+
+Verification (PASS): Debug and Release solution builds with 0 warnings/errors; full managed suites 11,081/11,081 per configuration; `EmissionArtifactsTest` 31/31; `./backend/windows-x64/test-cli.ps1 -ToolchainRoot ./toolchain -Configuration Debug` and `-Configuration Release` both pass, including the foreign-supply O0/O2 builds and runs and both negatives. NOT_RUN: import-kind supply against a real import library, NativeAOT.
+
+### T26k — raw-pointer values and equality (2026-09-22)
+
+- `ReferenceTypes.IsPointer` (one-component `unsafe` Semantics) joins `IsValue`; `WindowsLowering.GetValue` gives pointers the 8-byte `ptr` representation shared with borrows; ownership admits pointer places and produces `null` as a constant 0 that lowering writes as the `null` operand (constant validation accepts only a `null` literal of that exact pointer Type). Import signatures now declare `ptr`.
+- Binding: `==`/`!=` on a pointer left operand compare same-Type pointers or a pointer and `null` (§5.1); ordering is a `TypeMismatch_Kd`, as are pointers of different Types. Control flow: the Binding bridge supplies a resolved `null` literal's pointer Type as its expected Type (for call arguments), and `ControlFlowAnalysis.IsPointer`/`PointeeType` recognize Binding pointer Types instead of only the syntax-only name prefix.
+- Not implemented (still rejected before output, with regression tests): dereference, pointer arithmetic and pointer/integer conversions.
+- Tests: `ForeignEmissionTest` 15 cases (the former pointer-signature rejection test was replaced by a positive declaration check, since that generation is now implemented); native fixture `ForeignPointer` (SHA-256 `5FB7AF7D6FA888B5A918BA5F9DEA1929BC828A9F15281A8FAB2D465CF7275225`) calls kernel32 `VirtualAlloc(null, ...)`/`VirtualFree` and compares pointers; `test-scalars.ps1 -FixturePattern 'Foreign*.ll'` passes 4 O0/O2 executions.
+
+T26k verification (PASS): Debug and Release solution builds with 0 warnings/errors; full managed suites 11,089/11,089 per configuration; `test-scalars.ps1 -FixturePattern 'Foreign*.ll'` 4 native O0/O2 executions.
+
+### T26l — raw-pointer conversions (2026-09-22)
+
+- Binding: `ConversionBinding.Pointer` for `unsafe/T -> unsafe/U`, `unsafe/T -> usize` and `usize -> unsafe/T` (§5.4–5.5); an integer-literal input to a pointer cast is fitted to `usize`; any other pointer conversion is `TypeMismatch_Kd`. Control flow keeps requiring an unsafe context for pointer conversions except same-Type acquisition.
+- Lowering: pointer conversions are scalar Convert values; `PlanConversion` emits `ptrtoint`/`inttoptr` between `ptr` and the 64-bit `usize`, and pointer-to-pointer casts share the source value (no instruction, no provenance claim).
+- Tests: `ForeignEmissionTest` 20 cases; native fixture `ForeignPointerCast` (SHA-256 `330D91F7C88FB823C1412F73C076B7B71BFB25720D055838D469E65DB6C1EE4C`) round-trips a `VirtualAlloc` address through `usize`, casts `unsafe/u8 -> unsafe/i32 -> unsafe/u8`, and forms `0@unsafe/u8 == null`; `test-scalars.ps1 -FixturePattern 'Foreign*.ll'` passes 6 O0/O2 executions. Negatives: `p@u64`, `i32@unsafe/u8` (mismatch) and distinct-Type/usize casts outside `unsafe` (control-flow error) produce no IR.
+
+### T26m — quoted external symbol names (2026-09-22)
+
+- `LlvmModuleWriter.ExternalName` writes a plain LLVM identifier unchanged and any other external symbol as a quoted name whose UTF-8 bytes outside printable ASCII, `"` and `\` become `\XX`; `SymbolFromName` reverses it. Import ABIs, declarations and calls use that spelling, so the former "unsupported symbol spelling" rejection is removed. The build-side IR declaration reader recovers the actual symbol before admitting `S`/`__imp_S` object references.
+- Tests: `ForeignEmissionTest` 25 cases (quoted declaration/call and five round-trip spellings, replacing the former rejection test); `test-cli.ps1` imports an MSVC-mangled `?value@@YAHXZ` defined through a Clang asm label and checks its result at O0/O2 (Debug compiler PASS).
+
+T26l/T26m verification (PASS): Debug 11,094 (T26l) and 11,099 (T26m) managed tests; Release 11,099 after T26m (the intermediate Release run overlapped T26m edits and is not counted); 0 warnings/errors; `test-cli.ps1 -Configuration Debug` PASS with the mangled symbol. A Release CLI attempt under Windows PowerShell 5.1 failed with `MethodCountCouldNotFindBest` before any Kimi command, because the script needs PowerShell 7 (`ProcessStartInfo.ArgumentList`); it is rerun under `pwsh` below.
+
+### T28h — staged native input snapshots (2026-09-22)
+
+- `NativeToolchain.StageInput` copies each non-reserved `libraries` input to `<stem>.native/<sha256>.lib`, hashes the copy, reuses an existing staged file only when its bytes still have that hash, and links the copy; Kind/Sha256 assertions and the build record use the staged bytes (§20.8.2.2). Reserved `kernel32`/`kimi_backend` handling is unchanged.
+- Test: `test-cli.ps1` checks that the build record's `codec` entry has the original file's SHA-256 and a path ending in `.native/<sha256>.lib` (Debug compiler PASS).
+
+T28h verification (PASS): Debug and Release solution builds with 0 warnings/errors; full managed suites 11,099/11,099 per configuration; `pwsh -File ./backend/windows-x64/test-cli.ps1 -ToolchainRoot ./toolchain -Configuration Release` PASS (staged snapshot, mangled symbol, foreign O0/O2 runs, both negatives) and the Debug CLI run PASS.
+
+### T26n — pointer displacement (2026-09-22)
+
+- Binding: `p + n` and `p - n` with `p: unsafe/T` bind the right operand with an expected `isize` and produce `unsafe/T`; a non-`isize` count, `unsafe/()`, integer-left addition and pointer subtraction are rejected (§5.3). Compound `p += n`/`p -= n` still reach an ownership `UnsupportedOwnership_Kd`, and indexing `p[n]` and dereference remain unimplemented.
+- Lowering: a new `EmissionOpcode.PointerOffset` writes `mul i64 n, ±stride(T)` and `getelementptr i8, ptr p, i64 offset` without `inbounds`, `nsw` or other attributes; the stride comes from the pointee's value layout, and pointer displacement carries no arithmetic check.
+- Tests: `ForeignEmissionTest` 29 cases (the former `p + 1` "unimplemented" case moved to positive/negative arithmetic tests); native fixture `ForeignPointerArithmetic` (SHA-256 `3830AA63F0D244F029E1FC9C81D929404C11B8EB1DD066C96D58D341042362D1`) measures 24- and 8-byte displacements of `unsafe/i64` through `@usize` and returns to the base; `test-scalars.ps1 -FixturePattern 'Foreign*.ll'` passes 8 O0/O2 executions.
+T26n verification (PASS): Debug and Release solution builds with 0 warnings/errors; full managed suites 11,103/11,103 per configuration.
+
+### T26o — compound pointer displacement (2026-09-22)
+
+- Ownership admits `p += n`/`p -= n` on a pointer local through the existing compound-update path (previously only numeric locals); lowering reuses `PointerOffset`. A non-`isize` count and other compound operators on pointers are rejected.
+- Tests: `ForeignEmissionTest` 31 cases; `ForeignPointerArithmetic` now also uses `-=`/`+=` (SHA-256 `B0429A8D657C4048ABB876165F185949F3086276722AF143E49CB6DC15FE9D8C`); `test-scalars.ps1 -FixturePattern 'Foreign*.ll'` passes 8 O0/O2 executions.
+T26o verification (PASS): Debug and Release solution builds with 0 warnings/errors; full managed suites 11,105/11,105 per configuration.
+Final-state verification (PASS, after T26o, the comment fix and the staged-hash reuse): Debug/Release builds 0 warnings/errors; full managed suites 11,105/11,105 per configuration; `test-cli.ps1` Debug (Windows PowerShell tool) and Release (`pwsh`) PASS; `test-scalars.ps1 -FixturePattern 'Foreign*.ll'` 8 O0/O2 executions PASS (last run after T26o).
+
+### T26p — dereference Binding (2026-09-22, Binding only)
+
+- `Binding.BindUnary` binds `*p` for `p: unsafe/T` to `T` (operand bound without the outer expected Type) and rejects a non-pointer operand as `TypeMismatch_Kd`; `Writable` accepts a dereference target regardless of binding mutability (§5.2). Control flow already requires an unsafe context. Ownership still reports `UnsupportedOwnership_Kd` at a valid dereference read or write, so no IR is produced.
+- Tests: `ForeignEmissionTest` 34 cases (valid read/write complete Binding and fail ownership with exactly one Unsupported issue and no IR; non-pointer operand mismatch; missing unsafe context). The earlier `let v = unsafe => *p` case was removed because it failed for an unrelated reason (`BlockStatementInExpression_Kd`).
+T26p verification (PASS): Debug and Release solution builds with 0 warnings/errors; full managed suites 11,108/11,108 per configuration.
+
+### T26q — Copy pointer reads (2026-09-22)
+
+- Ownership: `*p` whose Type is a non-bool Copy scalar or raw pointer produces a temporary with the new `OwnershipValueKind.PointerLoad` (input: the pointer value; no Loan). Validation expects one input. Lowering: new `EmissionOpcode.LoadPointer` writes `load T, ptr p, align A` with the pointee's alignment and no other attributes; a mismatched pointee Type fails generation. `bool`, aggregate, Non-Copy reads and all writes through pointers remain unsupported (ownership `UnsupportedOwnership_Kd` or generation failure).
+- Tests: `ForeignEmissionTest` 34 cases (the read case of the T26p "does not generate" theory became positive coverage); native fixture `ForeignPointerRead` (SHA-256 `54417A73E88E7C1CA31C7AC7A68D5632516D28CE095FF0915AFC998AA0785297`) reads zero-filled `VirtualAlloc` memory as `i64` through `*(words + 3)` and as a pointer through `unsafe/unsafe/u8`; `test-scalars.ps1 -FixturePattern 'Foreign*.ll'` passes 10 O0/O2 executions.
+
+T26q verification (PASS): Debug and Release solution builds with 0 warnings/errors; full managed suites 11,108/11,108 per configuration (one read test added, one superseded rejection case removed); 10 native O0/O2 executions of `Foreign*.ll`.
+
+Checkpoint (2026-09-22 01:54, about 67 minutes after the 00:46:35 start): all units above are implemented, verified and documented. Pointer writes were not started: `*p = v` needs a store operation in `OwnershipAnalysis` assignment handling (RHS evaluated first, then the pointer operand; the assignment's Unit temporary is not visited by scalar lowering, so the store needs its own operation or value path) and a `store T, ptr p, align A` lowering; see PLAN §2 next action 1.
+
+### T26r — Copy pointer writes (2026-09-22; supersedes the 01:54 checkpoint note)
+
+- Ownership: `*p = v` for a non-bool Copy scalar or pointer pointee evaluates `v`, then the pointer operand, and records a pointee-typed temporary with the new `OwnershipValueKind.PointerStore` (inputs: pointer, value; no Loan); the assignment's own Unit result is unchanged. Lowering: `EmissionOpcode.StorePointer` writes `store T v, ptr p, align A`, rejecting mismatched value/pointee Types. Compound assignment through pointers, bool/aggregate/Non-Copy pointees and indexing remain unsupported.
+- Tests: `ForeignEmissionTest` 33 cases (the write-rejection case became positive coverage); `ForeignPointerRead` (SHA-256 `87FAF4CE48E70A0BA15486A935087F28071B8AD63DA564CDEA0212FC9D123D87`) writes `1234567890123` through `*(words + 3)` and reads it back; `test-scalars.ps1 -FixturePattern 'Foreign*.ll'` passes 10 O0/O2 executions.
+
+T26r verification (PASS): Debug and Release solution builds with 0 warnings/errors; full managed suites 11,107/11,107 per configuration; 10 native O0/O2 executions of `Foreign*.ll`. Session stop at 01:58 (about 72 minutes after 00:46:35): the remaining 8 minutes could not complete another verified unit; next steps are in PLAN §2 next action 1.

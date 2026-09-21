@@ -92,6 +92,11 @@ public sealed class LlvmEmitter
                 this.functions.Add(source, abi);
             }
 
+            if (!RegisterImports(c.Binding.LibraryImports, module, this.functions, out failure))
+            {
+                return false;
+            }
+
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {
                 return false;
@@ -162,6 +167,66 @@ public sealed class LlvmEmitter
                 module.Clear();
             }
         }
+    }
+
+    // SPEC 22.3.2: a direct import calls its external symbol with the Windows x64 C ABI, whose scalar
+    // arguments need no extension attributes. Binding already made same-named imports agree on one
+    // physical signature and supply kind (SPEC 21.5.2), so they share one declaration.
+    private static bool RegisterImports(IReadOnlyList<LibraryImport> imports, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions, out string? failure)
+    {
+        failure = null;
+        for (var i = 0; i < imports.Count; i++)
+        {
+            var import = imports[i];
+            var name = LlvmModuleWriter.ExternalName(import.Symbol);
+            FunctionAbi? abi = null;
+            for (var e = 0; e < module.Externals.Count && abi is null; e++)
+            {
+                if (string.Equals(module.Externals[e].Abi.Name, name, StringComparison.Ordinal))
+                {
+                    abi = module.Externals[e].Abi;
+                }
+            }
+
+            if (abi is null)
+            {
+                abi = CreateImportAbi(import, name);
+                if (abi is null)
+                {
+                    failure = "A foreign import needs an unsupported parameter or result representation.";
+                    return false;
+                }
+
+                module.Externals.Add(new(abi, import.Kind == "import"));
+            }
+
+            functions.Add(import.Function, abi);
+        }
+
+        return true;
+
+        static FunctionAbi? CreateImportAbi(LibraryImport import, string name)
+        {
+            var function = import.Function;
+            var result = function.BoundSymbol!.Type!;
+            var resultType = ReferenceEquals(result, BoundType.Unit) ? WindowsLowering.Unit.ComputationType : ImportType(result);
+            var parameters = new AbiParameter[function.Parameters.Count];
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (ImportType(function.Parameters[i].Type.BoundType!) is not { } type)
+                {
+                    return null;
+                }
+
+                parameters[i] = new(type, "a" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), AbiParameterKind.Value, i);
+            }
+
+            return resultType is null ? null : new(name, resultType, parameters);
+        }
+
+        // Binding admits only fixed-width integers, f32/f64 and raw pointers (an opaque ptr).
+        static string? ImportType(BoundType type)
+            => ReferenceTypes.IsPointer(type) || type.Kind == BoundTypeKind.Primitive ? WindowsLowering.GetValue(type)?.ArgumentType : null;
     }
 
     // Only the selected implicit Application body executes. Other source-module

@@ -13,4 +13,7 @@ internal enum ConversionBinding : byte
     Identity,
     Borrow,
     PayloadBorrow,
+
+    // SPEC 5.4-5.5: between raw pointer Types, or a raw pointer and usize.
+    Pointer,
 }

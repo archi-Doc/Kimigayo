@@ -13,6 +13,7 @@ public sealed partial class Binding
     private readonly Dictionary<object, BindingSymbol> symbols = new(ReferenceEqualityComparer.Instance);
     private readonly List<AliasKoto> aliases = new();
     private readonly List<BindingIssue> issues = new();
+    private readonly List<LibraryImport> libraryImports = new();
     private readonly IndexVisitor indexer;
     private readonly Dictionary<int, List<BoundType>> types = new();
     private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
@@ -51,6 +52,9 @@ public sealed partial class Binding
     /// <summary>Gets requirements to discharge during subsequent semantic analysis.</summary>
     public IReadOnlyList<BindingObligation> Obligations => this.obligations;
 
+    /// <summary>Gets the valid foreign import declarations of the latest pass (SPEC 22.3), in source order.</summary>
+    internal IReadOnlyList<LibraryImport> LibraryImports => this.libraryImports;
+
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>
     public BindingResult CheckBound()
@@ -82,6 +86,7 @@ public sealed partial class Binding
         {
             this.storageVersion++;
             this.issues.Clear();
+            this.libraryImports.Clear();
             this.constraintDiagnosticCauses?.Clear();
             this.ResetMatches();
             this.resultContexts.Clear();
@@ -327,6 +332,7 @@ public sealed partial class Binding
 
         this.Result = default;
         this.issues.Clear();
+        this.libraryImports.Clear();
         this.constraintDiagnosticCauses?.Clear();
         this.obligations.Clear();
         this.obligationSet.Clear();
@@ -834,6 +840,21 @@ public sealed partial class Binding
                 if (layout.AttributeChain is { } precedingAttribute)
                 {
                     this.Visit(precedingAttribute);
+                }
+
+                return;
+            }
+
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } import && AttributeTarget(import) is FunctionKoto)
+            {
+                // SPEC 22.3.1: the operand names a library and symbol; it is validated, never evaluated.
+                import.BindingFailure = BindingFailure.None;
+                import.BindingState = BindingState.Unvisited;
+                import.BoundType = null;
+                binding.nodes.Add(import);
+                if (import.AttributeChain is { } precedingImport)
+                {
+                    this.Visit(precedingImport);
                 }
 
                 return;
