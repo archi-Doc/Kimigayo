@@ -108,7 +108,7 @@ public class TerminalWhileContinuationTest
     }
 
     private static string Source(string declaration, string body, string after, string use, string loopHeader = "while c")
-        => "func stop() -> Never => $abort(\"terminal while\")\nfunc f(c?: bool)\n    " + declaration +
+        => "func stop() -> Never => $abort(\"terminal while\")\nfunc f(c: bool)\n    " + declaration +
             "\n    do\n        loop\n            if c => return else => exit\n            " + loopHeader + "\n                " + body +
             "\n            " + after + "\n        stop()\n    " + use + "\nf(true)";
 }

@@ -114,7 +114,7 @@ struct Outer<T>
     public struct Tag
 
     public contract Sink
-        func write(self: ref/Self, value?: T) -> ()
+        func write(self: ref/Self, value: T) -> ()
 ```
 
 `Outer<i32>.Inner<string>` and `Outer<i64>.Inner<string>` are distinct Types. The corresponding empty `Tag` Types and bound `Sink` references also differ. Full Types and conformance evidence keep their Origins; an Origin-erased runtime or generation key proves neither equal evidence nor permission to share code.
@@ -134,9 +134,9 @@ For a Contract, a condition that depends only on inherited arguments is a refere
 ```kimi
 struct Parser
     group Helpers
-        func identity(value?: Self) -> Self => value // Parser
+        func identity(value: Self) -> Self => value // Parser
         struct State
-            func identity(value?: Self) -> Self => value // State
+            func identity(value: Self) -> Self => value // State
 ```
 
 Neither function has an implicit receiver. A group body cannot directly contain a Constraint Clause, conformance declaration or associated-Type specification; its own functions and nested Types keep their permitted Constraints.
@@ -209,12 +209,12 @@ A constructor is a dedicated structure declaration: an optional access specifica
 ```kimi
 public open struct Named
     public let name: string
-    protected init(name?: string)
+    protected init(name: string)
         self.name = name
 
 public struct Entry : Named
     public let number: i32
-    public init(name?: string, number?: i32) : base(name)
+    public init(name: string, number: i32) : base(name)
         self.number = number
 
 let entry = Entry.init("item", 1)
@@ -304,7 +304,7 @@ enum MutView<T> {source}
     Some(uniq{source}/T)
     None
 
-func makeView<T>(value?: ref/T)
+func makeView<T>(value: ref/T)
     -> View<T>{result}
     origin result.source == value
     return .Some(value)
@@ -390,7 +390,7 @@ Marker discovery and validation are distinct: a selected Attribute that remains 
 
 ```kimi
 group Arithmetic
-    func add(left?: i32, right?: i32) -> i32 => left + right
+    func add(left: i32, right: i32) -> i32 => left + right
 
     #Test
     func addition()

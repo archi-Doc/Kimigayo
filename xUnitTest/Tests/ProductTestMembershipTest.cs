@@ -30,15 +30,15 @@ public class ProductTestMembershipTest
     [InlineData("ExplicitMain", "public func main() => Console.writeLine(\"product\")\n#Test\nfunc test() => TestOnly.missing()")]
     [InlineData("InfiniteTest", "Console.writeLine(\"product\")\n#Test\nfunc test()\n    loop => ()")]
     [InlineData("AbortTest", "Console.writeLine(\"product\")\n#Test\nfunc test() => $abort(\"test-only\")")]
-    [InlineData("Overload", "func helper(value?: i32) => Console.writeLine(\"product\")\nhelper(1)\n#Test\nfunc helper() => TestOnly.missing()")]
+    [InlineData("Overload", "func helper(value: i32) => Console.writeLine(\"product\")\nhelper(1)\n#Test\nfunc helper() => TestOnly.missing()")]
     public void OnlyProductCodeIsEmitted(string name, string source)
         => ScalarEmissionTest.EmitFixture("ProductTest" + name, source, "product\n");
 
     [Theory]
     [InlineData("#Test(unknown())\nfunc test() => ()")]
     [InlineData("#Test\n#Test\nfunc test() => ()")]
-    [InlineData("#Test\nfunc test(value?: i32) => ()")]
-    [InlineData("#Test\nfunc test(value?: i32 = 1) => ()")]
+    [InlineData("#Test\nfunc test(value: i32) => ()")]
+    [InlineData("#Test\nfunc test(value: i32 = 1) => ()")]
     [InlineData("#Test\nfunc test() -> i32 => 1")]
     [InlineData("#Test\nunsafe func test() => ()")]
     [InlineData("#Test\nfunc test<T>() => ()")]

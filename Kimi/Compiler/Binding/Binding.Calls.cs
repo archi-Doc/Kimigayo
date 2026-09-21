@@ -789,6 +789,12 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
+        var positionalLimit = function.MaxPositionalArguments(receiver is not null);
+        if (call.ArgumentNodes.Count > positionalLimit && call.GetArgumentLabel(positionalLimit) is null)
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
         var receiverSlot = receiver is null ? -1 : function.BoundSymbol!.ReceiverIndex;
         var receiverPath = receiver is not null && (generic?.Identifier ?? call.Method) is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) ? selection.Path : null;
         if (receiver is not null)
@@ -816,42 +822,11 @@ public sealed partial class Binding
         var contextualInputs = false;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            var label = call.GetArgumentLabel(i);
-            var slot = -1;
-            if (label is not null)
-            {
-                named = true;
-                for (var p = 0; p < function.Parameters.Count; p++)
-                {
-                    if (function.Parameters[p].ExternalName == label)
-                    {
-                        slot = p;
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                if (named)
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
-
-                while (next < function.Parameters.Count && used[next])
-                {
-                    next++;
-                }
-
-                slot = next++;
-            }
-
-            if (slot < 0 || slot >= function.Parameters.Count || used[slot] ||
-                (label is null && !function.Parameters[slot].IsNameOptional && slot != function.BoundSymbol!.ReceiverIndex))
+            if (!function.TryMapArgument(call.GetArgumentLabel(i), ref next, ref named, used, out var slot))
             {
                 return CandidateApplicability.Inapplicable;
             }
 
-            used[slot] = true;
             mapping[i] = slot;
             contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]) || IsAggregateArgument(call.ArgumentNodes[i]);
             var type = function.Parameters[slot].Type.BoundType;

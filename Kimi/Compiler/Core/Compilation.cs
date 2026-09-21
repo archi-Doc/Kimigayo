@@ -22,7 +22,7 @@ namespace Kimi.Compiler;
 public partial class Compilation
 {
     /// <summary>The only language version currently implemented by this compiler.</summary>
-    public const string CurrentLanguageVersion = "0.0.1";
+    public const string CurrentLanguageVersion = "0.0.2";
 
     /// <summary>Gets the version and deterministic module identity of this compiler build.</summary>
     public static string CompilerVersion { get; } =

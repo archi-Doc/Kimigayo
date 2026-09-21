@@ -1,7 +1,7 @@
 // Milestone 16: external Origins survive aggregate and enum result storage.
 struct Cell
     public var value: i32
-    public init(value?: i32) => self.value = value
+    public init(value: i32) => self.value = value
 
 enum Selection {source}
     Found(ref{source}/Cell)
@@ -11,24 +11,24 @@ struct Pair {left, right}
     let first: ref{left}/Cell
     let second: ref{right}/Cell
 
-    public init(first?: ref{left}/Cell, second?: ref{right}/Cell)
+    public init(first: ref{left}/Cell, second: ref{right}/Cell)
         self.first = first
         self.second = second
 
-    public func choose(self: ref/Self, useFirst?: bool) -> Selection{selection}
+    public func choose(self: ref/Self, useFirst: bool) -> Selection{selection}
         origin selection.source == self.left and self.right
         if useFirst
             return .Found(self.first)
         return .Found(self.second)
 
-func add(target?: uniq/Cell, amount?: i32)
+func add(target: uniq/Cell, amount: i32)
     do
         let child = target@uniq/Cell
         child.value = child.value + amount
         // The parent cannot be used while this child still requires its Loan.
     target.value = target.value + 1 // Parent access resumes after reborrowing.
 
-func run(useFirst?: bool)
+func run(useFirst: bool)
     var first = Cell.init(10)
     var second = Cell.init(20)
     do

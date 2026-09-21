@@ -17,7 +17,7 @@ public class ControlFlowAnalysisTest
     [InlineData("^", "i64")]
     public void IntegerResultsComeFromLeftWithoutConstrainingShiftCounts(string op, string countType)
     {
-        var analysis = Analyze($"func f(x?: i64, n?: {countType}) -> i64 => x {op} n");
+        var analysis = Analyze($"func f(x: i64, n: {countType}) -> i64 => x {op} n");
         Assert.Empty(analysis.Issues);
         var expression = Assert.Single(analysis.Nodes, x => x.Key is BinaryKoto);
         Assert.Equal("i64", expression.Value.ExpressionType?.Name);
@@ -30,7 +30,7 @@ public class ControlFlowAnalysisTest
     [InlineData(">>=")]
     public void CompoundShiftsKeepIndependentCountAndUnitResult(string op)
     {
-        var analysis = Analyze($"func f(n?: u8) -> ()\n    var x: i64 = 1\n    x {op} n");
+        var analysis = Analyze($"func f(n: u8) -> ()\n    var x: i64 = 1\n    x {op} n");
         Assert.Empty(analysis.Issues);
         var expression = Assert.Single(analysis.Nodes, x => x.Key is BinaryKoto);
         Assert.Equal(ControlFlowType.Unit, expression.Value.ExpressionType);
@@ -79,16 +79,16 @@ public class ControlFlowAnalysisTest
     [InlineData("let result = loop\n    exit 10")]
     [InlineData("if true => 1\nelse => 2")]
     [InlineData("let result = if true\n    yield 1\nelse\n    yield 2")]
-    [InlineData("func f(flag?: bool) -> i32\n    let x = if flag\n        return 1\n    else\n        return 2")]
+    [InlineData("func f(flag: bool) -> i32\n    let x = if flag\n        return 1\n    else\n        return 2")]
     [InlineData("let x = if true => 1\nelse\n    yield 2")]
     [InlineData("let x = loop\n    exit loop\n        continue")]
     [InlineData("let x = match true\n    true => 1\n    false => 2")]
     [InlineData("outer: loop\n    loop\n        exit to outer")]
-    [InlineData("func f(flag?: bool) => match flag\n    true => 1\n    false => 2")]
+    [InlineData("func f(flag: bool) => match flag\n    true => 1\n    false => 2")]
     [InlineData("func f() -> i32\n    if false\n        return -1\n    return 1")]
     [InlineData("func f() -> i32\n    work: do\n        exit to work\n    return 1")]
-    [InlineData("func f(ready?: bool) -> i32\n    require ready else => return 0\n    return 1")]
-    [InlineData("func f(ready?: bool) -> i32\n    require ready\n    else\n        return 0\n    return 1")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    return 1")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready\n    else\n        return 0\n    return 1")]
     [InlineData("let answer = if true\n    require false else => yield 0\n    yield 1\nelse => 2")]
     [InlineData("defer\n    require true else => exit\n    ()")]
     [InlineData("func f()\n    require false else => return\n    ()")]
@@ -123,8 +123,8 @@ public class ControlFlowAnalysisTest
     [InlineData("func f() -> i8\n    if false\n        return 128\n    return 1", "incompatible")]
     [InlineData("func f() -> i32\n    1", "cannot fall through")]
     [InlineData("func f()\n    require true else => ()\n    ()", "require")]
-    [InlineData("func f(ready?: bool)\n    require ready else\n        loop\n            exit\n    ()", "require")]
-    [InlineData("func f(ready?: bool) -> i32\n    require ready else => return 0\n    ()", "cannot fall through")]
+    [InlineData("func f(ready: bool)\n    require ready else\n        loop\n            exit\n    ()", "require")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    ()", "cannot fall through")]
     public void RejectsInvalidControlFlow(string source, string diagnostic)
     {
         Assert.Contains(Analyze(source).Issues, x => x.Message.Contains(diagnostic, StringComparison.Ordinal));

@@ -1,8 +1,8 @@
-func factorial(n?: i32) -> i32
+func factorial(n: i32) -> i32
     if n == 0 => return 1
     return n * factorial(n - 1)
 
-func pair(left => first: i32, right => second: i32) -> i32 => first * 10 + second
+func pair(! left => first: i32, right => second: i32) -> i32 => first * 10 + second
 
 func snapshot() -> i32
     var value = 21

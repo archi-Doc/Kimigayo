@@ -147,11 +147,11 @@ Function-specific Constraints occupy an optional indented region immediately aft
 
 ```kimi
 contract Factory
-    func create<T>(value?: T) -> Self
+    func create<T>(value: T) -> Self
         T is Copy
 ```
 
-Requirement Constraints are premises for checking implementation compatibility; they are not silently added to the implementation declaration. Requirements permit `?` on ordinary external parameter names but prohibit defaults. Calls through a requirement supply every ordinary argument and follow the requirement's name-omission permissions; defaults or name-omission permissions on the implementation do not change this call surface. Requirements and required accessors have no independent [access modifiers](09-names-signatures-and-access.md#934-conformance-accessibility).
+Requirement Constraints are premises for checking implementation compatibility; they are not silently added to the implementation declaration. Requirements permit the `!` argument-name boundary (§7.2) but prohibit defaults. Calls through a requirement supply every ordinary argument and follow the requirement's name-omission permissions; defaults or name-omission permissions on the implementation do not change this call surface. Requirements and required accessors have no independent [access modifiers](09-names-signatures-and-access.md#934-conformance-accessibility).
 
 Property requirements use `has`; their selection and compatibility rules are in [Contract Property requirements](11-properties.md#114-contract-property-requirements).
 
@@ -213,11 +213,11 @@ struct Pipe
 **Projections.** `T.C.Element` refers to the associated Type of `T`'s conformance to `C`; `T.Element` is the short form when the declaration is unique under the available Constraints. `C` uses ordinary Contract-name and alias lookup, not member lookup on `T`. Conformance evidence is required and is never discovered by searching for a same-named Contract. The Type-side base may be a named or constructed Core, a parameter, `Self` or another associated-Type projection. An intrinsic Element projection that binds a Semantics-applied Type does not become a Core qualifier merely by being an associated projection. A projection is not a value or Semantics-applied expression.
 
 ```kimi
-func readOne<T>(source?: ref/T) -> T.Source.Element
+func readOne<T>(source: ref/T) -> T.Source.Element
     T is Source
     return source.read()
 
-func readInt<T>(source?: ref/T) -> i32
+func readInt<T>(source: ref/T) -> i32
     T is Source
     T.Source.Element is i32
     return source.read()
@@ -229,7 +229,7 @@ Leading function Constraints are collected before projections in the signature, 
 
 ```kimi
 contract Equatable
-    func equals(self: ref/Self, other?: ref/Self) -> bool
+    func equals(self: ref/Self, other: ref/Self) -> bool
 
 contract OrderedSource: Source
     Self.Source.Element is Equatable
@@ -284,7 +284,7 @@ After substituting `Self`, the conforming Type's arguments and the associated Ty
 | Name | Exact name. |
 | Function kind | Type function or instance function. |
 | Function generic parameters | Same count, kinds and order; they correspond by position, not spelling. |
-| Ordinary parameters | Same count, order and external labels; internal names and name-omission permissions need not match. |
+| Ordinary parameters | Same count, order and external labels; internal names and K need not match. |
 | Receiver | Same presence and normalized Type structure, with only the inherited receiver correspondence allowed by §8.4.4. |
 | Parameter Types | Same normalized Type structure. |
 
@@ -324,7 +324,7 @@ func makeEmpty<T>() -> T
 
 `EmptyConstructible.empty()` is invalid because it identifies no implementation Type, and that Type is never inferred backward from the expected result. A concrete call such as `Buffer.empty()` uses ordinary Type-member lookup; generic requirement calls keep their conformance mapping.
 
-Distinct Requirement Identities may form one call candidate only when their exposed signatures and conditions are equivalent **and** their mappings select the same effective implementation Member Identity for every valid Type substitution allowed by the current Constraints. The comparison covers function generics, parameters and labels, receiver, results, Origins, Constraints and calling conditions, plus the implementation's Type substitutions and receiver correspondence. Equal code, runtime addresses or optimizer sharing supply no proof. The conformance requirements themselves remain distinct. Repeated paths to the same Requirement Identity are already one requirement and need no such proof.
+Distinct Requirement Identities may form one call candidate only when their exposed signatures and conditions are equivalent **and** their mappings select the same effective implementation Member Identity for every valid Type substitution allowed by the current Constraints. The comparison covers function generics, parameters and labels, normalized K (§7.2.2), receiver, results, Origins, Constraints and calling conditions, plus the implementation's Type substitutions and receiver correspondence. Equal code, runtime addresses or optimizer sharing supply no proof. The conformance requirements themselves remain distinct. Repeated paths to the same Requirement Identity are already one requirement and need no such proof.
 
 ```text
 A.reset --+-- equivalent call contract and same mapping proved
@@ -354,7 +354,7 @@ Proven Sealed supplies the supported Core / View Target evidence needed to form 
 struct Cell<T>
     public var value: T
 
-func readPayload<T>(source?: objref/T) -> ref{source}/T
+func readPayload<T>(source: objref/T) -> ref{source}/T
     T is Sealed
     return source@ref/T
 ```
@@ -509,7 +509,7 @@ Speaker requires Shared speak() -> string
 
 ```kimi
 // Runtime extension: assume runtime designation, conformance, and makeDog() -> obj/Dog.
-func announce(value?: objref/Speaker) -> string
+func announce(value: objref/Speaker) -> string
     return value.speak()
 
 let dog = makeDog()
@@ -535,13 +535,13 @@ The admitted Types are Function Items, concrete Closures and common Function Typ
 Omitted result Origins are completed under §15.4 from those per-call input Origins, keeping already-bound dependencies; the receiver of `F` is not an elision input. For example, `Callable<(ref/T) -> ref/T>` returns a borrow valid for its argument's Origin. With several direct borrowed inputs, result elision uses their meet and keeps all input Loans. A result requiring exclusive access must also preserve the corresponding exclusive Loan; shortening an Origin grants no access capability.
 
 ```kimi
-func selectRef<T, F>(value?: ref/T, select?: ref/F) -> ref{value}/T
+func selectRef<T, F>(value: ref/T, select: ref/F) -> ref{value}/T
     F is Callable<(ref/T) -> ref/T>
     return select(value)
 ```
 
 ```kimi
-func applyBorrowed<T, U, F>(value?: ref/T, transform?: ref/F) -> U
+func applyBorrowed<T, U, F>(value: ref/T, transform: ref/F) -> U
     U is Owned
     F is Callable<(ref/T) -> U>
     return transform(value)
@@ -556,7 +556,7 @@ func applyBorrowed<T, U, F>(value?: ref/T, transform?: ref/F) -> U
 Instantiation cannot turn an `owner` acquisition into a borrow merely because the body is Shared. Conversely, copying a Consuming callable does not satisfy a `ref` or `uniq` constraint. One public signature is selected; when several available constraints have that signature, the weakest declared receiver is preferred, in the order `ref`, `uniq`, `owner`. A later initialization, access or Loan failure cannot select another receiver. Constraint strength is not an overload-ranking rule.
 
 ```kimi
-func applyTwice<F>(value?: i32, transform?: uniq/F) -> i32
+func applyTwice<F>(value: i32, transform: uniq/F) -> i32
     F is Callable<uniq, (i32) -> i32>
     let first = transform(value)
     return transform(first)
@@ -621,10 +621,10 @@ Generic arguments here include function length slots, which are evaluated under 
 ### 8.8.1. Declaration and target identification
 
 ```kimi
-func classify<T>(value?: ref/T) -> i32 => 0
+func classify<T>(value: ref/T) -> i32 => 0
 specialize func classify<i32>(value: ref/i32) -> i32 => 1
 
-func process<T>(value?: T) -> ()
+func process<T>(value: T) -> ()
     ()
 specialize func process<i32>(value: i32) -> ()
     ()
@@ -645,8 +645,8 @@ Duplicate ordinary declarations are rejected first. Then the original function i
 Result Types, parameter names, Constraint satisfaction, Origin relationships, implicit adaptation, slot kind alone, ordinary overload ranking and declaration or file order never resolve an ambiguity. A failed contract check cannot select another target.
 
 ```kimi
-func inspect<T>(value?: T) -> () => ()
-func inspect<T>(value?: i32) -> () => ()
+func inspect<T>(value: T) -> () => ()
+func inspect<T>(value: i32) -> () => ()
 specialize func inspect<i32>(value: i32) -> () => ()
 // Error: both ordinary declarations have the same substituted input structure.
 ```
@@ -667,10 +667,10 @@ The specialization header identifies and checks the original contract; it is not
 | Access, defaults, name-omission permissions, generic Constraints | Inherited; never redeclared, strengthened or weakened |
 | Attributes, Safety, calling convention, Effect requirements | Inherited under the existing rules; no Attributes or additional modifiers on the specialization declaration |
 
-Every specialization parameter is written without `?` or a default, including a name-optional or defaulted parameter inherited from the original. Callers still use the original omission and default-evaluation rules:
+A specialization header contains neither an `!` boundary nor parameter defaults. It inherits the original external names, K and defaults; absence of a boundary does not mean K = N. Callers still use the original omission and default-evaluation rules:
 
 ```kimi
-func find<T>(value?: T, count?: i32 = 1) -> () => ()
+func find<T>(value: T, count: i32 = 1) -> () => ()
 specialize func find<i32>(value: i32, count: i32) -> () => ()
 find<i32>(10) // Evaluate the original default, then call the specialization.
 ```
@@ -689,7 +689,7 @@ Calls and function references first use ordinary lookup, overload resolution, in
 
 ```kimi
 // classify and its i32 specialization are declared above.
-func forward<T>(value?: ref/T) -> i32 => classify<T>(value)
+func forward<T>(value: ref/T) -> i32 => classify<T>(value)
 let number: i32 = 10
 let result = forward<i32>(number@ref) // 1, including with shared generic code.
 ```
@@ -744,13 +744,13 @@ This requirement fixes meaning, not a compiler-pass schedule. Dependencies on ot
 For unknown Copy, an acquisition that is legal as either Copy or Move may keep a conditional effect plan. A subsequent read that requires the source to remain Initialized must be legal in both cases; otherwise it requires an explicit `T is Copy`, a borrow that avoids acquisition, or a valid reinitialization before reuse. The conservative state is usable for proof, but the emitted operation must still Copy a Copy Type and Move a Non-Copy Type. A possible Copy never silently becomes a Move, and `T is Copy` is never added to a caller's applicability conditions after the body is checked.
 
 ~~~kimi
-func transfer<T>(value?: T) -> T => value // Valid for both Copy and Move.
+func transfer<T>(value: T) -> T => value // Valid for both Copy and Move.
 
-func twice<T>(value?: T) -> (T, T)
+func twice<T>(value: T) -> (T, T)
     T is Copy
     return (value, value)
 
-func invalidTwice<T>(value?: T) -> (T, T)
+func invalidTwice<T>(value: T) -> (T, T)
     return (value, value) // Error at definition: Copy is not guaranteed.
 ~~~
 
@@ -765,7 +765,7 @@ A **Deferred Obligation** records remaining substitution or representation work 
 | Instantiation | Check the call's declared contract and ordinary argument/Loan validity; substitute verified plans; resolve concrete layout, representation and exact effects without adding semantic use conditions |
 | Finalization | Discharge representation obligations and complete concrete ownership/cleanup plans before lowering executable operations; never retry committed lookup or overload selection |
 
-For example, using the target projection `T` as a local Type inside `func f<s/T>(x?: s/T)` must be justified by the declaration's Constraints and slot rules. If an admitted binding could make it an Object View Target rather than a value Type, the use is rejected at definition time rather than only for the affected callers. Positions that prohibit generic parameters outright, such as a base Type, remain prohibited.
+For example, using the target projection `T` as a local Type inside `func f<s/T>(x: s/T)` must be justified by the declaration's Constraints and slot rules. If an admitted binding could make it an Object View Target rather than a value Type, the use is rejected at definition time rather than only for the affected callers. Positions that prohibit generic parameters outright, such as a base Type, remain prohibited.
 
 **Public dependent obligations.** Only Type and Origin well-formedness conditions implied by the written Signature, generic schema, associated-Type requirements, Constraints and published conditional-member premises may restrict semantic applicability. They must be available to callers and artifacts without inspecting a private body, and are fixed when the declaration is checked; they cannot contain a newly inferred body requirement such as Copy, an extra Contract or a favorable acquisition case. There is no source syntax for arbitrary hidden requirements: a need that cannot be expressed or proven with the existing contract makes the definition invalid.
 

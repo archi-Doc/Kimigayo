@@ -7,7 +7,7 @@ struct Counter
 struct CounterView {source}
     let counter: ref{source}/Counter
 
-    public init(counter?: ref{source}/Counter)
+    public init(counter: ref{source}/Counter)
         self.counter = counter
 
     public func read(self: ref/Self) -> i32 => self.counter.value
@@ -18,13 +18,13 @@ struct CounterView {source}
             $abort("Borrowed counter changed")
         Console.writeLine("View destroyed; counter is still 55.")
 
-func add(counter?: uniq/Counter, amount?: i32)
+func add(counter: uniq/Counter, amount: i32)
     counter.value = counter.value + amount
 
-func borrowCounter(counter?: ref/Counter) -> ref{counter}/Counter
+func borrowCounter(counter: ref/Counter) -> ref{counter}/Counter
     return counter
 
-func finish(counter?: Counter)
+func finish(counter: Counter)
     if counter.value != 56
         $abort("Unexpected final value")
     Console.writeLine("Final value is 56.")

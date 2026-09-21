@@ -61,7 +61,7 @@ public class EnumBindingTest
     [Fact]
     public void PayloadOperationsKeepOrderAndAcquisition()
     {
-        var c = Parse("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a?: T, b?: string) -> Pair<T> => Pair<T>.Pair(a, b)");
+        var c = Parse("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a, b)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var invocation = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.True(c.Binding.TryGetEnumConstruction(invocation, out var plan));
@@ -88,12 +88,12 @@ public class EnumBindingTest
     }
 
     [Theory]
-    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x?: ref/T) -> V<T>{result}\n    origin result.a == x\n    return V<T>.Some(x)")]
-    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x?: ref/T)\n    let v = V<T>.Some(x)")]
-    [InlineData("func f<T>(x?: ref/T) -> Option<ref{x}/T> => .Some(x)")]
-    [InlineData("func f<T>(x?: uniq/T) -> Option<uniq{x}/T> => .Some(x)")]
+    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x: ref/T) -> V<T>{result}\n    origin result.a == x\n    return V<T>.Some(x)")]
+    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x: ref/T)\n    let v = V<T>.Some(x)")]
+    [InlineData("func f<T>(x: ref/T) -> Option<ref{x}/T> => .Some(x)")]
+    [InlineData("func f<T>(x: uniq/T) -> Option<uniq{x}/T> => .Some(x)")]
     [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
-    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x?: ref/T) -> V<T>{result}\n    origin result.a == x\n    return .None")]
+    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nfunc f<T>(x: ref/T) -> V<T>{result}\n    origin result.a == x\n    return .None")]
     public void PreservesPayloadOriginContracts(string source)
     {
         var c = Parse(source);
@@ -105,7 +105,7 @@ public class EnumBindingTest
 
     [Theory]
     [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\n    None\nlet v = V<i32>.None")]
-    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f<T>(x?: ref/T) -> V<T>{result}\n    origin result.a == static\n    return .Some(x)")]
+    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f<T>(x: ref/T) -> V<T>{result}\n    origin result.a == static\n    return .Some(x)")]
     [InlineData("enum V\n    Some(ref/i32)")]
     [InlineData("enum E\n    A\n    A(i32)")]
     [InlineData("enum E\n    A\n    func A() => ()")]
@@ -187,15 +187,15 @@ public class EnumBindingTest
     }
 
     [Theory]
-    [InlineData("func f(x?: Option<i32>) => ()\nf(.Some(1))", true)]
-    [InlineData("func f(x?: Option<i32>) => ()\nf(.None)", true)]
-    [InlineData("func f(x?: Option<Option<i8>>) => ()\nf(.Some(.Some(127)))", true)]
-    [InlineData("func f(x?: Option<i8>) => ()\nf(.Some(128))", false)]
-    [InlineData("func f(x?: Option<i8>) => ()\nfunc f(x?: Option<i32>) => ()\nf(.Some(128))", true)]
-    [InlineData("func f(x?: Option<i32>) => ()\nfunc f(x?: Option<i8>) => ()\nf(.Some(128))", true)]
-    [InlineData("func f(x?: Option<i32>) => ()\nfunc f(x?: Option<i8>) => ()\nf(.None)", false)]
-    [InlineData("func f<T>(x?: Option<T>, y?: T) => ()\nf(.Some(1), 2)", true)]
-    [InlineData("func f<T>(x?: T) => ()\nfunc f(x?: Option<i32>) => ()\nf(.None)", false)]
+    [InlineData("func f(x: Option<i32>) => ()\nf(.Some(1))", true)]
+    [InlineData("func f(x: Option<i32>) => ()\nf(.None)", true)]
+    [InlineData("func f(x: Option<Option<i8>>) => ()\nf(.Some(.Some(127)))", true)]
+    [InlineData("func f(x: Option<i8>) => ()\nf(.Some(128))", false)]
+    [InlineData("func f(x: Option<i8>) => ()\nfunc f(x: Option<i32>) => ()\nf(.Some(128))", true)]
+    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.Some(128))", true)]
+    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.None)", false)]
+    [InlineData("func f<T>(x: Option<T>, y: T) => ()\nf(.Some(1), 2)", true)]
+    [InlineData("func f<T>(x: T) => ()\nfunc f(x: Option<i32>) => ()\nf(.None)", false)]
     public void CallCandidatesProbeContextualCasesWithoutCommittingLosers(string source, bool valid)
     {
         var c = Parse(source);
@@ -211,7 +211,7 @@ public class EnumBindingTest
     [Fact]
     public void WarmContextualConstructionPreservesBorrowOperations()
     {
-        var c = Parse("func take(x?: Option<ref{static}/i32>) => ()\nfunc f(x?: ref{static}/i32)\n    take(.Some(x))");
+        var c = Parse("func take(x: Option<ref{static}/i32>) => ()\nfunc f(x: ref{static}/i32)\n    take(.Some(x))");
         for (var i = 0; i < 8; i++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));

@@ -20,7 +20,7 @@ Implementation coverage is recorded separately in [STATUS.md](STATUS.md). Parser
 
 Origin schemas, binding sets, projections, relations and completion are defined in [§15.3–4](spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations), with generic reconstruction in [§8.1.2](spec/08-generics-constraints-and-contracts.md#812-reconstruction-and-origin-annotations).
 
-Independent parameter-name omission (`?`) and argument omission (a default expression) are defined in [§7.2](spec/07-functions-and-callable-values.md#72-parameters-and-defaults), with positional matching in [§10.1](spec/10-overload-resolution-and-inference.md#101-candidate-applicability).
+The argument-name boundary (`!`), normalized name contracts and independent argument omission (a default expression) are defined in [§7.2](spec/07-functions-and-callable-values.md#72-parameters-and-defaults), with positional matching in [§10.1](spec/10-overload-resolution-and-inference.md#101-candidate-applicability).
 
 ## Contents
 
@@ -98,7 +98,7 @@ This table indexes the required declarations in [§22.1](spec/22-core-execution-
 | --- | --- | --- |
 | `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees) |
 | `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Stringify`, `Equatable`, `Comparable`, `Iterator`, `Iterable` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
-| `Kimi.Console` | `writeLine(text?: string) -> ()` | [§22.4](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |
+| `Kimi.Console` | `writeLine(text: string) -> ()` | [§22.4](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |
 | `Kimi.Test` | `tempDirectory() -> string`, in test-only bodies | [Test execution profile](spec/testing-profile.md#environment-and-temporary-directory) |
 | `Kimi.Intrinsics` | `replace`, `exchange`, `swap` | [§15.7 whole-value updates](spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
 | `Kimi.Intrinsics` | `makeObj`, `makeRc`, `makeArc`, strong/Weak `clone`, `downgrade`, `upgrade`, `makeRcCyclic`, `makeArcCyclic` | [§13.5.8–9](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) |

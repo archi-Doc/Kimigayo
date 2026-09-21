@@ -1,4 +1,4 @@
-func sum(values?: [3 of i32]) -> i32
+func sum(values: [3 of i32]) -> i32
     var i: isize = 0
     var total = 0
     while i < 3

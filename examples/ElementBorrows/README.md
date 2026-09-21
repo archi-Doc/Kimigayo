@@ -3,7 +3,7 @@
 Constructed owned tuples and fixed arrays support inspecting static string elements with all six comparisons and passing them to required `ref/string` parameters of supported direct functions. Owners may be locals, owned parameters, literals, direct function results, or `if`/`do`/`loop`/`match` results. These operations borrow the element's existing handle; they do not Move it or change destruction responsibility. See [parameter and temporary examples](../ElementBorrowOwners/README.md).
 
 ```kimi
-func same(left: ref/string, right: ref/string) -> bool => left == right
+func same(! left: ref/string, right: ref/string) -> bool => left == right
 var pair = ("first", "last")
 let equal = same(pair.0, pair.0)
 pair.0 = "new"

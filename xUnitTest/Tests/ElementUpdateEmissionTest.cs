@@ -22,7 +22,7 @@ public class ElementUpdateEmissionTest
         { "RhsDo", "var a = (40, true)\na.0 += work: do\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "Deferred", "var a = (0, \"held\")\nvar i = 0\nloop\n    defer => a.0 += 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "DeferredIncrement", "var a = (39, \"held\")\nvar i = 0\nloop\n    defer => ++a.0\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
-        { "Function", "func f(input?: [1 of i32]) -> i32\n    var a = input\n    a[0] += 2\n    return a[0]\nlet input: [1 of i32] = [40]\nif f(input) == 42 and input[0] == 40 => Console.writeLine(\"ok\")" },
+        { "Function", "func f(input: [1 of i32]) -> i32\n    var a = input\n    a[0] += 2\n    return a[0]\nlet input: [1 of i32] = [40]\nif f(input) == 42 and input[0] == 40 => Console.writeLine(\"ok\")" },
         { "Dead", "func f()\n    return\n    var a = (40, true)\n    a.0 += 2\n    a.0++\nf()\nConsole.writeLine(\"ok\")" },
         { "Covered", "var a = (40, true)\nmatch true\n    _ => a.0 += 2\n    true => a.0 -= 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "RhsTransfer", "func f() -> i32\n    var a = (0, true)\n    defer => a.0++\n    a.0 += (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
@@ -125,7 +125,7 @@ public class ElementUpdateEmissionTest
     [InlineData("var a: [2 of i32] = [0, 0]\nlet i: isize = 1\na[0] += ++a[i]")]
     [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    a[0]++\n    exit to work: 0\n)]++")]
     [InlineData("var a: [1 of i32] = [0]\na[0] += (work: do\n    defer => a[0] = 1\n    exit to work: 42\n)")]
-    [InlineData("func take(a?: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (work: do\n    take(a)\n    exit to work: 42\n)")]
+    [InlineData("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (work: do\n    take(a)\n    exit to work: 42\n)")]
     public void AccessProtectionExtendsThroughTheRightSide(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -170,7 +170,7 @@ public class ElementUpdateEmissionTest
     [InlineData("var a = (21, true)\na.0 += a.0")]
     [InlineData("var a: [1 of [1 of i32]] = [[21]]\na[0][0] += a[0][0]")]
     [InlineData("var a: [2 of i32] = [21, 21]\na[0] += a[1 + 0]")]
-    [InlineData("func count(a?: [1 of i32]) -> i32 => a[0]\nvar a: [1 of i32] = [21]\na[0] += count(a)")]
+    [InlineData("func count(a: [1 of i32]) -> i32 => a[0]\nvar a: [1 of i32] = [21]\na[0] += count(a)")]
     [InlineData("var a: [1 of i32] = [21]\na[0] += (work: do\n    defer => a[0]\n    exit to work: 21\n)")]
     [InlineData("var a: [1 of i32] = [21]\nlet x = a[(work: do\n    a[0]++\n    exit to work: 0\n)]")]
     [InlineData("func f()\n    return\n    var a: [1 of i32] = [21]\n    a[0] += a[0]")]
@@ -290,7 +290,7 @@ public class ElementUpdateEmissionTest
     [InlineData("var a = (\"a\", true)\na.0 += \"b\"")]
     [InlineData("var a: [1 of i128] = [42]\na[0] /= 2")]
     [InlineData("var a: [1 of u128] = [42]\na[0] %= 2")]
-    [InlineData("func f(a?: [1 of i32])\n    a[0]++")]
+    [InlineData("func f(a: [1 of i32])\n    a[0]++")]
     [InlineData("func f() -> [1 of i32] => [0]\nf()[0]++")]
     [InlineData("func f()\n    return\n    var a: [1 of i32]\n    a[0] += 2")]
     public void InvalidUpdatesProduceNoIr(string source)

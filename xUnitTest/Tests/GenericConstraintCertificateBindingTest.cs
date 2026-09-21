@@ -31,9 +31,9 @@ public class GenericConstraintCertificateBindingTest
     }
 
     [Theory]
-    [InlineData("func accept(self: ref/Self, value?: Box<string>)", "public func accept(self: ref/Self, value?: Box<string>) => ()")]
+    [InlineData("func accept(self: ref/Self, value: Box<string>)", "public func accept(self: ref/Self, value: Box<string>) => ()")]
     [InlineData("property value: Box<string> has get, set", "public var value: Box<string>")]
-    [InlineData("func accept(self: ref/Self, value?: Box<string>) -> Box<string>", "public func accept(self: ref/Self, value?: Box<string>) -> Box<string> => value")]
+    [InlineData("func accept(self: ref/Self, value: Box<string>) -> Box<string>", "public func accept(self: ref/Self, value: Box<string>) -> Box<string> => value")]
     public void InvalidGenericSignatureCannotCertifyWitness(string requirement, string implementation)
     {
         var source = "public struct Box<T>\n    T is i32\n    Self is Copy\npublic contract C\n    " + requirement + "\npublic struct S\n    Self is C\n    " + implementation;

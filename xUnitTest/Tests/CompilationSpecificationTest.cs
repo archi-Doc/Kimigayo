@@ -244,6 +244,14 @@ public class CompilationSpecificationTest
     }
 
     [Fact]
+    public void FormerLanguageVersionIsRejectedBeforeParsing()
+    {
+        var compilation = Compilation.CreateForTest();
+        compilation.Project.ProjectFile.LangVersion = "0.0.1";
+        Assert.False(compilation.Prepare("x86_64-pc-windows-msvc"));
+    }
+
+    [Fact]
     public async Task LanguageVersionIsInheritedOverridableAndNeverSilentlyIgnored()
     {
         var compilation = Compilation.CreateForTest();

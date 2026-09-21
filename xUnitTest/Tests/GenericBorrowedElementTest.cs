@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class GenericBorrowedElementTest
 {
-    private const string At = "func at<length N, T>(a?: ref/[N of T], i?: isize) -> T\n    T is Copy\n    return a[i]\n";
+    private const string At = "func at<length N, T>(a: ref/[N of T], i: isize) -> T\n    T is Copy\n    return a[i]\n";
 
     [Theory]
     [InlineData("Integer", "i32", "6, 7", "require n == 7 else => $abort(\"value\")")]
@@ -18,7 +18,7 @@ public class GenericBorrowedElementTest
         => ScalarEmissionTest.EmitFixture("GenericBorrowedElement" + name, At + $"let a: [2 of {type}] = [{values}]\nlet n = at<2, {type}>(a@ref, 1)\n{check}", string.Empty);
 
     [Theory]
-    [InlineData("func at<length N, T>(a?: ref/[N of T], i?: isize) -> T => a[i]")]
+    [InlineData("func at<length N, T>(a: ref/[N of T], i: isize) -> T => a[i]")]
     [InlineData("let a: [1 of string] = [\"owned\"]\nlet n = at<1, string>(a@ref, 0)")]
     public void RejectsUnprovedCopy(string source)
     {

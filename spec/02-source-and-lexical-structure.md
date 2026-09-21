@@ -30,7 +30,7 @@ Bodies, explicit delimiters and method-chain continuations are tracked separatel
 
 At end of file, diagnose unclosed explicit delimiters and missing bodies, and close the remaining bodies.
 
-Within parentheses, brackets, Origin braces and recognized generic delimiters, continued content uses one additional indentation level per open delimiter beyond the active body or chain level. A matching closer may align with its opening line or stay at the content indentation. Comparison angle brackets do not establish continuation. Nested bodies generate their own layout events. A comma or closer on the same line as an indented body's content cannot close that body; dedent on the next effective line first.
+Within parentheses, brackets, Origin braces and recognized generic delimiters, continued content uses one additional indentation level per open delimiter beyond the active body or chain level. A matching closer may align with its opening line or stay at the content indentation. Comparison angle brackets do not establish continuation. Nested bodies generate their own layout events. A comma, parameter-name boundary `!` (§7.2.1), or closer on the same line as an indented body's content cannot close that body; dedent on the next effective line first.
 
 A header expression continued across lines must use delimiters inside that expression; grouping the entire construct does not continue its header. A leading `->` may continue a function or accessor header only where its grammar still expects `->`, at one extra level from the header baseline. It changes neither that baseline nor the rule against a separate `=>` line. Content inside a delimiter opened on the `->` line uses one level beyond the `->` line itself. The continuation ends before the next effective line at or above the `->` line's level, which starts the body or the next item.
 
@@ -112,7 +112,7 @@ Consecutive documentation lines at the same indentation form one **documentation
 /// Returns a shared reference to the first element.
 ///
 /// - abort: `values` is empty.
-func first<T>(values?: ref/Array<T>) -> ref{values}/T
+func first<T>(values: ref/Array<T>) -> ref{values}/T
     return values[0]@ref
 ```
 
@@ -177,7 +177,7 @@ Use list items for short descriptions and headings for longer standard sections.
 /// ```kimi
 /// let total = add(2, 3)
 /// ```
-public func add(left?: i32, right?: i32) -> i32 => left + right
+public func add(left: i32, right: i32) -> i32 => left + right
 ````
 
 ### 2.3.6. Tooling and diagnostics
@@ -208,16 +208,18 @@ A token's spelling is contiguous. Adjacent spellings must be separated when thei
 
 | Punctuation/operator class | Spellings |
 | --- | --- |
-| Structural | `(` `)` `[` `]` `{` `}` `,` `.` `:` `::` `->` `=>` `@` `#` `$` `?` |
+| Structural | `(` `)` `[` `]` `{` `}` `,` `.` `:` `::` `->` `=>` `@` `#` `$` `!` |
 | Arithmetic and updates | `+` `-` `*` `/` `%` `++` `--` `+=` `-=` `*=` `/=` `%=` |
 | Comparison and assignment | `=` `==` `!=` `<` `<=` `>` `>=` |
 | Bitwise and shifts | `&` `\|` `^` `<<` `>>` `&=` `\|=` `^=` `<<=` `>>=` |
 | Ranges | `..` `..=` |
-| Recognized but unavailable | `;` `!` `&&` `\|\|` |
+| Recognized but unavailable | `;` `?` `&&` `\|\|` |
 
 Outside comments and literals, the longest punctuation spelling is matched: `..=` before `..` before `.`, `->` before `-`, `<<=` before `<<` before `<`, `>>=` before `>>` before `>`, `::` before `:`, and `=>` or `==` before `=`. Thus `a+++b` is `a`, `++`, `+`, `b`; there is no `+++` token. Unlisted punctuation is invalid unless it forms a grammatically valid sequence of listed tokens.
 
 Only when closing syntactically recognized generic Type arguments or parameters may `>>` split into two `>` tokens, and `>>=` into `>`, `>`, `=` (or `>`, `>=` when only one level closes). Expression shifts are unaffected. Tuple indices use the exception in §2.6.
+
+`!` is a parameter-list boundary only where §7.2.1 permits it, never a unary or postfix expression operator. `!=` retains its longest-token spelling.
 
 The [notation table](01-overview.md#12-conventions-and-notation) summarizes the meaning of punctuation. Expression grouping, generic/comparison boundaries and the token rules for `@` follow [precedence and associativity](13-operators-and-assignment.md#131-precedence-and-associativity).
 

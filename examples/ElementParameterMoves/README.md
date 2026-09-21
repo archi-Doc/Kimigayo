@@ -3,7 +3,7 @@
 Owned tuple and fixed-array parameters support moving string elements and supported nested Non-Copy aggregates through static paths.
 
 ```kimi
-func first(pair: (string, string)) -> string => pair.0
+func first(! pair: (string, string)) -> string => pair.0
 ```
 
 The selected element's responsibility moves into the result. Callee cleanup destroys the remaining element before delivering that result. The caller does not destroy the consumed argument again. Parameter storage is used directly without an additional whole-aggregate transfer.

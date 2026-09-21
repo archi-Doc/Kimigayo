@@ -2,12 +2,12 @@ alias Output => Kimi.Console
 
 struct Cell
     public let number: i32
-    public init(number?: i32) => self.number = number
+    public init(number: i32) => self.number = number
     deinit
         if self.number == 1 => Output.writeLine("Destroyed 1.")
         else => Output.writeLine("Destroyed 2.")
 
-func replaceCell(cell?: uniq/Cell)
+func replaceCell(cell: uniq/Cell)
     Kimi.Intrinsics.replace(cell, with: Cell.init(2))
 
 var cell = Cell.init(1)

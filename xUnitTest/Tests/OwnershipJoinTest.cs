@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class OwnershipJoinTest
 {
-    private const string Pair = "struct Cell\n    public var value: i32 = 7\nfunc inspect(c?: bool)\n    var a = Cell.init()\n    var b = Cell.init()\n";
+    private const string Pair = "struct Cell\n    public var value: i32 = 7\nfunc inspect(c: bool)\n    var a = Cell.init()\n    var b = Cell.init()\n";
 
     [Fact]
     public void Milestone15()

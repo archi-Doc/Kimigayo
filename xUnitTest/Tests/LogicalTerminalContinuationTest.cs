@@ -9,7 +9,7 @@ namespace XunitTest;
 [TestClass(DisableParallelization = true)]
 public class LogicalTerminalContinuationTest
 {
-    private const string Helpers = "\nfunc truth(x?: i32) -> bool => true\nfunc effect(x?: ()) -> bool => true\nfunc take(x?: string) -> bool => true\nfunc stopTake(x?: string) -> Never => $abort(\"taken\")";
+    private const string Helpers = "\nfunc truth(x: i32) -> bool => true\nfunc effect(x: ()) -> bool => true\nfunc take(x: string) -> bool => true\nfunc stopTake(x: string) -> Never => $abort(\"taken\")";
 
     [Theory]
     [InlineData("LeftAnd", "truth(stop()) and effect(x = 2)", true, true)]
@@ -65,7 +65,7 @@ public class LogicalTerminalContinuationTest
     [InlineData("and")]
     [InlineData("or")]
     public void DefaultLogicalDivergenceChecksAndNeverReturns(string op)
-        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + "Default" + op, "func value(c?: bool, x?: i32 = (do\n    var n = 1\n    do\n        let b = (if (loop => continue) => true else => false) " + op + " c\n        loop => continue\n    n\n)) -> i32 => x\nConsole.writeLine(\"begin\")\nvalue(true)", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + "Default" + op, "func value(c: bool, x: i32 = (do\n    var n = 1\n    do\n        let b = (if (loop => continue) => true else => false) " + op + " c\n        loop => continue\n    n\n)) -> i32 => x\nConsole.writeLine(\"begin\")\nvalue(true)", "begin\n", timeoutMilliseconds: 200);
 
     [Fact]
     public void ReloadedLogicalTerminalCheckingAllocatesNothingWhenWarm()
@@ -91,7 +91,7 @@ public class LogicalTerminalContinuationTest
     }
 
     private static string Source(string declaration, string expression, string tail, string use, bool condition = true)
-        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c?: bool)\n    " + declaration + "\n    do\n        let b = " + expression + "\n        " + tail + "\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
+        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        let b = " + expression + "\n        " + tail + "\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
 #if DEBUG
     private const string Configuration = "Debug";

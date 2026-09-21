@@ -161,7 +161,7 @@ public static partial class Parser
 
     /// <summary>Checks receiver syntax of a function declared directly in a struct, enum, or Contract.</summary>
     /// <param name="function">The member function.</param>
-    /// <remarks>At most one parameter has the internal Name self, without rename, default, or name-omission marker (SPEC 7.3).</remarks>
+    /// <remarks>At most one parameter has the internal Name self, without rename or default (SPEC 7.3).</remarks>
     internal static void ValidateReceiverParameters(FunctionKoto function)
     {
         var hasReceiver = false;
@@ -172,12 +172,17 @@ public static partial class Parser
                 continue;
             }
 
-            if (hasReceiver || parameter.ExternalName != "self" || parameter.IsNameOptional || parameter.DefaultValue is not null)
+            if (hasReceiver || parameter.ExternalName != "self" || parameter.DefaultValue is not null)
             {
                 parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "receiver parameter");
             }
 
             hasReceiver = true;
+            if (function.NameBoundaryIndex >= 0 && function.NameBoundaryIndex == function.Parameters.Count - 1 &&
+                ReferenceEquals(parameter, function.Parameters[^1]))
+            {
+                parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "named section requires an ordinary parameter");
+            }
         }
     }
 

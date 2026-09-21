@@ -11,7 +11,7 @@ A **Deferred Block** registers cleanup when execution reaches `defer`. Registrat
 A registration belongs to its directly containing executable body scope: a function, branch, arm, current iteration, `do`, `unsafe`, `require` failure body or executing `defer` body. Unreached registrations do not run, and each iteration registers and cleans up independently. Registrations cannot be cancelled or invoked manually.
 
 ```kimi
-func process(flag?: bool)
+func process(flag: bool)
     defer => log("function end")
     if flag
         defer => log("branch end")
@@ -131,7 +131,7 @@ The cleanup order is `B`, destruction of `second`, `A`, destruction of `first`. 
 Bindings introduced at scope entry, such as parameters, `self`, iteration bindings and Pattern bindings, precede the body's statements. Explicit bindings in one parameter list or Pattern are ordered left to right and destroyed in reverse order. An explicit `self` follows its written position, and individual construct specifications place implicit bindings. These positions neither confer ownership nor change the bindings' owning scopes.
 
 ```kimi
-func process(first?: Resource, second?: Resource)
+func process(first: Resource, second: Resource)
     defer => log("end")
 ```
 

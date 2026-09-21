@@ -1,5 +1,39 @@
 # Kimigayo Implementation Status
 
+The **named argument boundary** is implemented for language version **0.0.2**.
+Named declarations use one `!` before the name-required suffix; an absent
+boundary permits positional or named supply for all ordinary parameters. Defaults
+remain independent. Parsing rejects old `?` suffixes, invalid boundaries and
+duplicate external names. Receivers retain their written positions and supply
+rules. Direct calls use the statically selected declaration or requirement;
+supported specializations inherit its name contract and defaults. Function values
+keep positional-only calling. Foreign headers validate the same source contract.
+
+Ordinary calls and constructor inference share argument mapping. Small signatures
+scan their concrete list; larger ones reuse one name index per declaration.
+Versioned source reload rejects incompatible or missing format/language/build
+metadata before parsing, including deserialization into an existing instance.
+Reprinting defaults with bodies preserves the required dedent before `!` or comma.
+Library declarations, examples and milestone/test sources are migrated; the
+finalized proposal is unchanged.
+
+Final Debug/Release solution builds have zero warnings/errors and each passes
+**11,071 managed tests**. Fifteen focused fixture sets pass **30 LLVM 22.1.8 O0/O2
+executions**, covering named defaults, generic forwarding/specialization,
+constructors, receiver positions, source-order acquisition and reverse parameter
+cleanup. All 75 final Debug/Release IR/oracle files match the tested native set.
+Release Milestone 11 and 18 regressions pass **55 and 53 checks**. Warm name lookup
+and complete rebinding allocate **zero bytes in the measured 2–64-parameter,
+32-call workloads**; fresh compilations still allocate. See the
+[measurements](Benchmark/NamedArguments.md) and
+[execution evidence](PLAN_HISTORY.md#named-argument-boundary-20260922).
+
+This does not complete existing general gaps: effectful/owned/borrow-producing
+defaults, inherited construction and instance receiver projection, receiver/constrained specialization, arbitrary
+Contract-candidate equivalence proofs, general callable or foreign execution.
+The base-constructor boundary case is verified at syntax level. Required behavior
+remains in SPEC; unsupported generation is still diagnosed. NativeAOT was not run.
+
 **Milestone Program 18** builds and executes unchanged at O0/O2. Owned Tuple/Case
 Patterns can acquire complete fixed-array and struct payloads within the
 supported owned scalar/string/aggregate subset, including user destructors and
@@ -57,27 +91,6 @@ in each of Debug and Release, covering execution and required rejection. No comp
 fix was needed for this native follow-up. NativeAOT was not run. Managed verification is recorded
 in [the redesign history](PLAN_HISTORY.md#origin-redesign-20260921); native results
 are recorded in [the native follow-up](PLAN_HISTORY.md#origin-redesign-native-20260921).
-
-The **2026-09-20 parameter-name/default revision** is implemented across parsing,
-source round trips, Binding, Contract/foreign header validation, library shape
-checks and supported generation. External name permission (`IsNameOptional`) is
-independent of default-expression presence. Calls reject positional arguments
-after named arguments and never skip name-required parameters. Function values
-retain positional-only calling; supported specializations inherit the original
-call contract. Standard library declarations, examples and fixtures are migrated.
-
-Existing scalar default execution also works through generic entries and shared
-forwarding, including supported closed Type specializations. Native coverage
-includes prepared i32 defaults, concrete/shared callees and receiver positions.
-General effectful, owned or borrow-producing defaults and foreign execution retain
-their existing limitations; name/default syntax does not bypass those checks.
-
-Debug/Release builds have zero warnings/errors and each passes **10,822 managed
-tests** (10,814 at that checkpoint, plus the 8 rows of the later unsafe
-value-position rejection). Twelve new fixtures pass **24 O0/O2 executions per configuration**, and
-the Release Milestone 11 CLI suite passes 55 checks. Warm Binding, ownership and IR
-writing allocate zero for the measured named-default workload. Detailed scope,
-failures/fixes and commands are in [the implementation record](PLAN_HISTORY.md#parameter-names-implementation-20260920).
 
 The **2026-09-20 call borrow reservation revision** implements call-local preparation
 and simultaneous activation for implicit and direct explicit exclusive borrows.

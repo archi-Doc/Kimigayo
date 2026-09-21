@@ -10,7 +10,7 @@ Read [§1](#1-goal-and-scope), [§2](#2-execution-state), and the relevant [§5 
 
 Complete the compiler for all finalized language rules and implementation contracts in `SPEC.md`, Chapters 1–22, and normative Appendix A. Completion means correct acceptance, required rejection and warnings, ownership verification, checked generation, artifacts, and execution on the specified Windows x64 profile. Parsing or successful LLVM verification alone is insufficient.
 
-The current request (2026-09-21) targets completion of `milestones/Milestone18.kimi`, including native execution, required rejection and regressions. Other programs inform prerequisite design only; stop after Program 18. Program numbers and P18 task IDs are distinct from implementation Milestones M1–M15 and I/T backlog IDs. The finalized Origin redesign remains integrated. Draft edits and NativeAOT tests remain excluded.
+The current request (2026-09-21) integrates the named-argument ! boundary into the formal specification and compiler, including source migration, versioned reload, call contracts and validation. Program 18 is complete; later milestone implementation remains outside this request. Program numbers and P18 task IDs are distinct from implementation Milestones M1–M15 and I/T backlog IDs. The finalized Origin redesign remains integrated. Draft edits and NativeAOT tests remain excluded.
 
 This file owns the current plan. Its baseline must not be weakened to match implementation limitations. Product-wide support belongs in `STATUS.md`; detailed execution history belongs in `PLAN_HISTORY.md`.
 
@@ -18,7 +18,7 @@ This file owns the current plan. Its baseline must not be weakened to match impl
 
 1. `SPEC.md` identifies the owning chapters. §1.3 makes unqualified rules normative, distinguishes mandatory requirements from recommendations, and says examples do not add rules.
 2. Appendix A is normative verification/implementation guidance. Appendix B is optional algorithms; Appendix F is a non-normative syntax summary. `STATUS.md`, code, tests, and program milestones are evidence, not language authority.
-3. Use the formal owning sections for requirements, including §21.3 for generic sharing/specialization, Chapter 18 for dependencies/artifacts and §17.5 for verification operations. The user explicitly authorized integrating the finalized 2026-09-21 Origin redesign with precedence over conflicting rules. Those rules now belong in the formal chapters; do not propagate edits back into the proposal. Other proposals and historical notices do not independently authorize specification changes.
+3. Use the formal owning sections for requirements, including §21.3 for generic sharing/specialization, Chapter 18 for dependencies/artifacts and §17.5 for verification operations. The user-authorized Origin redesign and named argument boundary are integrated into the formal chapters; do not propagate edits back into their proposals. Other proposals and historical notices do not independently authorize specification changes.
 4. Appendix D and owning sections delimit exclusions. “Specified, not implemented” remains in scope. “Deferred design” and undefined public APIs do not become requirements merely because syntax/examples exist.
 5. Specifically include settled object/Weak operations (§13.5.8–9), collection mutation (§4.7), source packages/local publication (§18), and basic test semantics. Old implementation comments calling these unspecified do not supersede the specification.
 6. Exclude Composition Root Entry/Provider selection, runtime Contract Views, source concurrency, extra target profiles, stable external Kimigayo/DLL ABI, source transparent aliases, general user-defined arithmetic, extra generic/specialization forms, persistent generation/object-code caches, dynamic generic scratch allocation, and other Appendix D extensions.
@@ -31,13 +31,15 @@ Performance is a first-class constraint: minimize allocations, avoid repeated wo
 
 ## 2. Execution State
 
-Current position: **Program 18 COMPLETE**. Current-source Debug/Release solution builds are warning-free and both full managed suites pass all 10,993 tests. The unchanged target and its variants/rejections pass 53 checks per configuration. All 156 related native fixture sets pass at O0/O2 (312 executions); 780 fixture files match across configurations. Programs 1–17 pass 102 Release O0/O2 regression checks. The [final audit](bin/milestone18-work/verification.json) confirms source/compiler/fixture identities. [Failures, fixes and reproduction](PLAN_HISTORY.md#program18-completion). Stop at Program 18; no later program implementation is authorized by this request.
+Current position: **NAB — named argument boundary COMPLETE**. The formal specification, compiler and source migration are integrated. Debug/Release builds are warning-free; each passes 11,071 managed tests. Fifteen named-argument fixture sets pass 30 LLVM O0/O2 executions, and all 75 final Debug/Release fixture files match that tested snapshot. Release Milestone 11/18 regressions pass 55/53 checks. [Evidence and reproduction](PLAN_HISTORY.md#named-argument-boundary-20260922); [allocation measurements](Benchmark/NamedArguments.md). No remaining NAB action. Existing general compiler gaps remain below; NativeAOT was not run.
 
 | Item | State | Acceptance / exact next action |
 | --- | --- | --- |
-| P18-G | DONE | Complete owned payload transfer and zero-sized aggregate cleanup use existing verified layouts, slot plans and destructor entries. Shared generic bodies and concrete entries retain per-Type acquisition and destruction without source cloning. |
-| P18-O | DONE | Target selection, secured results and reverse cleanup execute correctly. All new native boundary fixtures and managed cases pass: unused/inactive/partial bindings, zero-size elements, early return, Copy reuse, differing destructors, Abort, invalid ownership, malformed plans and reload. |
-| P18-V | DONE | Required builds, managed suites, target/variant/rejection checks, pinned LLVM/native regressions and identity audit pass. Completed native cases were reused only for byte-identical IR/oracles. NativeAOT NOT_RUN as instructed. No remaining action for this target. |
+| NAB1 | DONE | Formal owning chapters and examples are self-contained; the proposal is unchanged. |
+| NAB2 | DONE | Boundary syntax, external-name uniqueness, normalized/inherited K, shared matching and lookup, versioned reload; library/examples/milestones/tests migrated. |
+| NAB3 | DONE | Syntax, Binding, source round trips, reload/version rejection, ownership/lowering/emission, native execution and allocation checks pass within the recorded support boundaries. |
+
+Program 18 remains complete (P18-G/O/V); its previous execution checkpoint and evidence are in [history](PLAN_HISTORY.md#program18-completion). Later milestone implementation is outside this request; their syntax is migrated where needed.
 
 Previous focused work: **ORD — Origin system redesign**. Preserve the finalized design while replacing the previous Origin declarations/applications with closed Type schemas, implicit function Origins, binding-set names and declaration-attached relations. Formal language requirements remain independent of implementation limitations.
 

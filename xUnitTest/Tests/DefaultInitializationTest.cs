@@ -10,7 +10,7 @@ namespace XunitTest;
 [TestClass(DisableParallelization = true)]
 public class DefaultInitializationTest
 {
-    private const string NeverDefault = "func f(y?: i32 = (scope: do\n    let n: i32 = loop => continue\n    exit to scope: n + 1\n)) => ()\n";
+    private const string NeverDefault = "func f(y: i32 = (scope: do\n    let n: i32 = loop => continue\n    exit to scope: n + 1\n)) => ()\n";
 
     [Theory]
     [InlineData("")]
@@ -24,23 +24,23 @@ public class DefaultInitializationTest
     [InlineData("f()")]
     [InlineData("f(3)")]
     public void MissingInitializerIsCheckedIndependentlyOfOmission(string call)
-        => AssertUninitialized("func f(y?: i32 = (scope: do\n    var n: i32\n    exit to scope: n\n)) => ()\n" + call);
+        => AssertUninitialized("func f(y: i32 = (scope: do\n    var n: i32\n    exit to scope: n\n)) => ()\n" + call);
 
     [Theory]
-    [InlineData("contract C\n    func f(y?: i32 = (scope: do\n        var n: i32\n        exit to scope: n\n    ))")]
-    [InlineData("contract C\n    func f(y?: i32 = (scope: do\n        let n: i32 = loop => continue\n        exit to scope: n\n    ))")]
-    [InlineData("func f(c?: bool, y?: i32 = (scope: do\n    var n: i32\n    if c => n = 1\n    exit to scope: n\n)) => ()\nf(true, 3)")]
-    [InlineData("func f(y?: i32 = (scope: do\n    var n: i32\n    exit to scope: 1\n    exit to scope: n\n)) => ()\nf(3)")]
+    [InlineData("contract C\n    func f(y: i32 = (scope: do\n        var n: i32\n        exit to scope: n\n    ))")]
+    [InlineData("contract C\n    func f(y: i32 = (scope: do\n        let n: i32 = loop => continue\n        exit to scope: n\n    ))")]
+    [InlineData("func f(c: bool, y: i32 = (scope: do\n    var n: i32\n    if c => n = 1\n    exit to scope: n\n)) => ()\nf(true, 3)")]
+    [InlineData("func f(y: i32 = (scope: do\n    var n: i32\n    exit to scope: 1\n    exit to scope: n\n)) => ()\nf(3)")]
     public void EveryDeclarationAndCheckingPathRequiresInitialization(string source)
         => AssertUninitialized(source);
 
     [Theory]
-    [InlineData("Supplied", "func f(x?: i32 = (scope: do\n    var n: i32\n    n = 1\n    exit to scope: n\n)) => ()\nf(3)\nConsole.writeLine(\"ok\")")]
-    [InlineData("Sequential", "func f(x?: i32, y?: i32 = (scope: do\n    var n: i32\n    n = x + 1\n    exit to scope: n\n)) -> i32 => y\nif f(2) == 3 and f(9, 4) == 4 => Console.writeLine(\"ok\")")]
-    [InlineData("Branches", "func f(c?: bool, y?: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    exit to scope: n\n)) -> i32 => y\nif f(true) == 1 and f(false) == 2 => Console.writeLine(\"ok\")")]
-    [InlineData("Loop", "func f(y?: i32 = (loop\n    var n: i32\n    n = 7\n    exit n\n)) -> i32 => y\nif f() == 7 => Console.writeLine(\"ok\")")]
-    [InlineData("Unit", "func f(y?: () = (scope: do\n    var n: ()\n    n = ()\n    exit to scope: n\n)) => Console.writeLine(\"ok\")\nf()")]
-    [InlineData("SuppliedNever", "func f(y?: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 7\n    exit to scope: n\n)) -> i32 => y\nif f(3) == 3 => Console.writeLine(\"ok\")")]
+    [InlineData("Supplied", "func f(x: i32 = (scope: do\n    var n: i32\n    n = 1\n    exit to scope: n\n)) => ()\nf(3)\nConsole.writeLine(\"ok\")")]
+    [InlineData("Sequential", "func f(x: i32, y: i32 = (scope: do\n    var n: i32\n    n = x + 1\n    exit to scope: n\n)) -> i32 => y\nif f(2) == 3 and f(9, 4) == 4 => Console.writeLine(\"ok\")")]
+    [InlineData("Branches", "func f(c: bool, y: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    exit to scope: n\n)) -> i32 => y\nif f(true) == 1 and f(false) == 2 => Console.writeLine(\"ok\")")]
+    [InlineData("Loop", "func f(y: i32 = (loop\n    var n: i32\n    n = 7\n    exit n\n)) -> i32 => y\nif f() == 7 => Console.writeLine(\"ok\")")]
+    [InlineData("Unit", "func f(y: () = (scope: do\n    var n: ()\n    n = ()\n    exit to scope: n\n)) => Console.writeLine(\"ok\")\nf()")]
+    [InlineData("SuppliedNever", "func f(y: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 7\n    exit to scope: n\n)) -> i32 => y\nif f(3) == 3 => Console.writeLine(\"ok\")")]
     public void EmitsInitializedDefaultLocals(string name, string source)
         => ScalarEmissionTest.EmitFixture(Prefix + name, source, "ok\n");
 
@@ -48,7 +48,7 @@ public class DefaultInitializationTest
     public void NeverInitializerCannotReachLaterDefaultsOrCallee()
         => ScalarEmissionTest.EmitFixture(
             Prefix + "Never",
-            "func f(y?: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 7\n    exit to scope: n\n), z?: i32 = (2147483647 + 1)) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()",
+            "func f(y: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 7\n    exit to scope: n\n), z: i32 = (2147483647 + 1)) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()",
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -57,7 +57,7 @@ public class DefaultInitializationTest
     [InlineData(true)]
     public void ReloadAndWarmAnalysisCheckUnusedDefaults(bool invalid)
     {
-        var source = invalid ? NeverDefault + "f(3)" : "func f(x?: i32, y?: i32 = (scope: do\n    var n: i32\n    n = x + 1\n    exit to scope: n\n)) -> i32 => y\nf(2)";
+        var source = invalid ? NeverDefault + "f(3)" : "func f(x: i32, y: i32 = (scope: do\n    var n: i32\n    n = x + 1\n    exit to scope: n\n)) -> i32 => y\nf(2)";
         var c = MinimalEmissionTest.Analyze(source);
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         c = Compilation.CreateForTest();

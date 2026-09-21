@@ -11,7 +11,7 @@ public class IntegerEmissionTest
     private const string Overflow = "KIMI_E_INT_OVERFLOW: Integer overflow";
     private const string DivisionZero = "KIMI_E_INT_DIV_ZERO: Integer division or remainder by zero";
     private const string ShiftCount = "KIMI_E_INT_SHIFT_COUNT: Shift count out of range";
-    private const string Mixed = "func small(x?: i8, y?: u8, z?: i16, w?: u16, a?: u64, b?: isize) -> u64\n    if x == -128 and y == 200 and z == -32768 and w == 65535 and b == -1 => return a\n    return 0\npublic func main()\n    var n: u8 = 7\n    var u: u64 = 1\n    var s: i16 = -128\n    defer => n = 0\n    let x = if true => u << n else => u\n    if x == 128 and (s >> n) == -1 and small(-128, 200, -32768, 65535, 18446744073709551615, -1) == 18446744073709551615\n        Console.writeLine(\"ok\")";
+    private const string Mixed = "func small(x: i8, y: u8, z: i16, w: u16, a: u64, b: isize) -> u64\n    if x == -128 and y == 200 and z == -32768 and w == 65535 and b == -1 => return a\n    return 0\npublic func main()\n    var n: u8 = 7\n    var u: u64 = 1\n    var s: i16 = -128\n    defer => n = 0\n    let x = if true => u << n else => u\n    if x == 128 and (s >> n) == -1 and small(-128, 200, -32768, 65535, 18446744073709551615, -1) == 18446744073709551615\n        Console.writeLine(\"ok\")";
 
     public static TheoryData<string, int, bool, string, string> Types => new()
     {
@@ -26,7 +26,7 @@ public class IntegerEmissionTest
     [MemberData(nameof(Types))]
     public void EveryIntegerWidthPreservesValuesAcrossOperationsAndCalls(string type, int width, bool signed, string minimum, string maximum)
     {
-        var source = $"func id(x?: {type}) -> {type} => x\nfunc snapshot(x?: {type}) -> {type}\n    var y = x\n    defer => y = 0\n    return y\n" +
+        var source = $"func id(x: {type}) -> {type} => x\nfunc snapshot(x: {type}) -> {type}\n    var y = x\n    defer => y = 0\n    return y\n" +
             $"var x: {type} = 9\nvar y: {type} = 2\nlet q = x / y\nlet r = x % y\nx += 3\nx -= 2\nx *= 2\nx /= 2\nx %= 7\nx |= 4\nx &= 6\nx ^= 3\nx <<= 1\nx >>= 1\nlet old = x++\n++x\nlet current = --x\nx--\n" +
             $"let low: {type} = {minimum}\nlet high: {type} = {maximum}\nlet top: {type} = 1 << {width - 1}\nvar c = true\nlet phi = if c => id(high) else => id(low)\n" +
             $"if q == 4 and r == 1 and x == 5 and old == 5 and current == 6 and low < high and high > low and high >= high and low <= low and high / 1 == high and high % 1 == 0 and low / 1 == low and low % 1 == 0 and (top >> {width - 1}) == {(signed ? "-1" : "1")} and {(signed ? "top == low" : "top > 1 and top < high")} and snapshot(high) == high and phi == high\n    Console.writeLine(\"ok\")";

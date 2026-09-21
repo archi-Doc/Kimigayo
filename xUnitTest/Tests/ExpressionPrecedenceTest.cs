@@ -136,7 +136,7 @@ public class ExpressionPrecedenceTest
     [Fact]
     public void RequirementOperatorsSpanTheirOperands()
     {
-        const string source = "func f<T>(x?: T)\n    T is not Copy and Owned or Copy\n    ()";
+        const string source = "func f<T>(x: T)\n    T is not Copy and Owned or Copy\n    ()";
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
         Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());

@@ -1,0 +1,153 @@
+{
+  "compiler": "0.1.1 (0180a243-c54d-4c30-9434-5e73d97f14db)",
+  "language": "0.0.2",
+  "runtime": "10.0.12",
+  "results": [
+    {
+      "parameters": 2,
+      "linear": {
+        "nanoseconds": 6.2915,
+        "bytes": 0
+      },
+      "dictionary": {
+        "nanoseconds": 9.389,
+        "bytes": 0
+      },
+      "actualLookup": {
+        "nanoseconds": 4.6075,
+        "bytes": 0
+      },
+      "warmRebind32Calls": {
+        "nanoseconds": 97515.625,
+        "bytes": 0
+      },
+      "coldParseAndBind32Calls": {
+        "nanoseconds": 242187.5,
+        "bytes": 146824
+      }
+    },
+    {
+      "parameters": 4,
+      "linear": {
+        "nanoseconds": 10.0725,
+        "bytes": 0
+      },
+      "dictionary": {
+        "nanoseconds": 8.32,
+        "bytes": 0
+      },
+      "actualLookup": {
+        "nanoseconds": 5.6395,
+        "bytes": 0
+      },
+      "warmRebind32Calls": {
+        "nanoseconds": 130237.5,
+        "bytes": 0
+      },
+      "coldParseAndBind32Calls": {
+        "nanoseconds": 232037.5,
+        "bytes": 158736
+      }
+    },
+    {
+      "parameters": 8,
+      "linear": {
+        "nanoseconds": 17.721,
+        "bytes": 0
+      },
+      "dictionary": {
+        "nanoseconds": 11.7945,
+        "bytes": 0
+      },
+      "actualLookup": {
+        "nanoseconds": 10.121,
+        "bytes": 0
+      },
+      "warmRebind32Calls": {
+        "nanoseconds": 172118.75,
+        "bytes": 0
+      },
+      "coldParseAndBind32Calls": {
+        "nanoseconds": 277725,
+        "bytes": 197552
+      }
+    },
+    {
+      "parameters": 16,
+      "linear": {
+        "nanoseconds": 26.533,
+        "bytes": 0
+      },
+      "dictionary": {
+        "nanoseconds": 9.3585,
+        "bytes": 0
+      },
+      "actualLookup": {
+        "nanoseconds": 10.263,
+        "bytes": 0
+      },
+      "warmRebind32Calls": {
+        "nanoseconds": 256584.375,
+        "bytes": 0
+      },
+      "coldParseAndBind32Calls": {
+        "nanoseconds": 448412.5,
+        "bytes": 257552
+      }
+    },
+    {
+      "parameters": 32,
+      "linear": {
+        "nanoseconds": 55.014,
+        "bytes": 0
+      },
+      "dictionary": {
+        "nanoseconds": 11.8485,
+        "bytes": 0
+      },
+      "actualLookup": {
+        "nanoseconds": 13.8745,
+        "bytes": 0
+      },
+      "warmRebind32Calls": {
+        "nanoseconds": 414178.125,
+        "bytes": 0
+      },
+      "coldParseAndBind32Calls": {
+        "nanoseconds": 705487.5,
+        "bytes": 388469
+      }
+    },
+    {
+      "parameters": 64,
+      "linear": {
+        "nanoseconds": 114.382,
+        "bytes": 0
+      },
+      "dictionary": {
+        "nanoseconds": 9.9955,
+        "bytes": 0
+      },
+      "actualLookup": {
+        "nanoseconds": 11.3385,
+        "bytes": 0
+      },
+      "warmRebind32Calls": {
+        "nanoseconds": 727762.5,
+        "bytes": 0
+      },
+      "coldParseAndBind32Calls": {
+        "nanoseconds": 1155400,
+        "bytes": 653229
+      }
+    }
+  ],
+  "measurement": {
+    "samples": 5,
+    "statistic": "median",
+    "tieredCompilation": false,
+    "callsPerBinding": 32,
+    "lookupQueries": "all labels plus one unknown, separate but equal string instances",
+    "scope": "single Windows x64 machine; JIT compiler, not NativeAOT"
+  }
+}

@@ -83,7 +83,7 @@ public class GuardedMatchContinuationTest
     }
 
     private static string Source(string declaration, string arms, string after, string use, string subject = "c")
-        => "func stop() -> Never => $abort(\"guarded match\")\nfunc same(a?: ref/string, b?: ref/string) -> bool => a == b\nfunc check(effect?: (), value?: bool) -> bool => value\nfunc take(text?: string) -> bool\n    Console.writeLine(text)\n    return false\nfunc f(c?: bool)\n    " + declaration +
+        => "func stop() -> Never => $abort(\"guarded match\")\nfunc same(a: ref/string, b: ref/string) -> bool => a == b\nfunc check(effect: (), value: bool) -> bool => value\nfunc take(text: string) -> bool\n    Console.writeLine(text)\n    return false\nfunc f(c: bool)\n    " + declaration +
             "\n    do\n        loop\n            if c => return else => exit\n            choice: match " + subject + "\n                " + arms +
             "\n            " + after + "\n        stop()\n    " + use + "\nf(true)";
 }

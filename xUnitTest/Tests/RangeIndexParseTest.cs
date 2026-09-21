@@ -107,7 +107,7 @@ public class RangeIndexParseTest
     public void PreservesRangesThroughSerializationAndUnparse()
     {
         const string Source = """
-            func Slice(data?: Array<i32>)
+            func Slice(data: Array<i32>)
                 var middle = data[1..^1]
                 data[..=^1]
             """;

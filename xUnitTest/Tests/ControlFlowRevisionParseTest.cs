@@ -80,7 +80,7 @@ public class ControlFlowRevisionParseTest
         var parsed = Parse(
             """
             func run() -> i32
-                func add(a?: i32, b?: i32) -> i32 => a + b
+                func add(a: i32, b: i32) -> i32 => a + b
                 let increment = func (x: i32) -> i32 => x + 1
                 let block = func () -> i32
                     return 2
@@ -103,8 +103,8 @@ public class ControlFlowRevisionParseTest
             Assert.False(block.Body.HasTrailingExpression);
         }
 
-        Parse("group Math\n    func add(a?: i32, b?: i32) -> i32 => a + b");
-        Parse("struct Math\n    func add(a?: i32, b?: i32) -> i32 => a + b");
+        Parse("group Math\n    func add(a: i32, b: i32) -> i32 => a + b");
+        Parse("struct Math\n    func add(a: i32, b: i32) -> i32 => a + b");
     }
 
     [Theory]

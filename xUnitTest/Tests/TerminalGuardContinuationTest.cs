@@ -102,7 +102,7 @@ public class TerminalGuardContinuationTest
     [InlineData("if c => stop() else => false", "\"subject\"", "Console.writeLine(flag)")]
     public void NoncompletingGuardsKeepCheckingWithoutRuntimeSelection(string guard, string subject, string body)
     {
-        var c = MinimalEmissionTest.Analyze("func halt(text?: ref/string) -> Never => $abort(\"halt\")\n" +
+        var c = MinimalEmissionTest.Analyze("func halt(text: ref/string) -> Never => $abort(\"halt\")\n" +
             Source("var x = 1", guard, body, "let y = x", subject));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.All(c.Ownership.Bodies, body => Assert.True(body.ValidateComparisonLoans()));
@@ -112,7 +112,7 @@ public class TerminalGuardContinuationTest
     [Fact]
     public void GuardTransfersReleaseExactlyOnceAndDoNotExecuteCheckingBodies()
     {
-        var source = "func run(early?: bool)\n    let outer = \"outer\"\n    match \"subject\"\n        let candidate if (if early => return else => false) => Console.writeLine(candidate)\n        _ => Console.writeLine(\"fallback\")\n    Console.writeLine(outer)\nrun(true)\nrun(false)\n" +
+        var source = "func run(early: bool)\n    let outer = \"outer\"\n    match \"subject\"\n        let candidate if (if early => return else => false) => Console.writeLine(candidate)\n        _ => Console.writeLine(\"fallback\")\n    Console.writeLine(outer)\nrun(true)\nrun(false)\n" +
             Source("var x = 1", "return", "Console.writeLine(flag)", "let y = x", "\"unselected\"");
         const string Name = "TerminalGuardWindowTransfers";
         var ir = ScalarEmissionTest.EmitFixture(Name, source, "fallback\nouter\n");
@@ -122,7 +122,7 @@ public class TerminalGuardContinuationTest
     [Fact]
     public void AbortingGuardDoesNotAcquireOrDestroySubject()
     {
-        const string Source = "func halt(text?: ref/string) -> Never => $abort(\"halt\")\nmatch \"held\"\n    let text if halt(text) => Console.writeLine(text)\n    _ => Console.writeLine(\"fallback\")";
+        const string Source = "func halt(text: ref/string) -> Never => $abort(\"halt\")\nmatch \"held\"\n    let text if halt(text) => Console.writeLine(text)\n    _ => Console.writeLine(\"fallback\")";
         const string Name = "TerminalGuardWindowAbort";
         var stderr = "Hello.kimi:1:" + (Source.IndexOf("$abort", StringComparison.Ordinal) + 1) + ": abort KIMI_E_ABORT: halt\n";
         var ir = ScalarEmissionTest.EmitFixture(Name, Source, string.Empty, 1, stderr);
@@ -158,7 +158,7 @@ public class TerminalGuardContinuationTest
     }
 
     private static string Source(string declaration, string guard, string body, string tail, string subject = "c")
-        => "func stop() -> Never => $abort(\"terminal guard\")\nfunc f(c?: bool)\n    " + declaration +
+        => "func stop() -> Never => $abort(\"terminal guard\")\nfunc f(c: bool)\n    " + declaration +
             "\n    scope: do\n        loop\n            if c => return else => exit\n            match " + subject + "\n                let flag if (" + guard + ") => " + body +
             "\n                _ => ()\n        stop()\n    " + tail + "\nf(true)";
 }

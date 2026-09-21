@@ -30,7 +30,7 @@ public class MixedRequireContinuationTest
     [InlineData("let s = \"s\"", "require take(s) else => return", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
     public void EffectsRemainSpecificToTheirSourcePaths(string declaration, string dead, string use, string tail, OwnershipFailure failure)
     {
-        var c = MinimalEmissionTest.Analyze(Source(declaration, "return", dead, use, tail) + "\nfunc take(s?: string) -> bool => true");
+        var c = MinimalEmissionTest.Analyze(Source(declaration, "return", dead, use, tail) + "\nfunc take(s: string) -> bool => true");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -82,7 +82,7 @@ public class MixedRequireContinuationTest
     }
 
     private static string Source(string declaration, string early, string dead, string use, string tail = "()", bool condition = true)
-        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c?: bool)\n    " + declaration + "\n    do\n        loop\n            if c\n                " + early + "\n            else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
+        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c\n                " + early + "\n            else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
     private const string Counter = "\nstruct Counter\n    public var value: i32 = 0";
 

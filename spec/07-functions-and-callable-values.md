@@ -17,10 +17,10 @@ In a single-item body, the expression is discarded if the return Type is already
 In an indented body, every direct expression, including the last, is discarded, and structural arrival at the end supplies Unit. A non-Unit result therefore requires an explicit `return`. Expected Types and all written result sources, including unreachable ones, follow §14.9. Runtime Reachability does not change a function's fixed return Type.
 
 ```kimi
-func direct(left?: i32, right?: i32) -> i32 => left + right
-func indented(left?: i32, right?: i32) -> i32
+func direct(left: i32, right: i32) -> i32 => left + right
+func indented(left: i32, right: i32) -> i32
     return left + right
-func bad(left?: i32, right?: i32) -> i32
+func bad(left: i32, right: i32) -> i32
     left + right // Error: structural end supplies Unit.
 
 func cleanup() => handle.close() // Discard even if close returns bool.
@@ -35,39 +35,81 @@ A final selection, loop or do expression in an indented body is still discarded;
 
 Explicit parameters are initialized, immutable `let`-like bindings, including anonymous-function, constructor and receiver parameters; a setter's `value` is also immutable. A Non-Copy parameter may be Moved once, but reassignment, reinitialization and new exclusive borrows of parameter storage are forbidden; use a `var` local for mutable work. An existing `uniq/T` or `objuniq/T` parameter still permits exclusive access to, and Reborrow of, its referent, because binding immutability does not restrict the referent. Construction and destruction receivers keep their special privileges. There is no `var` parameter syntax.
 
-**Argument names.** An ordinary parameter requires its external argument name at a direct call unless that name is followed by `?`. The marker permits omission of the argument name, not omission of the argument value, and does not make the Type nullable. Named arguments remain permitted with `?`. A parameter may separate its external argument name from its local name with `external => internal: T`; its name-optional form is `external? => internal: T`. The marker belongs to the external name; `external => internal?: T` is invalid.
+### 7.2.1. Argument-name boundary
 
-**Default arguments.** A parameter with `= defaultExpression` may be omitted, independently of `?`; a parameter without a default requires an argument. A default is evaluated only when that argument is omitted. Every parameter initializer is a default expression governed by these rules. Defaulted parameters may precede required parameters; callers use names to supply later arguments without filling earlier positions.
+A named function parameter list may contain one `!` boundary in place of a comma. Ordinary parameters before it accept positional or named arguments; those after it require their external names. Without a boundary, all ordinary parameters accept both forms. Constructors and Contract function requirements use the same boundary. The boundary adds no parameter, Type modifier, evaluation phase or ABI slot.
 
-| Parameter declaration | Named argument `f(x: 3)` | Positional argument `f(3)` | Omitted argument `f()` |
-| --- | --- | --- | --- |
-| `x: i32` | Allowed | Rejected | Rejected |
-| `x: i32 = 10` | Allowed | Rejected | Allowed |
-| `x?: i32` | Allowed | Allowed | Rejected |
-| `x?: i32 = 10` | Allowed | Allowed | Allowed |
-
-The table assumes a directly called function with one ordinary parameter. Constructors use the same independent name-omission and default rules. Receiver and function-value calls follow their dedicated rules below.
+The left section may be empty; the right must contain at least one ordinary parameter, excluding a receiver. Each section is comma-separated. A trailing comma is permitted only at the end of the whole list, never immediately before or after `!`. Parameter suffixes `name?` and `name!` are errors. Empty lists remain `()`, not `(!)`.
 
 ```kimi
-func scale(value?: i32, by => factor: i32) -> i32 => value * factor
-let result = scale(3, by: 4)
-
-func offset(value?: i32, by: i32 = 1) -> i32 => value + by
-let next = offset(3)
-let adjusted = offset(3, by: 5)
+func find(value: i32 ! start: i32, end: i32) => ()
+func pair(a: i32, b: i32) => ()       // Both names may be omitted.
+func configure(! count: i32 = 10) => () // Supplied count must be named.
+find(10, start: 0, end: 100)
+configure()
+configure(count: 20)
+configure(20) // Error: count requires its name.
 ```
 
-Function Types do not retain argument names, name-omission permissions or defaults. Calls through function values supply all arguments positionally, even if the source declaration requires names at direct calls; they accept no named or omitted arguments. Argument matching and evaluation are described under [invocation](12-expressions.md#1242-invocation-and-generic-application).
+In either section, `external => internal: T` separates the caller-facing name from the local binding. Renaming alone does not require a label. External names must be unique across the complete list, including the receiver, regardless of defaults or calls. Check internal names independently under §9.2. An external name may equal another parameter's internal name. For example, `func bad(! value => a: i32, value => b: i32)` has duplicate external names and is invalid.
 
-**Default evaluation and ownership.** At each call, the explicit arguments are acquired in source order into pending slots. Then each omitted default is evaluated once, in parameter declaration order, in the declaration's scope with access to the prepared preceding slots; it may refer to preceding parameters but not to later parameters or caller-local bindings. Slots do not alias caller variables. A default may Copy a preceding Copy value or inspect it through temporary shared access, but cannot Move, Consume or modify that slot or its owned contents. Its result cannot retain a new Borrow or Reborrow of a preceding argument, but may Copy an existing shared borrow that has external dependencies. This includes shared inspection of a reserved exclusive input under [§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations); exclusive access through that input is unavailable during default evaluation. Temporary inspection Loans end before activation and callee entry. Thus `func f(x?: string, y?: string = x) => ()` is invalid, while stringifying a temporary shared borrow of `x` may produce an independent string.
+For lexical and layout processing, a recognized boundary ends the preceding declaration/default expression and delimiter region just as a comma does (§2.2.1). It cannot close an indented body on the same line: dedent first. This applies to defaults containing selections, do expressions or anonymous functions. Use syntactic containment, not parentheses depth alone, to identify the owning list; inner boundaries, literals, comments and `!=` are not outer boundaries. The boundary may occupy its own continuation line. Whitespace adds no meaning; canonical inline formatting separates `!` from the surrounding parameters with spaces.
+
+### 7.2.2. Name contract and defaults
+
+Let `N` be the number of ordinary parameters and `K` the number before the boundary, excluding the receiver from both counts. A declaration without a boundary has `K = N`; with a boundary, `0 <= K < N`. Ordinary parameter `i`, numbered from zero, accepts positional supply exactly when `i < K`, subject to §10.1 matching. The ordered ordinary external names and `K` form its **argument-name contract**. Types, receiver position and defaults remain separate. Specialization headers inherit this contract rather than computing a new `K` (§8.8.2).
+
+Compare effective contracts, not written boundary positions. `(self ! x: i32)` and `(! self, x: i32)` both have `K = 0`. Normalization never moves parameters or receivers. Name contracts affect applicability, not overload identity or ranking (§9.1, §10.1); Contract implementation matching and candidate equivalence have distinct rules (§8.4.5).
+
+Calls use the name contract and defaults of the statically selected declaration. Selecting its implementation, including an override or specialization, does not replace that call contract or permit declarations forbidden by the inherited-Name rules (§6.2.2). Calls through Contract requirements follow §8.4.1.
+
+A parameter with `= defaultExpression` may be omitted; one without a default requires a value, independently of the boundary. Every parameter initializer is a default and is evaluated only when omitted. Defaults may precede parameters without defaults. Callers supply later arguments by name without filling earlier positions.
+
+| Ordinary parameter position | Default | Positional supply | Named supply | Omitted value |
+| --- | --- | --- | --- | --- |
+| Before boundary / no boundary | No | Allowed | Allowed | Rejected |
+| Before boundary / no boundary | Yes | Allowed | Allowed | Allowed |
+| After boundary | No | Rejected | Allowed | Rejected |
+| After boundary | Yes | Rejected | Allowed | Allowed |
+
+```kimi
+func scale(value: i32 ! by => factor: i32 = 1) -> i32 => value * factor
+scale(3)
+scale(3, by: 4)
+scale(3, factor: 4) // Error: internal name.
+func options(mode: i32 = 0 ! count: i32) => ()
+options(count: 3) // Uses mode's default.
+options(3)        // Error: 3 supplies mode, not count.
+```
+
+Function Types retain neither argument names, name contracts nor defaults. Function-value calls supply all parameters positionally, with no named or omitted arguments (§7.6). The boundary is unavailable in anonymous functions, Function Types, accessor signatures, specialization headers, generic lists, enum payloads, calls and dedicated attribute/built-in argument syntax. Existing special restrictions, including those of `deinit`, remain in force. Foreign declarations permit the boundary but no defaults (§22.3).
+
+### 7.2.3. Default evaluation and ownership
+
+At each call, the explicit arguments are acquired in source order into pending slots. Then each omitted default is evaluated once, in parameter declaration order, in the declaration's scope with access to the prepared preceding slots; it may refer to preceding parameters but not to later parameters or caller-local bindings. Slots do not alias caller variables. A default may Copy a preceding Copy value or inspect it through temporary shared access, but cannot Move, Consume or modify that slot or its owned contents. Its result cannot retain a new Borrow or Reborrow of a preceding argument, but may Copy an existing shared borrow that has external dependencies. This includes shared inspection of a reserved exclusive input under [§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations); exclusive access through that input is unavailable during default evaluation. Temporary inspection Loans end before activation and callee entry. Thus `func f(x: string, y: string = x) => ()` is invalid, while stringifying a temporary shared borrow of `x` may produce an independent string.
 
 Every default is checked at declaration time, even if all calls supply the argument. Defaults give no evidence for generic inference, and their transfers may target only constructs inside the default.
 
 A normal transfer that abandons argument evaluation destroys the still-owned prepared values and temporaries in reverse acquisition order and skips the callee; Abort does not unwind. After successful preparation, ownership passes from the pending slots to the initialized parameters, and callee cleanup uses reverse parameter order.
 
+### 7.2.4. Migration from language version 0.0.1
+
+The version change follows §20.5. First diagnose duplicate external names; resolving them requires an explicit API and caller review, never automatic renaming. For other named declarations, place `!` immediately before the first ordinary parameter whose name was required, replacing that comma. If none required a name, omit the boundary. Remove all former `?` suffixes and keep Types, names, defaults and parameter order. Specializations keep boundary-free headers and inherit the original contract.
+
+An old name-optional parameter after a name-required one becomes name-required: positional matching could not reach it under the old rules either. This conversion preserves the accepted direct argument forms without rearranging parameters.
+
+```text
+0.0.1: func f(a?: i32, b: i32, c?: i32 = 0)
+0.0.2: func f(a: i32 ! b: i32, c: i32 = 0)
+```
+
+Required Kimi declarations follow the same conversion: `writeLine` and `swap` have no boundary; `replace` and `exchange` put it before `with` (§15.7, §22.4).
+
 ## 7.3. Explicit receivers
 
-A function declared directly in a struct or enum, or a Contract function requirement, is an **instance function** exactly when one parameter's **internal Name** is `self`; otherwise it is a **Type function**. At most one `self` is allowed, at any written position, with no rename, default or `?` marker. Its normalized Type must be `Self`, `ref/Self`, `uniq/Self` or a permitted object-Semantics `Self` form; unrelated targets, extra reference layers, raw pointers and unconstrained generic receiver Semantics are rejected. Origin annotations follow the normal parameter rules. In groups, rootgroups and local functions without an active contextual `self`, a parameter named `self` has no instance-member meaning.
+A function declared directly in a struct or enum, or a Contract function requirement, is an **instance function** exactly when one parameter's **internal Name** is `self`; otherwise it is a **Type function**. At most one `self` is allowed, at any written position, with no rename or default. Its normalized Type must be `Self`, `ref/Self`, `uniq/Self` or a permitted object-Semantics `Self` form; unrelated targets, extra reference layers, raw pointers and unconstrained generic receiver Semantics are rejected. Origin annotations follow the normal parameter rules. In groups, rootgroups and local functions without an active contextual `self`, a parameter named `self` has no instance-member meaning.
+
+A recognized receiver does not start or end either ordinary-parameter section. It may appear on either side of the boundary; `(! self)` and `(self !)` are invalid because no ordinary parameter follows it. A parameter named `self` without receiver meaning follows the ordinary boundary rules.
 
 **Receiver shorthand.** A receiver written as bare `self` is shorthand for `self: ref/Self`. This fixes a shared-borrow receiver before the body is checked; there is no body-based Type or ownership inference. The shorthand is allowed only at an instance function's receiver position, including Contract requirements and full specializations, and keeps that written parameter position; all other named function parameters require explicit Types. Group and rootgroup functions, local functions and constructors cannot use it, and anonymous functions keep their own parameter-inference rules. An explicit receiver Type, such as `uniq/Self` or owning `Self`, overrides the default, and explicit Origin annotations require the typed form. The shorthand has the same Signature, input Origin, callable Type and invocation rules as its expansion. Omitting the receiver parameter entirely still declares a Type function. (Accessor receivers have their own shorthand; see §11.2.)
 
@@ -75,13 +117,13 @@ A function declared directly in a struct or enum, or a Contract function require
 struct Meter
     var measured: i32
     func read(self) -> i32 => self.measured
-    func update(self: uniq/Self, value?: i32) => self.measured = value
+    func update(self: uniq/Self, value: i32) => self.measured = value
     func constant() -> i32 => 0 // Type function: no receiver.
 ```
 
 **Method calls.** For `receiver.method(arguments)`, the receiver is evaluated and adapted first, regardless of its parameter position, and recorded at the declared position of `self`. The explicit positional and named arguments are matched against the remaining parameters in their written order; `self` cannot also be supplied by an argument label. Defaults then follow the ordinary order. Exclusive preparation follows [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). Cleanup inside the callee still uses the full written parameter order.
 
-**Unbound references.** A Type-qualified instance function reference is unbound: a call through `Type.method` supplies all parameters explicitly in their written positions, including `self` at its declared position, with the ordinary argument order and receiver compatibility checks. For this unbound direct call only, the receiver accepts either a positional argument at its declared position or a named `self:` argument despite having no `?`; ordinary parameters retain their declared name requirements. For this unbound direct call only, the receiver accepts either a positional argument at its declared position or a named `self:` argument despite having no `?`; ordinary parameters retain their declared name requirements. An unbound function value likewise keeps `self` as an ordinary position of its callable signature, captures no receiver and remains subject to the unsafe-function restrictions. `value.method` without invocation does not form a bound-method value in this revision. None of this introduces extension functions, implicit `self` lookup, or a conversion for an otherwise incompatible object receiver.
+**Unbound references.** A Type-qualified instance function reference is unbound: a call through `Type.method` supplies all parameters explicitly in their written positions, including `self` at its declared position, with the ordinary argument order and receiver compatibility checks. The receiver accepts either positional supply at its declared position or a named `self:` argument, regardless of the written boundary. Ordinary parameters keep their declared name contracts; no positional skipping or positional supply after named arguments is allowed. An unbound function value likewise keeps `self` as an ordinary position of its callable signature, captures no receiver and remains subject to the unsafe-function restrictions. `value.method` without invocation does not form a bound-method value in this revision. None of this introduces extension functions, implicit `self` lookup, or a conversion for an otherwise incompatible object receiver.
 
 ## 7.4. Function constraints
 
@@ -90,7 +132,7 @@ A generic function with an indented body may begin that body with [Constraints](
 Before lookup, the maximal leading sequence of unparenthesized `ConstraintSubject is IsRequirement` items is parsed as Constraint Clauses. A subject not permitted for the function is an error, never a fallback runtime test. Blank lines and comments do not end the prefix. Parenthesizing the whole test, as in `(value is Dog)`, makes it an executable expression item and ends the prefix, so subsequent value tests are executable. A later clause rooted in a generic parameter is a misplaced-Constraint error. In a nongeneric function the prefix rule does not apply, and `value is Dog` is an expression. Dedicated Type and Contract Constraint regions keep their own rules, even through parentheses.
 
 ```kimi
-func inspect<s/T>(value?: s/T) -> ()
+func inspect<s/T>(value: s/T) -> ()
     s is ref or obj
     T is Comparable
 
@@ -111,15 +153,15 @@ An **unsafe function**, declared with `unsafe func`, requires its caller to sati
 // Safety: pointer must refer to a live, initialized i32 throughout the call,
 // with valid range, alignment, provenance, and read permission.
 // Access must obey reference, aliasing, and data-race rules.
-unsafe func read(pointer?: unsafe/i32) -> i32
+unsafe func read(pointer: unsafe/i32) -> i32
     unsafe => return *pointer
 
 // Safety: the same requirements as read.
-unsafe func forward(pointer?: unsafe/i32) -> i32
+unsafe func forward(pointer: unsafe/i32) -> i32
     unsafe
         return read(pointer)
 
-unsafe func invalidRead(pointer?: unsafe/i32) -> i32
+unsafe func invalidRead(pointer: unsafe/i32) -> i32
     return *pointer // Error: unsafe func does not make its body an unsafe context.
 ```
 
@@ -135,7 +177,7 @@ let reader = read // Error: an unsafe function cannot be taken as a function val
 
 ### 7.6.1. Syntax and inference
 
-An anonymous function consists of `func`, an optional Capture List, parameters, an optional result annotation and a common Body (§7.1). There is no bare `(x) => x` form and no external parameter labels, defaults, `?` parameter markers or generic lambdas. Anonymous parameters require values and their calls are positional, independently of the written local names. The body's expectation and use or discard context are fixed before it is checked (§10.5).
+An anonymous function consists of `func`, an optional Capture List, parameters, an optional result annotation and a common Body (§7.1). There is no bare `(x) => x` form and no external parameter labels, defaults, `!` boundaries or generic lambdas. Anonymous parameters require values and their calls are positional, independently of the written local names. The body's expectation and use or discard context are fixed before it is checked (§10.5).
 
 ```kimi
 let twice = func (value: i32) => value * 2
@@ -232,7 +274,7 @@ The internal call signature keeps the complete receiver, parameter and result Ty
 A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations remain distinct. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and does not erase borrowed parameter or result contracts. A runtime method receiver is never bound automatically; explicit receiver arguments are required. Unsafe functions and `deinit` cannot be acquired as values.
 
 ```kimi
-func add(x?: i32, y?: i32) -> i32 => x + y
+func add(x: i32, y: i32) -> i32 => x + y
 let item = add                         // Concrete Function Item; Copy.
 let erased: (i32, i32) -> i32 = add    // Common owned value; Non-Copy.
 ```
@@ -242,7 +284,7 @@ At an initialization, argument or return position with a fixed expected common F
 The existing environment is acquired by normal Copy or Move; conversion never rereads outer bindings or repeats captures. The resulting owned common value is always Non-Copy. Acquiring it again as the same common Type is an ordinary Move, not a new erasure. Shared invocation does not consume it, and borrowing it as `uniq/F` still exposes only Shared call.
 
 ```kimi
-func makeAdder(offset?: i32) -> (i32) -> i32
+func makeAdder(offset: i32) -> (i32) -> i32
     return func [offset] (value) => value + offset
 
 let callback = makeAdder(10)

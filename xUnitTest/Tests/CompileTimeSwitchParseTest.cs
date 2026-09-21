@@ -19,7 +19,7 @@ public class CompileTimeSwitchParseTest
                 #case false
                     var excluded = 0
                 #case true
-                    func choose(flag?: bool) -> i32 => match flag
+                    func choose(flag: bool) -> i32 => match flag
                         true => 1
                         false => 2
                 #case true

@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class GenericForwardingEmissionTest
 {
-    internal const string Weight = "group W\n    public let baseline: i32 = 1\n    public func weight<T>(value?: ref/T) -> i32 => baseline\n    specialize func weight<i32>(value: ref/i32) -> i32 => 2\n    public func forward<T>(value?: ref/T) -> i32 => weight<T>(value)\n    public func total<length N, T>(values?: ref/[N of T]) -> i32\n        var result: i32 = 0\n        for index in values.indices\n            result = result + forward<T>(values[index]@ref/T)\n        return result\n";
+    internal const string Weight = "group W\n    public let baseline: i32 = 1\n    public func weight<T>(value: ref/T) -> i32 => baseline\n    specialize func weight<i32>(value: ref/i32) -> i32 => 2\n    public func forward<T>(value: ref/T) -> i32 => weight<T>(value)\n    public func total<length N, T>(values: ref/[N of T]) -> i32\n        var result: i32 = 0\n        for index in values.indices\n            result = result + forward<T>(values[index]@ref/T)\n        return result\n";
 
     [Theory]
     [InlineData("i32", "[10, 20, 30]", 6)]
@@ -27,12 +27,12 @@ public class GenericForwardingEmissionTest
 
     [Fact]
     public void SpecializationRecursionKeepsTheSelectedImplementation()
-        => ScalarEmissionTest.EmitFixture("GenericForwardingRecursive", "func count<T>(value?: T) -> i32 => 77\nspecialize func count<i32>(value: i32) -> i32 => if value == 0 => 0 else => count<i32>(value - 1) + 1\nrequire count<i32>(4) == 4 else => $abort(\"recursion\")", string.Empty);
+        => ScalarEmissionTest.EmitFixture("GenericForwardingRecursive", "func count<T>(value: T) -> i32 => 77\nspecialize func count<i32>(value: i32) -> i32 => if value == 0 => 0 else => count<i32>(value - 1) + 1\nrequire count<i32>(4) == 4 else => $abort(\"recursion\")", string.Empty);
 
     [Fact]
     public void RejectsUnsupportedDependentResultForwarding()
     {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value?: T) -> T => value\nfunc forward<T>(value?: T) -> T => identity<T>(value)\nConsole.writeLine(forward<string>(\"owned\"))");
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value\nfunc forward<T>(value: T) -> T => identity<T>(value)\nConsole.writeLine(forward<string>(\"owned\"))");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Ownership.Result.IsVerified);
         using var output = new StringWriter();
@@ -42,7 +42,7 @@ public class GenericForwardingEmissionTest
 
     [Fact]
     public void ForwardsLengthArguments()
-        => ScalarEmissionTest.EmitFixture("GenericForwardingLength", "func size<length N, T>(value?: ref/[N of T]) -> isize => value.length\nfunc forward<length M, U>(value?: ref/[M of U]) -> isize => size<M, U>(value)\nlet value: [2 of i64] = [4, 7]\nrequire forward<2, i64>(value@ref) == 2 else => $abort(\"length\")", string.Empty);
+        => ScalarEmissionTest.EmitFixture("GenericForwardingLength", "func size<length N, T>(value: ref/[N of T]) -> isize => value.length\nfunc forward<length M, U>(value: ref/[M of U]) -> isize => size<M, U>(value)\nlet value: [2 of i64] = [4, 7]\nrequire forward<2, i64>(value@ref) == 2 else => $abort(\"length\")", string.Empty);
 
     [Fact]
     public void BorrowsNonCopyElementsWithoutMoving()
@@ -50,25 +50,25 @@ public class GenericForwardingEmissionTest
 
     [Fact]
     public void SharedI32Comparison()
-        => ScalarEmissionTest.EmitFixture("GenericForwardingComparison", "func small<T>(value?: T, n?: i32) -> bool => n < 5\nrequire small<i32>(7, 4) and not small<i32>(7, 5) else => $abort(\"comparison\")", string.Empty);
+        => ScalarEmissionTest.EmitFixture("GenericForwardingComparison", "func small<T>(value: T, n: i32) -> bool => n < 5\nrequire small<i32>(7, 4) and not small<i32>(7, 5) else => $abort(\"comparison\")", string.Empty);
 
     [Fact]
     public void SharedI32Overflow()
-        => ScalarEmissionTest.EmitFixture("GenericForwardingOverflow", "func add<T>(value?: T, n?: i32) -> i32 => n + 1\nlet result = add<i32>(7, 2147483647)", string.Empty, 1, "Hello.kimi:1:41: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+        => ScalarEmissionTest.EmitFixture("GenericForwardingOverflow", "func add<T>(value: T, n: i32) -> i32 => n + 1\nlet result = add<i32>(7, 2147483647)", string.Empty, 1, "Hello.kimi:1:41: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
 
     [Theory]
     [InlineData(-1)]
     [InlineData(2)]
     public void IndexedBorrowChecksBounds(int index)
-        => ScalarEmissionTest.EmitFixture("GenericForwardingBounds" + (index < 0 ? "Negative" : "End"), "func weight<T>(value?: ref/T) -> i32 => 1\nfunc get<length N, T>(values?: ref/[N of T], index?: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [2 of i32] = [7, 8]\nlet result = get<2, i32>(values@ref, " + index + ")", string.Empty, 1, "Hello.kimi:2:79: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+        => ScalarEmissionTest.EmitFixture("GenericForwardingBounds" + (index < 0 ? "Negative" : "End"), "func weight<T>(value: ref/T) -> i32 => 1\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [2 of i32] = [7, 8]\nlet result = get<2, i32>(values@ref, " + index + ")", string.Empty, 1, "Hello.kimi:2:79: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Fact]
     public void InferenceUsesTheOrdinaryContract()
-        => ScalarEmissionTest.EmitFixture("GenericForwardingInference", "specialize func weight<i32>(value: i32) -> i32 => 2\nfunc weight<T>(value?: T) -> i32 => 1\nrequire weight(7) == 2 and weight(true) == 1 else => $abort(\"inference\")", string.Empty);
+        => ScalarEmissionTest.EmitFixture("GenericForwardingInference", "specialize func weight<i32>(value: i32) -> i32 => 2\nfunc weight<T>(value: T) -> i32 => 1\nrequire weight(7) == 2 and weight(true) == 1 else => $abort(\"inference\")", string.Empty);
 
     [Fact]
     public void ForwardingPreservesOriginalOverloadSelection()
-        => ScalarEmissionTest.EmitFixture("GenericForwardingOverload", "func weight<T>(value?: T) -> i32 => 1\nspecialize func weight<i32>(value: i32) -> i32 => 2\nfunc weight(value?: i32) -> i32 => 9\nfunc forward<T>(value?: T) -> i32 => weight<T>(value)\nrequire forward<i32>(7) == 2 and weight(7) == 9 else => $abort(\"overload\")", string.Empty);
+        => ScalarEmissionTest.EmitFixture("GenericForwardingOverload", "func weight<T>(value: T) -> i32 => 1\nspecialize func weight<i32>(value: i32) -> i32 => 2\nfunc weight(value: i32) -> i32 => 9\nfunc forward<T>(value: T) -> i32 => weight<T>(value)\nrequire forward<i32>(7) == 2 and weight(7) == 9 else => $abort(\"overload\")", string.Empty);
 
     [Theory]
     [InlineData("group W\n    public var value: i32 = 1\nrequire W.value == 1 else => $abort(\"value\")")]

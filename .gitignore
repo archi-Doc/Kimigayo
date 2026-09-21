@@ -32,6 +32,7 @@ x86/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
 bld/
+# Ignore bin directories at the repository root and in all projects.
 [Bb]in/
 [Oo]bj/
 [Ll]og/

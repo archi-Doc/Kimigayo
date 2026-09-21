@@ -9,13 +9,13 @@ namespace XunitTest;
 public class ValueCallBindingTest
 {
     [Theory]
-    [InlineData("func apply(f?: (i32) -> bool) -> bool => f(42)")]
-    [InlineData("func apply(f?: () -> i32) -> i32 => f()")]
-    [InlineData("func apply(f?: (()) -> bool) -> bool => f(())")]
-    [InlineData("func apply(f?: ((i32, bool)) -> bool) -> bool => f((42, true))")]
-    [InlineData("func apply(f?: (i64, bool) -> i32) -> i32 => (f)(42, true)")]
-    [InlineData("func apply<T>(f?: (T) -> bool, value?: T) -> bool => f(value)")]
-    [InlineData("func apply(f?: () -> Never) -> i32 => f()")]
+    [InlineData("func apply(f: (i32) -> bool) -> bool => f(42)")]
+    [InlineData("func apply(f: () -> i32) -> i32 => f()")]
+    [InlineData("func apply(f: (()) -> bool) -> bool => f(())")]
+    [InlineData("func apply(f: ((i32, bool)) -> bool) -> bool => f((42, true))")]
+    [InlineData("func apply(f: (i64, bool) -> i32) -> i32 => (f)(42, true)")]
+    [InlineData("func apply<T>(f: (T) -> bool, value: T) -> bool => f(value)")]
+    [InlineData("func apply(f: () -> Never) -> i32 => f()")]
     public void BindsPositionalSignature(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -29,14 +29,14 @@ public class ValueCallBindingTest
     }
 
     [Theory]
-    [InlineData("func apply(f?: (i32) -> bool) -> bool => f()")]
-    [InlineData("func apply(f?: (i32) -> bool) -> bool => f(1, 2)")]
-    [InlineData("func apply(f?: (i32) -> bool) -> bool => f(true)")]
-    [InlineData("func apply(f?: (i8) -> bool) -> bool => f(128)")]
-    [InlineData("func apply(f?: (i32) -> bool) -> bool => f(value: 1)")]
-    [InlineData("func apply(f?: (i32) -> bool) -> bool => f<i32>(1)")]
-    [InlineData("func apply(f?: (i32) -> bool) -> i32 => f(1)")]
-    [InlineData("func f(value?: i32) -> bool => true\nfunc apply(f?: i32) -> bool => f(1)")]
+    [InlineData("func apply(f: (i32) -> bool) -> bool => f()")]
+    [InlineData("func apply(f: (i32) -> bool) -> bool => f(1, 2)")]
+    [InlineData("func apply(f: (i32) -> bool) -> bool => f(true)")]
+    [InlineData("func apply(f: (i8) -> bool) -> bool => f(128)")]
+    [InlineData("func apply(f: (i32) -> bool) -> bool => f(value: 1)")]
+    [InlineData("func apply(f: (i32) -> bool) -> bool => f<i32>(1)")]
+    [InlineData("func apply(f: (i32) -> bool) -> i32 => f(1)")]
+    [InlineData("func f(value: i32) -> bool => true\nfunc apply(f: i32) -> bool => f(1)")]
     public void RejectsInvalidValueCalls(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -49,7 +49,7 @@ public class ValueCallBindingTest
     [Fact]
     public void ReloadAndWarmBindingRetainValuePlan()
     {
-        var c = MinimalEmissionTest.Analyze("func apply<T>(f?: (T) -> bool, value?: T) -> bool => f(value)");
+        var c = MinimalEmissionTest.Analyze("func apply<T>(f: (T) -> bool, value: T) -> bool => f(value)");
         Assert.True(c.Binding.Result.IsComplete);
         var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = call.BoundValueCall;

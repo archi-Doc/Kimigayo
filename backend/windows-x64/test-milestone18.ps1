@@ -115,9 +115,9 @@ $invalid = [ordered]@{
     SelectedMoved = @{ source = $original.Replace('        match delivered', "        let invalid = selected`n        match delivered"); diagnostic = 'MovedPlace_Kd' }
     DeliveredMoved = @{ source = $original.Replace('            .Missing => $abort("Missing resources")', "            .Missing => `$abort(`"Missing resources`")`n        let invalid = delivered"); diagnostic = 'MovedPlace_Kd' }
     BoxDestructor = @{ source = $original.Replace('    // No user deinit:', "    deinit => ()`n    // No user deinit:"); diagnostic = 'UnsupportedOwnership_Kd' }
-    Duplicate = @{ source = "func duplicate<T>(value?: T) -> (T, T) => (value, value)`n" + $original; diagnostic = 'MovedPlace_Kd' }
-    DeferredMove = @{ source = $original.Replace('    return pending', "    defer => discard(pending)`n    return pending") + "`nfunc discard<T>(value?: T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
-    DeferredRead = @{ source = $original.Replace('    return pending', "    defer => observe<T>(pending@ref/T)`n    return pending") + "`nfunc observe<T>(value?: ref/T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
+    Duplicate = @{ source = "func duplicate<T>(value: T) -> (T, T) => (value, value)`n" + $original; diagnostic = 'MovedPlace_Kd' }
+    DeferredMove = @{ source = $original.Replace('    return pending', "    defer => discard(pending)`n    return pending") + "`nfunc discard<T>(value: T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
+    DeferredRead = @{ source = $original.Replace('    return pending', "    defer => observe<T>(pending@ref/T)`n    return pending") + "`nfunc observe<T>(value: ref/T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
     TypeMismatch = @{ source = $original.Replace('package(relay(selected.take()))', 'package<[2 of i32]>(relay(selected.take()))'); diagnostic = 'NoApplicableOverload_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {

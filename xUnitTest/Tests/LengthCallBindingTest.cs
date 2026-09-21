@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class LengthCallBindingTest
 {
-    private const string Keep = "func keep<length N, T>(value?: [N of T]) -> [N of T] => value\n";
+    private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value\n";
 
     [Theory]
     [InlineData("keep<2, i32>(a)", 2)]
@@ -34,8 +34,8 @@ public class LengthCallBindingTest
     [Theory]
     [InlineData("let N: isize = 2\nlet a: [2 of i32] = [1, 2]\nlet result = keep<N, i32>(a)")]
     [InlineData("group Sizes\n    public let N: isize = 2\nlet a: [2 of i32] = [1, 2]\nlet result = keep<Sizes.N, i32>(a)")]
-    [InlineData("func forward<length M, U>(a?: [M of U]) -> [M of U] => keep<M, U>(a)")]
-    [InlineData("func forward<length M, U>(a?: [M of U]) -> [M of U] => keep(a)")]
+    [InlineData("func forward<length M, U>(a: [M of U]) -> [M of U] => keep<M, U>(a)")]
+    [InlineData("func forward<length M, U>(a: [M of U]) -> [M of U] => keep(a)")]
     [InlineData("let result: [0 of i32] = keep([])")]
     public void UsesConstantsCallerSlotsAndExpectedTypes(string source)
     {
@@ -44,10 +44,10 @@ public class LengthCallBindingTest
     }
 
     [Theory]
-    [InlineData("func f<length N>(a?: [(N + 1) of i32]) -> [(1 + N) of i32] => a\nlet x = f<1>([1, 2])")]
-    [InlineData("func f<length N>(a?: [(N * 2) of i32], b?: [N of i32]) => ()\nlet a: [4 of i32] = [1, 2, 3, 4]\nlet b: [2 of i32] = [1, 2]\nf(a, b)")]
-    [InlineData("func f<length N>(a?: [(N - 1) of i32]) => ()\nf<1>([])")]
-    [InlineData("func f<length N>(a?: [(N - 1) of i32])\n    let local: [(N - 1) of i32]\nf<1>([])")]
+    [InlineData("func f<length N>(a: [(N + 1) of i32]) -> [(1 + N) of i32] => a\nlet x = f<1>([1, 2])")]
+    [InlineData("func f<length N>(a: [(N * 2) of i32], b: [N of i32]) => ()\nlet a: [4 of i32] = [1, 2, 3, 4]\nlet b: [2 of i32] = [1, 2]\nf(a, b)")]
+    [InlineData("func f<length N>(a: [(N - 1) of i32]) => ()\nf<1>([])")]
+    [InlineData("func f<length N>(a: [(N - 1) of i32])\n    let local: [(N - 1) of i32]\nf<1>([])")]
     public void ChecksFormationAfterAllInputEvidence(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -55,14 +55,14 @@ public class LengthCallBindingTest
     }
 
     [Theory]
-    [InlineData("func f<length N>(a?: [(N - 1) of i32]) => ()\nf<0>([])")]
-    [InlineData("func f<length N>(a?: [(N / 0) of i32]) => ()\nf<2>([])")]
+    [InlineData("func f<length N>(a: [(N - 1) of i32]) => ()\nf<0>([])")]
+    [InlineData("func f<length N>(a: [(N / 0) of i32]) => ()\nf<2>([])")]
     [InlineData("func f<length N>() -> [(N + 1) of i32] => $abort(\"unused\")\nf<9223372036854775807>()")]
     [InlineData("func f<length N>()\n    let local: [(N - 1) of i32]\nf<2>()")]
-    [InlineData("func f<length N>(a?: [(N - 1) of i32]) => ()\nfunc bad<length M>(a?: [M of i32]) => f<M>(a)")]
-    [InlineData("func f<length N>(a?: [N of i32], b?: [N of i32]) => ()\nf([1], [1, 2])")]
-    [InlineData("func f<length N>(a?: [(N * 2) of i32]) => ()\nf([1, 2])")]
-    [InlineData("func f<length N>(a?: [N of i32]) => ()\nlet a = [1, 2]\nf(a)")]
+    [InlineData("func f<length N>(a: [(N - 1) of i32]) => ()\nfunc bad<length M>(a: [M of i32]) => f<M>(a)")]
+    [InlineData("func f<length N>(a: [N of i32], b: [N of i32]) => ()\nf([1], [1, 2])")]
+    [InlineData("func f<length N>(a: [(N * 2) of i32]) => ()\nf([1, 2])")]
+    [InlineData("func f<length N>(a: [N of i32]) => ()\nlet a = [1, 2]\nf(a)")]
     public void RejectsInvalidOrUnprovedFormation(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -90,10 +90,10 @@ public class LengthCallBindingTest
     }
 
     [Theory]
-    [InlineData("func f<length N>(a?: [N of i32]) => ()\nfunc f<T>(a?: T) => ()\nf<2>([1, 2])")]
-    [InlineData("func f<length N>(a?: [N of i32]) => ()\nfunc f<T>(a?: T) => ()\nf<i32>(1)")]
-    [InlineData("func f<length N>(a?: [(N - 1) of i32]) => ()\nfunc f<length N>(a?: [N of i32]) => ()\nf<0>([])")]
-    [InlineData("func f<length N>(a?: [N of i32]) => ()\nfunc f<length N>(a?: [N of string]) => ()\nf([1, 2])")]
+    [InlineData("func f<length N>(a: [N of i32]) => ()\nfunc f<T>(a: T) => ()\nf<2>([1, 2])")]
+    [InlineData("func f<length N>(a: [N of i32]) => ()\nfunc f<T>(a: T) => ()\nf<i32>(1)")]
+    [InlineData("func f<length N>(a: [(N - 1) of i32]) => ()\nfunc f<length N>(a: [N of i32]) => ()\nf<0>([])")]
+    [InlineData("func f<length N>(a: [N of i32]) => ()\nfunc f<length N>(a: [N of string]) => ()\nf([1, 2])")]
     public void KeepsLengthEvidenceLocalToEachCandidate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -102,10 +102,10 @@ public class LengthCallBindingTest
     }
 
     [Theory]
-    [InlineData("func f<length N>(a?: [(N - 1) of i32]) => ()\nfunc f<length N>(a?: [N of i32]) => ()\nf<1>([])", true)]
-    [InlineData("func f<length N, T>(a?: [N of T])\n    T is Copy\nf<1, string>([\"x\"])", false)]
-    [InlineData("func f<length N, T>(a?: [N of T])\n    T is Copy\nf<1, i32>([1])", true)]
-    [InlineData("func f<length N>(a?: [N of i32]) => ()\nfunc f<length M>(a?: [M of i32]) => ()\nf<1>([1])", false)]
+    [InlineData("func f<length N>(a: [(N - 1) of i32]) => ()\nfunc f<length N>(a: [N of i32]) => ()\nf<1>([])", true)]
+    [InlineData("func f<length N, T>(a: [N of T])\n    T is Copy\nf<1, string>([\"x\"])", false)]
+    [InlineData("func f<length N, T>(a: [N of T])\n    T is Copy\nf<1, i32>([1])", true)]
+    [InlineData("func f<length N>(a: [N of i32]) => ()\nfunc f<length M>(a: [M of i32]) => ()\nf<1>([1])", false)]
     [InlineData("func f<length N>() => ()\nlet N = 2\nf<N>()", true)]
     [InlineData("func f<length N>() => ()\nvar N = 2\nf<N>()", false)]
     [InlineData("func f<length N>() => ()\ngroup Sizes\n    private let N = 2\nf<Sizes.N>()", false)]

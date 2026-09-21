@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class StringComparisonEmissionTest
 {
-    private const string Echo = "func echo(text?: string) -> string => text\n";
+    private const string Echo = "func echo(text: string) -> string => text\n";
 
     public static TheoryData<string, string, string, string> Fixtures => new()
     {
@@ -17,17 +17,17 @@ public class StringComparisonEmissionTest
         { "Ordering", "if \"a\" < \"ab\" and \"ab\" > \"a\" and \"a\" <= \"a\" and \"z\" >= \"a\" and \"a\" != \"b\" => Console.writeLine(\"ok\")", "ok\n", "a=6;ab=2;z=1;b=1;ok=1" },
         { "Empty", "if \"\" == \"\" and \"\" < \"a\" and \"a\" > \"\" and \"\" != \"a\" => Console.writeLine(\"ok\")", "ok\n", "=5;a=3;ok=1" },
         { "Unicode", "if \"z\" < \"日本語\" and \"a\\0b\" < \"a\\0c\" and \"a\\0\" != \"a\" => Console.writeLine(\"ok\")", "ok\n", "z=1;日本語=1;a\0b=1;a\0c=1;a\0=1;a=1;ok=1" },
-        { "Parameter", "func equal(a?: string, b?: string) -> bool => a == b\nif equal(\"a\", \"a\") => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
+        { "Parameter", "func equal(a: string, b: string) -> bool => a == b\nif equal(\"a\", \"a\") => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
         { "Loop", "let text = \"a\"\nvar n = 0\nwhile n < 3\n    if text == \"a\" => n += 1\nConsole.writeLine(text)", "a\n", "a=4" },
         { "ReturnLiteral", "func f() -> string\n    let text = \"a\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
         { "Defer", "var text = \"a\"\ndefer\n    if text == \"a\" => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
-        { "BranchTransfer", "func f(c?: bool) -> string\n    let text = \"a\"\n    if text == (if c => (return \"x\") else => \"a\") => return text\n    return \"bad\"\nConsole.writeLine(f(false))\nConsole.writeLine(f(true))", "a\nx\n", "a=3;x=1;bad=0" },
+        { "BranchTransfer", "func f(c: bool) -> string\n    let text = \"a\"\n    if text == (if c => (return \"x\") else => \"a\") => return text\n    return \"bad\"\nConsole.writeLine(f(false))\nConsole.writeLine(f(true))", "a\nx\n", "a=3;x=1;bad=0" },
         { "Skipped", Echo + "if false and echo(\"skip\") == \"skip\" => Console.writeLine(\"bad\")\nif true or echo(\"skip\") == \"skip\" => Console.writeLine(\"ok\")", "ok\n", "skip=0;bad=0;ok=1" },
         { "RepeatedConditional", Echo + "var n = 0\nwhile n < 4\n    if n == 1 and echo(\"once\") == \"once\" => Console.writeLine(\"ok\")\n    n += 1", "ok\n", "once=2;ok=1" },
         { "LoopExit", "let text = \"a\"\nif text == (loop => exit \"a\") => Console.writeLine(text)", "a\n", "a=2" },
         { "AbandonedCleanup", "func f() -> string\n    var text = \"a\"\n    defer => text = \"b\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;b=1;x=1;bad=0" },
         { "CheckingContinuation", Echo + "func f() -> string\n    let text = \"a\"\n    text == (work: do\n        return \"x\"\n        echo(text)\n        exit to work: \"a\"\n    )\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
-        { "TwoReturns", "func f(c?: bool) -> string\n    let text = \"a\"\n    text == (if c => (return \"x\") else => (return \"y\"))\n    return \"bad\"\nConsole.writeLine(f(true))\nConsole.writeLine(f(false))", "x\ny\n", "a=2;x=1;y=1;bad=0" },
+        { "TwoReturns", "func f(c: bool) -> string\n    let text = \"a\"\n    text == (if c => (return \"x\") else => (return \"y\"))\n    return \"bad\"\nConsole.writeLine(f(true))\nConsole.writeLine(f(false))", "x\ny\n", "a=2;x=1;y=1;bad=0" },
     };
 
     [Theory]
@@ -189,7 +189,7 @@ public class StringComparisonEmissionTest
     [InlineData(true)]
     public void WarmComparisonAnalysisAndWritingAllocateNothing(bool conditional)
     {
-        var c = MinimalEmissionTest.Analyze(conditional ? "var n = 0\nwhile n < 3\n    if n == 1 and \"a\" == \"a\" => Console.writeLine(\"ok\")\n    n += 1" : "func equal(a?: string, b?: string) -> bool => a == b\nlet text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => Console.writeLine(text)");
+        var c = MinimalEmissionTest.Analyze(conditional ? "var n = 0\nwhile n < 3\n    if n == 1 and \"a\" == \"a\" => Console.writeLine(\"ok\")\n    n += 1" : "func equal(a: string, b: string) -> bool => a == b\nlet text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => Console.writeLine(text)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);

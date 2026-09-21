@@ -51,6 +51,7 @@ public sealed class DependencyResolutionTest : IDisposable
     [InlineData("OutputKind=\"Application\"", "NotLibrary")]
     [InlineData("Targets={\"x86_64-unknown-linux-gnu\"}", "TargetMismatch")]
     [InlineData("LangVersion=\"future\"", "LanguageMismatch")]
+    [InlineData("LangVersion=\"0.0.1\"", "LanguageMismatch")]
     public void EveryDependencyUsesTheRequiredEnvironment(string settings, string reason)
     {
         this.Write("Leaf", "leaf", settings: settings);

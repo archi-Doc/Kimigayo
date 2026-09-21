@@ -15,7 +15,7 @@ public class AssociatedRefinementCapabilityBindingTest
     [InlineData("Owned", true)]
     public void AssociatedContractPremisesEntailIntrinsicAncestors(string capability, bool indirect)
     {
-        var c = MinimalEmissionTest.Analyze("public contract Base: " + capability + "\n" + (indirect ? "public contract Trait: Base\n" : string.Empty) + "public contract Elements\n    associate Item is " + (indirect ? "Trait" : "Base") + "\ngroup G\n    func inspect<T>(value?: T.Item)\n        T is Elements\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract Base: " + capability + "\n" + (indirect ? "public contract Trait: Base\n" : string.Empty) + "public contract Elements\n    associate Item is " + (indirect ? "Trait" : "Base") + "\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.True(c.Binding.Result.IsComplete);
         var function = Function(c);
@@ -33,7 +33,7 @@ public class AssociatedRefinementCapabilityBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         var condition = "\n    Source is Origin";
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source {}\npublic contract Trait: Copy" + (outer ? string.Empty : condition) + "\npublic contract Elements" + (outer ? condition : string.Empty) + "\n    associate Item is Trait\ngroup G\n    func inspect<T>(value?: T.Item)\n        T is Elements\n        ()"));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source {}\npublic contract Trait: Copy" + (outer ? string.Empty : condition) + "\npublic contract Elements" + (outer ? condition : string.Empty) + "\n    associate Item is Trait\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()"));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Function(c);
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
@@ -49,7 +49,7 @@ public class AssociatedRefinementCapabilityBindingTest
     [InlineData("or", ConstraintProof.Unknown)]
     public void RefinementDoesNotEliminateDisjunctions(string operation, ConstraintProof expected)
     {
-        var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\npublic contract Other\npublic contract Elements\n    associate Item is Trait " + operation + " Other\ngroup G\n    func inspect<T>(value?: T.Item)\n        T is Elements\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\npublic contract Other\npublic contract Elements\n    associate Item is Trait " + operation + " Other\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()");
         Assert.True(c.Binding.Result.IsComplete);
         var function = Function(c);
         Assert.Equal(expected, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
@@ -60,7 +60,7 @@ public class AssociatedRefinementCapabilityBindingTest
     [InlineData("Owned")]
     public void GenericCallsConsumeAssociatedRefinementEvidence(string capability)
     {
-        var c = MinimalEmissionTest.Analyze("public contract Trait: " + capability + "\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func take<U>()\n        U is " + capability + "\n        ()\n    func inspect<T>(value?: T.Item)\n        T is Elements\n        take<T.Item>()");
+        var c = MinimalEmissionTest.Analyze("public contract Trait: " + capability + "\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func take<U>()\n        U is " + capability + "\n        ()\n    func inspect<T>(value: T.Item)\n        T is Elements\n        take<T.Item>()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.True(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
@@ -74,7 +74,7 @@ public class AssociatedRefinementCapabilityBindingTest
     public void RecursiveAssociatedRequirementsAreExpandedOnlyAsReferenced(int depth)
     {
         var type = "T.Item" + string.Concat(Enumerable.Repeat(".Next", depth));
-        var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\n    associate Next is Trait\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func inspect<T>(value?: " + type + ")\n        T is Elements\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\n    associate Next is Trait\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func inspect<T>(value: " + type + ")\n        T is Elements\n        ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.True(c.Binding.Result.IsComplete);
         var function = Function(c);
@@ -84,7 +84,7 @@ public class AssociatedRefinementCapabilityBindingTest
     [Fact]
     public void WarmAssociatedRefinementProofsAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func inspect<T>(value?: T.Item)\n        T is Elements\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()");
         var function = Function(c);
         for (var i = 0; i < 100; i++)
         {

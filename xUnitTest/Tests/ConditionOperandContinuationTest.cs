@@ -37,7 +37,7 @@ public class ConditionOperandContinuationTest
     public void NoncompletingDefaultConditionRetainsCallerState()
         => ScalarEmissionTest.EmitFixture(
             "NeverCondition" + Configuration + "Default",
-            "func value(y?: i32 = (if (loop => continue) => 1 else => 2)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue()\nlet z = x",
+            "func value(y: i32 = (if (loop => continue) => 1 else => 2)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue()\nlet z = x",
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -54,14 +54,14 @@ public class ConditionOperandContinuationTest
     public void MissingConditionRetainsOuterBorrowUntilAcquisitionEnds()
         => ScalarEmissionTest.EmitFixture(
             "NeverCondition" + Configuration + "Borrow",
-            Stop + "func inspect(s?: ref/string, ready?: bool) => ()\nvar s = \"s\"\ninspect(s, if stop() => true else => false)\ns = \"new\"\nConsole.writeLine(s)",
+            Stop + "func inspect(s: ref/string, ready: bool) => ()\nvar s = \"s\"\ninspect(s, if stop() => true else => false)\ns = \"new\"\nConsole.writeLine(s)",
             string.Empty,
             1,
             "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Theory]
     [InlineData("var x: i32\nif stop() => x = 1\nlet y = x")]
-    [InlineData("func f(c?: bool)\n    var x: i32\n    if c => return\n    else if stop() => x = 1\n    else => x = 2\n    let y = x\nf(false)")]
+    [InlineData("func f(c: bool)\n    var x: i32\n    if c => return\n    else if stop() => x = 1\n    else => x = 2\n    let y = x\nf(false)")]
     public void ImplicitAndEarlierBranchesCannotBeDiscarded(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
@@ -72,14 +72,14 @@ public class ConditionOperandContinuationTest
 
     [Theory]
     [InlineData("NoElse", "var x = 1\nif stop() => x = 2\nlet y = x")]
-    [InlineData("ElseIf", "func f(c?: bool)\n    var x = 1\n    if c => return\n    else if stop() => x = 2\n    else => x = 3\n    let y = x\nf(false)")]
+    [InlineData("ElseIf", "func f(c: bool)\n    var x = 1\n    if c => return\n    else if stop() => x = 2\n    else => x = 3\n    let y = x\nf(false)")]
     public void MissingConditionsNeverExecuteSourceBranches(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverCondition" + Configuration + name, Stop + source, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Fact]
     public void APartiallyTerminatingSourceBranchRetainsTheMove()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(c?: bool, x?: string)\n    if stop()\n        if c\n            Console.writeLine(x)\n            return\n    else => ()\n    Console.writeLine(x)\nf(true, \"s\")");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, x: string)\n    if stop()\n        if c\n            Console.writeLine(x)\n            return\n    else => ()\n    Console.writeLine(x)\nf(true, \"s\")");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);

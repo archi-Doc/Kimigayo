@@ -8,25 +8,25 @@ namespace XunitTest;
 
 public class ReferenceEmissionTest
 {
-    private const string Same = "func same(left?: ref/string, right?: ref/string) -> bool => left == right\n";
+    private const string Same = "func same(left: ref/string, right: ref/string) -> bool => left == right\n";
 
     [Theory]
     [InlineData("Equal", Same + "let a = \"hello\"\nlet b = \"hello\"\nif same(a, b) => Console.writeLine(\"ok\")\nConsole.writeLine(a)\nConsole.writeLine(b)", "ok\nhello\nhello\n")]
     [InlineData("Alias", Same + "let a = \"a\"\nif same(a, a) => Console.writeLine(a)", "a\n")]
-    [InlineData("Forward", Same + "func forward(x?: ref/string, y?: ref/string) -> bool => same(x, y)\nlet a = \"a\"\nif forward(a, a) => Console.writeLine(a)", "a\n")]
-    [InlineData("Unit", "func same(a?: ref/string, unit?: (), b?: ref/string) -> bool => a == b\nlet a = \"a\"\nif same(b: a, unit: (), a: a) => Console.writeLine(a)", "a\n")]
-    [InlineData("OuterLoan", "func independent(x?: ref/string) -> string\n    return \"a\"\nlet a = \"a\"\nif a == independent(a) => Console.writeLine(a)", "a\n")]
-    [InlineData("Nested", Same + "func test(a?: ref/string, flag?: bool) -> bool => flag\nlet a = \"a\"\nif test(a, same(a, a)) => Console.writeLine(a)", "a\n")]
-    [InlineData("Return", "func test(a?: ref/string, flag?: bool) -> bool => flag\nfunc f() -> string\n    let a = \"held\"\n    test(a, (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(f())", "ok\n")]
-    [InlineData("Continue", "func test(a?: ref/string, flag?: bool) -> bool => flag\nlet a = \"a\"\nvar n = 0\nwhile n < 2\n    n += 1\n    test(a, (if n == 1 => continue else => true))\nConsole.writeLine(a)", "a\n")]
+    [InlineData("Forward", Same + "func forward(x: ref/string, y: ref/string) -> bool => same(x, y)\nlet a = \"a\"\nif forward(a, a) => Console.writeLine(a)", "a\n")]
+    [InlineData("Unit", "func same(a: ref/string, unit: (), b: ref/string) -> bool => a == b\nlet a = \"a\"\nif same(b: a, unit: (), a: a) => Console.writeLine(a)", "a\n")]
+    [InlineData("OuterLoan", "func independent(x: ref/string) -> string\n    return \"a\"\nlet a = \"a\"\nif a == independent(a) => Console.writeLine(a)", "a\n")]
+    [InlineData("Nested", Same + "func test(a: ref/string, flag: bool) -> bool => flag\nlet a = \"a\"\nif test(a, same(a, a)) => Console.writeLine(a)", "a\n")]
+    [InlineData("Return", "func test(a: ref/string, flag: bool) -> bool => flag\nfunc f() -> string\n    let a = \"held\"\n    test(a, (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(f())", "ok\n")]
+    [InlineData("Continue", "func test(a: ref/string, flag: bool) -> bool => flag\nlet a = \"a\"\nvar n = 0\nwhile n < 2\n    n += 1\n    test(a, (if n == 1 => continue else => true))\nConsole.writeLine(a)", "a\n")]
     [InlineData("Deferred", Same + "let a = \"a\"\ndefer => if same(a, a) => Console.writeLine(\"done\")\nif same(a, a) => Console.writeLine(\"ok\")", "ok\ndone\n")]
-    [InlineData("Recursive", "func again(a?: ref/string, count?: i32) -> bool\n    if count == 0 => return a == a\n    return again(a, count - 1)\nlet a = \"a\"\nif again(a, 3) => Console.writeLine(a)", "a\n")]
+    [InlineData("Recursive", "func again(a: ref/string, count: i32) -> bool\n    if count == 0 => return a == a\n    return again(a, count - 1)\nlet a = \"a\"\nif again(a, 3) => Console.writeLine(a)", "a\n")]
     [InlineData("Guard", Same + "let a = \"a\"\nmatch 1\n    _ if same(a, a) => Console.writeLine(a)\n    _ => ()", "a\n")]
     [InlineData("ShortCircuit", Same + "let a = \"a\"\nif false and same(a, a) => ()\nif true or same(a, a) => Console.writeLine(a)", "a\n")]
-    [InlineData("OwnedParameter", Same + "func print(a?: string)\n    if same(a, a) => Console.writeLine(a)\nprint(\"a\")", "a\n")]
-    [InlineData("ReturnCleanup", "func inspect(a?: ref/string) -> string\n    defer => if a == a => Console.writeLine(\"defer\")\n    return \"result\"\nlet a = \"a\"\nConsole.writeLine(inspect(a))\nConsole.writeLine(a)", "defer\nresult\na\n")]
-    [InlineData("AbandonedCleanup", "func test(a?: ref/string, flag?: bool) -> bool => flag\nfunc run() -> string\n    let a = \"held\"\n    defer => Console.writeLine(a)\n    test(a, (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(run())", "held\nok\n")]
-    [InlineData("ScalarParameter", "func value(x?: i32, flag?: bool) -> i32\n    if flag => return x\n    return x\nif value(7, false) == 7 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("OwnedParameter", Same + "func print(a: string)\n    if same(a, a) => Console.writeLine(a)\nprint(\"a\")", "a\n")]
+    [InlineData("ReturnCleanup", "func inspect(a: ref/string) -> string\n    defer => if a == a => Console.writeLine(\"defer\")\n    return \"result\"\nlet a = \"a\"\nConsole.writeLine(inspect(a))\nConsole.writeLine(a)", "defer\nresult\na\n")]
+    [InlineData("AbandonedCleanup", "func test(a: ref/string, flag: bool) -> bool => flag\nfunc run() -> string\n    let a = \"held\"\n    defer => Console.writeLine(a)\n    test(a, (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(run())", "held\nok\n")]
+    [InlineData("ScalarParameter", "func value(x: i32, flag: bool) -> i32\n    if flag => return x\n    return x\nif value(7, false) == 7 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("CoveredGuard", Same + "let a = \"a\"\nmatch 1\n    _ => Console.writeLine(\"ok\")\n    _ if same(a, a) => ()\nConsole.writeLine(a)", "ok\na\n")]
     public void Execute(string name, string source, string expected)
         => ScalarEmissionTest.EmitFixture("Reference" + name, source, expected);
@@ -40,15 +40,15 @@ public class ReferenceEmissionTest
     [InlineData("Match", "(match 1\n    1 => \"a\"\n    _ => \"b\"\n)")]
     public void TemporaryBorrowUsesAcquiredStorage(string name, string expression)
     {
-        var source = Same + "func echo(a?: string) -> string => a\nlet a = \"a\"\nif same(" + expression + ", a) => Console.writeLine(\"ok\")\nConsole.writeLine(a)";
+        var source = Same + "func echo(a: string) -> string => a\nlet a = \"a\"\nif same(" + expression + ", a) => Console.writeLine(\"ok\")\nConsole.writeLine(a)";
         ScalarEmissionTest.EmitFixture("ReferenceTemporary" + name, source, "ok\na\n");
     }
 
     [Theory]
     [InlineData("ShortCircuit", "var flag = false\nif flag and same(\"a\", \"a\") => ()\nif true or same(\"b\", \"b\") => Console.writeLine(\"ok\")", "ok\n", "a=0;b=0;ok=1")]
     [InlineData("Both", "if same(\"a\", \"a\") => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1")]
-    [InlineData("Transfer", "func test(a?: ref/string, b?: bool) -> bool => b\nfunc run() -> string\n    test(\"held\", (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(run())", "ok\n", "held=1;ok=1;bad=0")]
-    [InlineData("EvaluationOrder", "func echo(s?: string) -> string\n    Console.writeLine(\"evaluate\")\n    return s\nif same(right: echo(\"b\"), left: echo(\"a\")) => ()", "evaluate\nevaluate\n", "a=1;b=1;evaluate=2")]
+    [InlineData("Transfer", "func test(a: ref/string, b: bool) -> bool => b\nfunc run() -> string\n    test(\"held\", (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(run())", "ok\n", "held=1;ok=1;bad=0")]
+    [InlineData("EvaluationOrder", "func echo(s: string) -> string\n    Console.writeLine(\"evaluate\")\n    return s\nif same(right: echo(\"b\"), left: echo(\"a\")) => ()", "evaluate\nevaluate\n", "a=1;b=1;evaluate=2")]
     public void TemporaryLoansPreserveExpressionCleanup(string name, string source, string stdout, string audit)
     {
         source = Same + source;
@@ -72,17 +72,17 @@ public class ReferenceEmissionTest
     [InlineData("==", "a\\0b", "a\\0c", false)]
     public void ReferentComparison(string op, string a, string b, bool result)
     {
-        var source = $"func compare(a?: ref/string, b?: ref/string) -> bool => a {op} b\nlet a = \"{a}\"\nlet b = \"{b}\"\nif compare(a, b) => Console.writeLine(\"true\") else => Console.writeLine(\"false\")";
+        var source = $"func compare(a: ref/string, b: ref/string) -> bool => a {op} b\nlet a = \"{a}\"\nlet b = \"{b}\"\nif compare(a, b) => Console.writeLine(\"true\") else => Console.writeLine(\"false\")";
         ScalarEmissionTest.EmitFixture("ReferenceCompare" + op.Replace("=", "Eq").Replace("!", "Not").Replace("<", "Lt").Replace(">", "Gt") + (a.Length == 0 ? "Empty" : a.Contains('\\') ? "Nul" : string.Empty), source, result ? "true\n" : "false\n");
     }
 
     [Theory]
-    [InlineData("func bad(a?: ref/string) -> ref/string => a\n()")]
-    [InlineData("func bad(a?: ref/string)\n    let saved = a\n()")]
-    [InlineData("func bad(a?: ref/string, b?: string) -> bool => a == b\n()")]
-    [InlineData("func bad(a?: ref/string)\n    Console.writeLine(a)\n()")]
+    [InlineData("func bad(a: ref/string) -> ref/string => a\n()")]
+    [InlineData("func bad(a: ref/string)\n    let saved = a\n()")]
+    [InlineData("func bad(a: ref/string, b: string) -> bool => a == b\n()")]
+    [InlineData("func bad(a: ref/string)\n    Console.writeLine(a)\n()")]
     [InlineData("let a = \"a\"\na@ref")]
-    [InlineData("func unused(a?: ref/string) => 1.0 + 2.0\n()", true)]
+    [InlineData("func unused(a: ref/string) => 1.0 + 2.0\n()", true)]
     public void ReferenceUsesAndIndependentFloatResultsRespectSupport(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -94,7 +94,7 @@ public class ReferenceEmissionTest
     [InlineData("test(right: take(a), left: a)", OwnershipFailure.PossiblyMovedUse)]
     public void SourceOrderDeterminesTheConflict(string expression, OwnershipFailure failure)
     {
-        var c = MinimalEmissionTest.Analyze("func test(left?: ref/string, right?: bool) -> bool => right\nfunc take(a?: string) -> bool => true\nlet a = \"a\"\n" + expression);
+        var c = MinimalEmissionTest.Analyze("func test(left: ref/string, right: bool) -> bool => right\nfunc take(a: string) -> bool => true\nlet a = \"a\"\n" + expression);
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
         Assert.False(c.Emission.Validate(out _));
@@ -105,7 +105,7 @@ public class ReferenceEmissionTest
     [InlineData("same(a, (return a))")]
     public void OperandMoveStillConflicts(string expression)
     {
-        var c = MinimalEmissionTest.Analyze(Same + "func take(a?: string) -> string => a\nfunc run() -> string\n    let a = \"a\"\n    " + expression + "\n    return \"bad\"\nConsole.writeLine(run())");
+        var c = MinimalEmissionTest.Analyze(Same + "func take(a: string) -> string => a\nfunc run() -> string\n    let a = \"a\"\n    " + expression + "\n    return \"bad\"\nConsole.writeLine(run())");
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
     }
@@ -115,7 +115,7 @@ public class ReferenceEmissionTest
     [InlineData("defer => Console.writeLine(a)")]
     public void LaterArgumentEffectsSeeTheActiveLoan(string effect)
     {
-        var source = "func test(a?: ref/string, flag?: bool) -> bool => flag\nvar a = \"a\"\ntest(a, (work: do\n    " + effect + "\n    exit to work: true\n))";
+        var source = "func test(a: ref/string, flag: bool) -> bool => flag\nvar a = \"a\"\ntest(a, (work: do\n    " + effect + "\n    exit to work: true\n))";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
@@ -127,7 +127,7 @@ public class ReferenceEmissionTest
     [InlineData("(return true) == a")]
     public void NoncompletingReferenceComparisonNeedsNoResult(string expression)
     {
-        var source = "func test(a?: ref/string) -> bool\n    " + expression + "\n    return false\nlet a = \"a\"\nif test(a) => Console.writeLine(a)";
+        var source = "func test(a: ref/string) -> bool\n    " + expression + "\n    return false\nlet a = \"a\"\nif test(a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         ScalarEmissionTest.EmitFixture("ReferenceAbruptComparison" + (expression.StartsWith('a') ? "Right" : "Left"), source, "a\n");
@@ -136,7 +136,7 @@ public class ReferenceEmissionTest
     [Fact]
     public void AbandonedLoansAreNotRestoredInCheckingContinuations()
     {
-        var source = "func test(a?: ref/string, flag?: bool) -> bool => flag\nfunc run() -> string\n    let a = \"held\"\n    test(a, (work: do\n        return \"ok\"\n        Console.writeLine(a)\n        exit to work: true\n    ))\n    return \"bad\"\nConsole.writeLine(run())";
+        var source = "func test(a: ref/string, flag: bool) -> bool => flag\nfunc run() -> string\n    let a = \"held\"\n    test(a, (work: do\n        return \"ok\"\n        Console.writeLine(a)\n        exit to work: true\n    ))\n    return \"bad\"\nConsole.writeLine(run())";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         ScalarEmissionTest.EmitFixture("ReferenceUnreachableContinuation", source, "ok\n");
@@ -169,7 +169,7 @@ public class ReferenceEmissionTest
     [Fact]
     public void WarmBindingAndEmissionAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Same + "func forward(a?: ref/string, b?: ref/string) -> bool => same(a, b)\nlet a = \"a\"\nforward(a, a)");
+        var c = MinimalEmissionTest.Analyze(Same + "func forward(a: ref/string, b: ref/string) -> bool => same(a, b)\nlet a = \"a\"\nforward(a, a)");
         for (var i = 0; i < 100; i++)
         {
             c.Bind();
@@ -274,16 +274,16 @@ public class ReferenceEmissionTest
     public void DivergentCallsKeepLoansAndDoNotUnwind(bool argument)
     {
         var source = argument
-            ? "func test(a?: ref/string, flag?: bool) -> bool => flag\nfunc forever() -> bool\n    loop => ()\nlet a = \"held\"\ntest(a, forever())"
-            : "func forever(a?: ref/string) -> Never\n    loop => ()\nlet a = \"held\"\nforever(a)";
+            ? "func test(a: ref/string, flag: bool) -> bool => flag\nfunc forever() -> bool\n    loop => ()\nlet a = \"held\"\ntest(a, forever())"
+            : "func forever(a: ref/string) -> Never\n    loop => ()\nlet a = \"held\"\nforever(a)";
         var ir = ScalarEmissionTest.EmitFixture("ReferenceDivergent" + argument, source, string.Empty, timeoutMilliseconds: 300);
         Assert.DoesNotContain("mustprogress", ir);
         Assert.DoesNotContain("willreturn", ir);
     }
 
     [Theory]
-    [InlineData("Argument", "func test(a?: ref/string, flag?: i32) -> bool => true\nlet a = \"held\"\ntest(a, 2147483647 + 1)", 3, 9)]
-    [InlineData("Body", "func test(a?: ref/string) -> i32 => 2147483647 + 1\nlet a = \"held\"\ntest(a)", 1, 36)]
+    [InlineData("Argument", "func test(a: ref/string, flag: i32) -> bool => true\nlet a = \"held\"\ntest(a, 2147483647 + 1)", 3, 9)]
+    [InlineData("Body", "func test(a: ref/string) -> i32 => 2147483647 + 1\nlet a = \"held\"\ntest(a)", 1, 36)]
     public void AbortDoesNotDestroyBorrowedOwners(string name, string source, int line, int column)
     {
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
@@ -294,7 +294,7 @@ public class ReferenceEmissionTest
     [Fact]
     public void OverloadRankingRetainsExactOwnedAcquisition()
     {
-        const string Source = "func pick(a?: string) -> bool => true\nfunc pick(a?: ref/string) -> bool => false\nif pick(\"a\") => Console.writeLine(\"owned\")";
+        const string Source = "func pick(a: string) -> bool => true\nfunc pick(a: ref/string) -> bool => false\nif pick(\"a\") => Console.writeLine(\"owned\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.Empty(c.Binding.Issues);
         var call = c.Ownership.Bodies[0].Operations.First(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.Target.Name: "pick" });

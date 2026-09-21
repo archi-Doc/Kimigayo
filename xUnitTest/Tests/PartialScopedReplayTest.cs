@@ -145,7 +145,7 @@ public class PartialScopedReplayTest
         => ScalarEmissionTest.EmitFixture("NeverPartialScoped" + Configuration + name, source + "\nConsole.writeLine(\"done\")", condition ? "done\n" : string.Empty, condition ? 0 : 1, condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     private static string Source(string declaration, string dead, string after, string use, string tail = "()", bool condition = true)
-        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c?: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            " + dead + "\n            " + after + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")\nfunc truth(x?: i32) -> bool => true";
+        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            " + dead + "\n            " + after + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")\nfunc truth(x: i32) -> bool => true";
 
     private const string Counter = "\nstruct Counter\n    public var value: i32 = 0";
 

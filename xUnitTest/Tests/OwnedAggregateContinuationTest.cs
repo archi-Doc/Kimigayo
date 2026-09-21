@@ -33,8 +33,8 @@ public class OwnedAggregateContinuationTest
     public void GuardFailureAndSelectedDecompositionDestroyEachOwnedLeafOnce()
     {
         var source = Source("E<(string, i32)>", ".Some((\"payload\", 2))", ".Some((_, let n)) if (return) => x = n\n                .Some((let text, _)) => Console.writeLine(text)\n                .None => exit") +
-            "\nfunc route(selected?: bool)\n    let value: E<(string, i32)> = .Some((\"active\", 3))\n    match value\n        .Some((_, let n)) if selected and n > 0 => Console.writeLine(\"selected\")\n        .Some((let text, _)) => Console.writeLine(text)\n        .None => ()\nroute(true)\nroute(false)\n" +
-            "func choose(consume?: bool) -> string\n    return match (\"chosen\", \"remaining\")\n        (var text, _)\n            if consume => Console.writeLine(text)\n            text = \"replacement\"\n            yield text\nConsole.writeLine(choose(true))\nConsole.writeLine(choose(false))";
+            "\nfunc route(selected: bool)\n    let value: E<(string, i32)> = .Some((\"active\", 3))\n    match value\n        .Some((_, let n)) if selected and n > 0 => Console.writeLine(\"selected\")\n        .Some((let text, _)) => Console.writeLine(text)\n        .None => ()\nroute(true)\nroute(false)\n" +
+            "func choose(consume: bool) -> string\n    return match (\"chosen\", \"remaining\")\n        (var text, _)\n            if consume => Console.writeLine(text)\n            text = \"replacement\"\n            yield text\nConsole.writeLine(choose(true))\nConsole.writeLine(choose(false))";
         const string Name = "OwnedAggregateWindowCleanup";
         const string Output = "selected\nactive\nchosen\nreplacement\nreplacement\n";
         var ir = ScalarEmissionTest.EmitFixture(Name, source, Output);
@@ -48,7 +48,7 @@ public class OwnedAggregateContinuationTest
     {
         // Composite owned guard candidates are an explicit limitation. Their unbound
         // guard/body must not appear as Unit to control flow and cascade a Type error.
-        var c = MinimalEmissionTest.Analyze("func f(c?: bool) -> i32\n    let t = (\"a\", 4)\n    match t\n        " + arms + "\n        _ => ()\n    return 0\nf(true)");
+        var c = MinimalEmissionTest.Analyze("func f(c: bool) -> i32\n    let t = (\"a\", 4)\n    match t\n        " + arms + "\n        _ => ()\n    return 0\nf(true)");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.NotEmpty(c.Binding.Issues);
         Assert.All(c.Binding.Issues, x => Assert.Equal(BindingFailure.Unsupported, x.Node.BindingFailure));
@@ -63,7 +63,7 @@ public class OwnedAggregateContinuationTest
             enum P
                 Some(string, string)
                 None
-            func early(flag?: bool) -> i32
+            func early(flag: bool) -> i32
                 let value: P = .Some("first", "second")
                 match value
                     .Some(let a, _)
@@ -84,7 +84,7 @@ public class OwnedAggregateContinuationTest
                 return match value
                     .Some(let a, _) => a
                     .None => "none"
-            func replace(flag?: bool)
+            func replace(flag: bool)
                 let value = (("n1", "n2"), 5)
                 match value
                     ((var x, _), let n)
@@ -133,6 +133,6 @@ public class OwnedAggregateContinuationTest
     }
 
     private static string Source(string type, string value, string arms, string tail = "let y = x")
-        => "enum E<T>\n    Some(T)\n    None\nfunc stop() -> Never => $abort(\"owned continuation\")\nfunc f(c?: bool)\n    var x = 1\n    let subject: " + type + " = " + value +
+        => "enum E<T>\n    Some(T)\n    None\nfunc stop() -> Never => $abort(\"owned continuation\")\nfunc f(c: bool)\n    var x = 1\n    let subject: " + type + " = " + value +
             "\n    do\n        loop\n            if c => return else => exit\n            match subject\n                " + arms + "\n        stop()\n    " + tail + "\nf(true)";
 }

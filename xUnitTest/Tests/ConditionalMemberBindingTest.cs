@@ -28,14 +28,14 @@ public class ConditionalMemberBindingTest
     [InlineData(true)]
     public void OnlyBlockBodiesReceiveTheCondition(bool outside)
     {
-        var c = Parse("contract C\nstruct S<T>\n    func copy<U>(x?: U) -> U\n        U is Copy\n        return x\n    Self is C when T is Copy\n        public func inside(x?: T) -> T => copy(x)\n" + (outside ? "    func outside(x?: T) -> T => copy(x)" : string.Empty));
+        var c = Parse("contract C\nstruct S<T>\n    func copy<U>(x: U) -> U\n        U is Copy\n        return x\n    Self is C when T is Copy\n        public func inside(x: T) -> T => copy(x)\n" + (outside ? "    func outside(x: T) -> T => copy(x)" : string.Empty));
         Assert.True(c.Bind().IsComplete == !outside, Describe(c));
     }
 
     [Fact]
     public void FunctionAndOuterGenericSlotsAreSubstitutedIndependently()
     {
-        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f<U>(x?: T, y?: U) -> U => y\nfunc use() -> bool => S<i32>.f(1, true)");
+        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f<U>(x: T, y: U) -> U => y\nfunc use() -> bool => S<i32>.f(1, true)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Equal("bool", call.BoundCall!.TypeArguments[0]!.Name);
@@ -56,7 +56,7 @@ public class ConditionalMemberBindingTest
     [InlineData("string", false)]
     public void AssociatedSpecificationsInBlocksAreValidated(string argument, bool valid)
     {
-        var c = Parse($"contract C\n    associate E\n    E is Copy\n    func f(x?: E) -> E\nstruct S<T>\n    Self is C when T is Copy\n        associate C.E is {argument}\n        public func f(x?: {argument}) -> {argument} => x");
+        var c = Parse($"contract C\n    associate E\n    E is Copy\n    func f(x: E) -> E\nstruct S<T>\n    Self is C when T is Copy\n        associate C.E is {argument}\n        public func f(x: {argument}) -> {argument} => x");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
     }
 
@@ -103,7 +103,7 @@ public class ConditionalMemberBindingTest
     [InlineData("string", false)]
     public void InstanceCallKeepsReceiverTypeAndOriginSubstitution(string argument, bool valid)
     {
-        var c = Parse($"contract C\n    func f(self: ref/Self) -> i32\nstruct S<T>\n    Self is C when T is Copy\n        public func f(self: ref/Self) -> i32 => 1\nfunc use(x?: ref/S<{argument}>) -> i32 => x.f()");
+        var c = Parse($"contract C\n    func f(self: ref/Self) -> i32\nstruct S<T>\n    Self is C when T is Copy\n        public func f(self: ref/Self) -> i32 => 1\nfunc use(x: ref/S<{argument}>) -> i32 => x.f()");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
         if (valid)
         {
@@ -118,8 +118,8 @@ public class ConditionalMemberBindingTest
     [InlineData(true)]
     public void ConditionalSignaturesUseOnlyTheirDeclarationEnvironment(bool outside)
     {
-        var members = "    Self is C when T is A\n        public func f(x?: Box<T>) => ()\n";
-        var c = Parse("contract A\ncontract C\nstruct Box<T>\n    T is A\nstruct S<T>\n" + members + (outside ? "    func outside(x?: Box<T>) => ()" : string.Empty));
+        var members = "    Self is C when T is A\n        public func f(x: Box<T>) => ()\n";
+        var c = Parse("contract A\ncontract C\nstruct Box<T>\n    T is A\nstruct S<T>\n" + members + (outside ? "    func outside(x: Box<T>) => ()" : string.Empty));
         Assert.True(c.Bind().IsComplete == !outside, Describe(c));
     }
 
@@ -128,7 +128,7 @@ public class ConditionalMemberBindingTest
     [InlineData("T.A.E is Copy, T is A")]
     public void AssociatedPremisesPrecedeDependentBlockSignatures(string conditions)
     {
-        var c = Parse($"contract A\n    associate E\ncontract C\nstruct Box<T>\n    T is Copy\nstruct S<T>\n    Self is C when {conditions}\n        public func f(x?: Box<T.A.E>) => ()");
+        var c = Parse($"contract A\n    associate E\ncontract C\nstruct Box<T>\n    T is Copy\nstruct S<T>\n    Self is C when {conditions}\n        public func f(x: Box<T.A.E>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -153,7 +153,7 @@ public class ConditionalMemberBindingTest
     [Fact]
     public void BlockAssociatedBindingsRemainSeparateAcrossDisjointPaths()
     {
-        var c = Parse("contract A\n    associate E\ncontract B: A\ncontract C: A\nstruct S<T>\n    Self is B when T is i32\n        associate A.E is i32\n    Self is C when T is string\n        associate A.E is string\nfunc use(x?: S<i32>, y?: S<string>) => ()");
+        var c = Parse("contract A\n    associate E\ncontract B: A\ncontract C: A\nstruct S<T>\n    Self is B when T is i32\n        associate A.E is i32\n    Self is C when T is string\n        associate A.E is string\nfunc use(x: S<i32>, y: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "use");
         var contract = Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "A").BoundSymbol!;
@@ -174,7 +174,7 @@ public class ConditionalMemberBindingTest
     [Fact]
     public void AssociatedSpecificationCannotPublishItsBindingOutsideTheBlock()
     {
-        var c = Parse("contract C\n    associate E\nstruct S<T>\n    Self is C when T is Copy\n        associate C.E is i32\n        public func inside(x?: Self.C.E) => ()\n    func outside(x?: Self.C.E) => ()");
+        var c = Parse("contract C\n    associate E\nstruct S<T>\n    Self is C when T is Copy\n        associate C.E is i32\n        public func inside(x: Self.C.E) => ()\n    func outside(x: Self.C.E) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.ToString().Contains("Self.C.E", StringComparison.Ordinal));
     }
@@ -182,7 +182,7 @@ public class ConditionalMemberBindingTest
     [Fact]
     public void ConstraintErrorsCannotBeHiddenByAnotherApplicableCandidate()
     {
-        var c = Parse("contract C\nstruct Bad\n    Self is C\nstruct S<T>\n    Self is C when T is Copy\n        public func f<U>(x?: U) -> i32\n            U is Missing\n            return 1\n    public func f(x?: i32) -> i32 => 2\nfunc use() -> i32 => S<i32>.f(1)");
+        var c = Parse("contract C\nstruct Bad\n    Self is C\nstruct S<T>\n    Self is C when T is Copy\n        public func f<U>(x: U) -> i32\n            U is Missing\n            return 1\n    public func f(x: i32) -> i32 => 2\nfunc use() -> i32 => S<i32>.f(1)");
         Assert.False(c.Bind().IsComplete);
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Null(call.BoundCall);
@@ -194,7 +194,7 @@ public class ConditionalMemberBindingTest
     [InlineData(true)]
     public void UnknownConditionCannotCommitAnAlternative(bool proven)
     {
-        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x?: i32) -> i32 => 1\n    public func f<U>(x?: U) -> i32 => 2\nfunc use<T>(x?: S<T>) -> i32\n" + (proven ? "    T is Copy\n" : string.Empty) + "    return S<T>.f(1)");
+        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x: i32) -> i32 => 1\n    public func f<U>(x: U) -> i32 => 2\nfunc use<T>(x: S<T>) -> i32\n" + (proven ? "    T is Copy\n" : string.Empty) + "    return S<T>.f(1)");
         Assert.True(c.Bind().IsComplete == proven, Describe(c));
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         if (proven)
@@ -211,7 +211,7 @@ public class ConditionalMemberBindingTest
     [Fact]
     public void RefutedCandidateAllowsAnApplicableMemberOfTheCommittedGroup()
     {
-        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x?: i32) -> i32 => 1\n    public func f<U>(x?: U) -> i32 => 2\nfunc use() -> i32 => S<string>.f(1)");
+        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x: i32) -> i32 => 1\n    public func f<U>(x: U) -> i32 => 2\nfunc use() -> i32 => S<string>.f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Single(((FunctionKoto)call.BoundCall!.Target.Declaration).GenericArguments);
@@ -222,8 +222,8 @@ public class ConditionalMemberBindingTest
     [InlineData(true)]
     public void ConditionStrengthDoesNotBreakAnOrdinaryOverloadTie(bool reversed)
     {
-        const string Copy = "    Self is A when T is Copy\n        public func f(x?: i32) -> i32 => 1\n";
-        const string Owned = "    Self is B when T is Owned\n        public func f(x?: u32) -> i32 => 2\n";
+        const string Copy = "    Self is A when T is Copy\n        public func f(x: i32) -> i32 => 1\n";
+        const string Owned = "    Self is B when T is Owned\n        public func f(x: u32) -> i32 => 2\n";
         var c = Parse("contract A\ncontract B\nstruct S<T>\n" + (reversed ? Owned + Copy : Copy + Owned) + "func use() -> i32 => S<i32>.f(1)");
         Assert.False(c.Bind().IsComplete);
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
@@ -234,7 +234,7 @@ public class ConditionalMemberBindingTest
     [Fact]
     public void InapplicableGroupDoesNotReopenOuterLookup()
     {
-        var c = Parse("contract C\ngroup G\n    func f(x?: i32) -> i32 => 1\n    struct S<T>\n        Self is C when T is Copy\n            func f(x?: i32) -> i32 => 2\n        func use() -> i32 => f(1)");
+        var c = Parse("contract C\ngroup G\n    func f(x: i32) -> i32 => 1\n    struct S<T>\n        Self is C when T is Copy\n            func f(x: i32) -> i32 => 2\n        func use() -> i32 => f(1)");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
     }
@@ -244,7 +244,7 @@ public class ConditionalMemberBindingTest
     [InlineData("item", "public computed item: i32\n            get(self: ref/Self) -> i32 => 1")]
     public void NonCallUsesCheckTheSameConditionAndKeepUnsupportedOperationsPending(string name, string member)
     {
-        var c = Parse($"contract C\nstruct S<T>\n    Self is C when T is Copy\n        {member}\nfunc use(x?: ref/S<string>) => x.{name}");
+        var c = Parse($"contract C\nstruct S<T>\n    Self is C when T is Copy\n        {member}\nfunc use(x: ref/S<string>) => x.{name}");
         Assert.False(c.Bind().IsComplete);
         var access = Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(x => x.Right.ToString() == name);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, access) && x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
@@ -270,7 +270,7 @@ public class ConditionalMemberBindingTest
     [Fact]
     public void AssociatedBlockSignatureCanUseItsOwnBinding()
     {
-        var c = Parse("contract C\n    associate E\n    func f(x?: E) -> E\nstruct S<T>\n    Self is C when T is Copy\n        associate C.E is i32\n        public func f(x?: Self.C.E) -> Self.C.E => x\nfunc use() -> i32 => S<i32>.f(1)");
+        var c = Parse("contract C\n    associate E\n    func f(x: E) -> E\nstruct S<T>\n    Self is C when T is Copy\n        associate C.E is i32\n        public func f(x: Self.C.E) -> Self.C.E => x\nfunc use() -> i32 => S<i32>.f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -289,7 +289,7 @@ public class ConditionalMemberBindingTest
     public void OuterAssociatedPremisesAreCollectedBeforeBlockConditions(bool reversed)
     {
         const string Contracts = "contract A\n    associate E\n    E is Copy\ncontract C\nstruct Box<T>\n    T is Copy\n";
-        const string Type = "struct S<T>\n    T is A\n    Self is C when T.A.E is Copy\n        public func f(x?: Box<T.A.E>) => ()\n";
+        const string Type = "struct S<T>\n    T is A\n    Self is C when T.A.E is Copy\n        public func f(x: Box<T.A.E>) => ()\n";
         var c = Parse(reversed ? Type + Contracts : Contracts + Type);
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
@@ -299,7 +299,7 @@ public class ConditionalMemberBindingTest
     [InlineData("string", false)]
     public void InheritedConditionalMemberUsesItsDeclaringBaseArguments(string argument, bool valid)
     {
-        var c = Parse($"contract C\nopen struct Base<T>\n    Self is C when T is Copy\n        public func f(x?: T) -> T => x\nstruct S<U>: Base<{argument}>\nfunc use(x?: {argument}) -> {argument} => S<bool>.f(x)");
+        var c = Parse($"contract C\nopen struct Base<T>\n    Self is C when T is Copy\n        public func f(x: T) -> T => x\nstruct S<U>: Base<{argument}>\nfunc use(x: {argument}) -> {argument} => S<bool>.f(x)");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
         if (valid)
         {
@@ -377,10 +377,10 @@ public class ConditionalMemberBindingTest
     [InlineData(512)]
     public void WarmBindingReusesBlocksAndCandidateResultsWithoutAllocations(int count)
     {
-        var source = new System.Text.StringBuilder("contract A\n    associate E\n    func f(x?: i32) -> i32\ncontract B: A\n");
+        var source = new System.Text.StringBuilder("contract A\n    associate E\n    func f(x: i32) -> i32\ncontract B: A\n");
         for (var i = 0; i < count; i++)
         {
-            source.Append("struct S").Append(i).Append("<T>\n    Self is B when T is Copy\n        associate A.E is i32\n        public func f(x?: i32) -> i32 => x\n        public func f<U>(x?: U) -> i32 => 2\nfunc use").Append(i).Append("() -> i32 => S").Append(i).Append("<i32>.f(S").Append(i).Append("<i32>.f(1))\n");
+            source.Append("struct S").Append(i).Append("<T>\n    Self is B when T is Copy\n        associate A.E is i32\n        public func f(x: i32) -> i32 => x\n        public func f<U>(x: U) -> i32 => 2\nfunc use").Append(i).Append("() -> i32 => S").Append(i).Append("<i32>.f(S").Append(i).Append("<i32>.f(1))\n");
         }
 
         var c = Parse(source.ToString());

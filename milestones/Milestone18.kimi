@@ -1,7 +1,7 @@
 // Milestone 18: composite generic values retain one destruction responsibility.
 struct Resource
     public let id: i32
-    public init(id?: i32) => self.id = id
+    public init(id: i32) => self.id = id
     deinit
         match self.id
             1 => Console.writeLine("Resource 1 destroyed.")
@@ -12,7 +12,7 @@ struct Resource
 
 struct Box<T>
     let value: T
-    public init(value?: T) => self.value = value
+    public init(value: T) => self.value = value
     // No user deinit: an owned receiver may transfer its stored value.
     public func take(self: Self) -> T => self.value
 
@@ -20,15 +20,15 @@ enum Delivery<T>
     Ready(T)
     Missing
 
-func relay<T>(value?: T) -> T
+func relay<T>(value: T) -> T
     let pending: T = value
     defer => Console.writeLine("Generic result secured.")
     return pending
 
-func choose<T>(first?: T, second?: T, useFirst?: bool) -> T
+func choose<T>(first: T, second: T, useFirst: bool) -> T
     return if useFirst => first else => second
 
-func package<T>(value?: T) -> Delivery<T> => .Ready(value)
+func package<T>(value: T) -> Delivery<T> => .Ready(value)
 
 public func main()
     do

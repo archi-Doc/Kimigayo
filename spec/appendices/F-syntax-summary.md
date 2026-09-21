@@ -165,7 +165,7 @@ ContractItem         := ContractRequirement | AssociatedTypeDeclaration
                       | ConstraintClause | Directive<ContractItem>
 ContractRequirement  := FunctionRequirement | PropertyRequirement
 FunctionRequirement  := "unsafe"? "func" Name GenericParameters?
-                        "(" TrailingList<RequirementParameter>? ")" ("->" Type)?
+                        ParameterList<RequirementParameter> ("->" Type)?
                         RequirementConstraints?
 RequirementParameter := ParameterName ":" Type | ReceiverShorthand
 RequirementConstraints := IndentedList<ConstraintClause | OriginRelation>
@@ -192,12 +192,12 @@ ConditionalImplementationItem := AttributedFunctionDefinition
                                | AttributePrefix? ComputedDeclaration
                                | AssociatedTypeSpecification
                                | Directive<ConditionalImplementationItem>
-ConstructorDeclaration := Access? "init" "(" TrailingList<Parameter>? ")"
+ConstructorDeclaration := Access? "init" ParameterList<Parameter>
                           BaseInitializer? ExecutableBody
 BaseInitializer      := ":" "base" "(" TrailingList<Argument>? ")"
 FunctionHeader       := Access? "unsafe"? "func" Name
                         GenericParameters?
-                        "(" TrailingList<Parameter>? ")" ("->" Type)?
+                        ParameterList<Parameter> ("->" Type)?
 FunctionDefinition   := FunctionHeader FunctionBody
 AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
 ForeignFunctionDeclaration := FunctionHeader
@@ -211,7 +211,8 @@ FunctionBody         := Body<FunctionItem>
 Parameter            := Attribute* ParameterCore
 ParameterCore        := ParameterName ":" Type ("=" Expression)?
                       | ReceiverShorthand
-ParameterName        := Name "?"? ("=>" Name)?
+ParameterName        := Name ("=>" Name)?
+ParameterList<P>      := "(" (List<P> ","? | List<P>? "!" List<P> ","?)? ")"
 ReceiverShorthand    := "self"
 ConstraintClause     := ConstraintSubject "is" IsRequirement
 ConstraintSubject    := Name | "Self" | AssociatedTypeReference
@@ -252,13 +253,13 @@ Modifier placement and compound-access combinations are constrained by [accessib
 
 AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, deinit, or explicit specializations. Attribute-bearing functions in executable/enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](../06-declarations-and-containers.md#622-inheritance-and-open-structures); unavailable declaration modifiers use §2.5.1's diagnostic recognition, not grammar productions.
 
-`SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access/unsafe modifiers, attributes, defaults, or `?` markers. Its body uses ordinary executable syntax; the original function's contract is inherited under [full specialization](../08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
+`SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access/unsafe modifiers, attributes, defaults, or `!` boundaries. Its body uses ordinary executable syntax; the original function's contract is inherited under [full specialization](../08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
 
 Omitting the result annotation in a named function declaration or Contract function requirement means Unit; the optional grammar does not authorize body-based return inference. Anonymous functions retain their own inference rules.
 
-Ordinary parameter bindings are immutable under §7. Receiver recognition uses the internal Name self, its position, and declaration context under §7.3; the shared Parameter production alone does not grant receiver defaults, renaming, or arbitrary Types. Default evaluation and cleanup follow §7.2. Empty group/rootgroup/struct/contract declarations follow §6.1.1; empty enums remain invalid.
+Ordinary parameter bindings are immutable under §7. A ParameterList permits at most one `!`, with no adjacent comma and at least one ordinary parameter on its right. Its external names are unique across both sections and the receiver. Receiver recognition uses the internal Name self, its position, and declaration context under §7.3; the shared Parameter production alone does not grant receiver defaults, renaming, or arbitrary Types. Default evaluation and cleanup follow §7.2. Empty group/rootgroup/struct/contract declarations follow §6.1.1; empty enums remain invalid.
 
-Contract function requirements permit `?` on ordinary external parameter names but have no parameter defaults, access modifiers or executable bodies. Property requirements have no parameter defaults, `?` markers, initializers, access modifiers or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method generic parameters and implicit signature Origins follow ordinary function rules. Property Requirements are instance-only: get is mandatory and set optional, each at most once in either order. No accessor is implied beyond the written list or explicit signatures. Shared/exclusive defaults for has and explicit signature checks follow §11.4.
+Contract function requirements permit the `!` boundary but have no parameter defaults, access modifiers or executable bodies. Property requirements have no parameter defaults, `!` boundaries, initializers, access modifiers or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method generic parameters and implicit signature Origins follow ordinary function rules. Property Requirements are instance-only: get is mandatory and set optional, each at most once in either order. No accessor is implied beyond the written list or explicit signatures. Shared/exclusive defaults for has and explicit signature checks follow §11.4.
 
 `AssociatedTypeDeclaration` introduces a name only inside a Contract. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances; a bare `associate Element` is not a specification. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` instead occupies a member position only in generic struct/enum bodies (§8.4.8), has one target Contract, and introduces no namespace or generic binders. Its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations; all blocks reject storage, Cases, constructors, deinit, nested Types, and nested conformances. Intrinsics retain their own rules.
 
@@ -471,7 +472,7 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Additional type arguments | [Generic application](../12-expressions.md#1242-invocation-and-generic-application) does not define general constant type arguments. |
 | Object ownership operations | [Kimi creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing), and [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) define their source names, Types and acquisition contracts using ordinary call syntax. `Type.init` constructs an owner value, and `@obj`/`@rc`/`@arc` add no allocation or count increment. |
 | Complete payload and whole-value updates | Sealed uses ordinary requirement syntax. Fully specified `@ref/T` and `@uniq/T` may project a proven complete payload (§13.5.5); shorthand meanings are unchanged. Kimi.Intrinsics.replace/exchange/swap use ordinary generic calls and named arguments (§15.7). No new keyword or operator is introduced. |
-| Function parameters | The combined optional/external-name form remains under [parameter design boundaries](../10-overload-resolution-and-inference.md#109-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
+| Function parameters | [§7.2](../07-functions-and-callable-values.md#72-parameters-and-defaults) defines the `!` boundary, external/internal names and independent defaults; F.3 summarizes their syntax. |
 | Re-export, special FFI layouts, and failure propagation | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports), [layout boundaries](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi), and [error policy](../17-failure-handling.md#171-error-policy). |
 
 Container placement follows §6.1.1, including nested groups/structs/enums/Contracts in structs, no children in enum/Contract bodies, and source-root-only rootgroup. Own arity excludes inherited slots; groups and Contracts declare no own arguments. BoundContainerQualifier is Type-side only and normalizes with ordinary grouped Type syntax. Contract and associated selectors use the same paths and full Origin bindings; each final role and intermediate qualifier is checked under §9.6.1. CaseReference remains a PlainContainerPath and excludes own/inherited explicit Origin annotations on its qualifier, while retaining Origins inside Type arguments.

@@ -15,7 +15,7 @@ public class AbortEmissionTest
         { "AbortEmpty", "$abort(\"\")", string.Empty, 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: \n" },
         { "AbortUnicode", "$abort(\"日本語\\0x\")", string.Empty, 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: 日本語\0x\n" },
         { "AbortOwned", "let text = \"owned\"\n$abort(text)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: owned\n" },
-        { "AbortShadow", "func abort(text?: string) => Console.writeLine(text)\n$abort(\"builtin\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: builtin\n" },
+        { "AbortShadow", "func abort(text: string) => Console.writeLine(text)\n$abort(\"builtin\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: builtin\n" },
         { "AbortNested", "$abort($abort(\"inner\"))", string.Empty, 1, "Hello.kimi:1:8: abort KIMI_E_ABORT: inner\n" },
         { "AbortOnce", "$abort((message: do\n    Console.writeLine(\"once\")\n    exit to message: \"message\"\n))", "once\n", 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: message\n" },
         { "AbortSkipCleanup", "defer => Console.writeLine(\"cleanup\")\n$abort(\"stop\")\nConsole.writeLine(\"after\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },

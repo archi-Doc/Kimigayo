@@ -22,7 +22,7 @@ public class GenericTypeArgumentBindingTest
     [InlineData("(([2 of i32]) -> i32)")]
     public void CompleteArrayTypesAreValidGenericArguments(string type)
     {
-        var c = Parse($"struct Box<T>\nfunc f(value?: Box<{type}>) => ()\nfunc take<T>() => ()\ntake<{type}>()");
+        var c = Parse($"struct Box<T>\nfunc f(value: Box<{type}>) => ()\nfunc take<T>() => ()\ntake<{type}>()");
         Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
@@ -57,7 +57,7 @@ public class GenericTypeArgumentBindingTest
     [InlineData("(Box<C>)", DiagnosticCode.InvalidTypeFormation_Kd)]
     public void NonTypesAndIncompleteNestedTypesRemainInvalid(string type, DiagnosticCode expected, DiagnosticCode? callExpected = null)
     {
-        foreach (var use in new[] { $"func f(value?: Box<{type}>) => ()", $"take<{type}>()" })
+        foreach (var use in new[] { $"func f(value: Box<{type}>) => ()", $"take<{type}>()" })
         {
             var c = Parse($"group G\ncontract C\nstruct Box<T>\nfunc take<T>() => ()\n{use}");
             Assert.False(c.Bind().IsComplete);
@@ -72,7 +72,7 @@ public class GenericTypeArgumentBindingTest
     [InlineData("([2 of ref{static}/i32])")]
     public void NestedBorrowTypesRetainTheirOrigins(string type)
     {
-        var c = Parse($"struct Box<T>\nfunc f(value?: Box<{type}>) => ()");
+        var c = Parse($"struct Box<T>\nfunc f(value: Box<{type}>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
         var array = Assert.Single(f.Parameters[0].Type.BoundType!.Components);
@@ -98,7 +98,7 @@ public class GenericTypeArgumentBindingTest
     [Fact]
     public void GroupingKeepsTheSameConstructedTypeIdentity()
     {
-        var c = Parse("struct Box<T>\nfunc f(x?: Box<[2 of i32]>, y?: Box<([2 of i32])>) => ()");
+        var c = Parse("struct Box<T>\nfunc f(x: Box<[2 of i32]>, y: Box<([2 of i32])>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
         Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
@@ -107,7 +107,7 @@ public class GenericTypeArgumentBindingTest
     [Fact]
     public void WarmNestedTypeArgumentBindingAllocatesNothing()
     {
-        var c = Parse("struct Box<T>\nfunc f(value?: Box<([2 of i32])>) => ()\nfunc take<T>() => ()\ntake<([2 of i32])>()");
+        var c = Parse("struct Box<T>\nfunc f(value: Box<([2 of i32])>) => ()\nfunc take<T>() => ()\ntake<([2 of i32])>()");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));

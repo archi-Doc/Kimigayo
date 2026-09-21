@@ -1,6 +1,6 @@
-func echo(text?: string) -> string => text
+func echo(text: string) -> string => text
 
-func choose(first?: string, second?: string, takeFirst?: bool) -> string
+func choose(first: string, second: string, takeFirst: bool) -> string
     defer => Console.writeLine("cleanup")
     return if takeFirst => first else => second
 

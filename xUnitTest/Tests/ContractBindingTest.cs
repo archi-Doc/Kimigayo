@@ -66,7 +66,7 @@ public class ContractBindingTest
     [InlineData("    U is Owned\n", false)]
     public void RequirementPremisesMustProveImplementationConstraints(string premise, bool valid)
     {
-        var c = Parse($"contract C\n    func apply<T>(value?: T)\n        T is Copy\nstruct S\n    Self is C\n    public func apply<U>(value?: U)\n{premise.Replace("    ", "        ")}        ()");
+        var c = Parse($"contract C\n    func apply<T>(value: T)\n        T is Copy\nstruct S\n    Self is C\n    public func apply<U>(value: U)\n{premise.Replace("    ", "        ")}        ()");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
@@ -135,28 +135,28 @@ public class ContractBindingTest
     [Fact]
     public void VerifiedConformanceDischargesGenericCalls()
     {
-        var c = Parse("contract C\n    func f()\nstruct S {}\n    Self is C\n    public func f() => ()\nfunc use<T>(value?: T)\n    T is C\n    ()\nfunc caller(value?: S) => use(value)");
+        var c = Parse("contract C\n    func f()\nstruct S {}\n    Self is C\n    public func f() => ()\nfunc use<T>(value: T)\n    T is C\n    ()\nfunc caller(value: S) => use(value)");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]
     public void GenericDefinitionCannotRelyOnFavorableTypeArguments()
     {
-        var c = Parse("contract C\n    func f()\nstruct S<T> {}\n    Self is C\n    public func f<U>(value?: U)\n        U is Copy\n        ()\nfunc caller(value?: S<i32>) => ()");
+        var c = Parse("contract C\n    func f()\nstruct S<T> {}\n    Self is C\n    public func f<U>(value: U)\n        U is Copy\n        ()\nfunc caller(value: S<i32>) => ()");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void ProjectionUsesRequireConformanceEvidence()
     {
-        var c = Parse("contract C\n    associate Element\nfunc f<T>(value?: T.C.Element) => ()");
+        var c = Parse("contract C\n    associate Element\nfunc f<T>(value: T.C.Element) => ()");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void SignatureProjectionsSeeAllLeadingConstraints()
     {
-        var c = Parse("contract C\n    associate Element\nfunc f<T>(value?: T.C.Element) -> i32\n    T.C.Element is i32\n    T is C\n    return value");
+        var c = Parse("contract C\n    associate Element\nfunc f<T>(value: T.C.Element) -> i32\n    T.C.Element is i32\n    T is C\n    return value");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -179,7 +179,7 @@ public class ContractBindingTest
     [InlineData("i32", "T.C.Element is i32\n    T is C")]
     public void GenericInstanceRequirementCallsSubstituteAssociatedTypes(string result, string constraints)
     {
-        var c = Parse($"contract C\n    associate Element\n    func read(self: ref/Self) -> Element\nfunc readOne<T>(source?: ref/T) -> {result}\n    {constraints}\n    return source.read()");
+        var c = Parse($"contract C\n    associate Element\n    func read(self: ref/Self) -> Element\nfunc readOne<T>(source: ref/T) -> {result}\n    {constraints}\n    return source.read()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.NotNull(call.BoundCall!.Receiver);
@@ -206,9 +206,9 @@ public class ContractBindingTest
     [Fact]
     public void GenericRequirementCallsCheckTheirOwnConstraints()
     {
-        var c = Parse("contract C\n    func echo<T>(value?: T) -> T\n        T is Copy\nfunc call<S, U>(value?: U) -> U\n    S is C\n    U is Copy\n    return S.echo(value)");
+        var c = Parse("contract C\n    func echo<T>(value: T) -> T\n        T is Copy\nfunc call<S, U>(value: U) -> U\n    S is C\n    U is Copy\n    return S.echo(value)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var bad = Parse("contract C\n    func echo<T>(value?: T) -> T\n        T is Copy\nfunc call<S, U>(value?: U) -> U\n    S is C\n    return S.echo(value)");
+        var bad = Parse("contract C\n    func echo<T>(value: T) -> T\n        T is Copy\nfunc call<S, U>(value: U) -> U\n    S is C\n    return S.echo(value)");
         Assert.False(bad.Bind().IsComplete);
     }
 
@@ -218,14 +218,14 @@ public class ContractBindingTest
     [InlineData("(x: ref{static}/i32) -> ref{static}/i32", false)]
     public void OriginCorrespondencePreservesInputAndResultContracts(string signature, bool valid)
     {
-        var c = Parse($"contract C\n    func f(x?: ref{{r}}/i32) -> ref{{r}}/i32\nstruct S\n    Self is C\n    public func f {signature} => x");
+        var c = Parse($"contract C\n    func f(x: ref{{r}}/i32) -> ref{{r}}/i32\nstruct S\n    Self is C\n    public func f {signature} => x");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
     [Fact]
     public void WeakerResultLifetimeFailsEvenThoughInputKeyMatches()
     {
-        var c = Parse("contract C\n    func f(x?: ref/i32, y?: ref/i32) -> ref{x}/i32\nstruct S {}\n    Self is C\n    public func f(x?: ref/i32, y?: ref/i32) -> ref{y}/i32 => y");
+        var c = Parse("contract C\n    func f(x: ref/i32, y: ref/i32) -> ref{x}/i32\nstruct S {}\n    Self is C\n    public func f(x: ref/i32, y: ref/i32) -> ref{y}/i32 => y");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
@@ -233,7 +233,7 @@ public class ContractBindingTest
     [Fact]
     public void SharedInputOriginsCanMeetAtARequirementCall()
     {
-        var c = Parse("contract C\n    func f(x?: ref{a}/i32, y?: ref{a}/i32) -> ref{a}/i32\nfunc call<T>(x?: ref/i32, y?: ref/i32) -> ref{x and y}/i32\n    T is C\n    return T.f(x, y)");
+        var c = Parse("contract C\n    func f(x: ref{a}/i32, y: ref{a}/i32) -> ref{a}/i32\nfunc call<T>(x: ref/i32, y: ref/i32) -> ref{x and y}/i32\n    T is C\n    return T.f(x, y)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Equal(OriginKind.Intersection, call.BoundType!.Origin!.Kind);
@@ -242,7 +242,7 @@ public class ContractBindingTest
     [Fact]
     public void DistinctGenericAssociatedConstraintsCannotChooseAnArbitraryIdentity()
     {
-        var c = Parse("contract C\n    associate E\nfunc f<T>(value?: T.C.E)\n    T is C\n    T.C.E is i32\n    T.C.E is string\n    ()");
+        var c = Parse("contract C\n    associate E\nfunc f<T>(value: T.C.E)\n    T is C\n    T.C.E is i32\n    T.C.E is string\n    ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
     }
@@ -250,7 +250,7 @@ public class ContractBindingTest
     [Fact]
     public void RefinementRejectsIncompatibleLabelsWithoutAnImplementation()
     {
-        var c = Parse("contract A\n    func f(x?: i32)\ncontract B\n    func f(y?: i32)\ncontract C: A, B");
+        var c = Parse("contract A\n    func f(x: i32)\ncontract B\n    func f(y: i32)\ncontract C: A, B");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingState.Invalid, Container(c, "C").BindingState);
     }
@@ -268,7 +268,7 @@ public class ContractBindingTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct Outer<T> {}\n    contract C\n        func f(x?: T)");
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct Outer<T> {}\n    contract C\n        func f(x: T)");
         Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
         Assert.True(c.Bind().IsComplete);
     }
@@ -304,7 +304,7 @@ public class ContractBindingTest
     [Fact]
     public void WarmContractBindingReusesMetadataAndCallStorage()
     {
-        var source = "contract A\n    associate E\n    func read(self: ref/Self) -> E\ncontract B: A\n    Self.A.E is i32\nstruct S {}\n    Self is B\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(x?: ref/T)\n    T is B\n";
+        var source = "contract A\n    associate E\n    func read(self: ref/Self) -> E\ncontract B: A\n    Self.A.E is i32\nstruct S {}\n    Self is B\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(x: ref/T)\n    T is B\n";
         source += string.Concat(Enumerable.Repeat("    x.read()\n", 128));
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
@@ -384,7 +384,7 @@ public class ContractBindingTest
     [Fact]
     public void RefinementPremisesProveIntrinsicRequirementsInGenericBodies()
     {
-        var c = Parse("contract C: Copy\nfunc copy<T>(x?: T) -> T\n    T is Copy\n    return x\nfunc use<T>(x?: T) -> T\n    T is C\n    return copy(x)");
+        var c = Parse("contract C: Copy\nfunc copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc use<T>(x: T) -> T\n    T is C\n    return copy(x)");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -400,7 +400,7 @@ public class ContractBindingTest
     [Fact]
     public void GenericSlotKindsMatterToWitnessIdentification()
     {
-        var c = Parse("contract C\n    func f<s/T>(x?: s/T)\nstruct S {}\n    Self is C\n    public func f<T>(x?: T) => ()");
+        var c = Parse("contract C\n    func f<s/T>(x: s/T)\nstruct S {}\n    Self is C\n    public func f<T>(x: T) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.MissingContractImplementation_Kd);
     }
@@ -408,7 +408,7 @@ public class ContractBindingTest
     [Fact]
     public void ImplementationDefaultsDoNotChangeTheRequirementCallContract()
     {
-        var c = Parse("contract C\n    func f(x?: i32) -> i32\nstruct S {}\n    Self is C\n    public func f(x?: i32 = 1) -> i32 => x\nfunc call<T>() -> i32\n    T is C\n    return T.f()");
+        var c = Parse("contract C\n    func f(x: i32) -> i32\nstruct S {}\n    Self is C\n    public func f(x: i32 = 1) -> i32 => x\nfunc call<T>() -> i32\n    T is C\n    return T.f()");
         Assert.False(c.Bind().IsComplete);
         Assert.NotNull(c.Binding.GetConformance(Container(c, "S").BoundType!, Container(c, "C").BoundSymbol!));
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
@@ -438,7 +438,7 @@ public class ContractBindingTest
     [Fact]
     public void ReferencedNestedAssociatedContractsSupplyTheirFixedIdentities()
     {
-        var c = Parse("contract D\n    associate F is i32\ncontract C\n    associate E is D\nfunc f<T>(value?: T.C.E.D.F) -> i32\n    T is C\n    return value");
+        var c = Parse("contract D\n    associate F is i32\ncontract C\n    associate E is D\nfunc f<T>(value: T.C.E.D.F) -> i32\n    T is C\n    return value");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -460,7 +460,7 @@ public class ContractBindingTest
     [Fact]
     public void WitnessPremisesUseRefinementWithoutLeakingToTheImplementationBody()
     {
-        var c = Parse("contract A: Copy\ncontract C\n    func f<T>(x?: T)\n        T is A\nstruct S {}\n    Self is C\n    public func f<U>(x?: U)\n        U is Copy\n        ()");
+        var c = Parse("contract A: Copy\ncontract C\n    func f<T>(x: T)\n        T is A\nstruct S {}\n    Self is C\n    public func f<U>(x: U)\n        U is Copy\n        ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 

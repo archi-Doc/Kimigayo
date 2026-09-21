@@ -10,6 +10,9 @@ public sealed partial class Binding
 
     internal bool IsVerifiedSpecialization(FunctionKoto function) => this.specializations.ContainsKey(function);
 
+    internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
+        => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
+
     internal BoundCall? InstantiateForwardedCall(BoundCall inner, BoundCall outer)
     {
         var types = new BoundType?[inner.TypeArguments.Length];
@@ -125,8 +128,8 @@ public sealed partial class Binding
             // Receiver/length/constraint specializations require their own inherited contract
             // certificates. Do not accept their syntax by merely erasing the generic header.
             if (symbol.ReceiverIndex >= 0 || function.Modifier != ModifierKind.NoModifier || function.AttributeChain is not null ||
-                function.Origins.Count != 0 || function.TypeConstraints.Count != 0 || function.GenericArguments.Count == 0 ||
-                function.Parameters.Any(x => x.IsNameOptional || x.DefaultValue is not null || x.AttributeChain is not null))
+                function.NameBoundaryIndex >= 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0 || function.GenericArguments.Count == 0 ||
+                function.Parameters.Any(x => x.DefaultValue is not null || x.AttributeChain is not null))
             {
                 Fail(function, BindingFailure.Unsupported, true);
                 continue;

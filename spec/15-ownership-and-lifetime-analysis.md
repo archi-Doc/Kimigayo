@@ -194,7 +194,7 @@ origin-expression := Name
 A direct safe-borrow parameter, receiver or local used as an Origin denotes its value's outer borrow Origin, never the lifetime of the variable's storage:
 
 ```kimi
-func first<T>(x?: ref/T) -> ref{x}/T
+func first<T>(x: ref/T) -> ref{x}/T
 ```
 
 `x.source` denotes the abstract Origin `source` carried by `x`. Qualification is required so that values of the same Origin-bearing Type remain distinguishable:
@@ -242,7 +242,7 @@ A shared borrow from `static` has no non-static lifetime dependency and must sat
 `static` describes an Origin. `Owned` expresses independence from non-static lifetime dependencies; it is neither ownership Semantics nor permission to allocate storage:
 
 ```kimi
-func register<F>(f?: F)
+func register<F>(f: F)
     F is Owned
 ```
 
@@ -281,7 +281,7 @@ Borrow annotations precede `/` and contain one Origin expression, optionally fol
 A named Type reference's `{name}` introduces one binding-set name, with an optional trailing comma. It is never application of an existing Origin or set. The Type must have a nonempty schema known at definition; unknown generic schemas, duplicate names and use of a set as a scalar Origin are errors. Name each required occurrence separately and relate its slots. There is no whole-set equality, positional Origin application, mapping such as `{source => x}`, or call-site `f{a}(...)` application. `_` is neither a binder nor an inference request. Empty braces are permitted only on Type declaration headers (§15.3.2).
 
 ```kimi
-func identity<T>(value?: View<T>) -> View<T>{result}
+func identity<T>(value: View<T>) -> View<T>{result}
     origin result.source == value.source
     return value
 ```
@@ -364,7 +364,7 @@ Closed conditions independent of declaration parameters are definition-time proo
 In an ordinary named function, constructor, explicit accessor or Contract callable requirement, an unbound simple name in a permitted signature borrow annotation introduces a universally quantified scalar Origin. Relations and local annotations only reference existing names. Specializations and inherited stored accessor positions retain the original contract without adding binders. Input and result completion follow §15.4.
 
 ```kimi
-func nested<T>(x?: ref/(ref{s}/T), y?: ref{s}/T)
+func nested<T>(x: ref/(ref{s}/T), y: ref{s}/T)
 func constant() -> ref{s}/i32
 // Result-only s is universal too; a local referent cannot satisfy it.
 ```
@@ -385,7 +385,7 @@ New Origin/set names cannot hide visible Origins, sets or competing parameter/lo
 **Nested signatures.** Function Types, Callable and anonymous functions introduce no new named scalar Origins. Retain their limited per-call direct-input quantification and their own result omission rules. A set name inside a Function Type/Callable belongs to the declaration containing that Type expression. Each nested aggregate input slot must be fixed by a complete Type or an expression over existing outer Origins; an upper bound alone cannot leave a free per-call aggregate slot.
 
 ```kimi
-func useView<T>(x?: View<T>, callback?: (View<T>{c}) -> ())
+func useView<T>(x: View<T>, callback: (View<T>{c}) -> ())
     origin c.source == x.source
 ```
 
@@ -401,7 +401,7 @@ Slots retain inferred Loan requirements `none < ref < uniq`: shared borrow use r
 struct RawView<T> {source}
     let pointer: unsafe/T
     let count: isize
-    func get(self: ref/Self, index?: isize) -> ref{self.source}/T
+    func get(self: ref/Self, index: isize) -> ref{self.source}/T
 ```
 
 A header slot without a corresponding safe stored reference is a **Phantom Origin**. Its dependency is retained, but its declaration grants no pointer validity, Loan, Copy or access authority. Unsafe implementations or verified intrinsics must establish initialization, bounds, alignment, permissions and retention. Required input-derived Loans remain attached to dependent values. Treat a general phantom slot as invariant when safe shortening cannot be established structurally; verified intrinsic Types retain their established metadata. No general phantom authority inference is introduced. Static Origins still obey §15.2.3's source and unique-anchor restrictions.
@@ -448,7 +448,7 @@ For an ordinary callable's aggregate result slots:
 Intrinsic Type well-formedness alone does not turn an omitted result slot into a new universal binder. Check it against the completed contract. Normalize equality and mutual outlives while retaining any established binding; preserve nonsubstitutable equalities as both outlives directions and never infinitely expand cyclic expressions. Tautologies such as `static outlives x`, `x outlives x` and `x == x` do not change omission or quantification. Do not prove a condition trivial by assuming that same condition; normalization is deterministic and independent of clause order, without promising general semantic-equivalence testing.
 
 ```kimi
-func shorten<T>(value?: ref/T) -> View<T>{r}
+func shorten<T>(value: ref/T) -> View<T>{r}
     origin value outlives r.source
 
 struct Marker {source}
@@ -485,11 +485,11 @@ After explicit and inherited completion, apply these rules independently to each
 3. With no direct borrowed inputs, an aggregate slot defaults to `static` only when every input Type is provably Owned from existing premises (vacuously true for no inputs) and its Loan requirement is `none` or `ref`. Otherwise require an explicit contract.
 
 ```kimi
-func first<T>(x?: ref/T) -> ref/T                 // x
-func choose<T>(x?: ref/T, y?: ref/T) -> ref/T     // x and y
-func view<T>(x?: ref/T) -> View<T>                // source = x
-func invalid<T>(x?: View<T>) -> View<T>           // Error: result relation required.
-func inner<T>(items?: ref/Array<View<T>{v}>) -> View<T>{r}
+func first<T>(x: ref/T) -> ref/T                 // x
+func choose<T>(x: ref/T, y: ref/T) -> ref/T     // x and y
+func view<T>(x: ref/T) -> View<T>                // source = x
+func invalid<T>(x: View<T>) -> View<T>           // Error: result relation required.
+func inner<T>(items: ref/Array<View<T>{v}>) -> View<T>{r}
     origin r.source == v.source
 ```
 
@@ -647,7 +647,7 @@ This enforces shared aliasing or mutation, never both at once.
 Borrowing through an exclusive borrow creates a child Loan. While the child is live, the parent remains live but access through it is suspended; overlapping access is rejected by the normal conflict rules.
 
 ```kimi
-func bump(n?: uniq/i32)
+func bump(n: uniq/i32)
 
 var v = 0
 bump(v@uniq)
@@ -670,7 +670,7 @@ For a call, the compiler:
 This applies to direct borrow results and to nested aggregate results:
 
 ```kimi
-func make(a?: ref/A, b?: ref/B)
+func make(a: ref/A, b: ref/B)
     -> Pair<A, B>{
         left => a,
         right => b}
@@ -693,7 +693,7 @@ These static and capture anchors are kept when composing [receiver-preservation 
 Every Origin in a function signature is universally quantified. The implementation must work for every legal caller instantiation, so a local region cannot be widened to satisfy a universal return Origin:
 
 ```kimi
-func bad(x?: ref/i32) -> ref{x}/i32
+func bad(x: ref/i32) -> ref{x}/i32
     let local: i32 = 1
     return local@ref // Error: the local cannot satisfy the universal Origin x.
 ```
@@ -754,9 +754,9 @@ Diagnostics distinguish reservation, activation and the conflicting use or retai
 The following ordinary declarations belong to the public `Kimi.Intrinsics` group (§22.1.1) and have compiler-intrinsic implementations selected by declaration identity; a same-spelled user function has no intrinsic behavior. `T` is any valid complete value Type; these operations impose no `Sealed`, `Copy` or `Owned` constraint.
 
 ```kimi
-public func replace<T>(target?: uniq/T, with => value: T) -> ()
-public func exchange<T>(target?: uniq/T, with => value: T) -> T
-public func swap<T>(first?: uniq/T, second?: uniq/T) -> ()
+public func replace<T>(target: uniq/T ! with => value: T) -> ()
+public func exchange<T>(target: uniq/T ! with => value: T) -> T
+public func swap<T>(first: uniq/T, second: uniq/T) -> ()
 ```
 
 Each target must be fully Initialized, exclusively writable and permitted to undergo a whole-value update, and its complete Type must match the incoming value exactly, including generic arguments and internal Origins. Ordinary complete owner storage may contain an open Core. Object payload storage instead needs the complete-target proof of §13.5.5.1; neither a base subobject nor an open object View qualifies.
@@ -794,7 +794,7 @@ For a Non-Copy `x`, `x = x` can Move and reinitialize, whereas `Kimi.Intrinsics.
 `swap` requires the structural proof of [Place overlap](#1562-place-overlap-and-conflicts). Independent roots, distinct inline fields, Tuple elements or constant fixed-array indices, and valid simultaneous exclusive borrows with distinct Loan anchors can prove disjointness; identical or containing Places overlap. Dereferences follow Loan provenance, and different shared references or raw pointers alone prove nothing. Unknown relationships are rejected, even when runtime comparisons or optimization suggest separation.
 
 ```kimi
-func swapValues<T>(a?: uniq/T, b?: uniq/T)
+func swapValues<T>(a: uniq/T, b: uniq/T)
     Kimi.Intrinsics.swap(a, b) // Valid live exclusive inputs establish distinct anchors.
 ```
 

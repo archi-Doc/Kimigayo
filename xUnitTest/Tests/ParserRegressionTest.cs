@@ -28,7 +28,7 @@ public class ParserRegressionTest
     [InlineData("var x = value[")]
     [InlineData("var x = (1")]
     [InlineData("var x = value@")]
-    [InlineData("func F(value?: (i32")]
+    [InlineData("func F(value: (i32")]
     public void RecoversFromMissingExpressionDelimiter(string source)
     {
         var (_, diagnostics) = Parse(source);
@@ -199,7 +199,7 @@ public class ParserRegressionTest
     {
         const string Source = """
             public group Kernel32 // shared (no instance)
-                #LibraryImport(LibraryName) public func GetStdHandle(nStdHandle?: u32) -> ptr
+                #LibraryImport(LibraryName) public func GetStdHandle(nStdHandle: u32) -> ptr
 
             public group Helper // namespace - alias
                 public let Id: i32 = 123
@@ -293,7 +293,7 @@ public class ParserRegressionTest
     [Fact]
     public void AppliesSemanticsToCompoundType()
     {
-        var (root, diagnostics) = Parse("func F(value?: objref/SomeType<List<owner/T>, I>) => ()");
+        var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>) => ()");
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
@@ -310,7 +310,7 @@ public class ParserRegressionTest
     [InlineData("SomeType<T>{collection}", "collection")]
     public void ParsesAndWritesTypeOrigin(string typeText, string expectedOrigin)
     {
-        var (root, diagnostics) = Parse($"func F(value?: {typeText}) => ()");
+        var (root, diagnostics) = Parse($"func F(value: {typeText}) => ()");
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
@@ -476,7 +476,7 @@ public class ParserRegressionTest
                 var converted = item@unsafe/C
                 var called = transform(item, "text")
 
-                private func map<s/T>(value?: ref/T = defaultValue, fallback?: owner/T = defaultValue) -> uniq/T
+                private func map<s/T>(value: ref/T = defaultValue, fallback: owner/T = defaultValue) -> uniq/T
                     return
             """;
         var compilation = Compilation.CreateForTest();

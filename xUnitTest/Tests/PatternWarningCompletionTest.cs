@@ -52,7 +52,7 @@ public class PatternWarningCompletionTest
     [Fact]
     public void ValidNonExhaustivePatternsStillWarnAboutDuplicateArms()
     {
-        var c = MinimalEmissionTest.Analyze("group Consumer\n    func inspect(value?: bool) => match value\n        true => ()\n        true => ()");
+        var c = MinimalEmissionTest.Analyze("group Consumer\n    func inspect(value: bool) => match value\n        true => ()\n        true => ()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
         Assert.Single(c.Binding.PatternWarnings);
@@ -88,5 +88,5 @@ public class PatternWarningCompletionTest
     }
 
     private static string Source(string access, string first, string second)
-        => access + " contract Hidden\npublic struct Value\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\ngroup Consumer\n    func inspect(value?: E<Value>) => match value\n        " + first + " => ()\n        " + second + " => ()";
+        => access + " contract Hidden\npublic struct Value\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\ngroup Consumer\n    func inspect(value: E<Value>) => match value\n        " + first + " => ()\n        " + second + " => ()";
 }

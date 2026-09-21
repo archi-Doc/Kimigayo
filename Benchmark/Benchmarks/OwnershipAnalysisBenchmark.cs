@@ -28,7 +28,7 @@ public class OwnershipAnalysisBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        var source = new StringBuilder("func f(c?: bool)\n");
+        var source = new StringBuilder("func f(c: bool)\n");
         if (this.Unreachable)
         {
             source.Append("    return\n");

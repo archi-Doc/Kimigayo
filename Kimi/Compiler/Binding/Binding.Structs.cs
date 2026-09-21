@@ -181,36 +181,14 @@ public sealed partial class Binding
         try
         {
             var next = 0;
+            var named = false;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                var slot = -1;
-                if (call.GetArgumentLabel(i) is { } label)
-                {
-                    for (var j = 0; j < function.Parameters.Count; j++)
-                    {
-                        if (function.Parameters[j].ExternalName == label)
-                        {
-                            slot = j;
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    while (next < function.Parameters.Count && used[next])
-                    {
-                        next++;
-                    }
-
-                    slot = next++;
-                }
-
-                if ((uint)slot >= (uint)function.Parameters.Count || used[slot])
+                if (!function.TryMapArgument(call.GetArgumentLabel(i), ref next, ref named, used, out var slot))
                 {
                     return null;
                 }
 
-                used[slot] = true;
                 if (function.Parameters[slot].Type.BoundType is { } pattern && call.ArgumentNodes[i].BoundType is { } actual &&
                     this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _))
                 {

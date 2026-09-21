@@ -136,7 +136,7 @@ public class PropertyRevisionParseTest
     [InlineData("var p: T\n    get(self: ref/Self) -> T")]
     [InlineData("var p: T\n    get(self: ref/Self, extra: T) -> T => value")]
     [InlineData("var p: T\n    get(self: ref/Self = other) -> T => value")]
-    [InlineData("var p: T\n    get(self?: ref/Self) -> T => value")]
+    [InlineData("var p: T\n    get(! self: ref/Self) -> T => value")]
     [InlineData("var p: T\n    get(self:) -> T => value")]
     [InlineData("var p: T\n    get(self: ref/Self) ->")]
     [InlineData("var p: T\n    get(self: ref/Self) -> T =>")]

@@ -13,7 +13,7 @@ public class FunctionApiCertificateBindingTest
     [InlineData("i32", "Source.Hidden.Element")]
     public void InvalidProjectionSignatureCannotCertifyWitness(string input, string result)
     {
-        var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value?: i32) -> i32\npublic struct S\n    Self is Export\n    public func identity(self: ref/Self, value?: " + input + ") -> " + result + " => value");
+        var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value: i32) -> i32\npublic struct S\n    Self is Export\n    public func identity(self: ref/Self, value: " + input + ") -> " + result + " => value");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
@@ -46,7 +46,7 @@ public class FunctionApiCertificateBindingTest
     [Fact]
     public void RebindingChangedSignatureInvalidatesAndRestoresWitness()
     {
-        var source = Source("internal", "public").Replace("value?: Source.Hidden.Element", "value?: i32", StringComparison.Ordinal);
+        var source = Source("internal", "public").Replace("value: Source.Hidden.Element", "value: i32", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<FunctionKoto>().Single();
@@ -85,7 +85,7 @@ public class FunctionApiCertificateBindingTest
     }
 
     private static string Source(string hiddenAccess, string typeAccess)
-        => hiddenAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value?: i32) -> i32\n" + typeAccess + " struct S\n    Self is Export\n    public func identity(self: ref/Self, value?: Source.Hidden.Element) -> Source.Hidden.Element => value";
+        => hiddenAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value: i32) -> i32\n" + typeAccess + " struct S\n    Self is Export\n    public func identity(self: ref/Self, value: Source.Hidden.Element) -> Source.Hidden.Element => value";
 
     private static BoundConformance Definition(Compilation c)
     {

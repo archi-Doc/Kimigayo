@@ -3,7 +3,7 @@
 Static string elements of owned tuples and fixed arrays can be compared or passed to required `ref/string` parameters. This example uses owned parameters, tuple literals, direct function results, and `if`/`do` results; `loop` and `match` results use the same delivery checks.
 
 ```kimi
-func same(a: ref/string, b: ref/string) -> bool => a == b
+func same(! a: ref/string, b: ref/string) -> bool => a == b
 func make() -> (string, i32) => ("held", 42)
 let equal = same(make().0, ("held", 0).0)
 ```

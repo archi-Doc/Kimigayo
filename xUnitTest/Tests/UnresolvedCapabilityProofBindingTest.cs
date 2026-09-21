@@ -17,7 +17,7 @@ public class UnresolvedCapabilityProofBindingTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source {}\npublic struct Target {}\n    Source is Origin\n    Self is Copy\ngroup G\n    func inspect(value?: " + type + ") => ()"));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source {}\npublic struct Target {}\n    Source is Origin\n    Self is Copy\ngroup G\n    func inspect(value: " + type + ") => ()"));
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single();

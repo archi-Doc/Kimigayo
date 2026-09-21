@@ -48,7 +48,7 @@ public class ElementAssignmentEmissionTest
     [InlineData("var a = (\"held\", 0)\nlet b = a\na.1 = 42")]
     [InlineData("var a: [1 of i32] = [0]\na[0] += true")]
     [InlineData("let a: [1 of i32] = [0]\na[0]++")]
-    [InlineData("func f(a?: [1 of i32])\n    a[0] = 42")]
+    [InlineData("func f(a: [1 of i32])\n    a[0] = 42")]
     [InlineData("func f() -> [1 of i32] => [0]\nf()[0] = 42")]
     [InlineData("var a: [1 of i32] = [0]\na[0] = true")]
     [InlineData("var a: [1 of i32] = [0]\nlet i: i32 = 0\na[i] = 42")]
@@ -114,7 +114,7 @@ public class ElementAssignmentEmissionTest
     [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    a[0] = 1\n    exit to work: 0\n)] = 42")]
     [InlineData("var a: [1 of i32] = [0]\nlet n = a[(work: do\n    a[0] = 42\n    exit to work: 0\n)]")]
     [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    defer => a[0] = 1\n    exit to work: 0\n)] = 42")]
-    [InlineData("func take(a?: (string, [1 of i32])) => ()\nvar a: (string, [1 of i32]) = (\"held\", [0])\na.1[(work: do\n    take(a)\n    exit to work: 0\n)] = 42")]
+    [InlineData("func take(a: (string, [1 of i32])) => ()\nvar a: (string, [1 of i32]) = (\"held\", [0])\na.1[(work: do\n    take(a)\n    exit to work: 0\n)] = 42")]
     public void AccessProtectionRejectsConflictingWritesAndMoves(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

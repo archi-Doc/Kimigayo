@@ -38,7 +38,7 @@ enum Option<T>
     Some(T)
     None
 
-func findUser(id?: UserId) -> Option<User>
+func findUser(id: UserId) -> Option<User>
 ```
 
 ```kimi
@@ -66,7 +66,7 @@ enum FileError
     InvalidData
     IoFailure
 
-func readFile(path?: string) -> Result<Data, FileError>
+func readFile(path: string) -> Result<Data, FileError>
 ```
 
 ```kimi
@@ -79,7 +79,7 @@ match readFile(path)
 Combine the Types when an API distinguishes normal absence from operation failure:
 
 ```kimi
-func lookupUser(id?: UserId) -> Result<Option<User>, LookupError>
+func lookupUser(id: UserId) -> Result<Option<User>, LookupError>
 ```
 
 With this expected Type, `.Ok(.Some(user))` constructs success with a value, `.Ok(.None)` normal absence, and `.Err(error)` a failed lookup.
@@ -91,7 +91,7 @@ With this expected Type, `.Ok(.Some(user))` constructs success with a value, `.O
 Recoverable failures are ordinary values: they neither throw exceptions nor propagate implicitly. They are handled with ordinary control flow such as `match` and propagated explicitly with `return`:
 
 ```kimi
-func loadSize(path?: string) -> Result<usize, FileError>
+func loadSize(path: string) -> Result<usize, FileError>
     return match readFile(path)
         .Ok(let data) => .Ok(data.count)
         .Err(let error) => .Err(error)
@@ -116,9 +116,9 @@ Checked runtime operations Abort on their defined failures: integer overflow; in
 The same cause can be recoverable under a different API contract:
 
 ```kimi
-func tryAllocate(size?: usize) -> Option<Buffer>
+func tryAllocate(size: usize) -> Option<Buffer>
 
-func allocateRequired(size?: usize) -> Buffer
+func allocateRequired(size: usize) -> Buffer
     return match tryAllocate(size)
         .Some(let buffer) => buffer
         .None => $abort("Required memory could not be allocated")
@@ -135,7 +135,7 @@ Failure to allocate storage required by common Function Type erasure or by [Kimi
 A `$abort(...)` expression has Type Never and never completes normally; the ordinary [Never](03-types-and-values.md#315-unit-and-never-types) and [result validation](14-control-flow.md#149-result-validation) rules apply:
 
 ```kimi
-func requireValue(value?: Option<i32>) -> i32
+func requireValue(value: Option<i32>) -> i32
     return match value
         .Some(let x) => x
         .None => $abort("Required value is missing")
@@ -181,7 +181,7 @@ struct ParseReport<T>
     let value: T
     let warnings: Array<ParseWarning>
 
-func parse(source?: string) -> Result<ParseReport<Syntax>, ParseError>
+func parse(source: string) -> Result<ParseReport<Syntax>, ParseError>
 ```
 
 This API returns warnings with successful results. To preserve warnings on failure, include them in the error value or in an outer report containing the `Result`.
@@ -217,7 +217,7 @@ For a non-Unit expression in Discard Context, a warning is issued when its evalu
 The analysis considers literals, Copy locals, built-in operations and comparisons, Case construction and Tuples, including their nested operations. It accounts for calls, user-defined comparisons, Move and Loan effects, destruction, Abort and possible divergence. Callee and destructor bodies are not inspected to infer purity; if the absence of effects cannot be established, no warning is issued.
 
 ```kimi
-func isAdult(age?: i32) => age >= 18 // Warning: add -> bool if this is the result.
+func isAdult(age: i32) => age >= 18 // Warning: add -> bool if this is the result.
 func answer() => 42               // Warning also with an omitted Unit return Type.
 left == right                    // Warning for initialized i32 locals.
 if ready => 1                     // Warn on the discarded body value.

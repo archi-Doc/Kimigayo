@@ -398,7 +398,7 @@ struct Point
     var x: i32
     var y: i32
 
-func duplicate<T>(value?: T) -> (T, T)
+func duplicate<T>(value: T) -> (T, T)
     T is Copy
     return (value, value)
 ```

@@ -54,7 +54,7 @@ public class ConditionalProjectionCertificateBindingTest
     [InlineData(true)]
     public void IndependentConformanceAndTypeFormationRemainUsable(bool lateWitness)
     {
-        var source = Prefix(lateWitness, false) + Consumer.Replace("contract C", "contract D\ncontract C", StringComparison.Ordinal) + "\n    Self is D when T is Copy\nfunc accept(x?: S<string>) => ()";
+        var source = Prefix(lateWitness, false) + Consumer.Replace("contract C", "contract D\ncontract C", StringComparison.Ordinal) + "\n    Self is D when T is Copy\nfunc accept(x: S<string>) => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
@@ -97,7 +97,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.False(ConditionalProperty(c).IsVerified);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single();
         var original = function.Parameters[1].Type;
-        var donor = MinimalEmissionTest.Analyze(source.Replace("x?: Local.Hidden.Item", "x?: i32", StringComparison.Ordinal));
+        var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.Hidden.Item", "x: i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single().Parameters[1].Type;
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.True(c.Bind().IsComplete);
@@ -204,7 +204,7 @@ public class ConditionalProjectionCertificateBindingTest
 
     private static string Prefix(bool lateWitness, bool valid)
         => lateWitness
-            ? (valid ? "public" : "internal") + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x?: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x?: Local.Hidden.Item) -> i32 => x\n"
+            ? (valid ? "public" : "internal") + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x\n"
             : "contract Origin\n    associate Item\nstruct Input<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is i32\nstruct Source\n    Self is Origin\n    associate Origin.Item is Input<" + (valid ? "i32" : "string") + ">.Origin.Item\n";
 
     private static Compilation Reload(Compilation c)

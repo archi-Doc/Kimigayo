@@ -27,7 +27,7 @@ public class LocalLoopContinuationTest
     [InlineData("Local", "var x = 1\n" + Loop + "let y = x")]
     [InlineData("Initializer", "var x: i32 = loop\n    var n = 1\n    n += 1\nx = 3\nlet y = x")]
     [InlineData("Nested", "var x = 1\ndo\n    loop\n        var n = 1\n        while n < 3\n            n += 1\n        if n == 3 => continue else => ()\nlet y = x")]
-    [InlineData("Default", "func value(y?: i32 = (loop\n    var n = 1\n    n = 2\n)) -> i32 => y\nvar x = 1\nvalue()\nlet y = x")]
+    [InlineData("Default", "func value(y: i32 = (loop\n    var n = 1\n    n = 2\n)) -> i32 => y\nvar x = 1\nvalue()\nlet y = x")]
     [InlineData("Checking", "func f()\n    return\n    var x: i32 = loop\n        var n = 1\n        n = 2\n    x = 3\n    let y = x\nf()\nloop => continue")]
     [InlineData("ContainedExit", "let x = 1\nloop\n    var n = work: do\n        exit to work: 1\n    n += 1\nlet y = x")]
     public void EmitsLoopsWhoseEffectsStayLocal(string name, string source)
@@ -39,7 +39,7 @@ public class LocalLoopContinuationTest
     [InlineData("let x = \"s\"\nloop\n    let y = x\nConsole.writeLine(x)")]
     [InlineData("func f() => ()\nvar x = 1\nloop\n    f()\nlet y = x")]
     [InlineData("var x = 1\nloop\n    defer => ()\nlet y = x")]
-    [InlineData("func f(x?: i32)\n    loop => return\n    let y = x\nf(1)")]
+    [InlineData("func f(x: i32)\n    loop => return\n    let y = x\nf(1)")]
     public void EnclosingEffectsAndUnverifiedOperationsRemainGuarded(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

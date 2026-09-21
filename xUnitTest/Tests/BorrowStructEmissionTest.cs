@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class BorrowStructEmissionTest
 {
-    private const string Counter = "struct Counter\n    public var value: i32 = 0\n    deinit => Console.writeLine(\"drop\")\nfunc add(counter?: uniq/Counter, amount?: i32)\n    counter.value = counter.value + amount\nfunc borrow(counter?: ref/Counter) -> ref{counter}/Counter => counter\n";
+    private const string Counter = "struct Counter\n    public var value: i32 = 0\n    deinit => Console.writeLine(\"drop\")\nfunc add(counter: uniq/Counter, amount: i32)\n    counter.value = counter.value + amount\nfunc borrow(counter: ref/Counter) -> ref{counter}/Counter => counter\n";
 
     [Fact]
     public void Milestone5()
@@ -34,7 +34,7 @@ public class BorrowStructEmissionTest
     [Theory]
     [InlineData("struct S\n    let n: i32\nlet s = S.init()")]
     [InlineData("struct S\n    let n: i32 = 1\n    init() => ()\nlet s = S.init()")]
-    [InlineData("struct S\n    let n: i32 = 1\n    public init(n?: i32) => ()\nlet s = S.init()")]
+    [InlineData("struct S\n    let n: i32 = 1\n    public init(n: i32) => ()\nlet s = S.init()")]
     [InlineData("struct S\n    let n: i32 = true\nlet s = S.init()")]
     public void RejectsInvalidConstruction(string source)
     {
@@ -60,17 +60,17 @@ public class BorrowStructEmissionTest
 
     [Theory]
     [InlineData("var c = Counter.init()\nlet r = borrow(c@ref)\nadd(c@uniq, 1)\nlet n = r.value")]
-    [InlineData("func take(c?: Counter) => ()\nvar c = Counter.init()\nlet r = borrow(c@ref)\ntake(c)\nlet n = r.value")]
+    [InlineData("func take(c: Counter) => ()\nvar c = Counter.init()\nlet r = borrow(c@ref)\ntake(c)\nlet n = r.value")]
     [InlineData("func bad() -> ref{static}/Counter\n    let c = Counter.init()\n    return c@ref")]
-    [InlineData("func bad(c?: ref/Counter)\n    c.value = 9")]
+    [InlineData("func bad(c: ref/Counter)\n    c.value = 9")]
     [InlineData("let c = Counter.init()\nadd(c@uniq, 1)")]
-    [InlineData("func both(a?: uniq/Counter, b?: uniq/Counter) => ()\nvar c = Counter.init()\nboth(c@uniq, c@uniq)")]
-    [InlineData("func both(a?: ref/Counter, b?: uniq/Counter) => ()\nvar c = Counter.init()\nboth(c@ref, c@uniq)")]
+    [InlineData("func both(a: uniq/Counter, b: uniq/Counter) => ()\nvar c = Counter.init()\nboth(c@uniq, c@uniq)")]
+    [InlineData("func both(a: ref/Counter, b: uniq/Counter) => ()\nvar c = Counter.init()\nboth(c@ref, c@uniq)")]
     [InlineData("var c = Counter.init()\nlet r = c@ref\nadd(r@uniq, 1)")]
     [InlineData("let r = borrow(Counter.init())\nlet n = r.value")]
-    [InlineData("func bad(c?: uniq/Counter)\n    let r = borrow(c@ref)\n    c.value = 9\n    let n = r.value\nvar c = Counter.init()\nbad(c@uniq)")]
+    [InlineData("func bad(c: uniq/Counter)\n    let r = borrow(c@ref)\n    c.value = 9\n    let n = r.value\nvar c = Counter.init()\nbad(c@uniq)")]
     [InlineData("var c = Counter.init()\nlet u = c@uniq\nlet r = borrow(u@ref)\nu.value = 9\nlet n = r.value")]
-    [InlineData("func bad(c?: uniq/Counter)\n    $abort(\"stop\")\n    let r = c@ref\n    c.value = 9\n    let n = r.value")]
+    [InlineData("func bad(c: uniq/Counter)\n    $abort(\"stop\")\n    let r = c@ref\n    c.value = 9\n    let n = r.value")]
     public void RejectsInvalidBorrow(string body)
     {
         var c = MinimalEmissionTest.Analyze(Counter + body);
@@ -82,8 +82,8 @@ public class BorrowStructEmissionTest
     [InlineData("Returned", "var c = Counter.init()\nadd(c@uniq, 7)\nlet r = borrow(c@ref)\nif r.value == 7 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
     [InlineData("LastUse", "var c = Counter.init()\nlet r = borrow(c@ref)\nlet n = r.value\nadd(c@uniq, 7)\nif c.value == 7 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
     [InlineData("SharedCopies", "var c = Counter.init()\nlet r = borrow(c@ref)\nlet s = r\nif s.value == r.value => Console.writeLine(\"ok\")", "ok\ndrop\n")]
-    [InlineData("Reborrow", "func forward(c?: uniq/Counter)\n    add(c, 7)\n    add(c, 1)\nvar c = Counter.init()\nforward(c@uniq)\nif c.value == 8 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
-    [InlineData("OwnerArgument", "func inspect(c?: Counter)\n    let r = borrow(c@ref)\n    if r.value == 0 => Console.writeLine(\"ok\")\ninspect(Counter.init())", "ok\ndrop\n")]
+    [InlineData("Reborrow", "func forward(c: uniq/Counter)\n    add(c, 7)\n    add(c, 1)\nvar c = Counter.init()\nforward(c@uniq)\nif c.value == 8 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
+    [InlineData("OwnerArgument", "func inspect(c: Counter)\n    let r = borrow(c@ref)\n    if r.value == 0 => Console.writeLine(\"ok\")\ninspect(Counter.init())", "ok\ndrop\n")]
     [InlineData("ExclusiveLocal", "var c = Counter.init()\nlet u = c@uniq\nadd(u@uniq, 7)\nadd(u@uniq, 1)\nif u.value == 8 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
     public void ExecutesBorrow(string name, string body, string stdout)
         => ScalarEmissionTest.EmitFixture("BorrowStruct" + name, Counter + body, stdout);

@@ -24,7 +24,7 @@ public class NormalizedConstraintProofBindingTest
     [InlineData("Source.Origin.Item\n    T is not i32", "bool", ConstraintProof.Error)]
     public void EquivalentRequirementSpellingsUseTheSameEvidence(string evidence, string requirement, ConstraintProof expected)
     {
-        var c = MinimalEmissionTest.Analyze(Head + "func context<T>(value?: T)\n    T is " + evidence + "\n    ()\nfunc query<T>(value?: T)\n    T is " + requirement + "\n    ()");
+        var c = MinimalEmissionTest.Analyze(Head + "func context<T>(value: T)\n    T is " + evidence + "\n    ()\nfunc query<T>(value: T)\n    T is " + requirement + "\n    ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         AssertProof(c, expected);
         c.Bind();
@@ -54,7 +54,7 @@ public class NormalizedConstraintProofBindingTest
     [InlineData("string", ConstraintProof.Refuted)]
     public void ConcreteProofNormalizesTheAssociatedRequirement(string argument, ConstraintProof expected)
     {
-        var c = MinimalEmissionTest.Analyze(Head + "func query<T>(value?: T)\n    T is Source.Origin.Item\n    ()\nfunc context(value?: " + argument + ") => ()");
+        var c = MinimalEmissionTest.Analyze(Head + "func query<T>(value: T)\n    T is Source.Origin.Item\n    ()\nfunc context(value: " + argument + ") => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         AssertProof(c, expected);
     }
@@ -71,7 +71,7 @@ public class NormalizedConstraintProofBindingTest
     [Fact]
     public void ReplacingAssociatedIdentityRebuildsProofEvidence()
     {
-        const string functions = "func context<T>(value?: T)\n    T is Source.Origin.Item or string\n    ()\nfunc query<T>(value?: T)\n    T is i32 or string\n    ()";
+        const string functions = "func context<T>(value: T)\n    T is Source.Origin.Item or string\n    ()\nfunc query<T>(value: T)\n    T is i32 or string\n    ()";
         var c = MinimalEmissionTest.Analyze(Head + functions);
         AssertProof(c, ConstraintProof.Proven);
         var clause = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<IsKoto>().Single(x => x.IsAssociatedConstraint);

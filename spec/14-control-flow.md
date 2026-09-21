@@ -377,7 +377,7 @@ The subject is evaluated and acquired once. Arms are tried in source order, and 
 **Match is exhaustive in every Evaluation Context and body form.** Intentionally ignored values are handled with `_ => ()` or suitable Case-specific arms. A selected arm list must be nonempty. Coverage uses only the conservative proof rules of §14.8.4.
 
 ```kimi
-func positiveOrZero(value?: Option<i32>) -> i32
+func positiveOrZero(value: Option<i32>) -> i32
     return match value
         .Some(let n) if n > 0 => n
         .Some(_)
@@ -482,7 +482,7 @@ match packet
 Here the first `data` is `ref/Data` in the guard and `Data` in the body; writing `data@ref` in the guard copies that shared reference.
 
 ```kimi
-func same(a?: ref/string, b?: ref/string) -> bool => a == b
+func same(a: ref/string, b: ref/string) -> bool => a == b
 
 match "hello"
     let text if same(text, "hello") => Console.writeLine(text)
@@ -697,7 +697,7 @@ func incomplete() -> i32
     if true => return 1
 // Error: structural false path reaches the body end and supplies Unit.
 
-func shortCircuit(flag?: bool) -> i32
+func shortCircuit(flag: bool) -> i32
     flag and (return 1)
 // Error: skipping the right operand reaches the body end.
 
@@ -734,7 +734,7 @@ A complete payload update invalidates facts about the old field contents and the
 The Effective Type is used for member lookup, argument applicability, overload resolution, assignment sources, results and local inference. Each candidate's ordinary fitting and adaptation rules apply; a base candidate is not discarded if those rules fit, resolution is not retried with the declared Type, and already fixed declarations and destination Types do not change. Explicit object upcasts remain necessary where ordinarily required.
 
 ```kimi
-func handle(value?: objref/Animal) -> ()
+func handle(value: objref/Animal) -> ()
     let alias = value
     require value is Dog else => return
     value.bark()
@@ -786,13 +786,13 @@ Comparison-only Loans abandoned by that transfer end after its operand acquisiti
 These continuations add no Structural Completion or Runtime Reachability edges, no implicit Unit results and no normal successor to a `require` failure. Their states are never merged into reachable execution paths, but their result-source Types are still included under §14.9.
 
 ~~~kimi
-func scoreInBranch(animal?: objref/Animal) -> i32
+func scoreInBranch(animal: objref/Animal) -> i32
     if animal is Dog
         return 0
         return animal.score() // Unreachable, but retains the Dog refinement.
     return 0
 
-func scoreAfterReturn(animal?: objref/Animal) -> i32
+func scoreAfterReturn(animal: objref/Animal) -> i32
     return 0
     require animal is Dog else => return 1
     return animal.score() // Refined within the unreachable region.

@@ -16,7 +16,7 @@ public class SiblingMoveBorrowTest
     [InlineData("Tuple", "var pair = (Counter.init(), Counter.init())\nlet a = pair.0@uniq\nlet moved = pair.1\na.value += moved.value\nrequire pair.0.value == 2 else => $abort(\"value\")")]
     [InlineData("Nested", "var pair = (Counter.init(), (Counter.init(), Counter.init()))\nlet a = pair.1.0@uniq\nlet moved = pair.1.1\na.value += moved.value\nrequire pair.1.0.value == 2 else => $abort(\"value\")")]
     [InlineData("Reborrow", "var pair = Pair.init()\nlet a = pair.left@uniq\nlet b = a@ref\nlet moved = pair.right\nrequire b.value + moved.value == 2 else => $abort(\"value\")")]
-    [InlineData("Conditional", "func check(flag?: bool)\n    var pair = Pair.init()\n    let a = pair.left@uniq\n    if flag\n        let moved = pair.right\n    a.value += 1\n    require pair.left.value == 2 else => $abort(\"value\")\ncheck(true)\ncheck(false)")]
+    [InlineData("Conditional", "func check(flag: bool)\n    var pair = Pair.init()\n    let a = pair.left@uniq\n    if flag\n        let moved = pair.right\n    a.value += 1\n    require pair.left.value == 2 else => $abort(\"value\")\ncheck(true)\ncheck(false)")]
     [InlineData("Unreachable", "func check()\n    return\n    var pair = Pair.init()\n    let a = pair.left@ref\n    let moved = pair.right\n    let value = a.value\ncheck()")]
     [InlineData("Repair", "var pair = Pair.init()\nlet moved = pair.right\nlet a = pair.left@uniq\npair.right = Counter.init()\na.value += moved.value\nlet whole = pair\nrequire whole.left.value == 2 and whole.right.value == 1 else => $abort(\"value\")")]
     public void KeepsDisjointBorrowAliveAcrossMove(string name, string source)
@@ -34,7 +34,7 @@ public class SiblingMoveBorrowTest
     [InlineData("var pair = Pair.init()\nlet moved = pair.left\nlet a = pair.left@ref\nlet value = a.value")]
     [InlineData("var pair = (Counter.init(), (Counter.init(), Counter.init()))\nlet moved = pair.1.1\nlet a = pair.1@ref\nlet value = a.0.value")]
     [InlineData("var pair = Pair.init()\nlet a = pair.left@ref\nlet moved = pair.right\npair = Pair.init()\nlet value = a.value")]
-    [InlineData("func check(flag?: bool)\n    var pair = Pair.init()\n    if flag\n        let moved = pair.left\n    let a = pair.left@ref\n    let value = a.value\ncheck(false)")]
+    [InlineData("func check(flag: bool)\n    var pair = Pair.init()\n    if flag\n        let moved = pair.left\n    let a = pair.left@ref\n    let value = a.value\ncheck(false)")]
     public void RejectsMovedOrOverlappingBorrowedStorage(string source)
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);

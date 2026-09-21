@@ -35,7 +35,7 @@ public class ReceiverShorthandTest
     [Fact]
     public void MemberAndUnboundCallsKeepTheWrittenReceiverPosition()
     {
-        var c = Parse("struct S\n    public func read(x?: i32, self) -> i32 => x\n    public func constant() -> i32 => 7\nfunc use(s?: ref/S) -> i32 => s.read(1) + S.read(2, s) + S.constant()");
+        var c = Parse("struct S\n    public func read(x: i32, self) -> i32 => x\n    public func constant() -> i32 => 7\nfunc use(s: ref/S) -> i32 => s.read(1) + S.read(2, s) + S.constant()");
         AssertComplete(c);
         var functions = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
         Assert.Equal(1, functions.Single(x => x.Name == "read").BoundSymbol!.ReceiverIndex);
@@ -59,9 +59,9 @@ public class ReceiverShorthandTest
     [InlineData("struct S\n    func f(self, self) => ()")]
     [InlineData("struct S\n    func f(self = missing) => ()")]
     [InlineData("struct S\n    func f(self?) => ()")]
-    [InlineData("struct S\n    func f(other => self) => ()")]
+    [InlineData("struct S\n    func f(! other => self) => ()")]
     [InlineData("struct S\n    init(self) => ()")]
-    [InlineData("struct S\n    func f(value) => ()")]
+    [InlineData("struct S\n    func f(! value) => ()")]
     public void ShorthandDoesNotRelaxOtherParameterRules(string source)
     {
         var c = Compilation.CreateForTest();

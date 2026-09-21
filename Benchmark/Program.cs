@@ -8,6 +8,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--named-arguments")
+        {
+            NamedArgumentMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--documentation-markdown")
         {
             DocumentationMarkdownMeasurements.Run(args[1..]);

@@ -28,7 +28,7 @@ public class CallTypeCompletionBindingTest
     [Fact]
     public void InvalidConstructedReceiverCannotRemainCallable()
     {
-        var c = MinimalEmissionTest.Analyze("struct Owner<T>\n    T is i32\n    public func take(self: ref/Self) => ()\ngroup Consumer\n    func call(value?: ref/Owner<string>) => value.take()");
+        var c = MinimalEmissionTest.Analyze("struct Owner<T>\n    T is i32\n    public func take(self: ref/Self) => ()\ngroup Consumer\n    func call(value: ref/Owner<string>) => value.take()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Call(c).BoundCall);
@@ -40,7 +40,7 @@ public class CallTypeCompletionBindingTest
     [InlineData("(E<Source>, i32)")]
     public void LateInvalidSignatureTypeCannotRemainCallable(string type)
     {
-        var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group Consumer\n    func take(value?: " + type + ") -> " + type + " => value\n    func call(value?: " + type + ") => take(value)");
+        var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
@@ -53,7 +53,7 @@ public class CallTypeCompletionBindingTest
     [InlineData("(E<Source>, i32)")]
     public void ValidInstantiatedTypesRetainCallPlan(string type)
     {
-        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value?: T) -> T => value\n    func call(value?: " + type + ") => take(value)");
+        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value\n    func call(value: " + type + ") => take(value)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(Call(c).BoundCall);
         var restored = Reload(c);
@@ -95,7 +95,7 @@ public class CallTypeCompletionBindingTest
     [Fact]
     public void WarmInstantiatedCallChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value?: T) -> T => value\n    func call(value?: unsafe/E<Source>) => take(value)");
+        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value\n    func call(value: unsafe/E<Source>) => take(value)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

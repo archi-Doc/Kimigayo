@@ -1,5 +1,5 @@
 // Milestone 12: mutable, nested, erased, and consuming closure captures.
-func applyTwice<F>(value?: i32, transform?: uniq/F) -> i32
+func applyTwice<F>(value: i32, transform: uniq/F) -> i32
     F is Callable<uniq, (i32) -> i32>
     let first = transform(value)
     return transform(first)

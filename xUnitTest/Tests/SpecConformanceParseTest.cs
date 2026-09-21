@@ -33,7 +33,7 @@ public class SpecConformanceParseTest
             var local: {type}
             struct Example
                 var property: {type}
-                func use(value?: {type}) -> {type}
+                func use(value: {type}) -> {type}
                     return value
             """;
         var parsed = Parse(source);
@@ -45,7 +45,7 @@ public class SpecConformanceParseTest
     public void ParsesFunctionOriginsAndSeparatesConstraintsFromExecutableBody()
     {
         var parsed = Parse("""
-            func unwrap<s/T>(value?: s{source}/T)
+            func unwrap<s/T>(value: s{source}/T)
                 -> ref{value and owner}/T
                 s is ref or obj
                 T is Comparable and (Equatable or Hashable)
@@ -211,7 +211,7 @@ public class SpecConformanceParseTest
     public void UnknownDirectiveDoesNotBecomeAnUnconditionalFunctionConstraint()
     {
         var parsed = Parse("""
-            func inspect<T>(value?: T)
+            func inspect<T>(value: T)
                 #if unknown
                 T is Comparable
                 return

@@ -42,13 +42,13 @@ function Invoke-Kimi([string] $Name, [string[]] $Arguments, [int] $ExpectedExit 
 $library = @'
 public group Api
     public func run() => Child.Api.output(keep("module"))
-    public func keep<T>(value?: T) -> T => value
+    public func keep<T>(value: T) -> T => value
     #Test
     func dependencyTest() => Missing.mustNotBeIncluded()
 '@
 $child = @'
 public group Api
-    public func output(text?: string) => Console.writeLine(text)
+    public func output(text: string) => Console.writeLine(text)
 '@
 $source = @'
 public func main()

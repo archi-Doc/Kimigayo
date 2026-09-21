@@ -63,10 +63,10 @@ public class StartupBindingTest
     }
 
     [Theory]
-    [InlineData("public func main(x?: i32) => ()")]
+    [InlineData("public func main(x: i32) => ()")]
     [InlineData("public func main(self: i32) => ()")]
     [InlineData("public func main<T>() => ()")]
-    [InlineData("public func main(x?: ref{a}/i32) => ()")]
+    [InlineData("public func main(x: ref{a}/i32) => ()")]
     [InlineData("public func main() -> i32 => 1")]
     [InlineData("public unsafe func main() => ()")]
     public void ApplicationMainRestrictionsDoNotLeakIntoLibraryBinding(string source)
@@ -99,7 +99,7 @@ public class StartupBindingTest
     [Fact]
     public void EveryPublicMainIsValidatedBeforeAnySelection()
     {
-        var c = Parse("public func main() => ()", "public func main(x?: i32) => ()");
+        var c = Parse("public func main() => ()", "public func main(x: i32) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.False(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Contains(c.Binding.StartupIssues, x => x.Code == DiagnosticCode.MultipleStartupMains_Kd);
@@ -191,7 +191,7 @@ public class StartupBindingTest
     [InlineData("Console.writeLine(\"a\", \"b\")")]
     [InlineData("Console.writeLine(value: \"x\")")]
     [InlineData("alias Kimi.Console\nlet writeLine = 1\nwriteLine(\"x\")")]
-    [InlineData("func writeLine(x?: i32) => ()\nwriteLine(\"x\")")]
+    [InlineData("func writeLine(x: i32) => ()\nwriteLine(\"x\")")]
     public void OrdinaryCallFailuresDoNotFallBackToCore(string source)
     {
         var c = Parse(source);
@@ -203,7 +203,7 @@ public class StartupBindingTest
     [Fact]
     public void UserWriteLineHasNoCompilerImplementationIdentity()
     {
-        var c = Parse("func writeLine(text?: string) => ()\nwriteLine(\"x\")");
+        var c = Parse("func writeLine(text: string) => ()\nwriteLine(\"x\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var target = Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!.Target;
         Assert.NotSame(c.Library.WriteLine, target);
@@ -303,7 +303,7 @@ public class StartupBindingTest
     [Fact]
     public void CoreAliasAndUserCoreGroupUseOrdinaryLookup()
     {
-        var c = Parse("alias Core\ngroup Core\n    public func writeLine(text?: string) => ()\nCore.writeLine(\"user\")\n::Kimi.Console.writeLine(\"compiler\")\nwriteLine(\"alias\")");
+        var c = Parse("alias Core\ngroup Core\n    public func writeLine(text: string) => ()\nCore.writeLine(\"user\")\n::Kimi.Console.writeLine(\"compiler\")\nwriteLine(\"alias\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var calls = All(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
         Assert.Equal(CompilerFunctionKind.None, calls[0].BoundCall!.Target.CompilerFunction);
@@ -316,7 +316,7 @@ public class StartupBindingTest
     {
         var c = Parse("Console.writeLine(\"x\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public func writeLine(text?: i32) => ()");
+        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public func writeLine(text: i32) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
         Assert.False(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
@@ -378,7 +378,7 @@ public class StartupBindingTest
     [InlineData("S.f(1, x)")]
     public void FlowUsesTheCommittedReceiverAndArgumentNodes(string expression)
     {
-        var c = Parse($"struct S\n    public func f(value?: i32, self: ref/Self) -> i32 => value\nfunc use(x?: ref/S) -> i32 => {expression}");
+        var c = Parse($"struct S\n    public func f(value: i32, self: ref/Self) -> i32 => value\nfunc use(x: ref/S) -> i32 => {expression}");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
@@ -402,7 +402,7 @@ public class StartupBindingTest
     [InlineData(OutputKind.Application, "Console.writeLine(\"Hello world\")", true)]
     [InlineData(OutputKind.Application, "public func main() => ()", true)]
     [InlineData(OutputKind.Library, "", true)]
-    [InlineData(OutputKind.Library, "public func main(x?: i32) => ()", true)]
+    [InlineData(OutputKind.Library, "public func main(x: i32) => ()", true)]
     [InlineData(OutputKind.Library, "let x: i32", false)]
     public async Task ProjectBuildChecksTheConfiguredStartupMode(OutputKind kind, string source, bool expected)
     {

@@ -271,7 +271,7 @@ public sealed partial class KimiLibrary
             tokenizer.ReadAll();
             var reader = new TokenReader(context, ref tokenizer);
             var type = new TypeSemanticsKoto(ref reader, new Token(TokenKind.String));
-            var function = new FunctionKoto(ref reader, new(null, ModifierKind.Public, false), default, "$abort", null, [new("text", "text", false, type, null)], null);
+            var function = new FunctionKoto(ref reader, new(null, ModifierKind.Public, false), default, "$abort", null, [new("text", "text", type, null)], null);
             type.BoundType = BoundType.String;
             type.BindingState = BindingState.Resolved;
             var symbol = new BindingSymbol("$abort", BindingSymbolKind.Function, function, this.Scope) { CompilerFunction = CompilerFunctionKind.Abort, Type = BoundType.Never };

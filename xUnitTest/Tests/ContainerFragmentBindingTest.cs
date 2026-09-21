@@ -63,7 +63,7 @@ public class ContainerFragmentBindingTest
     {
         const string Explicit = "public group G\n";
         const string Path = "public rootgroup G.Child\n    public struct Value {}\n";
-        var c = MinimalEmissionTest.Analyze((explicitFirst ? Explicit + Path : Path + Explicit) + "public group Api\n    public func use(x?: G.Child.Value) => ()");
+        var c = MinimalEmissionTest.Analyze((explicitFirst ? Explicit + Path : Path + Explicit) + "public group Api\n    public func use(x: G.Child.Value) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(ModifierKind.Public, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Modifier);
     }

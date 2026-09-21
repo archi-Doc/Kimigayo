@@ -7,9 +7,9 @@ namespace XunitTest;
 
 public class GenericStorageEmissionTest
 {
-    internal const string Box = "struct Box<T>\n    let value: T\n    public init(value?: T) => self.value = value\n    public func take(self: Self) -> T => self.value\n";
-    private const string Choose = "func choose<T>(a?: T, b?: T, first?: bool) -> T => if first => a else => b\n";
-    private const string Token = "struct Token\n    let id: i32\n    public init(id?: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
+    internal const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n    public func take(self: Self) -> T => self.value\n";
+    private const string Choose = "func choose<T>(a: T, b: T, first: bool) -> T => if first => a else => b\n";
+    private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     public static TheoryData<string, string, string> Fixtures => new()
     {
@@ -23,9 +23,9 @@ public class GenericStorageEmissionTest
         { "ChoiceDestruction", Token + Choose + "do\n    let selected = choose(Token.init(1), Token.init(2), true)\n    Console.writeLine(\"returned\")\ndo\n    let selected = choose(Token.init(3), Token.init(4), false)\n    Console.writeLine(\"returned second\")", "two\nreturned\none\nthree\nreturned second\nfour\n" },
         { "BoxDestruction", Token + Box + "do\n    let box = Box<Token>.init(Token.init(1))\n    let value = box.take()\n    Console.writeLine(\"taken\")\nConsole.writeLine(\"done\")", "taken\none\ndone\n" },
         { "UnusedBox", Token + Box + Choose + "do\n    let box = choose(Box<Token>.init(Token.init(1)), Box<Token>.init(Token.init(2)), true)\n    let value = box.take()\n    Console.writeLine(\"taken\")", "two\ntaken\none\n" },
-        { "CopyPremise", "func again<T>(value?: T) -> T\n    T is Copy\n    let first = value\n    return value\nrequire again<i32>(42) == 42 else => $abort(\"copy\")", string.Empty },
+        { "CopyPremise", "func again<T>(value: T) -> T\n    T is Copy\n    let first = value\n    return value\nrequire again<i32>(42) == 42 else => $abort(\"copy\")", string.Empty },
         { "CopyBox", Box.Replace("    let value: T", "    Self is Copy when T is Copy\n    let value: T") + "let b = Box<i32>.init(42)\nrequire b.take() + b.take() == 84 else => $abort(\"copy box\")", string.Empty },
-        { "MultiField", Token + "struct Pair<T>\n    let first: T\n    let second: T\n    let third: T\n    public init(a?: T, b?: T, c?: T)\n        self.first = a\n        self.second = b\n        self.third = c\n    public func take(self: Self) -> T => self.first\ndo\n    let pair = Pair<Token>.init(Token.init(1), Token.init(2), Token.init(3))\n    let first = pair.take()\n    Console.writeLine(\"returned\")", "three\ntwo\nreturned\none\n" },
+        { "MultiField", Token + "struct Pair<T>\n    let first: T\n    let second: T\n    let third: T\n    public init(a: T, b: T, c: T)\n        self.first = a\n        self.second = b\n        self.third = c\n    public func take(self: Self) -> T => self.first\ndo\n    let pair = Pair<Token>.init(Token.init(1), Token.init(2), Token.init(3))\n    let first = pair.take()\n    Console.writeLine(\"returned\")", "three\ntwo\nreturned\none\n" },
     };
 
     [Theory]
@@ -35,7 +35,7 @@ public class GenericStorageEmissionTest
 
     [Theory]
     [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value.take())")]
-    [InlineData("group Outer\n    public group Inner\n        public func choose<T>(a?: T, b?: T, first?: bool) -> T => if first => a else => b\nConsole.writeLine(Outer.Inner.choose(\"a\", \"b\", true))")]
+    [InlineData("group Outer\n    public group Inner\n        public func choose<T>(a: T, b: T, first: bool) -> T => if first => a else => b\nConsole.writeLine(Outer.Inner.choose(\"a\", \"b\", true))")]
     public void GenericCallsBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -45,8 +45,8 @@ public class GenericStorageEmissionTest
     [Theory]
     [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value.take())", true)]
     [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value.take())\nConsole.writeLine(value.take())", false)]
-    [InlineData("struct Box<T>\n    let value: T\n    public init(value?: T) => self.value = value\n    public func take(self: Self) -> T => self.value\n    deinit => ()\nConsole.writeLine(\"unused\")", false)]
-    [InlineData("struct Box<T>\n    let value: T\n    public init(value?: T) => self.value = value\n    public func twice(self: Self) -> T\n        let first = self.value\n        return self.value\nConsole.writeLine(\"unused\")", false)]
+    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n    public func take(self: Self) -> T => self.value\n    deinit => ()\nConsole.writeLine(\"unused\")", false)]
+    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n    public func twice(self: Self) -> T\n        let first = self.value\n        return self.value\nConsole.writeLine(\"unused\")", false)]
     public void ChecksGenericOwnershipAtDefinition(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -63,9 +63,9 @@ public class GenericStorageEmissionTest
     [InlineData(Box + "let value = Box<i32>.init()")]
     [InlineData(Box + "let value = Box<i32>.init(1)\nvalue.value")]
     [InlineData(Choose + "choose(\"text\", true, true)")]
-    [InlineData("func twice<T>(value?: T) -> T\n    let first = value\n    return value\nlet actual = twice<i32>(42)")]
-    [InlineData("func twice<T>(value?: T) -> T\n    let first = value\n    return value\nConsole.writeLine(\"unused\")")]
-    [InlineData("func copied<T>(value?: T) -> T\n    T is Copy\n    return value\nConsole.writeLine(copied<string>(\"text\"))")]
+    [InlineData("func twice<T>(value: T) -> T\n    let first = value\n    return value\nlet actual = twice<i32>(42)")]
+    [InlineData("func twice<T>(value: T) -> T\n    let first = value\n    return value\nConsole.writeLine(\"unused\")")]
+    [InlineData("func copied<T>(value: T) -> T\n    T is Copy\n    return value\nConsole.writeLine(copied<string>(\"text\"))")]
     public void RejectsInvalidInputsBeforeEmission(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

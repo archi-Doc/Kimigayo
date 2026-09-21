@@ -10,7 +10,7 @@ namespace XunitTest;
 public class PartialScopeContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
-    private const string Default = "func value(c?: bool, y?: i32 = (do\n    var n: i32\n    do\n        if c\n            n = 1\n            loop => continue\n        n = 2\n        loop => continue\n    n\n)) -> i32 => y\n";
+    private const string Default = "func value(c: bool, y: i32 = (do\n    var n: i32\n    do\n        if c\n            n = 1\n            loop => continue\n        n = 2\n        loop => continue\n    n\n)) -> i32 => y\n";
 
     [Theory]
     [InlineData("let s = \"s\"", "Console.writeLine(s)\n            return", "stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
@@ -42,7 +42,7 @@ public class PartialScopeContinuationTest
     public void BranchBorrowsEndBeforeEveryTerminalPath()
         => ScalarEmissionTest.EmitFixture(
             "NeverPartialScope" + Configuration + "Borrow",
-            "func inspect(s?: ref/string) => ()\n" + Source("var s = \"s\"", "inspect(s)\n            return", "inspect(s)\n        stop()", "s = \"new\"\n    Console.writeLine(s)") + "\nConsole.writeLine(\"done\")",
+            "func inspect(s: ref/string) => ()\n" + Source("var s = \"s\"", "inspect(s)\n            return", "inspect(s)\n        stop()", "s = \"new\"\n    Console.writeLine(s)") + "\nConsole.writeLine(\"done\")",
             "done\n");
 
     [Fact]
@@ -85,9 +85,9 @@ public class PartialScopeContinuationTest
             timeoutMilliseconds: 200);
 
     [Theory]
-    [InlineData("func f(c?: bool, d?: bool, s?: string)\n    if c\n        if d\n            Console.writeLine(s)\n            return\n        stop()\n    else\n        return\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c?: bool, d?: bool, s?: string)\n    if c\n        return\n    else\n        if d => return\n        Console.writeLine(s)\n        stop()\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c?: bool, d?: bool)\n    var x: i32\n    if c\n        if d => return\n        x = 1\n        stop()\n    else\n        x = 2\n        return\n    let y = x", OwnershipFailure.UninitializedUse)]
+    [InlineData("func f(c: bool, d: bool, s: string)\n    if c\n        if d\n            Console.writeLine(s)\n            return\n        stop()\n    else\n        return\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(c: bool, d: bool, s: string)\n    if c\n        return\n    else\n        if d => return\n        Console.writeLine(s)\n        stop()\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(c: bool, d: bool)\n    var x: i32\n    if c\n        if d => return\n        x = 1\n        stop()\n    else\n        x = 2\n        return\n    let y = x", OwnershipFailure.UninitializedUse)]
     public void TerminalSelectionJoinsIncludeNestedPartialPaths(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
@@ -97,8 +97,8 @@ public class PartialScopeContinuationTest
     }
 
     [Theory]
-    [InlineData("func f(c?: bool, d?: bool)\n    var x: i32\n    if c\n        loop\n            if d => exit\n            x = 1\n            exit\n        x = 2\n        stop()\n    else\n        x = 3\n        return\n    let y = x")]
-    [InlineData("func f(c?: bool, d?: bool)\n    var x: i32\n    if c\n        inner: do\n            if d => exit to inner\n            x = 1\n        x = 2\n        stop()\n    else\n        x = 3\n        return\n    let y = x")]
+    [InlineData("func f(c: bool, d: bool)\n    var x: i32\n    if c\n        loop\n            if d => exit\n            x = 1\n            exit\n        x = 2\n        stop()\n    else\n        x = 3\n        return\n    let y = x")]
+    [InlineData("func f(c: bool, d: bool)\n    var x: i32\n    if c\n        inner: do\n            if d => exit to inner\n            x = 1\n        x = 2\n        stop()\n    else\n        x = 3\n        return\n    let y = x")]
     public void LabeledPartialPathsNeverJoinAsTerminal(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
@@ -107,8 +107,8 @@ public class PartialScopeContinuationTest
     }
 
     [Theory]
-    [InlineData("func f(c?: bool, s?: string)\n    do\n        if c\n            Console.writeLine(s)\n            return\n        defer => loop => ()\n        stop()\n    Console.writeLine(s)")]
-    [InlineData("func f(c?: bool, s?: string) -> bool\n    let r = s == do\n        if c => return true\n        stop()\n    Console.writeLine(s)\n    r")]
+    [InlineData("func f(c: bool, s: string)\n    do\n        if c\n            Console.writeLine(s)\n            return\n        defer => loop => ()\n        stop()\n    Console.writeLine(s)")]
+    [InlineData("func f(c: bool, s: string) -> bool\n    let r = s == do\n        if c => return true\n        stop()\n    Console.writeLine(s)\n    r")]
     public void CleanupAndLoanPathsRetainTheirGuard(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
@@ -119,7 +119,7 @@ public class PartialScopeContinuationTest
     [Fact]
     public void CompletingLoopJoinsItsEarlyReturn()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(c?: bool, s?: string)\n    do\n        loop\n            if c => return\n            exit\n        stop()\n    Console.writeLine(s)");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, s: string)\n    do\n        loop\n            if c => return\n            exit\n        stop()\n    Console.writeLine(s)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
@@ -127,7 +127,7 @@ public class PartialScopeContinuationTest
     [Fact]
     public void LabeledScopePathsPreserveMoveHistory()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(c?: bool, s?: string)\n    loop\n        do\n            if c => exit\n            Console.writeLine(s)\n            stop()\n        Console.writeLine(s)");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, s: string)\n    loop\n        do\n            if c => exit\n            Console.writeLine(s)\n            stop()\n        Console.writeLine(s)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -158,7 +158,7 @@ public class PartialScopeContinuationTest
     }
 
     private static string Source(string declaration, string yes, string tail, string use)
-        => Stop + "func f(c?: bool)\n    " + declaration + "\n    do\n        if c\n            " + yes + "\n        " + tail + "\n    " + use + "\nf(true)";
+        => Stop + "func f(c: bool)\n    " + declaration + "\n    do\n        if c\n            " + yes + "\n        " + tail + "\n    " + use + "\nf(true)";
 
 #if DEBUG
     private const string Configuration = "Debug";

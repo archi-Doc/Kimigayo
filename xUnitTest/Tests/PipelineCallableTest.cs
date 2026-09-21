@@ -19,7 +19,7 @@ public class PipelineCallableTest
     public void SliceIteratorEmits()
         => ScalarEmissionTest.EmitFixture("SliceIterator", "struct Item\n    public let value: i32 = 42\nlet a: [1 of Item] = [Item.init()]\nvar cursor = a[..].iterate()\nmatch cursor.next()\n    .Some(let value) => require value.value == 42 else => $abort(\"value\")\n    .None => $abort(\"empty\")", string.Empty);
 
-    private const string Source = "struct Item\n    public let value: i32 = 3\nfunc apply<T, F>(value?: ref/T, visit?: uniq/F) -> bool\n    F is Callable<uniq, (ref/T) -> bool>\n    return visit(value)\nlet item = Item.init()\nvar visit = func (value: ref/Item) => value.value == 3\nrequire apply(item@ref, visit@uniq) else => $abort(\"callback\")";
+    private const string Source = "struct Item\n    public let value: i32 = 3\nfunc apply<T, F>(value: ref/T, visit: uniq/F) -> bool\n    F is Callable<uniq, (ref/T) -> bool>\n    return visit(value)\nlet item = Item.init()\nvar visit = func (value: ref/Item) => value.value == 3\nrequire apply(item@ref, visit@uniq) else => $abort(\"callback\")";
 
     [Fact]
     public void BindsPerCallBorrowedInput()
@@ -38,7 +38,7 @@ public class PipelineCallableTest
     [InlineData("initializer")]
     public void RejectsCorruptSharedMatchPlans(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("func present<T>(items?: Slice<T>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [1 of i32] = [4]\nrequire present(values[..]) == 1 else => $abort(\"match\")");
+        var c = MinimalEmissionTest.Analyze("func present<T>(items: Slice<T>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [1 of i32] = [4]\nrequire present(values[..]) == 1 else => $abort(\"match\")");
         Assert.True(c.Emission.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "present");
         var match = Assert.Single(body.Matches);

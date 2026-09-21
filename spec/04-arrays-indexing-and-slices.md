@@ -96,11 +96,11 @@ A length slot is declared as `<length N>`. A plain `<N>` remains a Type slot; ne
 The kinds, order and names of the declaration list are bound first, rejecting duplicates; then the signature and body are bound. A length slot is a nonnegative `isize` constant in the Value namespace, not a complete Type or a Semantics/Type pair. Kind misuse is diagnosed at the use and identifies the declaration. Only function length slots exist: there are no value parameters on Type declarations, general Const generics or source length-constraint syntax.
 
 ```kimi
-func process<length N>(values?: [N of i32])
+func process<length N>(values: [N of i32])
     let count: isize = N
     ()
 
-func keep<length N, T>(values?: [N of T]) -> [N of T] => values
+func keep<length N, T>(values: [N of T]) -> [N of T] => values
 func work<length N>()
     let buffer: [N of u8] // Formation-only example: Uninitialized, not a usable buffer.
     // No fill/default construction exists; obtain a whole initialized value to use it.
@@ -119,8 +119,8 @@ work<4>()          // A body-only length must still be supplied.
 Length equations are not solved backward: `[(N * 2) of T]` is checked after `N` is known. Expected Types may fill unresolved parts without changing Types or lengths established by inputs. Evidence may come from a binding annotation, a typed assignment destination, a declared result or a known parameter. Nested calls and anonymous functions obey the [inference boundaries](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization); explicit `@` and result constructs follow [adaptation inference](13-operators-and-assignment.md#1352-static-selection-and-inference) and [result validation](14-control-flow.md#149-result-validation). A callee's length arguments are never inferred from its implementation body, from later uses or member accesses, from guessed unresolved sibling expressions, or from candidate order.
 
 ```kimi
-func consume<T>(x?: Array<T>) => ()
-func consume<length N, T>(x?: [N of T]) => ()
+func consume<T>(x: Array<T>) => ()
+func consume<length N, T>(x: [N of T]) => ()
 consume([1, 2, 3]) // Error: both fit and neither candidate is better.
 ```
 
@@ -141,7 +141,7 @@ The body is verified for every binding that satisfies the public conditions. Bod
 With matching slots and integer Types, `N + 4`, `N + (2 + 2)`, `((N + 4))` and `4 + N` coincide, as do `N * M` and `M * N`. `(N + 2) + 2` need not equal `N + 4`, because intermediate overflow matters. This normalizes pure length expressions only and does not reorder runtime evaluation. Concrete Type and full-specialization keys use evaluated lengths. Each length slot counts once in GenericArity.
 
 ```kimi
-func reordered<length N>(value?: [(N + 4) of u8]) -> [(4 + N) of u8] => value
+func reordered<length N>(value: [(N + 4) of u8]) -> [(4 + N) of u8] => value
 // Valid: both the dependent Type and ValidLength obligation normalize identically.
 ```
 
@@ -215,7 +215,7 @@ let alsoCopied = numbers[i] // Copy does not require a static Move Path.
 
 ### 4.6.2. Index
 
-`Index` exposes public read-only `offset: isize` and `isFromEnd: bool`. Its constructor is `init(offset?: isize, fromEnd?: bool = false)`.
+`Index` exposes public read-only `offset: isize` and `isFromEnd: bool`. Its constructor is `init(offset: isize, fromEnd: bool = false)`.
 
 | Construction | Meaning |
 | --- | --- |
@@ -253,7 +253,7 @@ let end = ^0         // Valid Index; values[end] is out of bounds.
 
 `Range` implements Equatable by normalized start, end and `isInclusive`. Thus `..` equals `0..^0`, but `1..3` differs from `1..=2`. To compare resolved intervals, compare their `ResolvedRange` values.
 
-**ResolvedRange** always satisfies `0 <= start <= end <= maximum isize`. It exposes public read-only `start: isize`, `end: isize`, `length: isize = end - start` and `isEmpty: bool`. It is obtained from `Range.resolve`/`tryResolve`, from sequence `indices`, or from `ResolvedRange.init(start: isize, end: isize)`; invalid constructor bounds initiate Abort. No setter or implicit construction bypasses validation.
+**ResolvedRange** always satisfies `0 <= start <= end <= maximum isize`. It exposes public read-only `start: isize`, `end: isize`, `length: isize = end - start` and `isEmpty: bool`. It is obtained from `Range.resolve`/`tryResolve`, from sequence `indices`, or from the constructor declared as `init(! start: isize, end: isize)`; invalid constructor bounds initiate Abort. No setter or implicit construction bypasses validation.
 
 `ResolvedRange` implements Equatable by start and end. It retains no storage Origin or Loan, and applying it to an array or Slice rechecks the target bounds. Neither range Type implements Comparable, and there is no implicit conversion or cross-Type equality between them.
 
@@ -350,7 +350,7 @@ Borrowing a temporary never extends its [lifetime](03-types-and-values.md#36-tem
 
 ```kimi
 func makeArray() -> Array<i32> => [1, 2, 3]
-func inspect<T>(values?: Slice<T>) => ()
+func inspect<T>(values: Slice<T>) => ()
 
 inspect(makeArray()[..]) // Temporary array survives through the call.
 let escaped = makeArray()[..]
@@ -399,14 +399,14 @@ For `s: Slice<Result<i32, i32>>`, `s[0]` is an owned Copy `Result`, while `s[0]@
 For an unknown `T`, the correlated result Type, acquisition effect and Origins are kept as the internal family `SharedReadResult(T, source)`, which is not a source-spellable Type. The body is verified for all admitted cases; unknown is neither assumed to mean Non-Copy nor deferred until a favorable instantiation. An operation or result that does not fit every case requires a constraint or an explicit borrow.
 
 ```kimi
-func first<T>(s?: Slice<T>) -> T
+func first<T>(s: Slice<T>) -> T
     T is Copy
     return s[0]
 
-func firstRef<T>(s?: Slice<T>) -> ref{s.source}/T
+func firstRef<T>(s: Slice<T>) -> ref{s.source}/T
     return s[0]@ref // Borrow the slot regardless of T's Copy capability.
 
-func head<T, E>(s?: Slice<Result<T, E>>) -> ref{s.source}/Result<T, E>
+func head<T, E>(s: Slice<Result<T, E>>) -> ref{s.source}/Result<T, E>
     return s[0]@ref // Plain s[0] fails definition checking: Copy bindings return a value.
 
 let values: [4 of i32] = [10, 20, 30, 40]
@@ -420,7 +420,7 @@ match s.tryGet(10)
     .Some(let value) => ()
     .None => ()
 
-func tryTail<T>(values?: Slice<T>) -> Option<Slice<T>{tail}>
+func tryTail<T>(values: Slice<T>) -> Option<Slice<T>{tail}>
     origin tail.source == values.source
     return values.trySlice(1..) // None for an empty Slice; no static length condition.
 ```
@@ -484,12 +484,12 @@ These postconditions do not roll back external effects of arguments, equality or
 
 | Operation | Behavior |
 | --- | --- |
-| `append(value?: T) -> ()` | Add at the end |
-| `insert(index?: isize, value?: T) -> ()` | Insert before the resolved position |
-| `insert(index?: Index, value?: T) -> ()` | Same, with a directional `Index` |
+| `append(value: T) -> ()` | Add at the end |
+| `insert(index: isize, value: T) -> ()` | Insert before the resolved position |
+| `insert(index: Index, value: T) -> ()` | Same, with a directional `Index` |
 | `pop() -> Option<T>` | Remove and return the last element, or `None` when empty |
-| `remove(index?: isize) -> T` | Remove and return the selected element |
-| `remove(index?: Index) -> T` | Same, with a directional `Index` |
+| `remove(index: isize) -> T` | Remove and return the selected element |
+| `remove(index: Index) -> T` | Same, with a directional `Index` |
 | `clear() -> ()` | Destroy all elements in the order of §4.7.6 |
 
 The index is resolved once in the body against the entry length `L`. For a from-end `Index`, `offset <= L` is required before `p = L - offset`. Insert requires `0 <= p <= L` and remove requires `0 <= p < L`; invalid indices Abort. There is no implicit `isize`/`Index` conversion and no Range overload.
@@ -512,10 +512,10 @@ values.append(values[0]) // The element Copy finishes before receiver activation
 
 | Operation | Absent key | Equal stored key |
 | --- | --- | --- |
-| `tryInsert(key?: K, value?: V) -> Result<(), (K, V)>` | Append; `Ok(())` | Unchanged; `Err((input key, input value))` |
-| `insertOrReplace(key?: K, value?: V) -> Option<V>` | Append; `None` | Keep the stored key and position; `Some(old value)` |
-| `remove(key?: ref/K) -> Option<(K, V)>` | `None` | Remove and return the stored key and value |
-| `tryGet(self: ref/Self, key?: ref/K) -> Option<ref{self}/V>` | `None` | Shared reference to the stored value |
+| `tryInsert(key: K, value: V) -> Result<(), (K, V)>` | Append; `Ok(())` | Unchanged; `Err((input key, input value))` |
+| `insertOrReplace(key: K, value: V) -> Option<V>` | Append; `None` | Keep the stored key and position; `Some(old value)` |
+| `remove(key: ref/K) -> Option<(K, V)>` | `None` | Remove and return the stored key and value |
+| `tryGet(self: ref/Self, key: ref/K) -> Option<ref{self}/V>` | `None` | Shared reference to the stored value |
 | `clear() -> ()` | Destroy all entries in the order of §4.7.6 | Same |
 
 A duplicate is the only `Err` outcome of `tryInsert`; no dedicated error Type is introduced. Both value arguments are acquired before lookup, unlike Dictionary literals (§12.3.4). `insertOrReplace` secures the old result, stores the new value and then destroys the unused input key; delivery follows that cleanup. Removing a key and later adding an equal key appends a new position. No API mutates a stored key.
@@ -546,7 +546,7 @@ Both collections expose read-only `capacity: isize` through shared access: the m
 
 | Operation | Contract |
 | --- | --- |
-| `reserve(additional?: isize) -> ()` | Requires a nonnegative `additional`; computes the checked `R = body-entry length + additional`, aborting on failure. Ensures `capacity >= R` without shrinking. If `R <= capacity`, internal placement is preserved too; zero is always a no-op. |
+| `reserve(additional: isize) -> ()` | Requires a nonnegative `additional`; computes the checked `R = body-entry length + additional`, aborting on failure. Ensures `capacity >= R` without shrinking. If `R <= capacity`, internal placement is preserved too; zero is always a no-op. |
 | `shrinkToFit() -> ()` | Attempts `length <= new capacity <= old capacity`. Neither an exact fit nor returning memory to the OS is guaranteed. |
 
 `reserve` accepts a positional argument, but examples and diagnostics should explain its **additional** meaning. There is no `reserveCapacity` API taking a total.

@@ -98,7 +98,7 @@ foreach ($level in @('O0', 'O2')) {
 struct Item
     public var value: i32 = 3
     deinit => Console.writeLine("drop")
-func borrow(item?: ref/Item) -> ref/Item from item => item
+func borrow(item: ref/Item) -> ref/Item from item => item
 let value = borrow(Item.init()).value
 if value != 3 => $abort("Unexpected value")
 Console.writeLine("ok")
@@ -132,8 +132,8 @@ $invalid = [ordered]@{
     WrongReferent = $original.Replace('borrowCounter(counter@ref)', 'borrowCounter(1)')
     MovedRead = $original.Replace('Console.writeLine("Done.")', "let invalid = counter.value`n    Console.writeLine(`"Done.`")")
     TemporaryEscape = $original.Replace('CounterView.init(borrowCounter(counter@ref))', 'CounterView.init(borrowCounter(Counter.init()))')
-    DoubleExclusive = "struct S`n    public var value: i32 = 0`nfunc both(a?: uniq/S, b?: uniq/S) => ()`nvar s = S.init()`nboth(s@uniq, s@uniq)"
-    ParentDuringReborrow = "struct S`n    public var value: i32 = 0`nfunc bad(s?: uniq/S)`n    let r = s@ref`n    s.value = 9`n    let n = r.value`nvar s = S.init()`nbad(s@uniq)"
+    DoubleExclusive = "struct S`n    public var value: i32 = 0`nfunc both(a: uniq/S, b: uniq/S) => ()`nvar s = S.init()`nboth(s@uniq, s@uniq)"
+    ParentDuringReborrow = "struct S`n    public var value: i32 = 0`nfunc bad(s: uniq/S)`n    let r = s@ref`n    s.value = 9`n    let n = r.value`nvar s = S.init()`nbad(s@uniq)"
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"

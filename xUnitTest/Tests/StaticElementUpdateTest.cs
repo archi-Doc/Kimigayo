@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class StaticElementUpdateTest
 {
-    private const string Resource = "func read(n?: ref/i32) => ()\nstruct Resource\n    public let id: i32\n    public init(id?: i32) => self.id = id\n    deinit\n        match self.id\n            1 => Console.writeLine(\"first\")\n            2 => Console.writeLine(\"second\")\n            _ => Console.writeLine(\"new\")\n";
+    private const string Resource = "func read(n: ref/i32) => ()\nstruct Resource\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        match self.id\n            1 => Console.writeLine(\"first\")\n            2 => Console.writeLine(\"second\")\n            _ => Console.writeLine(\"new\")\n";
 
     [Fact]
     public void EmitsUnchangedMilestone17()
@@ -30,7 +30,7 @@ public class StaticElementUpdateTest
     [Theory]
     [InlineData("Nested", "var a: [2 of ([2 of i32], bool)] = [([1, 2], true), ([3, 4], false)]\nKimi.Intrinsics.swap((a[0].0)[1]@uniq, a[1].0[0]@uniq)\nrequire a[0].0[1] == 3 and a[1].0[0] == 2 else => $abort(\"value\")")]
     [InlineData("Retained", "var a: [2 of i32] = [1, 2]\nlet left = a[0]@uniq\nlet right = a[1]@uniq\nKimi.Intrinsics.swap(left, right)\nrequire a[0] == 2 and a[1] == 1 else => $abort(\"value\")")]
-    [InlineData("Call", "func change(value?: uniq/i32) => Kimi.Intrinsics.replace(value, with: 42)\nvar a: [2 of i32] = [1, 2]\nchange(a[1]@uniq)\nrequire a[0] == 1 and a[1] == 42 else => $abort(\"value\")")]
+    [InlineData("Call", "func change(value: uniq/i32) => Kimi.Intrinsics.replace(value, with: 42)\nvar a: [2 of i32] = [1, 2]\nchange(a[1]@uniq)\nrequire a[0] == 1 and a[1] == 42 else => $abort(\"value\")")]
     [InlineData("FieldArray", "struct Box\n    public var data: [2 of i32] = [1, 2]\nvar box = Box.init()\nKimi.Intrinsics.swap(box.data[0]@uniq, box.data[1]@uniq)\nrequire box.data[0] == 2 and box.data[1] == 1 else => $abort(\"value\")")]
     [InlineData("MixedRoot", "var a: [2 of i32] = [1, 2]\nvar b: i32 = 3\nKimi.Intrinsics.swap(a[0], b)\nrequire a[0] == 3 and b == 1 else => $abort(\"value\")")]
     public void PreservesStaticPathsAcrossStorageAndCalls(string name, string source)
@@ -47,7 +47,7 @@ public class StaticElementUpdateTest
     [Fact]
     public void AbortingReplacementDestroysOldValueBeforePlacement()
     {
-        const string Source = "struct Resource\n    public let id: i32\n    public init(id?: i32)\n        self.id = id\n        Console.writeLine(\"constructed\")\n    deinit\n        if self.id == 1\n            Console.writeLine(\"destroying old\")\n            $abort(\"drop\")\n        Console.writeLine(\"bad new cleanup\")\nvar a: [1 of Resource] = [Resource.init(1)]\ndefer => Console.writeLine(\"bad defer\")\nKimi.Intrinsics.replace(a[0]@uniq, with: Resource.init(2))\nConsole.writeLine(\"bad continuation\")";
+        const string Source = "struct Resource\n    public let id: i32\n    public init(id: i32)\n        self.id = id\n        Console.writeLine(\"constructed\")\n    deinit\n        if self.id == 1\n            Console.writeLine(\"destroying old\")\n            $abort(\"drop\")\n        Console.writeLine(\"bad new cleanup\")\nvar a: [1 of Resource] = [Resource.init(1)]\ndefer => Console.writeLine(\"bad defer\")\nKimi.Intrinsics.replace(a[0]@uniq, with: Resource.init(2))\nConsole.writeLine(\"bad continuation\")";
         ScalarEmissionTest.EmitFixture("StaticElementUpdateDestructorAbort", Source, "constructed\nconstructed\ndestroying old\n", 1, "Hello.kimi:9:13: abort KIMI_E_ABORT: drop\n");
     }
 

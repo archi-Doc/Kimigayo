@@ -95,7 +95,7 @@ public class StructuredConstraintSubjectBindingTest
     [InlineData("make() is Dog")]
     public void GenericFunctionRuntimeTestsDoNotBecomeTypeConstraints(string expression)
     {
-        var c = MinimalEmissionTest.Analyze("struct Dog\nfunc make() -> Dog => make()\nfunc f<T>(value?: Dog)\n    " + expression);
+        var c = MinimalEmissionTest.Analyze("struct Dog\nfunc make() -> Dog => make()\nfunc f<T>(value: Dog)\n    " + expression);
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         var function = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Empty(function.TypeConstraints);

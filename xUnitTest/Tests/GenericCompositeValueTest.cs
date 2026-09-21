@@ -7,11 +7,11 @@ namespace XunitTest;
 
 public class GenericCompositeValueTest
 {
-    private const string Resource = "struct Resource\n    public let id: i32\n    public init(id?: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
+    private const string Resource = "struct Resource\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
     private const string Delivery = "enum Delivery<T>\n    Ready(T)\n    Missing\n";
-    private const string Relay = "func relay<T>(value?: T) -> T\n    let pending: T = value\n    defer => Console.writeLine(\"secured\")\n    return pending\n";
-    private const string Choose = "func choose<T>(first?: T, second?: T, useFirst?: bool) -> T => if useFirst => first else => second\n";
-    private const string Package = "func package<T>(value?: T) -> Delivery<T> => .Ready(value)\n";
+    private const string Relay = "func relay<T>(value: T) -> T\n    let pending: T = value\n    defer => Console.writeLine(\"secured\")\n    return pending\n";
+    private const string Choose = "func choose<T>(first: T, second: T, useFirst: bool) -> T => if useFirst => first else => second\n";
+    private const string Package = "func package<T>(value: T) -> Delivery<T> => .Ready(value)\n";
 
     public static TheoryData<string, string, string> Fixtures => new()
     {
@@ -31,8 +31,8 @@ public class GenericCompositeValueTest
         { "ZeroSizeTuple", "struct Zero\n    deinit => Console.writeLine(\"zero\")\nlet items = (Zero.init(), Zero.init())\nConsole.writeLine(\"tuple\")", "tuple\nzero\nzero\n" },
         { "ZeroSizeRelay", "struct Zero\n    deinit => Console.writeLine(\"zero\")\n" + Relay + "let items = relay<[3 of Zero]>([Zero.init(), Zero.init(), Zero.init()])\nConsole.writeLine(\"received\")", "secured\nreceived\nzero\nzero\nzero\n" },
         { "EmptyPayload", Resource + Delivery + "let value: Delivery<[0 of Resource]> = .Ready([])\nmatch value\n    .Ready(let items) => Console.writeLine(\"empty\")\n    .Missing => $abort(\"missing\")", "empty\n" },
-        { "StructDestructor", Resource + Delivery + "struct Envelope\n    let items: [2 of Resource]\n    public init(items?: [2 of Resource]) => self.items = items\n    deinit => Console.writeLine(\"envelope\")\nlet value: Delivery<Envelope> = .Ready(Envelope.init([Resource.init(1), Resource.init(2)]))\nmatch value\n    .Ready(let envelope) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")", "received\nenvelope\ntwo\none\n" },
-        { "EarlyReturn", Resource + Delivery + "func unwrap(value?: Delivery<[2 of Resource]>) -> [2 of Resource]\n    match value\n        .Ready(let items) => return items\n        .Missing => $abort(\"missing\")\nlet input: Delivery<[2 of Resource]> = .Ready([Resource.init(1), Resource.init(2)])\nlet result = unwrap(input)\nConsole.writeLine(\"returned\")", "returned\ntwo\none\n" },
+        { "StructDestructor", Resource + Delivery + "struct Envelope\n    let items: [2 of Resource]\n    public init(items: [2 of Resource]) => self.items = items\n    deinit => Console.writeLine(\"envelope\")\nlet value: Delivery<Envelope> = .Ready(Envelope.init([Resource.init(1), Resource.init(2)]))\nmatch value\n    .Ready(let envelope) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")", "received\nenvelope\ntwo\none\n" },
+        { "EarlyReturn", Resource + Delivery + "func unwrap(value: Delivery<[2 of Resource]>) -> [2 of Resource]\n    match value\n        .Ready(let items) => return items\n        .Missing => $abort(\"missing\")\nlet input: Delivery<[2 of Resource]> = .Ready([Resource.init(1), Resource.init(2)])\nlet result = unwrap(input)\nConsole.writeLine(\"returned\")", "returned\ntwo\none\n" },
     };
 
     [Theory]
@@ -66,7 +66,7 @@ public class GenericCompositeValueTest
     public void AbortingDeferDoesNotDeliverOrDestroySecuredResult()
         => ScalarEmissionTest.EmitFixture(
             "GenericCompositeAbortResult",
-            "func relay<T>(value?: T) -> T\n    defer => $abort(\"stop\")\n    return value\n" + Resource + "let result = relay<[2 of Resource]>([Resource.init(1), Resource.init(2)])\nConsole.writeLine(\"not delivered\")",
+            "func relay<T>(value: T) -> T\n    defer => $abort(\"stop\")\n    return value\n" + Resource + "let result = relay<[2 of Resource]>([Resource.init(1), Resource.init(2)])\nConsole.writeLine(\"not delivered\")",
             string.Empty,
             1,
             "Hello.kimi:2:14: abort KIMI_E_ABORT: stop\n");
@@ -74,10 +74,10 @@ public class GenericCompositeValueTest
     [Theory]
     [InlineData(Resource + GenericStorageEmissionTest.Box + "let value = Box<Resource>.init(Resource.init(1))\nlet item = value.take()\nlet invalid = value")]
     [InlineData(Resource + Delivery + "let value: Delivery<Resource> = .Ready(Resource.init(1))\nmatch value\n    .Ready(let item) => ()\n    .Missing => ()\nlet invalid = value")]
-    [InlineData("func duplicate<T>(value?: T) -> (T, T) => (value, value)\nlet value = duplicate<i32>(1)")]
-    [InlineData("func duplicate<T>(value?: T) -> (T, T) => (value, value)\nConsole.writeLine(\"unused definition\")")]
-    [InlineData("struct Box<T>\n    let value: T\n    public init(value?: T) => self.value = value\n    public func take(self: Self) -> T => self.value\n    deinit => ()\nConsole.writeLine(\"unused definition\")")]
-    [InlineData("func observe<T>(value?: ref/T) => ()\nfunc relay<T>(value?: T) -> T\n    let pending = value\n    defer => observe<T>(pending@ref/T)\n    return pending\nConsole.writeLine(\"unused definition\")")]
+    [InlineData("func duplicate<T>(value: T) -> (T, T) => (value, value)\nlet value = duplicate<i32>(1)")]
+    [InlineData("func duplicate<T>(value: T) -> (T, T) => (value, value)\nConsole.writeLine(\"unused definition\")")]
+    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n    public func take(self: Self) -> T => self.value\n    deinit => ()\nConsole.writeLine(\"unused definition\")")]
+    [InlineData("func observe<T>(value: ref/T) => ()\nfunc relay<T>(value: T) -> T\n    let pending = value\n    defer => observe<T>(pending@ref/T)\n    return pending\nConsole.writeLine(\"unused definition\")")]
     public void RejectsInvalidOwnershipUniversally(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

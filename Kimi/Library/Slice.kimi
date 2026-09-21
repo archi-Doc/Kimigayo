@@ -8,7 +8,7 @@ public struct SliceIterator<T> {source}
     let values: Slice<T>{slice}
         origin slice.source == source
     var position: isize = 0
-    public init(values?: Slice<T>)
+    public init(values: Slice<T>)
         origin values.source == source
         self.values = values
     public func next(self: uniq/Self) -> Option<ref{source}/T>

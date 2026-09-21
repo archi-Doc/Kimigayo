@@ -20,10 +20,10 @@ public class ModuleEmissionTest
     }
 
     [Theory]
-    [InlineData("Owned", "let text = Lib.Api.make()\nLib.Api.take(text)", "public group Api\n    public func make() -> string => \"owned\"\n    public func take(text?: string) => Console.writeLine(text)", "owned\n")]
-    [InlineData("Generic", "require Lib.Api.keep(42) == 42 else => $abort(\"generic\")", "public group Api\n    public func keep<T>(value?: T) -> T => value", "")]
-    [InlineData("Default", "require Lib.Api.add(40) == 42 else => $abort(\"default\")", "public group Api\n    public func add(value?: i32, extra?: i32 = 2) -> i32 => value + extra", "")]
-    [InlineData("Main", "require Lib.main(41) == 42 else => $abort(\"library main\")", "public func main(value?: i32) -> i32 => value + 1", "")]
+    [InlineData("Owned", "let text = Lib.Api.make()\nLib.Api.take(text)", "public group Api\n    public func make() -> string => \"owned\"\n    public func take(text: string) => Console.writeLine(text)", "owned\n")]
+    [InlineData("Generic", "require Lib.Api.keep(42) == 42 else => $abort(\"generic\")", "public group Api\n    public func keep<T>(value: T) -> T => value", "")]
+    [InlineData("Default", "require Lib.Api.add(40) == 42 else => $abort(\"default\")", "public group Api\n    public func add(value: i32, extra: i32 = 2) -> i32 => value + extra", "")]
+    [InlineData("Main", "require Lib.main(41) == 42 else => $abort(\"library main\")", "public func main(value: i32) -> i32 => value + 1", "")]
     [InlineData("Static", "require Lib.Api.answer == 42 else => $abort(\"static\")", "public group Api\n    public let answer: i32 = 42", "")]
     public void EmitsDependencyOperations(string name, string root, string library, string output)
     {

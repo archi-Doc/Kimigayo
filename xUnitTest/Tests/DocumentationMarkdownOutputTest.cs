@@ -147,7 +147,7 @@ public class DocumentationMarkdownOutputTest
     [InlineData("group G", "self: i32", DocumentationMarkdownItemKind.Parameter)]
     public void ProductFacadeUsesBindingRolesAndReclassifiesAfterBinding(string container, string parameter, DocumentationMarkdownItemKind expected)
     {
-        var tree = DocumentationCommentTest.Parse(container + "\n    /// - self: description\n    /// - note: parameter\n    /// # note\n    /// Section\n    public func f(" + parameter + ", note?: i32) => ()");
+        var tree = DocumentationCommentTest.Parse(container + "\n    /// - self: description\n    /// - note: parameter\n    /// # note\n    /// Section\n    public func f(" + parameter + ", note: i32) => ()");
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         var product = DocumentationMarkdown.Parse(comment);
         Assert.Equal(DocumentationMarkdownItemKind.Unclassified, product.Items.Span[0].Kind);

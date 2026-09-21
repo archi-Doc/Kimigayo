@@ -24,7 +24,7 @@ public class DependentCompoundConstraintBindingTest
     [InlineData("((T)) is Copy", "string", false)]
     public void CompoundInputIsCheckedAfterSubstitution(string clause, string argument, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\npublic func use(value?: Target<" + argument + ">)\n    return");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\npublic func use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
@@ -37,7 +37,7 @@ public class DependentCompoundConstraintBindingTest
     [InlineData("string", false)]
     public void ConstructedSubjectIdentityIsSubstituted(string argument, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public struct Box<T>\npublic struct Target<T>\n    Box<T> is Box<i32>\npublic func use(value?: Target<" + argument + ">)\n    return");
+        var c = MinimalEmissionTest.Analyze("public struct Box<T>\npublic struct Target<T>\n    Box<T> is Box<i32>\npublic func use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Reload(c).Bind().IsComplete);
@@ -50,7 +50,7 @@ public class DependentCompoundConstraintBindingTest
     [InlineData("enum", "string", false)]
     public void GroupedSelfRetainsCopyDerivation(string kind, string argument, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public " + kind + " Target<T>\n    T is Copy\n    ((Self)) is Copy\n" + (kind == "enum" ? "    A(T)\n" : "    var value: T\n") + "public func use(value?: Target<" + argument + ">)\n    return");
+        var c = MinimalEmissionTest.Analyze("public " + kind + " Target<T>\n    T is Copy\n    ((Self)) is Copy\n" + (kind == "enum" ? "    A(T)\n" : "    var value: T\n") + "public func use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Reload(c).Bind().IsComplete);
@@ -84,7 +84,7 @@ public class DependentCompoundConstraintBindingTest
     [InlineData("[2 of T.Origin.Item] is Copy", "string", false)]
     public void NestedProjectionInputsAreBoundAfterTheirRootPremises(string clause, string item, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    " + clause + "\n    T is Origin\npublic func use(value?: Target<Source>)\n    return");
+        var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    " + clause + "\n    T is Origin\npublic func use(value: Target<Source>)\n    return");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
@@ -110,7 +110,7 @@ public class DependentCompoundConstraintBindingTest
     [Fact]
     public void ReplacingACompoundInputRechecksExistingUses()
     {
-        const string source = "public struct Target<T>\n    [2 of T] is Copy\npublic func use(value?: Target<i32>)\n    return";
+        const string source = "public struct Target<T>\n    [2 of T] is Copy\npublic func use(value: Target<i32>)\n    return";
         var c = MinimalEmissionTest.Analyze(source);
         var clause = c.Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes[0];
         var original = clause.Right;
@@ -139,7 +139,7 @@ public class DependentCompoundConstraintBindingTest
     [Fact]
     public void WarmCompoundInputsAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    [2 of T] is Copy\npublic func use(value?: Target<i32>)\n    return");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    [2 of T] is Copy\npublic func use(value: Target<i32>)\n    return");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

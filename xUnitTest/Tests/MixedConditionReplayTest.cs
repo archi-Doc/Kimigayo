@@ -182,12 +182,12 @@ public class MixedConditionReplayTest
     }
 
     private static string Source(string declaration, string dead, string use, string tail = "()")
-        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c?: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(true)\nfunc truth(x?: i32) -> bool => true\nfunc stopTake(s?: string) -> Never => stop()";
+        => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(true)\nfunc truth(x: i32) -> bool => true\nfunc stopTake(s: string) -> Never => stop()";
 
     private const string Counter = "\nstruct Counter\n    public var value: i32 = 0";
 
     private static string OrdinarySource(string dead, bool condition)
-        => "func stop() -> Never => $abort(\"stop\")\nfunc truth(x?: i32) -> bool => true\nfunc f(c?: bool)\n    var x: i32\n    " + dead + "\n    let y = x\n    Console.writeLine(\"normal\")\nf(" + (condition ? "true" : "false") + ")";
+        => "func stop() -> Never => $abort(\"stop\")\nfunc truth(x: i32) -> bool => true\nfunc f(c: bool)\n    var x: i32\n    " + dead + "\n    let y = x\n    Console.writeLine(\"normal\")\nf(" + (condition ? "true" : "false") + ")";
 
 #if DEBUG
     private const string Configuration = "Debug";

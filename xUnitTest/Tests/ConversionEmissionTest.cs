@@ -11,7 +11,7 @@ namespace XunitTest;
 public class ConversionEmissionTest
 {
     private const string Reason = "KIMI_E_INT_CONVERSION: Integer conversion out of range";
-    private const string Consumers = "func id(x?: u32) -> u32 => x\nfunc convert(x?: i32) -> u32\n    var y = x\n    defer => y = -1\n    return y@u32\nvar x: i32 = 42\nvar y: u32 = x@u32\nlet z = if true => x@u32 else => 1@u32\ny = x@u32\nif y == z and id(x@u32) == 42 and convert(x) == 42 and (x@u32 > 0) => Console.writeLine(\"ok\")";
+    private const string Consumers = "func id(x: u32) -> u32 => x\nfunc convert(x: i32) -> u32\n    var y = x\n    defer => y = -1\n    return y@u32\nvar x: i32 = 42\nvar y: u32 = x@u32\nlet z = if true => x@u32 else => 1@u32\ny = x@u32\nif y == z and id(x@u32) == 42 and convert(x) == 42 and (x@u32 > 0) => Console.writeLine(\"ok\")";
 
     public static IEnumerable<object[]> Pairs()
     {
@@ -33,7 +33,7 @@ public class ConversionEmissionTest
         var (targetMin, targetMax) = Range(target);
         var low = BigInteger.Max(sourceMin, targetMin).ToString(CultureInfo.InvariantCulture);
         var high = BigInteger.Min(sourceMax, targetMax).ToString(CultureInfo.InvariantCulture);
-        var header = $"func convert(x?: {source}) -> {target} => x@{target}\n";
+        var header = $"func convert(x: {source}) -> {target} => x@{target}\n";
         var program = header + $"if convert({low}) == {low} and convert({high}) == {high} => Console.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(program);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
@@ -73,7 +73,7 @@ public class ConversionEmissionTest
     [InlineData("ConversionSignedParentheses", "if -(128)@i8 == -128 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionWideNegative", "let x: i8 = -128\nif x@i64 == -128 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionUnsignedHigh", "let x: u8 = 200\nif x@i64 == 200 => Console.writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionTypedOverload", "func f(x?: u8) -> i32 => 1\nfunc f(x?: i32) -> i32 => 2\nif f(1@u8) == 1 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("ConversionTypedOverload", "func f(x: u8) -> i32 => 1\nfunc f(x: i32) -> i32 => 2\nif f(1@u8) == 1 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionEvaluateOnce", "var x = 1\nlet y = (x++)@u8\nif y == 1 and x == 2 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionSkipped", "var x = -1\nif true or x@u8 == 0 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionExit", "loop\n    (exit)@u8\nConsole.writeLine(\"ok\")", "ok\n")]
@@ -109,7 +109,7 @@ public class ConversionEmissionTest
     [InlineData("let s = \"x\"\ns@bool", "TypeMismatch")]
     [InlineData("256@owner/u8", "InvalidLiteral")]
     [InlineData("let x = 1\nx@(ref)", "Unsupported")]
-    [InlineData("func f(x?: i32) => ()\nf(1@u8)", "NoApplicableCandidate")]
+    [InlineData("func f(x: i32) => ()\nf(1@u8)", "NoApplicableCandidate")]
     public void InvalidAndUnimplementedAdaptationsHaveDistinctFailures(string source, string failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -171,7 +171,7 @@ public class ConversionEmissionTest
     [Fact]
     public void OperandInferenceIsIndependentAndRebindingResetsClassification()
     {
-        var c = MinimalEmissionTest.Analyze("func id<T>(x?: T) -> T => x\nlet a = id(300)@u8\nlet b = (200 + 100)@u8\nlet d = ((-128))@i8");
+        var c = MinimalEmissionTest.Analyze("func id<T>(x: T) -> T => x\nlet a = id(300)@u8\nlet b = (200 + 100)@u8\nlet d = ((-128))@i8");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         var nodes = All(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
         Assert.Equal(3, nodes.Length);

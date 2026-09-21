@@ -1124,7 +1124,7 @@ Separate rejection exercises:
 - Supply only `<3>`: partial generic argument lists are not introduced.
 - Return the borrow of local outside its do scope, then use it.
 - Change pick's result Origin to static: its input supplies no such guarantee.
-- Add `func make<T>(value?: T = $abort("No value")) -> T => value` and call
+- Add `func make<T>(value: T = $abort("No value")) -> T => value` and call
   `make()` without a result annotation: defaults cannot infer an unbound T.
 
 Companion verification covers conflicting Type/length/Semantics evidence,

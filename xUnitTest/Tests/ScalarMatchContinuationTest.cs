@@ -38,7 +38,7 @@ public class ScalarMatchContinuationTest
     [InlineData("true, 19", 19)]
     public void ScalarMatchDefaultsUsePreparedArguments(string arguments, int expected)
     {
-        var source = "func choose(flag?: bool, value?: i32 = (match flag\n    true => 7\n    false => 11\n)) -> i32 => value\n" +
+        var source = "func choose(flag: bool, value: i32 = (match flag\n    true => 7\n    false => 11\n)) -> i32 => value\n" +
             "if choose(" + arguments + ") != " + expected + " => $abort(\"default mismatch\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
@@ -46,7 +46,7 @@ public class ScalarMatchContinuationTest
     }
 
     private static string Source(string declaration, string arms, string after, string use)
-        => "func stop() -> Never => $abort(\"scalar match\")\nfunc f(c?: bool)\n    " + declaration +
+        => "func stop() -> Never => $abort(\"scalar match\")\nfunc f(c: bool)\n    " + declaration +
             "\n    do\n        loop\n            if c => return else => exit\n            choice: match c\n                " + arms +
             "\n            " + after + "\n        stop()\n    " + use + "\nf(true)";
 }

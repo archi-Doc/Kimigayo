@@ -93,7 +93,7 @@ $orderedOne = "Iteration finished.`nConsumed destroyed.`nIteration finished.`nIt
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
     Names = @{ source = $original.Replace('Item', 'Resource').Replace('current', 'active').Replace('selected', 'chosen'); stdout = $expected.Replace('Item', 'Resource') }
-    Values = @{ source = $original.Replace('init(10)', 'init(14)').Replace('init(12)', 'init(17)'); stdout = $expected }
+    Values = @{ source = $original.Replace('init(! 10)', 'init(! 14)').Replace('init(! 12)', 'init(! 17)'); stdout = $expected }
     ReverseSelection = @{ source = $original.Replace('if step == 1', 'if step != 1').Replace('total == initial + 30', 'total == 50'); stdout = $expected }
     Zero = @{ source = $original.Replace('while step < 3', 'while step < 0').Replace('total == initial + 30', 'total == 0').Replace('current.value == 21', 'current.value == initial'); stdout = $zero + $zero + "Ownership joins finished.`n" }
     Five = @{ source = $original.Replace('while step < 3', 'while step < 5').Replace('total == initial + 30', 'total == initial + 90').Replace('current.value == 21', 'current.value == 23'); stdout = $five + $five + "Ownership joins finished.`n" }

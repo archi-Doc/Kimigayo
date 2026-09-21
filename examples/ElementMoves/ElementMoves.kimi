@@ -11,7 +11,7 @@ values[1] = values[1]
 let complete = values
 
 // Both branch outcomes retain exactly one destruction responsibility per string.
-func replace(take?: bool)
+func replace(take: bool)
     var pair = ("old", "sibling")
     if take
         let old = pair.0

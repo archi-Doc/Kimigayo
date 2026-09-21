@@ -4,14 +4,14 @@ struct Toolkit
         public struct Box<T>
             let value: T
 
-            public init(value?: T)
+            public init(value: T)
                 self.value = value
 
             // No deinit: extracting a Non-Copy field is permitted.
             public func take(self: Self) -> T => self.value
 
     public group Selection
-        public func choose<T>(first?: T, second?: T, useFirst?: bool) -> T
+        public func choose<T>(first: T, second: T, useFirst: bool) -> T
             return if useFirst => first else => second
 
 public func main()

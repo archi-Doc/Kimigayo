@@ -64,7 +64,7 @@ public class CompletingLoopContinuationTest
     [InlineData("let x = \"s\"", "Console.writeLine(x)\n                return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     public void TerminalSelectionsKeepLoopEscapePaths(string declaration, string early, string use, OwnershipFailure failure)
     {
-        var source = Stop + "func f(c?: bool, d?: bool)\n    " + declaration + "\n    if c\n        loop\n            if d\n                " + early + "\n            exit\n        stop()\n    else => return\n    " + use;
+        var source = Stop + "func f(c: bool, d: bool)\n    " + declaration + "\n    if c\n        loop\n            if d\n                " + early + "\n            exit\n        stop()\n    else => return\n    " + use;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
@@ -75,7 +75,7 @@ public class CompletingLoopContinuationTest
     public void LoopBorrowEndsBeforeTheEscapingContinuation()
         => ScalarEmissionTest.EmitFixture(
             "NeverCompletingLoop" + Configuration + "Borrow",
-            "func inspect(s?: ref/string) => ()\n" + Source("var s = \"s\"", "loop\n            if c\n                inspect(s)\n                return\n            exit", "inspect(s)", "s = \"new\"\n    Console.writeLine(s)") + "\nConsole.writeLine(\"done\")",
+            "func inspect(s: ref/string) => ()\n" + Source("var s = \"s\"", "loop\n            if c\n                inspect(s)\n                return\n            exit", "inspect(s)", "s = \"new\"\n    Console.writeLine(s)") + "\nConsole.writeLine(\"done\")",
             "done\n");
 
     [Theory]
@@ -84,14 +84,14 @@ public class CompletingLoopContinuationTest
     public void CompletingDefaultLoopPreservesCallerState(string condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverCompletingLoop" + Configuration + "Default" + condition,
-            "func value(c?: bool, y?: i32 = (scope: do\n    var n: i32\n    loop\n        if c => exit\n        n = 1\n        exit\n    n = 2\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(" + condition + ")\nlet y = x",
+            "func value(c: bool, y: i32 = (scope: do\n    var n: i32\n    loop\n        if c => exit\n        n = 1\n        exit\n    n = 2\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(" + condition + ")\nlet y = x",
             "begin\n",
             timeoutMilliseconds: 200);
 
     [Fact]
     public void SuppliedDefaultStillChecksTheLoopDeclaration()
     {
-        var c = MinimalEmissionTest.Analyze("func value(c?: bool, y?: i32 = (scope: do\n    var n: i32\n    loop\n        if c => exit\n        n = 1\n        exit\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvalue(true, 3)");
+        var c = MinimalEmissionTest.Analyze("func value(c: bool, y: i32 = (scope: do\n    var n: i32\n    loop\n        if c => exit\n        n = 1\n        exit\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvalue(true, 3)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -121,7 +121,7 @@ public class CompletingLoopContinuationTest
     }
 
     private static string Source(string declaration, string loop, string tail, string use, bool condition = true)
-        => Stop + "func f(c?: bool)\n    " + declaration + "\n    do\n        " + loop + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
+        => Stop + "func f(c: bool)\n    " + declaration + "\n    do\n        " + loop + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
 #if DEBUG
     private const string Configuration = "Debug";

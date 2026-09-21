@@ -26,7 +26,7 @@ public class AggregateEmissionTest
         { "AggregateConditionalLoop", "var value = (\"a\", \"b\")\nvar i = 0\nwhile i < 3\n    if i == 1 => value\n    value = (\"c\", \"d\")\n    i += 1", "a=1;b=1;c=3;d=3" },
         { "AggregateMixed", "let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())", "a=1;b=1" },
         { "AggregateResultPayload", "let value = (if true => \"a\" else => \"b\", \"c\")", "a=1;b=0;c=1" },
-        { "AggregateCallPayload", "func echo(x?: string) -> string => x\nlet value = (echo(\"a\"), \"b\")", "a=1;b=1" },
+        { "AggregateCallPayload", "func echo(x: string) -> string => x\nlet value = (echo(\"a\"), \"b\")", "a=1;b=1" },
         { "AggregatePartialExit", "loop\n    let value: (string, i32) = (\"a\", (exit))", "a=1" },
         { "AggregatePartialReturn", "func f() -> ()\n    let value: (string, i32) = (\"a\", (return))\nf()", "a=1" },
         { "AggregateArrayPartialExit", "loop\n    let value: [2 of string] = [\"a\", (exit)]", "a=1" },
@@ -121,7 +121,7 @@ public class AggregateEmissionTest
 
     [Theory]
     [InlineData("var value: [2147483647 of string]")]
-    [InlineData("func echo(value?: [2147483647 of string]) -> [2147483647 of string] => value\n()")]
+    [InlineData("func echo(value: [2147483647 of string]) -> [2147483647 of string] => value\n()")]
     public void UnsupportedAggregateShapesRemainExplicit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

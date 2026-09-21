@@ -19,19 +19,19 @@ Each declaration in the committed function group is checked against the followin
 
 Zero applicable candidates is an error. Candidate checking records plans; it neither executes nor commits runtime Copy/Move, Loans or defaults. Errors in declarations, such as unknown Types, malformed Constraints or duplicate Signatures, remain declaration errors even when another candidate succeeds.
 
-**Argument matching.** Positional arguments precede named arguments and bind parameters in declaration order. At a direct call, an ordinary parameter accepts a positional argument only when its external name carries `?` (§7.2). Positional matching never skips a name-required parameter, a parameter with a default, or a parameter supplied later by name, and never searches by Type for another position. A bound method first removes its receiver position from this matching sequence (§7.3). Named arguments use external names, may be reordered, and cannot bind a parameter twice. An unbound ordinary parameter is filled by its default if present; otherwise a missing-argument error is required, irrespective of `?`. Unknown labels, excess positional arguments and positional arguments targeting name-required parameters are rejected. Explicit arguments are evaluated in source order, then omitted defaults in parameter order; defaults follow the [declaration-site rules](07-functions-and-callable-values.md#72-parameters-and-defaults) and supply no generic-inference evidence. Function-value calls supply every argument positionally.
+**Argument matching.** Positional arguments precede named arguments and bind parameters in declaration order. At a direct call, an ordinary parameter accepts a positional argument only when it precedes the `!` boundary or the declaration has no boundary (§7.2). Positional matching never skips a name-required parameter, a parameter with a default, or a parameter supplied later by name, and never searches by Type for another position. A bound method first removes its receiver position from this matching sequence (§7.3). Named arguments use external names, may be reordered, and cannot bind a parameter twice. An unbound ordinary parameter is filled by its default if present; otherwise a missing-argument error is required, irrespective of the boundary. Unknown labels, excess positional arguments and positional arguments targeting name-required parameters are rejected. Explicit arguments are evaluated in source order, then omitted defaults in parameter order; defaults follow the [declaration-site rules](07-functions-and-callable-values.md#72-parameters-and-defaults) and supply no generic-inference evidence. Function-value calls supply every argument positionally.
 
 ```kimi
-func scale(value?: i32, by => factor: i32) -> i32 => value * factor
+func scale(value: i32 ! by => factor: i32) -> i32 => value * factor
 scale(by: 4, value: 3) // Valid; evaluate by before value.
 scale(3, value: 4)     // Error: value supplied twice.
 scale(3, factor: 4)    // Error: factor is an internal name.
 
-func configure(mode: i32 = 0, count?: i32 = 1) => ()
+func configure(! mode: i32 = 0, count: i32 = 1) => ()
 configure(count: 3) // Valid; use the default for mode.
 configure(3)        // Error: mode requires its name; do not skip to count.
 
-func pair(first?: i32 = 1, second?: i32 = 2) => ()
+func pair(first: i32 = 1, second: i32 = 2) => ()
 pair(3)            // first = 3, second = 2.
 pair(second: 3)    // first = 1, second = 3.
 ```
@@ -72,8 +72,8 @@ Fixed-expectation [common function conversion](07-functions-and-callable-values.
 **Literals.** An untyped integer literal fits any representable candidate integer Type directly; floating literals follow the numeric rules. Literals are not defaulted to `i32`/`f64` before fitting, narrower widths are not preferred, and defaults never break overload ambiguity. Outside candidate comparison, an independent expression without an expected Type uses the ordinary numeric defaults. Generic inference processes receiver, other-argument and known-result constraints before defaulting. `null`, empty collections and untyped functions gain no universal fallback Type.
 
 ```kimi
-func choose(value?: i32) -> () => ()
-func choose(value?: i64) -> () => ()
+func choose(value: i32) -> () => ()
+func choose(value: i64) -> () => ()
 choose(1)      // Error: both integer Types fit.
 let x = 1      // Independently defaults to i32.
 choose(x)      // Exact i32.
@@ -87,13 +87,13 @@ Copying or reborrowing an existing reference takes priority over adding a layer:
 The materialized owner lasts until the normal outermost expression, condition or match temporary boundary (§3.6), and at least through the call. It is neither shortened to the end of the call nor extended to keep a returned borrow valid. On an escape failure, the diagnostic identifies the borrow, the temporary's end and the required use, and suggests a named local only when its Type and Origin constraints can work.
 
 ```kimi
-func inspect<T>(value?: ref/T) -> () => ()
+func inspect<T>(value: ref/T) -> () => ()
 func makeValue() -> i64 => 1
 inspect(makeValue()) // Infer T = i64 and borrow the temporary.
 inspect(1) // T defaults to i32 after constraints.
 
-func chooseBorrow(value?: ref/i32) -> () => ()
-func chooseBorrow(value?: ref/i64) -> () => ()
+func chooseBorrow(value: ref/i32) -> () => ()
+func chooseBorrow(value: ref/i64) -> () => ()
 chooseBorrow(1) // Error: both fit; default i32 does not break the tie.
 ```
 
@@ -106,8 +106,8 @@ An expected result may complete inference and exclude otherwise applicable candi
 Expected results do not rank candidates by result-conversion quality. Result Loan/Origin propagation and Copy/Move still apply. An expectation comes from a surrounding annotation, a fixed parameter or a declared result, subject to §10.5; it cannot circularly select its own source candidate. Discarding a call supplies no expected Unit Type. Constructs with Unit-fixed Target Result Types follow §14.2, and their directly discarded calls still receive no Unit expectation.
 
 ```kimi
-func fetch(value?: i32) -> string => "text"
-func fetch(value?: i64) -> i64 => value
+func fetch(value: i32) -> string => "text"
+func fetch(value: i64) -> i64 => value
 let text: string = fetch(1) // Selects fetch(i32) by result compatibility.
 fetch(1)                   // Error: discarding leaves both candidates.
 ```
@@ -127,8 +127,8 @@ Pairwise comparison yields better, worse, equivalent or incomparable. **Only equ
 Numeric Types are not ranked by width, Constraints not by strength or clause count, and generic declarations not by general pattern partial ordering. `uniq/T <: ref/T` is never invented from the ability to reborrow. Incomparability at an earlier step cannot be rescued by nongeneric status or fewer defaults, and declaration, file, alias and name order never break ties.
 
 ```kimi
-func inspect(value?: ref/i32) -> () => ()
-func inspect(value?: uniq/i32) -> () => ()
+func inspect(value: ref/i32) -> () => ()
+func inspect(value: uniq/i32) -> () => ()
 var x: i32 = 0
 inspect(x)      // Error: both cross-semantics borrows; Types incomparable.
 inspect(x@ref)  // Shared candidate: Exact.
@@ -156,10 +156,10 @@ Generic inference and substitution use the [complete-Type slots and projections]
 - Otherwise an annotation, explicit Type arguments or a typed intermediate binding is required.
 
 ```kimi
-func inner(value?: i32) -> i32 => value
-func inner(value?: i64) -> i64 => value
-func outer(value?: i32) -> () => ()
-func outer(value?: i64) -> () => ()
+func inner(value: i32) -> i32 => value
+func inner(value: i64) -> i64 => value
+func outer(value: i32) -> () => ()
+func outer(value: i64) -> () => ()
 outer(inner(1))                    // Error: would require nested search.
 let intermediate: i64 = inner(1)  // Expected result fixes the inner call.
 outer(intermediate)
@@ -172,14 +172,14 @@ outer(intermediate)
 If the normalized return Type is Unit before the body is checked, the single-item expression is discarded (§7.1); otherwise it is in Value Context, including for return inference. Unit inferred from another argument before body checking is allowed, whatever its spelling or source. The body and captures are not reinterpreted after later Unit inference or generic instantiation. A standalone lambda without an expectation can infer its return, while an already typed function value cannot erase its return to Unit. There is no overload preference between using and discarding lambda results.
 
 ~~~kimi
-func run(action?: () -> ()) => action()
-func run(action?: () -> i32) => action()
+func run(action: () -> ()) => action()
+func run(action: () -> i32) => action()
 run(func () => compute()) // Error: differing expectations; compute returns i32.
 run(func ()
     return compute()
 ) // Same error: an explicit return does not select an expected signature.
 run(func () -> i32 => compute()) // Explicit return Type selects the second overload.
-func apply<U>(value?: U, action?: () -> U) -> U => action()
+func apply<U>(value: U, action: () -> U) -> U => action()
 apply((), func () => compute()) // U is Unit before checking the lambda; discard its value.
 // func make<T>() -> T => 123 is invalid for arbitrary T; instantiation cannot rescue it.
 ~~~
@@ -193,8 +193,8 @@ Environment-selected membership follows §19.4: excluded declarations neither me
 After selection, unsafe permission, initialization and Move state, actual Loans and lifetimes, required accessor access, write capability, and other control-flow or ownership conditions are checked. Static Type and declaration permissions needed for adaptation were checked earlier; flow-dependent failures never change the selected overload.
 
 ```kimi
-unsafe func inspect(value?: i32) -> () => ()
-func inspect(value?: ref/i32) -> () => ()
+unsafe func inspect(value: i32) -> () => ()
+func inspect(value: ref/i32) -> () => ()
 let number: i32 = 1
 inspect(number) // Select Exact i32, then reject without an Unsafe Block.
 ```
@@ -233,4 +233,4 @@ The following are not specified in this revision, and implementations must not i
 
 - General Const arguments beyond [function lengths](04-arrays-indexing-and-slices.md#44-function-length-parameters), standalone Semantics slots, partial, default or variadic generic arguments, and partial or conditional specialization.
 - Implicit argument or receiver adaptations beyond the defined applicability table, and exact contextual-binding boundaries for additional accessor or function forms. The explicit Borrow table adds no implicit overload preferences.
-- Operator and indexer candidate collection and explicit selection syntax. Constructor collection is defined under [constructors](06-declarations-and-containers.md#623-constructors); external/internal parameter-name syntax, including `?`, is defined in §7.2.
+- Operator and indexer candidate collection and explicit selection syntax. Constructor collection is defined under [constructors](06-declarations-and-containers.md#623-constructors); external/internal parameter names and the `!` boundary are defined in §7.2.

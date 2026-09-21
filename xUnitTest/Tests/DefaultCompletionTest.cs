@@ -16,7 +16,7 @@ public class DefaultCompletionTest
     [InlineData(true, true)]
     public void SelectedDefaultsAffectCallCompletionWithoutChangingItsType(bool supplied, bool forward)
     {
-        const string Declaration = "func f(x?: i32 = (loop => continue)) -> i32 => x\n";
+        const string Declaration = "func f(x: i32 = (loop => continue)) -> i32 => x\n";
         var call = supplied ? "f(3)\n" : "f()\n";
         var c = Parse(forward ? call + Declaration : Declaration + call);
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
@@ -36,7 +36,7 @@ public class DefaultCompletionTest
     [InlineData("scope: do\n    defer => loop => ()\n    exit to scope: 3")]
     public void NoncompletingDefaultsSatisfyRequireFailure(string expression)
     {
-        var c = Parse("func f(x?: i32 = (" + expression + ")) => ()\nfunc caller()\n    require true else => f()\ncaller()");
+        var c = Parse("func f(x: i32 = (" + expression + ")) => ()\nfunc caller()\n    require true else => f()\ncaller()");
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
@@ -52,7 +52,7 @@ public class DefaultCompletionTest
     public void NoncompletingDefaultConditionsHaveNoRuntimeSuccessor(string name, string use)
         => ScalarEmissionTest.EmitFixture(
             Prefix + name,
-            "func f(x?: i32 = (loop => continue)) -> bool => true\nConsole.writeLine(\"begin\")\n" + use,
+            "func f(x: i32 = (loop => continue)) -> bool => true\nConsole.writeLine(\"begin\")\n" + use,
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -60,13 +60,13 @@ public class DefaultCompletionTest
     public void SuppliedDefaultsAndRequireSuccessStillExecute()
         => ScalarEmissionTest.EmitFixture(
             Prefix + "Supplied",
-            "func f(x?: i32 = (loop => continue)) -> bool => true\nrequire true else => f()\nif f(3) => Console.writeLine(\"ok\")",
+            "func f(x: i32 = (loop => continue)) -> bool => true\nrequire true else => f()\nif f(3) => Console.writeLine(\"ok\")",
             "ok\n");
 
     [Fact]
     public void NestedDefaultsPropagateCompletion()
     {
-        var c = Parse("f()\nfunc leaf(x?: i32 = (loop => continue)) -> i32 => x\nfunc f(x?: i32 = leaf()) -> i32 => x");
+        var c = Parse("f()\nfunc leaf(x: i32 = (loop => continue)) -> i32 => x\nfunc f(x: i32 = leaf()) -> i32 => x");
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
@@ -76,7 +76,7 @@ public class DefaultCompletionTest
     [Fact]
     public void RecursiveDefaultExpansionRemainsPending()
     {
-        var c = Parse("func f(x?: i32 = f()) -> i32 => x\nf()");
+        var c = Parse("func f(x: i32 = f()) -> i32 => x\nf()");
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.NotEmpty(flow.PendingBinding);
         Assert.False(c.Ownership.Analyze().IsVerified);
@@ -85,7 +85,7 @@ public class DefaultCompletionTest
     [Fact]
     public void WarmDefaultFlowReanalysisAllocatesNothing()
     {
-        var c = Parse("f()\nfunc f(x?: i32 = (loop => continue)) -> i32 => x\nf(3)");
+        var c = Parse("f()\nfunc f(x: i32 = (loop => continue)) -> i32 => x\nf(3)");
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);
         Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));

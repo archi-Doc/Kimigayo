@@ -9,7 +9,7 @@ namespace XunitTest;
 public class ConstraintProjectionApiAccessBindingTest
 {
     [Theory]
-    [InlineData("public group Api\n    public func expose<T>(value?: T)\n        T is S.C.Element\n        ()")]
+    [InlineData("public group Api\n    public func expose<T>(value: T)\n        T is S.C.Element\n        ()")]
     [InlineData("public struct Api<T>\n    T is S.C.Element")]
     [InlineData("public enum Api<T>\n    T is S.C.Element\n    Empty")]
     [InlineData("public contract Api\n    associate Element is S.C.Element")]
@@ -30,7 +30,7 @@ public class ConstraintProjectionApiAccessBindingTest
     [InlineData("[1 of S.C.Element]")]
     public void CompoundFunctionRequirementsRetainProjectionDomains(string requirement)
     {
-        Reject($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose<T>(value?: T)\n        T is {requirement}\n        ()");
+        Reject($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose<T>(value: T)\n        T is {requirement}\n        ()");
     }
 
     [Theory]
@@ -41,14 +41,14 @@ public class ConstraintProjectionApiAccessBindingTest
     [InlineData("internal", "public", "private", true)]
     public void FunctionConstraintDomainsIncludeQualifierAndRequirement(string typeAccess, string contractAccess, string functionAccess, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    {functionAccess} func expose<T>(value?: T)\n        T is S.C.Element\n        ()");
+        var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    {functionAccess} func expose<T>(value: T)\n        T is S.C.Element\n        ()");
         Check(c, valid);
     }
 
     [Fact]
     public void ConstructedRequirementChecksProjectedArguments()
     {
-        Reject("contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\npublic group Api\n    public func expose<T>(value?: T)\n        T is Box<S.C.Element>\n        ()");
+        Reject("contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\npublic group Api\n    public func expose<T>(value: T)\n        T is Box<S.C.Element>\n        ()");
     }
 
     [Theory]
@@ -56,7 +56,7 @@ public class ConstraintProjectionApiAccessBindingTest
     [InlineData("Box<i32>.C.Element")]
     public void TupleAndConstructedProjectionRequirementsReachBinding(string requirement)
     {
-        var source = $"public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose<T>(value?: T)\n        T is {requirement}\n        ()";
+        var source = $"public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose<T>(value: T)\n        T is {requirement}\n        ()";
         var tree = ParseTestHelper.Parse(source);
         ParseTestHelper.AssertValid(tree);
         Check(MinimalEmissionTest.Analyze(source), true);
@@ -67,7 +67,7 @@ public class ConstraintProjectionApiAccessBindingTest
     [InlineData("T.Element")]
     public void SubjectProjectionsRetainTheirDefiningRequirement(string subject)
     {
-        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic group Api\n    public func expose<T>(value?: T)\n        T is C\n        {subject} is i32\n        ()");
+        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic group Api\n    public func expose<T>(value: T)\n        T is C\n        {subject} is i32\n        ()");
         Check(c, false);
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto { Left: MemberAccessKoto } && x.Node.BindingFailure == BindingFailure.Access);
     }
@@ -77,7 +77,7 @@ public class ConstraintProjectionApiAccessBindingTest
     [InlineData("internal", true)]
     public void FunctionRequirementsUseTheirContractDomain(string access, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n{access} contract Api\n    func expose<T>(value?: T)\n        T is S.C.Element");
+        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n{access} contract Api\n    func expose<T>(value: T)\n        T is S.C.Element");
         Check(c, valid);
     }
 
@@ -94,7 +94,7 @@ public class ConstraintProjectionApiAccessBindingTest
     [InlineData("T.Element", "Copy")]
     public void DependentSubjectProjectionsRemainValid(string subject, string requirement)
     {
-        Accept($"public contract C\n    associate Element\npublic group Api\n    public func expose<T>(value?: T)\n        T is C\n        {subject} is {requirement}\n        ()");
+        Accept($"public contract C\n    associate Element\npublic group Api\n    public func expose<T>(value: T)\n        T is C\n        {subject} is {requirement}\n        ()");
     }
 
     [Theory]
@@ -121,10 +121,10 @@ public class ConstraintProjectionApiAccessBindingTest
     }
 
     [Theory]
-    [InlineData("func local<T>(value?: T)\n    T is S.C.Element\n    ()")]
-    [InlineData("public group Api\n    public func expose<T>(value?: T)\n        let item: S.C.Element = 1\n        ()")]
+    [InlineData("func local<T>(value: T)\n    T is S.C.Element\n    ()")]
+    [InlineData("public group Api\n    public func expose<T>(value: T)\n        let item: S.C.Element = 1\n        ()")]
     [InlineData("public struct Api\n    Self is C\n    associate C.Element is S.C.Element")]
-    [InlineData("public group Api\n    private func expose<T>(value?: T)\n        T is S.C.Element\n        ()")]
+    [InlineData("public group Api\n    private func expose<T>(value: T)\n        T is S.C.Element\n        ()")]
     public void LocalBodiesAndConformanceSpecificationsKeepTheirDomains(string declaration)
     {
         Accept("contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n" + declaration);
@@ -137,7 +137,7 @@ public class ConstraintProjectionApiAccessBindingTest
     [InlineData(true, "internal", true)]
     public void RebindingAndReloadRetainConstraintDomains(bool contract, string access, bool valid)
     {
-        var declaration = contract ? $"{access} contract Api\n    associate Item is S.C.Element" : $"public group Api\n    {access} func expose<T>(value?: T)\n        T is S.C.Element\n        ()";
+        var declaration = contract ? $"{access} contract Api\n    associate Item is S.C.Element" : $"public group Api\n    {access} func expose<T>(value: T)\n        T is S.C.Element\n        ()";
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n" + declaration);
         Check(c, valid);
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -155,7 +155,7 @@ public class ConstraintProjectionApiAccessBindingTest
     [Fact]
     public void ReplacingAFunctionConstraintClearsAndRestoresAccessFailure()
     {
-        const string prefix = "contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose<T>(value?: T)\n        T is ";
+        const string prefix = "contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose<T>(value: T)\n        T is ";
         var c = MinimalEmissionTest.Analyze(prefix + "S.C.Element\n        ()");
         Check(c, false);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>().Single();
@@ -173,7 +173,7 @@ public class ConstraintProjectionApiAccessBindingTest
     [Fact]
     public void WarmConstraintProjectionChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic contract Api\n    associate Item is S.C.Element\npublic group Functions\n    public func expose<T>(value?: T)\n        T is S.C.Element\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic contract Api\n    associate Item is S.C.Element\npublic group Functions\n    public func expose<T>(value: T)\n        T is S.C.Element\n        ()");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

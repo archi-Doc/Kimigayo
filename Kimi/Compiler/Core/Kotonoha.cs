@@ -88,6 +88,15 @@ public sealed partial class Kotonoha
     [Key(3)]
     private List<SourceDocument> sourceDocuments = new();
 
+    [Key(5)]
+    private int sourceFormat;
+
+    [Key(6)]
+    private string? sourceLanguageVersion;
+
+    [Key(7)]
+    private string? sourceCompilerVersion;
+
     [Key(4)]
     private Dictionary<int, (string ModId, int AdditionOrder)>? generatedSourceLocations;
 
@@ -106,6 +115,9 @@ public sealed partial class Kotonoha
 
         this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(name);
         this.Compilation = compilation;
+        this.sourceFormat = 1;
+        this.sourceLanguageVersion = Compilation.CurrentLanguageVersion;
+        this.sourceCompilerVersion = Compilation.CompilerVersion;
         this.Name = name;
         this.Id = (uint)XxHash3Slim.Hash64(name);
         this.Url = url;
@@ -139,6 +151,14 @@ public sealed partial class Kotonoha
         this.RootKoto = new(new CodeContext(this), default, default);
         this.GeneratedFunction = null;
         this.documentationSources = null;
+
+        if (this.sourceFormat != 1 || this.sourceLanguageVersion != Compilation.CurrentLanguageVersion ||
+            this.sourceCompilerVersion != Compilation.CompilerVersion)
+        {
+            this.HasSourceErrors = true;
+            this.DiagnosticCollection.Add(default, DiagnosticCode.UnexpectedToken_Kd, "incompatible serialized source format, language version or compiler build");
+            return;
+        }
 
         for (var i = 0; i < this.sourceDocuments.Count; i++)
         {
@@ -216,6 +236,15 @@ public sealed partial class Kotonoha
     /// <summary>Removes the generated function, if present.</summary>
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
+
+    [TinyhandOnDeserializing]
+    private void ResetSourceCompatibility()
+    {
+        // Missing fields must not inherit the destination instance's current version.
+        this.sourceFormat = 0;
+        this.sourceLanguageVersion = null;
+        this.sourceCompilerVersion = null;
+    }
 
     private void ParseSource(SourceDocument sourceDocument, string? modId = null, int additionOrder = 0)
     {

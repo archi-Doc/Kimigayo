@@ -9,10 +9,10 @@ namespace XunitTest;
 public class CallbackEmissionTest
 {
     [Theory]
-    [InlineData("Empty", "func apply(f?: (i32) -> bool) -> bool => f(6)\nrequire apply(func (v: i32) => v == 6) else => $abort(\"callback\")")]
-    [InlineData("Capture", "func apply(f?: (i32) -> bool) -> bool => f(6) and not f(5)\nlet target: i32 = 6\nrequire apply(func [target] (v: i32) => v == target) else => $abort(\"capture\")")]
+    [InlineData("Empty", "func apply(f: (i32) -> bool) -> bool => f(6)\nrequire apply(func (v: i32) => v == 6) else => $abort(\"callback\")")]
+    [InlineData("Capture", "func apply(f: (i32) -> bool) -> bool => f(6) and not f(5)\nlet target: i32 = 6\nrequire apply(func [target] (v: i32) => v == target) else => $abort(\"capture\")")]
     [InlineData("Snapshot", "var target: i32 = 6\nlet f: (i32) -> bool = func [target] (v: i32) => v == target\ntarget = 7\nrequire f(6) and not f(7) else => $abort(\"snapshot\")")]
-    [InlineData("Return", "func make(target?: i32) -> (i32) -> bool => func [target] (v: i32) => v == target\nlet f = make(6)\nlet g = f\nrequire g(6) else => $abort(\"return\")")]
+    [InlineData("Return", "func make(target: i32) -> (i32) -> bool => func [target] (v: i32) => v == target\nlet f = make(6)\nlet g = f\nrequire g(6) else => $abort(\"return\")")]
     [InlineData("Implicit", "let target: i32 = 6\nlet f: (i32) -> bool = func (v: i32) => v == target\nrequire f(6) else => $abort(\"implicit\")")]
     [InlineData("Aligned", "let small: i8 = 3\nlet target: i32 = 6\nlet flag = true\nlet f: (i32) -> bool = func [small, target, flag] (v: i32) => flag and small == 3 and v == target\nrequire f(6) else => $abort(\"aligned\")")]
     [InlineData("NestedCall", "let f: (i32) -> i32 = func (v: i32) => v + 1\nrequire f(f(4)) == 6 else => $abort(\"nested\")")]
@@ -61,7 +61,7 @@ public class CallbackEmissionTest
     [InlineData("let f: () -> i32 = func () => true")]
     [InlineData("let f: () -> i32 = func () => 6\nlet g = f\nf()")]
     [InlineData("let n: i32\nlet f: () -> i32 = func [n] () => 6")]
-    [InlineData("func eat(f?: (i32) -> bool) -> i32 => 0\nlet f: (i32) -> bool = func (v: i32) => true\nf(eat(f))")]
+    [InlineData("func eat(f: (i32) -> bool) -> i32 => 0\nlet f: (i32) -> bool = func (v: i32) => true\nf(eat(f))")]
     [InlineData("let n: i32 = 6\nlet f: () -> i32 = func [n] ()\n    func nested() -> i32 => n\n    return nested()")]
     public void RejectsInvalidClosures(string source)
     {

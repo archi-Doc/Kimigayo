@@ -10,11 +10,11 @@ public class LibraryEmissionTest
 {
     [Theory]
     [InlineData("Empty", "")]
-    [InlineData("Main", "public func main(value?: i32) -> i32 => value + 1")]
+    [InlineData("Main", "public func main(value: i32) -> i32 => value + 1")]
     [InlineData("MainAbort", "public func main() => $abort(\"must not execute\")")]
     [InlineData("Functions", "public group Api\n    public func answer() -> i32 => 42\n    public func text() -> string => \"library\"")]
-    [InlineData("Generic", "public group Api\n    public func keep<T>(value?: T) -> T => value")]
-    [InlineData("Cleanup", "public struct Value\n    public let value: i32\n    public init(value?: i32) => self.value = value\n    deinit => Console.writeLine(\"drop\")")]
+    [InlineData("Generic", "public group Api\n    public func keep<T>(value: T) -> T => value")]
+    [InlineData("Cleanup", "public struct Value\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit => Console.writeLine(\"drop\")")]
     public void EmitsInspectionWithoutAnOsEntry(string name, string source)
     {
         var c = Analyze(source);
@@ -57,7 +57,7 @@ public class LibraryEmissionTest
     [InlineData(true)]
     public void ManifestUsesTheVerifiedOutputKind(bool testBuild)
     {
-        var c = Analyze(testBuild ? "#Test\nfunc sample() => $expect(true)" : "public func main(x?: i32) -> i32 => x", testBuild);
+        var c = Analyze(testBuild ? "#Test\nfunc sample() => $expect(true)" : "public func main(x: i32) -> i32 => x", testBuild);
         var directory = Path.Combine(Path.GetTempPath(), "kimi-library-" + Guid.NewGuid().ToString("N"));
         c.Project.Directory = directory;
         try

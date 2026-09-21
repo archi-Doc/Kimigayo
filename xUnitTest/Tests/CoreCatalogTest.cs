@@ -199,7 +199,7 @@ public class CoreCatalogTest
     public void MissingCatalogEntriesDoNotCreateLookupCandidates()
     {
         var c = Compilation.CreateForTest();
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x?: ::Kimi.Array<i32>) => ()");
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: ::Kimi.Array<i32>) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Array));
     }

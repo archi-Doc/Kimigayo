@@ -17,7 +17,7 @@ public class FunctionBodyParseTest
     {
         var function = ParseSingleFunction(
             """
-            public func Main(flag?: bool) -> i32
+            public func Main(flag: bool) -> i32
                 var x = 0
                 while x < 10
                     if (x == 5)
@@ -61,7 +61,7 @@ public class FunctionBodyParseTest
     {
         var function = ParseSingleFunction(
             """
-            func Describe(x?: i32) -> string
+            func Describe(x: i32) -> string
                 match (x)
                     0 => "zero"
                     1
@@ -123,7 +123,7 @@ public class FunctionBodyParseTest
     {
         var function = ParseSingleFunction(
             """
-            func Check(flag?: bool)
+            func Check(flag: bool)
                 if (flag)
                     1
                 if flag
@@ -145,7 +145,7 @@ public class FunctionBodyParseTest
     {
         var function = ParseSingleFunction(
             """
-            func Select(x?: bool)
+            func Select(x: bool)
                 var i = if (x == true) => 1 else => 0
                 i
             """);
@@ -186,7 +186,7 @@ public class FunctionBodyParseTest
     public void PreservesControlFlowThroughSerializationAndUnparse()
     {
         var source = """
-            func Evaluate(x?: i32) -> i32
+            func Evaluate(x: i32) -> i32
                 struct Local
                     var value: i32
                 while x < 0

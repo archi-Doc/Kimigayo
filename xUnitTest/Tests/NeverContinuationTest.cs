@@ -11,12 +11,12 @@ namespace XunitTest;
 public class NeverContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
-    private const string ScalarStop = Stop + "func value(x?: i32) -> i32 => x\nfunc truth(x?: i32) -> bool => true\n";
+    private const string ScalarStop = Stop + "func value(x: i32) -> i32 => x\nfunc truth(x: i32) -> bool => true\n";
 
     [Theory]
     [InlineData("let n: i32 = do => loop => continue\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let s = \"s\"\nConsole.writeLine(s)\ndo => loop => ()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(y?: i32 = (scope: do\n    let n: i32 = do => loop => continue\n    exit to scope: n\n)) => ()\nf(3)", OwnershipFailure.UninitializedUse)]
+    [InlineData("func f(y: i32 = (scope: do\n    let n: i32 = do => loop => continue\n    exit to scope: n\n)) => ()\nf(3)", OwnershipFailure.UninitializedUse)]
     public void TransparentDivergentScopesPreserveOwnershipFacts(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -27,7 +27,7 @@ public class NeverContinuationTest
 
     [Theory]
     [InlineData("Nested", "var n: i32 = do => do => loop => continue\nn = 3\nlet y = n")]
-    [InlineData("Default", "func f(y?: i32 = (do => loop => continue)) -> i32 => y\nvar n: i32 = f()\nn = 3\nlet y = n")]
+    [InlineData("Default", "func f(y: i32 = (do => loop => continue)) -> i32 => y\nvar n: i32 = f()\nn = 3\nlet y = n")]
     public void TransparentDivergentScopesHaveNoRuntimeSuccessor(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverWrapper" + Configuration + name, "Console.writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
 
@@ -52,7 +52,7 @@ public class NeverContinuationTest
     [InlineData("f(3)")]
     public void DefaultOperatorCannotInitializeFromAMissingOperand(string call)
     {
-        var c = MinimalEmissionTest.Analyze("func f(y?: i32 = (scope: do\n    let n: i32 = 1 << (loop => continue)\n    exit to scope: n\n)) => ()\n" + call);
+        var c = MinimalEmissionTest.Analyze("func f(y: i32 = (scope: do\n    let n: i32 = 1 << (loop => continue)\n    exit to scope: n\n)) => ()\n" + call);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -68,13 +68,13 @@ public class NeverContinuationTest
         => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Divergence", "Console.writeLine(\"begin\")\nvar n: i32 = 1 << (loop => continue)\nn = 3\nlet y = n", "begin\n", timeoutMilliseconds: 200);
 
     [Theory]
-    [InlineData("func value(x?: i32) -> i32 => x\nlet n: i32 = value(stop())\nlet y = n")]
-    [InlineData("func value(x?: i32) -> i32 => x\nlet n: i32 = value(value(stop()))\nlet y = n")]
-    [InlineData("func value(x?: i32) -> string => \"value\"\nlet n: string = value(stop())\nConsole.writeLine(n)")]
-    [InlineData("func value(x?: i32) -> i32 => x\nvar n: i32\nn = value(stop())\nlet y = n")]
-    [InlineData("func value(x?: i32 = (loop => continue)) -> i32 => x\nlet n: i32 = value()\nlet y = n")]
-    [InlineData("func value(x?: i32 = (loop => continue), y?: i32 = 1) -> i32 => y\nlet n: i32 = value()\nlet y = n")]
-    [InlineData("func value(s?: ref/string, x?: i32) -> i32 => x\nvar s = \"s\"\nlet n: i32 = value(s, stop())\ns = \"new\"\nlet y = n")]
+    [InlineData("func value(x: i32) -> i32 => x\nlet n: i32 = value(stop())\nlet y = n")]
+    [InlineData("func value(x: i32) -> i32 => x\nlet n: i32 = value(value(stop()))\nlet y = n")]
+    [InlineData("func value(x: i32) -> string => \"value\"\nlet n: string = value(stop())\nConsole.writeLine(n)")]
+    [InlineData("func value(x: i32) -> i32 => x\nvar n: i32\nn = value(stop())\nlet y = n")]
+    [InlineData("func value(x: i32 = (loop => continue)) -> i32 => x\nlet n: i32 = value()\nlet y = n")]
+    [InlineData("func value(x: i32 = (loop => continue), y: i32 = 1) -> i32 => y\nlet n: i32 = value()\nlet y = n")]
+    [InlineData("func value(s: ref/string, x: i32) -> i32 => x\nvar s = \"s\"\nlet n: i32 = value(s, stop())\ns = \"new\"\nlet y = n")]
     public void IncompleteArgumentAcquisitionSuppliesNoCallerValue(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
@@ -85,9 +85,9 @@ public class NeverContinuationTest
     }
 
     [Theory]
-    [InlineData("Reinitialize", "func value(x?: i32) -> i32 => x\nvar n: i32 = value(stop())\nn = 2\nlet y = n")]
-    [InlineData("LaterAssignment", "func value(x?: i32, y?: ()) -> i32 => x\nvar n: i32\nvalue(stop(), n = 2)\nlet y = n")]
-    [InlineData("Borrow", "func value(s?: ref/string, x?: i32) -> i32 => x\nvar s = \"s\"\nvalue(s, stop())\ns = \"new\"\nConsole.writeLine(s)")]
+    [InlineData("Reinitialize", "func value(x: i32) -> i32 => x\nvar n: i32 = value(stop())\nn = 2\nlet y = n")]
+    [InlineData("LaterAssignment", "func value(x: i32, y: ()) -> i32 => x\nvar n: i32\nvalue(stop(), n = 2)\nlet y = n")]
+    [InlineData("Borrow", "func value(s: ref/string, x: i32) -> i32 => x\nvar s = \"s\"\nvalue(s, stop())\ns = \"new\"\nConsole.writeLine(s)")]
     public void IncompleteCallsRetainCheckingEffectsWithoutExecuting(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverAcquisition" + Configuration + name, Stop + source, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
@@ -95,7 +95,7 @@ public class NeverContinuationTest
     public void IncompleteDefaultRetainsCheckingBorrowRelease()
         => ScalarEmissionTest.EmitFixture(
             "NeverAcquisition" + Configuration + "BorrowDefault",
-            "func value(s?: ref/string, x?: i32 = (loop => continue)) -> i32 => x\nvar s = \"s\"\nConsole.writeLine(\"begin\")\nvalue(s)\ns = \"new\"\nConsole.writeLine(s)",
+            "func value(s: ref/string, x: i32 = (loop => continue)) -> i32 => x\nvar s = \"s\"\nConsole.writeLine(\"begin\")\nvalue(s)\ns = \"new\"\nConsole.writeLine(s)",
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -128,7 +128,7 @@ public class NeverContinuationTest
     [InlineData("let n = 1\nstop()\nn = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let s = \"s\"\nConsole.writeLine(s)\nstop()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let n: i32 = stop()\nstop()\nlet y = n", OwnershipFailure.UninitializedUse)]
-    [InlineData("func take(s?: string) -> Never => stop()\nlet s = \"s\"\ntake(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func take(s: string) -> Never => stop()\nlet s = \"s\"\ntake(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void NonreturningCallsPreserveInitializationAndMoveFacts(string body, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Stop + body);
@@ -143,8 +143,8 @@ public class NeverContinuationTest
     [InlineData("FirstWrite", "var n: i32\nstop()\nn = 2\nlet y = n")]
     [InlineData("NeverInitializer", "var n: i32 = stop()\nn = 2\nlet y = n")]
     [InlineData("Chained", "let n = 1\nstop()\nstop()\nlet y = n")]
-    [InlineData("Borrow", "func inspect(s?: ref/string) -> Never => stop()\nvar s = \"s\"\ninspect(s)\ns = \"new\"\nConsole.writeLine(s)")]
-    [InlineData("BorrowElement", "func inspect(s?: ref/string) -> Never => stop()\nvar s = (\"s\", 0)\ninspect(s.0)\ns.0 = \"new\"\nConsole.writeLine(s.0)")]
+    [InlineData("Borrow", "func inspect(s: ref/string) -> Never => stop()\nvar s = \"s\"\ninspect(s)\ns = \"new\"\nConsole.writeLine(s)")]
+    [InlineData("BorrowElement", "func inspect(s: ref/string) -> Never => stop()\nvar s = (\"s\", 0)\ninspect(s.0)\ns.0 = \"new\"\nConsole.writeLine(s.0)")]
     [InlineData("Cleanup", "let s = \"s\"\ndefer => Console.writeLine(\"cleanup\")\nstop()\nConsole.writeLine(s)")]
     public void EmitsCheckingOnlyContinuations(string name, string body)
         => ScalarEmissionTest.EmitFixture("NeverContinuation" + Configuration + name, Stop + body, string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
@@ -153,7 +153,7 @@ public class NeverContinuationTest
     public void NoncompletingFirstArgumentSkipsLaterAcquisitionsAndCallee()
         => ScalarEmissionTest.EmitFixture(
             "NeverContinuation" + Configuration + "FirstArgument",
-            "func spin() -> Never => loop => ()\nfunc f(a?: i32, b?: i32) => Console.writeLine(\"bad\")\nvar x = 1\nConsole.writeLine(\"begin\")\nf(spin(), x++)\nConsole.writeLine(\"bad\")",
+            "func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => Console.writeLine(\"bad\")\nvar x = 1\nConsole.writeLine(\"begin\")\nf(spin(), x++)\nConsole.writeLine(\"bad\")",
             "begin\n",
             timeoutMilliseconds: 200);
 
@@ -167,7 +167,7 @@ public class NeverContinuationTest
     [InlineData("(scope: do\n    var x: i32 = loop => continue\n    x = 1\n    exit to scope: x\n)")]
     public void NoResultArrivalOrRuntimeStateIsInvented(string initializer)
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func value(x?: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
+        var c = MinimalEmissionTest.Analyze(Stop + "func value(x: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var body = Assert.Single(c.Ownership.Bodies, b => b.Places.Any(p => p.Kind == OwnershipPlaceKind.Local));
         var local = body.Places.First(p => p.Kind == OwnershipPlaceKind.Local);
@@ -195,7 +195,7 @@ public class NeverContinuationTest
     [InlineData("(scope: do\n    var x: i32 = loop => continue\n    x = 1\n    exit to scope: x\n)")]
     public void ReloadAndWarmPassesRetainCheckingFacts(string initializer)
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func value(x?: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
+        var c = MinimalEmissionTest.Analyze(Stop + "func value(x: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));

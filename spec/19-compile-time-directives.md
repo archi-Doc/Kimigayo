@@ -45,7 +45,7 @@ alias Kimi.Windows
 A **Case Group** is introduced by `#switch` and consists of the `#case` arms indented one level under it. The group's extent is the `#switch` body, and nothing outside that body joins the group, so two Case Groups may appear adjacently. The first matching arm in source order is selected. The optional catch-all `#case _` may occur at most once, as the final arm.
 
 ```kimi
-func useImplementation<T>(value?: T) -> ()
+func useImplementation<T>(value: T) -> ()
     #switch
         #case windows
             useWindowsImplementation(value)

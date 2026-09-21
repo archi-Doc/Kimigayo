@@ -6,7 +6,7 @@ namespace XunitTest;
 
 public class SpecializationBindingTest
 {
-    private const string Ordinary = "func weight<T>(value?: ref/T) -> i32 => 1\n";
+    private const string Ordinary = "func weight<T>(value: ref/T) -> i32 => 1\n";
 
     [Theory]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32 => 2")]
@@ -14,7 +14,7 @@ public class SpecializationBindingTest
     [InlineData("specialize func weight<i32>(value => renamed: ref/i32) -> i32 => 2")]
     public void AcceptsClosedImplementation(string specialization)
     {
-        var c = MinimalEmissionTest.Analyze(Ordinary + specialization + "\nfunc forward<T>(value?: ref/T) -> i32 => weight<T>(value)\nlet value: i32 = 4\nlet result = forward<i32>(value@ref/i32)");
+        var c = MinimalEmissionTest.Analyze(Ordinary + specialization + "\nfunc forward<T>(value: ref/T) -> i32 => weight<T>(value)\nlet value: i32 = 4\nlet result = forward<i32>(value@ref/i32)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
@@ -41,14 +41,14 @@ public class SpecializationBindingTest
     [Fact]
     public void StillChecksOrdinaryBody()
     {
-        var c = MinimalEmissionTest.Analyze("func weight<T>(value?: ref/T) -> i32 => true\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nlet value: i32 = 4\nlet result = weight<i32>(value@ref)");
+        var c = MinimalEmissionTest.Analyze("func weight<T>(value: ref/T) -> i32 => true\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nlet value: i32 = 4\nlet result = weight<i32>(value@ref)");
         Assert.False(c.Binding.Result.IsComplete);
     }
 
     [Fact]
     public void CannotUseResultsOrNamesToResolveTargetAmbiguity()
     {
-        var c = MinimalEmissionTest.Analyze("func f<T>(value?: T) -> i32 => 1\nfunc f<T>(other?: i32) -> bool => true\nspecialize func f<i32>(value: i32) -> i32 => 2\n()");
+        var c = MinimalEmissionTest.Analyze("func f<T>(value: T) -> i32 => 1\nfunc f<T>(other: i32) -> bool => true\nspecialize func f<i32>(value: i32) -> i32 => 2\n()");
         Assert.False(c.Binding.Result.IsComplete);
     }
 

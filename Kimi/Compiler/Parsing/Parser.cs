@@ -57,7 +57,7 @@ public static partial class Parser
             IsExpressionBoundaryKind,
             [
                 TokenKind.Separator, TokenKind.StartBlock, TokenKind.EndBlock, TokenKind.Else,
-                TokenKind.EqualsGreaterThan, TokenKind.Comma, TokenKind.CloseParenthesis, TokenKind.CloseBracket,
+                TokenKind.EqualsGreaterThan, TokenKind.Comma, TokenKind.Exclamation, TokenKind.CloseParenthesis, TokenKind.CloseBracket,
             ]);
 
         static void Mark(bool[] table, ReadOnlySpan<TokenKind> kinds)
@@ -236,9 +236,30 @@ public static partial class Parser
         }
 
         List<FunctionParameterKoto>? parameters = default;
+        var nameBoundary = -1;
+        var afterComma = false;
         while (reader.CanRead)
         {
             reader.SkipSeparators();
+            if (reader.TryConsume(TokenKind.Exclamation, out var boundarySpan, false))
+            {
+                if (afterComma || nameBoundary >= 0 || anonymous || specialization)
+                {
+                    reader.Diagnostic.Add(boundarySpan, DiagnosticCode.UnexpectedToken_Kd, "argument-name boundary");
+                }
+
+                if (nameBoundary < 0)
+                {
+                    nameBoundary = parameters?.Count ?? 0;
+                }
+
+                reader.SkipSeparators();
+                if (reader.TryConsume(TokenKind.Comma))
+                {
+                    reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "comma after argument-name boundary");
+                }
+            }
+
             while (reader.CurrentTokenKind == TokenKind.Sharp)
             {
                 _ = ParseAttributeKoto(ref reader);
@@ -263,7 +284,22 @@ public static partial class Parser
                 goto NextParameter;
             }
 
-            var isNameOptional = reader.TryConsume(TokenKind.Question);
+            if (reader.TryConsume(TokenKind.Question))
+            {
+                reader.Diagnostic.Add(externalNameToken.Span, DiagnosticCode.UnexpectedToken_Kd, "removed parameter-name marker; use an ! boundary");
+            }
+
+            if (!anonymous && parameters is not null)
+            {
+                foreach (var previous in parameters)
+                {
+                    if (previous.ExternalName == externalName)
+                    {
+                        reader.Diagnostic.Add(externalNameToken.Span, DiagnosticCode.UnexpectedToken_Kd, "duplicate external parameter name");
+                        break;
+                    }
+                }
+            }
 
             var internalName = externalName;
             if (reader.TryConsume(TokenKind.EqualsGreaterThan))
@@ -276,7 +312,7 @@ public static partial class Parser
                 }
             }
 
-            var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self" && !isNameOptional;
+            var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self";
             var hasType = reader.TryConsume(TokenKind.Colon, out _, !anonymous && !allowsReceiverShorthand);
             if (!hasType && !anonymous && !allowsReceiverShorthand)
             {
@@ -290,8 +326,8 @@ public static partial class Parser
                 defaultValue = ParseRequiredExpression(ref reader);
             }
 
-            if ((anonymous && (isNameOptional || internalName != externalName || defaultValue is not null || parameterAttribute is not null)) ||
-                (specialization && (isNameOptional || defaultValue is not null || parameterAttribute is not null)))
+            if ((anonymous && (internalName != externalName || defaultValue is not null || parameterAttribute is not null)) ||
+                (specialization && (defaultValue is not null || parameterAttribute is not null)))
             {
                 reader.Diagnostic.Add(externalNameToken.Span, DiagnosticCode.UnexpectedToken_Kd, "parameter");
             }
@@ -299,7 +335,6 @@ public static partial class Parser
             (parameters ??= new(4)).Add(new(
                 externalName,
                 internalName,
-                isNameOptional,
                 parameterType,
                 defaultValue,
                 parameterAttribute));
@@ -309,6 +344,11 @@ NextParameter:
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {
                 reader.Advance();
+                afterComma = true;
+            }
+            else if (reader.CurrentTokenKind == TokenKind.Exclamation)
+            {
+                afterComma = false;
             }
             else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
             {
@@ -321,6 +361,11 @@ NextParameter:
         if (!reader.TryConsume(TokenKind.CloseParenthesis, out var closeParenthesisRange, true))
         {
             goto Exit;
+        }
+
+        if (nameBoundary >= 0 && nameBoundary == (parameters?.Count ?? 0))
+        {
+            reader.Diagnostic.Add(closeParenthesisRange, DiagnosticCode.UnexpectedToken_Kd, "empty named-argument section");
         }
 
         Koto? returnType = default;
@@ -348,6 +393,7 @@ NextParameter:
             genericArguments,
             parameters,
             returnType);
+        functionKoto.NameBoundaryIndex = nameBoundary;
         functionKoto.SetOrigins(origins);
         if (anonymous && methodName.Length != 0)
         {
@@ -404,7 +450,7 @@ Exit:
         return default;
 
         static void SkipParameter(ref TokenReader reader)
-            => reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
+            => reader.SkipUntil(TokenKind.Comma, TokenKind.Exclamation, TokenKind.CloseParenthesis);
     }
 
     /// <summary>Parses a Declaration Container header.</summary>

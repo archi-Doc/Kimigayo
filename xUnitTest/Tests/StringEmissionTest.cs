@@ -30,12 +30,12 @@ public class StringEmissionTest
         { "StringLoopExit", "var i = 0\nloop\n    var text = \"iteration\"\n    if i == 0 => Console.writeLine(text)\n    i += 1\n    if i == 3 => exit\n    continue", "iteration\n", "iteration=3" },
         { "StringDefer", "var text = \"old\"\ndefer => Console.writeLine(text)\ntext = \"new\"", "new\n", "old=1;new=1" },
         { "StringDeferLocal", "var i = 0\nloop\n    defer\n        var text = \"deferred\"\n        if i == 1 => Console.writeLine(text)\n    i += 1\n    if i == 3 => exit\n    continue", "deferred\n", "deferred=3" },
-        { "StringReturn", "func f(c?: bool) -> i32\n    var text = \"local\"\n    if c => Console.writeLine(text)\n    return 42\nif f(true) == 42 and f(false) == 42 => Console.writeLine(\"ok\")", "local\nok\n", "local=2;ok=1" },
+        { "StringReturn", "func f(c: bool) -> i32\n    var text = \"local\"\n    if c => Console.writeLine(text)\n    return 42\nif f(true) == 42 and f(false) == 42 => Console.writeLine(\"ok\")", "local\nok\n", "local=2;ok=1" },
         { "StringPhi", "var c = true\nlet result = work: do\n    var text = \"local\"\n    if c => Console.writeLine(text)\n    exit to work: 42\nif result == 42 => Console.writeLine(\"ok\")", "local\nok\n", "local=1;ok=1" },
         { "StringExitRhs", "loop\n    var text = \"old\"\n    text = (exit)", string.Empty, "old=1" },
         { "StringReturnRhs", "func f() -> i32\n    var text = \"old\"\n    text = (return 42)\nif f() == 42 => Console.writeLine(\"ok\")", "ok\n", "old=1;ok=1" },
         { "StringSkipped", "if false\n    var text = \"skipped\"\n    text = text\nConsole.writeLine(\"ok\")", "ok\n", "skipped=0;ok=1" },
-        { "StringPhiCleanup", "func choose(c?: bool, move?: bool) -> i32\n    let n = if c\n        var text = \"join\"\n        if move => Console.writeLine(text)\n        yield 40 + 2\n    else => 7\n    return n\nif choose(true, true) == 42 and choose(true, false) == 42 and choose(false, true) == 7 => Console.writeLine(\"ok\")", "join\nok\n", "join=2;ok=1" },
+        { "StringPhiCleanup", "func choose(c: bool, move: bool) -> i32\n    let n = if c\n        var text = \"join\"\n        if move => Console.writeLine(text)\n        yield 40 + 2\n    else => 7\n    return n\nif choose(true, true) == 42 and choose(true, false) == 42 and choose(false, true) == 7 => Console.writeLine(\"ok\")", "join\nok\n", "join=2;ok=1" },
         { "StringDiscardSelection", "if true => (if true => \"a\" else => \"b\")", string.Empty, "a=1;b=0" },
         { "StringExplicitMain", "public func main()\n    var text = \"main\"\n    text = text\n    Console.writeLine(text)", "main\n", "main=1" },
     };
@@ -62,7 +62,7 @@ public class StringEmissionTest
 
     [Theory]
     [InlineData("func unused() -> string => " + MinimalEmissionTest.FloatExpression + "\nConsole.writeLine(\"ok\")")]
-    [InlineData("func unused(text?: uniq/string) => ()\nConsole.writeLine(\"ok\")")]
+    [InlineData("func unused(text: uniq/string) => ()\nConsole.writeLine(\"ok\")")]
     [InlineData("let text = \"a\"\ntext@string\nConsole.writeLine(text)")]
     [InlineData("let text = \"a\"\nConsole.writeLine(text)\nConsole.writeLine(text)")]
     [InlineData("var text: string\nvar c = true\nif c => text = \"a\"\nConsole.writeLine(text)")]

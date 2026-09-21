@@ -23,9 +23,6 @@ public sealed record class FunctionParameterKoto
     /// <summary>Gets the parameter name used in the function body.</summary>
     public string InternalName { get; private set; } = string.Empty;
 
-    /// <summary>Gets a value indicating whether direct callers may omit the external argument name.</summary>
-    public bool IsNameOptional { get; private set; }
-
     /// <summary>Gets the parameter type.</summary>
     public Koto Type { get; internal set; } = default!;
 
@@ -38,21 +35,18 @@ public sealed record class FunctionParameterKoto
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
     /// <param name="externalName">The caller-facing name.</param>
     /// <param name="internalName">The body-facing name.</param>
-    /// <param name="isNameOptional">Whether direct callers may omit the external argument name.</param>
     /// <param name="type">The parameter type.</param>
     /// <param name="defaultValue">The default value, if present.</param>
     /// <param name="attributeChain">The parameter attributes, if present.</param>
     public FunctionParameterKoto(
         string externalName,
         string internalName,
-        bool isNameOptional,
         Koto type,
         Koto? defaultValue,
         AttributeKoto? attributeChain = null)
     {
         this.ExternalName = externalName;
         this.InternalName = internalName;
-        this.IsNameOptional = isNameOptional;
         this.Type = type;
         this.DefaultValue = defaultValue;
         this.AttributeChain = attributeChain;
@@ -76,6 +70,109 @@ public sealed class FunctionKoto : DeclarationKoto
     private List<TypeKoto>? genericArguments;
 
     private List<FunctionParameterKoto>? parameters;
+    private Dictionary<string, int>? parameterIndices;
+
+    /// <summary>Gets the written parameter index after the ! boundary, or -1 when absent.</summary>
+    public int NameBoundaryIndex { get; internal set; } = -1;
+
+    /// <summary>Gets normalized K after Binding, or -1 for an unverified specialization.</summary>
+    public int PositionalParameterCount
+    {
+        get
+        {
+            if (this.IsSpecialization)
+            {
+                return this.Kotonoha.Compilation.Binding.GetSpecializationOriginal(this)?.PositionalParameterCount ?? -1;
+            }
+
+            var limit = this.NameBoundaryIndex < 0 ? this.Parameters.Count : this.NameBoundaryIndex;
+            var receiver = this.BoundSymbol?.ReceiverIndex ?? -1;
+            return limit - (receiver >= 0 && receiver < limit ? 1 : 0);
+        }
+    }
+
+    internal bool AllowsPositionalArgument(int index)
+        => index == this.BoundSymbol?.ReceiverIndex || this.NameBoundaryIndex < 0 || index < this.NameBoundaryIndex;
+
+    internal int MaxPositionalArguments(bool boundReceiver)
+    {
+        var limit = this.NameBoundaryIndex < 0 ? this.Parameters.Count : this.NameBoundaryIndex;
+        var receiver = this.BoundSymbol?.ReceiverIndex ?? -1;
+        if (receiver == limit)
+        {
+            limit++;
+        }
+
+        return limit - (boundReceiver && receiver >= 0 && receiver < limit ? 1 : 0);
+    }
+
+    internal int FindParameter(string name)
+    {
+        var parameters = this.parameters;
+        if (parameters is null)
+        {
+            return -1;
+        }
+
+        // Small signatures are cheaper to scan. Larger signatures share one ordinal index.
+        if (parameters.Count <= 8)
+        {
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                if (parameters[i].ExternalName == name)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        if (this.parameterIndices is null)
+        {
+            this.parameterIndices = new(parameters.Count, StringComparer.Ordinal);
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                this.parameterIndices.TryAdd(parameters[i].ExternalName, i);
+            }
+        }
+
+        return this.parameterIndices.GetValueOrDefault(name, -1);
+    }
+
+    internal bool TryMapArgument(string? label, ref int next, ref bool named, Span<bool> used, out int slot)
+    {
+        if (label is not null)
+        {
+            named = true;
+            slot = this.FindParameter(label);
+        }
+        else
+        {
+            slot = -1;
+            if (named)
+            {
+                return false;
+            }
+
+            // Only a receiver can already be supplied during the positional prefix.
+            while (next < this.Parameters.Count && used[next])
+            {
+                next++;
+            }
+
+            slot = next++;
+        }
+
+        if ((uint)slot >= (uint)this.Parameters.Count || used[slot] ||
+            (label is null && !this.AllowsPositionalArgument(slot)))
+        {
+            return false;
+        }
+
+        used[slot] = true;
+        return true;
+    }
 
     /// <summary>Gets the return type, if specified.</summary>
     public Koto? ReturnType { get; private set; }
@@ -326,12 +423,41 @@ public sealed class FunctionKoto : DeclarationKoto
             builder.Append('>');
         }
 
+        var multilineParameters = false;
+        if (this.parameters is { } declaredParameters)
+        {
+            for (var i = 0; i < declaredParameters.Count; i++)
+            {
+                if (declaredParameters[i].DefaultValue is { } value && KotoHelper.ContainsBody(value))
+                {
+                    multilineParameters = true;
+                    break;
+                }
+            }
+        }
+
         builder.Append('(');
+        if (multilineParameters)
+        {
+            builder.AppendLine();
+            builder.IncrementIndent();
+        }
+
         if (this.parameters is { } parameters)
         {
             for (var i = 0; i < parameters.Count; i++)
             {
-                if (i > 0)
+                if (multilineParameters && i > 0)
+                {
+                    // Both separators belong outside any preceding default's indented body.
+                    builder.AppendLine();
+                }
+
+                if (i == this.NameBoundaryIndex)
+                {
+                    builder.Append(i == 0 || multilineParameters ? "! " : " ! ");
+                }
+                else if (i > 0)
                 {
                     builder.AppendCommaAndSpace();
                 }
@@ -343,11 +469,6 @@ public sealed class FunctionKoto : DeclarationKoto
                 }
 
                 builder.Append(parameter.ExternalName);
-                if (parameter.IsNameOptional)
-                {
-                    builder.Append('?');
-                }
-
                 if (!parameter.ExternalName.Equals(parameter.InternalName, StringComparison.Ordinal))
                 {
                     builder.Append(" => ");
@@ -366,6 +487,12 @@ public sealed class FunctionKoto : DeclarationKoto
                     parameter.DefaultValue.WriteTo(ref builder);
                 }
             }
+        }
+
+        if (multilineParameters)
+        {
+            builder.AppendLine();
+            builder.DecrementIndent();
         }
 
         builder.Append(')');

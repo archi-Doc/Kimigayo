@@ -61,14 +61,14 @@ public class CurrentControlFlowTest
 
     [Theory]
     [InlineData("func f() => 42")]
-    [InlineData("func f(flag?: bool)\n    if flag => 1 else => \"text\"")]
-    [InlineData("func f(flag?: bool)\n    match flag\n        true => 1\n        false => \"text\"")]
+    [InlineData("func f(flag: bool)\n    if flag => 1 else => \"text\"")]
+    [InlineData("func f(flag: bool)\n    match flag\n        true => 1\n        false => \"text\"")]
     [InlineData("let v = do => 1")]
     [InlineData("let v = work: do\n    exit to work: 1")]
     [InlineData("let v = loop => exit 1")]
     [InlineData("let v = loop\n    continue\n    exit 1")]
-    [InlineData("func f(flag?: bool) -> i32\n    return if flag\n        yield 1\n    else => 2")]
-    [InlineData("func f(flag?: bool) -> i64\n    let big: i64 = 10\n    return if flag => 1 else => big")]
+    [InlineData("func f(flag: bool) -> i32\n    return if flag\n        yield 1\n    else => 2")]
+    [InlineData("func f(flag: bool) -> i64\n    let big: i64 = 10\n    return if flag => 1 else => big")]
     [InlineData("let v = choice: if true\n    loop => yield to choice: 1\nelse => 2")]
     [InlineData("let large: i64 = 10\nlet result = if true => 1 else => large + 1")]
     [InlineData("let large: i64 = 10\nlet result = if true => 1 + large else => 1")]
@@ -116,7 +116,7 @@ public class CurrentControlFlowTest
     [InlineData("func f() -> i32 => unsafe => return 1")]
     [InlineData("func f() -> i32 => unsafe => loop => return 1")]
     [InlineData("func fail() -> Never => fail()\nlet result = while fail() => ()")]
-    [InlineData("func f(flag?: bool, large?: i64) -> i64\n    return if flag\n        yield if flag => 1 else => 2\n    else => large")]
+    [InlineData("func f(flag: bool, large: i64) -> i64\n    return if flag\n        yield if flag => 1 else => 2\n    else => large")]
     public void StatementCompletionAndNestedResultsBind(string source)
     {
         var c = Parse(source);
@@ -151,7 +151,7 @@ public class CurrentControlFlowTest
 
     [Theory]
     [InlineData("func f() => 42", "effect-free")]
-    [InlineData("func isAdult(age?: i32) => age >= 18", "effect-free")]
+    [InlineData("func isAdult(age: i32) => age >= 18", "effect-free")]
     [InlineData("func f() => while true => ()", "Use loop")]
     [InlineData("func compute() -> i32 => 1\nlet x = do\n    compute()", "Unit was inferred")]
     [InlineData("func compute() -> i32 => 1\nlet x = do\n    if true => compute() else => compute()", "Unit was inferred")]
@@ -179,7 +179,7 @@ public class CurrentControlFlowTest
     }
 
     [Theory]
-    [InlineData("func f(text?: string) -> string\n    return text\n    return text", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(text: string) -> string\n    return text\n    return text", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f() -> i32\n    let value: i32\n    return 1\n    return value", OwnershipFailure.UninitializedUse)]
     public void UnreachableOwnershipUsesTheStateBeforeTransferCleanup(string source, OwnershipFailure failure)
     {

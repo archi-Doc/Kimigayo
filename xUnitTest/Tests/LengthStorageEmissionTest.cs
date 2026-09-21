@@ -7,14 +7,14 @@ namespace XunitTest;
 
 public class LengthStorageEmissionTest
 {
-    private const string Keep = "func keep<length N, T>(value?: [N of T]) -> [N of T] => value\n";
-    private const string Choose = "func choose<length N, T>(a?: [N of T], b?: [N of T], first?: bool) -> [N of T] => if first => a else => b\n";
-    private const string Token = "struct Token\n    let id: i32\n    public init(id?: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
+    private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value\n";
+    private const string Choose = "func choose<length N, T>(a: [N of T], b: [N of T], first: bool) -> [N of T] => if first => a else => b\n";
+    private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     [Theory]
     [InlineData(Keep + "let a = keep<2, i32>([4, 9])")]
     [InlineData(Keep + "let a: [2 of i32] = [4, 9]\nlet b = keep(a)")]
-    [InlineData("func keep(value?: [2 of i32]) -> [2 of i32] => value\nlet a = keep([4, 9])")]
+    [InlineData("func keep(value: [2 of i32]) -> [2 of i32] => value\nlet a = keep([4, 9])")]
     public void WarmArrayCallBindingAllocatesNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -36,12 +36,12 @@ public class LengthStorageEmissionTest
         { "Destruction", Token + Keep + "do\n    let b = keep<2, Token>([Token.init(1), Token.init(2)])\n    Console.writeLine(\"returned\")\nConsole.writeLine(\"done\")", "returned\ntwo\none\ndone\n" },
         { "Choice", Token + Choose + "do\n    let b = choose<2, Token>([Token.init(1), Token.init(2)], [Token.init(3), Token.init(4)], true)\n    Console.writeLine(\"returned\")", "four\nthree\nreturned\ntwo\none\n" },
         { "ChoiceSecond", Choose + "let b = choose([1, 2], [3, 4], false)\nrequire b[0] == 3 and b[1] == 4 else => $abort(\"choice\")", string.Empty },
-        { "CheckedExpression", "func keep<length N>(value?: [(N - 1) of i32]) -> [(N - 1) of i32] => value\nlet b = keep<3>([4, 9])\nrequire b[1] == 9 else => $abort(\"formation\")", string.Empty },
-        { "Metadata", "func count<length N, T>(a?: [N of T]) -> isize => a.length\nrequire count<3, i32>([1, 2, 3]) == 3 else => $abort(\"length\")", string.Empty },
-        { "BorrowedMetadata", "func count<length N, T>(a?: ref/[N of T]) -> isize => a.length\nlet a: [3 of i32] = [1, 2, 3]\nrequire count(a@ref) == 3 and a[2] == 3 else => $abort(\"borrow\")", string.Empty },
-        { "EmptyMetadata", "func count<length N, T>(a?: ref/[N of T]) -> isize => a.length\nlet a: [0 of string] = []\nrequire count(a@ref) == 0 else => $abort(\"empty\")", string.Empty },
-        { "ZeroSizedMetadata", "func count<length N, T>(a?: ref/[N of T]) -> isize => a.length\nlet a: [3 of ()] = [(), (), ()]\nrequire count(a@ref) == 3 else => $abort(\"zero stride\")", string.Empty },
-        { "BorrowedMoveMetadata", Token + "func count<length N, T>(a?: ref/[N of T]) -> isize => a.length\ndo\n    let a: [2 of Token] = [Token.init(1), Token.init(2)]\n    require count(a@ref) == 2 else => $abort(\"borrow\")\n    Console.writeLine(\"inspected\")", "inspected\ntwo\none\n" },
+        { "CheckedExpression", "func keep<length N>(value: [(N - 1) of i32]) -> [(N - 1) of i32] => value\nlet b = keep<3>([4, 9])\nrequire b[1] == 9 else => $abort(\"formation\")", string.Empty },
+        { "Metadata", "func count<length N, T>(a: [N of T]) -> isize => a.length\nrequire count<3, i32>([1, 2, 3]) == 3 else => $abort(\"length\")", string.Empty },
+        { "BorrowedMetadata", "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [3 of i32] = [1, 2, 3]\nrequire count(a@ref) == 3 and a[2] == 3 else => $abort(\"borrow\")", string.Empty },
+        { "EmptyMetadata", "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [0 of string] = []\nrequire count(a@ref) == 0 else => $abort(\"empty\")", string.Empty },
+        { "ZeroSizedMetadata", "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [3 of ()] = [(), (), ()]\nrequire count(a@ref) == 3 else => $abort(\"zero stride\")", string.Empty },
+        { "BorrowedMoveMetadata", Token + "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\ndo\n    let a: [2 of Token] = [Token.init(1), Token.init(2)]\n    require count(a@ref) == 2 else => $abort(\"borrow\")\n    Console.writeLine(\"inspected\")", "inspected\ntwo\none\n" },
     };
 
     [Theory]
@@ -50,8 +50,8 @@ public class LengthStorageEmissionTest
         => ScalarEmissionTest.EmitFixture("LengthStorage" + name, source, stdout);
 
     [Theory]
-    [InlineData("func twice<length N, T>(a?: [N of T]) -> [N of T]\n    let first = a\n    return a\nlet b = twice<2, i32>([1, 2])")]
-    [InlineData("func twice<length N, T>(a?: [N of T]) -> [N of T]\n    let first = a\n    return a\nConsole.writeLine(\"unused definition\")")]
+    [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a\n    return a\nlet b = twice<2, i32>([1, 2])")]
+    [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a\n    return a\nConsole.writeLine(\"unused definition\")")]
     [InlineData(Keep + "let a: [1 of string] = [\"one\"]\nlet b = keep(a)\nlet c = keep(a)")]
     public void RejectsPotentialMovesBeforeEmission(string source)
     {
@@ -79,7 +79,7 @@ public class LengthStorageEmissionTest
     [Fact]
     public void LengthMetadataStillRequiresInitializedStorage()
     {
-        var c = MinimalEmissionTest.Analyze("func count<length N, T>(a?: ref/[N of T]) -> isize => a.length\nlet a: [2 of i32]\ncount(a@ref)");
+        var c = MinimalEmissionTest.Analyze("func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [2 of i32]\ncount(a@ref)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
@@ -92,7 +92,7 @@ public class LengthStorageEmissionTest
     [InlineData("producer")]
     public void RejectsMalformedMetadataPlansAndRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func count<length N, T>(a?: ref/[N of T], b?: ref/[N of T]) -> isize\n    let ignored = b.length\n    return a.length\nlet a: [2 of i32] = [1, 2]\ncount(a@ref, a@ref)");
+        var c = MinimalEmissionTest.Analyze("func count<length N, T>(a: ref/[N of T], b: ref/[N of T]) -> isize\n    let ignored = b.length\n    return a.length\nlet a: [2 of i32] = [1, 2]\ncount(a@ref, a@ref)");
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "count");
         var index = body.Sequences.Count - 1;

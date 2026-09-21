@@ -1,7 +1,7 @@
 // Milestone 13: a generic, non-lending Iterator over externally owned Slice data.
 struct Sample
     public let value: i32
-    public init(value?: i32) => self.value = value
+    public init(value: i32) => self.value = value
 
 struct Cursor<T> {source}
     Self is Iterator
@@ -10,7 +10,7 @@ struct Cursor<T> {source}
         origin slice.source == source
     var position: isize = 0
 
-    public init(values?: Slice<T>)
+    public init(values: Slice<T>)
         origin values.source == source
         self.values = values
 

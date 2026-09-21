@@ -6,6 +6,7 @@ Records preserve original commands, paths, identifiers, hashes, quoted diagnosti
 
 ## Record index
 
+- [Named argument boundary (2026-09-22)](#named-argument-boundary-20260922)
 - [Origin redesign native verification (2026-09-21)](#origin-redesign-native-20260921)
 - [Origin redesign integration (2026-09-21)](#origin-redesign-20260921)
 
@@ -8044,3 +8045,94 @@ configuration. No required final gate remains unverified. NativeAOT was not run,
 as instructed. P18-G/O/V are complete; stop before program 19. An unrelated
 untracked `draft/Changes/2026-09-21 Named Argument Boundary.md` appeared during
 the task; it was neither read as authority nor edited, and was left intact.
+
+
+<a id="named-argument-boundary-20260922"></a>
+## Named argument boundary integration (2026-09-22)
+
+NAB1–NAB3 completed the user-authorized `!` boundary revision. The proposal was
+read as the integration input and left unchanged. The formal index and Chapters
+2, 4, 7–11, 13, 18, 20, 22 and Appendices A/F now define the rules independently;
+other affected specification examples were migrated. Former name-required
+parameters start the suffix, old `?` markers are removed, and parameter order,
+Types, defaults and caller-facing names are retained. A formerly accepted parser
+example with duplicate external `self` labels now uses distinct labels; dedicated
+tests reject duplicates without automatically renaming user APIs.
+
+### Implementation and review
+
+- Tokenizer retains the existing `!` and longest-match `!=` tokens. Parser handles
+  boundary placement, invalid contexts, unique external names, expression ends,
+  nested defaults and common body/dedent rules. Source writing uses an iterator-free
+  body search and multiline parameter layout when needed.
+- Function syntax retains the written boundary separately from normalized K.
+  Receiver positions are preserved; supported specializations obtain K from their
+  verified original. Contract calls use requirement-side applicability. Distinct
+  requirements with different K do not merge or gain a new ranking rule.
+- Binding shares positional/named mapping between ordinary calls and constructor
+  Origin inference. Small signatures scan the concrete list; large signatures
+  lazily share an ordinal index. The early positional limit precedes input inference.
+  Existing declaration validation still reports unused invalid declarations/defaults.
+- Analysis, lowering and emission consume the checked BoundCall slot map and source
+  argument order. No boundary slot, ABI parameter or runtime evaluation phase is
+  added. Native fixtures verify acquisition, omitted scalar defaults and cleanup
+  through concrete/shared generic calls and supported specializations.
+- Language version changes from 0.0.1 to 0.0.2. Kotonoha source snapshots carry
+  format/language/compiler-build metadata; the deserializing callback clears old
+  destination metadata before reading, so missing legacy fields cannot inherit
+  current compatibility. Declaration replacement and reload invalidate call plans.
+
+The review found and fixed speculative `TryConsume` recovery being enabled for an
+absent boundary, migration misses after escaped newlines in test source strings,
+invalid source reprinting around default bodies, and legacy snapshot fields
+surviving into an existing destination instance. Negative tests retain rejection
+coverage under the new syntax. New measured lookup work also removed repeated
+read-only-interface access from the small-list path.
+
+### Verification and limits
+
+| Check | Result |
+| --- | --- |
+| Debug/Release solution builds | Zero warnings and errors in each |
+| Complete managed suites | 11,071 passed, zero failures/skips in each |
+| Focused native IR/oracles | 15 fixture sets, 30 O0/O2 executions passed |
+| Final Debug/Release native fixture identity | All 75 files match the native-tested snapshot |
+| Release Milestone 11 | 55 checks passed |
+| Release Milestone 18 | 53 checks passed |
+| Allocation measurements | Warm lookup and complete rebind: zero bytes for all measured 2–64-parameter workloads; cold setup remains allocating |
+| NativeAOT | NOT_RUN, as instructed |
+
+The [identity audit](bin/name-boundary-verification/verification.json) records
+compiler source/build hashes, fixture hashes and milestone evidence. Native runs
+preceded the final source-writer traversal allocation removal; regenerated final
+Debug/Release fixtures are byte-identical, so the same native result is reused.
+The complete managed suites and benchmark were rerun after that final edit.
+The [measurement report](Benchmark/NamedArguments.md) records methodology, medians,
+compiler identity and limitations; it makes no universal zero-allocation or
+whole-compiler speedup claim.
+
+Reproduce with `dotnet build Kimigayo.slnx --no-restore -c Debug -v quiet` and the
+corresponding Release build, then `dotnet test xUnitTest/xUnitTest.csproj --no-build
+--no-restore -c Debug -v quiet` and Release. The complete suites include source
+syntax checks across examples/milestones. Run `backend/windows-x64/test-scalars.ps1`
+with the captured `bin/name-boundary-verification/Debug-fixtures` directory and an
+isolated OutputDirectory; the script verifies/optimizes/links using the pinned
+LLVM profile and checks stdout, stderr and exit at O0/O2. Milestone commands are
+`backend/windows-x64/test-milestone11.ps1 -Configuration Release` and
+`backend/windows-x64/test-milestone18.ps1 -Configuration Release`.
+
+The first native escalation was rejected by automatic approval review because it
+conflated LLVM Kimi execution with the forbidden .NET NativeAOT tests. After reading
+the scripts and demonstrating that they invoke no NativeAOT/PublishAot pipeline,
+the review approved the same LLVM test command; the recorded native runs completed.
+
+Inherited Type-function lookup is additionally verified to retain the defining
+declaration's external names, K and default expressions. The fixture respects the
+existing prohibition on redeclaring accessible ancestor Names; instance base
+projection still requires the deferred ObjectCallCompatible effect proof.
+
+Existing general default/effect, inherited-construction/projection, Contract equivalence,
+receiver/constrained-specialization, callable and foreign-execution gaps remain
+under I4/I5/I14/I18/CR4/OSE3. Base-call syntax is covered, not new inherited
+constructor execution. Their formal requirements are unchanged; this revision
+does not report those prior gaps as completed support.

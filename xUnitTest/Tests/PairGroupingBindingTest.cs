@@ -15,7 +15,7 @@ public class PairGroupingBindingTest
     [InlineData("s/((T))")]
     public void OriginalPairGroupingPreservesTheWholeType(string type)
     {
-        var c = Parse($"func identity<s/T>(value?: {type}) -> {type} => value\nfunc use(value?: ref/i32) -> ref/i32 => identity(value)");
+        var c = Parse($"func identity<s/T>(value: {type}) -> {type} => value\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var identity = Function(c, "identity");
         Assert.Same(identity.BoundSymbol!.Schema!.GenericSlots[0].Symbol.WholeType, identity.Parameters[0].Type.BoundType);
@@ -35,7 +35,7 @@ public class PairGroupingBindingTest
     [InlineData("Box<s/(T)>")]
     public void NestedWholeTypesRemainValidAcrossReloadAndWriting(string type)
     {
-        var source = $"struct Box<U>\n    var value: U\nfunc identity<s/T>(value?: {type}) -> {type} => value";
+        var source = $"struct Box<U>\n    var value: U\nfunc identity<s/T>(value: {type}) -> {type} => value";
         var c = Parse(source);
         Verify(c);
         Verify(Reload(c));
@@ -69,7 +69,7 @@ public class PairGroupingBindingTest
     [InlineData("s/(owner/T)")]
     public void GroupingDoesNotProveAnUnrelatedApplicationOrStandaloneTarget(string type)
     {
-        var c = Parse($"func f<s/T, r/U>(value?: {type}) => ()");
+        var c = Parse($"func f<s/T, r/U>(value: {type}) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
         Assert.Contains(c.Binding.Obligations, x => x.Deadline == BindingDeadline.Definition);
@@ -81,7 +81,7 @@ public class PairGroupingBindingTest
     [InlineData("s/(T{wrong => static})")]
     public void GroupingNeverErasesTargetOriginAnnotations(string type)
     {
-        var c = Parse($"func f<s/T>(value?: {type}) => ()");
+        var c = Parse($"func f<s/T>(value: {type}) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
         Assert.False(Reload(c).Bind().IsComplete);
@@ -90,7 +90,7 @@ public class PairGroupingBindingTest
     [Fact]
     public void PairIdentityIsNotInferredFromEqualTargetConstraints()
     {
-        var c = Parse("func f<s/T, r/U>(value?: s/(U))\n    T is i32\n    U is i32\n    ()");
+        var c = Parse("func f<s/T, r/U>(value: s/(U))\n    T is i32\n    U is i32\n    ()");
         Assert.True(c.Bind().IsComplete);
         var f = Function(c, "f");
         Assert.Equal(BoundTypeKind.SemanticsApplication, f.Parameters[0].Type.BoundType!.Kind);
@@ -100,7 +100,7 @@ public class PairGroupingBindingTest
     [Fact]
     public void RemovingGroupingDoesNotChangeDuplicateSignatureIdentity()
     {
-        var c = Parse("func f<s/T>(value?: s/(T)) => ()\nfunc f<r/U>(value?: r/U) => ()");
+        var c = Parse("func f<s/T>(value: s/(T)) => ()\nfunc f<r/U>(value: r/U) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.DuplicateBinding_Kd);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
@@ -109,11 +109,11 @@ public class PairGroupingBindingTest
     [Fact]
     public void ReplacingTheGroupedTargetInvalidatesPairReconstruction()
     {
-        var c = Parse("func f<s/T, r/U>(value?: s/(T)) => ()");
+        var c = Parse("func f<s/T, r/U>(value: s/(T)) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var semantics = Assert.IsType<TypeSemanticsKoto>(Function(c, "f").Parameters[0].Type);
         var group = Assert.IsType<ParenthesizedTypeKoto>(semantics.Type);
-        var replacement = Function(Parse("func f<U>(value?: U) => ()"), "f").Parameters[0].Type;
+        var replacement = Function(Parse("func f<U>(value: U) => ()"), "f").Parameters[0].Type;
         Assert.True(KotoHelper.Replace(group, group.Type, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
@@ -123,7 +123,7 @@ public class PairGroupingBindingTest
     [Fact]
     public void GenericGenerationStillRequiresItsOwnImplementation()
     {
-        var c = Parse("func identity<s/T>(value?: s/(T)) -> s/(T) => value\nidentity(1)");
+        var c = Parse("func identity<s/T>(value: s/(T)) -> s/(T) => value\nidentity(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.False(c.Emission.Validate(out _));
     }
@@ -131,7 +131,7 @@ public class PairGroupingBindingTest
     [Fact]
     public void WarmGroupedPairBindingAllocatesNothing()
     {
-        var c = Parse("func identity<s/T>(value?: s/((T))) -> s/(T) => value\nfunc use(value?: ref/i32) -> ref/i32 => identity(value)");
+        var c = Parse("func identity<s/T>(value: s/((T))) -> s/(T) => value\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
