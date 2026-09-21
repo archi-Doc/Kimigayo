@@ -26,10 +26,14 @@ This is not full compiler conformance. General mixed/cyclic principal inference,
 conditional Semantics proofs, named-Origin/constrained specialization inheritance,
 general function-item/Callable execution and custom-accessor generation retain
 limitations in [PLAN](PLAN.md#2-execution-state). Unsupported paths remain diagnosed;
-the formal specification retains their required behavior. Native execution of the
-new fixtures is unverified on this host because the required LLVM toolchain is
-absent. NativeAOT was not run. Managed verification is recorded in
-[the redesign history](PLAN_HISTORY.md#origin-redesign-20260921).
+the formal specification retains their required behavior. With the installed LLVM
+22.1.8 toolchain, the three redesign fixtures and two anonymous-Origin fixtures
+pass all **10 O0/O2 native executions**, including LLVM verification, linking and
+exact output/exit checks. Milestone 14 and 16 pass **48 and 57 checks**, respectively,
+in each of Debug and Release, covering execution and required rejection. No compiler
+fix was needed for this native follow-up. NativeAOT was not run. Managed verification is recorded
+in [the redesign history](PLAN_HISTORY.md#origin-redesign-20260921); native results
+are recorded in [the native follow-up](PLAN_HISTORY.md#origin-redesign-native-20260921).
 
 The **2026-09-20 parameter-name/default revision** is implemented across parsing,
 source round trips, Binding, Contract/foreign header validation, library shape
