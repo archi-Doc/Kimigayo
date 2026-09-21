@@ -61,8 +61,8 @@ public partial record class ProjectFile
     /// <summary>Gets or sets per-target definition-side native requirements keyed by this module's logical name.</summary>
     public Dictionary<string, Dictionary<string, NativeRequirement>> NativeRequirements { get; set; } = new(StringComparer.Ordinal);
 
-    /// <summary>Gets or sets self-targeted native supplies. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
-    public Dictionary<string, Dictionary<string, NativeLibraryInput>> NativeLibraries { get; set; } = new(StringComparer.Ordinal);
+    /// <summary>Gets or sets per-target native supplies. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
+    public NativeLibraryMap NativeLibraries { get; set; } = new();
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
     /// <remarks>Preserves case-sensitive names; the file loader rejects duplicate names before dictionary deserialization.</remarks>
@@ -105,6 +105,9 @@ public partial record class ProjectFile
         HashSet<(string Target, string Name)>? requirements = null;
         HashSet<(string Target, string Name)>? supplies = null;
         var testSettingsSeen = false;
+        var requirementsSeen = false;
+        var suppliesSeen = false;
+        var mapsSeen = 0;
         var count = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < count; i++)
         {
@@ -128,7 +131,16 @@ public partial record class ProjectFile
 
             if (key.SequenceEqual("NativeRequirements"u8) || key.SequenceEqual("NativeLibraries"u8))
             {
-                ValidateNativeMap(ref reader, ref key.SequenceEqual("NativeRequirements"u8) ? ref requirements : ref supplies);
+                // A repeated key would replace the whole earlier map, even when its targets differ.
+                var isRequirements = key.SequenceEqual("NativeRequirements"u8);
+                ref var keySeen = ref isRequirements ? ref requirementsSeen : ref suppliesSeen;
+                if (keySeen)
+                {
+                    throw new TinyhandException($"Duplicate {(isRequirements ? "NativeRequirements" : "NativeLibraries")} setting.");
+                }
+
+                keySeen = true;
+                ValidateNativeMap(ref reader, ref isRequirements ? ref requirements : ref supplies, !isRequirements);
                 continue;
             }
 
@@ -138,6 +150,14 @@ public partial record class ProjectFile
                 reader.Skip();
                 continue;
             }
+
+            // As for the native maps, a repeated key would replace the whole earlier map.
+            if ((mapsSeen & (1 << map)) != 0)
+            {
+                throw new TinyhandException($"Duplicate {(map == 1 ? "CompileTimeSettings" : map == 2 ? "Dependencies" : "TestDependencies")} setting.");
+            }
+
+            mapsSeen |= 1 << map;
 
             if (reader.TryReadNil())
             {
@@ -161,7 +181,8 @@ public partial record class ProjectFile
     }
 
     // Per-target native maps: a repeated target/name would be silently overwritten by the dictionary formatter.
-    private static void ValidateNativeMap(ref TinyhandReader reader, ref HashSet<(string Target, string Name)>? seen)
+    // A NativeLibraries record array is checked by NativeLibrarySupplies itself.
+    private static void ValidateNativeMap(ref TinyhandReader reader, ref HashSet<(string Target, string Name)>? seen, bool records)
     {
         if (reader.TryReadNil())
         {
@@ -172,9 +193,31 @@ public partial record class ProjectFile
         for (var i = 0; i < targets; i++)
         {
             var target = reader.ReadString();
+            seen ??= new();
+            if (target is null || !seen.Add((target, "\0")))
+            {
+                throw new TinyhandException($"Duplicate or null native target: {target}");
+            }
+
             if (reader.TryReadNil())
             {
                 continue;
+            }
+
+            if (reader.NextMessagePackType == MessagePackType.Array)
+            {
+                if (records)
+                {
+                    reader.Skip();
+                    continue;
+                }
+
+                // An empty `{}` reads as an empty array; a nonempty one cannot be a requirement map.
+                var probe = reader;
+                if (probe.ReadArrayHeader() != 0)
+                {
+                    throw new TinyhandException($"NativeRequirements target '{target}' must map native names to requirements.");
+                }
             }
 
             var entries = reader.ReadMapHeaderOrEmptyArray();

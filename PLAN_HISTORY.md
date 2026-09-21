@@ -7723,3 +7723,68 @@ milestone logs are `bin/origin-milestone14-{debug,release}.log` and
 `bin/origin-milestone16-{debug,release}.log`. These are ignored local artifacts.
 This closes ORD4's native checkpoint for supported paths, not the broader OSE3
 implementation backlog. The earlier missing-toolchain record remains historical.
+
+<a id="native-supply-records-20260921"></a>
+## Native supply records — I28 T28d (2026-09-21)
+
+Timed compiler-wide continuation; baseline HEAD `c17efa5`, clean tree. Baseline Debug solution build was warning-free and the three native-configuration classes passed 176/176 before changes.
+
+### Changes
+
+- `ProjectFile.NativeLibraries` is now `NativeLibraryMap` (per target `NativeLibrarySupplies`). A custom Tinyhand 0.147 serializer (`ITinyhandSerializable`/`Reconstructable`/`Cloneable`, `External = true`; the generator rejects a plain `Dictionary` of a custom-serialized value) reads either the Name-keyed map shorthand or an array of `Name`/`Input`/`Package`/`ContractId`/`Sha256` records. Self-targeted records stay in the dictionary keyed by `Name` (shorthand keys fill `Name`), so existing consumers are unchanged; Package-targeted records are kept in source order in `Packaged`. Output is the shorthand when every record is self-targeted, otherwise one array.
+- Duplicate self-targeted names are rejected in both forms, and repeated targets are now rejected in the raw-map check (previously `t={a=…} t={b=…}` silently kept only the last target).
+- `NativeConfiguration.Validate` rejects shorthand records naming a Package or a different Name, and Package-targeted records with `Kind`, `kernel32`, an empty Name or an invalid PackageId/PackageVersion/ContractId/Sha256. Emission path/`.lib` checks cover Package-targeted inputs even when unused.
+- After graph preparation, `ValidatePackageSupplies` (called from `PrepareModules`) matches each Package-targeted record to the resolved module with the same PackageId/PackageVersion. When that module requires the name (directly or by a self-targeted combined record), a required ContractId must be asserted and explicit ContractId/Sha256 values must agree. Unrequired names and packages outside the graph remain unused supplies, which create no requirement (§20.8.2.1).
+- README documents the record form; STATUS updates the configuration boundary.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `dotnet build Kimigayo.slnx -c Debug -m:1` | PASS, 0 warnings |
+| Focused Debug: DependencyConfigurationTest, EmissionArtifactsTest, LibraryImportTargetBindingTest, MinimalEmissionTest, ModuleBindingTest, DependencyResolutionTest | PASS 474/474 |
+| Full Debug `dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -parallelMode none -failSkips` | 10,916/10,917; one failure in `TestProcessRecoveryTest.RecoversManagedProcessesAndRejectsMissingCompletion(mode: "exit", termination: "normal", exitCode: 3)`; the class then passed 4/4 twice in isolation. The test exercises child-process recovery, not project configuration; recorded as intermittent under full-suite load, not attributed to this change. |
+
+New cases: 13 rejection inputs, 3 round-trip inputs, the spec-example parse/serialize/clone fact, 8 graph-validation cases and 3 emission rejection cases plus an unused Package-targeted supply in the positive emission test. No native execution applies (configuration only); NativeAOT was not run.
+
+Remaining I28 work: module-scoped native input records in the link manifest (needs a schema revision per §20.8.3), actual supply hashes/kinds, cross-module supply merging and link-time requirement/supply connection.
+
+Release verification of the T28d state: `dotnet build Kimigayo.slnx -c Release -m:1` PASS with 0 warnings; full Release suite **10,917/10,917** PASS (including `TestProcessRecoveryTest`).
+
+### T28f — supply contract agreement
+
+§20.8.2.1 merges several supplies for one target only when content and contract agree. Contract/hash agreement needs no native files: `NativeConfiguration.Validate` rejects Package-targeted records of one project naming the same package and name with different ContractId or Sha256 assertions, and `ValidateSupplyAgreement` (from `PrepareModules`) applies the same rule across every module's self-targeted and Package-targeted supplies, keyed by target, PackageId, PackageVersion and Name. The dictionary is allocated only when a module has supplies. Content agreement of the actual files remains with link-time supply validation.
+
+Tests: one within-project rejection input, one accepted input (different versions / omitted ContractId), and four graph cases where the library does not require the name, so only agreement can decide. Focused Debug classes (DependencyConfigurationTest, EmissionArtifactsTest, ModuleBindingTest, DependencyResolutionTest) PASS 354/354.
+
+Final state (T28d + T28f): `dotnet build Kimigayo.slnx -c Debug -m:1` and `-c Release` PASS with 0 warnings; full managed suites Debug **10,923/10,923** and Release **10,923/10,923** PASS (`-parallelMode none -failSkips`). `git diff --check` was clean. NativeAOT was not run; no draft file was edited.
+
+### Review follow-up — requirement arrays
+
+Self-review found that the raw-map array skip also applied to `NativeRequirements`. A nonempty requirement array (`NativeRequirements={t={{Kind="static"}}}`) was rejected only by the dictionary formatter as `TinyhandUnexpectedCodeException` (the new test failed on exactly that type; the same held before T28d). `ValidateNativeMap` now skips arrays only for `NativeLibraries` and reports a `TinyhandException` for a nonempty requirement array; an empty `{}` still reads as an empty map. Focused Debug classes (six native/dependency classes) PASS 481/481.
+
+### I26 probe (reverted)
+
+Marking a validated `#LibraryImport` attribute Resolved in `ValidateLibraryImports` moved the CLI failure to `UnsupportedBinding_Kd` on the attribute operand and its string arguments, which are never bound. Import callees have no `OwnershipBody`, so `LlvmEmitter.TryPrepare` registers no ABI for them and `LowerCall` would fail with "Call target has no selected implementation ABI". The probe was reverted (no diff retained); the required parts are listed in PLAN §2 next action 1.
+
+Final tree after the review follow-up: Debug and Release solution builds PASS with 0 warnings; full managed suites Debug **10,924/10,924** and Release **10,924/10,924** PASS. This supersedes the 10,923 counts above for the final state.
+
+### Reserved backend name in Package-targeted records
+
+§20.8.2.4 reserves `kimi_backend` as the compiler-managed supply; its explicit path is only a project's own compatibility override. A Package-targeted record naming it was accepted; it is now rejected like `kernel32`. One rejection input added; DependencyConfigurationTest and EmissionArtifactsTest PASS 122/122 in Debug.
+
+Final tree (all of the above): Debug and Release solution builds PASS with 0 warnings; full managed suites Debug **10,925/10,925** and Release **10,925/10,925** PASS. Superseded by the final record below.
+
+### Repeated top-level native keys
+
+Review found that `NativeLibraries={t=…} NativeLibraries={u=…}` (and the same for `NativeRequirements`) loaded silently, with the second map replacing the first; the target/name check caught only repeats of the same target. Two reproducers failed before the fix. The raw-map check now rejects a repeated top-level native key, like the existing repeated `Test` check. Focused Debug classes (DependencyConfigurationTest, EmissionArtifactsTest, MinimalEmissionTest) PASS 160/160.
+
+**Intermediate verification (superseded below):** Debug and Release solution builds PASS with 0 warnings; full managed suites Debug **10,927/10,927** and Release **10,927/10,927** PASS (`dotnet xUnitTest/bin/<Configuration>/net10.0/xUnitTest.dll -parallelMode none -failSkips`). `git diff --check` clean. No native execution applies to these configuration-only changes; NativeAOT not run; no draft edits.
+
+### Repeated top-level dependency and setting maps
+
+The same review pattern applied to `CompileTimeSettings`, `Dependencies` and `TestDependencies`: two occurrences of one key with distinct entry names loaded silently and the later map replaced the earlier one (a dependency or setting was dropped). Three reproducers failed before the fix; the raw-map check now rejects a repeated key. Focused Debug classes (DependencyConfigurationTest, DependencyResolutionTest, SolutionInputTest, EmissionArtifactsTest) PASS 170/170.
+
+The first full run after this change failed one existing case, `CompilationSpecificationTest.ProjectFileLoadingRejectsDuplicateDecodedSettingNames` (`CompileTimeSettings={Feature=…} CompileTimeSettings={Feature=…}`): the input was still rejected, but the new message lacked the established "Duplicate" wording the test checks. The new messages now read "Duplicate <key> setting."; the test was not changed.
+
+**Final checkpoint verification:** `dotnet build Kimigayo.slnx -c Debug -m:1` and `-c Release` PASS with 0 warnings; full managed suites Debug **10,930/10,930** and Release **10,930/10,930** PASS (`dotnet xUnitTest/bin/<Configuration>/net10.0/xUnitTest.dll -parallelMode none -failSkips`). `git diff --check` clean. Configuration-only changes: no native execution applies; NativeAOT not run; no draft edits.

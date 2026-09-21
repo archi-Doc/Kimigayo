@@ -104,12 +104,7 @@ public static class EmissionArtifacts
         {
             foreach (var (name, library) in libraries)
             {
-                CheckPath(library.Input);
-                if (!Path.GetExtension(library.Input).Equals(".lib", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidDataException("NativeLibraries inputs must be .lib files.");
-                }
-
+                CheckLibraryPath(library.Input);
                 if (name == WindowsProfile.BackendLibrary)
                 {
                     var (kind, sha256) = NativeConfiguration.Expand(settings, WindowsProfile.Target, name, library);
@@ -126,9 +121,23 @@ public static class EmissionArtifacts
                     backend = library;
                 }
             }
+
+            foreach (var library in libraries.Packaged)
+            {
+                CheckLibraryPath(library.Input);
+            }
         }
 
         return backend;
+    }
+
+    private static void CheckLibraryPath(string input)
+    {
+        CheckPath(input);
+        if (!Path.GetExtension(input).Equals(".lib", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("NativeLibraries inputs must be .lib files.");
+        }
     }
 
     private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, OutputKind outputKind, NativeLibraryInput? backend, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)

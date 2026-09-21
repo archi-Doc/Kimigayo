@@ -22,9 +22,10 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create();
         c.Project.ProjectFile.LlvmBin = "tools/LLVM bin";
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
         {
             ["unused"] = new() { Kind = "import", Input = "unused.lib" },
+            Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Input = "native/codec.lib" }],
         };
         Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
         Assert.Equal(Path.Combine(this.directory, "out", "Hello.ll"), path);
@@ -80,7 +81,20 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void InvalidNativeInputsAreRejectedEvenWhenUnused(string name, string? kind, string input)
     {
         var c = this.Create();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal) { [name] = new() { Kind = kind, Input = input } };
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { [name] = new() { Kind = kind, Input = input } };
+        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
+        Assert.Null(path);
+        Assert.NotNull(error);
+    }
+
+    [Theory]
+    [InlineData(null, "codec.dll")]
+    [InlineData(null, "/DEFAULTLIB:evil.lib")]
+    [InlineData("static", "codec.lib")]
+    public void InvalidPackageTargetedSuppliesAreRejectedEvenWhenUnused(string? kind, string input)
+    {
+        var c = this.Create();
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Kind = kind, Input = input }] };
         Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
         Assert.Null(path);
         Assert.NotNull(error);
@@ -92,7 +106,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         var settings = c.Project.ProjectFile;
         settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Kind = "static" } };
-        settings.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Input = "kimi_backend.lib" } };
+        settings.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Input = "kimi_backend.lib" } };
         Assert.True(EmissionArtifacts.Publish(c, out _, out var error), error);
 
         settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"].Sha256 = new string('0', 64);
@@ -108,7 +122,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void ExplicitKernel32PathRequiresMigration()
     {
         var c = this.Create();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
         {
             ["kernel32"] = new() { Kind = "import", Input = "sdk/kernel32.lib" },
         };
@@ -137,7 +151,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         var archive = Path.Combine(this.directory, "fake.lib");
         File.WriteAllText(archive, "not the adopted archive");
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
         {
             ["kimi_backend"] = new() { Kind = "static", Input = archive },
         };

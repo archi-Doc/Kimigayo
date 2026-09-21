@@ -112,6 +112,21 @@ public partial class Compilation
 
         for (var i = 0; i < modules.Length; i++)
         {
+            if (NativeConfiguration.ValidatePackageSupplies(graph.Nodes[i].Input.Configuration, graph.Nodes) is { } failure)
+            {
+                modules[i].DiagnosticCollection.Add(default, DiagnosticCode.InvalidDependencyConfiguration_Kd, failure);
+                return false;
+            }
+        }
+
+        if (NativeConfiguration.ValidateSupplyAgreement(graph.Nodes, out var conflicting) is { } conflict)
+        {
+            modules[conflicting].DiagnosticCollection.Add(default, DiagnosticCode.InvalidDependencyConfiguration_Kd, conflict);
+            return false;
+        }
+
+        for (var i = 0; i < modules.Length; i++)
+        {
             var references = new Dictionary<string, Kotonoha>(graph.Nodes[i].Edges.Count, StringComparer.Ordinal);
             foreach (var (name, key) in graph.Nodes[i].Edges)
             {

@@ -336,7 +336,7 @@ public class LibraryImportTargetBindingTest
         {
             if (combinedSupply)
             {
-                c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
+                c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
             }
             else
             {

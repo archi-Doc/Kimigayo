@@ -246,11 +246,11 @@ public class MinimalEmissionTest
             LlvmBin = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin",
             OutputPath = "bin/Hello.ll",
             Optimization = "O0",
-            NativeLibraries = new(StringComparer.Ordinal)
+            NativeLibraries = new()
             {
-                [WindowsProfile.Target] = new(StringComparer.Ordinal)
+                [WindowsProfile.Target] = new()
                 {
-                    ["kernel32"] = new() { Kind = "import", Input = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin/kernel32.lib" },
+                    ["kernel32"] = new() { Name = "kernel32", Kind = "import", Input = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin/kernel32.lib" },
                 },
             },
         };

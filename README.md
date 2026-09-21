@@ -108,8 +108,26 @@ checked for requirement names, declaration shape and the initial Windows C ABI T
 Declarations of one external symbol must also agree on their physical signature and on
 the requirement `Kind` that selects dllimport generation, and an import of a kernel32 API
 the runtime itself declares must use the reserved `kernel32` supply with that exact
-signature. Foreign calls are not generated or linked yet, and supplies for another package
-(`Package=`/`Name=` records) are not accepted yet.
+signature. Foreign calls are not generated or linked yet.
+
+A target may instead list `Name`/`Input` records. A record with `Package=` supplies a
+native name required by that dependency module; it cannot declare `Kind`, and when the
+module's requirement has a `ContractId` the record must assert the same one (a `Sha256`
+assertion must also agree). Several supplies of one module's name, from any project in the
+graph, must not assert different `ContractId` or `Sha256` values. A supply for a name that
+module does not require stays unused:
+
+```text
+NativeLibraries=
+  "x86_64-pc-windows-msvc"=
+    {
+      Package={ PackageId="example.codec" PackageVersion="1.0.0" }
+      Name="codec"
+      ContractId="example.codec.v1"
+      Input="native/codec.lib"
+    }
+    { Name="observer" Kind="static" Input="native/observer.lib" }
+```
 
 ### Using kimi
 

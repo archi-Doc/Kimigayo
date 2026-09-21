@@ -45,6 +45,27 @@ public class DependencyConfigurationTest
     [InlineData("NativeRequirements={t={codec={Kind=\"static\"}} t={codec={Kind=\"import\"}}}")]
     [InlineData("NativeRequirements={t={codec={Kind=\"static\"}}} NativeRequirements={t={codec={Kind=\"import\"}}}")]
     [InlineData("NativeLibraries={t={codec={Kind=\"static\" Input=\"a.lib\"} codec={Kind=\"static\" Input=\"b.lib\"}}}")]
+    [InlineData("NativeLibraries={t={codec={Kind=\"static\" Input=\"a.lib\"}} t={observer={Kind=\"static\" Input=\"b.lib\"}}}")]
+    [InlineData("NativeLibraries={t={codec={Kind=\"static\" Input=\"a.lib\"}}} NativeLibraries={t={{Name=\"observer\" Kind=\"static\" Input=\"b.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Name=\"codec\" Kind=\"static\" Input=\"a.lib\"} {Name=\"codec\" Kind=\"static\" Input=\"b.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Kind=\"static\" Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"codec\" Kind=\"static\" Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"Example..codec\" PackageVersion=\"1\"} Name=\"codec\" Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\"} Name=\"codec\" Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"\" Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kernel32\" Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={codec={Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={codec={Name=\"other\" Kind=\"static\" Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={\"x\"}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"a\" Input=\"a.lib\"} {Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"b\" Input=\"b.lib\"}}}")]
+    [InlineData("NativeRequirements={t={{Kind=\"static\"}}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kimi_backend\" Input=\"a.lib\"}}}")]
+    [InlineData("NativeLibraries={t={codec={Kind=\"static\" Input=\"a.lib\"}}} NativeLibraries={u={codec={Kind=\"static\" Input=\"b.lib\"}}}")]
+    [InlineData("NativeRequirements={t={codec={Kind=\"static\"}}} NativeRequirements={u={codec={Kind=\"static\"}}}")]
+    [InlineData("Dependencies={Math={PackageId=\"a\" PackageVersion=\"1\"}} Dependencies={Geometry={PackageId=\"b\" PackageVersion=\"1\"}}")]
+    [InlineData("TestDependencies={Math={PackageId=\"a\" PackageVersion=\"1\"}} TestDependencies={Geometry={PackageId=\"b\" PackageVersion=\"1\"}}")]
+    [InlineData("CompileTimeSettings={A={Bool=true}} CompileTimeSettings={B={Bool=true}}")]
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
         => Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source)));
 
@@ -60,6 +81,95 @@ public class DependencyConfigurationTest
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeRequirements=\n  \"x86_64-pc-windows-msvc\"=\n    codec={ Kind=\"static\" ContractId=\"example.codec.v1\" }\n"))!;
         var requirement = file.NativeRequirements[WindowsProfile.Target]["codec"];
         Assert.Equal(("static", "example.codec.v1", (string?)null), (requirement.Kind, requirement.ContractId, requirement.Sha256));
+    }
+
+    [Fact]
+    public void NativeLibraryRecordArraysSeparateSelfAndPackageTargets()
+    {
+        var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeLibraries=\n  \"x86_64-pc-windows-msvc\"=\n    {\n      Package={ PackageId=\"example.codec\" PackageVersion=\"1.0.0\" }\n      Name=\"codec\"\n      ContractId=\"example.codec.v1\"\n      Input=\"native/codec.lib\"\n    }\n    { Name=\"observer\" Kind=\"static\" Input=\"native/observer.lib\" }\n"))!;
+        var supplies = file.NativeLibraries[WindowsProfile.Target];
+        var observer = Assert.Single(supplies);
+        Assert.Equal(("observer", "static", (NativePackageTarget?)null), (observer.Key, observer.Value.Kind, observer.Value.Package));
+        var codec = Assert.Single(supplies.Packaged);
+        Assert.Equal(("codec", "example.codec", "1.0.0", "example.codec.v1", "native/codec.lib", (string?)null), (codec.Name, codec.Package!.PackageId, codec.Package.PackageVersion, codec.ContractId, codec.Input, codec.Kind));
+
+        // Shorthand keys become record names, and a record array is written only when a package is targeted.
+        var shorthand = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeLibraries={t={codec={Kind=\"static\" Input=\"a.lib\"}}}"))!;
+        Assert.Equal("codec", shorthand.NativeLibraries["t"]["codec"].Name);
+        Assert.Contains("codec", Encoding.UTF8.GetString(TinyhandSerializer.SerializeToUtf8(shorthand)));
+        Assert.Equal(file, ProjectFile.Load(TinyhandSerializer.SerializeToUtf8(file)), NativeSuppliesComparer.Instance);
+        var clone = TinyhandSerializer.Clone(file)!.NativeLibraries[WindowsProfile.Target].Packaged[0];
+        Assert.Equal(codec, clone);
+        Assert.NotSame(codec.Package, clone.Package);
+    }
+
+    [Theory]
+    [InlineData("codec", "1", "c.v1", null, false, true)]
+    [InlineData("codec", "1", null, null, false, false)]
+    [InlineData("codec", "1", "other", null, false, false)]
+    [InlineData("codec", "1", "c.v1", "b", false, false)]
+    [InlineData("codec", "1", "c.v1", "A", false, true)]
+    [InlineData("codec", "1", null, null, true, false)]
+    [InlineData("unrequired", "1", null, null, false, true)]
+    [InlineData("codec", "2", null, null, false, true)]
+    public void PackageTargetedSuppliesMatchTheResolvedModuleRequirement(string name, string version, string? contractId, string? hashDigit, bool combined, bool valid)
+    {
+        var c = Compilation.CreateForTest();
+        var root = c.Project.ProjectFile;
+        root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
+        root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = name, Package = new() { PackageId = "library", PackageVersion = version }, ContractId = contractId, Sha256 = hashDigit is null ? null : new string(hashDigit[0], 64), Input = "codec.lib" }] };
+        var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
+        var sha256 = new string('a', 64);
+        if (combined)
+        {
+            library.NativeLibraries[WindowsProfile.Target] = new() { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Input = "own.lib" } };
+        }
+        else
+        {
+            library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = sha256 } };
+        }
+
+        var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
+        var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
+        rootNode.Edges.Add("Lib", libraryNode.Key);
+        Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode])));
+        Assert.Equal(!valid, c.Kotonoha.DiagnosticCollection.GetArray().Any(x => x.Entry.Name == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd)));
+    }
+
+    [Theory]
+    [InlineData("x.v1", "x.v1", true)]
+    [InlineData(null, "x.v1", true)]
+    [InlineData("x.v2", "x.v1", false)]
+    [InlineData("x.v2", null, true)]
+    public void SuppliesOfOneNameMergeOnlyWithAgreeingContracts(string? rootContract, string? otherContract, bool valid)
+    {
+        // The library does not require "extra", so only supply agreement can reject the pair.
+        var c = Compilation.CreateForTest();
+        var root = c.Project.ProjectFile;
+        root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
+        root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = rootContract, Input = "root.lib" }] };
+        var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
+        var other = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "other", PackageVersion = "1" };
+        other.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = otherContract, Input = "other.lib" }] };
+        var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
+        var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
+        var otherNode = new DependencyNode("other@1", new("other.kimiproj", other, [], []), 1, "Other");
+        rootNode.Edges.Add("Lib", libraryNode.Key);
+        libraryNode.Edges.Add("Other", otherNode.Key);
+        Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode, otherNode])));
+    }
+
+    private sealed class NativeSuppliesComparer : IEqualityComparer<ProjectFile?>
+    {
+        public static readonly NativeSuppliesComparer Instance = new();
+
+        public bool Equals(ProjectFile? x, ProjectFile? y)
+            => x is not null && y is not null && x.NativeLibraries.Count == y.NativeLibraries.Count && x.NativeLibraries.All(pair =>
+                y.NativeLibraries.TryGetValue(pair.Key, out var other) && pair.Value.Count == other.Count &&
+                pair.Value.All(entry => other.TryGetValue(entry.Key, out var record) && record == entry.Value) &&
+                pair.Value.Packaged.SequenceEqual(other.Packaged));
+
+        public int GetHashCode(ProjectFile? obj) => 0;
     }
 
     [Fact]
@@ -110,6 +220,10 @@ public class DependencyConfigurationTest
     [InlineData("NativeRequirements=\n  \"x86_64-pc-windows-msvc\"=\n    codec={ Kind=\"static\" ContractId=\"example.codec.v1\" }\n")]
     [InlineData("NativeRequirements={a={codec={Kind=\"static\"}} b={codec={Kind=\"import\"}}} NativeLibraries={a={codec={Input=\"codec.lib\"}}}")]
     [InlineData("NativeLibraries=\n  \"x86_64-pc-windows-msvc\"=\n    observer={ Kind=\"static\" Input=\"native/observer.lib\" }\n")]
+    [InlineData("NativeLibraries={t={{Name=\"codec\" Kind=\"static\" Input=\"codec.lib\"}}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1.0.0\"} Name=\"codec\" ContractId=\"example.codec.v1\" Input=\"native/codec.lib\"} {Name=\"observer\" Kind=\"import\" Input=\"observer.lib\"}}}")]
+    [InlineData("NativeLibraries={t={}}")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"a\" Input=\"a.lib\"} {Package={PackageId=\"p\" PackageVersion=\"2\"} Name=\"codec\" ContractId=\"b\" Input=\"b.lib\"} {Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" Input=\"c.lib\"}}}")]
     public void ConfigurationRoundTripsWithoutReadingSources(string source)
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes(source));
