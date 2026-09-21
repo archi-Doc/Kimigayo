@@ -39,7 +39,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-21**, after the 38-program restructuring and program 17 completion. Build means a native
+As of **2026-09-21**, after the 38-program restructuring and program 18 completion. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -63,7 +63,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 15 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
 | 16 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
 | 17 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
-| 18 | YES | FAIL (Release/O2) | NOT_RUN | GenerationFailed_Kd: invalid shared storage/projection |
+| 18 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
 | 19 | YES | FAIL (Release/O2) | NOT_RUN | InvalidPattern_Kd / UnprovenConstraint_Kd for associated results/nested conformance |
 | 20 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedBinding_Kd when dereferencing generic returned element borrows |
 | 21 | YES | FAIL (Release/O2) | NOT_RUN | Length specialization / inherited Origin Binding unsupported; cascading diagnostics |
@@ -1005,7 +1005,7 @@ local, result and enum payload. None of these transfers duplicates ownership.
 The same `relay` also accepts a nested owned-string Tuple and a Copy array; the
 Copy source remains usable. No generic function assumes that arbitrary T is Copy.
 
-Expected stdout (not execution evidence):
+Verified stdout (exit 0, empty stderr, Debug/Release O0/O2):
 
 ```text
 Resource 4 destroyed.
@@ -1032,11 +1032,24 @@ Separate rejection exercises:
 - Add a Box deinit while retaining extraction of its Non-Copy field.
 - Add a deferred read of pending in relay: the return may Move that storage.
 
-Future verification should select the second Box with adjusted ids/output, route
-the owned array through an early return, and exercise unused Delivery cleanup.
-Inspect compound result storage, per-Type Copy/Move operations and destruction
-dispatch in addition to stdout; shared ABI/frame/resource guarantees belong to
-program 22's broader acceptance criteria.
+The [native harness](../backend/windows-x64/test-milestone18.ps1) checks the
+unchanged target, byte-identical renamed O0/O2 copies, renamed declarations,
+changed ids, the second Box, early return and unused Delivery cleanup. It also
+rejects seven invalid variants at both optimization levels. The full harness has
+53 checks (39 executions and 14 rejections).
+
+```powershell
+./backend/windows-x64/test-milestone18.ps1 -Configuration Debug
+./backend/windows-x64/test-milestone18.ps1 -Configuration Release
+```
+
+Companion tests cover complete Resource/array/struct payloads, nested and partial
+bindings, inactive Cases, zero-size and zero-length arrays, aborting cleanup,
+equal-size Types with distinct destructors, invalid universal ownership, corrupt
+plans and serialized reload. The canonical IR retains five shared bodies and
+seven concrete entries with fixed scratch reservations. General shared
+ABI/frame/resource guarantees remain program 22's broader acceptance criteria;
+program 18 does not require later dedicated features.
 
 Focus: [generic body checking](../spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
 [generic generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation),

@@ -266,7 +266,10 @@ internal sealed partial class BodyLowering
                 return Fail("Unsupported value storage or string result/parameter.", out failure);
             }
 
-            var addressRequired = false;
+            // Zero-sized arrays/tuples can still own destructible logical values.
+            // Their cleanup needs a valid slot just as a zero-sized struct does;
+            // the writer reserves an address anchor without changing TypeLayout.
+            var addressRequired = this.aggregatePlaces[p] is { NeedsDestruction: true };
             if (value.Layout.Size == 0)
             {
                 for (var i = 0; i < body.Operations.Count && !addressRequired; i++)

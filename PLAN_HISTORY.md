@@ -7901,3 +7901,146 @@ before Debug regenerated those files. To regenerate the new feature cases alone,
 run the managed runner with `-class '*StaticElementUpdateTest'`, then
 `test-scalars.ps1 -FixturePattern 'StaticElementUpdate*.ll'`. This reproduces the
 new native cases; it is not a substitute for the recorded full regression scope.
+
+<a id="program18-completion"></a>
+
+## Program 18 — composite generic values (2026-09-21)
+
+The request supersedes the previous stop at program 17 and authorizes only
+`milestones/Milestone18.kimi`. P18 task IDs are independent of M1–M15 and I/T
+implementation backlog IDs. Initial HEAD was
+`4d127cae63062eaf65b834c4e9f76b38e8887631`; the worktree was clean. Baseline records
+and execution logs are under `bin/milestone18-work/`. Program 17's P17-O/G/V
+checkpoint remains complete in its preceding record.
+
+### Confirmed failure and bounded repair
+
+A fresh Release solution build passed with no warnings/errors. The unchanged
+program passed Binding/ownership and failed emission preparation with
+`GenerationFailed_Kd: Pattern decomposition requires verified owned storage and
+cleanup.` This supersedes the older authoring probe's shared-storage diagnostic;
+no new shared-body failure was assumed. Existing related managed coverage passed
+434 cases before the change. New array/Resource enum-payload reproducers failed
+at the same check; nested Tuple relay already passed.
+
+`MatchTypes.SupportsOwnedPatternValue` now recursively admits finite owned fixed
+arrays and structs after existing layout/destructor preparation. A Tuple or Case
+Pattern transfers each complete array/struct payload using the existing owned
+slot and cleanup plans. It does not decompose a struct with `deinit`, loosen Loan
+checks, add Copy capability or bypass verified Pattern/acquisition/cleanup plans.
+The existing shared generic body, concrete entry, exact fixed scratch and
+per-Type destruction policies already execute the rest of program 18. No syntax
+rebinding, per-Type source cloning, dynamic scratch allocation or new generic
+operation was needed. Repeated component Types use the existing memoized proof.
+
+The target and all other milestone sources, SPEC/spec chapters and draft remain
+unchanged. Programs 19–21 were read for dependencies; their dedicated features
+were not implemented. General compound generic ABI/frame/resource guarantees
+remain the broader program 22/I15 scope.
+
+### Verification corrections and boundaries
+
+New companion cases use explicit Types where the existing inference subset needs
+them: a bare array literal in `relay(...)`, and an enum shorthand containing an
+untyped array literal in an ordinary call, did not complete Binding. Typed array
+arguments and typed enum locals test the same ownership/return behavior. A deferred
+read uses `observe<T>(pending@ref/T)` so Binding succeeds and the intended
+`MovedPlace_Kd` ownership rejection is reached. Broader inference remains backlog;
+the canonical program was never changed.
+
+The first native harness run passed all 39 Release execution checks, then stopped
+because its Type mismatch oracle used an incorrect diagnostic name. The compiler
+correctly reported `NoApplicableOverload_Kd`; after correcting the oracle, all 12
+existing rejection checks passed. A deferred-borrow rejection was then added for
+the final harness. Evidence: `initial-native.log`, the retained build records in
+`bin/milestone18/Release/9287f337d33742c4bb245aec715b250a/`, and the rejection
+report in `bin/milestone18/Release/4bc785e622af44a3ae5edcaca73a7a7d/verification.json`.
+
+The Release managed suite ran all 10,989 cases: 10,988 passed, and one unrelated
+2-second child-process startup probe timed out while Debug was building. After
+build completion, the isolated `TestProcessRecoveryTest` class passed all four
+modes (exit, timeout, cancellation, descendant cleanup). No test timeout or
+compiler behavior was changed. A test-only formatting fix removed two StyleCop
+warnings; it changed neither fixture source nor expected results.
+
+Sandboxed `opt.exe --version` was denied after IR generation. Authorized ordinary
+LLVM/native execution works outside that sandbox. NativeAOT is excluded by the
+request, rather than an attempted or failed gate.
+
+### Native-discovered zero-size cleanup repair
+
+The frozen native regression run passed 220 executions before LLVM rejected
+`GenericCompositeZeroSizePayload.ll`: its cleanup used undefined `%p15`. A zero
+physical size had suppressed ordinary array/Tuple slot creation even though the
+logical value still required destruction. This was not a semantic or LLVM-only
+success, and P18-G was reopened. The focused pre-change managed set ran 76 cases;
+LLVM provided the decisive valid-source failure evidence.
+
+`BodyLowering.Graph` now reserves the existing minimal aligned address anchor for
+any destructible zero-sized aggregate, as it already did for zero-sized structs
+and explicitly borrowed storage. Logical TypeLayout size/stride and element count
+remain unchanged; the destructor still executes once for every logical element.
+New fixtures cover zero-sized local arrays, Tuples and generic relay in addition
+to the original enum Pattern, and a plan assertion checks the retained anchor
+with zero logical size. No heap allocation or new runtime representation is added.
+
+The first native run's frozen inputs/results remain intact. After regeneration,
+only changed IR/oracles and previously unexecuted fixtures need another native
+run; byte-identical completed cases retain their evidence. Current-source builds,
+managed suites and the target are rechecked after this production change.
+
+### Final gates and reproduction
+
+All final gates pass on the current source:
+
+- Debug/Release solution builds: zero warnings/errors; managed suites: **10,993
+  tests each**, zero failures/skips. This includes 32 new P18 cases. These final
+  runs were isolated from builds and supersede the earlier startup timeout.
+- Target harness: **53 checks each** (39 executions, 14 rejections), exact stdout,
+  empty stderr/exit 0 for successful cases, incomplete/no executable or IR for
+  rejected inputs. Original and renamed O0/O2 copies are source-hash checked.
+- Related native fixtures: **156 sets / 312 O0/O2 executions**. The final inventory
+  certifies 114 byte-identical previously completed sets, four repaired zero-size
+  sets, and 38 resumed sets. No successful unchanged native case was rerun for
+  the final compiler/configuration alone. All **780 fixture files** match between
+  final Release and Debug generation. LLVM verification, optimized IR verification,
+  object dependencies, linking, exact output/exit and expected divergence all pass.
+- Programs 1–17: **102** current Release O0/O2 regression checks, unchanged copied
+  inputs with README output oracles and normal native/CLI execution.
+- Canonical IR: five shared bodies, seven concrete entries; scratch sizes
+  8/24/8/72/28/144/72 bytes, alignment 4 or 8. The equal-size policy test verifies
+  distinct Resource destructors and the independent cleanup-free Copy policy.
+  These checks establish the bounded program, not the broader I15/program 22 ABI,
+  metadata and resource contracts.
+
+Evidence:
+
+- `bin/milestone18-work/verification.json` (final compiler/source/fixture audit).
+- `final-debug-build.log`, `final-release-build.log`, `final-debug-tests.log`,
+  `final-release-tests.log`, `final-fixture-inventory.json` under that directory.
+- Release target: `bin/milestone18/Release/64dda24937f84a158189218255b72791/verification.json`.
+- Debug target: `bin/milestone18/Debug/6d51f31614e84ad5a536aaa2d0f59d7c/verification.json`.
+- Native logs: `pattern-native.log` (8), `native-regressions.log` (220 completed
+  before the zero-size failure), `zero-native.log` (8),
+  `final-native-regressions.log` (76); the final hash inventory establishes reuse.
+- Prior programs: `bin/milestone18-work/program-regressions/Release/ac365244fe5245cebd7090369a24e889/verification.json`.
+
+```powershell
+$env:DOTNET_CLI_HOME = Join-Path $env:TEMP 'kimigayo-p18-dotnet'
+dotnet build Kimigayo.slnx -c Release --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false
+dotnet build Kimigayo.slnx -c Debug --no-restore --disable-build-servers -m:1 -p:EmitCompilerGeneratedFiles=false
+dotnet xUnitTest/bin/Release/net10.0/xUnitTest.dll -parallelMode none -failSkips
+dotnet xUnitTest/bin/Debug/net10.0/xUnitTest.dll -parallelMode none -failSkips
+./backend/windows-x64/test-milestone18.ps1 -Configuration Release
+./backend/windows-x64/test-milestone18.ps1 -Configuration Debug
+# Requires the current managed tests to have emitted these fixtures:
+./backend/windows-x64/test-scalars.ps1 -FixturePattern 'GenericComposite*.ll' -OutputDirectory bin/milestone18-recheck
+dotnet Kimi/bin/Release/net10.0/Kimi.dll build milestones/Milestone18.kimi --ToolchainRoot toolchain
+./milestones/bin/x86_64-pc-windows-msvc/Milestone18.O2.exe
+```
+
+Native commands need permission to launch the installed LLVM tools in this host
+configuration. No required final gate remains unverified. NativeAOT was not run,
+as instructed. P18-G/O/V are complete; stop before program 19. An unrelated
+untracked `draft/Changes/2026-09-21 Named Argument Boundary.md` appeared during
+the task; it was neither read as authority nor edited, and was left intact.
