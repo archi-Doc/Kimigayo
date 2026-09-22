@@ -165,7 +165,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < operations.Length; i++)
         {
             var operation = operations[i];
-            var acquisition = construction.Acquisitions[i];
+            var acquisition = this.body.PlaceStorage[start + i].Acquisition; // Committed, or resolved for an instance.
             if ((acquisition == AcquisitionKind.None) == (operation.Kind == ArgumentOperationKind.Value))
             {
                 throw new InvalidOperationException("Committed payload operation has no matching acquisition kind.");

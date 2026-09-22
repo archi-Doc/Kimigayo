@@ -127,6 +127,22 @@ public class GenericStorageEmissionTest
         ScalarEmissionTest.EmitFixture("GenericStorageNestedCall" + type, Nested + $"require outer<{type}>({value}, 1) == 2 else => $abort(\"nested\")", string.Empty);
     }
 
+    [Theory]
+    [InlineData("i32", "7")]
+    [InlineData("string", "\"owned\"")]
+    [InlineData("Token", "Token.init(1)")]
+    public void MonomorphizesEnumPayloadConstruction(string type, string value)
+    {
+        // A committed CopyOrMove payload acquisition resolves to the instance's exact Copy or Move (SPEC 21.3.1).
+        var c = MinimalEmissionTest.Analyze(Token + $"func wrap<T>(x: T) -> Option<T> => .Some(x)\nlet v = wrap<{type}>({value})");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instance = Assert.Single(Instances(module));
+        Assert.True(instance.Abi.ResultSlot);
+        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "wrap");
+        Assert.Contains(generic.Places, x => x.Kind == OwnershipPlaceKind.Payload && x.Acquisition == AcquisitionKind.CopyOrMove);
+    }
+
     [Fact]
     public void UnsupportedInstanceKeepsTheSharedEntry()
     {
