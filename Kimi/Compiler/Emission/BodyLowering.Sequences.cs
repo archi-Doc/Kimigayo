@@ -38,6 +38,11 @@ internal sealed partial class BodyLowering
             return Fail("Sequence receiver does not match its evaluated source.", out failure);
         }
 
+        if (plan.Kind == SequenceOperation.Length && plan.Index != -1)
+        {
+            return Fail("Length metadata carries no element index.", out failure);
+        }
+
         var address = new EmissionOperand(EmissionOperandKind.SlotAddress, plan.Receiver);
         var borrowedArray = ReferenceTypes.IsArray(receiver);
         if (!borrowedArray && value.Count != 0)

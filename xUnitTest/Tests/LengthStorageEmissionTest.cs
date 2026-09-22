@@ -71,7 +71,7 @@ public class LengthStorageEmissionTest
         // SPEC 21.3.1: one concrete body per closed substitution; the repeated keep<2, i32> reuses its body.
         var c = MinimalEmissionTest.Analyze(Keep + "let a = keep<2, i32>([1, 2])\nlet b = keep<0, i32>([])\nlet c = keep<1, string>([\"x\"])\nlet d = keep<2, i32>([3, 4])");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.SharedEntries);
+        Assert.Empty(module.PendingEntries);
         Assert.Equal(3, GenericStorageEmissionTest.Instances(module).Length);
     }
 
@@ -91,7 +91,9 @@ public class LengthStorageEmissionTest
     [InlineData("producer")]
     public void RejectsMalformedMetadataPlansAndRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func count<length N, T>(a: ref/[N of T], b: ref/[N of T]) -> isize\n    let ignored = b.length\n    return a.length\nlet a: [2 of i32] = [1, 2]\ncount(a@ref, a@ref)");
+        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
+        // the corrupt length-metadata plan is rejected on the ordinary body that owns it.
+        var c = MinimalEmissionTest.Analyze("func count(a: ref/[2 of i32], b: ref/[2 of i32]) -> isize\n    let ignored = b.length\n    return a.length\nlet a: [2 of i32] = [1, 2]\ncount(a@ref, a@ref)");
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "count");
         var index = body.Sequences.Count - 1;

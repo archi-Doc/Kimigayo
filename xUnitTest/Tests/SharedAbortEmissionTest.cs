@@ -21,12 +21,14 @@ public class SharedAbortEmissionTest
         StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destructions, exit, stderr);
     }
 
+    // BodyLowering validates every lowered body, including each monomorphized instance, so a corrupt
+    // ownership graph is rejected on the ordinary body it belongs to (SPEC 21.3.1).
     [Fact]
     public void RejectsInventedNormalContinuationAndRecovers()
     {
-        var c = MinimalEmissionTest.Analyze("func fail<T>(value: ref/T)\n    $abort(\"stop\")\nlet v = true\nfail(v)");
+        var c = MinimalEmissionTest.Analyze("func fail(value: ref/bool)\n    $abort(\"stop\")\nlet v = true\nfail(v)");
         Assert.True(c.Emission.TryPrepare(out _, out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.GenericArguments.Count != 0);
+        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "fail");
         var edge = body.EdgeStorage.FindIndex(x => x.Kind == OwnershipEdgeKind.Abort);
         Assert.True(edge >= 0);
         body.EdgeStorage[edge] = body.Edges[edge] with { Kind = OwnershipEdgeKind.Normal };
@@ -40,9 +42,9 @@ public class SharedAbortEmissionTest
     [Fact]
     public void ChangedEntryCannotExecuteCheckingOnlyCode()
     {
-        var c = MinimalEmissionTest.Analyze("func fail<T>(value: ref/T)\n    $abort(\"stop\")\n    Console.writeLine(\"after\")\nlet v = true\nfail(v)");
+        var c = MinimalEmissionTest.Analyze("func fail(value: ref/bool)\n    $abort(\"stop\")\n    Console.writeLine(\"after\")\nlet v = true\nfail(v)");
         Assert.True(c.Emission.TryPrepare(out _, out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.GenericArguments.Count != 0);
+        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "fail");
         var after = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Source is Kimi.Compiler.Parsing.StringLiteralKoto { Literal: "after" });
         Assert.True(after >= 0);
         Assert.False(body.IsReachable(after));

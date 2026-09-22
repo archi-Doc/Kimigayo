@@ -22,7 +22,7 @@ public class SharedNeverEmissionTest
         const string Source = "func spin<T>(value: ref/T) -> Never\n    loop => continue\nlet v = true\nspin(v)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        Assert.Empty(module.SharedEntries);
+        Assert.Empty(module.PendingEntries);
         var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
         Assert.True(instance.Abi.NoReturn);
         Assert.False(instance.Abi.ResultSlot);

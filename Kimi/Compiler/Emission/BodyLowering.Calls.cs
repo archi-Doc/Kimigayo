@@ -66,7 +66,7 @@ internal sealed partial class BodyLowering
 
         var runtime = ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
-        var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Physical.Selected ?? generic?.Physical.Abi ?? this.functions!.GetValueOrDefault(target);
+        var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
         if (callee is null)
         {
             return Fail("Call target has no selected implementation ABI.", out failure);

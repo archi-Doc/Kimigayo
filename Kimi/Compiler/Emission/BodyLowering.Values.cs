@@ -4,8 +4,6 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    internal static bool ValidateSharedValues(OwnershipBody body) => ValidateValues(body, null);
-
     private static BoundType? ValueType(OwnershipBody body, int id)
     {
         var place = ValuePlace(body.Operations[id]);

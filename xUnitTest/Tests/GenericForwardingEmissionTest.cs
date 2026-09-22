@@ -41,7 +41,7 @@ public class GenericForwardingEmissionTest
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../milestones/Milestone22.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.SharedEntries);
+        Assert.Empty(module.PendingEntries);
         ScalarEmissionTest.EmitFixture("GenericForwardingProgram22", source, "Compound layouts preserved.\nSpecialization preserved.\nRed received.\nRed destroyed.\nBlue received.\nBlue destroyed.\nGeneric generation finished.\n");
     }
 
@@ -104,31 +104,24 @@ public class GenericForwardingEmissionTest
         Assert.Empty(output.ToString());
     }
 
+    // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
+    // the corrupt element borrow is rejected on the ordinary body that owns it.
     [Theory]
     [InlineData("index")]
     [InlineData("loan")]
-    [InlineData("constant")]
     public void RejectsCorruptPlanAndRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Weight + "let values: [1 of i32] = [7]\nlet result = W.total<1, i32>(values@ref)");
+        var c = MinimalEmissionTest.Analyze("func weight(value: ref/i32) -> i32 => 2\nfunc total(values: ref/[1 of i32]) -> i32 => weight(values[0]@ref/i32)\nlet values: [1 of i32] = [7]\nlet result = total(values@ref)");
         Assert.True(c.Emission.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == (defect == "constant" ? "weight" : "total") && !x.Function.IsSpecialization);
-        if (defect == "constant")
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "total");
+        var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow && x.Source is IndexKoto);
+        if (defect == "loan")
         {
-            var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant);
-            body.Values[id] = body.Values[id] with { Constant = 99 };
+            body.OperationStorage[id] = body.Operations[id] with { LoanMode = LoanRequirement.Uniq };
         }
         else
         {
-            var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow && x.Source is IndexKoto);
-            if (defect == "loan")
-            {
-                body.OperationStorage[id] = body.Operations[id] with { LoanMode = LoanRequirement.Uniq };
-            }
-            else
-            {
-                body.ValueOperands[body.Values[id].Start + 1] = id;
-            }
+            body.ValueOperands[body.Values[id].Start + 1] = id;
         }
 
         using var output = new StringWriter();

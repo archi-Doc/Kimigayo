@@ -126,7 +126,7 @@ public class GenericCompositeValueTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         // Equal-size substitutions still get separate bodies; the native run checks Copy and each destructor.
-        Assert.Empty(module.SharedEntries);
+        Assert.Empty(module.PendingEntries);
         Assert.Equal(3, GenericStorageEmissionTest.Instances(module).Length);
         ScalarEmissionTest.EmitFixture("GenericCompositePolicies", source, "secured\ntwo\none\nsecured\nother two\nother one\nsecured\n");
     }

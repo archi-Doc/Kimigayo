@@ -249,16 +249,16 @@ public sealed class LlvmEmitter
         failure = null;
         foreach (var (call, entry) in this.generics.Calls)
         {
-            // A selected explicit specialization (SPEC 21.3.4) is the implementation, never the generic body.
-            if (entry.Physical.Selected is not null || !module.SharedEntries.Contains(entry.Physical))
+            // A selected explicit specialization (SPEC 21.3.4) is never pending; a reused entry is lowered once.
+            if (!module.PendingEntries.Contains(entry))
             {
                 continue;
             }
 
+            var lowered = false;
             if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body)
             {
-                var function = module.AddFunction(entry.Physical.Abi, exported: false);
-                var lowered = false;
+                var function = module.AddFunction(entry.Abi, exported: false);
                 this.lowering.SetInstance(c.Binding, call, entry);
                 try
                 {
@@ -273,7 +273,7 @@ public sealed class LlvmEmitter
                 {
                     module.NeedsStringComparison |= function.NeedsStringComparison;
                     this.lowering.RegisterAggregates(module);
-                    module.SharedEntries.Remove(entry.Physical);
+                    module.PendingEntries.Remove(entry);
                 }
                 else
                 {
@@ -281,23 +281,50 @@ public sealed class LlvmEmitter
                 }
             }
 
-            // No transitional shared fallback: every generic call context must reach its concrete instance.
-            if (module.SharedEntries.Contains(entry.Physical))
+            // No fallback: every generic call context must reach its concrete instance.
+            if (!lowered)
             {
-                failure ??= "Generic instance ownership analysis failed.";
+                failure = $"Generic instance {Describe(entry)}: {failure ?? "ownership analysis under the substitution failed."}";
                 return false;
             }
         }
 
-        // Selected specializations are called directly. The transitional shared path is emitted only
-        // while a refused instance still needs its entry and the shared bodies those entries call.
-        if (module.SharedEntries.TrueForAll(x => x.Selected is not null))
+        return true;
+
+        // The refused instance by its function and closed substitution (type arguments, then length arguments).
+        static string Describe(GenericStoragePlan.CallEntry entry)
         {
-            module.SharedEntries.Clear();
+            var arguments = new string[entry.Arguments.Length + entry.Lengths.Length];
+            for (var i = 0; i < entry.Arguments.Length; i++)
+            {
+                arguments[i] = Text(entry.Arguments[i]);
+            }
+
+            for (var i = 0; i < entry.Lengths.Length; i++)
+            {
+                var length = entry.Lengths[i];
+                arguments[entry.Arguments.Length + i] = length is null ? "?" : length.Parameter?.Name ?? $"{length.Value}";
+            }
+
+            return arguments.Length == 0 ? entry.Template.Body.Function.Name : entry.Template.Body.Function.Name + "<" + string.Join(", ", arguments) + ">";
         }
 
-        failure = null;
-        return true;
+        static string Text(BoundType? type)
+        {
+            if (type is null)
+            {
+                return "?";
+            }
+
+            var components = type.Components.Count == 0 ? string.Empty : string.Join(", ", type.Components.Select(Text));
+            return type.Kind switch
+            {
+                BoundTypeKind.Semantics => type.Semantics.ToString().ToLowerInvariant() + "/" + components,
+                BoundTypeKind.FixedArray => $"[{type.Length} of {components}]",
+                BoundTypeKind.Tuple => "(" + components + ")",
+                _ => type.Components.Count == 0 ? type.Name : type.Name + "<" + components + ">",
+            };
+        }
     }
 
     private bool SkipGenerated(OwnershipBody body)
@@ -363,7 +390,7 @@ public sealed class LlvmEmitter
             var function = body.Function;
             if (GenericStoragePlan.IsGeneric(function))
             {
-                continue; // Universally verified CFG and concrete entry checks run in GenericStoragePlan.
+                continue; // Each closed instance is validated by BodyLowering under its substitution (LowerInstances).
             }
 
             if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor &&

@@ -37,7 +37,7 @@ public class GenericCallbackEmissionTest
         // SPEC 21.3.1: the instance calls its (T) -> bool value through the substituted signature.
         var c = MinimalEmissionTest.Analyze("func accepts<T>(value: T, f: (T) -> bool) -> bool => f(value)\nlet r = accepts<" + type + ">(" + value + ", func (x: " + type + ") => x == " + value + ")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.SharedEntries);
+        Assert.Empty(module.PendingEntries);
         var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
         var valueCall = Assert.Single(instance.Instructions, x => x.Opcode == EmissionOpcode.CallValue);
         Assert.Equal([type == "bool" ? "i1" : type], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());
@@ -47,9 +47,11 @@ public class GenericCallbackEmissionTest
     [InlineData("loan")]
     [InlineData("argument")]
     [InlineData("receiver")]
-    public void RejectsCorruptSharedCallAndReanalysisRecovers(string defect)
+    public void RejectsCorruptValueCallAndReanalysisRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func invoke<T>(x: T, f: (T) -> bool) -> bool => f(x)\nlet result = invoke<i32>(7, func (x: i32) => true)");
+        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
+        // the corrupt value call is rejected on the ordinary body that owns it.
+        var c = MinimalEmissionTest.Analyze("func invoke(x: i32, f: (i32) -> bool) -> bool => f(x)\nlet result = invoke(7, func (x: i32) => true)");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "invoke");
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
