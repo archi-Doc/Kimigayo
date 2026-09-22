@@ -345,11 +345,15 @@ public class IntrinsicCapabilityTest
     }
 
     [Fact]
-    public void RecursiveCopyDoesNotProveItself()
+    public void RecursiveCopyIsAnInvalidInlineLayout()
     {
+        // A Copy proof can recurse only through by-value storage, which SPEC 21.3.5 rejects as an
+        // invalid inline layout; the cyclic declarations never prove themselves Copy.
         var c = Parse("struct A {}\n    Self is Copy\n    let b: B\nstruct B {}\n    Self is Copy\n    let a: A");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        Assert.Equal(2, c.Binding.Issues.Count(x => x.Code == DiagnosticCode.InvalidInlineLayout_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd && x.Node is not Kimi.Compiler.Parsing.IsKoto);
+        Assert.Contains(c.Binding.Issues, x => x.Node is Kimi.Compiler.Parsing.IsKoto);
     }
 
     [Fact]

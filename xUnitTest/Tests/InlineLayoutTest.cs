@@ -18,6 +18,9 @@ public class InlineLayoutTest
     [InlineData(Box + "struct E\n    let b: Box<E>\n", "E")]
     [InlineData("struct Tree\n    let left: Option<Tree>\n", "Tree")]
     [InlineData("struct Pair\n    let items: [2 of (i32, Pair)]\n", "Pair")]
+    [InlineData("enum E\n    Empty\n    Again(E)\nlet x = E.Empty", "E")]
+    [InlineData("enum E<T>\n    Empty\n    Again(E<E<T>>)\nlet x = E<i32>.Empty", "E")]
+    [InlineData("enum A\n    Empty\n    Again(B)\nenum B\n    Again(A)\nlet x = A.Empty", "A,B")]
     public void SelfContainingDeclarationsAreDiagnosed(string source, string cyclic)
     {
         var c = MinimalEmissionTest.Analyze(source);

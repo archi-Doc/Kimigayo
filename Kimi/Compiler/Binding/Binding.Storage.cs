@@ -135,12 +135,15 @@ public sealed partial class Binding
             return;
         }
 
+        // The declaration itself is visited with its declared stored Types (its own parameters stay open);
+        // an instantiation substitutes them.
+        var own = ReferenceEquals(type, container.BoundSymbol?.Type);
         this.inlineLayoutStack.Add(container);
-        this.inlineLayoutOwnDeclaration.Add(ReferenceEquals(type, container.BoundSymbol?.Type));
+        this.inlineLayoutOwnDeclaration.Add(own);
         var cycles = this.cyclicInlineLayouts.Count;
         for (var i = 0; i < shape.Types.Count; i++)
         {
-            this.VisitInlineLayout(this.StoredType(shape.Types[i], type));
+            this.VisitInlineLayout(own ? shape.Types[i].BoundType : this.StoredType(shape.Types[i], type));
         }
 
         this.inlineLayoutStack.RemoveAt(this.inlineLayoutStack.Count - 1);
