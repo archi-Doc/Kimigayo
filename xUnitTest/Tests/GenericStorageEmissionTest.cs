@@ -250,6 +250,29 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
+    public void OversizedSubstitutionSetsAreResourceDiagnosed()
+    {
+        // SPEC 21.3.5: a third distinct closed context of choose exceeds a lowered substitution set limit.
+        var limit = GenericStoragePlan.SubstitutionSetLimit;
+        GenericStoragePlan.SubstitutionSetLimit = 2;
+        try
+        {
+            var c = MinimalEmissionTest.Analyze(Choose + "let a = choose<i8>(1, 2, true)\nlet b = choose<i16>(1, 2, true)\nlet d = choose<i32>(1, 2, true)");
+            using var output = new StringWriter();
+            Assert.False(c.Emission.WriteIr(output, out var error));
+            Assert.Empty(output.ToString());
+            Assert.True(c.Emission.FailureIsResourceLimit, error);
+            Assert.Contains("choose", error, StringComparison.Ordinal);
+            GenericStoragePlan.SubstitutionSetLimit = 3;
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        }
+        finally
+        {
+            GenericStoragePlan.SubstitutionSetLimit = limit;
+        }
+    }
+
+    [Fact]
     public void FiniteGenericRecursionReusesItsInstance()
     {
         var c = MinimalEmissionTest.Analyze("func count<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value, n - 1) + 1\nrequire count<i32>(7, 3) == 3 else => $abort(\"recursion\")");

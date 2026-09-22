@@ -35,6 +35,17 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareConcreteContractEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, BoundType[] parameters, ValueLowering[] values, List<AbiParameter> abiParameters, ValueLowering? resultValue, bool resultSlot, bool noReturn, int depth, out CallEntry? entry, out string? failure)
     {
         failure = null;
+        entry = null;
+        var function = template.Body.Function;
+        this.entryCounts.TryGetValue(function, out var count);
+        if (count >= SubstitutionSetLimit)
+        {
+            // SPEC 21.3.5: an oversized substitution set exceeds a mandatory generation limit.
+            this.ResourceLimitExceeded = true;
+            return Fail($"Generic instantiation of '{function.Name}' exceeds the substitution set limit of {SubstitutionSetLimit} distinct closed contexts.", out failure);
+        }
+
+        this.entryCounts[function] = count + 1;
         var abi = new FunctionAbi("__kimi_generic_entry" + module.SharedEntries.Count, FunctionAbi.ResultType(call.ReturnType, layouts)!, abiParameters.ToArray(), noReturn: noReturn, resultSlot: resultSlot);
         var adapters = new SharedDirectAdapter[template.DirectCalls.Length];
         var selected = compilation.Binding.SelectSpecialization(call);

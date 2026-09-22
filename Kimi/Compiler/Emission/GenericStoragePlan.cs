@@ -77,9 +77,13 @@ internal sealed partial class GenericStoragePlan
     private readonly Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundCall, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionKoto, int> chainCounts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<FunctionKoto, int> entryCounts = new(ReferenceEqualityComparer.Instance);
     private readonly SourceLocationTable locations = new();
     private readonly BodyLowering verifier = new();
     private IReadOnlyDictionary<FunctionKoto, FunctionAbi>? functions;
+
+    /// <summary>Gets or sets the mandatory bound on distinct closed contexts one generic body may generate (SPEC 21.3.5).</summary>
+    internal static int SubstitutionSetLimit { get; set; } = 1024;
 
     internal IReadOnlyDictionary<BoundCall, CallEntry> Calls => this.calls;
 
@@ -94,6 +98,7 @@ internal sealed partial class GenericStoragePlan
         this.templates.Clear();
         this.calls.Clear();
         this.chainCounts.Clear();
+        this.entryCounts.Clear();
         this.ResourceLimitExceeded = false;
         this.functions = null;
     }
