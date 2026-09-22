@@ -280,6 +280,7 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
             case OwnershipOperationKind.CheckReceiverField:
             case OwnershipOperationKind.UpdateTarget:
+            case OwnershipOperationKind.StorePointer:
                 this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
                 break;
             case OwnershipOperationKind.Write:
@@ -410,6 +411,7 @@ public sealed partial class OwnershipBody
                 break;
             case OwnershipOperationKind.CallEntry:
             case OwnershipOperationKind.Deliver:
+            case OwnershipOperationKind.StorePointer:
                 this.Move(place);
                 break;
             case OwnershipOperationKind.WriteElement:

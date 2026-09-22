@@ -86,11 +86,21 @@ internal static partial class LlvmModuleWriter
                 return;
             case EmissionOpcode.LoadElement:
             case EmissionOpcode.LoadScalar:
+            case EmissionOpcode.LoadPointer:
                 Name(output, type == "i1" ? "  %storage" : "  %v", id);
                 output.Write(" = load ");
                 output.Write(instruction.Representation!.Layout.StorageType);
-                output.Write(instruction.Opcode == EmissionOpcode.LoadElement ? ", ptr %element" : ", ptr %p");
-                WriteNumber(output, instruction.Place);
+                if (instruction.Opcode == EmissionOpcode.LoadPointer)
+                {
+                    output.Write(", ptr ");
+                    WriteOperand(output, operands[0]);
+                }
+                else
+                {
+                    output.Write(instruction.Opcode == EmissionOpcode.LoadElement ? ", ptr %element" : ", ptr %p");
+                    WriteNumber(output, instruction.Place);
+                }
+
                 WriteAlignment(output, instruction.Representation.Layout.Alignment);
                 if (type == "i1")
                 {
@@ -102,6 +112,7 @@ internal static partial class LlvmModuleWriter
                 return;
             case EmissionOpcode.StoreScalar:
             case EmissionOpcode.StoreElement:
+            case EmissionOpcode.StorePointer:
                 if (type == "i1")
                 {
                     Name(output, "  %storage", id);
@@ -118,7 +129,16 @@ internal static partial class LlvmModuleWriter
                     WriteOperand(output, operands[0]);
                 }
 
-                Name(output, instruction.Opcode == EmissionOpcode.StoreElement ? ", ptr %element" : ", ptr %p", instruction.Place);
+                if (instruction.Opcode == EmissionOpcode.StorePointer)
+                {
+                    output.Write(", ptr ");
+                    WriteOperand(output, operands[1]);
+                }
+                else
+                {
+                    Name(output, instruction.Opcode == EmissionOpcode.StoreElement ? ", ptr %element" : ", ptr %p", instruction.Place);
+                }
+
                 WriteAlignment(output, instruction.Representation!.Layout.Alignment);
                 return;
             case EmissionOpcode.Phi:
@@ -138,23 +158,6 @@ internal static partial class LlvmModuleWriter
                 return;
             case EmissionOpcode.Scalar:
                 break;
-            case EmissionOpcode.StorePointer:
-                output.Write("  store ");
-                output.Write(type);
-                output.Write(' ');
-                WriteOperand(output, operands[0]);
-                output.Write(", ptr ");
-                WriteOperand(output, operands[1]);
-                WriteAlignment(output, instruction.Representation!.Layout.Alignment);
-                return;
-            case EmissionOpcode.LoadPointer:
-                Name(output, "  %v", id);
-                output.Write(" = load ");
-                output.Write(type);
-                output.Write(", ptr ");
-                WriteOperand(output, operands[0]);
-                WriteAlignment(output, instruction.Representation!.Layout.Alignment);
-                return;
             case EmissionOpcode.PointerOffset:
                 // SPEC 5.3: count * signed stride bytes; out-of-allocation results are the program's undefined
                 // behavior, so no inbounds, nsw or other attribute is claimed.

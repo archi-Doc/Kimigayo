@@ -55,7 +55,10 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
             return null;
         }
 
-        return expression is DereferenceKoto || (expression is ExpressionKoto &&
+        return expression is DereferenceKoto ||
+            (expression is BinaryKoto binary && ReferenceTypes.IsPointer(binary.Left.BoundType) &&
+                binary.Akind is KotoKind.Index or KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals) ||
+            (expression is ExpressionKoto &&
             expression.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto f } && (f.Modifier & ModifierKind.Unsafe) != 0);
     }
 

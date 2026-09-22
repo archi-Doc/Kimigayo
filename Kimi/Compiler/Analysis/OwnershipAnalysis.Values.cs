@@ -165,6 +165,12 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            IsPointerPlace(KotoHelper.UnwrapParentheses(unary.Operand)))
+        {
+            return this.UpdatePointer(unary, KotoHelper.UnwrapParentheses(unary.Operand));
+        }
+
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
             KotoHelper.UnwrapParentheses(unary.Operand) is MemberAccessKoto field && ElementAccess.BorrowedPathRoot(field) is not null)
         {
             return this.UpdateBorrowedField(unary, field);

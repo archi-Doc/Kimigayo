@@ -173,7 +173,7 @@ internal sealed partial class BodyLowering
             var source = operation.Kind switch
             {
                 OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.InitializeSubject => operation.Input,
-                OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Cleanup or OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.ProjectElement => operation.Place,
+                OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Cleanup or OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.StorePointer => operation.Place,
                 _ => -1,
             };
             if (source < 0 || this.slotResultPlaces[source] == 0)

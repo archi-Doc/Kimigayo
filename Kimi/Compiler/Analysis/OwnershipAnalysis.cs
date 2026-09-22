@@ -625,6 +625,8 @@ public sealed partial class OwnershipAnalysis
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) ||
                 (ReferenceTypes.IsValue(member.BoundType) && ElementAccess.BorrowedPathRoot(member) is not null):
                 return this.ReadBorrowedField(member);
+            case IndexKoto element when ReferenceTypes.IsPointer(element.Left.BoundType):
+                return this.ReadPointer(element, use);
             case IndexKoto slice when slice.BoundType?.Kind == BoundTypeKind.Slice && slice.Right is RangeKoto:
                 return this.CreateSlice(slice);
             case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Slice:
@@ -678,17 +680,8 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 return this.RegisterTemporary(blockValue);
-            case DereferenceKoto dereference when !ReferenceEquals(dereference.BoundType, BoundType.Boolean) && (ScalarTypes.Supports(dereference.BoundType) || ReferenceTypes.IsPointer(dereference.BoundType)):
-                // SPEC 5.2: a Copy read through a raw pointer needs no Loan; validity is the unsafe caller's obligation.
-                var pointer = this.Expression(dereference.Operand, PlaceUseKind.Read);
-                if (pointer < 0)
-                {
-                    return -1;
-                }
-
-                var loaded = this.Temporary(dereference);
-                this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(pointer)]);
-                return loaded;
+            case DereferenceKoto dereference:
+                return this.ReadPointer(dereference, use);
             case UnaryKoto unary when node.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus or KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 return this.UnaryValue(unary);
             default:
@@ -708,6 +701,11 @@ public sealed partial class OwnershipAnalysis
         if (assignment)
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
+            if (IsPointerPlace(target))
+            {
+                return this.WritePointer(binary, target);
+            }
+
             if (target is MemberAccessKoto borrowedField && ElementAccess.BorrowedPathRoot(borrowedField) is not null)
             {
                 return this.WriteBorrowedField(binary, borrowedField);
@@ -716,22 +714,6 @@ public sealed partial class OwnershipAnalysis
             if (target is BinaryKoto element && ElementAccess.IsSyntax(element) && !this.SpecialField(target))
             {
                 return binary.Akind == KotoKind.Equals ? this.AssignElement(binary, element) : this.UpdateElement(binary, element);
-            }
-
-            if (target is DereferenceKoto dereference && binary.Akind == KotoKind.Equals && !ReferenceEquals(dereference.BoundType, BoundType.Boolean) &&
-                (ScalarTypes.Supports(dereference.BoundType) || ReferenceTypes.IsPointer(dereference.BoundType)))
-            {
-                // SPEC 5.2: a Copy write through a raw pointer; the value is evaluated before the pointer.
-                var value = this.Expression(binary.Right);
-                var pointer = value < 0 ? -1 : this.Expression(dereference.Operand, PlaceUseKind.Read);
-                if (pointer < 0)
-                {
-                    return -1;
-                }
-
-                var stored = this.Temporary(dereference);
-                this.SetValue(this.Value(stored), OwnershipValueKind.PointerStore, [this.Value(pointer), this.Value(value)]);
-                return this.Temporary(binary);
             }
 
             var previous = -1;

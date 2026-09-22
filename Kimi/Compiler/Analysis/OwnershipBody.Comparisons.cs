@@ -10,7 +10,7 @@ public sealed partial class OwnershipBody
     {
         OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => place == borrowed && (mode == LoanRequirement.Uniq || acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove),
         OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.InitializeSubject => place == borrowed || input == borrowed,
-        OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.Declare or OwnershipOperationKind.Produce => place == borrowed,
+        OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.StorePointer => place == borrowed,
         OwnershipOperationKind.Borrow or OwnershipOperationKind.UpdateTarget => place == borrowed && (mode != LoanRequirement.Ref || access != LoanRequirement.Ref),
         OwnershipOperationKind.Read => place == borrowed && mode == LoanRequirement.Uniq,
         _ => false,

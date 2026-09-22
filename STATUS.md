@@ -41,8 +41,22 @@ external symbol, `dllimport` for `import` supplies, sharing the runtime's own ke
 declarations. Raw pointers are Copy `ptr` values that can be passed, returned, stored,
 compared with `==`/`!=`, including `null` (§5.1), converted with `@` to other pointer
 Types or `usize` (§5.4–5.5), displaced with `p ± n` or `p ±= n` (§5.3), and read or
-written with `*p` for non-`bool` scalar and pointer pointees (§5.2); compound writes
-through pointers, indexing and C layout still reject before output. `build` links the
+written with `*p` for scalar (including `bool`) and pointer pointees (§5.2). Compound updates
+through those pointers preserve one destination evaluation/read, checked arithmetic and
+write-after-completion (§13.7.2). `p[n]` uses signed stride displacement without a bounds
+check; indexing and all pointer arithmetic require unsafe context. Integer pointee
+prefix/postfix increments and decrements preserve one address/read and checked writes.
+Whole Copy/Owned tuple, fixed-array and struct pointees transfer through the verified
+aggregate layout, including mixed-alignment fields. Unit and zero-sized Copy accesses
+preserve evaluation without accessing bytes. Owned Non-Copy tuple/array/struct reads
+acquire a temporary owner and preserve Move and cleanup, including zero-sized destructors.
+Owned aggregate replacement destroys the old pointee at its original address and transfers
+the secured source, retaining RHS-first evaluation and early-transfer cleanup. Standalone
+string Move reads and replacement reuse field-wise handle transfers and normal release.
+Whole Owned enum pointees preserve tags, aligned stride and active-payload destruction.
+Non-consuming raw access (including direct string comparison), dependent pointees and direct aggregate
+subplace access and C layout remain unsupported. Binding rejects arithmetic and indexing with provably zero-stride pointees, including
+empty aggregates, substituted generic fields and inherited empty storage. `build` links the
 project's own self-targeted
 supplies required by its imports (manifest `libraries` entries in Ordinal order,
 `Sha256` assertions checked against the linked bytes, object references admitted only
@@ -52,7 +66,7 @@ at O0/O2. Symbols outside LLVM plain identifiers, such as MSVC-mangled names, ar
 written as quoted names and link. Supplies required by dependency modules fail
 publication, and actual archive member kinds and provider identity
 are not checked yet; linked inputs are hash-named staged snapshots.
-[Evidence](PLAN_HISTORY.md#foreign-import-calls-20260922).
+[Import evidence](PLAN_HISTORY.md#foreign-import-calls-20260922); [pointer continuation evidence](PLAN_HISTORY.md#raw-pointer-continuation-20260922).
 
 **Milestone Program 18** builds and executes unchanged at O0/O2. Owned Tuple/Case
 Patterns can acquire complete fixed-array and struct payloads within the
@@ -468,7 +482,7 @@ Evidence: OwnershipAnalysis, CurrentControlFlow, ControlFlowConformance, Referen
 | Static members | Verified immutable group integer/bool literal reads with no observable initialization effect can fold | Mutable/effectful statics, static address identity, first-access/shutdown/cycles, Origin-erased inherited-environment keys, uniform initializer/destructor certificates and shared initialize-and-address/lazy lifetime protocol are specified but unimplemented. |
 | Sequences | Two-word Slice/range handles, backing Origins/Copy, scalar Copy reads and indices snapshots; full and explicit half-open Slice views check bounds before pointer arithmetic. Slice iteration and explicit indexing borrows retain shared backing dependencies; program 13 preserves its first Sample reference across later next calls and exhaustion. Views use pointer/length storage without an element buffer. Built-in ResolvedRange, shared range and supported Copy-array iteration remain implemented subsets | General Index/from-end/saved or inclusive Range/Slice APIs, collection/consuming iteration, tuple iteration bindings, general user Iterable/Iterator dispatch and arbitrary Slice element results remain incomplete. Generic Slice generation currently covers copied fields, length and explicit element borrows; not every concrete/shared form is executable. Mixed Slice provenance widens conservatively. The current suites and native sequence fixtures cover the selected negative/bounds/zero-size paths; this does not certify every Slice API. |
 | Exclusive objects | Concrete makeObj acquisition, a 16-byte header, 48-byte payload ValueMetadata, 24-byte ObjectDescriptor, deterministic nonzero Type keys, obj-backed object borrow/Reborrow, complete Sealed payload projection and borrowed member calls. Exchange preserves the containing object; final cleanup destroys the dynamic payload before freeing the original allocation. obj captures can transfer through a Consuming closure | The Windows profile and existing finite payload-layout limits apply. Generic-body factories, inherited/base/Contract views, rc/arc/Weak and general refinement are not implemented. Full ObjectCallCompatible inference/publication/release stages remain deferred. |
-| Collections/FFI | Collection/pointer syntax, declaration constraints and runtime `is` Binding have foundations. Binding diagnoses `#LibraryImport` argument forms, §22.3.1 declaration shape/placement, §21.5.2 reserved external names (`InvalidLibraryImport_Kd`), §22.3.2 signature Types (`UnsupportedImportSignature_Kd`), conflicting physical signatures for one external symbol across source modules (`ConflictingImportSignature_Kd`), collisions with the generated runtime's own kernel32 declarations (`ConflictingRuntimeSymbol_Kd`, shared only through the reserved kernel32 supply with an equal physical signature) and names without a requirement of the defining module for the current target (`MissingNativeRequirement_Kd`). Valid imports complete Binding; direct calls with integer, `f32`/`f64` and raw-pointer signatures lower to a shared `declare`; raw pointers support `null`, equality, `@` pointer/`usize` conversions and `p ± n`/`p ±= n` (`dllimport` for `import` supplies) and execute natively through the reserved `kernel32` supply or the root project's own static supplies | Dynamic Array/Dictionary mutation and cost contracts, compound writes through pointers, pointer indexing, dependency-module supplies, archive member-kind/provider validation and C layout execution are not established. Runtime Contract Views remain deferred. |
+| Collections/FFI | Collection/pointer syntax, declaration constraints and runtime `is` Binding have foundations. Binding diagnoses `#LibraryImport` argument forms, §22.3.1 declaration shape/placement, §21.5.2 reserved external names (`InvalidLibraryImport_Kd`), §22.3.2 signature Types (`UnsupportedImportSignature_Kd`), conflicting physical signatures for one external symbol across source modules (`ConflictingImportSignature_Kd`), collisions with the generated runtime's own kernel32 declarations (`ConflictingRuntimeSymbol_Kd`, shared only through the reserved kernel32 supply with an equal physical signature) and names without a requirement of the defining module for the current target (`MissingNativeRequirement_Kd`). Valid imports complete Binding; direct calls with integer, `f32`/`f64` and raw-pointer signatures lower to a shared `declare`; raw pointers support `null`, equality, `@` pointer/`usize` conversions and `p ± n`/`p ±= n` (`dllimport` for `import` supplies) and execute natively through the reserved `kernel32` supply or the root project's own static supplies | Dynamic Array/Dictionary mutation and cost contracts, Non-Copy/dependent pointee reads and writes, direct aggregate subplace access, zero-stride language diagnostics, dependency-module supplies, archive member-kind/provider validation and C layout execution are not established. Runtime Contract Views remain deferred. |
 
 Generation validates typed inputs, exact Type identity, constants, dominance, result arrivals, live flags, Loans and cleanup plans. The Writer does not reinterpret syntax. Strings use a 24-byte handle; tuples use physical alignment order separately from logical destruction order; arrays use stride-based layout. Current aggregate layout retains depth 64 and size/count limits of int.MaxValue; PLAN G7 requires checking these against the specified resource rules. These are internal representations, not a general external ABI. Measured hot-path reuse does not establish allocation-free module preparation.
 

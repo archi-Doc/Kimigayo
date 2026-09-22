@@ -556,40 +556,6 @@ internal sealed partial class BodyLowering
             return this.LowerConversion(body, function, constants, directory, id, out failure);
         }
 
-        if (value.Kind == OwnershipValueKind.PointerStore)
-        {
-            // SPEC 5.2: store the Copy value at the pointee alignment; the temporary itself is never read.
-            var address = Input(body, id, 0);
-            var stored = Input(body, id, 1);
-            if (ValueType(body, address) is not { } pointerType || !ReferenceTypes.IsPointer(pointerType) || !ReferenceEquals(pointerType.Components[0], type) ||
-                !ReferenceEquals(ValueType(body, stored), type) || ReferenceEquals(type, BoundType.Boolean) || WindowsLowering.GetValue(type!) is not { } storage)
-            {
-                return Fail("Unsupported pointer write.", out failure);
-            }
-
-            var start = function.Operands.Count;
-            function.Operands.Add(this.PhysicalOperand(body, stored));
-            function.Operands.Add(this.PhysicalOperand(body, address));
-            function.Instructions.Add(new(EmissionOpcode.StorePointer, id, OperandStart: start, OperandCount: 2, ScalarType: storage.ComputationType, Representation: storage));
-            return true;
-        }
-
-        if (value.Kind == OwnershipValueKind.PointerLoad)
-        {
-            // SPEC 5.2: a Copy read of the pointee with its own alignment and no invented attributes.
-            var address = Input(body, id, 0);
-            if (ValueType(body, address) is not { } pointerType || !ReferenceTypes.IsPointer(pointerType) || !ReferenceEquals(pointerType.Components[0], type) ||
-                ReferenceEquals(type, BoundType.Boolean) || WindowsLowering.GetValue(type!) is not { } loaded)
-            {
-                return Fail("Unsupported pointer read.", out failure);
-            }
-
-            var start = function.Operands.Count;
-            function.Operands.Add(this.PhysicalOperand(body, address));
-            function.Instructions.Add(new(EmissionOpcode.LoadPointer, id, OperandStart: start, OperandCount: 1, ScalarType: loaded.ComputationType, Representation: loaded));
-            return true;
-        }
-
         if (value.Kind is not (OwnershipValueKind.Binary or OwnershipValueKind.Unary))
         {
             return Fail("Missing scalar computation.", out failure);

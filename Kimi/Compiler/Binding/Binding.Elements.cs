@@ -11,6 +11,16 @@ public sealed partial class Binding
         var receiver = this.BindNode(source.Left, scope);
         if (source is IndexKoto)
         {
+            if (ReferenceTypes.IsPointer(receiver))
+            {
+                // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form.
+                var offset = this.RequireType(source.Right, scope, BoundType.ISize);
+                return offset is not null && FitsType(offset, BoundType.ISize) &&
+                    KotoHelper.UnwrapParentheses(source.Right) is not (RangeKoto or FromEndIndexKoto) &&
+                    !this.HasZeroStride(receiver!.Components[0])
+                    ? Complete(source, receiver!.Components[0]) : Fail(source, BindingFailure.TypeMismatch);
+            }
+
             if (ReferenceTypes.IsArray(receiver) && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);

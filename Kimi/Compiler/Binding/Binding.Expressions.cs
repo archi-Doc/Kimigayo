@@ -19,6 +19,11 @@ public sealed partial class Binding
             return ReferenceTypes.IsPointer(dereference.Operand.BoundType);
         }
 
+        if (node is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType))
+        {
+            return true;
+        }
+
         if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
         {
             return false;
@@ -894,8 +899,8 @@ public sealed partial class Binding
 
         if (ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus)
         {
-            // Arithmetic needs a positive stride: unsafe/() is invalid here; lowering rejects other zero strides.
-            return (ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)) && !ReferenceEquals(left.Components[0], BoundType.Unit)
+            // SPEC 5.3: even zero displacement requires a positive element stride.
+            return (ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)) && !this.HasZeroStride(left.Components[0])
                 ? Complete(binary, result)
                 : Fail(binary, BindingFailure.TypeMismatch);
         }

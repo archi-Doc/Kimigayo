@@ -44,7 +44,8 @@ internal sealed partial class BodyLowering
             {
                 OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection => 0,
                 OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField or OwnershipValueKind.ClosureErasure or OwnershipValueKind.PointerLoad => 1,
-                OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.PointerStore => 2,
+                OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => 2,
+                OwnershipValueKind.PointerStore => IsScalar(ValueType(body, id)!) ? 2 : 1,
                 OwnershipValueKind.Address => value.Count is >= 0 and <= 2 ? value.Count : -1,
                 OwnershipValueKind.Sequence => value.Count is 0 or 1 ? value.Count : -1,
                 OwnershipValueKind.Phi or OwnershipValueKind.Closure => value.Count,
@@ -66,6 +67,7 @@ internal sealed partial class BodyLowering
             }
 
             var scalar = IsScalar(ValueType(body, id)!);
+            var pointerAccess = value.Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.PointerStore;
             if (value.Kind == OwnershipValueKind.Convert && !scalar)
             {
                 return false;
@@ -82,7 +84,7 @@ internal sealed partial class BodyLowering
                 return false;
             }
 
-            if (!scalar && operation.Kind != OwnershipOperationKind.Branch)
+            if (!scalar && !pointerAccess && operation.Kind != OwnershipOperationKind.Branch)
             {
                 continue;
             }
@@ -90,7 +92,8 @@ internal sealed partial class BodyLowering
             for (var n = 0; n < value.Count; n++)
             {
                 var input = Input(body, id, n);
-                if ((uint)input >= (uint)body.Values.Count || (value.Kind != OwnershipValueKind.Phi && input >= id) || !IsScalar(ValueType(body, input)!))
+                if ((uint)input >= (uint)body.Values.Count || (value.Kind != OwnershipValueKind.Phi && input >= id) ||
+                    !IsScalar(ValueType(body, input)!))
                 {
                     return false;
                 }

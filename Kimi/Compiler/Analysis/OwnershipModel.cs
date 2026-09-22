@@ -79,6 +79,7 @@ public enum OwnershipOperationKind : byte
     TestMessage,
     TestAbort,
     ActivateCallBorrows,
+    StorePointer,
 }
 
 public enum PlacementKind : byte
@@ -140,7 +141,7 @@ public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Ko
     public PlaceUseKind Use => this.Kind switch
     {
         OwnershipOperationKind.Read or OwnershipOperationKind.PatternTest => PlaceUseKind.Read,
-        OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => PlaceUseKind.Consume,
+        OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.StorePointer => PlaceUseKind.Consume,
         OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.PayloadPlacement => PlaceUseKind.Write,
         OwnershipOperationKind.Borrow or OwnershipOperationKind.UpdateTarget => PlaceUseKind.Borrow,
         _ => PlaceUseKind.None,
@@ -355,10 +356,11 @@ internal enum OwnershipValueKind : byte
     Capture,
     ClosureErasure,
 
-    // SPEC 5.2: a Copy read through a raw pointer; the input is the pointer value.
+    // SPEC 5.2: a Copy/Move read through a raw pointer; the input is the pointer value.
     PointerLoad,
 
-    // SPEC 5.2: a Copy write through a raw pointer; inputs are the pointer and the stored value.
+    // SPEC 5.2: replacement through a raw pointer; inputs are the pointer and (for scalars) value.
+    // Constant retains the acquired source Place, including aggregate/Unit storage without an SSA value.
     PointerStore,
 }
 

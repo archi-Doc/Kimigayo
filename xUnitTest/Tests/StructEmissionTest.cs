@@ -111,10 +111,12 @@ public class StructEmissionTest
     }
 
     [Fact]
-    public void UnsupportedExplicitLayoutIsNotSilentlyReplaced()
+    public void ExplicitCLayoutUsesItsSelectedRepresentation()
     {
         var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct S\n    var value: i32\n    public init() => self.value = 0\nlet s = S.init()");
-        Assert.False(c.Emission.Validate(out _));
+        using var writer = new StringWriter();
+        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Contains("{ i32 }", writer.ToString());
     }
 
     [Fact]
