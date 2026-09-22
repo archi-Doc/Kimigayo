@@ -227,6 +227,18 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
+    public void MonomorphizesCopyOrMovePatternBindings()
+    {
+        // SPEC 21.3.1: the try binding of a T payload copies for i32 and moves for string in each instance.
+        var c = MinimalEmissionTest.Analyze("func unwrap<T>(x: T?) -> T? => .Some(try x)\nlet a = unwrap<i32>(.Some(8))\nlet b = unwrap<string>(.Some(\"owned\"))");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        Assert.Equal(2, Instances(module).Length);
+        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "unwrap");
+        Assert.Contains(generic.Operations, x => x.Kind == OwnershipOperationKind.AcquirePattern && x.Acquisition == AcquisitionKind.CopyOrMove);
+    }
+
+    [Fact]
     public void MonomorphizesForwardedStringReferences()
     {
         // SPEC 21.3.1: forward<string> passes its ref/T parameter to weight<string> as the substituted

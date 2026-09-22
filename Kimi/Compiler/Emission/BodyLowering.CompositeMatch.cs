@@ -161,8 +161,11 @@ internal sealed partial class BodyLowering
             }
 
             cursor = this.NextPatternOperation(body, cursor);
-            var expected = pattern.Acquisition == PatternAcquisition.Copy ? AcquisitionKind.Copy : AcquisitionKind.Move;
-            if ((uint)cursor >= (uint)body.Operations.Count || body.Operations[cursor] is not { Kind: OwnershipOperationKind.AcquirePattern } acquire ||
+            // A committed CopyOrMove is exact only on the instance's bound Place; a source body cannot lower it.
+            var expected = pattern.Acquisition == PatternAcquisition.Copy ? AcquisitionKind.Copy
+                : pattern.Acquisition == PatternAcquisition.CopyOrMove ? body.Places[local].Acquisition : AcquisitionKind.Move;
+            if (expected is not (AcquisitionKind.Copy or AcquisitionKind.Move) ||
+                (uint)cursor >= (uint)body.Operations.Count || body.Operations[cursor] is not { Kind: OwnershipOperationKind.AcquirePattern } acquire ||
                 acquire.Place != input || acquire.Input != local || acquire.Acquisition != expected || !ReferenceEquals(acquire.Source, pattern.Source) || this.patternAcquisitions[cursor] != 0)
             {
                 return false;
