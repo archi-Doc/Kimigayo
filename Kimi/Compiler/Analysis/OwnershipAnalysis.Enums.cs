@@ -50,7 +50,7 @@ public sealed partial class OwnershipAnalysis
             return true;
         }
 
-        if (type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function)
+        if (type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.AssociatedProjection)
         {
             return true;
         }

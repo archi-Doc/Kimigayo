@@ -360,7 +360,7 @@ public sealed partial class OwnershipAnalysis
         this.body.PlaceStorage.Add(new(id, source, type, kind, mutable, acquisition));
         this.placeValues.Add(-1);
         this.resultDeclarations.Add(-1);
-        this.body.IsConcrete &= type.Kind != BoundTypeKind.Parameter;
+        this.body.IsConcrete &= type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection);
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
         {
             this.Unsupported(source);

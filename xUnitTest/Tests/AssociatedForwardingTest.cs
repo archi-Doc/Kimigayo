@@ -16,6 +16,13 @@ public class AssociatedForwardingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
+    [Fact]
+    public void MilestoneOwnershipIsVerified()
+    {
+        var c = MinimalEmissionTest.Analyze(MilestoneSource);
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
     [Theory]
     [InlineData("NumberSource", "i32")]
     [InlineData("Wrapper<NumberSource>", "i32")]
