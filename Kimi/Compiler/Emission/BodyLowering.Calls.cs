@@ -140,7 +140,9 @@ internal sealed partial class BodyLowering
 
             if (ReferenceTypes.IsString(type))
             {
-                if (!ReferenceParameterFits(plan, target, parameter, acquisition) || !this.ValidateReferenceUse(body, entry, id) ||
+                // The instantiated parameter Type was matched against the callee's entry above; a
+                // monomorphized instance forwards its ref/T parameter as the substituted string reference.
+                if (!ReferenceTypes.IsString(parameterType) || !this.ValidateReferenceUse(body, entry, id) ||
                     !ReferenceEquals(acquisition.Source, call.ArgumentNodes[i]) || !ReferenceEquals(acquisition.SourceType, call.ArgumentNodes[i].BoundType))
                 {
                     return Fail("Reference argument lacks its call-wide Loan or Origin substitution.", out failure);
@@ -151,7 +153,7 @@ internal sealed partial class BodyLowering
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
                         !ReferenceEquals(body.Operations[root].Source, KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]))
                     : (body.Values[root].Kind != OwnershipValueKind.Parameter && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
-                        !ReferenceEquals(ValueType(body, root), acquisition.SourceType))
+                        !ReferenceEquals(ValueType(body, root), SignatureType(this, acquisition.SourceType)))
                 {
                     return Fail("Reference acquisition does not match its source.", out failure);
                 }

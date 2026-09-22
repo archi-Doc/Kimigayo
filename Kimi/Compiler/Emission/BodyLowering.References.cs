@@ -9,13 +9,6 @@ internal sealed partial class BodyLowering
     private int[] referenceRoots = [];
     private int[] callLoanPlans = [];
 
-    private static bool ReferenceParameterFits(BoundCall call, FunctionKoto target, int parameter, BoundArgumentOperation acquisition)
-    {
-        var formal = target.Parameters[parameter].Type.BoundType;
-        return ReferenceTypes.IsString(formal) && ReferenceTypes.IsString(acquisition.ParameterType) &&
-            ReferenceTypes.CallTypeMatches(formal, acquisition.ParameterType, call);
-    }
-
     private bool PrepareReferences(OwnershipBody body, out string? failure)
     {
         failure = null;

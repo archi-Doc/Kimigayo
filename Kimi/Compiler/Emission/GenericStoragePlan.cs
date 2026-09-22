@@ -1319,7 +1319,8 @@ internal sealed partial class GenericStoragePlan
             values[i] = value;
             if (value.Layout.Size != 0)
             {
-                abiParameters.Add(new(value.ArgumentType!, "a" + i, SlotTypes.IsResult(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, i));
+                // The same parameter kinds as concrete entries (FunctionAbiPool), so callers pass string references alike.
+                abiParameters.Add(new(value.ArgumentType!, "a" + i, ReferenceTypes.IsString(type) ? AbiParameterKind.SharedReference : SlotTypes.IsResult(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, i));
             }
         }
 

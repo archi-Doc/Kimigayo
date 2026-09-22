@@ -162,6 +162,19 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
+    public void MonomorphizesForwardedStringReferences()
+    {
+        // SPEC 21.3.1: forward<string> passes its ref/T parameter to weight<string> as the substituted
+        // string reference; the concrete caller's string borrow also targets the instance entry.
+        var c = MinimalEmissionTest.Analyze("func weight<T>(value: ref/T) -> i32 => 1\nfunc forward<T>(value: ref/T) -> i32 => weight<T>(value)\nlet s = \"text\"\nlet n = forward<string>(s)");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instances = Instances(module);
+        Assert.Equal(2, instances.Length);
+        Assert.All(instances, x => Assert.Equal(["ptr"], x.Abi.Parameters.Select(p => p.Type).ToArray()));
+    }
+
+    [Fact]
     public void SelectedSpecializationIsNeverReplacedByTheGenericBody()
     {
         const string Source = "func count<T>(value: T) -> i32 => 77\nspecialize func count<i32>(value: i32) -> i32 => 5\nrequire count<i32>(1) == 5 and count<i64>(1) == 77 else => $abort(\"selection\")";
