@@ -178,7 +178,7 @@ Adaptation Target
     -> complete result Type retains target, Semantics, and Origin
 ```
 
-**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. The remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target. Generic adjacency follows §12.4.2, and written direct borrow annotations are forbidden at every target layer; named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
+**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. The remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target, including optional suffixes. Generic adjacency follows §12.4.2. Written borrow Origins are forbidden on the target's outer Semantics chain, including through grouping; those Origins are inferred. Complete Types inside an Option or another aggregate retain their own annotations and dependencies. Named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
 
 `a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses the target `T/b` and fails Semantics lookup if `T` is only a Core; whitespace cannot change this. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping, as in `x@(i32)`, preserves the adaptation. Group a complete Function Type target, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and is never retried after a conversion failure.
 
@@ -204,7 +204,9 @@ Operand Types, expected Types and conversion success cannot resolve a role ambig
 
 The extended Container path syntax (§9.6.1) neither relaxes the Origin restrictions on Adaptation Targets nor permits groups or Contracts as value Types, and bound Container qualifiers are unavailable here because their Origin argument list is mandatory. Other grouping and selector forms keep their existing rules.
 
-An optional suffix applies to the complete target Type (§3.2.1), not to Semantics shorthand. For `x: i32`, both `x@i32?` and `x@ref/i32?` fail because no conversion to the respective Option Type exists. A value already of that complete Option Type can be acquired normally. This adds neither borrow-then-wrap nor user-defined conversion.
+An optional suffix applies to the complete target Type (§3.2.3), not to Semantics shorthand. For `x: i32`, both `x@i32?` and `x@ref/i32?` fail because no conversion to the respective Option Type exists. A value already of that complete Option Type can be acquired normally. This adds neither borrow-then-wrap nor user-defined conversion.
+
+For `saved: Option<ref{a}/T>`, `saved@ref{a}/T?` and `saved@Option<ref{a}/T>` both acquire the same complete Option Type. The annotation describes its existing payload dependency; it does not request a new borrow or extend a lifetime. In contrast, `value@ref{a}/T` cannot prescribe the new borrow's Origin.
 
 ### 13.5.2. Static selection and inference
 
@@ -292,7 +294,7 @@ Rounding and checks apply at every `@` in a chain; an intermediate result is nev
 
 #### 13.5.5.1. Complete object payload projection
 
-A fully specified `@ref/T` or `@uniq/T` may project a complete object payload when `T is Kimi.Sealed` is Proven (§8.4.7.1). The source View Target and the immediate result Referent Type must be exactly the same complete `T`, including generic arguments and internal Origins; only the outer borrow lifetime may shorten. The target contains no written direct borrow annotation; the result's Origin is inferred from the source and keeps both the referent and the owning-handle dependencies.
+A fully specified `@ref/T` or `@uniq/T` may project a complete object payload when `T is Kimi.Sealed` is Proven (§8.4.7.1). The source View Target and the immediate result Referent Type must be exactly the same complete `T`, including generic arguments and internal Origins; only the outer borrow lifetime may shorten. The target's outer borrow chain contains no written Origin annotation; the result's Origin is inferred from the source and keeps both the referent and the owning-handle dependencies.
 
 | Input | Explicit target | Result |
 | --- | --- | --- |
@@ -619,7 +621,7 @@ If the right-hand side or the operation does not complete normally, nothing is w
 
 Operator symbols, precedence and associativity are fixed by the language. User-defined comparison uses the [Kimi Contract mapping](#1341-contract-comparison-mapping). User-defined arithmetic remains deferred and unavailable, and a same-named method does not authorize an operator. Future arithmetic must preserve evaluation order and counts and assignment's Unit result.
 
-`and`, `or`, `not`, `=`, `@`, `is`, Ranges and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined, and neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.` or a ternary `?:`; use the logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref`/`@uniq`. Prefix `move`, a Move accessor and a dedicated `<-` Move operator are not defined. The Type-only T?/T?? suffix (§3.2.1) and prefix try (§17.2.4) are separate. Recognition by the lexer alone does not make a token a usable operator.
+`and`, `or`, `not`, `=`, `@`, `is`, Ranges and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined, and neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.` or a ternary `?:`; use the logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref`/`@uniq`. Prefix `move`, a Move accessor and a dedicated `<-` Move operator are not defined. The Type-only T?/T?? suffix (§3.2.3) and prefix try (§17.2.4) are separate. Recognition by the lexer alone does not make a token a usable operator.
 
 `#Name` is an Attribute and `#if`/`#switch` are compile-time directives, not runtime unary operators.
 

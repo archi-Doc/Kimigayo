@@ -22,7 +22,7 @@ Origin schemas, binding sets, projections, relations and completion are defined 
 
 The argument-name boundary (`!`), normalized name contracts and independent argument omission (a default expression) are defined in [§7.2](spec/07-functions-and-callable-values.md#72-parameters-and-defaults), with positional matching in [§10.1](spec/10-overload-resolution-and-inference.md#101-candidate-applicability).
 
-Optional Type spelling is defined in [§3.2.1](spec/03-types-and-values.md#321-optional-type-spelling), explicit discard in [§14.2.4](spec/14-control-flow.md#1424-explicit-discard), and try propagation in [§17.2.4](spec/17-failure-handling.md#1724-try-propagation).
+Optional Type spelling is defined in [§3.2.3](spec/03-types-and-values.md#323-optional-type-spelling), explicit discard in [§14.2.4](spec/14-control-flow.md#1424-explicit-discard), and try propagation in [§17.2.4](spec/17-failure-handling.md#1724-try-propagation).
 
 ## Contents
 

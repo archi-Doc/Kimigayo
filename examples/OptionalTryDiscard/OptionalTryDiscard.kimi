@@ -1,0 +1,34 @@
+// T? is exactly Option<T>; each try extracts one layer.
+func unwrap<T>(value: T?) -> T? => .Some(try value)
+
+func prepare(ready: bool) -> Result<i32, string>
+    if ready => return .Ok(8)
+    return .Err("not ready")
+
+func process(ready: bool) -> Result<i32, string>
+    let value = try prepare(ready)
+    return .Ok(value + 1)
+
+match process(true)
+    .Ok(9) => Console.writeLine("ready")
+    _ => $abort("unexpected success result")
+
+match process(false)
+    .Err(let error) => Console.writeLine(error)
+    _ => $abort("failure was not propagated")
+
+let nested: i32?? = .Some(.None)
+func inner(value: i32??) -> i32?? => .Some(try value)
+match inner(nested)
+    .Some(.None) => Console.writeLine("one layer")
+    _ => $abort("nested absence was flattened")
+
+// An explicit discard ignores this complete result, including any error.
+_ = process(false)
+_ = unwrap<string>(.Some("owned payload"))
+
+// Each unnamed slot keeps the acquisition and lifetime of a named slot.
+let pairs: [2 of (i32, i32)] = [(1, 10), (2, 20)]
+var total = 0
+for (key, _) in pairs => total += key
+require total == 3 else => $abort("iteration")

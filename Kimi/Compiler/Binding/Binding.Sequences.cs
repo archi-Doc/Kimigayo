@@ -51,15 +51,22 @@ public sealed partial class Binding
         var element = iterable?.Kind == BoundTypeKind.FixedArray ? iterable.Components[0] : iterable?.Kind == BoundTypeKind.Slice
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [iterable.Components[0]], origin: iterable.Origin) : BoundType.ISize;
         var result = this.BeginResult(source, scope, BoundType.Unit);
+        var duplicate = false;
         for (var i = 0; i < source.Bindings.Count; i++)
         {
             var name = source.Bindings[i];
+            duplicate |= name.BoundSymbol!.Next is not null;
             var slot = source.IsTupleBinding && element.Kind == BoundTypeKind.Tuple && i < element.Components.Count ? element.Components[i] : element;
             name.BoundSymbol!.Type = slot;
             Complete(name, slot);
         }
 
         this.BindNode(source.Body, scope);
+        if (duplicate)
+        {
+            return Fail(source, BindingFailure.Duplicate);
+        }
+
         if (source.IsTupleBinding && (element.Kind != BoundTypeKind.Tuple || element.Components.Count != source.Bindings.Count))
         {
             return Fail(source, BindingFailure.TypeMismatch);

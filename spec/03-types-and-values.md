@@ -193,7 +193,7 @@ Every Weak has a target management area. **There is no empty Weak and no zero-ar
 
 A Weak keeps `S`'s complete View Type, mode, Type/Origin arguments and actual Loan dependencies (§13.5.9). OwnedOrigins scans the full `S`, with no exception for construction or expiration. A Closure that captures an owned Weak is Non-Copy; capturing a shared borrow follows the normal Copy and Loan rules. A Weak provides no direct payload member access, object borrow, runtime `is`, checked cast or view conversion: upgrade it first and use the strong result.
 
-### 3.2.1. Optional Type spelling
+### 3.2.3. Optional Type spelling
 
 `T?` is exactly the compiler-recognized `::Kimi.Option<T>`, regardless of local name lookup. Each `?` adds one layer: `T??` is `Option<Option<T>>`, never flattened. Substitution, Identity, constraints, Copy/Owned proofs and layout use the expanded Type. `T` is any valid complete Option argument, including Semantics and Origin dependencies.
 

@@ -640,7 +640,8 @@ public sealed class ControlFlowAnalysis
 
                 break;
             case ConversionKoto conversion:
-                flow = this.VisitChildSequence(conversion, reachable);
+                // The target is checked Type syntax, not a runtime expression.
+                flow = this.Visit(conversion.Left, reachable);
                 var sourceType = this.nodes[conversion.Left].ExpressionType;
                 var destinationType = this.types.GetDeclaredType(conversion.Right);
                 var sourcePointer = IsPointer(sourceType);
@@ -1019,7 +1020,7 @@ public sealed class ControlFlowAnalysis
     private Flow VisitMatch(MatchKoto node, bool reachable, ControlFlowType? expected)
     {
         var subject = this.Visit(node.Expression, reachable);
-        var required = KotoHelper.IsValueContext(node);
+        var required = KotoHelper.IsResultRequiringSelection(node);
         var boundary = this.Begin(node, required ? expected : ControlFlowType.Unit);
         var coverage = this.types.GetMatchCoverage(node, subject.Type);
         var exhaustive = coverage.IsExhaustive;
@@ -1287,7 +1288,10 @@ public sealed class ControlFlowAnalysis
         var compatible = this.types.IsCompatible(source, type);
         if (compatible == false)
         {
-            this.Error(source.Node, $"Result of type {source.Type?.Name} is incompatible with {type.Name}.");
+            var message = KotoHelper.UnwrapParentheses(source.Node) is TryKoto propagation
+                ? Binding.DescribeTryPayloadFailure(propagation, type)
+                : $"Result of type {source.Type?.Name} is incompatible with {type.Name}.";
+            this.Error(source.Node, message);
         }
         else if (compatible is null)
         {

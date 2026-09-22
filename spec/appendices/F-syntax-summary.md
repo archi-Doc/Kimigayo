@@ -300,11 +300,10 @@ Multiplicative       := Adapted (("*" | "/" | "%") Adapted)*
 Adapted              := Prefix ("@" OperationTarget)*
 OperationTarget      := Semantics | AdaptationType
 AdaptationType       := AdaptationCore ("?")*
-AdaptationCore       := Semantics "/" AdaptationCore | AdaptationAtom
-AdaptationAtom       := OriginFreePath | UnitType | "(" OriginFreeType ")"
-                      | "(" OriginFreeType "," TrailingList<OriginFreeType>? ")"
-                      | "[" ArrayLength "of" OriginFreeType "]"
-OriginFreeType       := ? Type with no written direct borrow annotations at any layer, §13.5.1 ?
+AdaptationCore       := Semantics BorrowOrigin? "/" AdaptationCore | AdaptationAtom
+AdaptationAtom       := ContainerPath | UnitType | "(" Type ")"
+                      | "(" Type "," TrailingList<Type>? ")"
+                      | "[" ArrayLength "of" Type "]"
 Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--" | "try") Prefix
                       | Postfix
 Postfix              := Primary PostfixSuffix*
@@ -347,7 +346,7 @@ Ordinary `is` / `is not` accepts one named struct Core and does not consume oute
 
 Qualified enum Case expressions have no separate Primary production: ordinary Postfix syntax is classified during Binding under §6.3.2. Only InferredCaseExpression is a dedicated expression production; CaseReference belongs to the Pattern grammar in F.5.
 
-The `.init(` suffix has construction priority under §6.2.3 and cannot use ordinary member `Name` in `PostfixSuffix` or `BoundContainerExpression`; its qualifier is checked in the Type role during Binding. Adaptation alternatives obey the syntactic prefix commitment of §13.5.1 before lookup, including generic arguments without direct borrow annotations. `$abort` accepts exactly one positional Expression, without a label or trailing comma; it must fit `string`.
+The `.init(` suffix has construction priority under §6.2.3 and cannot use ordinary member `Name` in `PostfixSuffix` or `BoundContainerExpression`; its qualifier is checked in the Type role during Binding. Adaptation alternatives obey §13.5.1's syntactic prefix commitment and Origin restrictions: after optional expansion, the outer Semantics chain cannot write borrow Origins, while complete payload Types retain their annotations. Bound Container qualifiers remain unavailable in adaptation targets. `$abort` accepts exactly one positional Expression, without a label or trailing comma; it must fit `string`.
 
 ## F.5. Statements and Blocks
 

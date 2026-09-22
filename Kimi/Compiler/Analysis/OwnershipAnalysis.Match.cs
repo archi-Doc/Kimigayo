@@ -303,7 +303,7 @@ public sealed partial class OwnershipAnalysis
             else
             {
                 var value = -1;
-                if (arm.Syntax.Body is ExpressionKoto && (arm.Syntax.Body is not UnitLiteralKoto || KotoHelper.IsValueContext(syntax)))
+                if (arm.Syntax.Body is ExpressionKoto && (arm.Syntax.Body is not UnitLiteralKoto || KotoHelper.IsResultRequiringSelection(syntax)))
                 {
                     value = this.Expression(arm.Syntax.Body);
                 }
@@ -314,7 +314,7 @@ public sealed partial class OwnershipAnalysis
 
                 if (this.flow.Nodes[arm.Syntax.Body].CanCompleteNormally)
                 {
-                    if (KotoHelper.IsValueContext(syntax) && arm.Syntax.Body is ExpressionKoto)
+                    if (KotoHelper.IsResultRequiringSelection(syntax) && arm.Syntax.Body is ExpressionKoto)
                     {
                         secured = this.WriteResult(arm.Syntax.Body, output, value);
                     }

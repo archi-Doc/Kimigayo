@@ -10,7 +10,8 @@ public sealed partial class Binding
     private NumberLiteralKoto? floatingIntegerLiteral;
 
     internal static bool SupportsIdentityAcquisition(BoundType type)
-        => type.Semantics == SemanticsKind.Owner && type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
+        => type.Semantics == SemanticsKind.Owner &&
+            (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Tuple or BoundTypeKind.FixedArray || Kimi.Compiler.EnumStorage.IsEnum(type));
 
     private static Koto ConversionTargetSyntax(ConversionKoto conversion)
     {

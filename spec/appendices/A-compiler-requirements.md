@@ -468,7 +468,7 @@ Verify zero documentation-specific allocations with collection disabled and no d
 
 ## A.22. Optional Types, propagation and discard
 
-Implement §3.2.1, §14.2.4, §14.6 and §17.2.4/§17.4 consistently across lexing, parsing, Binding, control flow, ownership, lowering and generation.
+Implement §3.2.3, §14.2.4, §14.6 and §17.2.4/§17.4 consistently across lexing, parsing, Binding, control flow, ownership, lowering and generation.
 
 - Preserve optional/try/discard syntax and source locations. Normalize optional syntax to recognized Option Identity before proofs, decomposition and layout.
 - Check prefix/arrow/Origin grouping, repeated ?, generic arguments and adaptation targets; reject suffixes on Semantics shorthand and dedicated name positions.

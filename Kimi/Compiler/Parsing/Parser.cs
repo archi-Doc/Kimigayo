@@ -1529,6 +1529,31 @@ CloseParameters:
         return type;
     }
 
+    private static void CheckAdaptationOrigins(ref TokenReader reader, Koto type)
+    {
+        while (true)
+        {
+            if (type is ParenthesizedTypeKoto grouped)
+            {
+                type = grouped.Type;
+            }
+            else if (type is TypeSemanticsKoto { Type: { } inner } layer)
+            {
+                if (!layer.IsTransparentWrapper && layer.HasOrigin)
+                {
+                    reader.Diagnostic.Add(layer.Span, DiagnosticCode.UnexpectedToken_Kd, "Origin annotation on adaptation borrow layer");
+                }
+
+                type = inner;
+            }
+            else
+            {
+                // Optional, named, Tuple and array Cores contain complete payload Types.
+                return;
+            }
+        }
+    }
+
     private static bool HasBorrowOriginSuffix(ref TokenReader reader)
     {
         var depth = 0;
@@ -3230,7 +3255,8 @@ CloseParameters:
         reader.IfBodyRegion |= ifBody;
         try
         {
-            if (reader.CurrentTokenKind == TokenKind.Dollar)
+            if (reader.CurrentTokenKind == TokenKind.Dollar ||
+                (reader.CurrentTokenKind == TokenKind.Underscore && reader.PeekKind(1) == TokenKind.Equals))
             {
                 return ParseBlockItem(ref reader) ?? reader.NewErrorKoto();
             }
@@ -3323,8 +3349,9 @@ CloseParameters:
                 }
                 else
                 {
-                    // Borrow Origins are inferred; aggregate binding sets may attach to the enclosing declaration.
-                    typeKoto = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: true, allowNestedOrigins: false);
+                    // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
+                    typeKoto = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: true);
+                    CheckAdaptationOrigins(ref reader, typeKoto);
                 }
 
                 left = new ConversionKoto(

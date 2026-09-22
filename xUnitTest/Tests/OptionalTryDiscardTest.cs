@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Tinyhand;
 using Xunit;
 
 namespace XunitTest;
@@ -42,7 +44,7 @@ public class OptionalTryDiscardTest
     [InlineData("Result", "func source() -> Result<i32, i32> => .Err(9)\nfunc run() -> Result<bool, i32>\n    let n = try source()\n    return .Ok(n == 1)\nmatch run()\n    .Ok(_) => $abort(\"ok\")\n    .Err(let n) => require n == 9 else => $abort(\"error\")")]
     [InlineData("Discard", "func source() -> Result<i32, i32> => .Ok(1)\nfunc run() -> Result<(), i32>\n    _ = try source()\n    return .Ok(())\n_ = run()\n_ = \"destroy\"")]
     public void ExecutesBothPaths(string name, string source)
-        {
+    {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
         ScalarEmissionTest.EmitFixture("OptionalTry" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
@@ -98,7 +100,7 @@ public class OptionalTryDiscardTest
     [InlineData("Lambda", "func source() -> i32? => .Some(8)\nlet f = func () -> i32? => .Some(try source())\nmatch f()\n    .Some(8) => ()\n    _ => $abort(\"lambda\")")]
     [InlineData("Generic", "func unwrap<T>(x: T?) -> T? => .Some(try x)\nmatch unwrap<i32>(.Some(8))\n    .Some(8) => ()\n    _ => $abort(\"generic\")\n_ = unwrap<string>(.Some(\"owned\"))")]
     public void ExecutesCombinations(string name, string source)
-        {
+    {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
         ScalarEmissionTest.EmitFixture("OptionalTry" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
@@ -157,6 +159,150 @@ public class OptionalTryDiscardTest
         }
     }
 
+    [Theory]
+    [InlineData("func run(x: i32??) -> i32? => .Some(try try x)")]
+    [InlineData("let x: ref{static}/(i32?)? = .None")]
+    [InlineData("let x: [1 of i32?] = [.None]\n_ = x")]
+    [InlineData("for (key, _) in pairs => _ = key\nfor (_, _) in pairs => ()")]
+    [InlineData("if true => _ = prepare() else => _ = prepare()")]
+    [InlineData("let _value = 1_000\nfunc tryGet() -> i32 => _value")]
+    [InlineData("#switch\n    #case _\n        let items: [2 of _] = [1, 2]\n        _ = items")]
+    public void SyntaxSurvivesWritingAndSerialization(string source)
+    {
+        var tree = ParseTestHelper.Parse(source);
+        ParseTestHelper.AssertValid(tree);
+        var output = tree.RootKoto.ToString();
+        ParseTestHelper.AssertValid(ParseTestHelper.Parse(output));
+        Assert.DoesNotContain("$try.", output);
+        var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(tree))!;
+        restored.OnDeserialized(Compilation.CreateForTest());
+        ParseTestHelper.AssertValid(restored);
+        Assert.Equal(output, restored.RootKoto.ToString());
+        Assert.All(Descendants(restored.RootKoto), n => Assert.All(n.ChildNodes, child => Assert.Same(n, child.Parent)));
+    }
+
+    [Theory]
+    [InlineData("let _value: i32 = 3\n_ = _value", true)]
+    [InlineData("func make<T>() -> T? => .None\nfunc run() -> i32?\n    let x: i32 = try make()\n    return .Some(x)", false)]
+    [InlineData("func make<T>() -> T? => .None\nfunc run() -> i32?\n    let x: i32 = try make<i32>()\n    return .Some(x)", true)]
+    [InlineData("func make() -> string? => .Some(\"owned\")\nfunc run() -> ()?\n    let saved = make()\n    _ = try saved\n    _ = saved\n    return .Some(())", false)]
+    [InlineData("func run(x: ref/(i32?)) -> i32? => .Some(try x)", false)]
+    [InlineData("func run<T>(x: T) -> i32? => .Some(try x)", false)]
+    [InlineData("func run() -> i32?\n    return .Some(1)\n    _ = try 1", false)]
+    [InlineData("func source() -> i32? => .Some(1)\nfunc run(x: i32 = try source()) -> i32? => .Some(x)", false)]
+    [InlineData("let value: i32? = null", false)]
+    [InlineData("let x = 1\n_ = x@i32?", false)]
+    [InlineData("func run(x: i32?) -> i32? => .Some(try (x))", true)]
+    [InlineData("enum Option<T>\n    Other\nlet x: i32? = .Some(1)", true)]
+    [InlineData("enum Option<T>\n    Some(T)\n    None\nfunc run(x: Option<i32>) -> Option<i32> => .Some(try x)", false)]
+    [InlineData("let pairs: [1 of (i32, i32)] = [(1, 2)]\nfor (x, x) in pairs => ()", false)]
+    [InlineData("let pairs: [1 of (i32, i32)] = [(1, 2)]\nfor (_, _, _) in pairs => ()", false)]
+    public void PreservesInferenceOwnershipAndBindingRules(string source, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Kotonoha.DiagnosticCollection.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("func try() => ()")]
+    [InlineData("let x = _")]
+    [InlineData("let f = func [_]() => ()")]
+    [InlineData("let x: i32?{a}")]
+    [InlineData("let x = i32?.Some(1)")]
+    [InlineData("let x = try\nlet y = 1")]
+    [InlineData("_ =")]
+    [InlineData("let x = value is Dog?")]
+    [InlineData("let x = value@ref{a}/T")]
+    [InlineData("let x = value@(ref{a}/T)")]
+    [InlineData("let x = value@ref/(ref{a}/T)")]
+    public void RejectsReservedAndIncompleteForms(string source)
+        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+
+    [Fact]
+    public void GenericWarningsAreIssuedAtDefinitionOnce()
+    {
+        var c = MinimalEmissionTest.Analyze("func process<T>(x: Result<T, i32>) -> Result<(), i32>\n    try x\n    return .Ok(())\n_ = process<()>(.Ok(()))\n_ = process<i32>(.Ok(1))");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
+        var warning = Assert.Single(c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings);
+        Assert.Equal(3, warning.Priority);
+        Assert.IsType<TryKoto>(warning.Node);
+    }
+
+    [Fact]
+    public void NeverSuccessStillChecksFailureAndHasNoDiscardWarning()
+    {
+        var c = MinimalEmissionTest.Analyze("func source() -> Result<Never, i32> => .Err(1)\nfunc run() -> Result<(), i32>\n    try source()");
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        Assert.Empty(flow.Warnings);
+        Assert.Empty(flow.Issues);
+    }
+
+    [Fact]
+    public void TryDiagnosticExplainsTheNormalPayload()
+    {
+        var c = MinimalEmissionTest.Analyze("func save() -> Result<(), i32> => .Ok(())\nfunc run() -> Result<(), i32> => try save()");
+        c.Binding.CheckBound();
+        c.Binding.ReportDiagnostics();
+        c.AnalyzeControlFlow(c.Binding.TypeSystem).ReportDiagnostics();
+        Assert.Contains(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), d => d.Message.Contains("payload Type", StringComparison.Ordinal) && d.Message.Contains("without try", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ExplicitWholeResultDiscardCleansError()
+        => EmitChecked("OptionalTryIgnoreError", "struct Error\n    deinit => Console.writeLine(\"error destroyed\")\nfunc source() -> Result<(), Error> => .Err(Error.init())\n_ = source()\nConsole.writeLine(\"after\")", "error destroyed\nafter\n");
+
+    [Fact]
+    public void SuccessMoveDestroysOnlyTheSecuredValue()
+        => EmitChecked("OptionalTryMoveCleanup", "struct Token\n    deinit => Console.writeLine(\"destroy\")\nfunc run(x: Token?) -> Token? => .Some(try x)\n_ = run(.Some(Token.init()))\nConsole.writeLine(\"after\")", "destroy\nafter\n");
+
+    [Theory]
+    [InlineData("try source()")]
+    [InlineData("_ = try source()")]
+    public void BothDiscardFormsDestroySuccessAtStatementEnd(string statement)
+        => EmitChecked(statement[0] == '_' ? "OptionalTryExplicitPayloadCleanup" : "OptionalTryImplicitPayloadCleanup", $"struct Token\n    deinit => Console.writeLine(\"destroy\")\nfunc source() -> Token? => .Some(Token.init())\nfunc run() -> ()?\n    {statement}\n    Console.writeLine(\"after\")\n    return .Some(())\n_ = run()", "destroy\nafter\n");
+
+    [Fact]
+    public void WarmTryBindingAndFlowReuseStorage()
+    {
+        var c = MinimalEmissionTest.Analyze("func run(x: i32?) -> i32? => .Some(try x)");
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Bind();
+            flow.Reanalyze(c.Kotonoha.RootKoto);
+        }));
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+    }
+
+    [Fact]
+    public void DiscardedTryKeepsItsSuccessType()
+    {
+        var c = MinimalEmissionTest.Analyze("func run(x: i32?) -> ()?\n    try x\n    return .Some(())");
+        var propagation = Assert.Single(Descendants(c.Kotonoha.RootKoto).OfType<TryKoto>());
+        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        Assert.Empty(flow.Issues);
+        Assert.Same(BoundType.I32, flow.Nodes[propagation].ExpressionType);
+    }
+
+    [Fact]
+    public void ExecutesDocumentedExample()
+    {
+        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../examples/OptionalTryDiscard/OptionalTryDiscard.kimi"));
+        EmitChecked("OptionalTryExample", File.ReadAllText(path), "ready\nnot ready\none layer\n");
+    }
+
+    [Theory]
+    [InlineData("Optional", "ref{a}/S?")]
+    [InlineData("Expanded", "Option<ref{a}/S>")]
+    public void OptionalAdaptationRetainsExistingPayloadOrigins(string name, string target)
+        => EmitChecked("OptionalTryAdaptation" + name, $"struct S\n    public var n: i32 = 8\nfunc identity(x: ref{{a}}/S?) -> ref{{a}}/S? => x@{target}\nfunc wrap(x: ref/S) -> ref{{x}}/S? => .Some(x)\nlet s = S.init()\nmatch identity(wrap(s))\n    .Some(let r) => require r.n == 8 else => $abort(\"payload\")\n    .None => $abort(\"none\")", string.Empty);
+
+    [Fact]
+    public void OptionalIdentityAcquisitionMovesOwnedPayload()
+        => EmitChecked("OptionalTryIdentityMove", "struct Token\n    deinit => Console.writeLine(\"destroy\")\nlet x: Token? = .Some(Token.init())\n_ = x@Token?", "destroy\n");
+
     private static void EmitChecked(string name, string source, string expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -178,5 +324,7 @@ public class OptionalTryDiscardTest
 
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.BindingFailure + ":" + x.Node)) +
-            "\n" + string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.Message));
+            "\n" + string.Join("\n", c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray().Select(x => x.Message)) +
+            "\n" + string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
+            "\nPending: " + string.Join(", ", c.Ownership.ControlFlow?.PendingBinding.Select(x => x.ToString()) ?? []);
 }

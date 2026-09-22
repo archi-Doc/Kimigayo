@@ -6,6 +6,15 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    internal static string DescribeTryPayloadFailure(TryKoto propagation, ControlFlowType? result)
+    {
+        var operand = propagation.Expression.BoundType;
+        var payload = operand is { Components.Count: > 0 } ? operand.Components[0].Name : propagation.BoundType?.Name ?? "an unresolved Type";
+        var wrap = operand?.Symbol?.Name == "Option" ? "Some" : "Ok";
+        var forward = ReferenceEquals(result, operand) ? " Forwarding the complete operand without try is another candidate when it supplies the function result." : string.Empty;
+        return $"The normal value of try has payload Type {payload}, which does not fit this use. At an Option/Result return, consider .{wrap}(try ...) and an appropriate return annotation.{forward} Recheck Type inference, ownership and cleanup after changing the expression.";
+    }
+
     private string DescribeTryFailure(Koto node)
     {
         var propagation = (TryKoto)(node is TryKoto ? node : node.Parent!);
@@ -23,8 +32,6 @@ public sealed partial class Binding
             return $"The failure path of try {operand.Name} cannot return to {result?.Name ?? "this position"}. Use a compatible Option/Result return Type and ordinary error fitting; explicitly wrap normal success values where needed.";
         }
 
-        var wrap = operand.Symbol == this.Library.Option ? "Some" : "Ok";
-        var forward = ReferenceEquals(result, operand) ? " Forwarding the complete operand without try is another candidate when it supplies the function result." : string.Empty;
-        return $"The normal value of try has payload Type {operand.Components[0].Name}, which does not fit this use. At an Option/Result return, consider .{wrap}(try ...) and an appropriate return annotation.{forward} Recheck Type inference, ownership and cleanup after changing the expression.";
+        return DescribeTryPayloadFailure(propagation, result);
     }
 }
