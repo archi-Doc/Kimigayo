@@ -98,7 +98,7 @@ foreach ($level in @('O0', 'O2')) {
 struct Item
     public var value: i32 = 3
     deinit => Console.writeLine("drop")
-func borrow(item: ref/Item) -> ref/Item from item => item
+func borrow(item: ref/Item) -> ref{item}/Item => item
 let value = borrow(Item.init()).value
 if value != 3 => $abort("Unexpected value")
 Console.writeLine("ok")
@@ -127,7 +127,7 @@ $invalid = [ordered]@{
     EscapedLocal = $original.Replace('return counter', "let local = Counter.init()`n    return local@ref")
     SharedWrite = $original.Replace('counter: uniq/Counter', 'counter: ref/Counter')
     ImmutableOwner = $original.Replace('var counter = Counter.init()', 'let counter = Counter.init()')
-    MissingStoredOrigin = $original.Replace('let counter: ref/Counter from source', 'let counter: ref/Counter')
+    MissingStoredOrigin = $original.Replace('let counter: ref{source}/Counter', 'let counter: ref/Counter')
     WrongArgument = $original.Replace('Counter.init()', 'Counter.init(true)')
     WrongReferent = $original.Replace('borrowCounter(counter@ref)', 'borrowCounter(1)')
     MovedRead = $original.Replace('Console.writeLine("Done.")', "let invalid = counter.value`n    Console.writeLine(`"Done.`")")
@@ -137,6 +137,7 @@ $invalid = [ordered]@{
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
+    if ($entry.Value -ceq $original) { throw "Invalid variant no longer changes the source: $($entry.Key)" }
     [IO.File]::WriteAllText($path, $entry.Value, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr

@@ -82,7 +82,7 @@ $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
     Names = @{ source = $original.Replace('Cell', 'Counter').Replace('Pair', 'Inputs').Replace('Selection', 'Choice').Replace('selected', 'chosen'); stdout = $expected }
-    Values = @{ source = $original.Replace('init(! 10)', 'init(! 31)').Replace('init(! 20)', 'init(! 42)').Replace('=> 10 else => 20', '=> 31 else => 42').Replace('first.value == 13 and second.value == 24', 'first.value == 34 and second.value == 46'); stdout = $expected }
+    Values = @{ source = $original.Replace('Cell.init(10)', 'Cell.init(31)').Replace('Cell.init(20)', 'Cell.init(42)').Replace('=> 10 else => 20', '=> 31 else => 42').Replace('first.value == 13 and second.value == 24', 'first.value == 34 and second.value == 46'); stdout = $expected }
     Reverse = @{ source = $original.Replace('if useFirst', 'if not useFirst'); stdout = $expected }
     SameOrigin = @{ source = $original.Replace('Pair.init(first@ref, second@ref)', 'Pair.init(first@ref, first@ref)').Replace('=> 10 else => 20', '=> 10 else => 10'); stdout = $expected }
     Missing = @{ source = $original.Replace('return .Found(self.second)', 'return .Missing').Replace('.Missing => $abort("Expected a selected Cell")', '.Missing => first@ref').Replace('=> 10 else => 20', '=> 10 else => 10'); stdout = $expected }
@@ -93,6 +93,7 @@ foreach ($level in @('O0', 'O2')) {
         if ($Cases -ne 'All') { continue }
         $name = $entry.Key
         $variant = $entry.Value
+        if ($name -ne 'Renamed' -and $variant.source -ceq $original) { throw "Variant mutation did not change the input: $name" }
         $directory = Join-Path $work "$level/$name"
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
         $copy = Join-Path $directory "$name.kimi"

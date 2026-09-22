@@ -23,7 +23,7 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 
 ## 3. Current position
 
-- **HEAD** `4ab7b271` plus this record. Debug/Release builds are warning-free; each full suite passes 11,218 tests (session verification `bin/verify/20260922-103947-session-p22-session-rest`; harnesses 1–4, 6–12, 14, 15, 17 and 18 pass, 5 and 16 see issue H1).
+- **HEAD** `4ab7b271` plus this record. Debug/Release builds are warning-free; each full suite passes 11,218 tests (session verification `bin/verify/20260922-103947-session-p22-session-rest`; harnesses 1–12 and 14–18 pass after the 2026-09-22 harness variant fixes).
 - **Programs 1–18** pass (O0/O2, target, variants and rejections). **Programs 19–21** exist but fail in Binding (see §4). Programs 22–38 are not written yet.
 - **P22 progress:** each concrete call context of a verified generic body is re-analyzed under its substitution (`OwnershipAnalysis.AnalyzeInstance`) and lowered by the ordinary `BodyLowering` under the caller-facing entry ABI (`LlvmEmitter.LowerInstances`). Scalar functions, Never bodies, length-generic functions, generic struct constructors and field reads now monomorphize. Refused instances still use the shared path (`GenericStoragePlan*`, `LlvmModuleWriter.GenericStorage`/`SharedCalls`, `BodyLowering.Shared`); selected explicit specializations keep their selected body.
 
@@ -92,4 +92,3 @@ Features that a program's source does not use belong to the milestone that owns 
 | G4 | The Kimi catalog lacks Weak and the rc/arc ownership family required by §22.1 and §13.5.8–9. | P34/P35 |
 | G7 | `AggregateLayoutPool` uses 32-bit offsets and depth 64; larger layouts are rejected instead of supported or diagnosed per §21. | P25 |
 | G10 | Named function groups used as Function Types need selection, Origin and erasure paths (overloads, generics, members). | P26 |
-| H1 | Stale harness variants, failing identically at `fdaeed9b`: `test-milestone5.ps1` `ImmediateTemporary` uses the old `-> ref/Item from item` syntax (`UnexpectedTrailingToken_Kd`); `test-milestone16.ps1` `Values` expects 31/42 from Cells holding 10/20. Later variants in both harnesses do not run. Fix the variant sources to the current SPEC and its intent. | Harness owner |
