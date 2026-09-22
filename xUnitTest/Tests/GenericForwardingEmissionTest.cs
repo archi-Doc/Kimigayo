@@ -32,6 +32,7 @@ public class GenericForwardingEmissionTest
     [Fact]
     public void RejectsUnsupportedDependentResultForwarding()
     {
+        // The transitional template walk still refuses direct result forwarding; the instance path takes over when that walk becomes a pure validator (PLAN P22).
         var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value\nfunc forward<T>(value: T) -> T => identity<T>(value)\nConsole.writeLine(forward<string>(\"owned\"))");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Ownership.Result.IsVerified);

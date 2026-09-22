@@ -108,19 +108,15 @@ internal sealed partial class GenericStoragePlan
             var body = compilation.Ownership.Bodies[b];
             if (IsGeneric(body.Function))
             {
-                if (RequiresConcreteContractBody(body))
-                {
-                    this.templates.Add(body.Function, ConcreteContractTemplate(body));
-                    continue;
-                }
-
-                if (!this.PrepareBody(body, module, compilation.Binding, compilation.Project.Directory, out var template, out failure))
+                // SPEC 21.3.1: every generic body is generated per closed substitution. The transitional
+                // shared walk still rechecks the universally verified plan's invariants, but its body is
+                // discarded and never emitted; the template only records the calls its instances forward.
+                if (!RequiresConcreteContractBody(body) && !this.PrepareBody(body, module, compilation.Binding, compilation.Project.Directory, out _, out failure))
                 {
                     return false;
                 }
 
-                this.templates.Add(body.Function, template!);
-                module.SharedBodies.Add(template!.Physical);
+                this.templates.Add(body.Function, ConcreteContractTemplate(body));
             }
         }
 

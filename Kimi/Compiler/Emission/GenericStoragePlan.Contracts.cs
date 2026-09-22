@@ -45,7 +45,16 @@ internal sealed partial class GenericStoragePlan
         };
         if (selected is not null)
         {
-            return Fail("Concrete Contract instances require an ordinary selected body.", out failure);
+            // SPEC 21.3.4: the selected explicit specialization is the implementation; callers call its
+            // ordinary ABI directly, so the generic body is not instantiated for this call.
+            if (physical.Selected is null)
+            {
+                return Fail("Selected specialization has no verified implementation ABI.", out failure);
+            }
+
+            module.SharedEntries.Add(physical);
+            this.calls.Add(call, entry);
+            return true;
         }
 
         module.SharedEntries.Add(physical);
