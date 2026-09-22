@@ -238,7 +238,7 @@ public sealed class LlvmEmitter
     // wrappers are checked by ownership but are not callable implementations.
     // SPEC 21.3.1 monomorphization: each concrete call context of a universally verified generic body
     // is analyzed under its closed substitution and lowered as an ordinary concrete body, under the
-    // entry ABI its callers already use. A refused instance keeps its transitional shared entry.
+    // entry ABI its callers already use. A refused instance fails generation; it never falls back.
     private bool LowerInstances(Compilation c, EmissionModule module, out string? failure)
     {
         failure = null;
@@ -276,9 +276,10 @@ public sealed class LlvmEmitter
                 }
             }
 
-            if (entry.Template.ConcreteOnly && module.SharedEntries.Contains(entry.Physical))
+            // No transitional shared fallback: every generic call context must reach its concrete instance.
+            if (module.SharedEntries.Contains(entry.Physical))
             {
-                failure ??= "Concrete Contract instance ownership analysis failed.";
+                failure ??= "Generic instance ownership analysis failed.";
                 return false;
             }
         }
