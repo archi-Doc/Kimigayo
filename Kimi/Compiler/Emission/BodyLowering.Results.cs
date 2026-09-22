@@ -34,7 +34,7 @@ internal sealed partial class BodyLowering
         }
 
         var type = body.Places[operation.Place].Type;
-        if (function.Abi.NoReturn || !ReferenceEquals(type, body.Function.BoundSymbol?.Type ?? (body.Function.IsGenerated ? BoundType.Unit : null)))
+        if (function.Abi.NoReturn || !ReferenceEquals(type, SignatureType(this, body.Function.BoundSymbol?.Type) ?? (body.Function.IsGenerated ? BoundType.Unit : null)))
         {
             return Fail("A function returns contrary to its signature.", out failure);
         }

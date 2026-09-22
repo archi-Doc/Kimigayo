@@ -119,19 +119,15 @@ public class GenericCompositeValueTest
     }
 
     [Fact]
-    public void SharedPolicyKeepsCopyAndDifferentDestructorsForEqualSizes()
+    public void InstancesKeepCopyAndDifferentDestructorsForEqualSizes()
     {
         var other = Resource.Replace("Resource", "Other").Replace("one", "other one").Replace("two", "other two");
         var source = Resource + other + Relay + "do\n    let result = relay<[2 of Resource]>([Resource.init(1), Resource.init(2)])\ndo\n    let result = relay<[2 of Other]>([Other.init(1), Other.init(2)])\nlet source: [2 of i32] = [5, 8]\nlet copied = relay(source)\nrequire source[0] == 5 and copied[1] == 8 else => $abort(\"copy\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var shared = Assert.Single(module.SharedBodies);
-        Assert.Equal(3, module.SharedEntries.Count);
-        Assert.All(module.SharedEntries, entry => Assert.Same(shared, entry.Body));
-        var policies = module.SharedEntries.Select(entry => Assert.Single(entry.Policies, x => x.Size == 8)).ToArray();
-        Assert.Equal(2, policies.Count(x => !x.Copy && x.Destructor is not null));
-        Assert.Single(policies, x => x.Copy && x.Destructor is null);
-        Assert.Equal(2, policies.Where(x => x.Destructor is not null).Select(x => x.Destructor).Distinct().Count());
+        // Equal-size substitutions still get separate bodies; the native run checks Copy and each destructor.
+        Assert.Empty(module.SharedEntries);
+        Assert.Equal(3, GenericStorageEmissionTest.Instances(module).Length);
         ScalarEmissionTest.EmitFixture("GenericCompositePolicies", source, "secured\ntwo\none\nsecured\nother two\nother one\nsecured\n");
     }
 

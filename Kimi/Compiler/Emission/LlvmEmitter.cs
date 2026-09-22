@@ -109,6 +109,7 @@ public sealed class LlvmEmitter
             }
 
             this.lowering.ObjectCalls = this.objects.Calls;
+            this.LowerInstances(c, module);
 
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
@@ -159,6 +160,7 @@ public sealed class LlvmEmitter
             // Never retain a previous parse through the active declaration-to-ABI map.
             this.functions.Clear();
             this.generics.Clear();
+            c.Ownership.ClearInstances();
             this.objects.Clear();
             this.lowering.ClearFunctionContext();
             this.lowering.AggregateLayouts.ClearDestructors();
@@ -231,6 +233,47 @@ public sealed class LlvmEmitter
 
     // Only the selected implicit Application body executes. Other source-module
     // wrappers are checked by ownership but are not callable implementations.
+    // SPEC 21.3.1 monomorphization: each concrete call context of a universally verified generic body
+    // is analyzed under its closed substitution and lowered as an ordinary concrete body, under the
+    // entry ABI its callers already use. A refused instance keeps its transitional shared entry.
+    private void LowerInstances(Compilation c, EmissionModule module)
+    {
+        foreach (var (call, entry) in this.generics.Calls)
+        {
+            // A selected explicit specialization (SPEC 21.3.4) is the implementation, never the generic body.
+            if (entry.Physical.Selected is not null || !module.SharedEntries.Contains(entry.Physical))
+            {
+                continue;
+            }
+
+            if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body)
+            {
+                var function = module.AddFunction(entry.Physical.Abi, exported: false);
+                var lowered = false;
+                this.lowering.SetInstance(c.Binding, call);
+                try
+                {
+                    lowered = this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out _);
+                }
+                finally
+                {
+                    this.lowering.SetInstance(null, null);
+                }
+
+                if (lowered)
+                {
+                    module.NeedsStringComparison |= function.NeedsStringComparison;
+                    this.lowering.RegisterAggregates(module);
+                    module.SharedEntries.Remove(entry.Physical);
+                }
+                else
+                {
+                    module.RemoveLastFunction();
+                }
+            }
+        }
+    }
+
     private bool SkipGenerated(OwnershipBody body)
         => body.Function.IsGenerated && !ReferenceEquals(body.Function, this.compilation.Binding.Startup.Function);
 

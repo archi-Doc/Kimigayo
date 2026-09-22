@@ -22,10 +22,11 @@ public class SharedNeverEmissionTest
         const string Source = "func spin<T>(value: ref/T) -> Never\n    loop => continue\nlet v = true\nspin(v)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var entry = Assert.Single(module.SharedEntries);
-        Assert.True(entry.Abi.NoReturn);
-        Assert.False(entry.Abi.ResultSlot);
-        Assert.Null(entry.Result);
+        Assert.Empty(module.SharedEntries);
+        var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
+        Assert.True(instance.Abi.NoReturn);
+        Assert.False(instance.Abi.ResultSlot);
+        Assert.DoesNotContain(instance.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
         ScalarEmissionTest.EmitFixture("SharedNeverDivergence", Source, string.Empty, timeoutMilliseconds: 300);
     }
 }

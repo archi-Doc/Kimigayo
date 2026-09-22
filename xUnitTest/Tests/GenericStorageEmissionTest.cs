@@ -76,16 +76,49 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
-    public void SharesOneDefinitionAcrossConcreteEntriesAndDeduplicatesPolicies()
+    public void MonomorphizesScalarInstancesOnceAndSharesTheRest()
     {
+        // SPEC 21.3.1: the i32 substitution is one concrete body for both calls. The string instance
+        // still uses the transitional shared path until its concrete lowering is supported.
         var c = MinimalEmissionTest.Analyze(Choose + "Console.writeLine(choose(\"a\", \"b\", true))\nlet n = choose<i32>(1, 2, false)\nlet m = choose<i32>(3, 4, true)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = Assert.Single(module.SharedBodies);
         Assert.Equal(2, body.PolicyCount); // T and bool, independent of parameter/temp/result occurrences.
         Assert.Equal(2, body.LiveFlags.Count(x => x)); // Only the conditionally consumed parameters need flags.
-        Assert.Equal(2, module.SharedEntries.Count);
-        Assert.Equal(new[] { 12, 72 }, module.SharedEntries.Select(x => x.ScratchSize).Order().ToArray());
-        Assert.All(module.SharedEntries, entry => Assert.Same(body, entry.Body));
+        var shared = Assert.Single(module.SharedEntries);
+        Assert.Equal(72, shared.ScratchSize);
+        Assert.Same(body, shared.Body);
+        var instance = Assert.Single(Instances(module));
+        Assert.Equal("i32", instance.Abi.Result);
+        Assert.Equal(["i32", "i32", "i1"], instance.Abi.Parameters.Select(x => x.Type).ToArray());
+        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Phi);
+    }
+
+    [Fact]
+    public void SelectedSpecializationIsNeverReplacedByTheGenericBody()
+    {
+        const string Source = "func count<T>(value: T) -> i32 => 77\nspecialize func count<i32>(value: i32) -> i32 => 5\nrequire count<i32>(1) == 5 and count<i64>(1) == 77 else => $abort(\"selection\")";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        var selected = Assert.Single(module.SharedEntries);
+        Assert.NotNull(selected.Selected);
+        var instance = Assert.Single(Instances(module));
+        Assert.Equal(["i64"], instance.Abi.Parameters.Select(x => x.Type).ToArray());
+        ScalarEmissionTest.EmitFixture("GenericStorageSelectedSpecialization", Source, string.Empty);
+    }
+
+    [Fact]
+    public void InstanceAnalysisLeavesSourceBodiesAndIssuesUnchanged()
+    {
+        var c = MinimalEmissionTest.Analyze(Choose + "let n = choose<i32>(1, 2, false)");
+        var bodies = c.Ownership.Bodies.Count;
+        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "choose");
+        var places = generic.Places.ToArray();
+        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.Equal(bodies, c.Ownership.Bodies.Count);
+        Assert.Empty(c.Ownership.Issues);
+        Assert.Equal(places, generic.Places.ToArray());
+        Assert.Contains(generic.Places, x => x.Acquisition == AcquisitionKind.CopyOrMove);
     }
 
     [Theory]
@@ -139,4 +172,8 @@ public class GenericStorageEmissionTest
 
         Assert.True(c.Emission.Validate(out var finalError), finalError);
     }
+
+    // Monomorphized generic instances keep the caller-facing entry names.
+    internal static EmissionFunction[] Instances(EmissionModule module)
+        => Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Where(x => x.Abi.Name.StartsWith("__kimi_generic_entry", StringComparison.Ordinal)).ToArray();
 }

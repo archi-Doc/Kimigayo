@@ -46,7 +46,7 @@ internal sealed partial class BodyLowering
 
             var place = body.Places[operation.Place];
             if (place.Kind != OwnershipPlaceKind.Parameter || !ReferenceEquals(place.Source, parameter.Type) ||
-                !ReferenceEquals(operation.Source, parameter.Type) || !ReferenceEquals(place.Type, parameter.Type.BoundType))
+                !ReferenceEquals(operation.Source, parameter.Type) || !ReferenceEquals(place.Type, SignatureType(this, parameter.Type.BoundType)))
             {
                 return Fail("Parameter storage does not match its logical signature.", out failure);
             }
@@ -101,7 +101,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (SlotTypes.IsResult(body.Function.BoundSymbol?.Type) != (returns == 1))
+        if (SlotTypes.IsResult(SignatureType(this, body.Function.BoundSymbol?.Type)) != (returns == 1))
         {
             return Fail("Missing stored return value.", out failure);
         }

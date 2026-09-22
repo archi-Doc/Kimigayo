@@ -66,14 +66,13 @@ public class LengthStorageEmissionTest
     }
 
     [Fact]
-    public void UsesOneSharedBodyAcrossLengthsAndElementTypes()
+    public void MonomorphizesOneBodyPerLengthAndElementType()
     {
+        // SPEC 21.3.1: one concrete body per closed substitution; the repeated keep<2, i32> reuses its body.
         var c = MinimalEmissionTest.Analyze(Keep + "let a = keep<2, i32>([1, 2])\nlet b = keep<0, i32>([])\nlet c = keep<1, string>([\"x\"])\nlet d = keep<2, i32>([3, 4])");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = Assert.Single(module.SharedBodies);
-        Assert.Equal(3, module.SharedEntries.Count);
-        Assert.All(module.SharedEntries, entry => Assert.Same(body, entry.Body));
-        Assert.Equal(1, body.PolicyCount);
+        Assert.Empty(module.SharedEntries);
+        Assert.Equal(3, GenericStorageEmissionTest.Instances(module).Length);
     }
 
     [Fact]

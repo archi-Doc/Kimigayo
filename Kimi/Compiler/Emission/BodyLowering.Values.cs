@@ -4,7 +4,7 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    internal static bool ValidateSharedValues(OwnershipBody body) => ValidateValues(body);
+    internal static bool ValidateSharedValues(OwnershipBody body) => ValidateValues(body, null);
 
     private static BoundType? ValueType(OwnershipBody body, int id)
     {
@@ -15,7 +15,7 @@ internal sealed partial class BodyLowering
     private static int ValuePlace(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.Borrow or OwnershipOperationKind.WriteElement ||
         (operation.Kind == OwnershipOperationKind.Read && operation.Input >= 0) ? operation.Input : operation.Place;
 
-    private static bool ValidateValues(OwnershipBody body)
+    private static bool ValidateValues(OwnershipBody body, BodyLowering? lowering)
     {
         if (body.Values.Count != body.Operations.Count)
         {
@@ -80,7 +80,7 @@ internal sealed partial class BodyLowering
             }
 
             if (value.Kind == OwnershipValueKind.Phi && (!scalar || operation.Kind != OwnershipOperationKind.Branch ||
-                !ReferenceEquals(ValueType(body, id), operation.Source.BoundType)))
+                !ReferenceEquals(ValueType(body, id), SignatureType(lowering, operation.Source.BoundType))))
             {
                 return false;
             }
@@ -125,7 +125,7 @@ internal sealed partial class BodyLowering
                 (operation.Kind != OwnershipOperationKind.Produce ||
                 operation.Source is not Parsing.ConversionKoto conversion ||
                 !ReferenceEquals(ValueType(body, id), conversion.BoundType) ||
-                !ReferenceEquals(ValueType(body, Input(body, id, 0)), conversion.Left.BoundType) ||
+                !ReferenceEquals(ValueType(body, Input(body, id, 0)), SignatureType(lowering, conversion.Left.BoundType)) ||
                 !ValidScalarConversion(conversion.ConversionBinding, ValueType(body, Input(body, id, 0)), ValueType(body, id))))
             {
                 return false;
@@ -135,7 +135,7 @@ internal sealed partial class BodyLowering
                 (operation.Kind != OwnershipOperationKind.Produce || body.Places[operation.Place].Kind != OwnershipPlaceKind.Parameter ||
                 value.Constant < 0 || value.Constant >= body.Function.Parameters.Count ||
                 !ReferenceEquals(operation.Source, body.Function.Parameters[(int)value.Constant].Type) ||
-                !ReferenceEquals(ValueType(body, id), body.Function.Parameters[(int)value.Constant].Type.BoundType)))
+                !ReferenceEquals(ValueType(body, id), SignatureType(lowering, body.Function.Parameters[(int)value.Constant].Type.BoundType))))
             {
                 return false;
             }
@@ -153,9 +153,9 @@ internal sealed partial class BodyLowering
                     continue;
                 }
 
-                if (FloatingTypes.Supports(type) || FloatingTypes.Supports(operation.Source.BoundType))
+                if (FloatingTypes.Supports(type) || FloatingTypes.Supports(SignatureType(lowering, operation.Source.BoundType)))
                 {
-                    if (!ReferenceEquals(type, operation.Source.BoundType) ||
+                    if (!ReferenceEquals(type, SignatureType(lowering, operation.Source.BoundType)) ||
                         !FloatingTypes.TryLiteral(operation.Source, out var bits) || bits != value.Constant)
                     {
                         return false;
@@ -166,7 +166,7 @@ internal sealed partial class BodyLowering
 
                 if (ReferenceEquals(type, BoundType.Char) || operation.Source is Parsing.CharLiteralKoto)
                 {
-                    if (!ReferenceEquals(type, BoundType.Char) || !ReferenceEquals(operation.Source.BoundType, BoundType.Char) ||
+                    if (!ReferenceEquals(type, BoundType.Char) || !ReferenceEquals(SignatureType(lowering, operation.Source.BoundType), BoundType.Char) ||
                         operation.Source is not Parsing.CharLiteralKoto { Value: { } character } ||
                         !ScalarTypes.IsCharacterValue(value.Constant) || value.Constant != character.Value)
                     {
@@ -179,7 +179,7 @@ internal sealed partial class BodyLowering
                 if (ReferenceTypes.IsPointer(type) || operation.Source is Parsing.NullLiteralKoto)
                 {
                     // SPEC 5.1: null is the only pointer literal.
-                    if (!ReferenceTypes.IsPointer(type) || !ReferenceEquals(type, operation.Source.BoundType) || operation.Source is not Parsing.NullLiteralKoto || value.Constant != 0)
+                    if (!ReferenceTypes.IsPointer(type) || !ReferenceEquals(type, SignatureType(lowering, operation.Source.BoundType)) || operation.Source is not Parsing.NullLiteralKoto || value.Constant != 0)
                     {
                         return false;
                     }

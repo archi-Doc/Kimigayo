@@ -180,6 +180,10 @@ public sealed partial class OwnershipAnalysis
             // body. Its diagnostics are retained before the next default reuses it.
             this.body = this.defaultBody ??= new();
         }
+        else if (this.instanceBody is { } instanceBody)
+        {
+            this.body = instanceBody; // Never listed with the checked source bodies.
+        }
         else
         {
             if (this.bodies.Count == this.bodyPool.Count)
@@ -239,7 +243,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < parameterCount; i++)
         {
             var parameter = function.Parameters[i];
-            var type = parameter.Type.BoundType;
+            var type = this.Concrete(parameter.Type.BoundType);
             var place = this.Place(parameter.Type, type, OwnershipPlaceKind.Parameter, false);
             this.body.SymbolPlaces[this.compilation.Binding.ParameterSymbol(function, i)] = place;
             this.locals.Add(new(place, parameter.Type, this.registrationSequence++));
@@ -336,7 +340,7 @@ public sealed partial class OwnershipAnalysis
     private int Place(Koto source, BoundType? type, OwnershipPlaceKind kind, bool mutable, AcquisitionKind? plannedAcquisition = null)
     {
         var id = this.body.PlaceStorage.Count;
-        type ??= BoundType.Unit;
+        type = this.Concrete(type) ?? BoundType.Unit;
         // Never has no value storage. Its result marker is only used on unreachable
         // delivery nodes; control-flow checking rejects any normal completion.
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);

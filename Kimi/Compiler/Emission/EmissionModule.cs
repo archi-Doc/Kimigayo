@@ -253,6 +253,10 @@ internal sealed class EmissionModule
         return function;
     }
 
+    // Withdraws the most recently added function after its lowering was refused.
+    internal void RemoveLastFunction()
+        => this.functionCount--;
+
     internal void Complete()
         => this.IsComplete = true;
 

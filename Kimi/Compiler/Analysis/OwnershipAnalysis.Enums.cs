@@ -140,7 +140,9 @@ public sealed partial class OwnershipAnalysis
 
     private void CheckAcquisition(int place, AcquisitionKind? acquisition)
     {
-        if (place >= 0 && acquisition is { } expected && this.body.PlaceStorage[place].Acquisition != expected)
+        // An instance resolves a committed CopyOrMove to its substitution's exact effect.
+        if (place >= 0 && acquisition is { } expected && this.body.PlaceStorage[place].Acquisition is var actual && actual != expected &&
+            !(this.instance is not null && expected == AcquisitionKind.CopyOrMove && actual is AcquisitionKind.Copy or AcquisitionKind.Move))
         {
             throw new InvalidOperationException("Committed payload acquisition disagrees with its source Place.");
         }

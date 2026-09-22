@@ -113,7 +113,7 @@ internal sealed partial class BodyLowering
                 case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Parameter:
                     if (place.Kind != OwnershipPlaceKind.Parameter || (ulong)value.Constant >= (ulong)body.Function.Parameters.Count || id != parameterStart + value.Constant ||
                         !ReferenceEquals(place.Source, body.Function.Parameters[(int)value.Constant].Type) || !ReferenceEquals(operation.Source, place.Source) ||
-                        !ReferenceEquals(type, body.Function.Parameters[(int)value.Constant].Type.BoundType))
+                        !ReferenceEquals(type, SignatureType(this, body.Function.Parameters[(int)value.Constant].Type.BoundType)))
                     {
                         return Fail("Invalid reference parameter definition.", out failure);
                     }

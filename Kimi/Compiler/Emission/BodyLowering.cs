@@ -30,6 +30,15 @@ internal sealed partial class BodyLowering
     private int[] deliveries = [];
     private int pointerWidth;
     private bool eraseReceiver;
+    private Binding? instanceBinding;
+    private BoundCall? instance;
+
+    // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1).
+    internal void SetInstance(Binding? binding, BoundCall? call)
+    {
+        this.instanceBinding = binding;
+        this.instance = call;
+    }
 
     internal bool Lower(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
     {
@@ -52,7 +61,7 @@ internal sealed partial class BodyLowering
             this.deliveries[id] = i;
         }
 
-        if (!ValidateValues(body))
+        if (!ValidateValues(body, this))
         {
             return Fail("Missing or inconsistent value-flow plan.", out failure);
         }
@@ -82,6 +91,10 @@ internal sealed partial class BodyLowering
         failure = message;
         return false;
     }
+
+    // Declared signature Types of the lowered body; a monomorphized instance sees its substitution.
+    private static BoundType? SignatureType(BodyLowering? lowering, BoundType? type)
+        => type is null || lowering?.instance is not { } call ? type : lowering.instanceBinding!.InstantiateStorageType(type, call);
 
     private bool MarkDeferredPlans(OwnershipBody body, Span<byte> marks)
     {
