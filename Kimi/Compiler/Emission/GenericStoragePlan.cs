@@ -1514,7 +1514,7 @@ internal sealed partial class GenericStoragePlan
         }
 
         module.SharedEntries.Add(generated);
-        entry = new(template, generated, parameters, result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray());
+        entry = new(template, generated, parameters, result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[directAdapters.Length]);
         this.calls.Add(call, entry); // Reserve before following recursive concrete call contexts.
         for (var i = 0; i < directAdapters.Length; i++)
         {
@@ -1537,6 +1537,7 @@ internal sealed partial class GenericStoragePlan
             }
 
             directAdapters[i] = new(innerEntry!.Physical.Abi, innerEntry.Physical.Parameters, innerEntry.Physical.Result);
+            entry.Direct[i] = innerEntry;
         }
 
         return true;
@@ -1561,5 +1562,6 @@ internal sealed partial class GenericStoragePlan
 
     private static string SharedScalarType(BoundType type) => ReferenceEquals(type, BoundType.Boolean) ? "i1" : "i" + ScalarTypes.Width(type);
 
-    internal sealed record CallEntry(Template Template, SharedStorageEntry Physical, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType?[] Arguments, BoundLength?[] Lengths);
+    // Direct[i] is the instance entry of Template.DirectCalls[i] under this call's substitution (null for concrete targets).
+    internal sealed record CallEntry(Template Template, SharedStorageEntry Physical, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType?[] Arguments, BoundLength?[] Lengths, CallEntry?[] Direct);
 }

@@ -346,7 +346,8 @@ public sealed partial class OwnershipAnalysis
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);
         var invalidCopy = false;
         var acquisition = plannedAcquisition.GetValueOrDefault();
-        if (plannedAcquisition is null)
+        // An instance resolves a committed CopyOrMove to the exact effect of its closed Type (SPEC 21.3.1).
+        if (plannedAcquisition is null || (acquisition == AcquisitionKind.CopyOrMove && this.instance is not null))
         {
             // Primitive classification needs no Constraint environment (SPEC 3.5.1).
             var proof = type.Kind == BoundTypeKind.Primitive && (!ReferenceEquals(type, BoundType.Never) || neverResult)

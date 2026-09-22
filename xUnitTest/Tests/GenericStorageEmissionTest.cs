@@ -76,22 +76,23 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
-    public void MonomorphizesScalarInstancesOnceAndSharesTheRest()
+    public void MonomorphizesScalarAndOwnedInstancesOnce()
     {
-        // SPEC 21.3.1: the i32 substitution is one concrete body for both calls. The string instance
-        // still uses the transitional shared path until its concrete lowering is supported.
+        // SPEC 21.3.1: the i32 substitution is one concrete body for both calls; the string instance
+        // joins its owned result through a result slot.
         var c = MinimalEmissionTest.Analyze(Choose + "Console.writeLine(choose(\"a\", \"b\", true))\nlet n = choose<i32>(1, 2, false)\nlet m = choose<i32>(3, 4, true)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = Assert.Single(module.SharedBodies);
         Assert.Equal(2, body.PolicyCount); // T and bool, independent of parameter/temp/result occurrences.
         Assert.Equal(2, body.LiveFlags.Count(x => x)); // Only the conditionally consumed parameters need flags.
-        var shared = Assert.Single(module.SharedEntries);
-        Assert.Equal(72, shared.ScratchSize);
-        Assert.Same(body, shared.Body);
-        var instance = Assert.Single(Instances(module));
-        Assert.Equal("i32", instance.Abi.Result);
+        Assert.Empty(module.SharedEntries);
+        var instances = Instances(module);
+        Assert.Equal(2, instances.Length);
+        var instance = Assert.Single(instances, x => x.Abi.Result == "i32");
         Assert.Equal(["i32", "i32", "i1"], instance.Abi.Parameters.Select(x => x.Type).ToArray());
         Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Phi);
+        var owned = Assert.Single(instances, x => x.Abi.ResultSlot);
+        Assert.DoesNotContain(owned.Instructions, x => x.Opcode == EmissionOpcode.Phi);
     }
 
     [Theory]
@@ -109,14 +110,48 @@ public class GenericStorageEmissionTest
         Assert.Single(instances, x => x.Abi.ResultSlot && x.Subslots.Count == 1);
     }
 
+    [Theory]
+    [InlineData("i32", "4", "i32")]
+    [InlineData("bool", "true", "i1")]
+    public void MonomorphizesNestedGenericCalls(string type, string value, string physical)
+    {
+        // SPEC 21.3.1: the forwarded call inside outer<T> binds to inner's own instance under outer's substitution.
+        const string Nested = "func inner<T>(value: T, n: i32) -> i32 => n + 1\nfunc outer<T>(value: T, n: i32) -> i32 => inner<T>(value, n)\n";
+        var c = MinimalEmissionTest.Analyze(Nested + $"let v = outer<{type}>({value}, 1)");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instances = Instances(module);
+        Assert.Equal(2, instances.Length);
+        Assert.All(instances, x => Assert.Equal(physical, x.Abi.Parameters[0].Type));
+        var outer = Assert.Single(instances, x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
+        Assert.Contains(instances, x => !ReferenceEquals(x, outer) && x.Instructions.All(i => i.Opcode != EmissionOpcode.Call));
+        ScalarEmissionTest.EmitFixture("GenericStorageNestedCall" + type, Nested + $"require outer<{type}>({value}, 1) == 2 else => $abort(\"nested\")", string.Empty);
+    }
+
+    [Theory]
+    [InlineData("i32", "7")]
+    [InlineData("string", "\"owned\"")]
+    [InlineData("Token", "Token.init(1)")]
+    public void MonomorphizesEnumPayloadConstruction(string type, string value)
+    {
+        // A committed CopyOrMove payload acquisition resolves to the instance's exact Copy or Move (SPEC 21.3.1).
+        var c = MinimalEmissionTest.Analyze(Token + $"func wrap<T>(x: T) -> Option<T> => .Some(x)\nlet v = wrap<{type}>({value})");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instance = Assert.Single(Instances(module));
+        Assert.True(instance.Abi.ResultSlot);
+        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "wrap");
+        Assert.Contains(generic.Places, x => x.Kind == OwnershipPlaceKind.Payload && x.Acquisition == AcquisitionKind.CopyOrMove);
+    }
+
     [Fact]
     public void UnsupportedInstanceKeepsTheSharedEntry()
     {
-        // A string result joined from two owned parameters is not yet lowered per instance.
-        var c = MinimalEmissionTest.Analyze(Choose + "Console.writeLine(choose(\"a\", \"b\", true))");
+        // An element reborrow of a length-generic borrowed array is not yet lowered per instance; the callee is.
+        var c = MinimalEmissionTest.Analyze("func weight<T>(value: ref/T) -> i32 => 1\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [2 of i32] = [7, 8]\nlet result = get<2, i32>(values@ref, 0)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Single(module.SharedEntries);
-        Assert.Empty(Instances(module));
+        Assert.Single(Instances(module));
     }
 
     [Fact]

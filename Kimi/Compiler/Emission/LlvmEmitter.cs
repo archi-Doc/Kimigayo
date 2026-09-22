@@ -250,14 +250,14 @@ public sealed class LlvmEmitter
             {
                 var function = module.AddFunction(entry.Physical.Abi, exported: false);
                 var lowered = false;
-                this.lowering.SetInstance(c.Binding, call);
+                this.lowering.SetInstance(c.Binding, call, entry);
                 try
                 {
                     lowered = this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out _);
                 }
                 finally
                 {
-                    this.lowering.SetInstance(null, null);
+                    this.lowering.SetInstance(null, null, null);
                 }
 
                 if (lowered)
