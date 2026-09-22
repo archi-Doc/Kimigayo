@@ -240,7 +240,7 @@ public class ScalarDefaultEmissionTest
 
     [Theory]
     [InlineData("func f(x: i32 = (scope: do\n    let n = \"a\"\n    exit to scope: 1\n)) => ()\nf(3)")]
-    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (scope: do\n    let n = helper()\n    exit to scope: n\n)) => ()\nf(3)")]
+    [InlineData("func helper(s: string) -> i32 => 1\nfunc f(x: i32 = (scope: do\n    let n = helper(\"a\")\n    exit to scope: n\n)) => ()\nf(3)")]
     public void SuppliedDefaultsStillRejectUnsupportedLocalEffects(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -251,9 +251,23 @@ public class ScalarDefaultEmissionTest
     [Fact]
     public void UnexecutedDefaultArmStillRequiresSupportedEffects()
     {
-        var c = MinimalEmissionTest.Analyze("func helper() -> i32 => 1\nfunc f(x: i32 = (if true => 1 else => helper())) => ()\nf(3)");
+        // SPEC 7.2.3: every default is checked at declaration time; a string-argument call is still unsupported.
+        var c = MinimalEmissionTest.Analyze("func helper(s: string) -> i32 => 1\nfunc f(x: i32 = (if true => 1 else => helper(\"a\"))) => ()\nf(3)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Theory]
+    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = helper()) => ()\nf(2)")]
+    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (loop => exit helper())) => ()\nf(3)")]
+    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (scope: do\n    let n = helper()\n    exit to scope: n\n)) => ()\nf(3)")]
+    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (if true => 1 else => helper())) => ()\nf(3)")]
+    public void CallDefaultsAreExecutableEvenWhenSupplied(string source)
+    {
+        // SPEC 7.2.3: an ordinary scalar call is a supported default expression wherever a value is.
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.True(c.Emission.Validate(out var error), error);
     }
 
     [Fact]
@@ -362,8 +376,7 @@ public class ScalarDefaultEmissionTest
 
     [Theory]
     [InlineData("func f(x: string, y: string = x) => ()\nf(\"a\", \"b\")")]
-    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = helper()) => ()\nf(2)")]
-    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (loop => exit helper())) => ()\nf(3)")]
+    [InlineData("func helper(r: ref/i32) -> i32 => 1\nfunc f(x: i32, y: i32 = helper(x@ref)) => ()\nf(2, 3)")]
     public void UnsupportedDefaultBodiesRemainRejectedEvenWhenSupplied(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
