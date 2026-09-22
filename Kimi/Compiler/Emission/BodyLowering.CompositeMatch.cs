@@ -343,7 +343,7 @@ internal sealed partial class BodyLowering
         var node = match.Binding.Positions[(int)index];
         var offset = this.PatternOffset(match.Binding, (int)index);
         if (node.Kind != BoundPatternKind.Binding || node.CandidateSymbol is null || !ReferenceEquals(operation.Source.BoundSymbol, node.CandidateSymbol) ||
-            !ReferenceEquals(body.Places[operation.Input].Type, node.MatchedType) || !ReferenceEquals(operation.Source.BoundType, node.CandidateSymbol.Type) ||
+            !ReferenceEquals(body.Places[operation.Input].Type, node.MatchedType) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), node.CandidateSymbol.Type) ||
             offset < 0 || (body.IsReachable(id) && (body.GetInputState(id, match.Subject) & PlaceState.MustInit) == 0))
         {
             return Fail("Candidate projection has the wrong position or Type.", out failure);

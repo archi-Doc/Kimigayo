@@ -28,8 +28,8 @@ internal sealed partial class BodyLowering
             {
                 var source = identity.Source;
                 if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding != ConversionBinding.Identity ||
-                    source.BoundType is not { } type || !Binding.SupportsIdentityAcquisition(type) ||
-                    !ReferenceEquals(type, source.Left.BoundType) || !ReferenceEquals(type, source.Right.BoundType) ||
+                    SignatureType(lowering, source.BoundType) is not { } type || !Binding.SupportsIdentityAcquisition(type) ||
+                    !ReferenceEquals(type, SignatureType(lowering, source.Left.BoundType)) || !ReferenceEquals(type, SignatureType(lowering, source.Right.BoundType)) ||
                     !ReferenceEquals(type, body.Places[identity.Place].Type))
                 {
                     return false;
@@ -124,7 +124,7 @@ internal sealed partial class BodyLowering
             if (value.Kind == OwnershipValueKind.Convert &&
                 (operation.Kind != OwnershipOperationKind.Produce ||
                 operation.Source is not Parsing.ConversionKoto conversion ||
-                !ReferenceEquals(ValueType(body, id), conversion.BoundType) ||
+                !ReferenceEquals(ValueType(body, id), SignatureType(lowering, conversion.BoundType)) ||
                 !ReferenceEquals(ValueType(body, Input(body, id, 0)), SignatureType(lowering, conversion.Left.BoundType)) ||
                 !ValidScalarConversion(conversion.ConversionBinding, ValueType(body, Input(body, id, 0)), ValueType(body, id))))
             {
@@ -200,7 +200,7 @@ internal sealed partial class BodyLowering
                         ? ((Parsing.UnaryKoto)source).Operand as Parsing.NumberLiteralKoto : source as Parsing.NumberLiteralKoto;
                     if (number is not null)
                     {
-                        if (!ReferenceEquals(type, source.BoundType) || !number.TryGetIntegerMagnitude(out var magnitude) ||
+                        if (!ReferenceEquals(type, SignatureType(lowering, source.BoundType)) || !number.TryGetIntegerMagnitude(out var magnitude) ||
                             !ScalarTypes.TryLiteral(type, magnitude, source is Parsing.PrefixMinusKoto, 64, out var bits) || bits != value.Constant)
                         {
                             return false;

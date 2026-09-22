@@ -94,6 +94,31 @@ public class GenericStorageEmissionTest
         Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Phi);
     }
 
+    [Theory]
+    [InlineData("string", "\"text\"")]
+    [InlineData("[3 of i32]", "[2, 4, 6]")]
+    [InlineData("i32", "42")]
+    public void MonomorphizesStructConstructorsAndFieldReads(string type, string value)
+    {
+        // The constructor's receiver is the call's instantiated Box<type>; take reads its substituted field.
+        var c = MinimalEmissionTest.Analyze(Box + $"let b = Box<{type}>.init({value})\nlet v = b.take()");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instances = Instances(module);
+        Assert.Equal(2, instances.Length);
+        Assert.Single(instances, x => x.Abi.ResultSlot && x.Subslots.Count == 1);
+    }
+
+    [Fact]
+    public void UnsupportedInstanceKeepsTheSharedEntry()
+    {
+        // A string result joined from two owned parameters is not yet lowered per instance.
+        var c = MinimalEmissionTest.Analyze(Choose + "Console.writeLine(choose(\"a\", \"b\", true))");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Single(module.SharedEntries);
+        Assert.Empty(Instances(module));
+    }
+
     [Fact]
     public void SelectedSpecializationIsNeverReplacedByTheGenericBody()
     {

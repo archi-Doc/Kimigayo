@@ -589,7 +589,7 @@ internal sealed partial class BodyLowering
         var pattern = match.Binding.Positions[arm.Pattern];
         var scalar = ScalarTypes.Supports(pattern.MatchedType);
         if (arm.GuardEntry < 0 || operation.Place != match.Subject || operation.Source.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate ||
-            !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(operation.Source.BoundType, pattern.CandidateSymbol?.Type) ||
+            !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), pattern.CandidateSymbol?.Type) ||
             (body.IsReachable(id) && !this.Dominates(arm.GuardEntry, id)) ||
             (scalar && (body.Values[id].Kind != OwnershipValueKind.Alias || Input(body, id, 0) != this.subjectInitializers[match.Subject])) ||
             (!scalar && !ReferenceEquals(pattern.MatchedType, BoundType.Unit) && !ReferenceEquals(pattern.MatchedType, BoundType.String)))
@@ -599,7 +599,7 @@ internal sealed partial class BodyLowering
 
         if (ReferenceEquals(pattern.MatchedType, BoundType.String))
         {
-            var type = operation.Source.BoundType;
+            var type = SignatureType(this, operation.Source.BoundType);
             var protection = body.LoanStates[id];
             while (protection >= 0 && body.ComparisonLoans[protection].Guard != index)
             {

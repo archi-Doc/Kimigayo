@@ -64,7 +64,7 @@ internal sealed partial class BodyLowering
         }
 
         var place = body.Places[operation.Place];
-        return ReferenceEquals(operation.Source.BoundType, place.Type) &&
+        return ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
             (operation.Source is IdentifierNameKoto identifier
                 ? identifier.BoundSymbol is { } symbol && ((body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id) || this.IsPreparedArgument(body, id, symbol, place.Id))
                 : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
@@ -234,8 +234,8 @@ internal sealed partial class BodyLowering
                 this.elementOperations[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation] is not { Kind: OwnershipOperationKind.ProjectElement, Source: BinaryKoto source, Input: -1 } operation ||
                 operation.Place != plan.Root || body.Values[plan.Operation].Kind != OwnershipValueKind.None ||
-                !ElementAccess.TryType(source, out var element, out var position) || position != plan.Element ||
-                source.AttributeChain is not null || !ReferenceEquals(source.BoundType, element) || this.aggregateLayouts.Get(source.Left.BoundType!) is null)
+                !(ElementAccess.TryType(source, out var declared, out var position) && SignatureType(this, declared) is { } element) || position != plan.Element ||
+                source.AttributeChain is not null || !ReferenceEquals(SignatureType(this, source.BoundType), element) || this.aggregateLayouts.Get(SignatureType(this, source.Left.BoundType)!) is null)
             {
                 return Fail("Element address has no matching source and aggregate shape.", out failure);
             }
@@ -364,7 +364,7 @@ internal sealed partial class BodyLowering
             last = value;
         }
         else if (source is not BinaryKoto { Akind: KotoKind.Equals } assignment ||
-            !ReferenceEquals(KotoHelper.UnwrapParentheses(assignment.Left), target) || !ReferenceEquals(source.BoundType, BoundType.Unit) ||
+            !ReferenceEquals(KotoHelper.UnwrapParentheses(assignment.Left), target) || !ReferenceEquals(SignatureType(this, source.BoundType), BoundType.Unit) ||
             !ReferenceEquals(input.Source, ElementAccess.ValueSource(assignment.Right)) ||
             (IsScalar(element) && value >= body.ComparisonLoans[plan.Loan].Read))
         {
@@ -394,7 +394,7 @@ internal sealed partial class BodyLowering
         var op = ElementAccess.UpdateOperator(source.Akind);
         var unary = source is UnaryKoto;
         if (op == KotoKind.Invalid || !type.IsNumeric || !IsScalar(type) || (unary && !type.IsInteger) ||
-            !ReferenceEquals(source.BoundType, unary ? type : BoundType.Unit) ||
+            !ReferenceEquals(SignatureType(this, source.BoundType), unary ? type : BoundType.Unit) ||
             !ReferenceEquals(KotoHelper.UnwrapParentheses(source is UnaryKoto increment ? increment.Operand : ((BinaryKoto)source).Left), target) ||
             value != update.Computation || value <= plan.Output ||
             body.Operations[value] is not { Kind: OwnershipOperationKind.Produce, Input: -1 } computation ||
@@ -423,7 +423,7 @@ internal sealed partial class BodyLowering
         if ((uint)update.Result >= (uint)body.Operations.Count || update.Result != plan.Write + 2 ||
             body.Operations[update.Result] is not { Kind: OwnershipOperationKind.Produce, Input: -1 } result ||
             (uint)result.Place >= (uint)body.Places.Count || body.Places[result.Place].Kind != OwnershipPlaceKind.Temporary ||
-            !ReferenceEquals(result.Source, source) || !ReferenceEquals(ValueType(body, update.Result), source.BoundType) ||
+            !ReferenceEquals(result.Source, source) || !ReferenceEquals(ValueType(body, update.Result), SignatureType(this, source.BoundType)) ||
             !ConsecutiveElementEdge(body, plan.Write + 1, update.Result) ||
             (unary ? body.Values[update.Result] is not { Kind: OwnershipValueKind.Alias, Count: 1 } ||
                 Input(body, update.Result, 0) != (source.Akind is KotoKind.PostfixIncrement or KotoKind.PostfixDecrement ? plan.Output : value)
@@ -459,7 +459,7 @@ internal sealed partial class BodyLowering
         }
 
         var source = (BinaryKoto)body.Operations[plan.Operation].Source;
-        var layout = this.aggregateLayouts.Get(source.Left.BoundType!)!;
+        var layout = this.aggregateLayouts.Get(SignatureType(this, source.Left.BoundType)!)!;
         var field = layout.IsArray ? 0 : plan.Element;
         var representation = layout.Fields[field];
         if (write)

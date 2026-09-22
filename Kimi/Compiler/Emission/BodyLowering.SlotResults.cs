@@ -46,7 +46,7 @@ internal sealed partial class BodyLowering
             var declaration = body.Operations[result.Declare];
             var join = body.Operations[result.Join];
             if (place.Kind != OwnershipPlaceKind.Result || !SlotTypes.IsResult(place.Type) ||
-                place.Source is not (IfKoto or DoKoto or LoopKoto or MatchKoto) || !ReferenceEquals(place.Source.BoundType, place.Type) ||
+                place.Source is not (IfKoto or DoKoto or LoopKoto or MatchKoto) || !ReferenceEquals(SignatureType(this, place.Source.BoundType), place.Type) ||
                 declaration.Kind != OwnershipOperationKind.Declare || declaration.Place != result.Place || !ReferenceEquals(declaration.Source, place.Source) ||
                 join.Kind != OwnershipOperationKind.Branch || join.Place != -1 || !ReferenceEquals(join.Source, place.Source) || body.Values[result.Join].Kind != OwnershipValueKind.None)
             {

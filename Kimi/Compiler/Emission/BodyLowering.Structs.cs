@@ -40,13 +40,15 @@ internal sealed partial class BodyLowering
     private bool PrepareReceiverFields(OwnershipBody body, EmissionFunction function, out string? failure)
     {
         failure = null;
-        if (this.eraseReceiver || StructStorage.ReceiverType(body.Function) is not { } type)
+        if (this.eraseReceiver || StructStorage.ReceiverType(body.Function) is not { } declared)
         {
             return true;
         }
 
-        var layout = this.aggregateLayouts.Get(type);
-        if (layout is null || !function.Abi.ResultSlot)
+        // An instance's receiver is the instantiated declaring Type of its call.
+        var type = this.instance is null ? declared : this.instance.DeclaringType;
+        var layout = type is null ? null : this.aggregateLayouts.Get(type);
+        if (type is null || layout is null || !function.Abi.ResultSlot)
         {
             return Fail("Special receiver requires concrete structure storage and its dedicated address.", out failure);
         }
@@ -56,7 +58,7 @@ internal sealed partial class BodyLowering
             var field = StructStorage.Field(type, i);
             if (field.BoundSymbol is not { } symbol || !body.SymbolPlaces.TryGetValue(symbol, out var place) ||
                 body.Places[place].Kind != OwnershipPlaceKind.Local || !ReferenceEquals(body.Places[place].Source, field) ||
-                !ReferenceEquals(body.Places[place].Type, field.BoundType))
+                !ReferenceEquals(body.Places[place].Type, SignatureType(this, field.BoundType)))
             {
                 return Fail("Special receiver field has no verified storage Place.", out failure);
             }

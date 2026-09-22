@@ -68,7 +68,7 @@ internal sealed partial class BodyLowering
             if (ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type))
             {
                 var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadBorrow } conversion &&
-                    ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(conversion.BoundType, output);
+                    ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(SignatureType(this, conversion.BoundType), output);
                 var memberProjection = operation.Source.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } call } } &&
                     ReferenceEquals(call.Receiver, operation.Source) && call.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection &&
                     call.ReceiverOperation.ObjectCompatibility == ConstraintProof.Proven && ReferenceEquals(call.ReceiverOperation.ParameterType, output);
@@ -94,13 +94,13 @@ internal sealed partial class BodyLowering
                 return Fail("Payload projection lacks its prepared object reference.", out failure);
             }
 
-            if (operation.Source is MemberAccessKoto projected && !ReferenceTypes.IsStorage(projected.BoundType) &&
+            if (operation.Source is MemberAccessKoto projected && !ReferenceTypes.IsStorage(SignatureType(this, projected.BoundType)) &&
                 ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
             {
                 if (!this.TryBorrowedPathOffset(projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
-                    !ReferenceEquals(type, projectedRoot.BoundType) ||
+                    !ReferenceEquals(type, SignatureType(this, projectedRoot.BoundType)) ||
                     !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
-                    !ReferenceEquals(projected.BoundType, output.Components[0]) ||
+                    !ReferenceEquals(SignatureType(this, projected.BoundType), output.Components[0]) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
                     (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
                 {
@@ -123,8 +123,8 @@ internal sealed partial class BodyLowering
             }
             else if (operation.Source is BinaryKoto path && ElementAccess.OwnedPathRoot(path) is { } owner)
             {
-                if (value.Count != 0 || this.aggregatePlaces[operation.Place] is null || !ReferenceEquals(owner.BoundType, type) ||
-                    !ReferenceEquals(path.BoundType, output.Components[0]) || !this.TryBorrowedPathOffset(path, owner, out var pathOffset))
+                if (value.Count != 0 || this.aggregatePlaces[operation.Place] is null || !ReferenceEquals(SignatureType(this, owner.BoundType), type) ||
+                    !ReferenceEquals(SignatureType(this, path.BoundType), output.Components[0]) || !this.TryBorrowedPathOffset(path, owner, out var pathOffset))
                 {
                     return Fail("Owned path borrow does not match its stored layout and Types.", out failure);
                 }
@@ -169,8 +169,8 @@ internal sealed partial class BodyLowering
         var receiver = Input(body, id, 0);
         var root = field is null ? null : ElementAccess.BorrowedPathRoot(field);
         if (field is null || root is null ||
-            (!ReferenceEquals(ValueType(body, receiver), root.BoundType) &&
-                !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !ReferenceTypes.IsValue(field.BoundType) ||
+            (!ReferenceEquals(ValueType(body, receiver), SignatureType(this, root.BoundType)) &&
+                !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !ReferenceTypes.IsValue(SignatureType(this, field.BoundType)) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
             return Fail("Borrowed field access requires a dominating typed receiver.", out failure);
@@ -181,11 +181,11 @@ internal sealed partial class BodyLowering
             return Fail("Borrowed field path does not match its stored layout and Types.", out failure);
         }
 
-        var representation = WindowsLowering.GetValue(field.BoundType!)!;
+        var representation = WindowsLowering.GetValue(SignatureType(this, field.BoundType)!)!;
         function.AddScalar(EmissionOpcode.ElementAddress, id, [this.PhysicalOperand(body, receiver), new(EmissionOperandKind.Integer, offset)], representation: representation);
         if (value.Kind == OwnershipValueKind.BorrowedField)
         {
-            if (operation.Kind != OwnershipOperationKind.Produce || !ReferenceEquals(ValueType(body, id), field.BoundType))
+            if (operation.Kind != OwnershipOperationKind.Produce || !ReferenceEquals(ValueType(body, id), SignatureType(this, field.BoundType)))
             {
                 return Fail("Borrowed field read has no matching result.", out failure);
             }
@@ -195,8 +195,8 @@ internal sealed partial class BodyLowering
         else
         {
             var input = Input(body, id, 1);
-            if (operation.Kind != OwnershipOperationKind.WriteBorrowedField || root.BoundType!.Semantics != SemanticsKind.Uniq ||
-                !ReferenceEquals(ValueType(body, input), field.BoundType) || (body.IsReachable(id) && !this.Dominates(input, id)))
+            if (operation.Kind != OwnershipOperationKind.WriteBorrowedField || SignatureType(this, root.BoundType)!.Semantics != SemanticsKind.Uniq ||
+                !ReferenceEquals(ValueType(body, input), SignatureType(this, field.BoundType)) || (body.IsReachable(id) && !this.Dominates(input, id)))
             {
                 return Fail("Borrowed field write requires exclusive access and a matching secured value.", out failure);
             }
@@ -213,7 +213,7 @@ internal sealed partial class BodyLowering
         return KotoHelper.UnwrapParentheses(root).BoundSymbol is { } symbol &&
             this.IsPreparedArgument(body, read, symbol, place) &&
             body.Operations[this.elementNextCalls[read]].Source is InvocationKoto { BoundCall: { } call } &&
-            ReferenceTypes.CallTypeMatches(root.BoundType, ValueType(body, receiver), call);
+            ReferenceTypes.CallTypeMatches(SignatureType(this, root.BoundType), ValueType(body, receiver), call);
     }
 
     // Inline parts are contiguous in their containing layout: sum each
@@ -225,7 +225,7 @@ internal sealed partial class BodyLowering
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);
             var layout = owner is null ? null : this.aggregateLayouts.Get(owner);
-            if (layout is null || (uint)position >= (uint)layout.Count || !ReferenceEquals(element, level.BoundType))
+            if (layout is null || (uint)position >= (uint)layout.Count || !ReferenceEquals(element, SignatureType(this, level.BoundType)))
             {
                 return false;
             }

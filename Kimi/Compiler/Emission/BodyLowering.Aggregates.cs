@@ -440,7 +440,7 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         var place = body.Places[operation.Place];
         return place.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && operation.Acquisition == AcquisitionKind.Copy &&
-            ScalarDefaults.SupportsPatternValue(place.Type) && ReferenceEquals(operation.Source.BoundType, place.Type) &&
+            ScalarDefaults.SupportsPatternValue(place.Type) && ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
             operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } &&
             this.IsPreparedArgument(body, id, symbol, place.Id) && this.IsElementOwnerStorage(place) && this.ValidateElementOwner(body, id);
     }

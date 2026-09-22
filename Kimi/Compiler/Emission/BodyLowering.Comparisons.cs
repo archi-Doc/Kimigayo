@@ -39,8 +39,8 @@ internal sealed partial class BodyLowering
             if ((uint)plan.Operation >= (uint)body.Operations.Count || this.stringComparisons[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation].Kind != OwnershipOperationKind.Produce || body.Values[plan.Operation].Kind != OwnershipValueKind.StringComparison ||
                 body.Operations[plan.Operation].Source is not BinaryKoto source ||
-                !((ReferenceEquals(source.Left.BoundType, BoundType.String) && ReferenceEquals(source.Right.BoundType, BoundType.String)) ||
-                    (ReferenceTypes.IsString(source.Left.BoundType) && ReferenceTypes.IsString(source.Right.BoundType))) ||
+                !((ReferenceEquals(SignatureType(this, source.Left.BoundType), BoundType.String) && ReferenceEquals(SignatureType(this, source.Right.BoundType), BoundType.String)) ||
+                    (ReferenceTypes.IsString(SignatureType(this, source.Left.BoundType)) && ReferenceTypes.IsString(SignatureType(this, source.Right.BoundType)))) ||
                 !ReferenceEquals(ValueType(body, plan.Operation), BoundType.Boolean) ||
                 source.Akind != body.Values[plan.Operation].Operator)
             {
@@ -67,17 +67,17 @@ internal sealed partial class BodyLowering
 
     private bool ValidateStringInspection(OwnershipBody body, int id, int place, int loan, Koto operand, int reference)
     {
-        if (ReferenceTypes.IsString(operand.BoundType))
+        if (ReferenceTypes.IsString(SignatureType(this, operand.BoundType)))
         {
             return loan == -1 && this.ValidateReferenceUse(body, reference, id) && ValuePlace(body.Operations[reference]) == place &&
-                ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), operand.BoundType);
+                ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), SignatureType(this, operand.BoundType));
         }
 
         if (reference >= 0 && (uint)reference < (uint)body.Operations.Count && ReferenceTypes.IsPointer(ValueType(body, reference)))
         {
             // SPEC 5.2: a raw string Place is read in place through its dominating handle address.
             var address = ValueType(body, reference)!;
-            return place == -1 && loan == -1 && ReferenceEquals(operand.BoundType, BoundType.String) &&
+            return place == -1 && loan == -1 && ReferenceEquals(SignatureType(this, operand.BoundType), BoundType.String) &&
                 ReferenceEquals(address.Components[0], BoundType.String) && (!body.IsReachable(id) || this.Dominates(reference, id));
         }
 

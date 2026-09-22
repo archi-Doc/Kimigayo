@@ -18,8 +18,8 @@ internal sealed partial class BodyLowering
         if (operation.Kind != OwnershipOperationKind.Produce || operation.Source is not Parsing.BinaryKoto element ||
             ValueType(body, id) is not { } type || !ReferenceTypes.IsPointer(type) ||
             ValueType(body, address) is not { } containerType || !ReferenceTypes.IsPointer(containerType) ||
-            !ReferenceEquals(element.Left.BoundType, containerType.Components[0]) ||
-            !ElementAccess.TryType(element, out var part, out _) || !ReferenceEquals(part, type.Components[0]) ||
+            !ReferenceEquals(SignatureType(this, element.Left.BoundType), containerType.Components[0]) ||
+            !ElementAccess.TryType(element, out var part, out _) || !ReferenceEquals(SignatureType(this, part), type.Components[0]) ||
             this.aggregateLayouts.Get(containerType.Components[0]) is not { } layout ||
             (index < 0 ? ElementAccess.PathSelector(element, out _, out _) != position || position < 0 || position >= layout.Count
                 : value.Constant != -1 || !layout.IsArray || element is not Parsing.IndexKoto || !ReferenceEquals(ValueType(body, index), BoundType.ISize)) ||
@@ -63,7 +63,7 @@ internal sealed partial class BodyLowering
         var address = Input(body, id, 0);
         if ((place.Kind != OwnershipPlaceKind.Temporary && (!store || place.Kind != OwnershipPlaceKind.Result)) ||
             place.Acquisition is not (AcquisitionKind.Copy or AcquisitionKind.Move) ||
-            !ReferenceEquals(operation.Source.BoundType, type) ||
+            !ReferenceEquals(SignatureType(this, operation.Source.BoundType), type) ||
             ValueType(body, address) is not { } pointerType || !ReferenceTypes.IsPointer(pointerType) ||
             !ReferenceEquals(pointerType.Components[0], type) || (body.IsReachable(id) && !this.Dominates(address, id)))
         {

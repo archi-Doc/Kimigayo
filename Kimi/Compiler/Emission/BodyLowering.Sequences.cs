@@ -74,7 +74,7 @@ internal sealed partial class BodyLowering
                 return Fail("Sequence receiver projection is not available.", out failure);
             }
 
-            receiver = body.Operations[projection.Operation].Source.BoundType!;
+            receiver = SignatureType(this, body.Operations[projection.Operation].Source.BoundType)!;
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
         }
 
@@ -103,7 +103,7 @@ internal sealed partial class BodyLowering
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
-            var validSource = borrowedArray ? operation.Source is IndexKoto index && ReferenceTypes.IsArray(index.Left.BoundType) :
+            var validSource = borrowedArray ? operation.Source is IndexKoto index && ReferenceTypes.IsArray(SignatureType(this, index.Left.BoundType)) :
                 arrayRead ? operation.Source is ForKoto { Iterable.BoundType.Kind: BoundTypeKind.FixedArray } :
                 operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice };
             var aggregate = plan.Kind == SequenceOperation.ArrayRead ? this.aggregateLayouts.Get(ValueType(body, id)!) : null;
@@ -130,7 +130,7 @@ internal sealed partial class BodyLowering
         if (plan.Kind == SequenceOperation.Slice)
         {
             if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) || operation.Source is not IndexKoto { Right: RangeKoto { IsInclusive: false } rangeSyntax } source ||
-                source.BoundType is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||
+                SignatureType(this, source.BoundType) is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||
                 !ReferenceEquals(slice, ValueType(body, id)) || !ReferenceEquals(slice.Components[0], receiver.Components[0]))
             {
                 return Fail("Slice construction requires a full sequence and its backing Origin.", out failure);
