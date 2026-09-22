@@ -131,6 +131,7 @@ public enum OwnershipFailure : byte
     ExpansionLimit,
     ComparisonLoanConflict,
     DefaultArgumentMove,
+    Internal,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
@@ -324,6 +325,19 @@ public sealed partial class OwnershipBody
         {
             this.IssueStorage.Add(issue);
         }
+    }
+
+    // An implementation invariant that decides the analysis outcome is checked in every configuration
+    // (SPEC 21.3.5): a violation is an internal issue that leaves the body unverified, never a silent
+    // inconsistency that only a Debug build would notice.
+    internal bool Invariant(bool condition, Koto? source = null)
+    {
+        if (!condition)
+        {
+            this.ReportIssue(new(source ?? this.Function, OwnershipFailure.Internal));
+        }
+
+        return condition;
     }
 }
 

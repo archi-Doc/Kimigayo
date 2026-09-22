@@ -132,6 +132,7 @@ public sealed partial class OwnershipAnalysis
                 OwnershipFailure.ComparisonLoanConflict => issue.Activation ? DiagnosticCode.CallActivationConflict_Kd :
                     issue.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
                 OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
+                OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
                 _ => DiagnosticCode.UnsupportedOwnership_Kd,
             });
         }

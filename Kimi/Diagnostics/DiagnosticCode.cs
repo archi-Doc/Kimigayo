@@ -125,6 +125,7 @@ public enum DiagnosticCode
     GenerationResourceLimit_Kd,
 
     DeferredExpansionLimit_Kd,
+    InternalInvariant_Kd,
     ComparisonLoanConflict_Kd,
     CallReservationConflict_Kd,
     CallActivationConflict_Kd,

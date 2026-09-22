@@ -368,6 +368,9 @@
   + Name="DeferredExpansionLimit_Kd"
     Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
 
+  + Name="InternalInvariant_Kd"
+    Message="An internal compiler invariant was violated while analyzing this construct; no artifact is produced. Please report this input"
+
   + Name="InvalidPattern_Kd"
     Message="The Pattern is not valid for this matched Type, Case, or payload arity"
 

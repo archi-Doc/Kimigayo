@@ -1,15 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
 {
-#if DEBUG
     private readonly List<(int Entry, int Exit, bool CanComplete)> completionChecks = new();
-#endif
     private readonly HashSet<(Koto Source, OwnershipOperationKind Kind, int Place)> checkedUses = new();
     private readonly List<int> checkingReplayProof = new();
     private readonly List<(int Source, int Next)> checkingReplayReverse = new();
@@ -53,7 +50,7 @@ public sealed partial class OwnershipBody
 
     internal void CheckUnreachable()
     {
-        this.AssertCompletion();
+        this.CheckCompletion();
         // Preserve the existing fallback's exact domain. In particular, an orphan
         // synthetic result delivery after a Never body is not an unchecked source use.
         var needsChecking = false;
@@ -196,35 +193,23 @@ public sealed partial class OwnershipBody
         return this.checkingReplayMarks.AsSpan(0, this.Operations.Count).IndexOf((byte)1) < 0;
     }
 
-    [Conditional("DEBUG")]
     internal void RecordCompletion(int entry, int exit, bool canComplete)
-    {
-#if DEBUG
-        this.completionChecks.Add((entry, exit, canComplete));
-#endif
-    }
+        => this.completionChecks.Add((entry, exit, canComplete));
 
-    [Conditional("DEBUG")]
     internal void ResetCompletion()
-    {
-#if DEBUG
-        this.completionChecks.Clear();
-#endif
-    }
+        => this.completionChecks.Clear();
 
-    [Conditional("DEBUG")]
-    private void AssertCompletion()
+    // Control-flow completion and the ownership graph's runtime reachability must agree for every
+    // recorded construct; a disagreement is an internal issue at that construct.
+    private void CheckCompletion()
     {
-#if DEBUG
         for (var i = 0; i < this.completionChecks.Count; i++)
         {
             var check = this.completionChecks[i];
-            Debug.Assert(
-                check.Entry < 0 || !this.Reachable[check.Entry] ||
-                check.CanComplete == (check.Exit >= 0 && this.Reachable[check.Exit]),
-                "Control-flow completion and ownership runtime predecessors disagree.");
+            this.Invariant(
+                check.Entry < 0 || !this.Reachable[check.Entry] || check.CanComplete == (check.Exit >= 0 && this.Reachable[check.Exit]),
+                check.Entry >= 0 ? this.Operations[check.Entry].Source : null);
         }
-#endif
     }
 
     private bool NeedsSourceState(OwnershipOperation operation)
@@ -254,14 +239,22 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
-            Debug.Assert(!this.Reachable[region.Entry]);
             var block = this.checkingBlockOf[region.Entry];
-            Debug.Assert(block >= 0 && !this.checkingReached[block]);
+            if (!this.Invariant(!this.Reachable[region.Entry] && block >= 0 && !this.checkingReached[block]))
+            {
+                continue;
+            }
+
             var ready = true;
             for (var s = 0; s < Math.Max(1, region.SeedCount); s++)
             {
                 var seed = region.SeedCount == 0 ? region.Seed : this.CheckingSeeds[region.SeedStart + s].Operation;
-                Debug.Assert(this.OperationRegions[seed] < i);
+                if (!this.Invariant(this.OperationRegions[seed] < i))
+                {
+                    ready = false;
+                    break;
+                }
+
                 var runtime = this.Reachable[seed];
                 if (!runtime && !this.HasCheckingState(seed))
                 {
@@ -327,7 +320,11 @@ public sealed partial class OwnershipBody
 
             for (var cursor = path.Entry; ; cursor = this.LinearCheckingSuccessor(cursor))
             {
-                Debug.Assert(!this.Reachable[cursor]);
+                if (!this.Invariant(cursor >= 0 && !this.Reachable[cursor]))
+                {
+                    break;
+                }
+
                 this.Transfer(cursor);
                 if (cursor == path.End)
                 {
@@ -344,12 +341,20 @@ public sealed partial class OwnershipBody
         Grow(ref this.checkingReplayReached, this.checkingBlockCount);
         this.checkingReplayReached.AsSpan(0, this.checkingBlockCount).Clear();
         var entry = this.checkingBlockOf[path.Entry];
-        Debug.Assert(this.checkingLeaders[entry] == path.Entry);
+        if (!this.Invariant(entry >= 0 && this.checkingLeaders[entry] == path.Entry))
+        {
+            return;
+        }
+
         this.Scratch.AsSpan(0, width).CopyTo(this.checkingReplayStates.AsSpan(entry * width, width));
         this.checkingReplayReached[entry] = true;
         this.Converge(entry, true, path.End, this.checkingReplayStates, this.checkingReplayReached);
         var end = this.checkingBlockOf[path.End];
-        Debug.Assert(this.checkingReplayReached[end]);
+        if (!this.Invariant(end >= 0 && this.checkingReplayReached[end]))
+        {
+            return;
+        }
+
         this.RunBlock(end, false, true, path.End, this.checkingReplayStates);
     }
 
@@ -399,7 +404,11 @@ public sealed partial class OwnershipBody
             this.checkingLeaders[this.checkingBlockCount] = operation;
             for (var cursor = operation; cursor >= 0; cursor = this.checkingNext[cursor])
             {
-                Debug.Assert(this.checkingBlockOf[cursor] < 0 && !this.Reachable[cursor]);
+                if (!this.Invariant(this.checkingBlockOf[cursor] < 0 && !this.Reachable[cursor]))
+                {
+                    break;
+                }
+
                 this.checkingBlockOf[cursor] = this.checkingBlockCount;
             }
 
@@ -417,7 +426,10 @@ public sealed partial class OwnershipBody
         {
             this.Transfer(cursor);
             cursor = this.NextInBlock(cursor, block, checking);
-            Debug.Assert(cursor >= 0);
+            if (!this.Invariant(cursor >= 0))
+            {
+                break;
+            }
         }
     }
 
@@ -454,7 +466,11 @@ public sealed partial class OwnershipBody
                 }
 
                 var target = blockOf[edge.To];
-                Debug.Assert(target >= 0);
+                if (!this.Invariant(target >= 0))
+                {
+                    continue;
+                }
+
                 var destination = states.AsSpan(target * width, width);
                 bool changed;
                 if (!reached[target])
