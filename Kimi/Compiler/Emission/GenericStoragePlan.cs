@@ -153,7 +153,6 @@ internal sealed class GenericStoragePlan
         var target = template.Body.Function;
         var binding = compilation.Binding;
         var parameters = new BoundType[target.Parameters.Count];
-        var abiParameters = new List<AbiParameter>();
         var result = call.ReturnType;
         var noReturn = ReferenceEquals(result, BoundType.Never);
         if (FunctionAbi.GetValue(result, layouts) is null && !noReturn)
@@ -162,28 +161,17 @@ internal sealed class GenericStoragePlan
         }
 
         var resultSlot = target.IsConstructor || FunctionAbi.HasResultSlot(result, layouts);
-        if (resultSlot)
-        {
-            abiParameters.Add(new("ptr", "ret", AbiParameterKind.ResultSlot));
-        }
-
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(target.Parameters[i].Type.BoundType!, call);
-            var value = type is null ? null : FunctionAbi.GetValue(type, layouts);
             var borrowedStorage = (ReferenceTypes.IsStorage(type) || ReferenceTypes.IsString(type)) && type!.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ReferenceTypes.IsStorage(target.Parameters[i].Type.BoundType);
-            if (type is null || value is null || ((ReferenceTypes.IsString(type) || ReferenceTypes.IsStorage(type)) && !borrowedStorage) ||
+            if (type is null || FunctionAbi.GetValue(type, layouts) is null || ((ReferenceTypes.IsString(type) || ReferenceTypes.IsStorage(type)) && !borrowedStorage) ||
                 (borrowedStorage && FunctionAbi.GetValue(type.Components[0], layouts) is null))
             {
                 return Fail("Generic entry parameter requires a concrete owned storage representation.", out failure);
             }
 
             parameters[i] = type;
-            if (value.Layout.Size != 0)
-            {
-                // The same parameter kinds as concrete entries (FunctionAbiPool), so callers pass string references alike.
-                abiParameters.Add(new(value.ArgumentType!, "a" + i, ReferenceTypes.IsString(type) ? AbiParameterKind.SharedReference : SlotTypes.IsResult(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, i));
-            }
         }
 
         foreach (var existing in this.calls.Values)
@@ -207,7 +195,8 @@ internal sealed class GenericStoragePlan
         }
 
         this.entryCounts[function] = count + 1;
-        var abi = new FunctionAbi("__kimi_generic_entry" + this.entryNames++, FunctionAbi.ResultType(result, layouts)!, abiParameters.ToArray(), noReturn: noReturn, resultSlot: resultSlot);
+        // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
+        var abi = FunctionAbiPool.Build("__kimi_generic_entry" + this.entryNames++, result, parameters, resultSlot, layouts);
         var selected = binding.SelectSpecialization(call);
         var selectedAbi = selected is null ? null : this.functions!.GetValueOrDefault(selected);
         if (selected is not null && selectedAbi is null)

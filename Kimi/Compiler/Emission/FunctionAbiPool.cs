@@ -10,6 +10,37 @@ internal sealed class FunctionAbiPool
 {
     private readonly List<Signature> signatures = new();
 
+    /// <summary>
+    /// Builds the physical signature of a closed, non-closure entry from its substituted parameter and
+    /// result Types with the same parameter kinds and slot rules as ordinary functions (SPEC 21.3.1:
+    /// generic entries and concrete functions share one ABI rule).
+    /// </summary>
+    /// <param name="name">The unique physical name.</param>
+    /// <param name="result">The closed result Type.</param>
+    /// <param name="parameters">The closed parameter Types in declaration order.</param>
+    /// <param name="resultSlot">Whether the result is returned through a caller-provided slot.</param>
+    /// <param name="layouts">The layout pool for aggregate Types.</param>
+    /// <returns>The physical signature; zero-sized parameters have no physical slot.</returns>
+    internal static FunctionAbi Build(string name, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts)
+    {
+        var physical = new List<AbiParameter>(parameters.Length + 1);
+        if (resultSlot)
+        {
+            physical.Add(new("ptr", "ret", AbiParameterKind.ResultSlot));
+        }
+
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var shape = Shape(parameters[i], layouts);
+            if (shape.Type is not null)
+            {
+                physical.Add(new(shape.Type, "a" + i.ToString(CultureInfo.InvariantCulture), shape.Kind, i));
+            }
+        }
+
+        return new FunctionAbi(name, FunctionAbi.ResultType(result, layouts)!, physical.ToArray(), ReferenceEquals(result, BoundType.Never), resultSlot);
+    }
+
     internal FunctionAbi Get(int ordinal, FunctionKoto function, AggregateLayoutPool? layouts = null)
     {
         var result = function.BoundSymbol!.Type!;
