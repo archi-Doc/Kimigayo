@@ -32,7 +32,8 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (value.Kind == OwnershipValueKind.Address)
         {
-            if (operation.Kind != OwnershipOperationKind.Borrow || !ReferenceTypes.IsBorrow(ValueType(body, id)) ||
+            // A string reference result is admitted only by the reference prepass (a borrowed array element).
+            if (operation.Kind != OwnershipOperationKind.Borrow || !(ReferenceTypes.IsBorrow(ValueType(body, id)) || ReferenceTypes.IsString(ValueType(body, id))) ||
                 (uint)operation.Place >= (uint)body.Places.Count || value.Constant != operation.Place ||
                 (body.IsReachable(id) && (body.GetBorrowInputState(id) & PlaceState.MustInit) == 0))
             {
@@ -102,7 +103,7 @@ internal sealed partial class BodyLowering
                 var array = value.Count == 2 ? Input(body, id, 0) : -1;
                 var subscript = value.Count == 2 ? Input(body, id, 1) : -1;
                 if ((uint)array >= (uint)id || (uint)subscript >= (uint)id || type.Semantics != SemanticsKind.Ref || operation.LoanMode != LoanRequirement.Ref ||
-                    !ReferenceTypes.IsStorage(output) || output.Semantics != SemanticsKind.Ref || !ReferenceEquals(output.Components[0], element) ||
+                    !(ReferenceTypes.IsStorage(output) || ReferenceTypes.IsString(output)) || output.Semantics != SemanticsKind.Ref || !ReferenceEquals(output.Components[0], element) ||
                     !ReferenceEquals(SignatureType(this, indexed.Left.BoundType), type) || !ReferenceEquals(SignatureType(this, indexed.BoundType), element) ||
                     body.Operations[array].Kind != OwnershipOperationKind.Read || body.Operations[array].Place != operation.Place ||
                     !ReferenceEquals(ValueType(body, array), type) || !ReferenceEquals(body.Operations[array].Source, indexed.Left) ||

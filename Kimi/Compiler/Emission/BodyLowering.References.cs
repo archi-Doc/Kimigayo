@@ -127,6 +127,17 @@ internal sealed partial class BodyLowering
 
                     this.referenceRoots[id] = id;
                     break;
+                case OwnershipOperationKind.Borrow when value.Kind == OwnershipValueKind.Address:
+                    // A string element of a borrowed fixed array: the struct borrow lowering forms its
+                    // bounds-checked element address, and its source reference outlives every use.
+                    if (operation.Source is not IndexKoto || !ReferenceTypes.IsArray(body.Places[operation.Place].Type) || value.Count != 2 ||
+                        operation.LoanMode != LoanRequirement.Ref || operation.Acquisition != AcquisitionKind.None)
+                    {
+                        return Fail("Reference formation lacks its borrowed array element source.", out failure);
+                    }
+
+                    this.referenceRoots[id] = id;
+                    break;
                 case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.CallEntry when value.Kind == OwnershipValueKind.Alias:
                     var input = Input(body, id, 0);
                     if ((uint)input >= (uint)id || this.referenceRoots[input] < 0 || !ReferenceEquals(type, ValueType(body, input)) ||
@@ -172,9 +183,12 @@ internal sealed partial class BodyLowering
         var root = this.referenceRoots[value];
         // A guard candidate may be read under another argument's element Loan.
         // Only a reference formed from a projection uses that projection's address.
-        return body.Values[root].Kind == OwnershipValueKind.Parameter
-            ? new(EmissionOperandKind.Argument, body.Values[root].Constant)
-            : StringPlaceOperand(body, body.Operations[root].Place, body.Operations[root].Projection >= 0 ? body.LoanStates[root] : -1);
+        return body.Values[root].Kind switch
+        {
+            OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[root].Constant),
+            OwnershipValueKind.Address => new(EmissionOperandKind.Value, root), // The lowered element address.
+            _ => StringPlaceOperand(body, body.Operations[root].Place, body.Operations[root].Projection >= 0 ? body.LoanStates[root] : -1),
+        };
     }
 
     private bool ValidateReferenceUse(OwnershipBody body, int value, int at)
@@ -186,7 +200,8 @@ internal sealed partial class BodyLowering
         }
 
         var root = this.referenceRoots[value];
-        if (body.Values[root].Kind == OwnershipValueKind.Parameter || !body.IsReachable(at))
+        // A parameter or a borrowed array's element address needs no Loan of this body: their sources outlive it.
+        if (body.Values[root].Kind is OwnershipValueKind.Parameter or OwnershipValueKind.Address || !body.IsReachable(at))
         {
             return true;
         }

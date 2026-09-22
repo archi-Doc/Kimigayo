@@ -162,6 +162,19 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
+    public void MonomorphizesBorrowedStringArrayElements()
+    {
+        // SPEC 21.3.1: total<2, string> forms each element's string reference from the borrowed array's
+        // element address (string stride) and forwards it; no instance keeps a shared entry.
+        var c = MinimalEmissionTest.Analyze(GenericForwardingEmissionTest.Weight + "let values: [2 of string] = [\"left\", \"right\"]\nlet n = W.total<2, string>(values@ref)");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var total = Assert.Single(Instances(module), x => x.Instructions.Any(i => i.ScalarOperator == "ArrayAddress"));
+        var address = Assert.Single(total.Instructions, i => i.ScalarOperator == "ArrayAddress");
+        Assert.Equal(WindowsLowering.GetValue(BoundType.String)!.Layout.Stride, address.Representation!.Layout.Stride);
+    }
+
+    [Fact]
     public void MonomorphizesForwardedStringReferences()
     {
         // SPEC 21.3.1: forward<string> passes its ref/T parameter to weight<string> as the substituted

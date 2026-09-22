@@ -67,6 +67,10 @@ public class GenericForwardingEmissionTest
         => ScalarEmissionTest.EmitFixture("GenericForwardingIndexedElement", "struct Pt\n    public let v: i32\n    public init(v: i32) => self.v = v\nfunc weight<T>(value: ref/T) -> i32 => 1\nspecialize func weight<Pt>(value: ref/Pt) -> i32 => value.v\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [3 of Pt] = [Pt.init(5), Pt.init(11), Pt.init(23)]\nrequire get<3, Pt>(values@ref, 0) == 5 and get<3, Pt>(values@ref, 2) == 23 else => $abort(\"element\")", string.Empty);
 
     [Fact]
+    public void IndexedBorrowAddressesStringElements()
+        => ScalarEmissionTest.EmitFixture("GenericForwardingIndexedString", "func same<T>(a: ref/T, b: ref/T) -> bool => false\nspecialize func same<string>(a: ref/string, b: ref/string) -> bool => a == b\nfunc at<length N, T>(values: ref/[N of T], index: isize, expected: ref/T) -> bool => same<T>(values[index]@ref/T, expected)\nlet values: [3 of string] = [\"left\", \"middle\", \"right\"]\nlet middle = \"middle\"\nlet right = \"right\"\nrequire at<3, string>(values@ref, 1, middle) and at<3, string>(values@ref, 2, right) and not at<3, string>(values@ref, 0, right) else => $abort(\"element\")\nConsole.writeLine(values[2])", "right\n");
+
+    [Fact]
     public void ForwardsBorrowedStringReferences()
         => ScalarEmissionTest.EmitFixture("GenericForwardingStringReference", "func same<T>(a: ref/T, b: ref/T) -> bool => false\nspecialize func same<string>(a: ref/string, b: ref/string) -> bool => a == b\nfunc forward<T>(a: ref/T, b: ref/T) -> bool => same<T>(a, b)\nlet s = \"text\"\nlet t = \"text\"\nlet u = \"other\"\nrequire forward<string>(s, t) and not forward<string>(s, u) else => $abort(\"string\")\nConsole.writeLine(s)", "text\n");
 

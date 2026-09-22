@@ -152,7 +152,7 @@ internal sealed partial class BodyLowering
                 if (acquisition.Kind == ArgumentOperationKind.Borrow
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
                         !ReferenceEquals(body.Operations[root].Source, KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]))
-                    : (body.Values[root].Kind != OwnershipValueKind.Parameter && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
+                    : (body.Values[root].Kind is not (OwnershipValueKind.Parameter or OwnershipValueKind.Address) && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
                         !ReferenceEquals(ValueType(body, root), SignatureType(this, acquisition.SourceType)))
                 {
                     return Fail("Reference acquisition does not match its source.", out failure);
