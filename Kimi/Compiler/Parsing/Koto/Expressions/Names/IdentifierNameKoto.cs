@@ -3,6 +3,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Lexing;
 
+#pragma warning disable SA1202 // Keep syntax construction and representation together.
+
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
@@ -34,7 +36,7 @@ public sealed class IdentifierNameKoto : ExpressionKoto
     }
 
     /// <summary>Gets the identifier text.</summary>
-    public string IdentifierName { get; private set; }
+    public string IdentifierName { get; internal set; }
 
     private IdentifierNameKoto()
         : base(null!, default)
@@ -42,7 +44,7 @@ public sealed class IdentifierNameKoto : ExpressionKoto
         this.IdentifierName = string.Empty;
     }
 
-    private IdentifierNameKoto(ref TokenReader reader, Token token, string identifierName)
+    internal IdentifierNameKoto(ref TokenReader reader, Token token, string identifierName)
         : base(ref reader, token.Span)
     {
         this.IdentifierName = identifierName;

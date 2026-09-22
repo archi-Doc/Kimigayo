@@ -74,14 +74,15 @@ hexadecimal-digit    := decimal-digit | 'a' .. 'f' | 'A' .. 'F'
 CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
 ```
 
-`DirectScalar` is the character class defined in [character content and validation](../02-source-and-lexical-structure.md#281-content-and-validation); keyword exclusions and contextual Name roles follow [Names](../02-source-and-lexical-structure.md#25-names).
+`DirectScalar` is the character class defined in [character content and validation](../02-source-and-lexical-structure.md#281-content-and-validation); reserved-word/standalone-underscore exclusions and contextual Name roles follow [Names](../02-source-and-lexical-structure.md#25-names).
 
 ## F.2. Type grammar
 
 [Type composition](../03-types-and-values.md#3-types-and-values), [compound Types](../03-types-and-values.md#32-compound-types), [Semantics](../03-types-and-values.md#33-type-semantics), [generic application](../12-expressions.md#1242-invocation-and-generic-application), [Origins](../15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations).
 
 ```ebnf
-Type                 := FunctionType | SemanticsType
+Type                 := FunctionType | OptionalType
+OptionalType         := SemanticsType ("?")*
 FunctionType         := FunctionParameters "->" Type
 FunctionParameters   := "(" TrailingList<Type>? ")"
 SemanticsType        := Semantics BorrowOrigin? "/" SemanticsType | TypeAtom
@@ -298,12 +299,13 @@ Additive             := Multiplicative (("+" | "-") Multiplicative)*
 Multiplicative       := Adapted (("*" | "/" | "%") Adapted)*
 Adapted              := Prefix ("@" OperationTarget)*
 OperationTarget      := Semantics | AdaptationType
-AdaptationType       := Semantics "/" AdaptationType | AdaptationAtom
+AdaptationType       := AdaptationCore ("?")*
+AdaptationCore       := Semantics "/" AdaptationCore | AdaptationAtom
 AdaptationAtom       := OriginFreePath | UnitType | "(" OriginFreeType ")"
                       | "(" OriginFreeType "," TrailingList<OriginFreeType>? ")"
                       | "[" ArrayLength "of" OriginFreeType "]"
 OriginFreeType       := ? Type with no written direct borrow annotations at any layer, §13.5.1 ?
-Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--") Prefix
+Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--" | "try") Prefix
                       | Postfix
 Postfix              := Primary PostfixSuffix*
 PostfixSuffix        := "." (Name | DecimalTupleIndex)
@@ -355,8 +357,9 @@ The `.init(` suffix has construction priority under §6.2.3 and cannot use ordin
 SourceUnit           := ? source-local declarations, aliases, and executable items, §6.1.1 ?
 Body<Item>           := "=>" SingleItem | IndentedList<Item>
 SingleItem           := Expression | Statement
-Statement            := UnsafeStatement | DeferStatement | RequireStatement
+Statement            := UnsafeStatement | DeferStatement | RequireStatement | DiscardStatement
                       | TestVerification
+DiscardStatement     := "_" "=" Expression
 TestVerification     := "$" ("expect" | "require") "(" Expression
                         ("," "message" ":" Expression)? ")"
 ExecutableItem       := Expression | LocalBinding | AttributedFunctionDefinition
@@ -370,7 +373,8 @@ DoExpression         := (Name ":")? "do" ExecutableBody
 LabeledSelection     := Name ":" (IfExpression | MatchExpression)
 Iteration            := (Name ":")? (ForExpression | WhileExpression | LoopExpression)
 ForExpression        := "for" ForBinding "in" Expression ExecutableBody
-ForBinding           := Name | "(" List<Name> ")"
+ForBinding           := ForSlot | "(" List<ForSlot> ")"
+ForSlot              := Name | "_"
 WhileExpression      := "while" Expression ExecutableBody
 LoopExpression       := "loop" ExecutableBody
 IfExpression         := "if" Expression ExecutableBody
@@ -473,6 +477,7 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Object ownership operations | [Kimi creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing), and [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) define their source names, Types and acquisition contracts using ordinary call syntax. `Type.init` constructs an owner value, and `@obj`/`@rc`/`@arc` add no allocation or count increment. |
 | Complete payload and whole-value updates | Sealed uses ordinary requirement syntax. Fully specified `@ref/T` and `@uniq/T` may project a proven complete payload (§13.5.5); shorthand meanings are unchanged. Kimi.Intrinsics.replace/exchange/swap use ordinary generic calls and named arguments (§15.7). No new keyword or operator is introduced. |
 | Function parameters | [§7.2](../07-functions-and-callable-values.md#72-parameters-and-defaults) defines the `!` boundary, external/internal names and independent defaults; F.3 summarizes their syntax. |
-| Re-export, special FFI layouts, and failure propagation | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports), [layout boundaries](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi), and [error policy](../17-failure-handling.md#171-error-policy). |
+| Re-export and special FFI layouts | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports) and [layout boundaries](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi). |
+| Failure propagation | Prefix `try` is defined in §17.2.4. User-defined propagation and try blocks are not introduced. |
 
 Container placement follows §6.1.1, including nested groups/structs/enums/Contracts in structs, no children in enum/Contract bodies, and source-root-only rootgroup. Own arity excludes inherited slots; groups and Contracts declare no own arguments. BoundContainerQualifier is Type-side only and normalizes with ordinary grouped Type syntax. Contract and associated selectors use the same paths and full Origin bindings; each final role and intermediate qualifier is checked under §9.6.1. CaseReference remains a PlainContainerPath and excludes own/inherited explicit Origin annotations on its qualifier, while retaining Origins inside Type arguments.

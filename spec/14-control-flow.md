@@ -130,6 +130,28 @@ if guard.contains(id) => work() // Keep a needed guard outside the condition.
 
 To acquire a new local on every test, use `loop` with a declaration and `require`. Parentheses change neither transfer lookup nor the Evaluation Context. Header grouping and continuation follow §2.2.
 
+### 14.2.4. Explicit discard
+
+`_ = Expression` is a dedicated executable statement, recognized by reserved `_` followed by `=`. It is not assignment, permits no compound form, and cannot be nested as an expression. Normal completion supplies Unit. Existing Body and continuation rules apply.
+
+Check the right side in Value Context without an expected Type, as for an unannotated initializer, but introduce no local or lifetime extension. Evaluate once, acquire by ordinary Copy/Move and destroy the result at statement temporary cleanup. A non-completing operand supplies no result to discard. Changing `expr` to `_ = expr` changes Context and may require a common branch Type.
+
+Explicit discard suppresses only warnings for discarding that result (§17.4), not internal discards, unintended Unit inference inside the operand, Type/ownership errors or unrelated diagnostics.
+
+```kimi
+_ = prepare()     // Ignore the entire Result, including Err.
+_ = try prepare() // Propagate failure; explicitly discard success.
+_ = resource      // Move and destroy a Non-Copy value.
+_ = .None         // Error without enough Type information.
+_ = loop => exit  // Valid Unit result.
+_ = do
+    prepare()     // This independent implicit discard still warns.
+consume(_ = prepare()) // Error: not an expression.
+_ += prepare()         // Error: no compound form.
+```
+
+Ignoring Result is permitted; its error payload is destroyed normally and execution continues. This neither catches nor suppresses Abort.
+
 ## 14.3. Block constructs
 
 | Construct | Category | Execution |
@@ -264,7 +286,7 @@ Each iteration has a fresh body scope. Its normal body result is discarded, and 
 
 `for` acquires its iterable once and then obtains successive elements; `while` evaluates its `bool` condition before each iteration. Both complete with Unit on exhaustion or a false condition, or on a self-targeted `exit`, whose operand must fit Unit. The body end and a self-targeted `continue` request the next element or reevaluate the condition.
 
-A `for` binding is a single Name or a Tuple of distinct Names, not a general Pattern, and binds immutable `let` bindings. Conditions follow §14.2.3, including cleanup before branching and the ban on condition-binding syntax.
+A `for` binding is one Name or `_`, or a Tuple of those slots, not a general Pattern or nested decomposition. Named slots must be distinct; each `_` is a separate unnamed immutable iteration binding and cannot be referenced or captured. Conditions follow §14.2.3, including cleanup before branching and the ban on condition-binding syntax.
 
 ```kimi
 for (key, value) in dictionary => process(key, value)
@@ -289,7 +311,7 @@ repeat:
 clean up iterator on normal exit and ordinary transfers
 ~~~
 
-Each `for` binding is an immutable `let` binding scoped to that iteration's body; there is no implicit `var` form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right, and the names must be distinct. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
+Each `for` binding is an immutable `let` binding scoped to that iteration's body; there is no implicit `var` form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right, and named slots must be distinct. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
 
 The receiver Loan of `next` ends before the loop body. Results may keep existing external dependencies but cannot borrow that exclusive receiver or iterator-owned storage; lending iteration is deferred.
 
@@ -303,6 +325,14 @@ The receiver Loan of `next` ends before the loop body. Results may keep existing
 Direct iteration consumes a Non-Copy owning collection; use `for item in values[..]` for shared iteration. A consumed source remains unavailable until validly reinitialized. Source Loans are kept while the iterator or escaped yielded references need them; overlapping mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. See [ranges](04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [Slice iteration](04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
 
 Body fall-through and `continue` clean up the current bindings before calling `next` again; `exit`, `return` and outer transfers also clean up the iterator and its unyielded owned elements. The protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
+
+Unnamed slots follow named acquisition, dependencies and lifetime. Do not skip acquisition or destroy their values before the body. Binding a Result is not expression discard. Binding shape determines the unit: `for _ in pairs` acquires one Tuple; `for (_, _) in pairs` acquires its components separately. Tuple components and separate bindings both clean up last-to-first (§16.2–3), after body locals and defers. Borrowed bindings never destroy referents. This differs from Pattern wildcards and explicit-discard temporary cleanup.
+
+```kimi
+// n: isize, n >= 0. Range itself is not Iterable.
+for _ in (0..n).resolve(n) => tick()
+for (key, _) in pairs => use(key)
+```
 
 ### 14.6.3. `loop`
 
@@ -633,7 +663,7 @@ The **Target Result Type** constrains the results supplied to a target. It is de
 3. Propagate the fixed Type to sources checkable against it; apply numeric literal defaults only after all other available evidence.
 4. Check every source for fitting. If an unresolved call, anonymous function or empty literal still needs a Type, require an annotation or explicit Type arguments.
 
-Nested result expressions use the same expected-Type propagation. An inner result that depends on numeric defaults is not committed before available outer constraints are processed. Parentheses, labels and body nesting alone do not commit defaults, and an already typed binding is not reinferred from later uses. The call and lambda boundaries of §10.5 and the complete-Type inference rules of §10.8 apply. Combinations of unresolved sources, common bases, numeric conversion chains and overload candidates are never searched by rechecking bodies.
+Nested result expressions use the same expected-Type propagation. An inner result that depends on numeric defaults is not committed before available outer constraints are processed. Parentheses, labels and body nesting alone do not commit defaults, and an already typed binding is not reinferred from later uses. The call, lambda and try boundaries of §10.5 and the complete-Type inference rules of §10.8 apply. Combinations of unresolved sources, common bases, numeric conversion chains and overload candidates are never searched by rechecking bodies.
 
 A target's expectation propagates only to its result sources, not to discarded intermediate values or transfers to other targets, and the normal Semantics, Origin and fitting rules apply. If no source exists, or all source Types are already Never, an unknown Target Result Type may proceed to the Never rule below. An unresolved source is not an absent source.
 

@@ -148,6 +148,8 @@ Explicit Type arguments follow the [slot rules](08-generics-constraints-and-cont
 
 Generic inference and substitution use the [complete-Type slots and projections](08-generics-constraints-and-contracts.md#81-generic-type-parameters) and preserve all bound Origins and inferred Loan requirements, including nested dependencies. A surrounding borrow such as `ref/T` keeps `T`'s internal dependencies alongside its own Origin and Loan. Substitution alone creates no Borrow or Reborrow, releases no Loan and extends no lifetime; actual call-site checks follow the [ownership and Origin rules](15-ownership-and-lifetime-analysis.md#15-ownership-and-lifetime-analysis).
 
+**Try boundary.** Resolve a `try` operand in Value Context with no expected Type (§17.2.4). Neither the success expectation nor the return target feeds into operand inference or retries its overload selection. Explicit discard also supplies no expectation (§14.2.4).
+
 **Nested calls.** Bidirectional checking supports literals, function references, anonymous functions and expressions directly checkable against a candidate Type. It does not search combinations by rerunning an inner overload resolution for every outer candidate in `f(g(x))`:
 
 - Independently typable arguments and explicit Type information are processed first.

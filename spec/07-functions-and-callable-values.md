@@ -187,6 +187,8 @@ let invalid = func (value) => value * 2 // Error: no fixed input signature.
 
 An omitted parameter Type requires a fixed expected callable signature; parameter Types are never searched for from body operations or later uses. The result is inferred from that expectation or, once the parameters are fixed, from the body under normal result validation. Whole-result inference also keeps the [result Origins and Loans](15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results); annotations use the existing elision rules.
 
+A try failure is an expectation-dependent return source (§17.2.4); it cannot supply a return Type candidate. Its operand is inferred independently (§10.5), and success values are never automatically wrapped.
+
 Creation evaluates the captures, not the body; capture acquisition occurs in the creation context. Invocation evaluates the body under an independent Function Boundary, with no outer `return`/`exit`/`continue`/`yield` targets and no inherited Unsafe permission. Named nested functions keep their no-capture restriction.
 
 ### 7.6.2. Capture acquisition and environment

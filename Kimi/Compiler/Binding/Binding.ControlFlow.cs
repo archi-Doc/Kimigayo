@@ -88,7 +88,7 @@ public sealed partial class Binding
             expected = null;
         }
 
-        if (!KotoHelper.IsValueContext(target) || target is WhileKoto or ForKoto)
+        if ((target is not TryKoto && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
         {
             expected = BoundType.Unit;
         }
@@ -132,6 +132,9 @@ public sealed partial class Binding
 
         switch (source)
         {
+            case TryKoto propagation:
+                var operand = this.ResultEvidence(propagation.Expression, scope);
+                return operand?.Kind == BoundTypeKind.Constructed && (operand.Symbol == this.Library.Option || operand.Symbol == this.Library.Result) ? operand.Components[0] : null;
             case BoolLiteralKoto or IsKoto { IsRuntimeTest: true }:
                 return BoundType.Boolean;
             case StringLiteralKoto:
@@ -228,7 +231,7 @@ public sealed partial class Binding
             expression = label.Target;
         }
 
-        if (expression is IfKoto or MatchKoto or LoopKoto or DoKoto)
+        if (expression is not TryKoto && expression is IfKoto or MatchKoto or LoopKoto or DoKoto)
         {
             this.FindResultEvidence(expression, scope, context);
             return;

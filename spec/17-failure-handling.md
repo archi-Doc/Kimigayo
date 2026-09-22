@@ -20,7 +20,7 @@ These categories are not a severity ranking: `None` represents expected absence,
 
 The examples use the [enum construction](06-declarations-and-containers.md#632-case-construction-and-resolution) and [Pattern](14-control-flow.md#1481-patterns) rules; their APIs are illustrative.
 
-Dedicated generic failure propagation, such as `?`, is not defined. The [require statement](14-control-flow.md#1411-require-statement), including `require condition else => return`, is explicit control flow and performs no automatic Option/Result unwrapping or propagation.
+Explicit try propagates Kimi Option/Result failure (§17.2.4). Value postfix ? and user-defined propagation are not defined. The [require statement](14-control-flow.md#1411-require-statement), including `require condition else => return`, is explicit control flow and performs no automatic Option/Result unwrapping or propagation.
 
 ## 17.2. Absence and failure as values
 
@@ -99,9 +99,72 @@ func loadSize(path: string) -> Result<usize, FileError>
 
 The return Type describes contractual absence or recoverable failure; a function returning `Result` may still Abort on an invariant violation or unrecoverable condition.
 
-Discarding a Kimi `Result` expression in Discard Context is allowed but produces a compile-time warning, independently of Copy capability and of the runtime `Ok`/`Err` state. The value is identified by its Kimi Symbol, including through equivalent resolved paths. [Warning priority](#174-warnings) selects one report if several apply to the same discard. The warning does not change control flow; a caller can intentionally ignore the outcome by handling both variants with `match`. There is no special warning for discarding `Option`.
+Discarding a Kimi `Result` expression in Discard Context is allowed but produces a compile-time warning, independently of Copy capability and of the runtime `Ok`/`Err` state. The value is identified by its Kimi Symbol, including through equivalent resolved paths. [Warning priority](#174-warnings) selects one report if several apply to the same discard. The warning does not change control flow; a caller can intentionally ignore the outcome with `_ = expression` (§14.2.4), or by handling both variants with `match`. There is no special warning for discarding `Option`.
 
 Returning a recoverable failure follows the normal [Scope Exit](16-scope-exit-and-destruction.md#162-scope-exit-destruction) rules, including the requirement that earlier cleanup completes normally before the remaining cleanup and result delivery. Use this path for ordinary failures that need resource cleanup.
+
+### 17.2.4. Try propagation
+
+`try expression` is a right-associative prefix expression at ordinary prefix precedence. Calls, selection and indexing bind more tightly; @ binds less tightly. Its operand is required and need not be a call.
+
+```kimi
+try prepare() + 1     // (try prepare()) + 1
+try prepare().count   // try (prepare().count)
+(try prepare()).count // Select from the success payload.
+try (expr@Target)     // Adapt before extracting.
+try try nested       // Extract twice; check each propagation separately.
+```
+
+The normalized outer operand Type must be an owned compiler-recognized Kimi Option or Result. Aliases and redundant owner prefixes normalize normally. Names or structurally similar user enums grant no support. `Option<ref/T>` is valid; `ref/Option<T>`, `uniq/Result<T,E>` and `obj/Option<T>` are not automatically dereferenced. Generic definitions require proof of the actual enum structure.
+
+**Evaluation.** Evaluate and acquire the operand once in Value Context without an expected Type, using ordinary whole-value match acquisition (§15.1.6). Copy a Copy Place, Move a Non-Copy Place, and transfer an existing temporary without extra acquisition. Inspect its Case:
+
+| Operand | Normal value | Failure return | Required return target |
+| --- | --- | --- | --- |
+| `Option<T>` | Some payload of Type T | `.None` | `Option<U>` |
+| `Result<T,E>` | Ok payload of Type T | `.Err(error)` | `Result<U,F>`; error fits F by ordinary rules |
+
+Only one layer is extracted. The normal result is a value of complete Type T, not a payload Place. Existing borrowed payloads retain permissions, Origins and Loans; try creates no borrow. T and U need not agree. Failure constructs the return target's enum, never reinterprets the original storage. Multiple error Types are not automatically combined; explicitly adapt errors when ordinary fitting cannot return them. `.Some(.None)` continues with the inner None; mixed nested Option/Result does not bypass either try's checks.
+
+**Target and cleanup.** The semantics correspond to a match with ordinary `return .None`/`return .Err(error)` at the same position, without textual duplication or a hidden Closure. Reuse that return's lexical target and barriers; do not search an outer target after a Type mismatch. Functions, Closures and getters have their own targets. Selections, loops, do and unsafe introduce none. Outward transfers forbidden from defer, defaults or verification messages remain forbidden. Main, init, set and deinit have Unit targets; source top-level items have no return target. Separate nested functions keep their own boundaries. Check targets and Types even in unreachable code or for known Some/Ok.
+
+Secure the successful payload or return value before ordinary temporary and Scope Exit cleanup. Transferred payloads are not destroyed twice; sources retain ordinary Moved states and are not reset to None. Failure during argument/aggregate evaluation skips remaining evaluation and cleans acquired parts in ordinary order. Abort, divergence and other transfers keep their rules; incomplete cleanup prevents pending return delivery. Returning a borrowed payload cannot let dependencies escape cleanup.
+
+**Inference.** Resolve the operand from its receiver, arguments and explicit Type information under existing inference and overload rules. Then fit its known success Type to any expectation on the try expression and check the failure return. Neither expectation nor return target feeds back into operand inference or retries overload selection. Require explicit Type arguments or an annotated intermediate when unresolved.
+
+```kimi
+// parse<T>() -> Result<T, ParseError>; no input determines T.
+let bad: i64 = try parse()   // Error: the annotation cannot infer T.
+let value = try parse<i64>() // Valid in a compatible return target.
+let pending: Result<i64, ParseError> = parse()
+let other = try pending
+```
+
+`try .None` and `try .Err(error)` lack an enum expectation and fail. An anonymous function's implicit failure returns are expectation-dependent result sources like written Case returns; they cannot invent a return Type. Obtain it from an annotation, a fixed expected signature or other independently typed sources, without source-order dependence or instantiation-time body reinterpretation.
+
+```kimi
+// getOpt() -> Option<i32>; f has no expected signature.
+let f = func () => try getOpt() // Error: inferred i32 cannot accept None.
+let g = func () -> Option<i32> => .Some(try getOpt())
+```
+
+A Never success payload produces no normal value but still requires failure checking. An operand itself typed Never, without resolved Option/Result structure, is invalid: `try $abort(...)` is not an exemption.
+
+**Success results and diagnostics.** There is no automatic Some/Ok wrapping. Named/anonymous functions and getters keep single-item and indented Body rules, including omitted Unit returns.
+
+```kimi
+// save() -> Result<(), Error>.
+func bad() -> Result<(), Error> => try save() // Error: () is not Result.
+func wrapped() -> Result<(), Error> => .Ok(try save())
+func forwarded() -> Result<(), Error> => save()
+func run() -> Result<(), Error>
+    try save() // Unit success needs no discard warning.
+    return .Ok(())
+```
+
+For mismatched normal or failure results, diagnose the path and Types. Suggest a suitable return annotation where missing, explicit success wrapping where needed, or removing try when its operand already has the complete return Type and is itself the normal result. These are alternatives, not automatic fixes. Validate changes to inference, calls, ownership and cleanup. For `try X.m`, explain grouping and suggest `(try X).m` only as a checked candidate; do not search unlimited alternate interpretations.
+
+There is no user-defined try support, try block, Option/Result interconversion, special implicit error conversion, automatic borrowing from borrowed enums, success wrapping, None-from-null or new Option layout guarantee. A try-prefixed API name is separate: it promises its documented result, not propagation or interception of argument Abort.
 
 ## 17.3. Abort termination
 
@@ -186,7 +249,7 @@ func parse(source: string) -> Result<ParseReport<Syntax>, ParseError>
 
 This API returns warnings with successful results. To preserve warnings on failure, include them in the error value or in an outer report containing the `Result`.
 
-The following subsections define compiler warnings, not returned API values; they change neither Type fitting, execution nor overload choice. For the same value at the same discard occurrence, only the highest applicable warning is emitted: **unintended Unit > Symbol-specific > effect-free**. Each warning keeps its own triggering conditions. Discards in distinct arms or bodies remain separate occurrences, and unrelated diagnostics are not suppressed. Future Symbol-specific warnings occupy the middle tier and must define any same-tier priority when introduced.
+The following subsections define compiler warnings, not returned API values; they change neither Type fitting, execution nor overload choice. For the same value at the same discard occurrence, emit only the highest applicable warning: **unintended Unit inference > Kimi Result discard > try success discard > effect-free value discard**. Keep each warning's existing triggering conditions; independent occurrences and unrelated diagnostics remain independent. Explicit discard (§14.2.4) suppresses only the discarded result's warning.
 
 ### 17.4.1. Unintended Unit inference
 
@@ -225,6 +288,24 @@ func cleanup() => handle.close()  // Do not assume a call is effect-free.
 ```
 
 The explicit no-op Unit value `()` receives no warning. The diagnostic should suggest a return annotation or a use of the value and never deletes the expression automatically. Diagnostics for `defer` placement and `while true` follow §16.1 and §14.9.2.
+
+### 17.4.3. Try success and intentional discard
+
+Warn when the try expression's result itself is in Discard Context, is not provably Unit, and is not Never. A Result payload instead receives the higher-priority Result warning, including Result<(), E>. Option<()> success is Unit and excluded; discarding an entire Option adds no Type-specific warning.
+
+Use existing Value/Discard Context propagation, including parentheses and branch bodies, without tracking value provenance. Initializing a local, passing an argument, returning or using the result in another operation is use; later nonuse is not a try warning. The operand's outer Result is processed by try and is not itself discarded. At generic definition time, warn unless Unit or Never is proved by existing normalization and evidence; do not rediagnose per instantiation.
+
+| Form (in Discard Context) | Outcome | Warning |
+| --- | --- | --- |
+| prepare() returning Result<Data,E> | Ignore success or error | Result |
+| _ = prepare() | Explicitly ignore success or error | None for this result |
+| try prepare() | Propagate error, discard Data | try success |
+| _ = try prepare() | Propagate error, explicitly discard Data | None for this result |
+| save() returning Result<(),E> | Ignore success or error | Result |
+| try save() | Propagate error, continue with Unit | None |
+| _ = try save() | Explicit Unit discard | None; discard marker optional |
+
+A try-success warning explains that the extracted value is unused, not that failure is unhandled. Suggest using it or writing `_ = try ...`. For Result discard, suggest applicable options in order: propagate and use success (or explicitly discard it), handle with match, then explicitly ignore the entire Result. Do not suggest bare try as warning-free for a non-Unit payload. Fixes target the actual discard site, preserve Body form/Context/ownership, and are not applied automatically.
 
 ## 17.5. Test verification operations
 

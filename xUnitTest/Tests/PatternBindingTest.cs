@@ -172,7 +172,7 @@ public class PatternBindingTest
         var selections = Matches(c);
         Assert.Equal("i32", selections[0].BoundType!.Name);
         Assert.True(c.Binding.TryGetMatch(selections[1], out var plan));
-        Assert.Equal(PatternAcquisition.Deferred, Assert.Single(plan!.Positions, p => p.Kind == BoundPatternKind.Binding).Acquisition);
+        Assert.Equal(PatternAcquisition.CopyOrMove, Assert.Single(plan!.Positions, p => p.Kind == BoundPatternKind.Binding).Acquisition);
     }
 
     [Fact]

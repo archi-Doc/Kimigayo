@@ -16,6 +16,7 @@ public sealed partial class OwnershipAnalysis
     {
         PatternAcquisition.Copy => AcquisitionKind.Copy,
         PatternAcquisition.Move => AcquisitionKind.Move,
+        PatternAcquisition.CopyOrMove => AcquisitionKind.CopyOrMove,
         _ => throw new InvalidOperationException("Pattern acquisition must be committed before ownership construction."),
     };
 
@@ -26,7 +27,7 @@ public sealed partial class OwnershipAnalysis
             return false;
         }
 
-        if (plan.Syntax.BoundType is not { } result || (!ReferenceEquals(result, BoundType.Never) && !this.SupportsType(result)))
+        if (plan.Syntax.BoundType is not { } result || (!ReferenceEquals(result, BoundType.Never) && result.Kind != BoundTypeKind.Parameter && !this.SupportsType(result)))
         {
             return false;
         }
@@ -43,8 +44,8 @@ public sealed partial class OwnershipAnalysis
         {
             var position = plan.Positions[i];
             if (position.AccessMode != PatternAccessMode.Owned || position.ImplicitDeref != PatternImplicitDeref.None ||
-                position.Acquisition == PatternAcquisition.Deferred || !this.SupportsType(position.MatchedType) ||
-                (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Move)))
+                position.Acquisition == PatternAcquisition.Deferred || (position.MatchedType.Kind != BoundTypeKind.Parameter && !this.SupportsType(position.MatchedType)) ||
+                (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Move or PatternAcquisition.CopyOrMove)))
             {
                 return false;
             }

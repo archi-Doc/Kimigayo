@@ -35,7 +35,7 @@ Rows follow the order of their owning chapters.
 | Contract-owned abstract Origins, non-static erased views, static-Place Origins, lending iterators | Deferred design; static Contracts inherit outer Origins (§6.1.3); ordinary retained storage is defined in §15.4 | [Abstract Origins](../15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations), [lifetime design boundaries](../15-ownership-and-lifetime-analysis.md#159-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](../15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking) |
 | Inter-thread atomicity of whole-value updates | No guarantee; the Kimi APIs and sequential behavior are specified | [Whole-value updates](../15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
-| Dedicated Option/Result propagation syntax | Deferred design | [Error policy](../17-failure-handling.md#171-error-policy) |
+| User-defined try support and try blocks | Not introduced; built-in Option/Result try is specified | [Try propagation](../17-failure-handling.md#1724-try-propagation) |
 | Source transparent Type aliases | Not introduced; a source alias opens a Container only | [Alias boundary](../18-modules-and-dependencies.md#181-external-references-and-aliases) |
 | Re-export syntax | Deferred design | [Re-exports](../18-modules-and-dependencies.md#182-re-exports) |
 | Private-source binary distribution and a stable external Kimigayo ABI | Deferred; source packages, semantic records and local publication are specified | [Source artifacts and binary interfaces](../18-modules-and-dependencies.md#183-source-artifacts-and-binary-interfaces) |

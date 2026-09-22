@@ -78,6 +78,11 @@ public abstract class ControlFlowTypeSystem
     /// <returns>True only for a proven Copy Type; unknown or unresolved Types return false.</returns>
     public virtual bool IsProvenCopy(Koto expression) => false;
 
+    /// <summary>Identifies the recognized owned Result Type for discard diagnostics.</summary>
+    /// <param name="expression">The resolved expression.</param>
+    /// <returns>Whether the result is Kimi Result.</returns>
+    public virtual bool IsKimiResult(Koto expression) => false;
+
     /// <summary>Identifies a selected direct call and its receiver, without treating its callee as a runtime value.</summary>
     /// <param name="call">The call to inspect.</param>
     /// <param name="receiver">The receiver evaluated before explicit arguments, or null for an unbound call.</param>

@@ -22,6 +22,7 @@ public enum PatternAcquisition : byte
     None,
     Copy,
     Move,
+    CopyOrMove,
     Deferred,
 }
 

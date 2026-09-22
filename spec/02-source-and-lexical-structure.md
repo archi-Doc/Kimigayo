@@ -213,7 +213,8 @@ A token's spelling is contiguous. Adjacent spellings must be separated when thei
 | Comparison and assignment | `=` `==` `!=` `<` `<=` `>` `>=` |
 | Bitwise and shifts | `&` `\|` `^` `<<` `>>` `&=` `\|=` `^=` `<<=` `>>=` |
 | Ranges | `..` `..=` |
-| Recognized but unavailable | `;` `?` `&&` `\|\|` |
+| Optional Type suffix | `?` |
+| Recognized but unavailable | `;` `&&` `\|\|` |
 
 Outside comments and literals, the longest punctuation spelling is matched: `..=` before `..` before `.`, `->` before `-`, `<<=` before `<<` before `<`, `>>=` before `>>` before `>`, `::` before `:`, and `=>` or `==` before `=`. Thus `a+++b` is `a`, `++`, `+`, `b`; there is no `+++` token. Unlisted punctuation is invalid unless it forms a grammatically valid sequence of listed tokens.
 
@@ -252,6 +253,18 @@ Visually confusable Names are not equal. An implementation may provide optional 
 
 Category tests and NFC validation use [Unicode 15.0.0](https://www.unicode.org/versions/Unicode15.0.0/) data. Characters unassigned in that release are not permitted in Names. Host runtime, operating system and globalization settings must not change these results; adopting another Unicode release requires a revision of this specification.
 
+The complete spelling `try` is reserved. The complete spelling `_` is a reserved token, not a Name. Longer Names such as `tryGet` and `_value`, numeric separators such as `1_000`, and literal/comment contents are unaffected. `_` denotes a syntax-specific omission, with no common acquisition operation:
+
+| Position | Meaning |
+| --- | --- |
+| Runtime Pattern | Wildcard (§14.8.1) |
+| `#case _` | Final catch-all with existing placement/count restrictions (§19) |
+| `[N of _]` | Existing element inference in an initialized local annotation (§4) |
+| `_ = expression` | Explicit discard statement (§14.2.4) |
+| for binding or Tuple binding element | Unnamed iteration binding (§14.6.1) |
+
+Every other standalone `_` is a syntax error, including declarations, references, captures, `let _`, `var _`, and named/anonymous function parameters.
+
 ### 2.5.1. Keywords
 
 A reserved keyword cannot be a Name. A contextual keyword is recognized only in its listed context and is otherwise an ordinary Name. Keywords match only as complete words: `ifValue` is one Name. These tables define token classes independently of any internal grouping.
@@ -260,7 +273,7 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | --- | --- |
 | Primitive Types | `isize`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`, `u128`, `f32`, `f64`, `bool`, `char`, `string` |
 | Bindings and functions | `let`, `var`, `func` |
-| Control, tests and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `do`, `match`, `return`, `exit`, `continue`, `yield`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
+| Control, tests and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `do`, `match`, `return`, `exit`, `continue`, `yield`, `try`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
 | Access and inheritance | `public`, `internal`, `private`, `protected`, `open` |
 | Dedicated forms | `Self`, `init`, `deinit`, `base` |
 | Compile-time selection | `switch`; used after `#`. There is no runtime switch construct. |

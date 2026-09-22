@@ -43,7 +43,6 @@ internal sealed partial class GenericStoragePlan
                 (uint)match.Subject >= (uint)body.Places.Count || initializers[match.Subject] < 0 ||
                 !ReferenceEquals(body.Places[match.Subject].Type, plan.Syntax.Expression.BoundType) ||
                 !EnumStorage.IsEnum(body.Places[match.Subject].Type) ||
-                binding.ProveCopy(body.Places[match.Subject].Type, plan.Syntax) != ConstraintProof.Proven ||
                 match.ArmCount != plan.Arms.Count || match.ArmStart < 0 || match.ArmStart > body.MatchArms.Count - match.ArmCount)
             {
                 return false;
@@ -150,7 +149,7 @@ internal sealed partial class GenericStoragePlan
                         continue;
                     }
 
-                    if (node.BodySymbol is null || node.Acquisition != PatternAcquisition.Copy ||
+                    if (node.BodySymbol is null || node.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Move or PatternAcquisition.CopyOrMove) ||
                         !body.SymbolPlaces.TryGetValue(node.BodySymbol, out var local) || !Is(body, cursor, OwnershipOperationKind.Declare, local))
                     {
                         return false;
@@ -158,7 +157,7 @@ internal sealed partial class GenericStoragePlan
 
                     cursor = Next(body, cursor);
                     if (!Is(body, cursor, OwnershipOperationKind.AcquirePattern, split.PayloadStart + i) ||
-                        body.Operations[cursor].Input != local || body.Operations[cursor].Acquisition != AcquisitionKind.Copy ||
+                        body.Operations[cursor].Input != local || body.Operations[cursor].Acquisition != (node.Acquisition == PatternAcquisition.Copy ? AcquisitionKind.Copy : node.Acquisition == PatternAcquisition.Move ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove) ||
                         !ReferenceEquals(body.Operations[cursor].Source, node.Source))
                     {
                         return false;

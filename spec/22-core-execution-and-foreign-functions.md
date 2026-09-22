@@ -89,7 +89,7 @@ Determine HasTopLevelRuntimeBodyItem once per document from selected root items,
 
 | Root item | Counts as a runtime body item |
 | --- | --- |
-| Expression/control expression, unsafe/defer/require statement | Yes, including Unit and removable expressions |
+| Expression/control expression, unsafe/defer/require/explicit-discard statement | Yes, including Unit and removable expressions |
 | Local let/var | Yes, even without an initializer |
 | Function declaration, including main | No |
 | Container or alias | No |

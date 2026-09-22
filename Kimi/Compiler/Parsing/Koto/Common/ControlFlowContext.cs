@@ -84,7 +84,7 @@ public static partial class KotoHelper
     /// <param name="selection">The attached selection.</param>
     /// <returns>Whether the selection is in Value Context.</returns>
     public static bool IsResultRequiringSelection(Koto selection)
-        => selection is IfKoto or MatchKoto && IsValueContext(selection);
+        => selection is TryKoto || (selection is IfKoto or MatchKoto && IsValueContext(selection));
 
     /// <summary>Determines whether a function's fixed return type discards a single-item value.</summary>
     /// <param name="boundary">The function or accessor.</param>
@@ -120,6 +120,8 @@ public static partial class KotoHelper
                 return IsValueContext(parentheses);
             case IfKoto conditional:
                 return !IsSelectionBody(conditional, expression) || IsValueContext(conditional);
+            case TryKoto:
+                return true;
             case MatchKoto match:
                 return !IsSelectionBody(match, expression) || IsValueContext(match);
             case DoKoto scoped:

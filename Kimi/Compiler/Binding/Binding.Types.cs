@@ -447,6 +447,9 @@ public sealed partial class Binding
                 return syntax.BoundSymbol?.WholeType;
             case LengthParameterKoto:
                 return BoundType.ISize;
+            case OptionalTypeKoto optional:
+                var payload = this.BindType(optional.Type, scope, context.Nested);
+                return payload is null ? null : this.InternType(BoundTypeKind.Constructed, this.Library.Option, SemanticsKind.Owner, [payload]);
             case ParenthesizedTypeKoto parentheses:
                 return this.BindType(parentheses.Type, scope, context);
             case TypeSemanticsKoto semantics:

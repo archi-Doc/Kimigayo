@@ -45,12 +45,17 @@ internal static partial class LlvmModuleWriter
 
             output.Write('\n');
             WriteArithmeticFailure(output, constants, instruction, "%invalid");
-            Name(output, "  %offset", id);
+            Name(output, operands.Length == 5 ? "  %itemoffset" : "  %offset", id);
             output.Write(" = mul i64 ");
             WriteOperand(output, operands[1]);
             output.Write(", ");
-            output.Write(instruction.Representation!.Layout.Stride);
+            output.Write(operands.Length == 5 ? (long)operands[3].Value : instruction.Representation!.Layout.Stride);
             output.Write('\n');
+            if (operands.Length == 5)
+            {
+                output.Write($"  %offset{id} = add i64 %itemoffset{id}, {(long)operands[4].Value}\n");
+            }
+
             Name(output, "  %element", id);
             output.Write(" = getelementptr i8, ptr ");
             if (arrayRead)
@@ -70,7 +75,7 @@ internal static partial class LlvmModuleWriter
             }
             else if (instruction.ScalarOperator != "ArrayStorageRead")
             {
-                WriteScalar(output, constants, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation.ComputationType }, []);
+                WriteScalar(output, constants, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation!.ComputationType }, []);
             }
 
             return;

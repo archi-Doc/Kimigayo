@@ -121,8 +121,25 @@ public sealed partial class Binding
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
     {
         var plan = this.matches[match];
-        var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
         var subject = this.BindNode(match.Expression, scope);
+        if (match is TryKoto propagation)
+        {
+            if (subject?.Kind != BoundTypeKind.Constructed || subject.Semantics != SemanticsKind.Owner || (subject.Symbol != this.Library.Option && subject.Symbol != this.Library.Result))
+            {
+                return Fail(match, BindingFailure.TypeMismatch);
+            }
+
+            propagation.SelectOption(subject.Symbol == this.Library.Option);
+            if (!propagation.SemanticsIndexed)
+            {
+                this.indexer.IndexMatchArms(propagation, scope);
+                propagation.SemanticsIndexed = true;
+            }
+
+            expected = subject.Components[0];
+        }
+
+        var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
         if (subject is null)
         {
             plan.Pending = true;
@@ -446,7 +463,7 @@ public sealed partial class Binding
                 }
 
                 var proof = this.ProveCopy(position.MatchedType, position.Source);
-                var acquisition = proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.Deferred;
+                var acquisition = proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
                 plan.PositionStorage[i] = position with { Acquisition = acquisition };
                 if (proof == ConstraintProof.Error)
                 {

@@ -42,12 +42,12 @@ public sealed partial class OwnershipAnalysis
         return this.SequenceValue(source, source.BoundType!, SequenceOperation.Read, receiver, index: index);
     }
 
-    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1)
+    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1, int element = -1)
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
         this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
-        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end));
+        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end, element));
         return this.RegisterTemporary(result);
     }
 
@@ -138,30 +138,37 @@ public sealed partial class OwnershipAnalysis
         this.current = enter;
         var bindingMark = this.locals.Count;
         this.loops.Add(new(source, head, exit, bindingMark, this.temporaries.Count, Comparisons: this.comparisonDepth));
-        var name = source.Bindings[0];
-        var binding = this.LocalPlace(name.BoundSymbol, name, element, false);
-        this.locals.Add(new(binding, name, this.registrationSequence++));
-        this.Emit(OwnershipOperationKind.Declare, name, binding);
-        // Acquire the current value before advancing the hidden iterator. The last
-        // increment reaches end (at most maximum isize), never end + 1.
-        int item;
-        if (array)
+        // Each slot has the ordinary iteration lifetime, including unnamed slots.
+        // Supported array elements are Copy, so component acquisition needs no
+        // whole-Tuple temporary; the source iterator snapshot still owns the array.
+        for (var slot = 0; slot < source.Bindings.Count; slot++)
         {
-            item = this.SequenceValue(source, element, SequenceOperation.ArrayRead, iterable, index: this.Value(current));
-        }
-        else if (slice)
-        {
-            item = this.SequenceValue(source, element, SequenceOperation.Borrow, iterable, index: this.Value(current));
-        }
-        else
-        {
-            item = this.Place(name, BoundType.ISize, OwnershipPlaceKind.Temporary, true);
-            var itemOp = this.Emit(OwnershipOperationKind.Produce, name, item);
-            this.SetValue(itemOp, OwnershipValueKind.Alias, [this.Value(current)]);
-            this.RegisterTemporary(item);
+            var name = source.Bindings[slot];
+            var slotType = name.BoundType!;
+            var binding = this.LocalPlace(name.BoundSymbol, name, slotType, false);
+            this.locals.Add(new(binding, name, this.registrationSequence++));
+            this.Emit(OwnershipOperationKind.Declare, name, binding);
+            int item;
+            if (array)
+            {
+                item = this.SequenceValue(source, slotType, SequenceOperation.ArrayRead, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
+            }
+            else if (slice)
+            {
+                item = this.SequenceValue(source, slotType, SequenceOperation.Borrow, iterable, index: this.Value(current));
+            }
+            else
+            {
+                item = this.Place(name, BoundType.ISize, OwnershipPlaceKind.Temporary, true);
+                var itemOp = this.Emit(OwnershipOperationKind.Produce, name, item);
+                this.SetValue(itemOp, OwnershipValueKind.Alias, [this.Value(current)]);
+                this.RegisterTemporary(item);
+            }
+
+            this.Emit(OwnershipOperationKind.Write, name, binding, item);
         }
 
-        this.Emit(OwnershipOperationKind.Write, name, binding, item);
+        // The last advance reaches end (at most maximum isize), never end + 1.
         var one = this.SequenceConstant(source, BoundType.ISize, 1);
         var next = this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(one), KotoKind.Plus);
         this.Emit(OwnershipOperationKind.Write, source, cursor, next);

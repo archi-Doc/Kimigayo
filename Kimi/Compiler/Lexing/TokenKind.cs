@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 namespace Kimi.Compiler.Lexing;
 
@@ -57,6 +57,8 @@ public enum TokenKind : byte
     Continue, // loop,for,while/continue
     Yield, // if/yield
     Null, // contextually typed raw-pointer literal
+    Try,
+    Underscore,
     Require,
     Defer,
     Self,

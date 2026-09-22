@@ -10,7 +10,10 @@ namespace Kimi.Compiler;
 /// <summary>A control-flow diagnostic associated with source syntax.</summary>
 /// <param name="Node">The offending syntax.</param>
 /// <param name="Message">The diagnostic text.</param>
-public sealed record ControlFlowIssue(Koto Node, string Message);
+public sealed record ControlFlowIssue(Koto Node, string Message)
+{
+    internal int Priority { get; init; } = 4;
+}
 
 /// <summary>Separates normal-expression typing from the target's result contract.</summary>
 public sealed class ControlFlowNodeInfo
@@ -175,11 +178,22 @@ public sealed class ControlFlowAnalysis
         return left;
     }
 
-    private void Warn(Koto node, string message)
+    private void Warn(Koto node, string message, int priority = 4)
     {
+        node = KotoHelper.UnwrapParentheses(node);
         if (this.warningNodes.Add(node))
         {
-            this.warnings.Add(new(node, message));
+            this.warnings.Add(new(node, message) { Priority = priority });
+            return;
+        }
+
+        for (var i = 0; i < this.warnings.Count; i++)
+        {
+            if (this.warnings[i].Node == node && priority < this.warnings[i].Priority)
+            {
+                this.warnings[i] = new(node, message) { Priority = priority };
+                break;
+            }
         }
     }
 
@@ -277,7 +291,7 @@ public sealed class ControlFlowAnalysis
                 this.WarnUnitTail(other);
             }
         }
-        else if (body is MatchKoto match)
+        else if (body is MatchKoto match && body is not TryKoto)
         {
             for (var i = 0; i < match.Arms.Count; i++)
             {
@@ -287,7 +301,7 @@ public sealed class ControlFlowAnalysis
         else if (body is ExpressionKoto and not (UnitLiteralKoto or JumpKoto or LoopKoto or ForKoto or WhileKoto) &&
             this.nodes.GetValueOrDefault(body)?.ExpressionType is { } type && type != ControlFlowType.Unit && type != ControlFlowType.Never)
         {
-            this.Warn(body, "Unit was inferred from this discarded tail; use yield, return, a named exit, or a single-item body to supply the value.");
+            this.Warn(body, "Unit was inferred from this discarded tail; use yield, return, a named exit, or a single-item body to supply the value.", 1);
         }
     }
 
@@ -344,9 +358,22 @@ public sealed class ControlFlowAnalysis
         }
 
         expected ??= this.types.GetExpectedType(node);
-        if (node is ExpressionKoto && !KotoHelper.IsValueContext(node) && this.IsEffectFree(node) && node.Parent is not ParenthesizedKoto)
+        if (node is ExpressionKoto && !KotoHelper.IsValueContext(node) && node.Parent is not ParenthesizedKoto)
         {
-            this.Warn(node, "This effect-free value is discarded; use its value or add the intended return type.");
+            var value = KotoHelper.UnwrapParentheses(node);
+            var type = this.types.GetExpressionType(value);
+            if (this.types.IsKimiResult(value))
+            {
+                this.Warn(node, "The Result is discarded; propagate and use success (or write _ = try ...), handle it with match, or write _ = ... to ignore errors too.", 2);
+            }
+            else if (value is TryKoto && type is not null && type != ControlFlowType.Unit && type != ControlFlowType.Never)
+            {
+                this.Warn(node, "The extracted try success value is unused; use it or write _ = try ... .", 3);
+            }
+            else if (this.IsEffectFree(node))
+            {
+                this.Warn(node, "This effect-free value is discarded; use its value or add the intended return type.");
+            }
         }
 
         var referencedFunction = this.types.GetReferencedFunction(node);
@@ -483,6 +510,9 @@ public sealed class ControlFlowAnalysis
             case IfKoto conditional:
                 flow = this.VisitIf(conditional, reachable, expected);
                 break;
+            case TryKoto propagation:
+                flow = this.VisitMatch(propagation, reachable, this.types.GetExpressionType(propagation));
+                break;
             case MatchKoto match:
                 flow = this.VisitMatch(match, reachable, expected);
                 break;
@@ -491,6 +521,9 @@ public sealed class ControlFlowAnalysis
                 break;
             case JumpKoto jump:
                 flow = this.VisitJump(jump, reachable);
+                break;
+            case DiscardKoto discard:
+                flow = this.Visit(discard.Operand, reachable) with { Type = ControlFlowType.Unit };
                 break;
             case RequireKoto require:
                 flow = this.VisitRequire(require, reachable);

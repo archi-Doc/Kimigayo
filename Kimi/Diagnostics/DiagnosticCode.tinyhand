@@ -245,6 +245,9 @@
   + Name="TypeMismatch_Kd"
     Message="Values must be of the same type"
 
+  + Name="InvalidTry_Kd"
+    Message="{0}"
+
   + Name="ControlFlow_Kd"
     Message="{0}"
 

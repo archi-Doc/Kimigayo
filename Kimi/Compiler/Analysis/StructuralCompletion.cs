@@ -185,6 +185,9 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
                 }
 
                 break;
+            case DiscardKoto discard:
+                result = this.Visit(discard.Operand);
+                break;
             case RequireKoto require:
                 result = this.Visit(require.Condition);
                 if (result.Normal)

@@ -653,6 +653,9 @@ public sealed partial class OwnershipAnalysis
                 return this.ScopedBody(scoped, scoped.Body);
             case LoopKoto repeat:
                 return this.Repeat(repeat);
+            case DiscardKoto discard:
+                this.Expression(discard.Operand);
+                return this.Temporary(node);
             case RequireKoto require:
                 return this.Require(require);
             case TestVerificationKoto verification:

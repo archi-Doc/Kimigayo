@@ -9,7 +9,7 @@ Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a o
 | Level | Operators or syntax | Association |
 | --- | --- | --- |
 | 1 | `.name`, `(...)`, `<Types>`, `[...]`, postfix `++` `--` | Postfix chain, left to right |
-| 2 | Prefix `+` `-` `not` `*` `^` `++` `--` | Right |
+| 2 | Prefix `+` `-` `not` `*` `^` `++` `--` `try` | Right |
 | 3 | `@Type`, `@Semantics` | Left |
 | 4 | `*` `/` `%` | Left |
 | 5 | `+` `-` | Left |
@@ -203,6 +203,8 @@ let taken = value // Copy if Copy, otherwise Move.
 Operand Types, expected Types and conversion success cannot resolve a role ambiguity or reopen outer lookup. Qualified names and constructed Types use normal Type syntax; `@s/T` gives `s` the Semantics role and `T` the Core role, extended to the View Target role when `s` is an object Semantics. Qualification or an explicit Semantics/Core form may disambiguate a bare name.
 
 The extended Container path syntax (§9.6.1) neither relaxes the Origin restrictions on Adaptation Targets nor permits groups or Contracts as value Types, and bound Container qualifiers are unavailable here because their Origin argument list is mandatory. Other grouping and selector forms keep their existing rules.
+
+An optional suffix applies to the complete target Type (§3.2.1), not to Semantics shorthand. For `x: i32`, both `x@i32?` and `x@ref/i32?` fail because no conversion to the respective Option Type exists. A value already of that complete Option Type can be acquired normally. This adds neither borrow-then-wrap nor user-defined conversion.
 
 ### 13.5.2. Static selection and inference
 
@@ -617,7 +619,7 @@ If the right-hand side or the operation does not complete normally, nothing is w
 
 Operator symbols, precedence and associativity are fixed by the language. User-defined comparison uses the [Kimi Contract mapping](#1341-contract-comparison-mapping). User-defined arithmetic remains deferred and unavailable, and a same-named method does not authorize an operator. Future arithmetic must preserve evaluation order and counts and assignment's Unit result.
 
-`and`, `or`, `not`, `=`, `@`, `is`, Ranges and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined, and neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.` or a ternary `?:`; use the logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref`/`@uniq`. Prefix `move`, a Move accessor and a dedicated `<-` Move operator are not defined. Recognition by the lexer alone does not make a token a usable operator.
+`and`, `or`, `not`, `=`, `@`, `is`, Ranges and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined, and neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.` or a ternary `?:`; use the logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref`/`@uniq`. Prefix `move`, a Move accessor and a dedicated `<-` Move operator are not defined. The Type-only T?/T?? suffix (§3.2.1) and prefix try (§17.2.4) are separate. Recognition by the lexer alone does not make a token a usable operator.
 
 `#Name` is an Attribute and `#if`/`#switch` are compile-time directives, not runtime unary operators.
 

@@ -316,6 +316,9 @@ public sealed partial class Binding
             case AliasKoto alias:
                 this.AliasTarget(alias);
                 return null;
+            case DiscardKoto discard:
+                this.BindNode(discard.Operand, scope);
+                return Complete(node, BoundType.Unit);
             case CodeBlockKoto block:
                 BoundType? blockType = BoundType.Unit;
                 for (var i = 0; i < block.Items.Count; i++)
@@ -434,6 +437,11 @@ public sealed partial class Binding
                 }
 
                 var actual = jump.Expression is { } operand ? this.BindNode(operand, scope, resultType) : BoundType.Unit;
+                if (jump.Parent is TryKoto propagation && actual?.Symbol != propagation.Expression.BoundType?.Symbol)
+                {
+                    Fail(jump, BindingFailure.TypeMismatch);
+                }
+
                 if (jump is not ContinueKoto)
                 {
                     targetResult?.Sources.Add(actual);

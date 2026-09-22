@@ -79,6 +79,7 @@ public enum DiagnosticCode
     TokenMismatch_Kd,
     TopLevelKeywordAfterCode_Kd,
     TypeMismatch_Kd,
+    InvalidTry_Kd,
     UnexpectedIndent_Kd,
     UnexpectedToken_Kd,
     UnexpectedTrailingToken_Kd,

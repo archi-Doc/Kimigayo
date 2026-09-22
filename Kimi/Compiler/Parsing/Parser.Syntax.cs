@@ -283,7 +283,7 @@ public static partial class Parser
         }
 
         Koto element;
-        if (reader.AllowArrayElementInference && reader.IsCurrentIdentifier("_"))
+        if (reader.AllowArrayElementInference && reader.CurrentTokenKind == TokenKind.Underscore)
         {
             element = new TypeSemanticsKoto(ref reader, reader.Read());
             reader.HasInferredArrayElement = true;
@@ -465,9 +465,9 @@ public static partial class Parser
             return negative ? KotoHelper.NewUnaryKoto(ref reader, token, literal) : literal;
         }
 
-        if (reader.IsCurrentIdentifier("_"))
+        if (reader.CurrentTokenKind == TokenKind.Underscore)
         {
-            return ParseName(ref reader);
+            return new IdentifierNameKoto(ref reader, reader.Read(), "_");
         }
 
         Koto reference;

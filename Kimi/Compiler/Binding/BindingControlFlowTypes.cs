@@ -7,6 +7,9 @@ namespace Kimi.Compiler;
 /// <summary>Supplies retained Binding facts; never resolves names during flow analysis.</summary>
 internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowTypeSystem
 {
+    public override bool IsKimiResult(Koto expression) => expression.BindingState == BindingState.Resolved &&
+        expression.BoundType is { Kind: BoundTypeKind.Constructed } type && type.Symbol == binding.Library.Result;
+
     public override bool IsBoundConstruction(Koto expression) => binding.TryGetEnumConstruction(expression, out _);
 
     public override bool IsBoundRuntimeTypeTest(Koto expression)

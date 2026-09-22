@@ -106,9 +106,19 @@ internal sealed partial class BodyLowering
             var validSource = borrowedArray ? operation.Source is IndexKoto index && ReferenceTypes.IsArray(SignatureType(this, index.Left.BoundType)) :
                 arrayRead ? operation.Source is ForKoto { Iterable.BoundType.Kind: BoundTypeKind.FixedArray } :
                 operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice };
+            var itemType = receiver.Components[0];
+            var itemLayout = plan.Element >= 0 ? this.aggregateLayouts.Get(itemType) : null;
+            if (plan.Element < -1 || (plan.Element >= 0 && (operation.Source is not ForKoto { IsTupleBinding: true } tupleLoop ||
+                plan.Kind != SequenceOperation.ArrayRead || itemType.Kind != BoundTypeKind.Tuple || itemLayout is null ||
+                (uint)plan.Element >= (uint)itemType.Components.Count || tupleLoop.Bindings.Count != itemType.Components.Count)))
+            {
+                return Fail("Iteration component does not match its Tuple binding shape.", out failure);
+            }
+
+            var readType = plan.Element < 0 ? itemType : itemType.Components[plan.Element];
             var aggregate = plan.Kind == SequenceOperation.ArrayRead ? this.aggregateLayouts.Get(ValueType(body, id)!) : null;
             if (receiver.Kind != (arrayRead ? BoundTypeKind.FixedArray : BoundTypeKind.Slice) || !validSource ||
-                !ReferenceEquals(ValueType(body, id), receiver.Components[0]) || (!ScalarTypes.Supports(ValueType(body, id)) && aggregate is null && !ReferenceEquals(ValueType(body, id), BoundType.Unit)) ||
+                !ReferenceEquals(ValueType(body, id), readType) || (!ScalarTypes.Supports(ValueType(body, id)) && aggregate is null && !ReferenceEquals(ValueType(body, id), BoundType.Unit)) ||
                 (plan.Kind == SequenceOperation.ArrayRead && body.Places[operation.Place].Acquisition != AcquisitionKind.Copy) ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
                 (body.IsReachable(id) && !this.Dominates(plan.Index, id)) || !this.TryGetLocation(operation.Source, directory, constants, out var location))
@@ -116,7 +126,11 @@ internal sealed partial class BodyLowering
                 return Fail("Slice read requires a protected handle and an isize index.", out failure);
             }
 
-            function.AddScalar(EmissionOpcode.Sequence, id, [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, arrayRead ? receiver.Length : -1)], place: body.Operations.Count + id, location: location, op: aggregate is not null || ReferenceEquals(ValueType(body, id), BoundType.Unit) ? "ArrayStorageRead" : arrayRead ? "ArrayRead" : "Read", check: ArithmeticCheckKind.Bounds, representation: aggregate?.Value ?? WindowsLowering.GetValue(ValueType(body, id)!));
+            ReadOnlySpan<EmissionOperand> operands = plan.Element < 0
+                ? [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, arrayRead ? receiver.Length : -1)]
+                : [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, receiver.Length),
+                    new(EmissionOperandKind.Integer, itemLayout!.Value.Layout.Stride), new(EmissionOperandKind.Integer, itemLayout.Offset(plan.Element))];
+            function.AddScalar(EmissionOpcode.Sequence, id, operands, place: body.Operations.Count + id, location: location, op: aggregate is not null || ReferenceEquals(ValueType(body, id), BoundType.Unit) ? "ArrayStorageRead" : arrayRead ? "ArrayRead" : "Read", check: ArithmeticCheckKind.Bounds, representation: aggregate?.Value ?? WindowsLowering.GetValue(ValueType(body, id)!));
             if (aggregate is { Value.Layout.Size: > 0 })
             {
                 var start = function.Operands.Count;

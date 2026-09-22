@@ -1370,7 +1370,7 @@ CloseParameters:
     public static Koto ParseType(ref TokenReader reader)
         => ParseDeclarationType(ref reader);
 
-    private static Koto ParseType(ref TokenReader reader, bool parseOrigin, bool disambiguateGenerics = false, bool allowNestedOrigins = true)
+    private static Koto ParseType(ref TokenReader reader, bool parseOrigin, bool disambiguateGenerics = false, bool allowNestedOrigins = true, bool optionalSuffix = true)
     {
         var start = reader.CurrentTokenRange.Start;
         var left = ParseTypeInternal(ref reader, disambiguateGenerics, allowNestedOrigins);
@@ -1421,11 +1421,17 @@ CloseParameters:
             left = ParseTypeOrigin(ref reader, left);
         }
 
-        return left;
+        if (disambiguateGenerics && reader.CurrentTokenKind == TokenKind.Question &&
+            left is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out _))
+        {
+            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "optional suffix on Semantics shorthand");
+        }
+
+        return optionalSuffix ? ParseOptionalSuffix(ref reader, left) : left;
 
         static Koto? ParseTypeInternal(ref TokenReader reader, bool disambiguateGenerics, bool allowNestedOrigins)
         {
-            if (reader.IsCurrentIdentifier("_"))
+            if (reader.CurrentTokenKind == TokenKind.Underscore)
             {
                 reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "_");
             }
@@ -1478,7 +1484,7 @@ CloseParameters:
                 }
 
                 var attribute = reader.PopAttribute();
-                var type = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: disambiguateGenerics, allowNestedOrigins: allowNestedOrigins);
+                var type = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: disambiguateGenerics, allowNestedOrigins: allowNestedOrigins, optionalSuffix: false);
                 if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null, OriginName: null, OriginExpression: null, OriginArguments: null } transparentType)
                 {
                     type = transparentType.Type;
@@ -1511,6 +1517,16 @@ CloseParameters:
             reader.ReportUnexpectedToken(token);
             return null;
         }
+    }
+
+    private static Koto ParseOptionalSuffix(ref TokenReader reader, Koto type)
+    {
+        while (reader.TryConsume(TokenKind.Question, out var suffix, false))
+        {
+            type = new OptionalTypeKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, suffix.End), type);
+        }
+
+        return type;
     }
 
     private static bool HasBorrowOriginSuffix(ref TokenReader reader)
@@ -1875,7 +1891,7 @@ CloseParameters:
 
             Koto? condition;
             CompileTimeConditionResult result;
-            if (reader.IsCurrentIdentifier("_"))
+            if (reader.CurrentTokenKind == TokenKind.Underscore)
             {
                 var fallbackToken = reader.Read();
                 if (fallbackSeen)
@@ -2636,6 +2652,14 @@ CloseParameters:
 
     internal static Koto? ParseBlockItem(ref TokenReader reader)
     {
+        if (reader.CurrentTokenKind == TokenKind.Underscore && reader.PeekKind(1) == TokenKind.Equals)
+        {
+            var discardToken = reader.Read();
+            reader.Advance();
+            var value = ParseExpression(ref reader);
+            return new DiscardKoto(ref reader, SourceSpan.FromBounds(discardToken.Span.Start, value.Span.End), value);
+        }
+
         if (reader.CurrentTokenKind == TokenKind.Dollar && reader.PeekKind(1) is TokenKind.Identifier or TokenKind.Require)
         {
             var probe = reader;
@@ -2982,6 +3006,12 @@ CloseParameters:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryParseForBinding(ref TokenReader reader, [NotNullWhen(true)] out IdentifierNameKoto? binding)
     {
+        if (reader.CurrentTokenKind == TokenKind.Underscore)
+        {
+            binding = new IdentifierNameKoto(ref reader, reader.Read(), "_");
+            return true;
+        }
+
         if (reader.CurrentTokenKind == TokenKind.In ||
             !reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
         {
@@ -3450,7 +3480,7 @@ ProcessPrefix:
             goto ProcessPrefix;
         }
 
-        if (IsPrefixOperator[(byte)tokenKind] && reader.CanRead)
+        if ((tokenKind == TokenKind.Try || IsPrefixOperator[(byte)tokenKind]) && reader.CanRead)
         {
             var token = reader.Read();
             Koto operand;
@@ -3472,7 +3502,7 @@ ProcessPrefix:
                 reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "$abort(Expression)");
             }
 
-            return KotoHelper.NewUnaryKoto(ref reader, token, operand);
+            return tokenKind == TokenKind.Try ? new TryKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, operand.Span.End), operand) : KotoHelper.NewUnaryKoto(ref reader, token, operand);
         }
 
         return ParsePrimaryExpression(ref reader);
@@ -4306,6 +4336,10 @@ Loop:
         {
             type = ParseType(ref reader, parseOrigin, allowNestedOrigins: allowNestedOrigins);
         }
+
+        var optionalType = ParseOptionalSuffix(ref reader, type);
+        parameterList &= ReferenceEquals(optionalType, type);
+        type = optionalType;
 
         if (!parseFunctionType || reader.CurrentTokenKind != TokenKind.MinusGreaterThan)
         {

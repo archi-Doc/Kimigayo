@@ -464,3 +464,19 @@ Before implementation or optimization, record the environment, input data, proce
 - Increasing input length, nesting depth and concurrent request count. Inspect for repeated scans, quadratic growth and stack exhaustion in parsing, extraction, output and diagnostics. Timing alone does not prove a complexity bound; review algorithms too. Internal work counters are optional.
 
 Verify zero documentation-specific allocations with collection disabled and no dedicated candidate buffer when none is needed. Include an ordinary-compilation baseline; parser-only improvements do not establish a compiler-wide speedup. Keep external callbacks, declaration/source-name inputs, generated output and optional fine-grained mappings visible in resource accounting. No unconditional speedup or fixed parser architecture is required; observed costs must meet the profile's bounds and the recorded acceptance gates.
+
+
+## A.22. Optional Types, propagation and discard
+
+Implement §3.2.1, §14.2.4, §14.6 and §17.2.4/§17.4 consistently across lexing, parsing, Binding, control flow, ownership, lowering and generation.
+
+- Preserve optional/try/discard syntax and source locations. Normalize optional syntax to recognized Option Identity before proofs, decomposition and layout.
+- Check prefix/arrow/Origin grouping, repeated ?, generic arguments and adaptation targets; reject suffixes on Semantics shorthand and dedicated name positions.
+- Recognize standalone _ and try only after scanning the whole identifier; retain all specified underscore uses and reject ordinary names.
+- Resolve try operands without expected Types. Check both Cases, one-layer extraction, distinct success/error Types, incompatible return targets, unreachability, nested boundaries, anonymous results, generics and Never.
+- Route propagation through ordinary match acquisition and return cleanup before generation. Verify each evaluation and destruction count, retained borrowed payload dependencies, partial argument/aggregate construction, deferred cleanup and Abort/non-completion.
+- Check explicit discard as a statement with an expectation-free Value operand, no lifetime extension and only local warning suppression. Verify Unit exceptions, nested Result, all warning priorities, independent internal discards and definition-time generic warnings.
+- Unnamed iteration bindings keep acquisition, lifetime and cleanup; test repeated _, Tuple arity, duplicate names, whole-versus-component acquisition and early transfers.
+- Diagnostics explain mismatched success/failure paths and valid alternatives without speculative fix-its or unlimited overload retries.
+
+Reuse existing Type, Case, match, return and cleanup machinery without textual duplication or hidden Closures. As-if copy/slot elision must preserve acquisition/Move state, dependencies and destruction order. Cleanup sharing requires matching state, defers, secured results and destinations (§21.4.5), not merely equal scope depth. Do not assume failure paths cold without evidence, or add niche optimization contrary to §21.1.5. Old caches/artifacts must not certify changed rules.

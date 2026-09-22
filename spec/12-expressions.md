@@ -52,7 +52,7 @@ Value and access categories follow [values, places and storage](03-types-and-val
 
 A normally completing expression produces a typed result, which may be [Unit](03-types-and-values.md#315-unit-and-never-types). [Value and Discard Contexts](14-control-flow.md#142-blocks-and-evaluation-contexts) determine how that result is used; discarding it still preserves side effects and all Type, ownership and destruction checks. Assignment requires a writable [Place](03-types-and-values.md#34-values-places-and-storage) or an accessible Property setter; a readable Property need not expose borrowable storage.
 
-An indented body is a syntax container, not a standalone expression; use a selection or do expression to obtain a value from several operations. `unsafe`, `defer` and `require` are statements, not initializers or arguments. `let`/`var` declarations are neither expressions nor condition-binding syntax; nested bodies inside conditions keep their normal declaration rules (§14.2.3).
+An indented body is a syntax container, not a standalone expression; use a selection or do expression to obtain a value from several operations. `unsafe`, `defer`, `require` and explicit discard (`_ = expression`) are statements, not initializers or arguments. `let`/`var` declarations are neither expressions nor condition-binding syntax; nested bodies inside conditions keep their normal declaration rules (§14.2.3).
 
 Source delimiters and continuation follow [lines, indentation and continuation](02-source-and-lexical-structure.md#22-lines-indentation-and-continuation).
 

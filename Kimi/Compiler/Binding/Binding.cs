@@ -140,7 +140,6 @@ public sealed partial class Binding
             }
 
             this.IndexModuleReferences();
-            this.PrunePatternScopes();
             this.Library.Restore();
             this.kimiValid = this.Library.ValidateDeclarations();
             if (!this.kimiValid)
@@ -240,6 +239,7 @@ public sealed partial class Binding
                 this.BindNode(libraryRoot.Members[i], this.Library.Scope);
             }
 
+            this.PrunePatternScopes();
             this.ClearCapabilityResults();
             this.ValidateOriginRelations();
             this.ValidateCopyDeclarations(mode);
@@ -302,6 +302,10 @@ public sealed partial class Binding
             if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
             {
                 issue.Node.AddDiagnostic(issue.Code, plan.Coverage.Describe());
+            }
+            else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
+            {
+                issue.Node.AddDiagnostic(issue.Code, this.DescribeTryFailure(issue.Node));
             }
             else
             {
@@ -535,6 +539,11 @@ public sealed partial class Binding
                     BindingFailure.NonExhaustiveMatch => DiagnosticCode.NonExhaustiveMatch_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
+                if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
+                {
+                    code = DiagnosticCode.InvalidTry_Kd;
+                }
+
                 this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code));
             }
         }
@@ -586,6 +595,12 @@ public sealed partial class Binding
         }
 
         symbol.Scope = scope;
+        if (name == "_" && node.Parent is ForKoto)
+        {
+            node.BoundSymbol = symbol;
+            return symbol;
+        }
+
         var table = kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType ? scope.Types : scope.Values;
         if (table.TryGetValue(name, out var previous))
         {
@@ -766,6 +781,40 @@ public sealed partial class Binding
 
         internal BindingScope Scope { get; set; } = null!;
 
+        public void IndexMatchArms(MatchKoto match, BindingScope scope)
+        {
+            var previous = this.Scope;
+            this.Scope = scope;
+            var outer = this.Scope;
+            for (var i = 0; i < match.Arms.Count; i++)
+            {
+                var arm = match.Arms[i];
+                var armScope = binding.GetScope(arm.Pattern, outer);
+                this.Scope = armScope;
+                this.patternDepth++;
+                this.Visit(arm.Pattern);
+                this.patternDepth--;
+                if (arm.Guard is { } guard)
+                {
+                    this.Scope = binding.GetScope(guard, outer);
+                    binding.candidateScopes.Add(guard);
+                    this.IndexCandidates(arm.Pattern, true);
+
+                    this.Visit(guard);
+                }
+                else
+                {
+                    this.IndexCandidates(arm.Pattern, false);
+                }
+
+                this.Scope = armScope;
+                this.Visit(arm.Body);
+                this.Scope = outer;
+            }
+
+            this.Scope = previous;
+        }
+
         public override void Visit(Koto node)
         {
             node.BindingState = BindingState.Unvisited;
@@ -923,31 +972,13 @@ public sealed partial class Binding
                 case MatchKoto match:
                     binding.IndexMatch(match);
                     this.Visit(match.Expression);
-                    var outer = this.Scope;
-                    for (var i = 0; i < match.Arms.Count; i++)
+                    if (match is TryKoto propagation)
                     {
-                        var arm = match.Arms[i];
-                        var armScope = binding.GetScope(arm.Pattern, outer);
-                        this.Scope = armScope;
-                        this.patternDepth++;
-                        this.Visit(arm.Pattern);
-                        this.patternDepth--;
-                        if (arm.Guard is { } guard)
-                        {
-                            this.Scope = binding.GetScope(guard, outer);
-                            binding.candidateScopes.Add(guard);
-                            this.IndexCandidates(arm.Pattern, true);
-
-                            this.Visit(guard);
-                        }
-                        else
-                        {
-                            this.IndexCandidates(arm.Pattern, false);
-                        }
-
-                        this.Scope = armScope;
-                        this.Visit(arm.Body);
-                        this.Scope = outer;
+                        propagation.SemanticsIndexed = false;
+                    }
+                    else
+                    {
+                        this.IndexMatchArms(match, this.Scope);
                     }
 
                     this.Scope = previous;

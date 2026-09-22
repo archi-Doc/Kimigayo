@@ -72,6 +72,15 @@ public enum KotoKind : byte
     /// <summary>A type with ownership semantics.</summary>
     TypeSemantics,
 
+    /// <summary>An optional Type suffix.</summary>
+    OptionalType,
+
+    /// <summary>One-layer failure propagation.</summary>
+    Try,
+
+    /// <summary>An explicit discard statement.</summary>
+    Discard,
+
     /// <summary>A semantics mask.</summary>
     SemanticsMask,
 

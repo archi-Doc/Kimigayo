@@ -193,6 +193,39 @@ Every Weak has a target management area. **There is no empty Weak and no zero-ar
 
 A Weak keeps `S`'s complete View Type, mode, Type/Origin arguments and actual Loan dependencies (§13.5.9). OwnedOrigins scans the full `S`, with no exception for construction or expiration. A Closure that captures an owned Weak is Non-Copy; capturing a shared borrow follows the normal Copy and Loan rules. A Weak provides no direct payload member access, object borrow, runtime `is`, checked cast or view conversion: upgrade it first and use the strong result.
 
+### 3.2.1. Optional Type spelling
+
+`T?` is exactly the compiler-recognized `::Kimi.Option<T>`, regardless of local name lookup. Each `?` adds one layer: `T??` is `Option<Option<T>>`, never flattened. Substitution, Identity, constraints, Copy/Owned proofs and layout use the expanded Type. `T` is any valid complete Option argument, including Semantics and Origin dependencies.
+
+`?` binds weaker than the entire Semantics prefix chain and stronger than `->`. Group a Function Type before applying `?`; ordinary whitespace and continuation rules apply. `??` consists of two suffix tokens, not a value operator.
+
+| Spelling | Expanded Type |
+| --- | --- |
+| `ref/T?` | `Option<ref/T>` |
+| `ref/(T?)` | `ref/Option<T>` |
+| `obj/T?` | `Option<obj/T>` |
+| `obj/(T?)` | `obj/Option<T>` |
+| `ref/obj/T?` | `Option<ref/obj/T>` |
+| `ref/T??` | `Option<Option<ref/T>>` |
+| `[N of T?]` / `[N of T]?` | `[N of Option<T>]` / `Option<[N of T]>` |
+| `(T) -> U?` | `(T) -> Option<U>` |
+| `((T) -> U)?` | `Option<(T) -> U>` |
+
+`(A)? -> B` is invalid: use `(A?) -> B` or `((A) -> B)?`. A parenthesized list is a Function Parameter List only when immediately followed by an arrow under the existing continuation rules. After Semantics prefixes, an entire Function Type still needs grouping. Existing formation checks apply after expansion; enum targets are not forbidden solely because they are enums.
+
+Resolve Origin attachment before expansion: `ref{a}/T?` is `Option<ref{a}/T>`, `ref{a}/(T?)` is `ref{a}/Option<T>`, and `View<T>{v}?` is `Option<View<T>{v}>`. A binding-set suffix belongs to a named Type: `T?{v}` is invalid; name the outer set as `Option<T>{v}`. No dependencies or Loans are erased or extended. Generic Semantics decomposition uses the expanded Type: passing `ref{a}/i32?` to `<s/T>` gives `s = owner`, `T = Option<ref{a}/i32>`.
+
+The suffix is accepted wherever general Type syntax is accepted. It does not extend dedicated name positions: runtime `is Dog?`, Case qualifiers such as `T?.Some`, and adaptation shorthand `@ref?`/`@owner?` are invalid. A constructed target `@S?` resolves `S` as a Type, never as Semantics shorthand. `x@ref/T?` targets `Option<ref/T>`: it neither borrows x nor constructs Some. Existing same-Type acquisition remains valid (§13.5).
+
+```kimi
+let missing: i32? = .None
+let present: i32? = .Some(42)
+let nested: i32?? = .Some(.None)
+let missingBorrow: ref{static}/i32? = .None
+```
+
+There is no implicit wrapping, unwrapping, default initialization or argument omission. `null` cannot construct None; for `unsafe/T?`, `.None` differs from `.Some(null)`. No layout/allocation guarantee is added; §21.1.5 still requires explicit enum tags.
+
 ## 3.3. Type semantics
 
 Semantics prefixes associate to the right, and an unparenthesized `{Origin}` annotates the outermost layer. See [the start of this chapter](#3-types-and-values) for the basic form and [nested Semantics](#336-nested-semantics-and-type-grouping) for layer boundaries and permitted combinations.

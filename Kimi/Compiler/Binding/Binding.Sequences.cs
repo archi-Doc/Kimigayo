@@ -54,12 +54,18 @@ public sealed partial class Binding
         for (var i = 0; i < source.Bindings.Count; i++)
         {
             var name = source.Bindings[i];
-            name.BoundSymbol!.Type = element;
-            Complete(name, element);
+            var slot = source.IsTupleBinding && element.Kind == BoundTypeKind.Tuple && i < element.Components.Count ? element.Components[i] : element;
+            name.BoundSymbol!.Type = slot;
+            Complete(name, slot);
         }
 
         this.BindNode(source.Body, scope);
-        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice) || source.IsTupleBinding || source.Bindings.Count != 1)
+        if (source.IsTupleBinding && (element.Kind != BoundTypeKind.Tuple || element.Components.Count != source.Bindings.Count))
+        {
+            return Fail(source, BindingFailure.TypeMismatch);
+        }
+
+        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice))
         {
             return Fail(source, BindingFailure.Unsupported);
         }
