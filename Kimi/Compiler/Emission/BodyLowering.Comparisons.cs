@@ -73,6 +73,14 @@ internal sealed partial class BodyLowering
                 ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), operand.BoundType);
         }
 
+        if (reference >= 0 && (uint)reference < (uint)body.Operations.Count && ReferenceTypes.IsPointer(ValueType(body, reference)))
+        {
+            // SPEC 5.2: a raw string Place is read in place through its dominating handle address.
+            var address = ValueType(body, reference)!;
+            return place == -1 && loan == -1 && ReferenceEquals(operand.BoundType, BoundType.String) &&
+                ReferenceEquals(address.Components[0], BoundType.String) && (!body.IsReachable(id) || this.Dominates(reference, id));
+        }
+
         if (reference != -1)
         {
             return false;
@@ -101,6 +109,10 @@ internal sealed partial class BodyLowering
 
         return loan == -1 && this.IsStringValue(body.Places[place]);
     }
+
+    private EmissionOperand StringOperand(OwnershipBody body, int place, int loan, int reference)
+        => reference < 0 ? StringPlaceOperand(body, place, loan)
+            : ReferenceTypes.IsPointer(ValueType(body, reference)) ? this.PhysicalOperand(body, reference) : this.ReferenceOperand(body, reference);
 
     private bool LowerStringComparison(OwnershipBody body, EmissionFunction function, int id, out string? failure)
     {
@@ -132,8 +144,8 @@ internal sealed partial class BodyLowering
             return Fail("Unsupported string comparison operator.", out failure);
         }
 
-        var left = plan.LeftValue >= 0 ? this.ReferenceOperand(body, plan.LeftValue) : StringPlaceOperand(body, plan.Left, plan.LeftLoan);
-        var right = plan.RightValue >= 0 ? this.ReferenceOperand(body, plan.RightValue) : StringPlaceOperand(body, plan.Right, plan.RightLoan);
+        var left = this.StringOperand(body, plan.Left, plan.LeftLoan, plan.LeftValue);
+        var right = this.StringOperand(body, plan.Right, plan.RightLoan, plan.RightValue);
         function.AddScalar(predicate is "eq" or "ne" ? EmissionOpcode.StringEquals : EmissionOpcode.StringCompare, id, [left, right], op: predicate);
         return true;
     }

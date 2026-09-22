@@ -58,6 +58,7 @@ internal sealed partial class BodyLowering
         {
             OwnershipValueKind.Constant => new(ReferenceEquals(ValueType(body, id), BoundType.F32) ? EmissionOperandKind.Float32 : ReferenceEquals(ValueType(body, id), BoundType.F64) ? EmissionOperandKind.Float64 : ReferenceTypes.IsPointer(ValueType(body, id)) ? EmissionOperandKind.NullAddress : EmissionOperandKind.Integer, body.Values[id].Constant),
             OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[id].Constant),
+            OwnershipValueKind.PointerProject => new(EmissionOperandKind.ElementAddress, id),
             _ => new(EmissionOperandKind.Value, id),
         };
     }
@@ -554,6 +555,11 @@ internal sealed partial class BodyLowering
         if (value.Kind == OwnershipValueKind.Convert)
         {
             return this.LowerConversion(body, function, constants, directory, id, out failure);
+        }
+
+        if (value.Kind == OwnershipValueKind.PointerProject)
+        {
+            return this.LowerPointerProjection(body, function, constants, directory, id, out failure);
         }
 
         if (value.Kind is not (OwnershipValueKind.Binary or OwnershipValueKind.Unary))

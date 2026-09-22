@@ -17,6 +17,19 @@ public sealed partial class Binding
         return target;
     }
 
+    private static bool HasCLayout(StructKoto structure)
+    {
+        for (var attribute = structure.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            if (attribute.LayoutMode == "C")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void IndexLayoutAttribute(AttributeKoto attribute)
     {
         attribute.BindingFailure = BindingFailure.None;
@@ -266,8 +279,56 @@ public sealed partial class Binding
                 };
     }
 
+    // SPEC 21.1: direct zero-sized Fields reject C layout. Struct sizes need prepared storage
+    // shapes; a Field whose size depends on a Type argument is checked when its layout is formed.
+    private void ValidateCLayoutFields()
+    {
+        foreach (var container in this.cLayouts)
+        {
+            for (var m = 0; m < container.Members.Count; m++)
+            {
+                if (container.Members[m] is PropertyKoto field && IsStoredVariable(field) && (field.Modifier & ModifierKind.Static) == 0 &&
+                    field.BoundSymbol?.Property?.Type is { } type && this.HasZeroStride(type))
+                {
+                    Fail(field, BindingFailure.InvalidCLayout);
+                    Fail(container, BindingFailure.InvalidTypeFormation);
+                }
+            }
+        }
+
+        this.storagePrepared = true;
+        foreach (var (syntax, type) in this.cLayoutInstances)
+        {
+            this.CheckCLayoutInstance(syntax, type);
+        }
+    }
+
+    // SPEC 21.1: a written instantiation of a generic C-layout struct, such as Pair<()>,
+    // must not make a direct Field zero-sized. Inferred instantiations reject at generation.
+    private void CheckCLayoutInstance(GenericsKoto syntax, BoundType type)
+    {
+        if (!this.storagePrepared)
+        {
+            this.cLayoutInstances.Add((syntax, type));
+            return;
+        }
+
+        if (type.Symbol?.Declaration is StructKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape))
+        {
+            foreach (var field in shape.Types)
+            {
+                if (this.StoredType(field, type) is { } stored && this.HasZeroStride(stored))
+                {
+                    Fail(syntax, BindingFailure.InvalidCLayout);
+                    return;
+                }
+            }
+        }
+    }
+
     private void ValidateLayoutFragments()
     {
+        this.cLayouts.Clear();
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not StructKoto container)
@@ -310,6 +371,7 @@ public sealed partial class Binding
             }
 
             var storageFragment = -1;
+            var instanceFields = 0;
             for (var m = 0; mode == "C" && m < container.Members.Count; m++)
             {
                 if (container.Members[m] is PropertyKoto field && IsStoredVariable(field))
@@ -321,7 +383,19 @@ public sealed partial class Binding
                     }
 
                     storageFragment = field.FragmentOrdinal;
+                    instanceFields += (field.Modifier & ModifierKind.Static) == 0 ? 1 : 0;
                 }
+            }
+
+            // SPEC 21.1: C layout rejects open, derived and empty structs.
+            if (mode == "C" && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0))
+            {
+                Fail(latestSpecification!, BindingFailure.InvalidCLayout);
+                valid = false;
+            }
+            else if (mode == "C" && valid)
+            {
+                this.cLayouts.Add(container);
             }
 
             if (!valid)

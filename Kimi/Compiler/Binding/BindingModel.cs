@@ -104,6 +104,7 @@ internal enum BindingFailure : byte
     UnsafeFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
+    InvalidCLayout,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

@@ -620,6 +620,8 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 return this.ConversionValue(conversion);
+            case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
+                return this.ReadPointer(element, use);
             case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice || ReferenceTypes.IsArray(member.Left.BoundType):
                 return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) ||

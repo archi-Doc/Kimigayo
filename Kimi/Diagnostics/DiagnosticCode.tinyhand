@@ -284,6 +284,9 @@
   + Name="SplitCLayoutStorage_Kd"
     Message="All selected instance Fields of a C-layout struct must occur in one fragment"
 
+  + Name="InvalidCLayout_Kd"
+    Message="C layout is rejected on open, derived and empty structs and on direct zero-sized Fields"
+
   + Name="UnexpectedIndent_Kd"
     Message="Unexpected indentation"
 

@@ -86,6 +86,24 @@ internal static class ElementAccess
             SyntaxFormKoto { Akind: KotoKind.BindingPattern, IsMutablePattern: true } ? root : null;
     }
 
+    // SPEC 5.2, 12: an inline stored field/Tuple/fixed-array path rooted at *p or p[n].
+    // Binding mutability does not decide its write permission.
+    internal static bool IsPointerPath(Koto source)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        for (var depth = 0; depth < 64 && source is BinaryKoto element && IsSyntax(element) && TryType(element, out _, out _); depth++)
+        {
+            source = KotoHelper.UnwrapParentheses(element.Left);
+            if ((source is DereferenceKoto dereference && ReferenceTypes.IsPointer(dereference.Operand.BoundType)) ||
+                (source is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the
     // reference-typed base, or null for other forms.

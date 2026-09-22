@@ -141,6 +141,7 @@ public enum DiagnosticCode
     UnsafeFunctionValue_Kd,
     UnavailableReservedImport_Kd,
     SplitCLayoutStorage_Kd,
+    InvalidCLayout_Kd,
 
     UnavailableFeature_Kd,
 

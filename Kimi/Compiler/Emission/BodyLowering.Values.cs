@@ -47,6 +47,7 @@ internal sealed partial class BodyLowering
                 OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => 2,
                 OwnershipValueKind.PointerStore => IsScalar(ValueType(body, id)!) ? 2 : 1,
                 OwnershipValueKind.Address => value.Count is >= 0 and <= 2 ? value.Count : -1,
+                OwnershipValueKind.PointerProject => value.Count is 1 or 2 ? value.Count : -1,
                 OwnershipValueKind.Sequence => value.Count is 0 or 1 ? value.Count : -1,
                 OwnershipValueKind.Phi or OwnershipValueKind.Closure => value.Count,
                 OwnershipValueKind.Capture => 0,

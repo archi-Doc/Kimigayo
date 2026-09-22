@@ -7,7 +7,27 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     private static bool IsPointerPlace(Koto source)
-        => source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType));
+    {
+        // SPEC 5.2, 12: stored fields, Tuple elements and isize-indexed fixed-array elements
+        // of *p or p[n] are raw Places too. Range and from-end forms keep their existing handling.
+        for (var depth = 0; depth < 64; depth++)
+        {
+            if (source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)))
+            {
+                return true;
+            }
+
+            if (source is not BinaryKoto element || !ElementAccess.IsSyntax(element) ||
+                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto || !ReferenceEquals(element.Right.BoundType, BoundType.ISize))))
+            {
+                return false;
+            }
+
+            source = KotoHelper.UnwrapParentheses(element.Left);
+        }
+
+        return false;
+    }
 
     private bool SupportsPointerValue(Koto source)
     {
@@ -24,12 +44,43 @@ public sealed partial class OwnershipAnalysis
             return this.Value(this.Expression(dereference.Operand, PlaceUseKind.Read));
         }
 
+        if (source is not IndexKoto index || !ReferenceTypes.IsPointer(index.Left.BoundType))
+        {
+            return this.ProjectPointer((BinaryKoto)source);
+        }
+
         // SPEC 5.3: form p + n once without evaluating a synthetic syntax tree.
-        var index = (IndexKoto)source;
         var pointer = this.Value(this.Expression(index.Left, PlaceUseKind.Read));
         var offset = this.Value(this.Expression(index.Right, PlaceUseKind.Read));
         return pointer >= 0 && offset >= 0 && this.flow!.Nodes[source].CanCompleteNormally
             ? this.Value(this.ComputeUpdate(source, index.Left.BoundType, pointer, offset, KotoKind.Plus)) : -1;
+    }
+
+    private int ProjectPointer(BinaryKoto element)
+    {
+        // The containing Place's address, displaced to one inline stored part. Nothing is read,
+        // so the rest of the pointee need not be initialized and no Loan is created.
+        if (!ElementAccess.TryType(element, out var type, out var position) || !ReferenceEquals(type, element.BoundType))
+        {
+            this.Unsupported(element);
+            return -1;
+        }
+
+        // A computed array index is evaluated after the container address and bounds-checked
+        // against the fixed length during lowering; a literal in-range index is a static offset.
+        var pointer = this.PointerAddress(KotoHelper.UnwrapParentheses(element.Left));
+        var selector = element is IndexKoto ? ElementAccess.StaticSelector(element) : position;
+        var index = pointer >= 0 && selector < 0 ? this.Value(this.Expression(element.Right, PlaceUseKind.Read)) : -1;
+        if (pointer < 0 || (selector < 0 && (index < 0 || !this.flow!.Nodes[element].CanCompleteNormally)))
+        {
+            return -1;
+        }
+
+        var projected = this.Place(element, this.compilation.Binding.PointerType(type!), OwnershipPlaceKind.Temporary, true);
+        this.Emit(OwnershipOperationKind.Produce, element, projected);
+        this.RegisterTemporary(projected);
+        this.SetValue(this.Value(projected), OwnershipValueKind.PointerProject, selector >= 0 ? [pointer] : [pointer, index], constant: selector);
+        return this.Value(projected);
     }
 
     private int ReadPointer(Koto source, PlaceUseKind use)

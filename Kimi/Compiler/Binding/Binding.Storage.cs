@@ -8,7 +8,10 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<DeclarationContainerKoto, StorageShape> storageShapes = new(ReferenceEqualityComparer.Instance);
+    private readonly List<StructKoto> cLayouts = [];
+    private readonly List<(GenericsKoto Syntax, BoundType Type)> cLayoutInstances = [];
     private readonly List<BoundType> enumPayloadTypes = new();
+    private bool storagePrepared;
 
     internal bool PrepareEnumCases(BoundType type)
     {

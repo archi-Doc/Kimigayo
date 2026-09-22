@@ -4,6 +4,50 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    private bool LowerPointerProjection(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    {
+        // SPEC 5.2, 12: displace the containing raw address to one stored part. A computed array
+        // index is bounds-checked like ordinary fixed-array access (SPEC 4); the result keeps the
+        // container's provenance, no bytes are accessed and no inbounds is claimed.
+        failure = null;
+        var operation = body.Operations[id];
+        var value = body.Values[id];
+        var address = Input(body, id, 0);
+        var index = value.Count == 2 ? Input(body, id, 1) : -1;
+        var position = index < 0 ? value.Constant : -1;
+        if (operation.Kind != OwnershipOperationKind.Produce || operation.Source is not Parsing.BinaryKoto element ||
+            ValueType(body, id) is not { } type || !ReferenceTypes.IsPointer(type) ||
+            ValueType(body, address) is not { } containerType || !ReferenceTypes.IsPointer(containerType) ||
+            !ReferenceEquals(element.Left.BoundType, containerType.Components[0]) ||
+            !ElementAccess.TryType(element, out var part, out _) || !ReferenceEquals(part, type.Components[0]) ||
+            this.aggregateLayouts.Get(containerType.Components[0]) is not { } layout ||
+            (index < 0 ? ElementAccess.PathSelector(element, out _, out _) != position || position < 0 || position >= layout.Count
+                : value.Constant != -1 || !layout.IsArray || element is not Parsing.IndexKoto || !ReferenceEquals(ValueType(body, index), BoundType.ISize)) ||
+            (body.IsReachable(id) && (!this.Dominates(address, id) || (index >= 0 && !this.Dominates(index, id)))))
+        {
+            return Fail("Pointer projection requires a dominating container address and a matching stored part.", out failure);
+        }
+
+        var location = -1;
+        var stride = index < 0 ? 0 : FunctionAbi.GetValue(part!, this.aggregateLayouts)?.Layout.Stride ?? -1;
+        if (index >= 0 && (stride < 0 || !this.TryGetLocation(element, directory, constants, out location)))
+        {
+            return Fail("Pointer element bounds check requires an element stride and a source location.", out failure);
+        }
+
+        // The pointer representation keeps the address even for zero-sized parts.
+        function.AddScalar(
+            EmissionOpcode.ElementAddress,
+            id,
+            [this.PhysicalOperand(body, address), index < 0 ? new(EmissionOperandKind.Integer, layout.Offset((int)position)) : this.PhysicalOperand(body, index),
+                new(EmissionOperandKind.Integer, layout.Count), new(EmissionOperandKind.Integer, stride)],
+            place: body.Operations.Count + id,
+            location: location,
+            check: index < 0 ? ArithmeticCheckKind.None : ArithmeticCheckKind.Bounds,
+            representation: WindowsLowering.GetValue(type));
+        return true;
+    }
+
     private bool LowerPointer(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
         failure = null;

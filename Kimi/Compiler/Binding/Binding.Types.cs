@@ -7,6 +7,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 5.2: the canonical raw pointer Type of a projected pointee subplace; raw pointers carry no Origin.
+    internal BoundType PointerType(BoundType referent) => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Unsafe, [referent]);
+
     private static Koto UnwrapTypeSyntax(Koto node)
     {
         while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
@@ -642,7 +645,13 @@ public sealed partial class Binding
         generic.Identifier.BindingState = BindingState.Resolved;
         generic.BoundSymbol = definition;
         var own = this.BindTypeList(generic, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition);
-        return own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
+        var bound = own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
+        if (bound is not null && container is StructKoto { AttributeChain: not null } structure && HasCLayout(structure))
+        {
+            this.CheckCLayoutInstance(generic, bound);
+        }
+
+        return bound;
     }
 
     private BoundType? BindTypeList(Koto node, IReadOnlyList<Koto> elements, BindingScope scope, TypeBindingContext context, BoundTypeKind kind, BindingSymbol? symbol = null)

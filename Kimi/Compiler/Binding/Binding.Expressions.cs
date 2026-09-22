@@ -19,7 +19,7 @@ public sealed partial class Binding
             return ReferenceTypes.IsPointer(dereference.Operand.BoundType);
         }
 
-        if (node is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType))
+        if ((node is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)) || ElementAccess.IsPointerPath(node))
         {
             return true;
         }

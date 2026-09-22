@@ -516,6 +516,8 @@ public class ForeignEmissionTest
     [InlineData("enum E<T>\n    Empty\n    Value(T)\nfunc update(p: unsafe/E<E<string>>, value: E<E<string>>)\n    unsafe => *p = value\npublic func main() => ()")]
     [InlineData("#Layout(\"C\")\nstruct R\n    public var a: u8\n    public var b: u64\n    deinit => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value\npublic func main() => ()")]
     [InlineData("func update(p: unsafe/(i32, i64))\n    unsafe\n        let value = *p\n        *p = value\npublic func main() => ()")]
+    [InlineData("struct P\n    public var a: u8\n    public var b: (i32, [2 of u16])\nfunc update(p: unsafe/P)\n    unsafe\n        (*p).b.1[1] += 1\n        let a = (*p).a\n        p[1].b.0 = 3\npublic func main() => ()")]
+    [InlineData("func compare(p: unsafe/string, h: unsafe/(string, i32))\n    unsafe\n        let a = *p == \"x\"\n        let b = (*h).0 < p[1]\npublic func main() => ()")]
     public void WarmPointerReadWriteAnalysisAndEmissionAllocateNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -776,6 +778,194 @@ public class ForeignEmissionTest
         ScalarEmissionTest.EmitFixture("ForeignPointerAggregate", source, "aggregate ok\n");
     }
 
+    [Fact]
+    public void PointerSubplacesAccessOnlyTheirStoredParts()
+    {
+        var source = """
+            #Layout("C")
+            struct Wide
+                public var head: u8
+                public var tail: u64
+            struct Pair
+                Self is Copy
+                public var first: u8
+                public var second: u64
+            struct Holder
+                public var label: string
+                public var count: i32
+            group Native
+                #LibraryImport("kernel32", "VirtualAlloc")
+                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                #LibraryImport("kernel32", "VirtualFree")
+                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+            func pick(p: unsafe/Pair) -> unsafe/Pair
+                Console.writeLine("pick")
+                return p
+            public func main()
+                var bytes: unsafe/u8 = null
+                unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
+                var pairs: unsafe/Pair = null
+                unsafe => pairs = bytes@unsafe/Pair
+                unsafe
+                    (*pairs).second = 1234567890123
+                    (*pairs).first = 7
+                    pairs[1].first = 9
+                    (*pick(pairs)).second += 5
+                    pairs[1].second = (*pairs).second
+                    (*pairs).first++
+                    let whole = *pairs
+                    let next = pairs[1]
+                    require whole.first == 8 and whole.second == 1234567890128 else => $abort("fields")
+                    require next.first == 9 and next.second == 1234567890128 else => $abort("indexed")
+                var wide: unsafe/Wide = null
+                unsafe => wide = (bytes + 64)@unsafe/Wide
+                unsafe
+                    (*wide).tail = 3
+                    (*wide).head = 1
+                    let tail = *((bytes + 72)@unsafe/u64)
+                    let head = *(bytes + 64)
+                    require tail == 3 and head == 1 and (*wide).tail == 3 else => $abort("c layout")
+                var tuples: unsafe/(u8, (u64, bool)) = null
+                unsafe => tuples = (bytes + 128)@unsafe/(u8, (u64, bool))
+                unsafe
+                    (*tuples).1.0 = 99
+                    (*tuples).1.1 = true
+                    (*tuples).0 = 3
+                    let tuple = *tuples
+                    require tuple.0 == 3 and tuple.1.0 == 99 and tuple.1.1 and (*tuples).1.0 == 99 else => $abort("tuple")
+                var arrays: unsafe/[3 of i16] = null
+                unsafe => arrays = (bytes + 192)@unsafe/[3 of i16]
+                unsafe
+                    (*arrays)[2] = -4
+                    arrays[1][0] = 5
+                    (*arrays)[0] = 6
+                    arrays[1][0] -= 1
+                    let array = *arrays
+                    require array[0] == 6 and array[1] == 0 and array[2] == -4 and arrays[1][0] == 4 else => $abort("array")
+                var holders: unsafe/Holder = null
+                unsafe => holders = (bytes + 256)@unsafe/Holder
+                unsafe
+                    // Zeroed handles are valid empty Static strings (SPEC 22.5.5).
+                    (*holders).label = "kept"
+                    (*holders).count = 41
+                    (*holders).count += 1
+                    require (*holders).count == 42 else => $abort("count")
+                    let taken = (*holders).label
+                    Console.writeLine(taken)
+                var freed: i32 = 0
+                unsafe => freed = Native.free(bytes, 0, 32768)
+                require freed != 0 else => $abort("free")
+                Console.writeLine("subplace ok")
+            """;
+        var ir = ScalarEmissionTest.EmitFixture("ForeignPointerSubplace", source, "pick\nkept\nsubplace ok\n");
+        Assert.Matches(@"= getelementptr i8, ptr %v\d+, i64 8\n", ir);
+    }
+
+    [Fact]
+    public void ComputedPointerSubplaceIndicesAreCheckedAndOrdered()
+    {
+        var source = """
+            group Native
+                #LibraryImport("kernel32", "VirtualAlloc")
+                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                #LibraryImport("kernel32", "VirtualFree")
+                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+            func pick(p: unsafe/(u8, [3 of i32])) -> unsafe/(u8, [3 of i32])
+                Console.writeLine("pick")
+                return p
+            func at(i: isize) -> isize
+                Console.writeLine("index")
+                return i
+            func value(n: i32) -> i32
+                Console.writeLine("value")
+                return n
+            public func main()
+                var bytes: unsafe/u8 = null
+                unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
+                var p: unsafe/(u8, [3 of i32]) = null
+                unsafe => p = bytes@unsafe/(u8, [3 of i32])
+                var grid: unsafe/[2 of [2 of u16]] = null
+                unsafe => grid = (bytes + 64)@unsafe/[2 of [2 of u16]]
+                unsafe
+                    (*pick(p)).1[at(2)] = value(7)
+                    (*pick(p)).1[at(1)] += value(5)
+                    p[0].1[at(0)] = (*p).1[2] * 3
+                    var i: isize = 0
+                    while i < 2
+                        var j: isize = 0
+                        while j < 2
+                            grid[0][i][j] = (i * 2 + j)@u16
+                            j += 1
+                        i += 1
+                    grid[0][1][0]++
+                    let tuple = *p
+                    let square = *grid
+                    require tuple.1[0] == 21 and tuple.1[1] == 5 and tuple.1[2] == 7 else => $abort("tuple")
+                    require square[0][1] == 1 and square[1][0] == 3 and square[1][1] == 3 else => $abort("grid")
+                var freed: i32 = 0
+                unsafe => freed = Native.free(bytes, 0, 32768)
+                require freed != 0 else => $abort("free")
+                Console.writeLine("checked ok")
+            """;
+        ScalarEmissionTest.EmitFixture("ForeignPointerSubplaceIndex", source, "value\npick\nindex\npick\nindex\nvalue\nindex\nchecked ok\n");
+    }
+
+    [Theory]
+    [InlineData("High", "3")]
+    [InlineData("Negative", "-1")]
+    public void ComputedPointerSubplaceIndicesAbortOutsideTheFixedLength(string name, string index)
+    {
+        var source = $$"""
+            group Native
+                #LibraryImport("kernel32", "VirtualAlloc")
+                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+            public func main()
+                var p: unsafe/[3 of i32] = null
+                unsafe => p = Native.allocate(null, 4096, 12288, 4)@unsafe/[3 of i32]
+                var i: isize = {{index}}
+                unsafe => (*p)[i] = 1
+                Console.writeLine("bad")
+            """;
+        ScalarEmissionTest.EmitFixture("ForeignPointerSubplaceBounds" + name, source, string.Empty, 1, "Hello.kimi:8:15: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+    }
+
+    [Theory]
+    [InlineData("position", false)]
+    [InlineData("constant", true)]
+    [InlineData("container", false)]
+    [InlineData("index", true)]
+    public void IncompletePointerProjectionPlansRejectBeforeWriting(string mutation, bool computed)
+    {
+        var place = computed ? "(*p).1[i]" : "(*p).1[1]";
+        var c = MinimalEmissionTest.Analyze($"func update(p: unsafe/(u8, [2 of i16]), i: isize)\n    unsafe => {place} = 1\npublic func main() => ()");
+        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
+        var projection = body.Values.FindLastIndex(x => x.Kind == OwnershipValueKind.PointerProject);
+        var outer = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.PointerProject);
+        Assert.True(projection > outer && outer >= 0);
+        if (mutation == "position")
+        {
+            body.Values[projection] = body.Values[projection] with { Constant = 2 };
+        }
+        else if (mutation == "constant")
+        {
+            body.Values[projection] = body.Values[projection] with { Constant = 0 };
+        }
+        else if (mutation == "container")
+        {
+            // The array element's container must be the array, not the enclosing Tuple.
+            body.ValueOperands[body.Values[projection].Start] = body.ValueOperands[body.Values[outer].Start];
+        }
+        else
+        {
+            body.ValueOperands[body.Values[projection].Start + 1] = body.ValueOperands[body.Values[projection].Start];
+        }
+
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+    }
+
     [Theory]
     [InlineData("ref{static}/i32")]
     [InlineData("(ref{static}/i32, i32)")]
@@ -848,12 +1038,53 @@ public class ForeignEmissionTest
     [InlineData("p[0]")]
     public void StringPointerComparisonsDoNotInventAnOwningRead(string expression)
     {
+        // SPEC 5.2: the handle is inspected in place; no temporary owner, Move or cleanup.
         var c = MinimalEmissionTest.Analyze($"func compare(p: unsafe/string)\n    unsafe\n        let equal = {expression} == \"text\"\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.UnsupportedCount > 0);
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "compare");
+        Assert.DoesNotContain(body.Values, x => x.Kind == OwnershipValueKind.PointerLoad);
+        Assert.DoesNotContain(body.Places, x => ReferenceEquals(x.Type, BoundType.String) && x.Source.ToString() == expression);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
+    }
+
+    [Fact]
+    public void RawStringComparisonsInspectHandlesInPlace()
+    {
+        var source = """
+            struct Holder
+                public var label: string
+                public var count: i32
+            group Native
+                #LibraryImport("kernel32", "VirtualAlloc")
+                public unsafe func allocate(address: unsafe/string, size: u64, kind: u32, protect: u32) -> unsafe/string
+                #LibraryImport("kernel32", "VirtualFree")
+                public unsafe func free(address: unsafe/string, size: u64, kind: u32) -> i32
+            public func main()
+                var p: unsafe/string = null
+                unsafe => p = Native.allocate(null, 4096, 12288, 4)
+                var holder: unsafe/Holder = null
+                unsafe => holder = (p@unsafe/u8 + 256)@unsafe/Holder
+                unsafe
+                    *p = "alpha"
+                    p[1] = "beta"
+                    (*holder).label = "kept"
+                    require *p == "alpha" and p[1] != "alpha" else => $abort("equal")
+                    require p[1] > *p and "beta" == p[1] and not (p[1] < *p) else => $abort("order")
+                    require (*holder).label >= p[1] and (*holder).label == "kept" else => $abort("field")
+                    let a = *p
+                    let b = p[1]
+                    let k = (*holder).label
+                    Console.writeLine(a)
+                    Console.writeLine(b)
+                    Console.writeLine(k)
+                var freed: i32 = 0
+                unsafe => freed = Native.free(p, 0, 32768)
+                require freed != 0 else => $abort("free")
+                Console.writeLine("done")
+            """;
+        var ir = ScalarEmissionTest.EmitFixture("ForeignPointerStringCompare", source, "alpha\nbeta\nkept\ndone\n");
+        StringEmissionTest.WriteAuditedFixture("ForeignPointerStringCompare", source, ir, "alpha\nbeta\nkept\ndone\n", "=3;alpha=3;beta=2;kept=2;done=1");
     }
 
     [Fact]

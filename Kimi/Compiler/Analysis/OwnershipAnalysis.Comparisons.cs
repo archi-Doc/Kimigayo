@@ -35,15 +35,27 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private int InspectString(Koto source, out int loan)
+    private int InspectString(Koto source, out int loan, out int reference)
     {
+        loan = -1;
+        reference = -1;
+        if (IsPointerPlace(KotoHelper.UnwrapParentheses(source)))
+        {
+            // SPEC 5.2: read a raw string Place in place through its handle address.
+            // No owner, Move or Loan is created; the comparison has no Place.
+            reference = this.PointerAddress(KotoHelper.UnwrapParentheses(source));
+            return -1;
+        }
+
         if (KotoHelper.UnwrapParentheses(source) is BinaryKoto element && ElementAccess.IsSyntax(element))
         {
-            return this.BorrowStringElement(element, null, null, out loan);
+            var borrowed = this.BorrowStringElement(element, null, null, out loan);
+            reference = ReferenceTypes.IsString(source.BoundType) ? this.Value(borrowed) : -1;
+            return borrowed;
         }
 
         var place = this.Expression(source, PlaceUseKind.Read);
-        loan = -1;
+        reference = ReferenceTypes.IsString(source.BoundType) ? this.Value(place) : -1;
         if (place < 0 || ReferenceTypes.IsString(this.body.Places[place].Type) || this.body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
         {
             return place;
@@ -101,12 +113,10 @@ public sealed partial class OwnershipAnalysis
     private int StringComparison(BinaryKoto comparison)
     {
         var depth = this.comparisonDepth++;
-        var left = this.InspectString(comparison.Left, out var leftLoan);
-        var leftValue = ReferenceTypes.IsString(comparison.Left.BoundType) ? this.Value(left) : -1;
-        var right = this.InspectString(comparison.Right, out var rightLoan);
-        var rightValue = ReferenceTypes.IsString(comparison.Right.BoundType) ? this.Value(right) : -1;
+        var left = this.InspectString(comparison.Left, out var leftLoan, out var leftValue);
+        var right = this.InspectString(comparison.Right, out var rightLoan, out var rightValue);
         var result = -1;
-        if (left >= 0 && right >= 0 && this.flow!.Nodes[comparison].CanCompleteNormally)
+        if ((left >= 0 || leftValue >= 0) && (right >= 0 || rightValue >= 0) && this.flow!.Nodes[comparison].CanCompleteNormally)
         {
             result = this.Temporary(comparison);
             var operation = this.Value(result);

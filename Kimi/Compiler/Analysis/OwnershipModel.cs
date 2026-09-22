@@ -362,6 +362,11 @@ internal enum OwnershipValueKind : byte
     // SPEC 5.2: replacement through a raw pointer; inputs are the pointer and (for scalars) value.
     // Constant retains the acquired source Place, including aggregate/Unit storage without an SSA value.
     PointerStore,
+
+    // SPEC 5.2, 12: the raw address of an inline stored part of a raw pointer Place. Inputs are the
+    // containing pointer value and, for a computed array index, the isize index (Constant -1);
+    // otherwise Constant is the logical path position. Accesses nothing.
+    PointerProject,
 }
 
 internal enum SequenceOperation : byte

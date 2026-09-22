@@ -63,7 +63,8 @@ public class LayoutCertificateBindingTest
     [Fact]
     public void RemovingConflictRestoresConformanceAfterRebind()
     {
-        var c = MinimalEmissionTest.Analyze("contract Marker\n#Layout(\"C\")\nstruct S {}\n    Self is Marker");
+        // SPEC 21.1 rejects empty C structs; the field keeps this certificate test valid.
+        var c = MinimalEmissionTest.Analyze("contract Marker\n#Layout(\"C\")\nstruct S {}\n    var n: i32\n    Self is Marker");
         Assert.True(c.Binding.Result.IsComplete);
         var definition = Definition(c);
         Assert.True(definition.IsVerified);

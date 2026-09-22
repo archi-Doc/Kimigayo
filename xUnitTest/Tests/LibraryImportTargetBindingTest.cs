@@ -61,7 +61,8 @@ public class LibraryImportTargetBindingTest
     [InlineData("#LibraryImport(\"library\", \"symbol\")\n#Layout(\"C\")")]
     public void RemovingImportFromChainRestoresConformance(string markers)
     {
-        var c = MinimalEmissionTest.Analyze("contract C\n" + markers + "\nstruct S\n    Self is C");
+        // SPEC 21.1 rejects empty C structs; the field keeps this conformance test valid.
+        var c = MinimalEmissionTest.Analyze("contract C\n" + markers + "\nstruct S\n    var n: i32\n    Self is C");
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
         var definition = c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!;
