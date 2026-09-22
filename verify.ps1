@@ -11,6 +11,9 @@
 # the selected native fixtures and milestone harnesses with the Release compiler.
 #   ./verify.ps1 -Mode Session -Fixtures 'ForeignPointer*.ll' -Milestone 1,15,18
 #
+# Milestone harnesses run -Parallel at a time (default 4), each in its own process, work
+# directory and log; the steps are still recorded in the requested order.
+#
 # Never edit sources while this script runs; it records the commit and dirty state it verified.
 [CmdletBinding()]
 param(
@@ -19,7 +22,9 @@ param(
     [string[]] $Method = @(),
     [string] $Fixtures = '',
     [int[]] $Milestone = @(),
-    [string] $Name = ''
+    [string] $Name = '',
+    # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
+    [int] $Parallel = 4
 )
 $ErrorActionPreference = 'Stop'
 $repo = $PSScriptRoot
@@ -86,11 +91,27 @@ if (-not $failed -and $Fixtures) {
         Set-Content (Join-Path $evidence 'fixture-hashes.csv')
 }
 
-foreach ($number in $Milestone) {
-    if ($failed) { break }
-    $log = Join-Path $evidence "milestone$number-$native.log"
-    $ok = Invoke-Script { & (Join-Path $repo "backend/windows-x64/test-milestone$number.ps1") -Configuration $native } $log
-    Add-Step "milestone $number ($native)" $ok $log
+if (-not $failed -and $Milestone.Count -gt 0) {
+    # Harness scripts throw on failure; each job records PASS/FAIL after writing its own log.
+    $jobs = [ordered]@{}
+    foreach ($number in $Milestone) {
+        while (@($jobs.Values | Where-Object { $_.State -eq 'Running' }).Count -ge [Math]::Max(1, $Parallel)) { Start-Sleep -Milliseconds 500 }
+        $log = Join-Path $evidence "milestone$number-$native.log"
+        $script = Join-Path $repo "backend/windows-x64/test-milestone$number.ps1"
+        $jobs["$number"] = Start-Job -Name "milestone$number" -ArgumentList $script, $native, $log -ScriptBlock {
+            param($script, $configuration, $log)
+            $ErrorActionPreference = 'Stop'
+            try { & $script -Configuration $configuration *> $log; 'PASS' }
+            catch { $_ | Out-String | Add-Content -LiteralPath $log; 'FAIL' }
+        }
+    }
+
+    foreach ($number in $Milestone) {
+        $job = $jobs["$number"]
+        $result = Receive-Job -Job $job -Wait
+        Remove-Job -Job $job
+        Add-Step "milestone $number ($native)" ($result -eq 'PASS') (Join-Path $evidence "milestone$number-$native.log")
+    }
 }
 
 [ordered]@{ mode = $Mode; head = $head; dirty = $dirty; started = $stamp; steps = $steps } |
