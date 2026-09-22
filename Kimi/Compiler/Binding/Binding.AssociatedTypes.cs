@@ -442,7 +442,11 @@ public sealed partial class Binding
             {
                 if (result.Kind == BoundTypeKind.AssociatedProjection && result.Components[0] is { Symbol.Declaration: StructKoto or EnumKoto } receiver && this.ResolveAssociated(receiver, result.Symbol!, scope) is { } fixedType)
                 {
-                    return this.StoredType(fixedType, receiver) ?? result;
+                    // A container substitution can expose another associated projection
+                    // (Wrapper<S>.Element -> S.Element). Normalize that identity too;
+                    // the active query above still guards recursive specifications.
+                    return this.StoredType(fixedType, receiver) is { } stored
+                        ? this.ContractType(stored, scope, self) : result;
                 }
 
                 for (var current = scope; current is not null; current = current.Parent)
