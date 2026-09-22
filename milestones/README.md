@@ -42,7 +42,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-22**, after program 19 completion and authoring programs 22–24; older results retain their original verification scope. Build means a native
+As of **2026-09-23**, after program 20 completion (with the program 13 and 20 harnesses) and authoring programs 23–24; older results retain their original verification scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -61,14 +61,14 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 10 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 11 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 12 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 13 | YES | PASS (Release) | PASS (Release) | Exact copied source, O0/O2 output/exit checks |
+| 13 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 45 checks per configuration (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
 | 14 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 15 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
 | 16 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
 | 17 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
 | 18 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
 | 19 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 53 checks per configuration; [evidence](../PLAN_HISTORY.md#program19-completion) |
-| 20 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedBinding_Kd when dereferencing generic returned element borrows |
+| 20 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 55 checks per configuration; [evidence](../PLAN_HISTORY.md#program20-completion) |
 | 21 | YES | FAIL (Release/O2) | NOT_RUN | Length specialization / inherited Origin Binding unsupported; cascading diagnostics |
 | 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 45 checks per configuration; [evidence](../PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom/computed Property access; cascading unresolved bindings |
@@ -1131,7 +1131,7 @@ exactly once; an explicit index suppresses it. forward propagates length, Type
 and Origin through a dependent call. A second element Type/length and a shorter
 local lifetime exercise independent inference inputs without implementation selection.
 
-Expected stdout (not execution evidence):
+Expected stdout (verified natively at O0/O2 by `backend/windows-x64/test-milestone20.ps1`):
 
 ```text
 Default index evaluated.
