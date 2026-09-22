@@ -191,6 +191,19 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
+    public void MonomorphizesSliceIteratorFieldReads()
+    {
+        // SPEC 21.3.1: Program 13's SliceIterator<Sample>.next copies its Slice-handle field into a temporary
+        // and borrows the indexed element; no instance keeps a shared entry.
+        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../milestones/Milestone13.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        Assert.Contains(Instances(module), x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.TransferAggregate && i.Aggregate?.Value.Layout.Size == 16) &&
+            x.Instructions.Any(i => i.Opcode == EmissionOpcode.Sequence && i.ScalarOperator == "SliceAddress"));
+    }
+
+    [Fact]
     public void MonomorphizesForwardedStringReferences()
     {
         // SPEC 21.3.1: forward<string> passes its ref/T parameter to weight<string> as the substituted

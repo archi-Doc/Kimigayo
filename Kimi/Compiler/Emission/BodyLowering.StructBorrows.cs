@@ -193,9 +193,12 @@ internal sealed partial class BodyLowering
             };
         var receiver = Input(body, id, 0);
         var root = field is null ? null : ElementAccess.BorrowedPathRoot(field);
+        var fieldType = field is null ? null : SignatureType(this, field.BoundType);
+        // A Slice-handle field is copied whole into its temporary (SPEC 4.6.8); other fields need a scalar-like value.
+        var handle = fieldType?.Kind == BoundTypeKind.Slice ? this.aggregateLayouts.Get(fieldType) : null;
         if (field is null || root is null ||
             (!ReferenceEquals(ValueType(body, receiver), SignatureType(this, root.BoundType)) &&
-                !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !ReferenceTypes.IsValue(SignatureType(this, field.BoundType)) ||
+                !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !(ReferenceTypes.IsValue(fieldType) || handle is not null) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
             return Fail("Borrowed field access requires a dominating typed receiver.", out failure);
@@ -206,22 +209,32 @@ internal sealed partial class BodyLowering
             return Fail("Borrowed field path does not match its stored layout and Types.", out failure);
         }
 
-        var representation = WindowsLowering.GetValue(SignatureType(this, field.BoundType)!)!;
+        var representation = handle?.Value ?? WindowsLowering.GetValue(fieldType!)!;
         function.AddScalar(EmissionOpcode.ElementAddress, id, [this.PhysicalOperand(body, receiver), new(EmissionOperandKind.Integer, offset)], representation: representation);
         if (value.Kind == OwnershipValueKind.BorrowedField)
         {
-            if (operation.Kind != OwnershipOperationKind.Produce || !ReferenceEquals(ValueType(body, id), SignatureType(this, field.BoundType)))
+            if (operation.Kind != OwnershipOperationKind.Produce || !ReferenceEquals(ValueType(body, id), fieldType) ||
+                (handle is not null && this.aggregatePlaces[operation.Place] is null))
             {
                 return Fail("Borrowed field read has no matching result.", out failure);
             }
 
-            function.AddScalar(EmissionOpcode.LoadElement, id, [], representation.ComputationType, place: id, representation: representation);
+            if (handle is not null)
+            {
+                var start = function.Operands.Count;
+                function.Operands.Add(new(EmissionOperandKind.ElementAddress, id));
+                function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, operation.Place, OperandStart: start, OperandCount: 1, Aggregate: handle));
+            }
+            else
+            {
+                function.AddScalar(EmissionOpcode.LoadElement, id, [], representation.ComputationType, place: id, representation: representation);
+            }
         }
         else
         {
             var input = Input(body, id, 1);
-            if (operation.Kind != OwnershipOperationKind.WriteBorrowedField || SignatureType(this, root.BoundType)!.Semantics != SemanticsKind.Uniq ||
-                !ReferenceEquals(ValueType(body, input), SignatureType(this, field.BoundType)) || (body.IsReachable(id) && !this.Dominates(input, id)))
+            if (handle is not null || operation.Kind != OwnershipOperationKind.WriteBorrowedField || SignatureType(this, root.BoundType)!.Semantics != SemanticsKind.Uniq ||
+                !ReferenceEquals(ValueType(body, input), fieldType) || (body.IsReachable(id) && !this.Dominates(input, id)))
             {
                 return Fail("Borrowed field write requires exclusive access and a matching secured value.", out failure);
             }
