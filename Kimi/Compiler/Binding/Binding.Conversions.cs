@@ -76,7 +76,7 @@ public sealed partial class Binding
         return ReferenceEquals(this.ResultEvidence(source, scope), BoundType.Never);
     }
 
-    private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope)
+    private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope, BoundType? expected = null)
     {
         var syntax = ConversionTargetSyntax(conversion);
         if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
@@ -130,7 +130,9 @@ public sealed partial class Binding
 
         if (syntax is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
         {
-            var operandType = this.BindNode(conversion.Left, scope);
+            // SPEC 10.8: an expected borrow of the same Semantics fits a literal operand to its referent Type.
+            var operandExpectation = expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && expected.Semantics == semantics ? expected.Components[0] : null;
+            var operandType = this.BindNode(conversion.Left, scope, operandExpectation);
             if (operandType is null)
             {
                 return Complete(conversion, null);

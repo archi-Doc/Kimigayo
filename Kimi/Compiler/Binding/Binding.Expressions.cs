@@ -382,7 +382,7 @@ public sealed partial class Binding
             case UnaryKoto unary:
                 return this.BindUnary(unary, scope, expected);
             case ConversionKoto conversion:
-                return this.BindConversion(conversion, scope);
+                return this.BindConversion(conversion, scope, expected);
             case IsKoto { IsRuntimeTest: true } test:
                 return this.BindRuntimeTypeTest(test, scope);
             case BinaryKoto binary:
@@ -894,6 +894,16 @@ public sealed partial class Binding
             (ReferenceEquals(left, BoundType.Never) && ReferenceTypes.IsString(right))))
         {
             return Complete(binary, BoundType.Boolean);
+        }
+
+        // SPEC 13.4: two safe borrows of one scalar Type compare their referent values; bool supports
+        // equality only, while numbers and char are also ordered.
+        if (comparison && ReferenceTypes.IsScalarBorrow(left) && ReferenceTypes.IsScalarBorrow(right) && ReferenceEquals(left.Components[0], right.Components[0]))
+        {
+            var referent = left.Components[0];
+            return referent.IsNumeric || ReferenceEquals(referent, BoundType.Char) || operation is KotoKind.EqualsEquals or KotoKind.ExclamationEquals
+                ? Complete(binary, BoundType.Boolean)
+                : Fail(binary, BindingFailure.TypeMismatch);
         }
 
         if (logical)

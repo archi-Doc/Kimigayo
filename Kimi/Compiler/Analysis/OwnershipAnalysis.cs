@@ -707,6 +707,11 @@ public sealed partial class OwnershipAnalysis
             return this.StringComparison(binary);
         }
 
+        if (ReferenceEquals(binary.BoundType, BoundType.Boolean) && ReferenceTypes.IsScalarBorrow(binary.Left.BoundType) && ReferenceTypes.IsScalarBorrow(binary.Right.BoundType))
+        {
+            return this.ScalarBorrowComparison(binary);
+        }
+
         var assignment = binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
         if (assignment)
         {

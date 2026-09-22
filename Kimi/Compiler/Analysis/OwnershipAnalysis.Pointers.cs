@@ -98,6 +98,37 @@ public sealed partial class OwnershipAnalysis
         return pointer < 0 ? -1 : this.LoadPointer(source, pointer);
     }
 
+    // SPEC 13.4: safe borrows compare referent values. Each operand's reference is read, its Copy referent
+    // is loaded through that reference (a valid address by the reference's Origin, no new Loan), and the
+    // scalar comparison applies to the loaded values.
+    private int ScalarBorrowComparison(BinaryKoto comparison)
+    {
+        var left = this.LoadReferent(comparison.Left);
+        var right = this.LoadReferent(comparison.Right);
+        if (left < 0 || right < 0 || !this.flow!.Nodes[comparison].CanCompleteNormally)
+        {
+            return -1;
+        }
+
+        var result = this.Temporary(comparison);
+        this.SetValue(this.Value(result), OwnershipValueKind.Binary, [this.Value(left), this.Value(right)], comparison.Akind);
+        return result;
+    }
+
+    private int LoadReferent(Koto source)
+    {
+        var reference = this.Expression(source, PlaceUseKind.Read);
+        if (reference < 0 || source.BoundType is not { Components.Count: 1 } type || !ReferenceTypes.IsScalarBorrow(type))
+        {
+            return -1;
+        }
+
+        var loaded = this.Place(source, type.Components[0], OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
+        this.Emit(OwnershipOperationKind.Produce, source, loaded);
+        this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(reference)]);
+        return this.RegisterTemporary(loaded);
+    }
+
     private int LoadPointer(Koto source, int pointer)
     {
         // SPEC 5.2: acquire Copy/Move into a fresh owner without a Loan. For Move,

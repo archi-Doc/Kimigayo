@@ -25,6 +25,10 @@ internal static class ReferenceTypes
 
     internal static bool IsBorrow(BoundType? type) => IsStorage(type) || ObjectTypes.IsBorrow(type);
 
+    // SPEC 13.4: safe borrows of one scalar Type compare their referent values.
+    internal static bool IsScalarBorrow(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+        && ScalarTypes.Supports(type.Components[0]);
+
     // SPEC 5.1: a raw pointer is a Copy address value; null is its only literal.
     internal static bool IsPointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 };
 

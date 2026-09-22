@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -37,6 +39,35 @@ public class GenericBorrowedElementTest
             string.Empty,
             1,
             "Hello.kimi:3:12: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+
+    // The positive Program 20 case (its checks written as `inferred == 10@ref`, or replaced by `true`) trips
+    // the ownership checker's completion assertion before this unit's comparison is involved; PLAN §6 records
+    // the reproducer for the next P20 unit.
+    private static string Program20Source => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../milestones/Milestone20.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    [Fact]
+    public void RejectsSafeDereferenceInProgram20()
+    {
+        // SPEC 13.2 and 3.3: `*` dereferences raw pointers only; there is no safe `*` on references. The
+        // authored Milestone 20 source dereferences its five returned element borrows (PLAN issue G12).
+        var c = MinimalEmissionTest.Analyze(Program20Source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(5, c.Binding.Issues.Count(x => x.Code == DiagnosticCode.TypeMismatch_Kd && x.Node is DereferenceKoto));
+        Assert.Equal(5, c.Binding.Issues.Count);
+    }
+
+    [Fact]
+    public void BindsProgram20WithReferentComparisons()
+    {
+        // SPEC 13.4: with its checks written as `inferred == 10@ref`, the whole Milestone 20 source binds:
+        // inferred length/Type/Origin, ordinary defaults and dependent forwarding (PLAN issue G12).
+        var source = System.Text.RegularExpressions.Regex.Replace(Program20Source, @"\*(\w+) == (\d+)", "$1 == $2@ref");
+        Assert.DoesNotContain("*", source, StringComparison.Ordinal);
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code} ({x.Node.GetType().Name}): {x.Node}")));
+    }
 
     [Fact]
     public void MonomorphizesAggregateElementReads()

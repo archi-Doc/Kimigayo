@@ -61,10 +61,14 @@ internal sealed partial class BodyLowering
         var place = body.Places[operation.Place];
         var type = place.Type;
         var address = Input(body, id, 0);
+        // SPEC 13.4: a scalar borrow's referent is loaded through the reference for a comparison; the
+        // operation's source is then the borrow itself, and its address needs no Unsafe obligation.
+        var sourceType = SignatureType(this, operation.Source.BoundType);
+        var referent = !store && ReferenceTypes.IsScalarBorrow(sourceType) && ReferenceEquals(sourceType!.Components[0], type);
         if ((place.Kind != OwnershipPlaceKind.Temporary && (!store || place.Kind != OwnershipPlaceKind.Result)) ||
             place.Acquisition is not (AcquisitionKind.Copy or AcquisitionKind.Move) ||
-            !ReferenceEquals(SignatureType(this, operation.Source.BoundType), type) ||
-            ValueType(body, address) is not { } pointerType || !ReferenceTypes.IsPointer(pointerType) ||
+            (!referent && !ReferenceEquals(sourceType, type)) ||
+            ValueType(body, address) is not { } pointerType || !(referent ? ReferenceEquals(pointerType, sourceType) : ReferenceTypes.IsPointer(pointerType)) ||
             !ReferenceEquals(pointerType.Components[0], type) || (body.IsReachable(id) && !this.Dominates(address, id)))
         {
             return Fail("Pointer access requires a matching pointee and a dominating address.", out failure);
