@@ -23,9 +23,9 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 
 ## 3. Current position
 
-- **HEAD** `fdaeed9b` (2026-09-22 restructuring) plus the P22 probe record. Debug/Release builds are warning-free; each full suite passes 11,212 tests (session verification `bin/verify/20260922-095911-session-p22-probe`).
+- **HEAD** `4ab7b271` plus this record. Debug/Release builds are warning-free; each full suite passes 11,218 tests (session verification `bin/verify/20260922-103947-session-p22-session-rest`; harnesses 1–4, 6–12, 14, 15, 17 and 18 pass, 5 and 16 see issue H1).
 - **Programs 1–18** pass (O0/O2, target, variants and rejections). **Programs 19–21** exist but fail in Binding (see §4). Programs 22–38 are not written yet.
-- The shared generic generation path (`GenericStoragePlan*`, `LlvmModuleWriter.GenericStorage`, `LlvmModuleWriter.SharedCalls`, `BodyLowering.Shared`) still generates the supported generic subset.
+- **P22 progress:** each concrete call context of a verified generic body is re-analyzed under its substitution (`OwnershipAnalysis.AnalyzeInstance`) and lowered by the ordinary `BodyLowering` under the caller-facing entry ABI (`LlvmEmitter.LowerInstances`). Scalar functions, Never bodies, length-generic functions, generic struct constructors and field reads now monomorphize. Refused instances still use the shared path (`GenericStoragePlan*`, `LlvmModuleWriter.GenericStorage`/`SharedCalls`, `BodyLowering.Shared`); selected explicit specializations keep their selected body.
 
 ## 4. Milestones (execution order)
 
@@ -80,8 +80,8 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. **P22 instance analysis:** build each closed instance's ownership plan by rerunning `OwnershipAnalysis` on the generic function with a substitution context (the `Place` Type/acquisition and the Koto/`BoundCall` Type reads go through `Binding.InstantiateStorageType` / `InstantiateForwardedCall`), after the universal verification still passes. Substituting Place Types in the universal plan is insufficient: `T` places carry `CopyOrMove` acquisitions and non-scalar value flow (probe 2026-09-22). Then lower the instance with `BodyLowering` under the entry ABI that `GenericStoragePlan` already computes for callers (`SharedStorageEntry.Abi`), routing the body's own signature Types through the substitution; start with `choose<i32>` (GenericStorageEmissionTest `ChooseCopy`).
-2. **P22 migration:** move programs 8–11 and 18 and the generic test families to monomorphized generation; delete the shared path when nothing uses it.
+1. **P22 remaining instance shapes:** calls inside instances (substitute the `BoundCall` via `Binding.InstantiateForwardedCall` and bind nested generic callees to their own instance entries; `BodyLowering.Calls`/`Closures` stay unsubstituted today), owned result joins (`choose<string>`: "Invalid slot result lifetime or arrival range"), reborrows and borrowed projections (programs 9, 11, 14). Find refusals with a temporary probe that records `Lower` failures in `LowerInstances`.
+2. **P22 migration:** when no instance falls back, delete the shared path and its tests, drop the transitional `SharedEntries` bookkeeping, and add the §21.3.5 resource diagnostics (growing keys such as `T -> Box<T>`, oversized substitution sets).
 3. **P22 program:** author `milestones/Milestone22.kimi` and its harness from the §21.3/§21.4 contract, after your instruction to create the program.
 
 ## 7. Open issues
@@ -92,3 +92,4 @@ Features that a program's source does not use belong to the milestone that owns 
 | G4 | The Kimi catalog lacks Weak and the rc/arc ownership family required by §22.1 and §13.5.8–9. | P34/P35 |
 | G7 | `AggregateLayoutPool` uses 32-bit offsets and depth 64; larger layouts are rejected instead of supported or diagnosed per §21. | P25 |
 | G10 | Named function groups used as Function Types need selection, Origin and erasure paths (overloads, generics, members). | P26 |
+| H1 | Stale harness variants, failing identically at `fdaeed9b`: `test-milestone5.ps1` `ImmediateTemporary` uses the old `-> ref/Item from item` syntax (`UnexpectedTrailingToken_Kd`); `test-milestone16.ps1` `Values` expects 31/42 from Cells holding 10/20. Later variants in both harnesses do not run. Fix the variant sources to the current SPEC and its intent. | Harness owner |

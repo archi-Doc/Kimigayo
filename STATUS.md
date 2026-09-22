@@ -5,7 +5,7 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 ## Summary
 
 - **Verification baseline (2026-09-22):** Debug/Release builds are warning-free; each full managed suite passes 11,212 tests. Programs 1–18 pass their O0/O2 target, variant and rejection harnesses. Programs 19–21 fail in Binding. NativeAOT is not run.
-- **Generic generation:** the specification's initial profile monomorphizes (§21.3.1). The compiler still generates its supported generic subset through the earlier shared path (see §4 Shared generics); PLAN milestone P22 replaces it.
+- **Generic generation:** the specification's initial profile monomorphizes (§21.3.1). Scalar, Never and length-generic functions and generic struct constructors/field reads are generated as one concrete body per closed substitution; explicit specializations keep their selected body. Other instances (calls inside generic bodies, owned result joins, reborrows) still use the earlier shared path (see §4 Shared generics) until PLAN milestone P22 completes.
 - **Mods:** the host interface is deferred (Appendix D); `Compilation.Bind` does not execute Mods.
 
 ## Feature boundaries added most recently
