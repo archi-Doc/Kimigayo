@@ -32,12 +32,15 @@ internal sealed partial class BodyLowering
     private bool eraseReceiver;
     private Binding? instanceBinding;
     private BoundCall? instance;
+    private GenericStoragePlan.CallEntry? instanceEntry;
 
-    // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1).
-    internal void SetInstance(Binding? binding, BoundCall? call)
+    // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1);
+    // the entry binds the body's forwarded generic calls to their own instances.
+    internal void SetInstance(Binding? binding, BoundCall? call, GenericStoragePlan.CallEntry? entry)
     {
         this.instanceBinding = binding;
         this.instance = call;
+        this.instanceEntry = entry;
     }
 
     internal bool Lower(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)

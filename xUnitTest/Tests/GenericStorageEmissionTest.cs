@@ -109,6 +109,24 @@ public class GenericStorageEmissionTest
         Assert.Single(instances, x => x.Abi.ResultSlot && x.Subslots.Count == 1);
     }
 
+    [Theory]
+    [InlineData("i32", "4", "i32")]
+    [InlineData("bool", "true", "i1")]
+    public void MonomorphizesNestedGenericCalls(string type, string value, string physical)
+    {
+        // SPEC 21.3.1: the forwarded call inside outer<T> binds to inner's own instance under outer's substitution.
+        const string Nested = "func inner<T>(value: T, n: i32) -> i32 => n + 1\nfunc outer<T>(value: T, n: i32) -> i32 => inner<T>(value, n)\n";
+        var c = MinimalEmissionTest.Analyze(Nested + $"let v = outer<{type}>({value}, 1)");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instances = Instances(module);
+        Assert.Equal(2, instances.Length);
+        Assert.All(instances, x => Assert.Equal(physical, x.Abi.Parameters[0].Type));
+        var outer = Assert.Single(instances, x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
+        Assert.Contains(instances, x => !ReferenceEquals(x, outer) && x.Instructions.All(i => i.Opcode != EmissionOpcode.Call));
+        ScalarEmissionTest.EmitFixture("GenericStorageNestedCall" + type, Nested + $"require outer<{type}>({value}, 1) == 2 else => $abort(\"nested\")", string.Empty);
+    }
+
     [Fact]
     public void UnsupportedInstanceKeepsTheSharedEntry()
     {
