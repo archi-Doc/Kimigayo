@@ -60,6 +60,7 @@ internal static class ScalarDefaults
             MemberAccessKoto field when ElementAccess.BorrowedPathRoot(field) is not null => SupportsPreparedStorage(field, function, parameterIndex),
             BinaryKoto element when ElementAccess.IsSyntax(element) => SupportsPreparedStorage(element, function, parameterIndex),
             ParenthesizedKoto parentheses => SupportsExpression(parentheses.Operand, function, parameterIndex),
+            InvocationKoto { BoundCall: { } call } invocation => SupportsCall(invocation, call, function, parameterIndex),
             IfKoto conditional => SupportsConditional(conditional, function, parameterIndex),
             MatchKoto match => SupportsMatch(match, function, parameterIndex),
             RequireKoto require => SupportsExpression(require.Condition, function, parameterIndex) &&
@@ -85,6 +86,30 @@ internal static class ScalarDefaults
                 SupportsExpression(binary.Left, function, parameterIndex) && SupportsExpression(binary.Right, function, parameterIndex),
             _ => false,
         };
+    }
+
+    // SPEC 7.2.3: a default may call an ordinary function (effects included) whose value arguments are
+    // themselves supported default expressions; the scalar result is independent of the prepared slots.
+    // Receivers, borrowed arguments, callable values and nested omitted defaults keep their guards, since
+    // one call prepares one frame of pending slots.
+    private static bool SupportsCall(InvocationKoto invocation, BoundCall call, FunctionKoto function, int parameterIndex)
+    {
+        if (invocation.IsValueCall || call.Receiver is not null || !call.DefaultArguments.IsEmpty ||
+            call.Target.CompilerFunction != CompilerFunctionKind.None || call.Target.Declaration is not FunctionKoto { IsAnonymous: false } ||
+            call.ArgumentOperations.Length != invocation.ArgumentNodes.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < invocation.ArgumentNodes.Count; i++)
+        {
+            if (call.ArgumentOperations[i].Kind != ArgumentOperationKind.Value || !SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool SupportsConditional(IfKoto conditional, FunctionKoto function, int parameterIndex)

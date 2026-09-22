@@ -66,6 +66,23 @@ public class GenericBorrowedElementTest
     }
 
     [Fact]
+    public void ExecutesProgram20()
+    {
+        // The unchanged Milestone 20 source (inferred length/Type/Origin, ordinary defaults evaluated
+        // once per omission, dependent forwarding) analyzes, lowers per instance and runs natively.
+        var c = MinimalEmissionTest.Analyze(Program20Source);
+        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
+        Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source} ({x.Source.GetType().Name})")
+            .Concat(c.Ownership.ControlFlow!.Issues.Select(x => $"flow {x.Message}: {x.Node}")).Concat(c.Ownership.ControlFlow.PendingBinding.Select(x => $"pending: {x}"))));
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        ScalarEmissionTest.EmitFixture(
+            "GenericBorrowedElementProgram20",
+            Program20Source,
+            "Default index evaluated.\nInferred selection is 10.\nExplicit selection is 30.\nDefault index evaluated.\nForwarded selection is 10.\nDefault index evaluated.\nOrdinary selection is 4.\nDefault index evaluated.\nLocal selection is 7.\nInference and defaults finished.\n");
+    }
+
+    [Fact]
     public void MonomorphizesAggregateElementReads()
     {
         // SPEC 21.3.1: the (i32, bool) instance copies the proved-Copy element from the borrowed array's

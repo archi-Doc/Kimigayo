@@ -332,12 +332,26 @@ public sealed partial class OwnershipBody
     // inconsistency that only a Debug build would notice.
     internal bool Invariant(bool condition, Koto? source = null)
     {
-        if (!condition)
+        if (!condition && !this.HasUnsupportedIssue())
         {
+            // A graph left partial at an unsupported construct is not evidence of an implementation fault.
             this.ReportIssue(new(source ?? this.Function, OwnershipFailure.Internal));
         }
 
         return condition;
+    }
+
+    private bool HasUnsupportedIssue()
+    {
+        for (var i = 0; i < this.IssueStorage.Count; i++)
+        {
+            if (this.IssueStorage[i].Failure == OwnershipFailure.Unsupported)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
