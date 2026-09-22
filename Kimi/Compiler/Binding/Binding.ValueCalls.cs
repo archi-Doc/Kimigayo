@@ -197,6 +197,7 @@ public sealed partial class Binding
                     return Complete(call, null);
                 }
 
+                actual = this.ArgumentType(source, actual);
                 if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind))
                 {
                     return Fail(call, BindingFailure.NoApplicableCandidate);

@@ -210,6 +210,14 @@ public sealed partial class Binding
             return expected;
         }
 
+        // SPEC 3.3: where a T is expected, a value of Type ref/T or uniq/T with a Copy referent is read as that referent.
+        if (expected is not null && actual is not null && node.ErasedFunctionType is null && !Compatible(actual, expected) &&
+            this.Referent(actual, node) is { } referent && Compatible(referent, expected))
+        {
+            this.referentReads.Add(node);
+            return referent;
+        }
+
         return node.ErasedFunctionType ?? actual;
     }
 
@@ -796,6 +804,11 @@ public sealed partial class Binding
         }
 
         var operand = this.BindNode(unary.Operand, scope, unary.Akind == KotoKind.Not ? BoundType.Boolean : unary.Akind == KotoKind.Dereference ? null : expected);
+        if (unary.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus)
+        {
+            operand = this.ReadReferent(unary.Operand, operand); // SPEC 3.3: a value operand denotes its Copy referent.
+        }
+
         if (operand is null)
         {
             return Complete(unary, null);
@@ -844,32 +857,32 @@ public sealed partial class Binding
         var shift = operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         BoundType? left;
         BoundType? right;
+        // SPEC 3.3 and 13.4: an operand of Type ref/T or uniq/T denotes its Copy referent; an assignment
+        // target keeps its Place, and an assigned value is read only where the target's Type expects it.
         if (shift)
         {
             // The count may have any integer Type; only an untyped count adopts the shifted Type (SPEC 13.3).
             left = this.BindNode(binary.Left, scope, assignment ? null : expected);
-            if (assignment)
-            {
-                left = ElementAccess.DestinationType(binary.Left, left);
-            }
-
+            left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
             right = this.BindNode(binary.Right, scope, left is { IsInteger: true } ? left : null);
         }
         else if (IsUnfittedLiteral(binary.Left) && !IsUnfittedLiteral(binary.Right) && !assignment)
         {
-            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : null);
+            right = this.ReadReferent(binary.Right, this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : null));
             left = this.BindNode(binary.Left, scope, right ?? (comparison ? null : expected));
         }
         else
         {
             left = this.BindNode(binary.Left, scope, logical ? BoundType.Boolean : comparison || assignment ? null : expected);
-            if (assignment)
-            {
-                left = ElementAccess.DestinationType(binary.Left, left);
-            }
+            left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
 
             // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
             right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : left);
+        }
+
+        if (!assignment)
+        {
+            right = this.ReadReferent(binary.Right, right);
         }
 
         if (left is null || right is null)
@@ -894,16 +907,6 @@ public sealed partial class Binding
             (ReferenceEquals(left, BoundType.Never) && ReferenceTypes.IsString(right))))
         {
             return Complete(binary, BoundType.Boolean);
-        }
-
-        // SPEC 13.4: two safe borrows of one scalar Type compare their referent values; bool supports
-        // equality only, while numbers and char are also ordered.
-        if (comparison && ReferenceTypes.IsScalarBorrow(left) && ReferenceTypes.IsScalarBorrow(right) && ReferenceEquals(left.Components[0], right.Components[0]))
-        {
-            var referent = left.Components[0];
-            return referent.IsNumeric || ReferenceEquals(referent, BoundType.Char) || operation is KotoKind.EqualsEquals or KotoKind.ExclamationEquals
-                ? Complete(binary, BoundType.Boolean)
-                : Fail(binary, BindingFailure.TypeMismatch);
         }
 
         if (logical)

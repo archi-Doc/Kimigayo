@@ -56,7 +56,7 @@ internal sealed class ObjectGenerationPlan
 
                 if (GenericStoragePlan.IsGeneric(body.Function) || call.TypeArguments.Length != 1 || call.TypeArguments[0] is not { } payload ||
                     !ObjectTypes.IsOwner(call.ReturnType) || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
-                    call.ArgumentOperations.Length != 1 || call.ArgumentOperations[0].Kind != ArgumentOperationKind.Value ||
+                    call.ArgumentOperations.Length != 1 || call.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead) ||
                     !ReferenceEquals(call.ArgumentOperations[0].ParameterType, payload) ||
                     FunctionAbi.GetValue(payload, layouts) is not { } value || value.Layout.Alignment > 16 || value.Layout.Stride != value.Layout.Size)
                 {

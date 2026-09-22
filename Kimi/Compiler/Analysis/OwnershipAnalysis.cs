@@ -531,6 +531,12 @@ public sealed partial class OwnershipAnalysis
 
     private int Expression(Koto node, PlaceUseKind use = PlaceUseKind.Consume, AcquisitionKind? acquisition = null)
     {
+        // SPEC 3.3: the value of a read reference expression is its copied referent.
+        if (this.compilation.Binding.ReadsReferent(node))
+        {
+            return this.LoadReferent(node);
+        }
+
         if (node.ErasedFunctionType is { } erased)
         {
             var source = this.ExpressionCore(node, PlaceUseKind.Consume, acquisition);
@@ -706,11 +712,6 @@ public sealed partial class OwnershipAnalysis
         if ((ReferenceEquals(binary.Left.BoundType, BoundType.String) || ReferenceTypes.IsString(binary.Left.BoundType) || ReferenceTypes.IsString(binary.Right.BoundType)) && ReferenceEquals(binary.BoundType, BoundType.Boolean))
         {
             return this.StringComparison(binary);
-        }
-
-        if (ReferenceEquals(binary.BoundType, BoundType.Boolean) && ReferenceTypes.IsScalarBorrow(binary.Left.BoundType) && ReferenceTypes.IsScalarBorrow(binary.Right.BoundType))
-        {
-            return this.ScalarBorrowComparison(binary);
         }
 
         var assignment = binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
@@ -1105,9 +1106,10 @@ public sealed partial class OwnershipAnalysis
 
     private int Argument(Koto argument, ArgumentOperationKind kind, AcquisitionKind? acquisition = null)
     {
-        if (kind == ArgumentOperationKind.Value)
+        if (kind is ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead)
         {
-            var value = this.Expression(argument, acquisition: acquisition);
+            // SPEC 10.2: a Copy read acquires the referent as a fresh Copy temporary through the reference.
+            var value = kind == ArgumentOperationKind.CopyRead ? this.LoadReferent(argument) : this.Expression(argument, acquisition: acquisition);
             this.CheckAcquisition(value, acquisition);
             return value;
         }

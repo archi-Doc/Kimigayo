@@ -95,6 +95,7 @@ public sealed partial class Binding
             this.specializations.Clear();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
+            this.referentReads.Clear();
             foreach (var construction in this.enumConstructions.Values)
             {
                 construction.IsValid = false;

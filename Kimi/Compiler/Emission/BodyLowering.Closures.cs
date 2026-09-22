@@ -237,7 +237,7 @@ internal sealed partial class BodyLowering
             var place = body.Operations[entry].Place;
             var parameterType = SignatureType(this, argument.ParameterType);
             if (!ReferenceEquals(body.Operations[entry].Source, call) || argument.ParameterIndex != i ||
-                argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
+                argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
                 parameterType is null || !ReferenceEquals(parameterType, inputs.Components[i]) ||
                 !ReferenceEquals(argument.Source, call.ArgumentNodes[i]) || !ReferenceEquals(argument.SourceType, call.ArgumentNodes[i].BoundType) ||
                 !ReferenceEquals(body.Places[place].Type, parameterType) || !ReferenceTypes.IsValue(parameterType) ||

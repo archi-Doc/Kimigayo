@@ -19,6 +19,7 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 - **C layout:** concrete C structs use written field order and ordinary LLVM structs; Kimigayo layout is alignment-sorted. Binding diagnoses `#Layout("C")` on open/derived/empty structs, direct concrete zero-sized fields and written generic applications that make a field zero-sized (`InvalidCLayout_Kd`); inferred instantiations reject at generation. C-exchangeability certification remains.
 - **Composite generic values (Program 18):** owned Tuple/Case Patterns acquire complete array and struct payloads with user destructors; zero-sized values needing cleanup keep an aligned anchor.
 - **Documentation comments:** the product uses the independent limited-profile Markdown parser, renderer and link resolution ([API](Kimi/Compiler/Documentation/README.md)).
+- **Reading through a reference (SPEC §3.3, §10.2, §13.4):** a `ref/T` or `uniq/T` value with a proved-Copy referent is read as `T` wherever a `T` is expected (initializers, assignment sources, arguments and receivers, results, unary/binary operands and comparisons); an Exact reference candidate outranks the read, a typed operand under `@ref` reborrows rather than reads, and a Non-Copy referent is never extracted. Scalar referents lower natively; a Copy aggregate referent read is recorded as unsupported until its storage copy is planned.
 
 ## 1. Lexing, Parsing, and Compilation Conditions
 

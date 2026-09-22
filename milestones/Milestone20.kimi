@@ -16,25 +16,25 @@ public func main()
     let numbers: [3 of i32] = [10, 20, 30]
     do
         let inferred = pick(numbers@ref)
-        require *inferred == 10 else => $abort("Generic inference failed")
+        require inferred == 10 else => $abort("Generic inference failed")
         Console.writeLine("Inferred selection is 10.")
     do
         let explicit = pick<3, i32>(numbers@ref, index: 2)
-        require *explicit == 30 else => $abort("Explicit arguments failed")
+        require explicit == 30 else => $abort("Explicit arguments failed")
         Console.writeLine("Explicit selection is 30.")
     do
         let forwarded = forward(numbers@ref)
-        require *forwarded == 10 else => $abort("Generic forwarding failed")
+        require forwarded == 10 else => $abort("Generic forwarding failed")
         Console.writeLine("Forwarded selection is 10.")
     do
         let wide: [2 of i64] = [4, 5]
         let ordinary = pick(wide@ref)
-        require *ordinary == 4 else => $abort("Ordinary implementation failed")
+        require ordinary == 4 else => $abort("Ordinary implementation failed")
         Console.writeLine("Ordinary selection is 4.")
     do
         // Infer an independent, shorter source Origin for the same generic body.
         let local: [3 of i32] = [7, 8, 9]
         let shortLived = forward(local@ref)
-        require *shortLived == 7 else => $abort("Origin inference failed")
+        require shortLived == 7 else => $abort("Origin inference failed")
         Console.writeLine("Local selection is 7.")
     Console.writeLine("Inference and defaults finished.")

@@ -311,6 +311,7 @@ public sealed partial class Binding
                         return Complete(use, null);
                     }
 
+                    actual = this.ArgumentType(source, actual);
                     if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
                     {
                         return Fail(use, BindingFailure.TypeMismatch);
@@ -431,7 +432,7 @@ public sealed partial class Binding
                     Fail(entry.Key, BindingFailure.InvalidConstraint);
                 }
 
-                plan.SetAcquisition(i, operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);
+                plan.SetAcquisition(i, operation.Kind == ArgumentOperationKind.CopyRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);
             }
         }
     }

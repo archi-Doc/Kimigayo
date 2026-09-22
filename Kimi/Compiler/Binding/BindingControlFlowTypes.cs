@@ -19,7 +19,9 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
         => expression.BindingState == BindingState.Resolved && expression.BoundType is { } type && binding.ProveCopy(type, expression) == ConstraintProof.Proven;
 
     public override ControlFlowType? GetExpressionType(Koto expression)
-        => expression.BindingState == BindingState.Resolved ? FlowType(expression.ErasedFunctionType ?? expression.BoundType) : null;
+        => expression.BindingState != BindingState.Resolved ? null
+            : binding.ReadsReferent(expression) ? FlowType(expression.BoundType!.Components[0]) // SPEC 3.3: a read reference denotes its referent.
+            : FlowType(expression.ErasedFunctionType ?? expression.BoundType);
 
     // SPEC 5.1: Binding types null only from an expected raw-pointer Type, such as a call argument's parameter.
     public override ControlFlowType? GetExpectedType(Koto expression)

@@ -22,6 +22,7 @@ public enum ArgumentOperationKind : byte
     BaseBorrow,
     StorageProjection,
     PayloadProjection,
+    CopyRead,
 }
 
 /// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it.</summary>
@@ -31,6 +32,12 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundArgumentOperation> argumentOperationScratch = new();
     private readonly Dictionary<Koto, BoundArgumentOperation> receiverOperations = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Koto> referentReads = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Gets whether an expression of Type <c>ref/T</c> or <c>uniq/T</c> is read as its Copy referent where a <c>T</c> is expected (SPEC 3.3).</summary>
+    /// <param name="node">The bound expression; its BoundType remains the reference Type.</param>
+    /// <returns>Whether the expression's value is the copied referent.</returns>
+    public bool ReadsReferent(Koto node) => this.referentReads.Contains(node);
 
     /// <summary>Gets a selected receiver/storage operation, including an unresolved projected-use proof obligation.</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
@@ -88,6 +95,28 @@ public sealed partial class Binding
         source = PlaceOriginSource(source);
         return source.BoundType?.Origin ?? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
+
+    // SPEC 3.3: one ref/T or uniq/T layer is read as its referent T when T is proved Copy; a Non-Copy
+    // referent is never extracted through a reference.
+    private BoundType? Referent(BoundType? type, Koto context)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+            this.ProveCopy(type.Components[0], context) == ConstraintProof.Proven ? type.Components[0] : null;
+
+    // An operand denotes its Copy referent (SPEC 13.4); the node keeps its reference Type.
+    private BoundType? ReadReferent(Koto node, BoundType? type)
+    {
+        if (this.Referent(type, node) is not { } referent)
+        {
+            return type;
+        }
+
+        this.referentReads.Add(node);
+        return referent;
+    }
+
+    // The type an argument presents to adaptation: a node already read where its parameter Type was
+    // expected adapts from its own reference Type, so the plan records the Copy read once.
+    private BoundType ArgumentType(Koto source, BoundType actual) => this.referentReads.Contains(source) ? source.BoundType ?? actual : actual;
 
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
     {
@@ -157,7 +186,20 @@ public sealed partial class Binding
 
         if (pattern.Kind != BoundTypeKind.Semantics || pattern.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq))
         {
-            return !projected; // An owning receiver cannot acquire a sliced base.
+            if (projected)
+            {
+                return false; // An owning receiver cannot acquire a sliced base.
+            }
+
+            // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
+            if (!this.FitsTypeAt(actual, pattern, source) && this.Referent(actual, source) is { } read && this.FitsTypeAt(read, pattern, source))
+            {
+                adapted = read;
+                quality = ArgumentAdaptation.CrossSemanticsBorrow;
+                kind = ArgumentOperationKind.CopyRead;
+            }
+
+            return true;
         }
 
         if (!projected && declaringType is not null && this.TryPayloadProjection(source, pattern, actual, scope, out adapted))

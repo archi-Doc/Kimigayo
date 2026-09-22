@@ -759,7 +759,7 @@ internal sealed partial class GenericStoragePlan
                             if ((uint)p >= (uint)slots.Length || slots[p] != -1 || adaptation.ParameterIndex != p ||
                                 (isDefault && (p <= previousDefault || !ReferenceEquals(directTarget.Parameters[p].DefaultValue, omitted.Expression) ||
                                     !ReferenceEquals(omitted.Parameter.Scope.Owner, directTarget) || !ScalarDefaults.SupportsValue(omitted.ParameterType))) ||
-                                adaptation.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
+                                adaptation.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
                                 !ReferenceEquals(acquired.Source, directSyntax) || !ReferenceEquals(adaptation.Source, argumentSource) ||
                                 !ReferenceEquals(adaptation.SourceType, argumentSource.BoundType) ||
                                 !ReferenceTypes.CallTypeMatches(binding.InstantiateStorageType(directTarget.Parameters[p].Type.BoundType!, direct), adaptation.ParameterType, direct) ||
@@ -848,7 +848,7 @@ internal sealed partial class GenericStoragePlan
                     {
                         var acquired = body.Operations[arguments[a]];
                         var argument = callPlan.Arguments[a];
-                        if (!ReferenceEquals(acquired.Source, call) || argument.ParameterIndex != a || argument.Kind != ArgumentOperationKind.Value ||
+                        if (!ReferenceEquals(acquired.Source, call) || argument.ParameterIndex != a || argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead) ||
                             !ReferenceEquals(argument.ParameterType, callInputs.Components[a]) || !ReferenceEquals(body.Places[acquired.Place].Type, argument.ParameterType) ||
                             !ReferenceEquals(argument.Source, call.ArgumentNodes[a]) || !ReferenceEquals(argument.SourceType, call.ArgumentNodes[a].BoundType) ||
                             counts[acquired.Place] != 1 || (body.IsReachable(id) && !this.verifier.SharedDominates(arguments[a], id)))

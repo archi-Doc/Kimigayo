@@ -94,9 +94,7 @@ Raw-pointer arithmetic is limited to the forms and unsafe conditions of [pointer
 
 For floating-point values, `+0.0 == -0.0` is true. With a NaN operand, `==`, `<`, `<=`, `>` and `>=` are false and `!=` is true; floating-point ordering is not total.
 
-Comparisons may borrow their operands and never Move Non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability (§13.4.1). Safe borrows compare referent values of the same Type using that Type's comparison capability. Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison.
-
-Built-in comparisons do not implicitly adapt an owned operand to match a safe-borrow operand: compare two owned values, or two safe borrows with matching immediate Referent Types. The outer borrow Origins need not be identical, but each operand must remain valid through the comparison.
+Comparisons may borrow their operands and never Move Non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability (§13.4.1). An operand of Type `ref/T` or `uniq/T` denotes its referent: a Copy referent is [read through the reference](03-types-and-values.md#33-type-semantics), and a Non-Copy referent is inspected through it without a Copy or Move. After that, both operands must have the same Type (or one is `Never`), and that Type's comparison capability applies; an owned operand and a borrow of one referent Type therefore compare alike, and an untyped literal operand is fitted to the other operand's referent Type. The outer borrow Origins need not be identical, but each operand must remain valid through the comparison. Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison.
 
 **Inspection Loans.** A built-in comparison that inspects a Non-Copy owned Place forms an implicit shared Loan when that operand is evaluated. Operands are evaluated left to right, so the left operand's Loan begins before the right operand is evaluated and lasts through the comparison. Both inspections require Initialized values. The normal [Loan conflict rules](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts) apply throughout operand evaluation: a later operand cannot Move, replace, destroy or exclusively borrow the earlier borrowed Place. Optimization cannot change this acceptance rule.
 
@@ -253,7 +251,7 @@ A target that changes both Core and Semantics must be one defined operation; no 
 inspect(number@i64@ref)
 ```
 
-There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. Safe references are never implicitly dereferenced to convert or extract their owned referents. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
+There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only under the [Copy read](03-types-and-values.md#33-type-semantics) of §3.3; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
 
 ### 13.5.4. Numeric conversions and literals
 
