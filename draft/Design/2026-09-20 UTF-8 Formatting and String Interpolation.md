@@ -1,31 +1,30 @@
 # UTF-8書式化・文字列補間 — 仕様変更案
 
-- 日付: 2026-09-20
+- 日付: 2026-09-20（2026-09-22 改訂）
 - 状態: 設計案。例は提案APIを使用し、実装済み機能や検証済みABIを示さない。
 - 優先順位: 本案で変更する事項は[SPEC.md](../../SPEC.md)およびその参照先より優先する。変更しない事項には既存仕様を適用する。他の設計案の未統合機能を前提としない。
-- Originの構文・省略・互換性は正式仕様の[§15.3–4](../../spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins)に従い、本案では変更しない。
-- 目的: 書式化を1回の評価と書き込みで実行し、借用とバッファ再利用によって不要な確保・コピーを避ける。
+- Originの構文・省略・互換性は[§15.3–4](../../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations)に従う。本案の署名は直接借用入力からの結果省略（§15.4.3）を使い、省略できない位置だけ`origin`節で書く。`Type{name}`は常にbinding setの命名であり、Originの適用ではない。
+- 目的: 書式化を1回の評価と書き込みで実行し、借用とバッファ再利用によって不要な確保・コピー・再検証を避ける。
 
 ## 1. 基本方針
 
-1. 必須Contractの`Stringify`を削除し、`Utf8Format`に一本化する。旧Contractや同名メソッドへのフォールバックは行わない。
-2. 通常の補間式は所有`string`を返す。Writerへの短絡する補間は、明示的な構文`$tryWrite`で表す。
-3. `Console.writeLine`は`ref/string`を受け取り、所有権を取得・保持・破棄しない。
-4. 書式化先はUTF-8。初期版は既定書式だけを提供する。桁揃え、精度、基数、ロケール、実行時書式文字列は追加しない。
+1. 必須Contractの`Stringify`を削除し、`Utf8Format`に一本化する。旧Contractや同名メソッドへのフォールバックは行わない。`Stringify`というユーザー識別子は引き続き使用できるが、特別な効果は持たない。
+2. 通常の補間式は所有`string`を返す。Writerへ短絡して書く補間は明示的な構文`$tryWrite`で表す。
+3. `Console.writeLine`は`ref/string`または`Utf8Slice`を受け取り、所有権を取得・保持・破棄しない。
+4. 書式化先はUTF-8。初期版は既定書式だけを提供し、桁揃え・精度・基数・ロケール・実行時書式文字列は追加しない。数値の`@string`変換や文字列`+`の動作も追加しない。
 5. `BufferWriter`と`Utf8Format`はユーザー実装可能な静的Contractとする。型消去やboxingを必要としない。
-6. 固定長領域の容量不足は`BufferFull`。伸長可能な標準Writerの確保失敗・サイズ上限超過は既存のAbort規則に従う。
-
-`Stringify`というユーザー識別子は引き続き使用できるが、補間への特別な効果は持たない。数値の`@string`変換や、未確定の文字列`+`の動作は追加しない。
+6. 固定長領域の容量不足は`BufferFull`。伸長可能なWriterの確保失敗・サイズ上限超過は既存の確保用Abortに従う。
+7. 本案の長さ・容量はすべてバイト数の`isize`である。
 
 ## 2. 公開API
 
 ### 2.1. Contractと型
 
-以下を`Kimi`直下の必須宣言とする。API表の操作はすべて公開。表内の`Self`はその操作の所属型を表し、Originを持つ型では既存の束縛も保持する。
+以下を`Kimi`直下の必須宣言とする。表内の`Self`はその操作の所属型を表す。
 
 ```kimi
 contract BufferWriter
-    func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow{self}, BufferFull>
+    func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
 
 contract Utf8Format
     func format<W>(self: ref/Self, writer: uniq/Utf8Writer<W>) -> Result<(), BufferFull>
@@ -35,176 +34,194 @@ contract Utf8Format
 | 型 | 所有権・依存関係 |
 | --- | --- |
 | `BufferFull` / `InvalidUtf8` | 状態を持たないCopyのエラー型。引数なしの公開コンストラクターを持つ |
-| `WriteWindow {source}` | Non-Copy。書き込み領域と確定位置を排他的に借用する。`source`のLoan要求は`uniq` |
-| `FixedBufferWriter {source}` | Non-Copy。呼び出し側の固定長バイト領域を排他的に借用する。`source`のLoan要求は`uniq` |
-| `ReusableBufferWriter` | Non-Copy。伸長可能なヒープ領域を所有する |
+| `WriteWindow {source}` | Non-Copy。書き込み領域と共通状態（§3.1）を排他的に借用する。`source`のLoan要求は`uniq` |
+| `FixedBuffer {source}` | Non-Copy。呼び出し側の固定長バイト領域を排他的に借用する。`source`のLoan要求は`uniq` |
+| `HeapBuffer` | Non-Copy。伸長可能なヒープ領域を所有する |
 | `Utf8Slice {source}` | Copy。検証済みUTF-8領域を共有借用する。参照カウント更新なし。`source`のLoan要求は`ref` |
 | `Utf8Writer<W> {target}` | Non-Copy。`W is BufferWriter`。`uniq{target}/W`と失敗状態を保持する。`target`のLoan要求は`uniq` |
 
-`Utf8Writer`は常に借用専用で、Writer本体を所有せず、独自のヒープ領域を持たない。型引数`W`の内部Originも保持する。`uniq/W`に`BufferWriter`適合を自動追加する特別規則は設けない。
+`reserve`の結果は受け手`self`だけを直接借用入力とするため、`WriteWindow`の`source`は省略規則で`self`に補完される。`Utf8Writer<W>`を入力にとる関数では、外側の借用と省略された`target`が独立した入力Originになり、`target`が外側の借用を包含する整形式条件を保持する。適合実装との互換性は正規化されたOrigin契約で判定し、明示・省略の表記だけで区別しない。
 
-ユーザーの適合は、既存の明示的な適合宣言・公開実装・制約検証に従う。同名メソッドがあるだけでは適合しない。基底型からの適合継承にも、既存§8.4.4のOrigin・アクセス・`ObjectCallCompatible`などの全条件を適用する。
+`Utf8Writer`は常に借用専用で、Writer本体を所有せず、独自のヒープ領域を持たない。ユーザーの適合は既存の明示的な適合宣言・公開実装・制約検証（§8.4.4–5）に従う。`BufferWriter`が保証する操作は`reserve`だけで、総称アダプターはContract外のメンバーを呼ばない。`Utf8Format.format`は関数総称パラメーターを持つ静的要件であり、Runtime Contract Viewへの対応は追加しない。
 
-`BufferWriter`が保証する操作は`reserve`だけである。総称アダプターは`W`の長さ・全体Slice・所有権取得を必要とせず、Contract外のメンバーを呼ばない。`Utf8Format.format`は関数総称パラメーターを持つ静的要求であり、Runtime Contract Viewへの対応は追加しない。
+### 2.2. `Kimi.Text`の関数
 
-Origin表記は次のように使い分ける。
+通常の公開group `Kimi.Text`に次のType関数を置く。既定のKimi aliasは`Text`を使用可能にするが、その内部を再帰的には開かない。型引数・長さ引数は既存規則で推論できる。
 
-- 型宣言は`Utf8Writer<W> {target}`、型への適用は`Utf8Writer<W>{target}`。借用の注釈は`uniq{borrow}/Utf8Writer<W>{target}`のように`/`の前へ置く。外側の借用と内部WriterのOriginを混同しない。
-- 通常の入力`writer: uniq/Utf8Writer<W>`では、外側の借用と省略された`target`に独立した入力Originを持つ。どちらも定義時に全称化し、内部Originが外側の借用の期間を包含する整形式条件を保持する。省略は`static`固定や寿命延長ではない。
-- 結果の`WriteWindow{self}`は受け手の借用、`Utf8Slice{bytes.source}`は入力ビューの元領域に依存する。所有ビュー自体の変数名を借用Originとして扱わない。内部Originは結果省略の候補に自動追加しない。
-- ストレージの借用は`uniq{target}/W`のように明示し、入力省略規則をフィールドや入れ子の借用層へ拡張しない。完全な型引数`W`と`Self`は既存の束縛を保持する。
+```kimi
+group Text
+    public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer
+    public func heap(capacity: isize) -> HeapBuffer
+    public func writer<W>(destination: uniq/W) -> Utf8Writer<W>
+        W is BufferWriter
+    public func utf8(text: ref/string) -> Utf8Slice
+    public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice{r}, InvalidUtf8>
+        origin r.source == bytes.source
+    public func toString<T>(value: ref/T) -> string
+        T is Utf8Format
+    public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8])
+        -> Result<Utf8Slice{r}, BufferFull>
+        T is Utf8Format
+        origin r.source == destination
+```
 
-例えば`format<W> {target}(..., writer: uniq/Utf8Writer<W>{target})`は上の省略形と同等の契約を表せる。適合実装との互換性は正規化されたOrigin契約で判定し、明示・省略の表記だけでオーバーロードや特殊化を区別しない。
-
-### 2.2. 構築と標準Writer
-
-通常の公開group `Kimi.Text`に次のType関数を置く。既定のKimi aliasは`Text`を使用可能にするが、その内部を再帰的には開かない。関数の型引数・長さ引数は既存規則で推論できる。
-
-| 関数 | 結果と動作 |
+| 関数 | 動作 |
 | --- | --- |
-| `fixed<length N>(destination: uniq/[N of u8])` | `FixedBufferWriter{destination}`。確定済み長さ0、容量N |
-| `buffer(initialCapacity: isize)` | `ReusableBufferWriter`。確定済み長さ0、容量は指定値以上。0なら未確保で開始する |
-| `writer<W>(destination: uniq/W)`、`W is BufferWriter` | `Utf8Writer<W>{destination}`。失敗状態を持たず開始する |
-
-`initialCapacity`の負数は`KIMI_E_ARG_RANGE: Argument out of range`、上限超過・確保失敗は既存の確保用Abortとする。
+| `fixed` | 確定済み長さ0、容量Nの`FixedBuffer`。入力配列は初期化済みでなければならない |
+| `heap` | 確定済み長さ0、容量は指定値以上の`HeapBuffer`。0なら未確保で開始する。負数は`KIMI_E_ARG_RANGE`、上限超過・確保失敗は既存の確保用Abort |
+| `writer` | 失敗状態を持たない`Utf8Writer<W>` |
+| `utf8` | 確保・コピー・再検証なしのビュー |
+| `validateUtf8` | 全体を1回検証。確保・コピーなし |
+| `toString` | §5.1の経路で所有`string`へ書式化する |
+| `tryFormat` | 固定長領域へ1回書式化し、成功時は書き込んだ範囲の検証済みビューを返す |
 
 借用元は先にローカル変数へ保持する。所有一時値への暗黙の排他借用は追加しない。
 
 ```kimi
-var destination: [3 of u8] = [0, 0, 0]
-var buffer = Text.fixed(destination)
+var scratch: [64 of u8] = [64 of 0]
+var buffer = Text.fixed(scratch)
 var writer = Text.writer(buffer)
 let result = $tryWrite(writer, "\(123)")
-// writerの借用が終了すると、buffer.bytes()などを使用できる。
+// writerの借用が終了すると、buffer.text()などを使用できる。
+
+var small: [3 of u8] = [3 of 0]
+let view = Text.tryFormat(123, small) // 成功: 長さ3のUtf8Slice。ヒープ確保なし
 ```
 
-両標準Writerは`BufferWriter`に適合し、次の操作を持つ。
+### 2.3. 固定配列のfill構築
+
+固定配列の作業領域を要素列挙なしで構築できるよう、§4.3に次の式を追加する。
+
+```kimi
+let zeros: [64 of u8] = [64 of 0]
+let flags = [8 of false] // [8 of bool]
+```
+
+`[N of value]`は長さ定数式`N`（§4.2）と式`value`から`[N of T]`を構築する。`T`は`value`の型で、Copyでなければならない。`value`は1回だけ評価され、N回Copyされる。`N = 0`は空配列を構築する。式文脈で最初の要素の後に`of`が続く場合だけこの形式とし、型構文`[N of T]`と同じ語順にする。要素型は既存の期待型・リテラル規則で決める。fill以外の生成構築や未初期化領域の借用は追加しない。
+
+### 2.4. 標準Writer
+
+`FixedBuffer`と`HeapBuffer`は`BufferWriter`に適合し、次の操作を持つ。
 
 | 操作 | 受け手 | 結果・動作 |
 | --- | --- | --- |
-| `length` / `capacity` | getterの`ref/Self` | `isize`。確定済みバイト数 / 全容量 |
-| `bytes()` | `ref/Self` | `Slice<u8>{self}`。確定済み部分だけを共有借用 |
-| `clear()` | `uniq/Self` | `()`。長さを0に戻し、容量を保持する。消去は保証しない |
-| `reserve(minimum: isize)` | `uniq/Self` | §3のWindowを返す |
+| `length` / `capacity` | getterの`ref/Self` | 確定済みバイト数 / 全容量 |
+| `bytes()` | `ref/Self` | `Slice<u8>`。確定済み部分だけを共有借用 |
+| `text()` | `ref/Self` | `Result<Utf8Slice, InvalidUtf8>`。§3.1の検証済み長さより後ろだけを検証し、確定済み全体のビューを返す |
+| `clear()` | `uniq/Self` | 長さと検証済み長さを0に戻し、容量を保持する。消去は保証しない |
+| `reserve(minimum)` | `uniq/Self` | §3.2のWindowを返す |
 
-共有Slice、Window、アダプターが保持するLoanと競合する操作は拒否する。`FixedBufferWriter`の破棄は借用を終了するだけで、元領域を解放しない。`ReusableBufferWriter`は所有する領域を通常破棄で1回解放する。
+共有Slice、Window、アダプターが保持するLoanと競合する操作は拒否する。`FixedBuffer`の破棄は借用を終了するだけで、元領域を解放しない。`HeapBuffer`は所有する領域を通常破棄で1回解放する。一般の可変Sliceは導入しない。
 
-固定長Writerの入力配列は初期化済みでなければならない。未初期化配列の借用を許す変更や、一般の可変Sliceは導入しない。
+### 2.5. UTF-8ビューと書き込み
 
-### 2.3. UTF-8ビューと書き込み
+`Utf8Slice`の操作:
 
-構築は`Text`のType関数、取得は`Utf8Slice`のインスタンス操作とする。構築先型のOriginを先に指定する必要はない。
-
-| 操作 | シグネチャ・動作 |
+| 操作 | 動作 |
 | --- | --- |
-| `Text.utf8(text: ref/string)` | `Utf8Slice{text}`。確保・コピー・再検証なし |
-| `Text.validateUtf8(bytes: Slice<u8>)` | `Result<Utf8Slice{bytes.source}, InvalidUtf8>`。全体を1回検証。確保・コピーなし |
-| `byteLength` | getterの`self: Self`から`isize`を返す |
-| `bytes(self: Self)` | `Slice<u8>{self.source}`。元領域を共有借用したまま返す |
+| `length` | getterの`self: Self`。バイト数 |
+| `bytes(self: Self) -> Slice<u8>{s}`、`origin s.source == self.source` | 元領域を共有借用したまま返す |
 
 検証は有効なUnicode scalarのUTF-8だけを受理する。不完全な列、過長符号化、surrogate、範囲外の値を拒否し、置換や正規化は行わない。共有Loanにより、検証後の競合する書き換えを禁止する。バイト単位の任意の切り出しを有効なUTF-8とみなしてはならない。
 
-`Utf8Writer<W>`の書き込みはすべて`self: uniq/Self`を受け取り、`Result<(), BufferFull>`を返す。
+`Utf8Writer<W>`の書き込み操作はすべて`self: uniq/Self`を受け取り、`Result<(), BufferFull>`を返す。
 
 | 操作 | 動作 |
 | --- | --- |
 | `write(text: ref/string)` | 文字列のUTF-8を一括追記する |
-| `write(text: Utf8Slice)` | 検証済み領域を再検証せず一括追記する。入力の省略Originは受け手の`target`と独立 |
+| `write(text: Utf8Slice)` | 再検証せず一括追記する。入力の省略Originは受け手の`target`と独立 |
 | `writeChar(value: char)` | 1つのUnicode scalarを追記する |
-| `writeValue<T>(value: ref/T)`、`T is Utf8Format` | §4の共通規則で適合実装を1回呼ぶ |
+| `writeValue<T>(value: ref/T)`、`T is Utf8Format` | §4.2の共通手順で適合実装を1回呼ぶ |
 
-`status(self: ref/Self) -> Result<(), BufferFull>`で失敗状態を確認できる。状態のリセット、rawなWindow、内部Writerへのアクセス、所有権を取り出す操作は公開しない。アダプターの破棄は確定・出力・エラー通知を行わず、元Writerを破棄しない。既存のLoan規則で借用が終了すれば、元Writerを再び使用できる。必要な成否は返却されたResultか、使用終了前の`status()`で確認する。
+`status(self: ref/Self) -> Result<(), BufferFull>`で失敗状態を確認できる。状態のリセット、rawなWindow、内部Writerへのアクセス、所有権を取り出す操作は公開しない。アダプターの破棄は確定・出力・エラー通知を行わず、元Writerを破棄しない。借用が終了すれば元Writerを再び使用できる。
 
-通常の関数・メソッドは、直接呼び出しでも関数値経由でも通常の引数評価を行う。`tryWrite`という特別なメソッドは設けず、短絡動作は§5の`$tryWrite`だけに与える。
+通常の関数・メソッドは、直接呼び出しでも関数値経由でも通常の引数評価を行う。短絡動作は§5.2の`$tryWrite`だけに与える。
 
 ## 3. バッファの安全性と容量管理
 
 ### 3.1. 共通状態と予約
 
-領域のアドレス、容量、確定済み長さは、標準ライブラリ内部の状態管理部が保持する。次を不変条件とする。
+領域のアドレス、容量、確定済み長さ、検証済み長さは、標準ライブラリ内部の共通状態が保持する。ユーザーWriterは標準Writerを保持・合成してWindowを転送する形で実装し、生ポインターからWindowを作る公開APIは設けない。不変条件:
 
-- `0 <= 確定済み長さ <= 容量 <= MaxObjectSize`。確定済み部分はすべて初期化済み。
-- 公開する共有Sliceは確定済み部分に限る。
+- `0 <= 検証済み長さ <= 確定済み長さ <= 容量 <= MaxObjectSize`。確定済み部分はすべて初期化済み。
+- 公開する共有Sliceは確定済み部分に限る。検証済み長さまでの部分は有効なUTF-8である。
 - Windowは未確定の末尾領域だけに書く。書き込み済み範囲は常に先頭から連続する。
-- Window生存中は、領域と状態管理部の両方を排他的Loanで保護する。移動・再予約・伸長・破棄を競合して行えない。
+- Window生存中は、領域と共通状態を排他的Loanで保護し、移動・再予約・伸長・破棄を競合して行えない。
 
-`reserve(minimum)`の成功結果は、`written == 0`かつ`remaining >= minimum`を満たす。予約だけでは確定済み長さを増やさない。`minimum == 0`では空のWindowを返してよく、標準Writerはこの要求だけを理由に確保しない。負数は`KIMI_E_ARG_RANGE`でAbortする。
+`reserve(minimum)`の成功結果は`written == 0`かつ`remaining >= minimum`を満たし、確定済み長さを増やさない。`minimum == 0`では空のWindowを返してよく、標準Writerはこの要求だけを理由に確保しない。負数は`KIMI_E_ARG_RANGE`でAbortする。
 
-標準の固定長Writerは空きが要求以上なら必ず成功し、不足時は`BufferFull`を返す。`ReusableBufferWriter`は容量内なら確保せず成功し、不足時は伸長する。確保失敗を`BufferFull`に置き換えない。ユーザーWriterは独自の容量上限を持てるが、どのWriterも`BufferFull`では既存の確定済みバイトと長さを変えない。
+`FixedBuffer`は空きが要求以上なら必ず成功し、不足時は`BufferFull`を返す。`HeapBuffer`は容量内なら確保せず成功し、不足時は伸長する。確保失敗を`BufferFull`に置き換えない。どのWriterも`BufferFull`では既存の確定済みバイトと長さを変えない。
+
+`HeapBuffer`の必要長は`required = length + minimum`とし、超過・算術オーバーフローは`KIMI_E_ALLOC_SIZE`。伸長時は`capacity <= MaxObjectSize / 2`なら`max(required, 2 * capacity)`、それ以外は`required`を使う。倍増の計算自体をオーバーフローさせず、確定済み部分だけをコピーする。
 
 ### 3.2. Windowの操作
 
-Windowは予約開始位置・書き込み済み長さ・容量上限を保持する小さな値であり、追加の確保を行わない。
+Windowは予約開始位置・書き込み済み長さ・容量上限を保持する小さな値で、追加の確保を行わない。
 
 | 操作 | 受け手 | 結果・動作 |
 | --- | --- | --- |
-| `written` / `remaining` | getterの`ref/Self` | `isize`。今回の書き込み済み長さ / 残容量 |
+| `written` / `remaining` | getterの`ref/Self` | 今回の書き込み済み長さ / 残容量 |
 | `push(byte: u8)` | `uniq/Self` | `Result<(), BufferFull>`。1バイトを末尾へ書く |
-| `append(bytes: Slice<u8>)` | `uniq/Self` | `Result<(), BufferFull>`。全バイトを末尾へコピーする。入力の省略OriginはWindowの`source`と独立 |
+| `append(bytes: Slice<u8>)` | `uniq/Self` | `Result<(), BufferFull>`。全バイトを末尾へコピーする。入力の省略Originは`source`と独立 |
 | `limit(maximum: isize)` | `owner/Self` | `Self`。元のWindowを消費し、容量を`min(現在の容量, maximum)`へ制限する |
-| `commit()` | `owner/Self` | `isize`。初期化済み部分を確定し、今回の確定バイト数を返す |
+| `commit()` | `owner/Self` | `isize`。書き込み済み部分を確定し、そのバイト数を返す |
 
-`push`と`append`は、その呼び出し全体が収まる場合だけ書く。容量不足では、その呼び出しによるバイトと長さの変更はない。以前の書き込みはWindow内に残る。
+`push`と`append`は、呼び出し全体が収まる場合だけ書く。容量不足では変更がなく、以前の書き込みはWindow内に残る。`limit`は拡大・複製・確定をせず、`maximum < written`または負数なら`KIMI_E_ARG_RANGE`でAbortする。書き込み済み範囲、Origin、確定先を引き継ぎ、新しい`remaining`は制限後の容量から`written`を引いた値になる。
 
-`limit`は拡大も複製も確定もしない。`maximum < written`または負数なら`KIMI_E_ARG_RANGE`でAbortする。書き込み済み範囲、Origin、確定先を元のWindowから引き継ぎ、新しい`remaining`は制限後の容量から`written`を引いた値になる。安全なAPIでは、未初期化領域の読み取り、穴を空ける書き込み、任意の長さを確定する`advance(n)`を許さない。
+`commit()`は共通状態の確定済み長さだけを更新し、ユーザーWriterへのコールバックを呼ばない。消費済みWindowは使用不可。未確定の通常破棄では長さを増やさず借用を終了する。未初期化領域の読み取り、穴を空ける書き込み、任意長を確定する`advance(n)`は許さない。
 
-`commit()`は共通状態の長さだけを更新し、ユーザーWriterへのコールバックを呼ばない。消費済みWindowは使用不可。未確定の通常破棄では長さを増やさず借用を終了する。バイトの消去や容量の巻き戻しは要求しない。Abort時の後始末は既存規則に従う。
+`Utf8Writer`は公開`commit()`の代わりに内部の確定操作を使う。この操作は同じ更新に加え、確定する区間が検証済み長さの直後から始まる場合に検証済み長さも新しい確定済み長さへ進める。Windowは常に共通状態から生じるため、ユーザーWriterが転送したWindowでも内側の標準Writerの検証済み長さが正しく進む。
 
-### 3.3. ユーザー定義Writerと伸長
+### 3.3. ユーザー定義Writer
 
-ユーザーは標準Writerを保持・合成し、そのWindowを転送して独自Writerを実装できる。確定位置の正本は共通状態とし、別途の累計値は次の予約や明示的な出力時に確定済み長さから更新する。生ポインターからWindowを作る公開APIは設けない。
+`BufferWriter`は`reserve`しか保証しないため、内側の長さが必要なWriterは具体的な標準Writerを保持する。上限付きWriterの例:
 
-例えば上限付きWriterは、次の共通手順で制限を強制できる。
+```kimi
+struct Limited
+    Self is BufferWriter
+    var inner: HeapBuffer
+    var maximum: isize
 
-```text
-0 <= 内部Writerの確定済み長さ <= 出力上限を構築・再利用時に保証する
-remaining = 出力上限 - 内部Writerの確定済み長さ
-minimumが負数ならAbort、remainingを超えるならBufferFull
-内部Writerからminimum以上のWindowを取得
-window.limit(remaining)を返す
+    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+        let remaining = self.maximum - self.inner.length
+        if minimum > remaining => return .Err(BufferFull.init())
+        let window = try self.inner.reserve(minimum)
+        return .Ok(window.limit(remaining))
 ```
 
-これにより、内部容量が4096バイトでも、残り予算20バイトのWindowだけを返せる。追加確保や確定コールバックは不要。
-
-`ReusableBufferWriter`の必要長は`required = length + minimum`とし、超過・算術オーバーフローは`KIMI_E_ALLOC_SIZE`とする。伸長時は、`capacity <= MaxObjectSize / 2`なら`max(required, 2 * capacity)`、それ以外なら有効な`required`を使う。倍増の計算自体をオーバーフローさせず、確定済み部分だけをコピーする。
-
-ユーザー実装には、確定済みの出力順序・内容を保ち、容量に関する約束を守る責任がある。型検査は動作規則の正しさまでは証明しないが、安全な実装からWindowの偽造や未初期化領域の公開はできない構造とする。
+内側の容量が4096バイトでも残り予算20バイトのWindowだけを返せる。追加確保や確定コールバックは不要で、確定位置の正本は共通状態にある。ユーザー実装には、確定済みの出力順序・内容を保ち、容量に関する約束を守る責任がある。型検査は動作規則の正しさまでは証明しないが、安全な実装からWindowの偽造や未初期化領域の公開はできない。
 
 ## 4. 書式化の共通規則
 
 ### 4.1. 表現と評価
 
-`Utf8Format`は値を共有借用する。元の値を消費せず、出力先や入力への借用を結果に保持しない。成功時には値の完全な文字列表現を出力する。
+`Utf8Format`は値を共有借用し、元の値を消費せず、出力先や入力への借用を結果に保持しない。成功時には値の完全な文字列表現を出力する。
 
-**同じ値・同じ外部状態からの書式化では、出力先の型や容量を理由に成功時のUTF-8列を変えてはならない。** 容量不足による省略形を成功として返さず、`BufferFull`を返す。この規則は特殊化にも適用する。純粋性を要求するものではなく、副作用や独自の確保は許可する。コンパイラは呼び出しを省略・複製する根拠にしない。
+**同じ値・同じ外部状態からの書式化では、出力先の型や容量を理由に成功時のUTF-8列を変えてはならない。** 容量不足による省略形を成功として返さず、`BufferFull`を返す。この規則は特殊化にも適用する。純粋性は要求せず、副作用や独自の確保は許可する。コンパイラは呼び出しを省略・複製する根拠にしない。ユーザーの書式化は1回だけ呼び、事前の長さ測定や容量拡張のために再実行しない。
 
-ユーザーの書式化は1回だけ呼ぶ。事前の長さ測定や容量拡張のために再実行しない。
-
-組み込み値、`write`、`writeChar`の参照動作は、§4.2の状態確認後に正確なバイト長を求め、その長さで1回予約し、一括追記後に確定する。空出力は予約せず成功する。数値には小さな固定スタック領域を使用できる。例えば`123`は3バイトで予約するため、ちょうど収まる固定長領域で成功する。適合するWriterへの予約が成功すれば、そのWindowへの一括追記も必ず収まる。
+組み込み値、`write`、`writeChar`の参照動作は、§4.2の状態確認後に正確なバイト長を求め、その長さで1回予約し、一括追記後に確定する。空出力は予約せず成功する。数値には小さな固定スタック領域を使用できる。例えば`123`は3バイトで予約するため、ちょうど収まる固定長領域で成功する。予約が成功すれば、そのWindowへの一括追記も必ず収まる。
 
 具体型が標準Writerに確定し、値・失敗・副作用の順序が変わらないと証明できる場合は、直接符号化や予約・コピーの統合を許可する。ユーザーWriterの予約引数・呼び出し回数など、観測可能な動作は維持する。
 
-`Utf8Writer`が確定する各区間は、それ自体で有効なUTF-8でなければならない。ユーザー書式化が複数の操作を行う場合、失敗までに確定した区間は残るが、不完全な文字は確定しない。既存のrawバイトや規約違反のユーザーWriterまで有効なUTF-8だと仮定しない。
+`Utf8Writer`が確定する各区間は、それ自体で有効なUTF-8でなければならない。ユーザー書式化が複数の操作を行う場合、失敗までに確定した区間は残るが、不完全な文字は確定しない。rawなWindowで書かれたバイトや規約違反のユーザーWriterまで有効なUTF-8だと仮定しない。
 
 ### 4.2. 失敗状態
 
-各書き込み操作のResultはその呼び出しの成否を返す。アダプターは最初の`BufferFull`を保持し、後続操作の成功や、呼び出し側がエラーを無視することで消えないようにする。以後の書き込み操作は同じ失敗を返し、内部Writerへの予約・書き込み・書式化実装の呼び出しを行わない。空出力もこの状態確認に従う。通常の関数では、呼び出しに到達するまでの引数評価は行われる。
+各書き込み操作のResultはその呼び出しの成否を返す。アダプターは最初の`BufferFull`を保持し、後続操作の成功や呼び出し側の無視で消えないようにする。以後の書き込み操作は同じ失敗を返し、内側の予約・書き込み・書式化実装の呼び出しを行わない。空出力もこの状態確認に従う。
 
-`writeValue`は次の順序で動作する。通常の補間、`$tryWrite`、§5.3の関数もこの経路を使う。
+`writeValue`の手順。通常の補間、`$tryWrite`、`Text.toString`、`Text.tryFormat`もこの経路を使う。
 
 1. すでに失敗状態なら、書式化実装を呼ばず失敗を返す。
 2. 選択済みの`format`を1回呼ぶ。
-3. 戻り値が失敗、または呼び出し中に失敗状態になった場合は、失敗を保持して返す。実装が書き込みエラーを無視して成功を返しても成功扱いにしない。
+3. 戻り値が失敗、または呼び出し中に失敗状態になった場合は、失敗を保持して返す。実装が書き込みエラーを無視して成功を返しても成功扱いにしない。独自に返した`BufferFull`も保持するため、伸長可能なWriterへの書式化でも失敗し得る。
 
-ユーザー実装にも書き込みの失敗伝播を要求し、不要な後続処理の終了を推奨する。任意の関数内部の副作用を強制的に中断する保証はない。`format`メソッドの直接呼び出しは通常の関数呼び出しであり、共通の状態確認を含む入口は`writeValue`とする。独自に返した`BufferFull`も`writeValue`が保持するため、標準の伸長可能Writerへの書式化でも失敗し得る。
+ユーザー実装にも失敗伝播を要求し、不要な後続処理の終了を推奨するが、関数内部の副作用を強制的に中断する保証はない。`format`の直接呼び出しは通常の関数呼び出しであり、共通の状態確認を含む入口は`writeValue`である。
 
-状態を暗黙リセットしない。再開する場合はアダプターの使用を終了し、必要に応じて元Writerを`clear`したうえで新しいアダプターを作る。すでに確定した出力・副作用の巻き戻しは保証しない。rawなWindowの容量エラー自体は、アダプター外の独立した予約操作なので、この失敗状態を持たない。
+状態を暗黙リセットしない。再開する場合はアダプターの使用を終了し、必要に応じて元Writerを`clear`したうえで新しいアダプターを作る。確定済み出力・副作用の巻き戻しは保証しない。rawなWindowの容量エラーはアダプター外の独立した操作なので、この失敗状態を持たない。
 
 ### 4.3. 既定書式
 
-組み込み型と`Utf8Slice`は以下の表記で適合する。安全な`ref/T`と`uniq/T`は、`T`の`Utf8Format`適合を共有アクセスで転送する。ポインター・オブジェクトアドレスの暗黙書式化や、Tuple・配列・ユーザー型の自動適合は追加しない。
-
-この転送は旧`Stringify`の書式化用途を置き換えるもので、他のContractへ一般化しない。`Copy`・`Owned`などの導出規則も変更しない。
+組み込み型と`Utf8Slice`は以下の表記で適合する。借用型への適合転送は設けない。補間などで借用値を書式化する場合は、§5.1の引数適合で参照先の型が決まる。ポインター・オブジェクトアドレスの暗黙書式化や、Tuple・配列・ユーザー型の自動適合は追加しない。
 
 | 値 | 表記 |
 | --- | --- |
@@ -215,11 +232,9 @@ window.limit(remaining)を返す
 | `string` / `Utf8Slice` | 内容をそのまま追記。NULを含めてバイト長で扱う |
 | 浮動小数点 | 以下の共通規則 |
 
-有限・非ゼロの浮動小数点は、対象型へ最近接・偶数丸めで戻すと同じ値になる、最少有効桁数の10進表現を選ぶ。同桁数の候補は正確な値に最も近いもの、同距離なら末尾の有効数字が偶数のものを選ぶ。`f32`は`f32`の値として桁を選ぶ。
+有限・非ゼロの浮動小数点は、対象型へ最近接・偶数丸めで戻すと同じ値になる、最少有効桁数の10進表現を選ぶ。同桁数の候補は正確な値に最も近いもの、同距離なら末尾の有効数字が偶数のものを選ぶ。`f32`は`f32`の値として桁を選ぶ。「最短」は有効桁数を指し、全文字数の最小化ではない。
 
-正規化した10進指数を`e`とし、`-4 <= e < 16`では固定小数点、それ以外は指数表記とする。不要な小数末尾ゼロ・末尾小数点を出さず、指数は小文字`e`、正指数の`+`と先頭ゼロを省略する。「最短」は有効桁数を指し、全文字数の最小化ではない。
-
-正負のゼロは`0` / `-0`、無限大は`Infinity` / `-Infinity`、NaNは符号・payloadによらず`NaN`。小数点は`.`とし、桁区切りとロケール依存を禁止する。NaNのpayload復元は保証しない。
+正規化した10進指数（`d.ddd × 10^e`の`e`）が`-4 <= e < 16`なら固定小数点、それ以外は指数表記とする。不要な小数末尾ゼロ・末尾小数点を出さず、指数は小文字`e`、正指数の`+`と先頭ゼロを省略する。正負のゼロは`0` / `-0`、無限大は`Infinity` / `-Infinity`、NaNは符号・payloadによらず`NaN`。小数点は`.`とし、桁区切りとロケール依存を禁止する。
 
 ### 4.4. 容量の見積もり
 
@@ -236,9 +251,11 @@ window.limit(remaining)を返す
 | `bool` / `char` / Unit | 5 / 4 / 2 |
 | `f32` / `f64` | 17 / 24。§4.3の固定小数点・指数表記と特殊値を含む |
 
-組み込み型への借用転送は同じ上限を使う。`string`・`Utf8Slice`・ユーザー型の静的上限は設けない。文字列とビューの正確長は書き込み時に取得できる。
+`string`・`Utf8Slice`・ユーザー型に静的上限はなく、見積もりでは0として扱う。
 
-リテラル長と各値の静的上限から容量を見積もれる場合は、1回の確保で収まるように予約する。長さのために式を先行評価したり、ユーザー書式化を実行したりしない。見積もりの加算が上限を超える場合は見積もりを採用せず、通常の伸長へ戻る。実際の必要長の検査は§3.3に従い、省略しない。
+補間と`Text.toString`は、リテラル長と各値の上限の合計を**下限**として初期容量に使う。この合計を超える必要長の検査は§3.1に従い、省略しない。合計が`MaxObjectSize`を超える場合は見積もりを採用せず、未確保で開始する。長さのために式を先行評価したり、ユーザー書式化を実行したりしない。
+
+すべての値に静的上限がある補間を**有界な補間**と呼ぶ。有界な補間は見積もりの容量で必ず成功し、伸長しない。
 
 ## 5. 補間と文字列生成
 
@@ -248,21 +265,19 @@ window.limit(remaining)を返す
 let message = "My number is \(self.number)"
 ```
 
-構文・エスケープ・入れ子は既存§2.9に従う。結果は所有`string`。各埋め込み式は通常の推論とリテラル既定型で型を決め、`Utf8Format`適合を静的に検査する。補間結果の`string`を各式の期待型にしない。
+構文・エスケープ・入れ子は既存§2.9に従う。結果は所有`string`。各埋め込み式は`writeValue<T>(value: ref/T)`の引数として既存§10.2で適合させ、決まった`T`に`Utf8Format`適合を静的に要求する。所有Placeと所有一時値は共有借用、`ref/T`はExact、`uniq/T`は共有Reborrowで、いずれも`T`は参照先の型になる。リテラルは通常の既定型で決め、補間結果の`string`を各式の期待型にしない。
 
 下降は次の順序とする。
 
-1. §4.4の見積もりを使い、内部の文字列用Writerを確定済み長さ0で構築する。見積もれない場合は未確保で開始する。
-2. ローカルに保持したWriterを`Utf8Writer`で借用する。左からリテラル部分を追記し、各式を1回評価・共有借用して`writeValue`で書式化する。完了してから次の式へ進む。
-3. 最初の失敗で終了する。成功時はアダプターの借用を終了し、文字列用Writerを消費して所有`string`へ移譲する。
+1. §4.4の見積もりで`HeapBuffer`をローカルに構築し、`Utf8Writer`で借用する。
+2. 左からリテラル部分を追記し、各式を1回評価して`writeValue`で書式化する。完了してから次の式へ進む。リテラルの追記は観測不能なので、実装は次の埋め込み値の評価完了まで遅延してよい。ただしユーザー書式化の呼び出し前には確定する。
+3. 最初の失敗で終了する。成功時はアダプターの借用を終了し、`HeapBuffer`を所有`string`へ移譲する。
 
-値の借用は書式化呼び出し後に終了するが、一時値の破棄境界は既存規則を維持する。
+値の借用は書式化呼び出し後に終了するが、一時値の破棄境界は既存規則を維持する。最終的な`BufferFull`は`KIMI_E_FORMAT: Formatting failed`でAbortする。
 
-最終的な`BufferFull`は`KIMI_E_FORMAT: Formatting failed`でAbortする。標準の伸長自体は容量不足を返さないが、ユーザー実装が返すエラーも無視しない。
+**stringへの移譲**はコンパイラ内部の操作で、公開APIではない。`HeapBuffer`本体はコンパイラだけが保持し、ユーザーコードには借用アダプターだけが渡るため、確定済みバイトはすべて`Utf8Writer`経由で書かれ、検証済み長さ == 確定済み長さが構造的に成立する。移譲はこの条件のもとで元のヒープポインター・長さ・唯一の解放責任を渡し、`HeapBuffer`側の解放責任を取り除く。縮小確保・完成時コピー・再検証は行わない。未確保の空結果はStaticとし、確保済みなら長さ0でも元ポインターの解放責任を保持する。
 
-文字列用Writerは、共通状態と伸長処理を利用する内部のNon-Copy型で、`BufferWriter`に適合する。ソースから名前・構築・raw操作を公開せず、書式化実装には借用アダプターだけを渡す。型のIdentityはすべての補間と`Text.format`で同一とし、記憶域最適化で適合先や特殊化の選択を変えない。
-
-空から開始して§4.1の書き込みだけを許すため、完成領域のUTF-8成立を再検証なしに保証できる。移譲は元のヒープポインター・長さ・唯一の解放責任を渡し、Writer側の解放責任を取り除く。縮小確保・完成時コピーは行わない。未確保の空結果はStaticとし、確保済みなら長さ0でも元ポインターの解放責任を保持する。既存rawバイトを含み得る`ReusableBufferWriter`からの未検証移譲は追加しない。
+`Text.toString`は同じ経路で1つの値を書式化する。`string`を渡せば独立した所有文字列を得られるが、複製の正式な入口は`Kimi.Intrinsics.clone`の`(value: ref/string) -> string`オーバーロードとする。
 
 ### 5.2. 短絡するWriter補間
 
@@ -270,46 +285,41 @@ let message = "My number is \(self.number)"
 $tryWrite(writer, "(\(point.x), \(point.y))")
 ```
 
-`$tryWrite`はコンパイラ認識構文で、関数値にはならない。第1項は`Utf8Writer<W>`への排他的アクセス、第2項は文字列リテラル構文に限定する。通常の括弧で囲んでもよい。補間を含まない通常・raw文字列リテラルも許可し、任意の文字列値には通常の`write`を使用する。
+`$tryWrite`はコンパイラ認識構文で、関数値にはならない。第1項は`Utf8Writer<W>`への排他的アクセス、第2項は文字列リテラル構文に限定する。補間を含まない通常・raw文字列リテラルも許可し、任意の文字列値には`write`を使う。結果は`Result<(), BufferFull>`で、全体の所有`string`は作らない。
 
-第1項を1回評価して排他的借用を開始し、同じアダプターへ左からリテラルと値を書き込む。結果は`Result<(), BufferFull>`。全体の所有`string`は作らない。
-
-最初の失敗で後続の埋め込み式を評価せず終了する。開始時に失敗状態なら埋め込み式を一切評価しない。実行されない式にも型・適合・制御移動先の検査を行う。未確定Windowは通常破棄し、確定済み出力は残す。
+第1項を1回評価して排他的借用を開始し、同じアダプターへ左からリテラルと値を書き込む。埋め込み式の型付けは§5.1と同じ。最初の失敗で後続の埋め込み式を評価せず終了し、開始時に失敗状態なら埋め込み式を一切評価しない。実行されない式にも型・適合・制御移動先の検査を行う。未確定Windowは通常破棄し、確定済み出力は残す。
 
 展開は元の式の一時値境界と`return`・`exit`・`yield`の対象を維持する。内部の複数呼び出しを理由に、一時値を早く破棄したり、新しい制御移動先を作ったりしない。受け手借用は埋め込み式の評価前から有効で、競合する入力参照を拒否する。二段階借用は導入しない。
 
-`writer.write("...\(value)...")`では通常の補間が先に完了する。この意味はラッパー・関数値経由でも変わらず、最適化で短絡動作へ変更してはならない。
+`writer.write("...\(value)...")`では通常の補間が先に完了し、この意味はラッパー・関数値経由でも変わらない。補間を含む文字列リテラルが`Utf8Writer.write`の引数に直接現れた場合、§17.4の警告として`$tryWrite`を提案する。意味は変えない。
 
-### 5.3. 明示的な書式化関数
-
-| `Text`の関数 | 動作 |
-| --- | --- |
-| `format<T>(value: ref/T) -> string`、`T is Utf8Format` | 文字列用Writerへ1回書式化する。所有結果と失敗規則は通常の補間と同じ |
-| `tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<isize, BufferFull>`、`T is Utf8Format` | 固定長Writerへ1回書式化し、成功時にバイト数を返す |
-
-`Text.format`はContractメソッドと所属・シグネチャが異なり、通常の名前解決で区別する。`string`を渡せば、元の値を消費せず独立した所有文字列を得られる。
-
-`tryFormat`は固定長Writerと借用アダプターをローカルに保持し、`writeValue`の成否を確認してから借用を終了する。成功時だけWriterの確定済み長さを返し、その先頭バイト数を完成した結果とする。失敗時には途中のバイトが残り得るため、結果全体として扱わない。ゼロ長領域と空出力も許可する。別の`TryFormat` Contract、長さ測定Contract、自動再試行は設けない。
+ユーザー実装の例。`x`と`y`は`i32`。
 
 ```kimi
-var destination: [3 of u8] = [0, 0, 0]
-let result = Text.tryFormat(123, destination) // 成功: 3バイト。追加ヒープ確保なし
+struct Point
+    Self is Utf8Format
+    var x: i32
+    var y: i32
+
+    public func format<W>(self: ref/Self, writer: uniq/Utf8Writer<W>) -> Result<(), BufferFull>
+        W is BufferWriter
+        return $tryWrite(writer, "(\(self.x), \(self.y))")
 ```
 
-ユーザー実装の例。`x`と`y`が`i32`の`Point`内に置く。
+### 5.3. 固定長領域への書式化
 
-```kimi
-// Pointには Self is Utf8Format を宣言する。
-public func format<W>(self: ref/Self, writer: uniq/Utf8Writer<W>) -> Result<(), BufferFull>
-    W is BufferWriter
-    return $tryWrite(writer, "(\(self.x), \(self.y))")
-```
+`Text.tryFormat`は固定長Writerと借用アダプターをローカルに保持し、`writeValue`の成否を確認してから借用を終了する。成功時は書き込んだ範囲の`Utf8Slice`を返す。この関数が全工程を制御するため再検証は不要である。失敗時は途中のバイトが領域に残り得るが、結果には含めない。ゼロ長領域と空出力も許可する。別の`TryFormat` Contract、長さ測定Contract、自動再試行は設けない。
 
 ## 6. コンソール出力と最適化
 
 ### 6.1. 借用による出力
 
-必須Symbolを`public func writeLine(text: ref/string) -> ()`へ置き換え、所有引数の旧オーバーロードは残さない。
+必須Symbolを次の2つのオーバーロードへ置き換え、所有引数の旧オーバーロードは残さない。
+
+```kimi
+public func writeLine(text: ref/string) -> ()
+public func writeLine(text: Utf8Slice) -> ()
+```
 
 ```kimi
 let name = "Kimigayo"
@@ -320,72 +330,85 @@ Console.writeLine("Hello, \(name)")
 
 所有Place・所有一時値からの共有借用は既存§10.2を使う。一時値は既存の外側の式・条件・matchの境界まで生存し、少なくとも呼び出し終了までは有効。新しい暗黙変換や寿命延長は追加しない。
 
-`writeLine`はUTF-8全体とLFを出力してUnitを返し、文字列の解放責任は呼び出し側に残す。出力失敗、部分出力、flush、NUL、符号化、Symbol Identityは既存§22.4に従う。
+両オーバーロードはUTF-8全体とLFを出力してUnitを返し、内部の`WriteStdout(data, length)`を直接呼ぶ。stringハンドルの実体化や解放責任の移動は行わない。出力失敗、部分出力、flush、NUL、符号化、Symbol Identityは既存§22.4に従う。
 
-### 6.2. 最適化の条件
+ユーザーは公開APIだけでゼロ確保出力を書ける。
 
-直接渡される補間の一時文字列は、非脱出を証明できる場合にスタック領域へ置き換えてよい。補間式の型、適合先、Writerの意味上の型、選択済みの特殊化、一時値寿命は変えない。
+```kimi
+func printNumber(n: i64) -> Result<(), BufferFull>
+    var scratch: [64 of u8] = [64 of 0]
+    var buffer = Text.fixed(scratch)
+    var writer = Text.writer(buffer)
+    try $tryWrite(writer, "My number is \(n)")
+    match buffer.text()
+        .Ok(let text) => Console.writeLine(text)
+        .Err(_) => ()
+    return .Ok(())
+```
 
-この最適化は、生成から出力・破棄までを検証した内部のバイト領域と長さの処理へ下降し、通常のstringハンドルを実体化しないことで行う。既存の`Static` / `Heap`へスタックポインターを格納せず、新しい`releaseKind`も追加しない。未知の呼び出しへ通常のstring表現を渡す必要がある場合など、全利用先を検証できない場合は通常のヒープ経路を使う。
+### 6.2. 有界な補間の最適化
 
-最適化したWriterが途中で伸長する場合は、確定済み部分をヒープへ移し、その時点から通常のヒープ解放責任を保持する。stringハンドルが必要になれば`Heap`として移譲する。スタック・ヒープ各経路の正常終了と途中離脱を検証し、スタックの解放呼び出しやヒープの解放漏れを生じさせない。
+`Console.writeLine`の引数に有界な補間（§4.4）のリテラルが直接現れる場合、実装はそれを上記の等価なソースへ下降してよい。固定領域の長さは見積もりの合計とし、生成コードは検証済み長さ == 確定済み長さを構造的に保証するため`text()`の再検証を省略する。有界な補間は失敗しないため、途中でヒープへ移す経路や、式・ユーザー書式化の再実行は生じない。
 
-全補間が成功してから外部へ出力する。後続の書式化がAbortしたとき、補間の先頭だけを先に出力してはならない。ユーザー書式化自身の副作用は維持する。
-
-除去した一時領域の確保・解放そのものの資源失敗は観測対象から除いてよい。必要長の上限検査、書式化失敗、ユーザーコードによる確保、その他のAbort・副作用の順序は維持する。
+この最適化は補間式の型、適合先、選択済みの特殊化、一時値寿命、評価順を変えない。無界な補間（`string`・`Utf8Slice`・ユーザー型を含む）は通常のヒープ経路を使う。全補間が成功してから外部へ出力し、後続の書式化がAbortしたとき補間の先頭だけを先に出力してはならない。除去した一時領域の確保・解放そのものの資源失敗は観測対象から除いてよい。
 
 ### 6.3. 性能の合格条件
 
 | 経路 | 要求 |
 | --- | --- |
 | Window・UTF-8ビュー・アダプターの内部管理 | 追加ヒープ確保、管理用コールバック、参照カウント更新なし |
-| 組み込み型＋固定長Writer | 実際に収まる場合は書式化処理のヒープ確保0回。中間string・boxing・引数配列なし |
-| 組み込み型＋再利用Writer | 容量内では追加確保0回。`clear`で容量を再利用 |
-| §4.4の上限を安全に合算できる組み込み値だけの所有結果 | 書式化処理のヒープ確保1回以内、完成時コピーなし |
-| `Console.writeLine("My number is \(n)")`、ローカル変数`n: i64` | 最適化有効時は本文最大33バイト（リテラル13 + 数値20）を固定スタック領域に置き、補間処理のヒープ確保0回 |
+| 組み込み型＋`FixedBuffer` | 実際に収まる場合は書式化処理のヒープ確保0回。中間string・boxing・引数配列なし |
+| 組み込み型＋`HeapBuffer` | 容量内では追加確保0回。`clear`で容量を再利用 |
+| `Utf8Writer`だけで書いた標準Writerの`text()` | 追加検証0バイト |
+| 有界な補間の所有結果 | 書式化処理のヒープ確保1回以内、完成時コピーなし |
+| `string`を1つ含む補間の所有結果 | ヒープ確保2回以内（下限容量で1回、伸長で1回） |
+| `Console.writeLine("My number is \(n)")`、ローカル変数`n: i64` | 最適化有効時は本文最大33バイト（リテラル13 + 数値20）を固定スタック領域に置き、ヒープ確保0回 |
 
-具体型と標準Writerが確定する組み込み書式化は、最適化時に直接呼び出しまたはインライン化する。共有ジェネリック本体は既存§21.3に従い、間接呼び出しが残り得る。大きな確保処理・OS出力処理は共有し、無制限な特殊化を要求しない。
-
-任意長の所有結果、容量を超える伸長、ユーザー実装・OS内部の確保にはゼロ確保を保証しない。標準の内部数値変換は、検証済みの直接書き込みで初期化範囲を一括更新してよい。コンパイラ内部の作業領域は、必要部分の初期化が証明できれば全面ゼロ初期化を省略できる。
+初期プロファイルはmonomorphizationであり（§21.3.1）、具体型と標準Writerが確定する組み込み書式化は直接呼び出しまたはインライン化する。将来の共有生成では`Utf8Format.format<W>`のような関数総称要件の呼び出し方式を別途決める必要があり、本案はその設計を保留する。任意長の所有結果、容量を超える伸長、ユーザー実装・OS内部の確保にはゼロ確保を保証しない。標準の内部数値変換は、検証済みの直接書き込みで初期化範囲を一括更新してよい。
 
 ## 7. 検証
 
-実装時は、通常のネイティブ実行・確保カウンター・生成コードで次を検証する。NativeAOT試験は含めない。
+実装時は、通常のネイティブ実行・確保カウンター・生成コードで次を検証する。
 
 ### 7.1. 表記・評価・失敗
 
 - 整数の境界、UTF-8検証、NUL、空出力、浮動小数点の境界と表記。§4.4の最大長、見積もり超過、伸長計算の境界。
 - 各式・`format`が1回だけ実行され、拡張で再実行しないこと。出力先によって成功結果が変わらないこと。
 - ちょうど収まる固定長領域の成功、1バイト不足の失敗、容量制限Window、無視された書き込みエラーの検出。
-- 成功した予約が要求長以上を返すこと、失敗で確定済み内容が変わらないこと。ユーザーWriterで参照動作どおりの予約を行うこと。
+- 成功した予約が要求長以上を返し、失敗で確定済み内容が変わらないこと。ユーザーWriterで参照動作どおりの予約を行うこと。
 - 失敗後の追加出力禁止と、`$tryWrite`だけが後続式を短絡すること。通常の関数の直接・間接呼び出しの一致。
 - 独自に返された`BufferFull`を保持し、通常の補間では`KIMI_E_FORMAT`になること。
 
 ### 7.2. 借用・公開API
 
 - Windowの二重確定、消費後使用、競合する再予約・伸長・入力aliasを拒否すること。未確定破棄で長さが増えないこと。
-- 検証済みビューの競合書き換えを拒否し、確定したUTF-8に不完全な文字を含めないこと。
-- 公開APIだけで上限付きWriterとユーザー書式化を実装でき、借用・破棄・再利用が成立すること。
-- 総称アダプターが`reserve`以外を要求しないこと。借用への適合転送が他のContractへ波及しないこと。
-- Originの明示形と省略形の適合が一致し、返却ビューの依存先とLoanを保持すること。入力同士のOriginを暗黙に同一化せず、不正な寿命延長・参照の脱出を拒否すること。
+- 検証済みビューの競合書き換えを拒否し、確定したUTF-8に不完全な文字を含めないこと。rawなWindowで書いた後の`text()`が末尾だけを検証すること。
+- 公開APIだけで上限付きWriter、ユーザー書式化、ゼロ確保出力を実装でき、借用・破棄・再利用が成立すること。`[N of value]`で作業領域を構築できること。
+- 総称アダプターが`reserve`以外を要求しないこと。借用値の書式化が引数適合だけで決まること。
+- Originの明示形と省略形の適合が一致し、返却ビューの依存先とLoanを保持すること。不正な寿命延長・参照の脱出を拒否すること。
 
 ### 7.3. 出力・記憶域・性能
 
 - `writeLine`後も入力変数を使え、書式化失敗で補間本文を部分出力しないこと。§6.3の性能条件。
-- 文字列への移譲と途中離脱で二重解放・解放漏れがないこと。最適化によるスタック領域の脱出がなく、伸長後はヒープの解放責任を保持すること。
+- stringへの移譲と途中離脱で二重解放・解放漏れがないこと。最適化によるスタック領域の脱出がないこと。
 
 ## 8. 正式仕様への適用範囲
 
-本案の編集では`SPEC.md`と参照先仕様を変更しない。将来の統合では、次を反映する。
+本案の編集では`SPEC.md`と参照先仕様を変更しない。将来の統合では次を反映する。
 
 | 箇所 | 変更内容 |
 | --- | --- |
-| §12.2–12.3 | 補間を`Utf8Format`へ変更し、`$tryWrite`の評価順と短絡を追加する |
+| §2.9.1、§12.2–12.3 | 補間を`Utf8Format`と`writeValue`引数適合へ変更し、`$tryWrite`の評価順と短絡を追加する。借用転送の記述を削除する |
+| §4.3、Appendix F | 固定配列のfill構築`[N of value]`を追加する |
 | §13.8、Appendix F | Composition Rootの構文に`$tryWrite`を追加する |
-| §22.1・§22.1.1、SPEC.mdの宣言索引 | `Stringify`を削除し、公開Contract・型・`Kimi.Text`と本案の関数を登録する |
-| §22.4、§22.5.5 | `writeLine`を借用引数へ変更する。stringの有効な`releaseKind`は変更しない |
+| §7.2.3 | 「stringifying」の例を`Text.toString`へ差し替える |
+| §8.4.4、Appendix A | `Stringify`の記述を`Utf8Format`へ差し替え、既存の適合条件は維持する |
+| §13.5.8、§15.7 | `Kimi.Intrinsics.clone`に`ref/string -> string`を追加する |
+| §17.4 | `Utf8Writer.write`への補間リテラル直接渡しの警告を追加する |
+| §22.1・§22.1.1、SPEC.mdの宣言索引 | `Stringify`とstringの「Stringify」操作を削除し、公開Contract・型・`Kimi.Text`と本案の関数を登録する |
+| §22.2.2、§22.4、§22.5.5 | `writeLine`を2つの借用オーバーロードへ変更し、Moveされる旨の例・注釈と「Stringifyで複製する」記述を差し替える。stringの有効な`releaseKind`は変更しない |
 | §22.5.4 | `KIMI_E_ARG_RANGE: Argument out of range`と`KIMI_E_FORMAT: Formatting failed`を追加する。要素指標の範囲外は従来どおり`KIMI_E_INDEX_BOUNDS` |
 | §21、Appendix A | §6の生成計画と§7の検証条件を接続する |
-| §8.4、関連する付録・例・用語索引 | `Stringify`の記述を除去・差し替え、既存の適合条件は維持する |
+| Appendix E | `Stringify`の用語を除去し、本案の型・Contractを追加する |
 
 Origin、一般の静的Contract・Copy・Ownedの規則は変更しない。一般の可変Slice、rawメモリ取得、Runtime Contract Viewの拡張、隠れた共有バッファ、グローバルプールは追加しない。
