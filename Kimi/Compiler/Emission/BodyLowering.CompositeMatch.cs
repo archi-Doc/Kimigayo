@@ -24,7 +24,7 @@ internal sealed partial class BodyLowering
             }
 
             var parent = match.Positions[child.Parent];
-            var type = parent.MatchedType;
+            var type = this.Matched(parent.MatchedType);
             var shape = this.aggregateLayouts.Get(type);
             if (shape is null)
             {
@@ -47,7 +47,7 @@ internal sealed partial class BodyLowering
                 return -1;
             }
 
-            if ((uint)child.Element >= (uint)shape.Count || !ReferenceEquals(child.MatchedType, type.Components[child.Element]))
+            if ((uint)child.Element >= (uint)shape.Count || !ReferenceEquals(this.Matched(child.MatchedType), type.Components[child.Element]))
             {
                 return -1;
             }
@@ -78,9 +78,9 @@ internal sealed partial class BodyLowering
 
             if (node.Kind is BoundPatternKind.Case or BoundPatternKind.Tuple)
             {
-                var count = node.Kind == BoundPatternKind.Case ? node.Case?.Payload.Length ?? -1 : node.MatchedType.Components.Count;
-                if ((node.Kind == BoundPatternKind.Tuple && node.MatchedType.Kind != BoundTypeKind.Tuple) ||
-                    (node.Kind == BoundPatternKind.Case && !ReferenceEquals(EnumStorage.Case(node.MatchedType, node.Case!.Ordinal), node.Case)))
+                var count = node.Kind == BoundPatternKind.Case ? node.Case?.Payload.Length ?? -1 : this.Matched(node.MatchedType).Components.Count;
+                if ((node.Kind == BoundPatternKind.Tuple && this.Matched(node.MatchedType).Kind != BoundTypeKind.Tuple) ||
+                    (node.Kind == BoundPatternKind.Case && !ReferenceEquals(EnumStorage.Case(this.Matched(node.MatchedType), node.Case!.Ordinal), node.Case)))
                 {
                     return false;
                 }
@@ -102,9 +102,9 @@ internal sealed partial class BodyLowering
                 }
             }
             else if (node.End != i + 1 || node.Kind is not (BoundPatternKind.Wildcard or BoundPatternKind.Binding or BoundPatternKind.Unit or BoundPatternKind.Literal) ||
-                (node.Kind == BoundPatternKind.Unit && !ReferenceEquals(node.MatchedType, BoundType.Unit)) ||
-                (node.Kind == BoundPatternKind.Literal && !(ReferenceEquals(node.MatchedType, BoundType.Boolean) && node.Literal.Kind == PatternLiteralKind.Boolean && node.Literal.Magnitude <= 1) &&
-                !(ReferenceEquals(node.MatchedType, BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is not null) && !this.TryMatchNumber(node, out _)))
+                (node.Kind == BoundPatternKind.Unit && !ReferenceEquals(this.Matched(node.MatchedType), BoundType.Unit)) ||
+                (node.Kind == BoundPatternKind.Literal && !(ReferenceEquals(this.Matched(node.MatchedType), BoundType.Boolean) && node.Literal.Kind == PatternLiteralKind.Boolean && node.Literal.Magnitude <= 1) &&
+                !(ReferenceEquals(this.Matched(node.MatchedType), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is not null) && !this.TryMatchNumber(node, out _)))
             {
                 return false;
             }
@@ -155,7 +155,7 @@ internal sealed partial class BodyLowering
         if (pattern.Kind == BoundPatternKind.Binding)
         {
             if (pattern.BodySymbol is null || !body.SymbolPlaces.TryGetValue(pattern.BodySymbol, out var local) || (uint)cursor >= (uint)body.Operations.Count ||
-                body.Operations[cursor].Kind != OwnershipOperationKind.Declare || body.Operations[cursor].Place != local || !ReferenceEquals(body.Places[local].Type, pattern.MatchedType))
+                body.Operations[cursor].Kind != OwnershipOperationKind.Declare || body.Operations[cursor].Place != local || !ReferenceEquals(body.Places[local].Type, this.Matched(pattern.MatchedType)))
             {
                 return false;
             }
@@ -300,7 +300,7 @@ internal sealed partial class BodyLowering
             }
             else if (node.Kind == BoundPatternKind.Literal)
             {
-                if (ReferenceEquals(node.MatchedType, BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is { } text)
+                if (ReferenceEquals(this.Matched(node.MatchedType), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is { } text)
                 {
                     var constant = text.Length == 0 ? -1 : constants.Intern(text, LlvmConstantKind.Text);
                     this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.String, 0, constant));
@@ -308,12 +308,12 @@ internal sealed partial class BodyLowering
                 }
 
                 var bits = (Int128)node.Literal.Magnitude;
-                if (!ReferenceEquals(node.MatchedType, BoundType.Boolean) && !this.TryMatchNumber(node, out bits))
+                if (!ReferenceEquals(this.Matched(node.MatchedType), BoundType.Boolean) && !this.TryMatchNumber(node, out bits))
                 {
                     return Fail("Unsupported composite literal.", out failure);
                 }
 
-                this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.GetValue(node.MatchedType)!, bits));
+                this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.GetValue(this.Matched(node.MatchedType))!, bits));
             }
         }
 
@@ -343,15 +343,15 @@ internal sealed partial class BodyLowering
         var node = match.Binding.Positions[(int)index];
         var offset = this.PatternOffset(match.Binding, (int)index);
         if (node.Kind != BoundPatternKind.Binding || node.CandidateSymbol is null || !ReferenceEquals(operation.Source.BoundSymbol, node.CandidateSymbol) ||
-            !ReferenceEquals(body.Places[operation.Input].Type, node.MatchedType) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), node.CandidateSymbol.Type) ||
+            !ReferenceEquals(body.Places[operation.Input].Type, this.Matched(node.MatchedType)) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), node.CandidateSymbol.Type) ||
             offset < 0 || (body.IsReachable(id) && (body.GetInputState(id, match.Subject) & PlaceState.MustInit) == 0))
         {
             return Fail("Candidate projection has the wrong position or Type.", out failure);
         }
 
-        if (ScalarTypes.Supports(node.MatchedType))
+        if (ScalarTypes.Supports(this.Matched(node.MatchedType)))
         {
-            var representation = WindowsLowering.GetValue(node.MatchedType)!;
+            var representation = WindowsLowering.GetValue(this.Matched(node.MatchedType))!;
             function.AddScalar(EmissionOpcode.PatternRead, id, [new(EmissionOperandKind.SlotAddress, match.Subject), new(EmissionOperandKind.Integer, offset)], representation.ComputationType, place: match.Subject, representation: representation);
         }
 

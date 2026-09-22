@@ -215,9 +215,9 @@ internal sealed partial class BodyLowering
                 }
 
                 var pattern = binding.Positions[arm.Pattern];
-                var composite = this.IsCompositeSubject(pattern.MatchedType);
+                var composite = this.IsCompositeSubject(this.Matched(pattern.MatchedType));
                 if (pattern.Parent != -1 || (!composite && (pattern.End != arm.Pattern + 1 || arm.DecompositionCount != 0)) || pattern.AccessMode != PatternAccessMode.Owned || pattern.ImplicitDeref != PatternImplicitDeref.None ||
-                    !ReferenceEquals(pattern.MatchedType, body.Places[match.Subject].Type) ||
+                    !ReferenceEquals(this.Matched(pattern.MatchedType), body.Places[match.Subject].Type) ||
                     body.Operations[arm.Test].Kind != OwnershipOperationKind.PatternTest || body.Operations[arm.Test].Place != match.Subject ||
                     body.OperationSteps[arm.Test] != armIndex || !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[arm.Test].Source), pattern.Source) || !this.PureMatchTest(body, arm.Test))
                 {
@@ -246,11 +246,11 @@ internal sealed partial class BodyLowering
                 }
                 else if (pattern.Kind == BoundPatternKind.Literal)
                 {
-                    if (pattern.Literal.Kind == PatternLiteralKind.String && ReferenceEquals(pattern.MatchedType, BoundType.String) && pattern.Literal.Text is { } text)
+                    if (pattern.Literal.Kind == PatternLiteralKind.String && ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.String) && pattern.Literal.Text is { } text)
                     {
                         duplicate = guarded ? this.matchTexts.Contains(text) : !this.matchTexts.Add(text);
                     }
-                    else if (pattern.Literal.Kind == PatternLiteralKind.Boolean && ReferenceEquals(pattern.MatchedType, BoundType.Boolean) && pattern.Literal.Magnitude <= 1)
+                    else if (pattern.Literal.Kind == PatternLiteralKind.Boolean && ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.Boolean) && pattern.Literal.Magnitude <= 1)
                     {
                         var bit = 1 << (int)pattern.Literal.Magnitude;
                         duplicate = (booleanMask & bit) != 0;
@@ -269,7 +269,7 @@ internal sealed partial class BodyLowering
                         return Fail("Unsupported or invalid pattern literal.", out failure);
                     }
                 }
-                else if (!unconditional || (pattern.Kind == BoundPatternKind.Unit && !ReferenceEquals(pattern.MatchedType, BoundType.Unit)))
+                else if (!unconditional || (pattern.Kind == BoundPatternKind.Unit && !ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.Unit)))
                 {
                     return Fail("Unsupported decomposition pattern.", out failure);
                 }
@@ -285,7 +285,7 @@ internal sealed partial class BodyLowering
                 if (guarded)
                 {
                     var guard = binding.Arms[n].Syntax.Guard!;
-                    if (ReferenceEquals(pattern.MatchedType, BoundType.String) &&
+                    if (ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.String) &&
                         ((uint)arm.GuardLoan >= (uint)body.ComparisonLoans.Count || body.ComparisonLoans[arm.GuardLoan].Guard != armIndex))
                     {
                         return Fail("String guard has no Subject protection plan.", out failure);
@@ -336,7 +336,7 @@ internal sealed partial class BodyLowering
 
                 if (!composite && pattern.Kind == BoundPatternKind.Binding)
                 {
-                    var expectedAcquisition = ReferenceEquals(pattern.MatchedType, BoundType.String) ? PatternAcquisition.Move : PatternAcquisition.Copy;
+                    var expectedAcquisition = ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.String) ? PatternAcquisition.Move : PatternAcquisition.Copy;
                     var entry = body.EdgeHeads[arm.BodyEntry];
                     if (entry < 0 || body.Edges[entry].Next >= 0 || body.Edges[entry].Kind != OwnershipEdgeKind.Normal)
                     {
@@ -414,6 +414,9 @@ internal sealed partial class BodyLowering
 
         return true;
     }
+
+    // A Pattern position's matched Type as the lowered body sees it; a monomorphized instance sees its substitution (SPEC 21.3.1).
+    private BoundType Matched(BoundType? type) => SignatureType(this, type)!;
 
     private bool PureMatchTest(OwnershipBody body, int id) => body.Values[id].Kind == OwnershipValueKind.None && body.Operations[id].Input == -1 &&
         (body.LoanInputs.Count == 0 || body.LoanInputs[id] == body.LoanStates[id]);
@@ -556,7 +559,7 @@ internal sealed partial class BodyLowering
 
     private bool TryMatchNumber(BoundPattern pattern, out Int128 bits)
     {
-        if (pattern.Literal.Kind == PatternLiteralKind.Character && ReferenceEquals(pattern.MatchedType, BoundType.Char) &&
+        if (pattern.Literal.Kind == PatternLiteralKind.Character && ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.Char) &&
             !pattern.Literal.Negative && pattern.Literal.Magnitude <= 0x10FFFF &&
             pattern.Source is CharLiteralKoto { Value: { } scalar } && (UInt128)scalar.Value == pattern.Literal.Magnitude)
         {
@@ -566,7 +569,7 @@ internal sealed partial class BodyLowering
 
         bits = 0;
         return pattern.Literal.Kind == PatternLiteralKind.Integer &&
-            ScalarTypes.TryLiteral(pattern.MatchedType, pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out bits);
+            ScalarTypes.TryLiteral(this.Matched(pattern.MatchedType), pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out bits);
     }
 
     private bool ValidateCandidateRead(OwnershipBody body, int id, out string? failure)
@@ -587,17 +590,17 @@ internal sealed partial class BodyLowering
 
         var match = body.Matches[arm.Match];
         var pattern = match.Binding.Positions[arm.Pattern];
-        var scalar = ScalarTypes.Supports(pattern.MatchedType);
+        var scalar = ScalarTypes.Supports(this.Matched(pattern.MatchedType));
         if (arm.GuardEntry < 0 || operation.Place != match.Subject || operation.Source.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate ||
             !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), pattern.CandidateSymbol?.Type) ||
             (body.IsReachable(id) && !this.Dominates(arm.GuardEntry, id)) ||
             (scalar && (body.Values[id].Kind != OwnershipValueKind.Alias || Input(body, id, 0) != this.subjectInitializers[match.Subject])) ||
-            (!scalar && !ReferenceEquals(pattern.MatchedType, BoundType.Unit) && !ReferenceEquals(pattern.MatchedType, BoundType.String)))
+            (!scalar && !ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.Unit) && !ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.String)))
         {
             return Fail("Candidate read does not inspect its protected Subject snapshot.", out failure);
         }
 
-        if (ReferenceEquals(pattern.MatchedType, BoundType.String))
+        if (ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.String))
         {
             var type = SignatureType(this, operation.Source.BoundType);
             var protection = body.LoanStates[id];

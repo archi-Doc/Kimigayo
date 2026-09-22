@@ -204,6 +204,16 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
+    public void MonomorphizesEnumPatternTests()
+    {
+        // SPEC 21.3.1: enum Pattern tests inside a generic body inspect the substituted subject Type per instance.
+        var c = MinimalEmissionTest.Analyze("func present<T>(items: Slice<T>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [2 of i32] = [4, 5]\nlet n = present(values[..])");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        Assert.NotEmpty(Instances(module));
+    }
+
+    [Fact]
     public void MonomorphizesForwardedStringReferences()
     {
         // SPEC 21.3.1: forward<string> passes its ref/T parameter to weight<string> as the substituted
