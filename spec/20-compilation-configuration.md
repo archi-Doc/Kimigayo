@@ -56,6 +56,8 @@ A **Mod** is Kimigayo's source generator: one compiler-invoked generation step. 
 
 Mods process generic declarations, not each generic instantiation, and may emit generic source. Each target-specific Compilation runs its own Mods. Several steps from one package use separate ModIds. There is no automatic retry, marker-driven rerun, or iteration until generation converges.
 
+**Deferred host.** The Mod host interface and configuration — concrete query, marker-registration and context APIs, assembly packaging and compatibility checks, project configuration syntax and cache formats (§20.7.7) — are deferred ([Appendix D](appendices/D-deferred-features.md)). Until they are specified, no Mod is registered or executed. The execution, ordering, Binding, append and diagnostic rules of this section are retained for that host.
+
 ### 20.7.1. Registration and execution order
 
 Registrations and dependency lists are frozen before execution. Each registration has:

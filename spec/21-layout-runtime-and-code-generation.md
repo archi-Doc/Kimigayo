@@ -357,6 +357,10 @@ The rules here and in §21.4.6 define generic sharing and specialization; [Appen
 
 **Instantiation** binds generic arguments. **Explicit full specialization** selects a user-written implementation under §8.8. **Automatic specialization** fixes facts in generated code while preserving the selected implementation. Neither instantiation nor a Scalar operation alone requires a separate machine-code body.
 
+**Initial profile: monomorphization.** The initial windows-x64-v1 implementation generates one concrete body for each closed substitution selected for generation, after explicit-specialization selection (§8.8), and lowers it under the concrete rules of §21.4.1–21.4.5. **Generic code sharing is deferred** ([Appendix D](appendices/D-deferred-features.md)). It is the required future generation method, and its settled design is retained here: the baseline sharing plan of step 4 below, shared operations and Type policies (§21.3.3), shared entry/context connections (§21.3.6.1 beyond fixed callees, §21.3.6.2), optional growth budgets and code merging (§21.3.5), and generic scratch storage and fixed frames (§21.4.6). Those parts are not requirements of the initial profile.
+
+Independently of the generation method, steps 1–3 below, universal body verification (§8.10), closed explicit-specialization selection and invalidation (§21.3.4), mandatory finite generation limits and resource diagnostics (§21.3.5), acquisition and cleanup at the logical callee entry (§21.3.6.3), and product/test separation (§21.3.7) remain required. Under monomorphization, product and test regions own per-substitution bodies instead of sharing classes and budgets. Monomorphization never changes acceptance, selected implementations, results, evaluation and effect order, checks, ownership or cleanup.
+
 Generation has these logical dependencies, without prescribing compiler passes:
 
 1. Verify the generic body universally under its declared premises (§8.10), including operations, ownership, Loans and cleanup.
@@ -400,6 +404,8 @@ A body may omit concrete Types that are handled wholly by context or helpers. Em
 [Appendix B.7.1](appendices/B-reference-models.md#b71-plan-keys-and-generation-order) separates semantic, body, entry and context keys for the initial compiler. These are in-memory generation roles, not a persistent object-cache format; persistence follows §21.3.4.
 
 ### 21.3.3. Shared operations and Type policies
+
+This subsection belongs to deferred generic code sharing (§21.3.1). Length meaning (§21.3.3.4) and metadata required by objects and dynamic destruction (§21.2) apply to monomorphized bodies as well.
 
 #### 21.3.3.1. Requirements and fixed facts
 
@@ -594,6 +600,8 @@ When the ordinary FunctionAbi uses scalar passing, the concrete caller keeps it 
 
 #### 21.3.6.2. Connection validation and adapters
 
+This subsection belongs to deferred generic code sharing (§21.3.1); monomorphized calls use the fixed-callee FunctionAbi of §21.3.6.1.
+
 The logical call unit is `{entry, context}`; pair generation and opaque context handling follow §21.3.3.3. At every connection, the **generation scheme identity** and the entry ABI are matched statically. The scheme covers the compiler build, target and profile, ABI/metadata/context generation rules, and settings that change those rules.
 
 The entry ABI records the logical arguments, results, ownership and context, together with their physical Types, positions, calling convention and attributes. Indirect calls need this typed contract, not runtime ABI tags per slot. Callee schema changes are internal to the entry/context pair, and no adapter exists solely to translate schemas.
@@ -751,6 +759,8 @@ call void @llvm.memcpy.p0.p0.i64(ptr align 8 %dst, ptr align 8 %src, i64 24, i1 
 ```
 
 ### 21.4.6. Generic scratch storage and fixed frames
+
+This subsection belongs to deferred generic code sharing (§21.3.1). Monomorphized bodies use ordinary concrete frames.
 
 #### 21.4.6.1. Reuse and lifetime
 

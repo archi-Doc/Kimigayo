@@ -9,10 +9,13 @@
 
 - `SPEC.md` and its referenced specification chapters define required language behavior. Implementation limitations must not weaken these requirements.
 - The `draft` folder contains proposals. Once finalized, their content is incorporated into `SPEC.md` and its referenced specification chapters. This flow is one-way: do not propagate changes from the formal specification back to `draft`. The formal specification must be self-contained and must not reference or depend on `draft`; do not use `draft` as an authority for required language behavior.
-- `PLAN.md` records the current implementation plan: scope, acceptance criteria, item states, dependencies, unresolved issues, and exact next actions.
-- `STATUS.md` summarizes product-wide implemented capabilities, verified support boundaries, and remaining limitations. Do not describe planned or unverified work as completed support.
-- `PLAN_HISTORY.md` preserves past execution checkpoints, verification results, failures and fixes, decisions, and superseded approaches. Historical instructions and deadlines are not current execution instructions.
+- `PLAN.md` records the current plan only: scope, working rules, current position, milestone order with completion conditions, next actions and open issues. Keep it under 200 lines. Deferred items (Appendix D) are not planned there.
+- `STATUS.md` summarizes product-wide implemented capabilities, verified support boundaries, and remaining limitations. Do not describe planned or unverified work as completed support. Update it only when a support boundary changes.
+- `PLAN_HISTORY.md` holds a few lines per session. Detailed evidence lives in commits and `bin/verify/`; records before the 2026-09-22 compaction are in git (`git show 32324537:PLAN_HISTORY.md`).
 
-Keep current state and next actions in one place in `PLAN.md`. Move superseded execution details to `PLAN_HISTORY.md`, retaining stable IDs, decision rationale, and evidence references. Avoid duplicating detailed history across documents.
+# Implementation Workflow
 
-Update the relevant documents when implementation changes affect them; do not update every document mechanically. Keep documentation concise and write all updates in English.
+- Work in coherent units: reproducer, implementation, focused tests. Commit each verified unit with a descriptive message.
+- Unit verification: `./verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` (Debug build with warnings as errors, related tests, related native O0/O2 fixtures and milestone harnesses).
+- Session verification, once at the end of a session: `./verify.ps1 -Mode Session [...]` (Debug and Release builds and full suites). Never edit sources while a build or verification run is in progress.
+- Measure allocations only on hot paths and at milestone completion.

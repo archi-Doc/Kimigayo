@@ -143,7 +143,7 @@ remain subject to the [explicit deferral](../spec/appendices/D-deferred-features
 | 19 | Contracts and associated Types | Constraints, conditional conformance, associated Types and requirement calls |
 | 20 | Generic inference and defaults | Type/length/Origin inference, ordinary optional arguments and forwarding; no specialization |
 | 21 | Explicit full specialization | Closed Type/length selection, inherited default/Origin contracts and generic forwarding |
-| 22 | Generic generation | Shared bodies, compound ABI, fixed frames and finite generation limits; separate internal checks |
+| 22 | Generic generation | Monomorphized bodies (initial profile), compound ABI and finite generation limits; separate internal checks. Code sharing is deferred (§21.3.1) |
 | 23 | Basic Properties | Standard/custom/computed access over Copy values, permissions and evaluation order |
 | 24 | Ownership-bearing Properties | Non-Copy setters, owned/borrowed getter results, temporary lifetimes and Contract witnesses |
 | 25 | Inheritance | Base storage, construction/destruction, inherited members and already-verified Property operations |
@@ -431,7 +431,7 @@ Try each of these independently as a compile-time rejection exercise:
 - Replace `borrowCounter`'s body with construction of a local Counter followed
   by `return local@ref`: a local lifetime cannot satisfy the caller's Origin.
 
-Focus: [Origins](../spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins),
+Focus: [Origins](../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
 [Loans and lifetimes](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing),
 and [destruction lifetime checking](../spec/15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking).
 
@@ -550,7 +550,7 @@ Debug is supported; NativeAOT is not used.
 
 The current executable subset supports the `indices` ResolvedRange adapter and
 inferred full Slice views with scalar indexed reads. It does not establish the
-broader PLAN.md M8 stage, general user-defined iteration, direct Slice iteration,
+broader Slice and Iterator milestones (programs 27 and 28), general user-defined iteration, direct Slice iteration,
 or all specified Kimi sequence APIs. Those remain separate implementation work.
 
 ## Milestone 8: nested containers and generic ownership
@@ -613,7 +613,7 @@ Found arm alone does not prove coverage of every Found value.
 Focus: [function length parameters](../spec/04-arrays-indexing-and-slices.md#44-function-length-parameters),
 [function expressions](../spec/07-functions-and-callable-values.md#76-function-expressions),
 [enum results](../spec/06-declarations-and-containers.md#63-enums), and
-[Origins](../spec/15-ownership-and-lifetime-analysis.md#154-origin-elision-and-return-contracts).
+[Origins](../spec/15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision).
 
 Reproduce the Milestone 9 integration checks with the pinned Windows x64 toolchain:
 
@@ -930,7 +930,7 @@ this program alone does not certify the full Origin solver, variance, recursive
 dependencies or universal-region checking.
 
 Focus: [Origin intersections](../spec/15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection),
-[abstract Origins](../spec/15-ownership-and-lifetime-analysis.md#153-abstract-origins),
+[abstract Origins](../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
 [call propagation](../spec/15-ownership-and-lifetime-analysis.md#1564-calls-and-origin-propagation),
 and [reborrowing](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing).
 
@@ -1136,7 +1136,7 @@ fixtures. Explicit specialization belongs to 21; generation budgets belong to 22
 The canonical program does not attempt to close the entire inference/default family.
 
 Focus: [inference](../spec/10-overload-resolution-and-inference.md#108-generic-argument-inference),
-[Origin inference](../spec/15-ownership-and-lifetime-analysis.md#1534-generic-origin-inference),
+[Origin inference](../spec/15-ownership-and-lifetime-analysis.md#1536-limited-origin-inference),
 and [argument preparation](../spec/07-functions-and-callable-values.md#72-parameters-and-defaults).
 
 ## Milestone 21: explicit full specialization and inherited contracts

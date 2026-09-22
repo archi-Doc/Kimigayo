@@ -7,4 +7,4 @@ dotnet run --project Kimi -- build examples/Cleanup/Cleanup.kimiproj
 dotnet run --project Kimi -- run examples/Cleanup/Cleanup.kimiproj
 ```
 
-The published NativeAOT compiler accepts the same commands. Requires the pinned LLVM tools and verified Windows backend archive described in [backend setup](../../backend/windows-x64/README.md). See [STATUS.md C.42](../../STATUS.md#c42-deferred-cleanup-execution-2026-09-13) for implementation scope and limits.
+The published NativeAOT compiler accepts the same commands. Requires the pinned LLVM tools and verified Windows backend archive described in [backend setup](../../backend/windows-x64/README.md). See [STATUS.md C.42](../../STATUS.md#4-llvm-generation-coverage) for implementation scope and limits.

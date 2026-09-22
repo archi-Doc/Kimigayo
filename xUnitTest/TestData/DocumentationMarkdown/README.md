@@ -67,7 +67,7 @@ environment. [Product API](../../../Kimi/Compiler/Documentation/README.md),
 [measurements](../../../Benchmark/DocumentationMarkdown.md), and
 [execution evidence](../../../PLAN_HISTORY.md#documentation-markdown-product-switch-20260920)
 record conditions and limits; current next actions belong in
-[PLAN.md](../../../PLAN.md#2-execution-state).
+[PLAN.md](../../../PLAN.md#6-next-actions).
 
 ## 2026-09-20 parser review
 

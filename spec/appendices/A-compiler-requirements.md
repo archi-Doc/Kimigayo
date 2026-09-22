@@ -250,6 +250,8 @@ Validate windows-x64-v1 with LLVM 22.1.8, distinguishing semantic acceptance, Ty
 
 Internal-function IR/signature expectations test the selected compiler implementation, not a stable language ABI. When its choices change, update those expectations and verify matching definitions/calls/adapters, artifact invalidation, source-order acquisition, ownership/result delivery, and unchanged external contracts. No cross-build internal ABI compatibility test is required.
 
+The rows **Metadata and sharing** (its sharing parts), **Generic entry ABI**, **Generic context and fixed facts**, **Generic scratch frames** and **Generic budgets and reuse** apply to deferred generic code sharing (§21.3.1). The initial monomorphizing profile verifies explicit selection, generic lengths and destruction, and generation limits on its concrete bodies.
+
 | Area | Required coverage |
 | --- | --- |
 | Startup | Unique implicit/explicit body; uninitialized top-level let/var and Unit; empty/declaration-only documents; invalid/duplicate main; mixed forms; selected/generated items; Library restrictions; static-only documents |
