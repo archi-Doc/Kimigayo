@@ -202,8 +202,6 @@ internal sealed class EmissionModule
 
     internal HashSet<AggregateLayout> Aggregates { get; } = new(ReferenceEqualityComparer.Instance);
 
-    internal List<SharedStorageBody> SharedBodies { get; } = new();
-
     internal List<SharedStorageEntry> SharedEntries { get; } = new();
 
     internal List<ObjectCreation> Objects { get; } = new();
@@ -230,7 +228,6 @@ internal sealed class EmissionModule
         this.functionCount = 0;
         this.Constants.Clear();
         this.Aggregates.Clear();
-        this.SharedBodies.Clear();
         this.SharedEntries.Clear();
         this.Objects.Clear();
         this.Externals.Clear();

@@ -82,8 +82,7 @@ public class GenericStorageEmissionTest
         // joins its owned result through a result slot.
         var c = MinimalEmissionTest.Analyze(Choose + "Console.writeLine(choose(\"a\", \"b\", true))\nlet n = choose<i32>(1, 2, false)\nlet m = choose<i32>(3, 4, true)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.SharedBodies); // No shared body is prepared; each instance carries its own plan.
-        Assert.Empty(module.SharedEntries);
+        Assert.Empty(module.SharedEntries); // Each instance carries its own plan; no entry is left to a shared body.
         var instances = Instances(module);
         Assert.Equal(2, instances.Length);
         var instance = Assert.Single(instances, x => x.Abi.Result == "i32");

@@ -69,7 +69,7 @@ internal static partial class LlvmModuleWriter
         WriteExternals(module, output);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
-        if (module.Aggregates.Count != 0 || module.SharedBodies.Count != 0 || module.TestRuntime is not null)
+        if (module.Aggregates.Count != 0 || module.TestRuntime is not null)
         {
             output.Write("declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\n");
             foreach (var aggregate in module.Aggregates)
@@ -88,7 +88,6 @@ internal static partial class LlvmModuleWriter
             WriteFunction(output, constants, module.GetFunction(i));
         }
 
-        WriteSharedStorage(module, output);
         WriteObjects(module, output);
 
         output.Write(Footer);
