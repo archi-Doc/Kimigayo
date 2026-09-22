@@ -70,7 +70,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 19 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 53 checks per configuration; [evidence](../PLAN_HISTORY.md#program19-completion) |
 | 20 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedBinding_Kd when dereferencing generic returned element borrows |
 | 21 | YES | FAIL (Release/O2) | NOT_RUN | Length specialization / inherited Origin Binding unsupported; cascading diagnostics |
-| 22 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | GenerationFailed_Kd: shared operation refers to invalid storage or projection |
+| 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 45 checks per configuration; [evidence](../PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom/computed Property access; cascading unresolved bindings |
 | 24 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom setters, getter results and Contract Property calls |
 | 25 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -1220,7 +1220,7 @@ Direct and forwarded `i32` calls select the explicit specialization. `Red` and
 `Blue` have identical field layouts but different destruction operations, each
 performed once after transfer through both generic entries.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (verified natively at O0/O2 by `backend/windows-x64/test-milestone22.ps1`):
 
 ```text
 Compound layouts preserved.
@@ -1322,10 +1322,13 @@ and [standard witnesses](../spec/11-properties.md#1142-standard-operation-witnes
 
 All three sources pass the syntax catalog. Native Application builds were probed
 with Debug and Release compilers, each at O0 and O2, using byte-identical source
-copies in separate Application projects. Program 22 fails LLVM artifact
-generation; 23 and 24 fail final Binding. No native output/exit test ran. The
+copies in separate Application projects. Program 22 now builds and runs through
+its harness (varied layouts and lengths, specialization removed, finite recursion,
+moved Non-Copy reuse and growing keys); its remaining separate checks, excessive
+finite substitution sets (bounded at 1024 contexts per body, covered by a unit test)
+and invalid infinitely recursive inline layouts, have no harness case. Programs 23
+and 24 fail final Binding; no native output/exit test ran for them, and their
 expected outputs and separate checks above are targets, not passing test claims.
-Full target/variant/rejection harnesses remain implementation work under PLAN.
 See [session evidence](../PLAN_HISTORY.md#programs22-24-authoring).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
