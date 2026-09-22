@@ -105,6 +105,7 @@ internal enum BindingFailure : byte
     UnavailableReservedImport,
     SplitCLayoutStorage,
     InvalidCLayout,
+    InvalidInlineLayout,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

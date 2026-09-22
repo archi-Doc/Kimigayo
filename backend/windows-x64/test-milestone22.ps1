@@ -116,6 +116,7 @@ $invalid = [ordered]@{
     MovedRed = @{ source = $original.Replace('        let red = forward(Red.init(1))', "        let source = Red.init(1)`n        let red = forward(source)`n        let invalid = source"); diagnostic = 'MovedPlace_Kd' }
     MovedBlue = @{ source = $original.Replace('        Console.writeLine("Blue received.")', "        let again = forward(blue)`n        Console.writeLine(`"Blue received.`")`n        let invalid = blue"); diagnostic = 'MovedPlace_Kd' }
     GrowingKey = @{ source = $growing; diagnostic = 'GenerationResourceLimit_Kd' }
+    InfiniteLayout = @{ source = $original.Replace("public func main()`n", "struct Loop`n    let next: Loop`n`npublic func main()`n"); diagnostic = 'InvalidInlineLayout_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

@@ -1324,9 +1324,9 @@ All three sources pass the syntax catalog. Native Application builds were probed
 with Debug and Release compilers, each at O0 and O2, using byte-identical source
 copies in separate Application projects. Program 22 now builds and runs through
 its harness (varied layouts and lengths, specialization removed, finite recursion,
-moved Non-Copy reuse and growing keys); its remaining separate checks, excessive
-finite substitution sets (bounded at 1024 contexts per body, covered by a unit test)
-and invalid infinitely recursive inline layouts, have no harness case. Programs 23
+moved Non-Copy reuse, growing keys and an invalid infinitely recursive inline layout,
+rejected at Binding with `InvalidInlineLayout_Kd`); its remaining separate check, excessive
+finite substitution sets (bounded at 1024 contexts per body), is covered by a unit test. Programs 23
 and 24 fail final Binding; no native output/exit test ran for them, and their
 expected outputs and separate checks above are targets, not passing test claims.
 See [session evidence](../PLAN_HISTORY.md#programs22-24-authoring).

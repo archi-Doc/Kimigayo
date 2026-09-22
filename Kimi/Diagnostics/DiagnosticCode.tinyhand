@@ -290,6 +290,9 @@
   + Name="InvalidCLayout_Kd"
     Message="C layout is rejected on open, derived and empty structs and on direct zero-sized Fields"
 
+  + Name="InvalidInlineLayout_Kd"
+    Message="A Type that contains itself by value without indirection has no finite inline layout"
+
   + Name="UnexpectedIndent_Kd"
     Message="Unexpected indentation"
 

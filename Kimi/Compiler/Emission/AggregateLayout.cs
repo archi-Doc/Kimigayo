@@ -18,6 +18,9 @@ internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowerin
 /// <summary>Interns physical shapes independently of bound Type and Origin identities.</summary>
 internal sealed class AggregateLayoutPool
 {
+    // SPEC 21.3.5: the mandatory bound on inline nesting depth; a self-containing Type is rejected by Binding before this.
+    private const int DepthLimit = 64;
+
     private readonly List<AggregateLayout> pool = new();
     private readonly Dictionary<BoundType, AggregateLayout?> resolved = new(ReferenceEqualityComparer.Instance);
     private readonly List<ValueLowering> fields = new();
@@ -33,7 +36,14 @@ internal sealed class AggregateLayoutPool
 
     internal Dictionary<BoundType, AggregateLayout?>.ValueCollection Used => this.resolved.Values;
 
-    internal void Clear() => this.resolved.Clear();
+    /// <summary>Gets a value indicating whether a layout request exceeded the inline nesting depth bound (SPEC 21.3.5: a mandatory generation resource limit).</summary>
+    internal bool DepthExceeded { get; private set; }
+
+    internal void Clear()
+    {
+        this.resolved.Clear();
+        this.DepthExceeded = false;
+    }
 
     internal AggregateLayout? Get(BoundType type) => this.Get(type, 0);
 
@@ -86,8 +96,14 @@ internal sealed class AggregateLayoutPool
             }
         }
 
+        if (depth == DepthLimit)
+        {
+            this.DepthExceeded = true;
+            return null;
+        }
+
         var sequence = type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice;
-        if (depth == 64 || (!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)) ||
+        if ((!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)) ||
             type.Semantics != SemanticsKind.Owner || (!sequence && type.Origin is not null) || (!structure && type.OriginArguments.Count != 0) ||
             (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Length > int.MaxValue || type.Components.Count != 1)))
         {
@@ -248,7 +264,13 @@ internal sealed class AggregateLayoutPool
 
     private AggregateLayout? GetEnum(BoundType type, int depth)
     {
-        if (depth == 64 || type.Origin is not null ||
+        if (depth == DepthLimit)
+        {
+            this.DepthExceeded = true;
+            return null;
+        }
+
+        if (type.Origin is not null ||
             type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) || type.StoredCases is not { Length: > 0 } types)
         {
             return null;

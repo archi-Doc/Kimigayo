@@ -145,6 +145,7 @@ public enum DiagnosticCode
     UnavailableReservedImport_Kd,
     SplitCLayoutStorage_Kd,
     InvalidCLayout_Kd,
+    InvalidInlineLayout_Kd,
 
     UnavailableFeature_Kd,
 

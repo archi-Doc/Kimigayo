@@ -17,6 +17,7 @@ public sealed class LlvmEmitter
     private readonly GenericStoragePlan generics = new();
     private readonly ObjectGenerationPlan objects = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
+    private bool resourceLimit;
 
     internal LlvmEmitter(Compilation compilation)
         => this.compilation = compilation;
@@ -27,8 +28,8 @@ public sealed class LlvmEmitter
     public bool Validate(out string? failure)
         => this.TryPrepare(out _, out failure);
 
-    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5), not a semantic or representation obligation.</summary>
-    public bool FailureIsResourceLimit { get; private set; }
+    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5: generic contexts or inline nesting depth), not a semantic or representation obligation.</summary>
+    public bool FailureIsResourceLimit => this.resourceLimit;
 
     /// <summary>Writes inspection IR after checking the latest analysis. Does not certify a published artifact or native execution.</summary>
     /// <param name="writer">The caller-owned output.</param>
@@ -52,7 +53,7 @@ public sealed class LlvmEmitter
         module.Clear();
         var c = this.compilation;
         failure = null;
-        this.FailureIsResourceLimit = false;
+        this.resourceLimit = false;
         try
         {
             var destructorOrdinal = 0;
@@ -103,7 +104,7 @@ public sealed class LlvmEmitter
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {
-                this.FailureIsResourceLimit = this.generics.ResourceLimitExceeded;
+                this.resourceLimit = this.generics.ResourceLimitExceeded;
                 return false;
             }
 
@@ -166,6 +167,7 @@ public sealed class LlvmEmitter
         finally
         {
             // Never retain a previous parse through the active declaration-to-ABI map.
+            this.resourceLimit |= this.lowering.AggregateLayouts.DepthExceeded; // SPEC 21.3.5: the layout depth bound is a resource limit.
             this.functions.Clear();
             this.generics.Clear();
             c.Ownership.ClearInstances();

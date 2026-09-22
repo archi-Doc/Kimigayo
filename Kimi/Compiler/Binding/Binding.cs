@@ -209,6 +209,7 @@ public sealed partial class Binding
             this.ValidateLibraryImports();
             this.ValidateBaseDeclarations();
             this.PrepareStorage();
+            this.ValidateInlineLayouts();
             this.ValidateCLayoutFields();
             this.ComputeOriginRequirements();
             this.ValidateSignatures();
@@ -518,6 +519,7 @@ public sealed partial class Binding
                     BindingFailure.UnavailableReservedImport => DiagnosticCode.UnavailableReservedImport_Kd,
                     BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
                     BindingFailure.InvalidCLayout => DiagnosticCode.InvalidCLayout_Kd,
+                    BindingFailure.InvalidInlineLayout => DiagnosticCode.InvalidInlineLayout_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,
                     BindingFailure.Duplicate => DiagnosticCode.DuplicateBinding_Kd,
