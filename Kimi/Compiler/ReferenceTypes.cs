@@ -34,52 +34,37 @@ internal static class ReferenceTypes
 
     internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsBorrow(type) || IsPointer(type);
 
-    // instance: the closed call of a monomorphized instance whose substitution the actual Type already carries (SPEC 21.3.1).
-    internal static bool CallTypeMatches(BoundType? formal, BoundType? actual, BoundCall call, BoundCall? instance = null)
+    // Physical agreement of a call's formal and actual Types: Kind, Symbol, Semantics, lengths and
+    // components. Origins are erased: Binding and ownership analysis verified them, and lowering never
+    // distinguishes two storages by Origin (SPEC 21.3.1).
+    internal static bool StorageMatches(BoundType? formal, BoundType? actual)
     {
-        if (formal is null || actual is null || formal.Kind != actual.Kind || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
-            formal.Length != actual.Length || !ReferenceEquals(formal.LengthExpression, actual.LengthExpression) ||
-            formal.Components.Count != actual.Components.Count || formal.OriginArguments.Count != actual.OriginArguments.Count ||
-            !OriginMatches(formal.Origin, actual.Origin))
+        if (formal is null || actual is null)
         {
             return false;
         }
 
-        for (var i = 0; i < formal.OriginArguments.Count; i++)
+        if (ReferenceEquals(formal, actual))
         {
-            if (!OriginMatches(formal.OriginArguments[i], actual.OriginArguments[i]))
-            {
-                return false;
-            }
+            return true;
+        }
+
+        if (formal.Kind != actual.Kind || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
+            formal.Length != actual.Length || !ReferenceEquals(formal.LengthExpression, actual.LengthExpression) ||
+            formal.Components.Count != actual.Components.Count)
+        {
+            return false;
         }
 
         for (var i = 0; i < formal.Components.Count; i++)
         {
-            if (!CallTypeMatches(formal.Components[i], actual.Components[i], call, instance))
+            if (!StorageMatches(formal.Components[i], actual.Components[i]))
             {
                 return false;
             }
         }
 
         return true;
-
-        bool OriginMatches(BoundOrigin? pattern, BoundOrigin? value)
-        {
-            if (ReferenceEquals(pattern, value))
-            {
-                return true;
-            }
-
-            if (pattern is null)
-            {
-                return false;
-            }
-
-            var binding = call.Target.Declaration.CodeContext.Compilation.Binding;
-            var expected = binding.InstantiateStorageOrigin(pattern, call);
-            // Inside an instance, the call-site Origin of a concrete callee's parameter is itself substituted.
-            return ReferenceEquals(expected, value) || (instance is not null && ReferenceEquals(binding.InstantiateStorageOrigin(expected, instance), value));
-        }
     }
 
     internal static bool IsString(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 }

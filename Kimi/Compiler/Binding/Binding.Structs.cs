@@ -26,17 +26,6 @@ public sealed partial class Binding
         return result is not null && this.PrepareInstantiatedStorage(result, 0) ? result : null;
     }
 
-    internal BoundOrigin InstantiateStorageOrigin(BoundOrigin origin, BoundCall call)
-    {
-        if (call.DeclaringType is { Symbol.Declaration: { } binder } declaring)
-        {
-            origin = this.SubstituteStoredOrigin(origin, binder, (BoundOrigin[])declaring.OriginArguments);
-        }
-
-        // Reuse canonical intersection substitution, including duplicate operands.
-        return this.SubstituteStoredOrigin(origin, call.Target.Declaration, call.Origins, call.InputOrigins);
-    }
-
     private static bool IsSpecialField(Koto node, out FunctionKoto function)
     {
         if (node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol: { Name: "self", Declaration: FunctionKoto receiver } } } &&

@@ -250,8 +250,8 @@ internal sealed partial class BodyLowering
         var place = ValuePlace(body.Operations[receiver]);
         return KotoHelper.UnwrapParentheses(root).BoundSymbol is { } symbol &&
             this.IsPreparedArgument(body, read, symbol, place) &&
-            body.Operations[this.elementNextCalls[read]].Source is InvocationKoto { BoundCall: { } call } &&
-            ReferenceTypes.CallTypeMatches(SignatureType(this, root.BoundType), ValueType(body, receiver), call);
+            body.Operations[this.elementNextCalls[read]].Source is InvocationKoto { BoundCall: not null } &&
+            ReferenceTypes.StorageMatches(SignatureType(this, root.BoundType), ValueType(body, receiver));
     }
 
     // Inline parts are contiguous in their containing layout: sum each
