@@ -29,6 +29,21 @@ public class GenericCallbackEmissionTest
         => ScalarEmissionTest.EmitFixture("GenericCallback" + name, source, stdout);
 
     [Theory]
+    [InlineData("i8", "7")]
+    [InlineData("i32", "7")]
+    [InlineData("bool", "true")]
+    public void MonomorphizesCallableValueCalls(string type, string value)
+    {
+        // SPEC 21.3.1: the instance calls its (T) -> bool value through the substituted signature.
+        var c = MinimalEmissionTest.Analyze("func accepts<T>(value: T, f: (T) -> bool) -> bool => f(value)\nlet r = accepts<" + type + ">(" + value + ", func (x: " + type + ") => x == " + value + ")");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
+        var valueCall = Assert.Single(instance.Instructions, x => x.Opcode == EmissionOpcode.CallValue);
+        Assert.Equal([type == "bool" ? "i1" : type], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());
+    }
+
+    [Theory]
     [InlineData("loan")]
     [InlineData("argument")]
     [InlineData("receiver")]

@@ -153,10 +153,14 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
-        if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) ||
-            !ReferenceEquals(body.Places[operation.Input].Type, plan.ReceiverType) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
+        // A monomorphized instance calls the value through its substituted signature (SPEC 21.3.1).
+        var receiver = SignatureType(this, plan.ReceiverType);
+        var signature = SignatureType(this, plan.Signature);
+        var returnType = SignatureType(this, plan.ReturnType);
+        if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) || receiver is null || signature is null || returnType is null ||
+            !ReferenceEquals(body.Places[operation.Input].Type, receiver) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
             plan.Arguments.Length != call.ArgumentNodes.Count || this.arguments.Count != call.ArgumentNodes.Count ||
-            !(ScalarTypes.Supports(plan.ReturnType) || SlotTypes.IsResult(plan.ReturnType) || ReferenceEquals(plan.ReturnType, BoundType.Unit) || ReferenceEquals(plan.ReturnType, BoundType.Never)))
+            !(ScalarTypes.Supports(returnType) || SlotTypes.IsResult(returnType) || ReferenceEquals(returnType, BoundType.Unit) || ReferenceEquals(returnType, BoundType.Never)))
         {
             return Fail("Unsupported common-function call signature or receiver.", out failure);
         }
@@ -179,7 +183,7 @@ internal sealed partial class BodyLowering
             return Fail("Common-function receiver lacks its call-wide shared Loan.", out failure);
         }
 
-        var inputs = plan.Signature.Components[0];
+        var inputs = signature.Components[0];
         if (plan.Arguments.Length != (ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count))
         {
             return Fail("Common-function arguments do not match the selected signature.", out failure);
@@ -187,7 +191,7 @@ internal sealed partial class BodyLowering
 
         var physical = new AbiParameter[plan.Arguments.Length];
         var start = function.Operands.Count;
-        var receiverType = plan.ReceiverType.Kind == BoundTypeKind.Semantics ? plan.ReceiverType.Components[0] : plan.ReceiverType;
+        var receiverType = receiver.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver;
         var concreteEntry = receiverType.Kind == BoundTypeKind.Closure && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.functions?.GetValueOrDefault(definition) : null;
         if (concreteEntry is not null)
         {
@@ -231,18 +235,19 @@ internal sealed partial class BodyLowering
             var argument = plan.Arguments[i];
             var entry = this.arguments[i];
             var place = body.Operations[entry].Place;
+            var parameterType = SignatureType(this, argument.ParameterType);
             if (!ReferenceEquals(body.Operations[entry].Source, call) || argument.ParameterIndex != i ||
                 argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
-                !ReferenceEquals(argument.ParameterType, inputs.Components[i]) ||
+                parameterType is null || !ReferenceEquals(parameterType, inputs.Components[i]) ||
                 !ReferenceEquals(argument.Source, call.ArgumentNodes[i]) || !ReferenceEquals(argument.SourceType, call.ArgumentNodes[i].BoundType) ||
-                !ReferenceEquals(body.Places[place].Type, argument.ParameterType) || !ReferenceTypes.IsValue(argument.ParameterType) ||
+                !ReferenceEquals(body.Places[place].Type, parameterType) || !ReferenceTypes.IsValue(parameterType) ||
                 body.Values[entry].Kind != OwnershipValueKind.Alias || body.Values[entry].Count != 1 ||
                 (body.IsReachable(id) && !this.Dominates(entry, id)))
             {
                 return Fail("Common-function argument lacks checked value or borrow acquisition.", out failure);
             }
 
-            physical[i] = new(WindowsLowering.GetValue(argument.ParameterType!)!.ArgumentType!, string.Empty);
+            physical[i] = new(WindowsLowering.GetValue(parameterType)!.ArgumentType!, string.Empty);
             function.Operands.Add(this.PhysicalOperand(body, Input(body, entry, 0)));
         }
 
@@ -254,7 +259,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var abi = new FunctionAbi(string.Empty, FunctionAbi.ResultType(plan.ReturnType)!, physical, ReferenceEquals(plan.ReturnType, BoundType.Never));
+        var abi = new FunctionAbi(string.Empty, FunctionAbi.ResultType(returnType)!, physical, ReferenceEquals(returnType, BoundType.Never));
         function.Instructions.Add(new(EmissionOpcode.CallValue, id, operation.Input, Callee: abi, OperandStart: start, OperandCount: physical.Length));
         if (abi.NoReturn)
         {
