@@ -224,6 +224,8 @@ internal sealed partial class BodyLowering
         for (var level = field; ;)
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);
+            owner = SignatureType(this, owner);
+            element = SignatureType(this, element);
             var layout = owner is null ? null : this.aggregateLayouts.Get(owner);
             if (layout is null || (uint)position >= (uint)layout.Count || !ReferenceEquals(element, SignatureType(this, level.BoundType)))
             {

@@ -109,7 +109,10 @@ public sealed class LlvmEmitter
             }
 
             this.lowering.ObjectCalls = this.objects.Calls;
-            this.LowerInstances(c, module);
+            if (!this.LowerInstances(c, module, out failure))
+            {
+                return false;
+            }
 
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
@@ -236,8 +239,9 @@ public sealed class LlvmEmitter
     // SPEC 21.3.1 monomorphization: each concrete call context of a universally verified generic body
     // is analyzed under its closed substitution and lowered as an ordinary concrete body, under the
     // entry ABI its callers already use. A refused instance keeps its transitional shared entry.
-    private void LowerInstances(Compilation c, EmissionModule module)
+    private bool LowerInstances(Compilation c, EmissionModule module, out string? failure)
     {
+        failure = null;
         foreach (var (call, entry) in this.generics.Calls)
         {
             // A selected explicit specialization (SPEC 21.3.4) is the implementation, never the generic body.
@@ -253,7 +257,7 @@ public sealed class LlvmEmitter
                 this.lowering.SetInstance(c.Binding, call, entry);
                 try
                 {
-                    lowered = this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out _);
+                    lowered = this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure);
                 }
                 finally
                 {
@@ -271,7 +275,16 @@ public sealed class LlvmEmitter
                     module.RemoveLastFunction();
                 }
             }
+
+            if (entry.Template.ConcreteOnly && module.SharedEntries.Contains(entry.Physical))
+            {
+                failure ??= "Concrete Contract instance ownership analysis failed.";
+                return false;
+            }
         }
+
+        failure = null;
+        return true;
     }
 
     private bool SkipGenerated(OwnershipBody body)

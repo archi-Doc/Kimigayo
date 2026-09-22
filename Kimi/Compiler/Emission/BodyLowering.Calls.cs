@@ -51,11 +51,14 @@ internal sealed partial class BodyLowering
 
         var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
         var creation = operation.Source is InvocationKoto { BoundCall: { } objectCall } ? this.ObjectCalls?.GetValueOrDefault(objectCall) : null;
-        if (operation.Source is not InvocationKoto { AttributeChain: null, BoundCall: { } plan } call ||
+        var original = (operation.Source as InvocationKoto)?.BoundCall;
+        var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
+        var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;
+        if (operation.Source is not InvocationKoto { AttributeChain: null } call || resolved is not { } plan ||
             (generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
-            !ReferenceEquals(call.BoundType, plan.ReturnType) || SignatureType(this, plan.ReturnType) is not { } returnType ||
+            !ReferenceEquals(SignatureType(this, call.BoundType), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
             !ReferenceTypes.CallTypeMatches(generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType, plan))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);

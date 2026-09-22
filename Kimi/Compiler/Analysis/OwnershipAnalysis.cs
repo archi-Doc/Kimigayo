@@ -1072,7 +1072,7 @@ public sealed partial class OwnershipAnalysis
 
         var result = this.Temporary(call);
         var scalar = ScalarResult(this.body.Places[result].Type);
-        if (scalar || SlotTypes.IsResult(call.BoundType))
+        if (scalar || SlotTypes.IsResult(this.body.Places[result].Type))
         {
             // A stored-result Call names storage; only its normal successor Produce initializes it.
             this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };

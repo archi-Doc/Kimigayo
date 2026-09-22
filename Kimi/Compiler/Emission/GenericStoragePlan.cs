@@ -98,6 +98,12 @@ internal sealed partial class GenericStoragePlan
             var body = compilation.Ownership.Bodies[b];
             if (IsGeneric(body.Function))
             {
+                if (RequiresConcreteContractBody(body))
+                {
+                    this.templates.Add(body.Function, ConcreteContractTemplate(body));
+                    continue;
+                }
+
                 if (!this.PrepareBody(body, module, compilation.Binding, compilation.Project.Directory, out var template, out failure))
                 {
                     return false;
@@ -1328,6 +1334,11 @@ internal sealed partial class GenericStoragePlan
             }
         }
 
+        if (template.ConcreteOnly)
+        {
+            return this.PrepareConcreteContractEntry(compilation, module, layouts, call, template, parameters, values, abiParameters, resultValue, resultSlot, noReturn, depth, out entry, out failure);
+        }
+
         var offsets = new int[template.Physical.AddressOffset + body.Places.Count];
         var policies = new SharedStoragePolicy[template.Types.Length];
         var placeOffsets = new int[body.Places.Count];
@@ -1543,7 +1554,7 @@ internal sealed partial class GenericStoragePlan
         return true;
     }
 
-    internal sealed record Template(OwnershipBody Body, SharedStorageBody Physical, BoundType[] Types, (int Place, int Selector, int Case)[] Projections, BoundCall[] DirectCalls);
+    internal sealed record Template(OwnershipBody Body, SharedStorageBody Physical, BoundType[] Types, (int Place, int Selector, int Case)[] Projections, BoundCall[] DirectCalls, bool ConcreteOnly = false);
 
     // bool and integers up to 64 bits; literal constants keep their Type's bit pattern.
     private static bool IsSharedScalar(BoundType type)
@@ -1563,5 +1574,8 @@ internal sealed partial class GenericStoragePlan
     private static string SharedScalarType(BoundType type) => ReferenceEquals(type, BoundType.Boolean) ? "i1" : "i" + ScalarTypes.Width(type);
 
     // Direct[i] is the instance entry of Template.DirectCalls[i] under this call's substitution (null for concrete targets).
-    internal sealed record CallEntry(Template Template, SharedStorageEntry Physical, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType?[] Arguments, BoundLength?[] Lengths, CallEntry?[] Direct);
+    internal sealed record CallEntry(Template Template, SharedStorageEntry Physical, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType?[] Arguments, BoundLength?[] Lengths, CallEntry?[] Direct)
+    {
+        internal BoundCall[]? ConcreteCalls { get; set; }
+    }
 }
