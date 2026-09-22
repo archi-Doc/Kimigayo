@@ -70,7 +70,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 19 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 53 checks per configuration; [evidence](../PLAN_HISTORY.md#program19-completion) |
 | 20 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 55 checks per configuration; [evidence](../PLAN_HISTORY.md#program20-completion) |
 | 21 | YES | FAIL (Release/O2) | NOT_RUN | Length specialization / inherited Origin Binding unsupported; cascading diagnostics |
-| 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 45 checks per configuration; [evidence](../PLAN_HISTORY.md#program22-completion) |
+| 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 47 checks per configuration (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom/computed Property access; cascading unresolved bindings |
 | 24 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom setters, getter results and Contract Property calls |
 | 25 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |

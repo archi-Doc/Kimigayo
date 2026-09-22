@@ -4,7 +4,7 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 
 ## Summary
 
-- **Verification baseline (2026-09-23):** Debug/Release builds are warning-free; each full managed suite passes 11,391 tests. All 21 milestone harnesses (1–20 and 22) pass 1,003 Release checks. Program 21 retains a failed Binding probe. Evidence: `bin/verify/20260922-224227-session-p20-completion`; NativeAOT is not run.
+- **Verification baseline (2026-09-23):** Debug/Release builds are warning-free; each full managed suite passes 11,396 tests. All 21 milestone harnesses (1–20 and 22) pass 1,005 Release checks and 174 generic native O0/O2 fixtures execute. Program 21 retains a failed Binding probe. Evidence: `bin/verify/20260922-233653-session-p22-cleanup`; NativeAOT is not run.
 - **Generic generation:** the specification's initial profile monomorphizes (§21.3.1). Scalar, Never and length-generic functions, generic struct constructors/field reads, forwarded generic calls inside generic bodies, enum payload constructions and owned result joins are generated as one concrete body per closed substitution; explicit specializations keep their selected body. Every generic shape reaches generation this way; the transitional shared path (writer, entry planning and template walk) is removed, and `BodyLowering` validates each instance under its substitution.
 - **Mods:** the host interface is deferred (Appendix D); `Compilation.Bind` does not execute Mods.
 
