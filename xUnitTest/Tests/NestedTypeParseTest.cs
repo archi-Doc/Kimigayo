@@ -127,11 +127,12 @@ public class NestedTypeParseTest
     }
 
     [Theory]
-    [InlineData("value@ref/(ref{inner}/T)")]
-    [InlineData("value@Box<ref{inner}/T>")]
-    [InlineData("value@ref/((T) -> ref{inner}/U)")]
-    public void ParenthesesAndTypeArgumentsDoNotPermitOriginsInAdaptationTargets(string expression)
-        => Assert.NotEmpty(Parse($"let result = {expression}").DiagnosticCollection.GetArray());
+    [InlineData("value@ref/(ref{inner}/T)", false)]
+    [InlineData("value@Box<ref{inner}/T>", true)]
+    [InlineData("value@ref{inner}/T?", true)]
+    [InlineData("value@ref/((T) -> ref{inner}/U)", false)]
+    public void AdaptationSeparatesPayloadOriginsFromBorrowLayers(string expression, bool valid)
+        => Assert.Equal(valid, Parse($"let result = {expression}").DiagnosticCollection.GetArray().Length == 0);
 
     [Theory]
     [InlineData("ref/ref/")]

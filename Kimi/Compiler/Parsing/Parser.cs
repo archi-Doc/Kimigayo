@@ -1521,8 +1521,9 @@ CloseParameters:
 
     private static Koto ParseOptionalSuffix(ref TokenReader reader, Koto type)
     {
-        while (reader.TryConsume(TokenKind.Question, out var suffix, false))
+        while (reader.CurrentTokenKind == TokenKind.Question)
         {
+            var suffix = reader.Read().Span;
             type = new OptionalTypeKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, suffix.End), type);
         }
 
@@ -1548,6 +1549,23 @@ CloseParameters:
             }
             else
             {
+                if (type is FunctionTypeKoto function)
+                {
+                    if (function.Parameters is TupleTypeKoto parameters)
+                    {
+                        foreach (var parameter in parameters.ElementNodes)
+                        {
+                            CheckAdaptationOrigins(ref reader, parameter);
+                        }
+                    }
+                    else
+                    {
+                        CheckAdaptationOrigins(ref reader, function.Parameters);
+                    }
+
+                    CheckAdaptationOrigins(ref reader, function.ReturnType);
+                }
+
                 // Optional, named, Tuple and array Cores contain complete payload Types.
                 return;
             }

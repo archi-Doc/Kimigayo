@@ -184,6 +184,9 @@ public sealed partial class Binding
                 this.indexer.Visit(libraryRoot.Members[i]);
             }
 
+            // Source guards are all indexed now; a removed guard may have become an arm body.
+            // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
+            this.PruneCandidateScopes();
             this.cLayoutInstances.Clear();
             this.storagePrepared = false;
             this.ValidateDefaultAliases();

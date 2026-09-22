@@ -44,6 +44,7 @@ public sealed partial class OwnershipAnalysis
         {
             var position = plan.Positions[i];
             if (position.AccessMode != PatternAccessMode.Owned || position.ImplicitDeref != PatternImplicitDeref.None ||
+                (position.Parent < 0 && position.MatchedType.Kind == BoundTypeKind.Parameter) ||
                 position.Acquisition == PatternAcquisition.Deferred || (position.MatchedType.Kind != BoundTypeKind.Parameter && !this.SupportsType(position.MatchedType)) ||
                 (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Move or PatternAcquisition.CopyOrMove)))
             {

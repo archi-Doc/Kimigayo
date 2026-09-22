@@ -11,6 +11,7 @@ public sealed partial class Binding
     private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<Koto> previousPatternNodes = new();
     private readonly HashSet<Koto> candidateScopes = new();
+    private readonly List<Koto> previousCandidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
     private PatternMarker? unsupportedMarker;
@@ -70,7 +71,7 @@ public sealed partial class Binding
         this.matches.Clear();
         foreach (var guard in this.candidateScopes)
         {
-            this.previousPatternNodes.Add(guard);
+            this.previousCandidateScopes.Add(guard);
         }
 
         this.candidateScopes.Clear();
@@ -82,6 +83,19 @@ public sealed partial class Binding
         this.patternNodes.Clear();
         this.patternWarnings.Clear();
         this.reportedPatternWarnings = 0;
+    }
+
+    private void PruneCandidateScopes()
+    {
+        foreach (var guard in this.previousCandidateScopes)
+        {
+            if (!this.candidateScopes.Contains(guard))
+            {
+                this.scopes.Remove(guard);
+            }
+        }
+
+        this.previousCandidateScopes.Clear();
     }
 
     private void PrunePatternScopes()
