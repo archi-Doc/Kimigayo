@@ -116,7 +116,8 @@ internal sealed partial class BodyLowering
             }
 
             var readType = plan.Element < 0 ? itemType : itemType.Components[plan.Element];
-            var aggregate = plan.Kind == SequenceOperation.ArrayRead ? this.aggregateLayouts.Get(ValueType(body, id)!) : null;
+            // A fixed array's aggregate element (iteration, or a proved-Copy element of a borrowed array) is copied from its element storage.
+            var aggregate = arrayRead ? this.aggregateLayouts.Get(ValueType(body, id)!) : null;
             if (receiver.Kind != (arrayRead ? BoundTypeKind.FixedArray : BoundTypeKind.Slice) || !validSource ||
                 !ReferenceEquals(ValueType(body, id), readType) || (!ScalarTypes.Supports(ValueType(body, id)) && aggregate is null && !ReferenceEquals(ValueType(body, id), BoundType.Unit)) ||
                 (plan.Kind == SequenceOperation.ArrayRead && body.Places[operation.Place].Acquisition != AcquisitionKind.Copy) ||

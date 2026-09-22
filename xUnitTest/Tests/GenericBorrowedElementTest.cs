@@ -39,6 +39,19 @@ public class GenericBorrowedElementTest
             "Hello.kimi:3:12: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Fact]
+    public void MonomorphizesAggregateElementReads()
+    {
+        // SPEC 21.3.1: the (i32, bool) instance copies the proved-Copy element from the borrowed array's
+        // element storage instead of keeping the shared entry.
+        var c = MinimalEmissionTest.Analyze(At + "let a: [2 of (i32, bool)] = [(6, false), (7, true)]\nlet n = at<2, (i32, bool)>(a@ref, 1)");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
+        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Sequence && x.ScalarOperator == "ArrayStorageRead");
+        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.TransferAggregate);
+    }
+
+    [Fact]
     public void RejectsUncheckedElementProducerAndRecoversAfterReload()
     {
         var c = MinimalEmissionTest.Analyze(At + "let a: [1 of i32] = [7]\nlet n = at<1, i32>(a@ref, 0)");
