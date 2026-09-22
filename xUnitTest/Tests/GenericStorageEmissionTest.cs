@@ -145,13 +145,20 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
-    public void UnsupportedInstanceKeepsTheSharedEntry()
+    public void MonomorphizesBorrowedArrayElementBorrows()
     {
-        // An element reborrow of a length-generic borrowed array is not yet lowered per instance; the callee is.
+        // SPEC 21.3.1: the element borrow of a length-generic borrowed array lowers per instance through
+        // a bounds-checked element address with the substitution's element stride.
         var c = MinimalEmissionTest.Analyze("func weight<T>(value: ref/T) -> i32 => 1\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [2 of i32] = [7, 8]\nlet result = get<2, i32>(values@ref, 0)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Single(module.SharedEntries);
-        Assert.Single(Instances(module));
+        Assert.Empty(module.SharedEntries);
+        var instances = Instances(module);
+        Assert.Equal(2, instances.Length);
+        var get = Assert.Single(instances, x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
+        var address = Assert.Single(get.Instructions, i => i.Opcode == EmissionOpcode.Sequence);
+        Assert.Equal("ArrayAddress", address.ScalarOperator);
+        Assert.Equal(ArithmeticCheckKind.Bounds, address.Check);
+        Assert.Equal(4, address.Representation!.Layout.Stride);
     }
 
     [Fact]

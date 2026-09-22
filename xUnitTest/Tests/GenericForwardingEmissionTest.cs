@@ -63,6 +63,14 @@ public class GenericForwardingEmissionTest
         => ScalarEmissionTest.EmitFixture("GenericForwardingBounds" + (index < 0 ? "Negative" : "End"), "func weight<T>(value: ref/T) -> i32 => 1\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [2 of i32] = [7, 8]\nlet result = get<2, i32>(values@ref, " + index + ")", string.Empty, 1, "Hello.kimi:2:79: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Fact]
+    public void IndexedBorrowAddressesEachElement()
+        => ScalarEmissionTest.EmitFixture("GenericForwardingIndexedElement", "struct Pt\n    public let v: i32\n    public init(v: i32) => self.v = v\nfunc weight<T>(value: ref/T) -> i32 => 1\nspecialize func weight<Pt>(value: ref/Pt) -> i32 => value.v\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [3 of Pt] = [Pt.init(5), Pt.init(11), Pt.init(23)]\nrequire get<3, Pt>(values@ref, 0) == 5 and get<3, Pt>(values@ref, 2) == 23 else => $abort(\"element\")", string.Empty);
+
+    [Fact]
+    public void EmptyArrayIndexedBorrowAborts()
+        => ScalarEmissionTest.EmitFixture("GenericForwardingBoundsEmpty", "func weight<T>(value: ref/T) -> i32 => 1\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [0 of i32] = []\nlet result = get<0, i32>(values@ref, 0)", string.Empty, 1, "Hello.kimi:2:79: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+
+    [Fact]
     public void InferenceUsesTheOrdinaryContract()
         => ScalarEmissionTest.EmitFixture("GenericForwardingInference", "specialize func weight<i32>(value: i32) -> i32 => 2\nfunc weight<T>(value: T) -> i32 => 1\nrequire weight(7) == 2 and weight(true) == 1 else => $abort(\"inference\")", string.Empty);
 

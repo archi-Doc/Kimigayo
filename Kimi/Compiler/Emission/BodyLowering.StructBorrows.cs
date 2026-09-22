@@ -25,7 +25,7 @@ internal sealed partial class BodyLowering
         return false;
     }
 
-    private bool LowerStructBorrow(OwnershipBody body, EmissionFunction function, int id, out string? failure)
+    private bool LowerStructBorrow(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -92,6 +92,30 @@ internal sealed partial class BodyLowering
                 }
 
                 return Fail("Payload projection lacks its prepared object reference.", out failure);
+            }
+
+            if (operation.Source is IndexKoto indexed && ReferenceTypes.IsArray(type))
+            {
+                // An element of a borrowed fixed array is borrowed in place through a bounds-checked
+                // element address; a monomorphized instance sees its substituted element stride.
+                var element = type.Components[0].Components[0];
+                var array = value.Count == 2 ? Input(body, id, 0) : -1;
+                var subscript = value.Count == 2 ? Input(body, id, 1) : -1;
+                if ((uint)array >= (uint)id || (uint)subscript >= (uint)id || type.Semantics != SemanticsKind.Ref || operation.LoanMode != LoanRequirement.Ref ||
+                    !ReferenceTypes.IsStorage(output) || output.Semantics != SemanticsKind.Ref || !ReferenceEquals(output.Components[0], element) ||
+                    !ReferenceEquals(SignatureType(this, indexed.Left.BoundType), type) || !ReferenceEquals(SignatureType(this, indexed.BoundType), element) ||
+                    body.Operations[array].Kind != OwnershipOperationKind.Read || body.Operations[array].Place != operation.Place ||
+                    !ReferenceEquals(ValueType(body, array), type) || !ReferenceEquals(body.Operations[array].Source, indexed.Left) ||
+                    !ReferenceEquals(ValueType(body, subscript), BoundType.ISize) || !ReferenceEquals(body.Operations[subscript].Source, ElementAccess.ValueSource(indexed.Right)) ||
+                    (body.IsReachable(id) && (!this.Dominates(array, id) || !this.Dominates(subscript, id))) ||
+                    FunctionAbi.GetValue(element, this.aggregateLayouts) is not { } stride ||
+                    !this.TryGetLocation(indexed, directory, constants, out var location))
+                {
+                    return Fail("Indexed borrow requires its borrowed array, an isize index and a concrete element stride.", out failure);
+                }
+
+                function.AddScalar(EmissionOpcode.Sequence, id, [this.PhysicalOperand(body, array), this.PhysicalOperand(body, subscript), new(EmissionOperandKind.Integer, type.Components[0].Length)], place: body.Operations.Count + id, location: location, op: "ArrayAddress", check: ArithmeticCheckKind.Bounds, representation: stride);
+                return true;
             }
 
             if (operation.Source is MemberAccessKoto projected && !ReferenceTypes.IsStorage(SignatureType(this, projected.BoundType)) &&

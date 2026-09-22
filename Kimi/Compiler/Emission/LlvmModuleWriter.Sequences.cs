@@ -11,9 +11,10 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
         var range = instruction.Representation == WindowsLowering.Unit;
-        if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceAddress")
+        if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceAddress" or "ArrayAddress")
         {
-            var arrayRead = instruction.ScalarOperator is "ArrayRead" or "ArrayStorageRead";
+            // A fixed array's bounds are static; a Slice loads its handle's length.
+            var arrayRead = instruction.ScalarOperator is "ArrayRead" or "ArrayStorageRead" or "ArrayAddress";
             if (!arrayRead)
             {
                 Name(output, "  %seqbase", id);
@@ -69,7 +70,7 @@ internal static partial class LlvmModuleWriter
 
             Name(output, ", i64 %offset", id);
             output.Write('\n');
-            if (instruction.ScalarOperator == "SliceAddress")
+            if (instruction.ScalarOperator is "SliceAddress" or "ArrayAddress")
             {
                 output.Write($"  %v{id} = getelementptr i8, ptr %element{id}, i64 0\n");
             }

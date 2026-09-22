@@ -282,7 +282,7 @@ internal sealed partial class BodyLowering
 
         if (body.Values[index].Kind is OwnershipValueKind.Address or OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite)
         {
-            return this.LowerStructBorrow(body, function, index, out failure);
+            return this.LowerStructBorrow(body, function, constants, projectDirectory, index, out failure);
         }
 
         if (operation.Kind is OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.ActivateCallBorrows)
