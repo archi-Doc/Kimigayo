@@ -27,6 +27,9 @@ public sealed class LlvmEmitter
     public bool Validate(out string? failure)
         => this.TryPrepare(out _, out failure);
 
+    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5), not a semantic or representation obligation.</summary>
+    public bool FailureIsResourceLimit { get; private set; }
+
     /// <summary>Writes inspection IR after checking the latest analysis. Does not certify a published artifact or native execution.</summary>
     /// <param name="writer">The caller-owned output.</param>
     /// <param name="failure">The failed generation obligation, if any.</param>
@@ -49,6 +52,7 @@ public sealed class LlvmEmitter
         module.Clear();
         var c = this.compilation;
         failure = null;
+        this.FailureIsResourceLimit = false;
         try
         {
             var destructorOrdinal = 0;
@@ -99,6 +103,7 @@ public sealed class LlvmEmitter
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {
+                this.FailureIsResourceLimit = this.generics.ResourceLimitExceeded;
                 return false;
             }
 

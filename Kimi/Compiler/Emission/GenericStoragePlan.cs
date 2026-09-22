@@ -70,13 +70,21 @@ internal sealed record SharedStorageEntry(FunctionAbi Abi, SharedStorageBody Bod
 /// <summary>Builds storage-polymorphic CFGs from universally checked ownership plans. No lookup or body rebinding.</summary>
 internal sealed partial class GenericStoragePlan
 {
+    // SPEC 21.3.5: a growing substitution key (T -> Box<T>) re-enters one template with ever new keys;
+    // finite recursion reuses its registered entry long before this bound.
+    private const int GrowingKeyLimit = 16;
+
     private readonly Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundCall, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<FunctionKoto, int> chainCounts = new(ReferenceEqualityComparer.Instance);
     private readonly SourceLocationTable locations = new();
     private readonly BodyLowering verifier = new();
     private IReadOnlyDictionary<FunctionKoto, FunctionAbi>? functions;
 
     internal IReadOnlyDictionary<BoundCall, CallEntry> Calls => this.calls;
+
+    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5).</summary>
+    internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
         => !function.IsSpecialization && (function.GenericArguments.Count != 0 || (!function.IsDestructor && function.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 }));
@@ -85,6 +93,8 @@ internal sealed partial class GenericStoragePlan
     {
         this.templates.Clear();
         this.calls.Clear();
+        this.chainCounts.Clear();
+        this.ResourceLimitExceeded = false;
         this.functions = null;
     }
 
@@ -1277,11 +1287,34 @@ internal sealed partial class GenericStoragePlan
 
     private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth = 0)
     {
+        var function = template.Body.Function;
+        this.chainCounts.TryGetValue(function, out var chain);
+        if (chain >= GrowingKeyLimit)
+        {
+            entry = null;
+            this.ResourceLimitExceeded = true;
+            return Fail($"Generic instantiation of '{function.Name}' grows without bound: a substitution key such as T -> Box<T> re-enters it more than {GrowingKeyLimit} times.", out failure);
+        }
+
+        this.chainCounts[function] = chain + 1;
+        try
+        {
+            return this.PrepareEntryCore(compilation, module, layouts, call, template, out entry, out failure, depth);
+        }
+        finally
+        {
+            this.chainCounts[function] = chain;
+        }
+    }
+
+    private bool PrepareEntryCore(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth)
+    {
         entry = null;
         failure = null;
         if (depth > 128)
         {
-            return Fail("Shared call context expansion exceeds the supported depth.", out failure);
+            this.ResourceLimitExceeded = true;
+            return Fail("Generic call context expansion exceeds the supported depth of 128.", out failure);
         }
 
         var body = template.Body;

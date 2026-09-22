@@ -428,7 +428,8 @@ public partial class Project
 
         if (!EmissionArtifacts.Publish(compilation, paths, out var pathIr, out var failure))
         {
-            projectKotonoha.DiagnosticCollection.Add(default, DiagnosticCode.GenerationFailed_Kd, failure);
+            // SPEC 21.3.5: an exceeded mandatory generation limit is a resource diagnostic, not a semantic error.
+            projectKotonoha.DiagnosticCollection.Add(default, compilation.Emission.FailureIsResourceLimit ? DiagnosticCode.GenerationResourceLimit_Kd : DiagnosticCode.GenerationFailed_Kd, failure);
             return false;
         }
 

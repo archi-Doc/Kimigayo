@@ -122,6 +122,7 @@ public enum DiagnosticCode
     OuterCloserInBody_Kd,
 
     GenerationFailed_Kd,
+    GenerationResourceLimit_Kd,
 
     DeferredExpansionLimit_Kd,
     ComparisonLoanConflict_Kd,

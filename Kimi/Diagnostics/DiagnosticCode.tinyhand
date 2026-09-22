@@ -388,3 +388,6 @@
 
   + Name="GenerationFailed_Kd"
     Message="LLVM artifact generation failed: {0}"
+
+  + Name="GenerationResourceLimit_Kd"
+    Message="Generic generation exceeds a mandatory resource limit: {0}"

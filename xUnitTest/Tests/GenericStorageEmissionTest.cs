@@ -239,6 +239,30 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
+    public void GrowingSubstitutionKeysAreResourceDiagnosed()
+    {
+        // SPEC 21.3.5: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource
+        // failure, distinguished from semantic and representation errors.
+        var c = MinimalEmissionTest.Analyze(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value), n - 1)\nlet r = grow<i32>(1, 3)");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out var error));
+        Assert.Empty(output.ToString());
+        Assert.True(c.Emission.FailureIsResourceLimit, error);
+        Assert.Contains("grow", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FiniteGenericRecursionReusesItsInstance()
+    {
+        var c = MinimalEmissionTest.Analyze("func count<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value, n - 1) + 1\nrequire count<i32>(7, 3) == 3 else => $abort(\"recursion\")");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.False(c.Emission.FailureIsResourceLimit);
+        Assert.Empty(module.SharedEntries);
+        Assert.Single(Instances(module));
+    }
+
+    [Fact]
     public void MonomorphizesForwardedStringReferences()
     {
         // SPEC 21.3.1: forward<string> passes its ref/T parameter to weight<string> as the substituted
