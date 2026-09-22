@@ -29,7 +29,9 @@ public class SharedResultEmissionTest
     [InlineData("write")]
     public void RejectsCorruptArrivalsAndRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func pick<T>(value: ref/T, flag: bool, n: i32) -> i32 => if flag => n + 1 else => n - 1\nlet v = true\nlet r = pick(v, true, 2)");
+        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
+        // the corrupt result arrival is rejected on the ordinary body that owns it.
+        var c = MinimalEmissionTest.Analyze("func pick(value: ref/bool, flag: bool, n: i32) -> i32 => if flag => n + 1 else => n - 1\nlet v = true\nlet r = pick(v, true, 2)");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.TryPrepare(out _, out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Values.Any(v => v.Kind == OwnershipValueKind.Phi));

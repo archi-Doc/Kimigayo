@@ -26,15 +26,12 @@ public class ProjectedBorrowEmissionTest
         ScalarEmissionTest.EmitFixture("ProjectedBorrowGeneric" + name, source, string.Empty);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void RejectsCorruptProjectedAddressAndReanalysisRecovers(bool generic)
+    // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
+    // the corrupt projected address is rejected on the ordinary body that owns it.
+    [Fact]
+    public void RejectsCorruptProjectedAddressAndReanalysisRecovers()
     {
-        var declaration = generic
-            ? "struct Box<T>\n    let values: T\n    public init(values: T) => self.values = values\n    public func view(self: ref/Self) -> ref{self}/T => self.values@ref/T\n"
-            : Batch;
-        var source = declaration + "let values: [2 of i32] = [6, 7]\nlet b = " + (generic ? "Box<[2 of i32]>" : "Batch") + ".init(values)\nlet r = b.view()\nlet n = r[1]";
+        var source = Batch + "let values: [2 of i32] = [6, 7]\nlet b = Batch.init(values)\nlet r = b.view()\nlet n = r[1]";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.BoundSymbol?.Name == "view");

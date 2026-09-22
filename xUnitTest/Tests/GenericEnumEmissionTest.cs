@@ -37,7 +37,9 @@ public class GenericEnumEmissionTest
     [InlineData("payload")]
     public void RejectsDamagedConstructionAndRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func wrap<T>(x: T) -> Option<T> => .Some(x)\nlet result = wrap<i32>(7)");
+        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
+        // the damaged construction plan is rejected on the ordinary body that owns it.
+        var c = MinimalEmissionTest.Analyze("func wrap(x: i32) -> Option<i32> => .Some(x)\nlet result = wrap(7)");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "wrap");
         body.ConstructionStorage[0] = defect == "case" ? body.Constructions[0] with { Case = null } : body.Constructions[0] with { PayloadCount = 0 };

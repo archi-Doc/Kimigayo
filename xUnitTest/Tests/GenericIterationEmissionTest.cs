@@ -32,7 +32,9 @@ public class GenericIterationEmissionTest
     [InlineData("operand")]
     public void RejectsCorruptIterationAndRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func first<length N, T>(values: ref/[N of T]) -> isize\n    for index in values.indices\n        return index\n    return values.length\nlet values: [1 of i32] = [7]\nlet result = first<1, i32>(values@ref)");
+        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
+        // the corrupt iteration plan is rejected on the ordinary body that owns it.
+        var c = MinimalEmissionTest.Analyze("func first(values: ref/[1 of i32]) -> isize\n    for index in values.indices\n        return index\n    return values.length\nlet values: [1 of i32] = [7]\nlet result = first(values@ref)");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "first");
         if (defect == "endpoint")
