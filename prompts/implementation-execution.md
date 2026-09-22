@@ -7,7 +7,7 @@ Implement the target milestone of [PLAN.md](../PLAN.md) with verified, committed
 - **Plan:** `PLAN.md` (§4 milestone order, §5 completion conditions, §6 next actions, §7 open issues).
 - **Target:** the milestone named by the request; otherwise the first milestone in PLAN §4 that is not DONE.
 - **Constraints:** follow `AGENTS.md`. Minimize allocations on hot paths and remove unnecessary code, but correctness and progress come first.
-- **Permissions:** commit each verified unit. Creating or changing Milestone Program sources and harnesses is allowed only for the target milestone and only when the request says so. Draft files and NativeAOT tests need explicit instruction.
+- **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only when a PLAN §7 issue records its conflict with the SPEC and the user has approved the change. Creating or completing the target milestone's harness (`backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
 
 ## 1. Start (keep it under 10 minutes)
 
