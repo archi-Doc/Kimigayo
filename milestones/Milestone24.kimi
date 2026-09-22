@@ -1,0 +1,52 @@
+// Milestone 24: setter ownership, borrowed views and Property witnesses.
+struct Resource
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit
+        match self.id
+            1 => Console.writeLine("Resource 1 destroyed.")
+            2 => Console.writeLine("Resource 2 destroyed.")
+            3 => Console.writeLine("Resource 3 destroyed.")
+            _ => $abort("Unexpected resource")
+
+contract Viewed
+    property item: ref/Resource
+        get(self: ref/Self) -> ref/Resource
+
+struct Holder
+    Self is Viewed
+    public var item: Resource
+        set(value: Resource) -> ()
+            Console.writeLine("Setter entered.")
+            storage = value
+    public computed view: ref/Resource
+        get() -> ref/Resource => self.item@ref/Resource
+    public init(value: Resource) => self.item = value
+
+struct Parcel
+    let item: Resource
+    public init(value: Resource) => self.item = value
+    public computed result: Resource
+        get(self: Self) -> Resource => self.item
+
+func inspect(value: ref/Resource)
+    require value.id == 2 else => $abort("Wrong borrowed resource")
+    Console.writeLine("Borrowed resource is 2.")
+
+func inspectWitness<T>(value: ref/T)
+    T is Viewed
+    inspect(value.item)
+
+public func main()
+    do
+        var holder = Holder.init(Resource.init(1))
+        holder.item = Resource.init(2)
+        inspect(holder.view)
+        inspectWitness(holder@ref)
+        Console.writeLine("Holder scope finished.")
+    do
+        let parcel = Parcel.init(Resource.init(3))
+        let owned = parcel.result
+        require owned.id == 3 else => $abort("Owned getter transfer failed")
+        Console.writeLine("Owned getter received.")
+    Console.writeLine("Ownership properties finished.")

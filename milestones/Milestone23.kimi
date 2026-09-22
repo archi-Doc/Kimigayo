@@ -1,0 +1,41 @@
+// Milestone 23: standard Places and Copy accessor calls stay distinct.
+struct Meter
+    public var raw: i32
+    public var level: i32
+        get() -> i32
+            Console.writeLine("Custom get.")
+            return storage
+        set(value: i32) -> ()
+            Console.writeLine("Custom set.")
+            storage = value
+    public computed doubled: i32
+        get() -> i32
+            Console.writeLine("Computed get.")
+            return self.raw * 2
+        set(value: i32) -> ()
+            Console.writeLine("Computed set.")
+            self.raw = value / 2
+    public init()
+        self.raw = 2
+        self.level = 3
+
+func receiver(value: uniq{source}/Meter) -> uniq{source}/Meter
+    Console.writeLine("Receiver evaluated.")
+    return value
+
+func input() -> i32
+    Console.writeLine("Input evaluated.")
+    return 8
+
+public func main()
+    var meter = Meter.init()
+    meter.raw = 4
+    require meter.raw == 4 else => $abort("Standard access failed")
+    Console.writeLine("Standard access finished.")
+    receiver(meter@uniq).level = input()
+    let level = meter.level
+    require level == 8 else => $abort("Custom access failed")
+    meter.doubled = 12
+    let doubled = meter.doubled
+    require doubled == 12 and meter.raw == 6 else => $abort("Computed access failed")
+    Console.writeLine("Copy properties finished.")

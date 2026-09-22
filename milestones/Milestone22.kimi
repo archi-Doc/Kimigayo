@@ -1,0 +1,36 @@
+// Milestone 22: concrete generic entries preserve layout and Type operations.
+struct Red
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit => Console.writeLine("Red destroyed.")
+
+struct Blue
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit => Console.writeLine("Blue destroyed.")
+
+func relay<T>(value: T) -> T => value
+
+func forward<T>(value: T) -> T => relay<T>(value)
+
+specialize func relay<i32>(value: i32) -> i32 => value + 1
+
+public func main()
+    let small: [2 of i32] = [3, 5]
+    let copied = forward(small)
+    require small[0] == 3 and copied[1] == 5 else => $abort("Copy transfer failed")
+    let wide: (i64, (i32, bool)) = (9, (7, true))
+    match forward(wide)
+        (9, (7, true)) => Console.writeLine("Compound layouts preserved.")
+        _ => $abort("Compound ABI failed")
+    require relay<i32>(10) == 11 and forward<i32>(20) == 21 else => $abort("Selected body lost")
+    Console.writeLine("Specialization preserved.")
+    do
+        let red = forward(Red.init(1))
+        require red.id == 1 else => $abort("Red transfer failed")
+        Console.writeLine("Red received.")
+    do
+        let blue = forward(Blue.init(2))
+        require blue.id == 2 else => $abort("Blue transfer failed")
+        Console.writeLine("Blue received.")
+    Console.writeLine("Generic generation finished.")

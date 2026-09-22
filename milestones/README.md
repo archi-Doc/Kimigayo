@@ -1,10 +1,10 @@
 # Language milestones
 
 Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md).
-Programs 1–21 have source files; programs 22–38 have design and verification scopes.
+Programs 1–24 have source files; programs 25–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 18–21 are specification targets beyond current
+not an execution claim. Milestones 19–24 are specification targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -36,10 +36,13 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone19](Milestone19.kimi) | Contract requirements, associated Types/equalities, conditional and nested conformance |
 | [Milestone20](Milestone20.kimi) | Type/length/Origin inference, ordinary defaults and generic forwarding |
 | [Milestone21](Milestone21.kimi) | Full length/Type specialization, inherited defaults/Origins and preserved implementation selection |
+| [Milestone22](Milestone22.kimi) | Concrete generic entries, compound layouts, specialization forwarding and distinct destruction operations |
+| [Milestone23](Milestone23.kimi) | Standard/custom/computed Copy Properties, direct storage and assignment evaluation order |
+| [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
 
 ## Program status
 
-As of **2026-09-21**, after the 38-program restructuring and program 18 completion. Build means a native
+As of **2026-09-22**, after authoring programs 22–24; older results retain their original verification scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -67,9 +70,9 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 19 | YES | FAIL (Release/O2) | NOT_RUN | InvalidPattern_Kd / UnprovenConstraint_Kd for associated results/nested conformance |
 | 20 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedBinding_Kd when dereferencing generic returned element borrows |
 | 21 | YES | FAIL (Release/O2) | NOT_RUN | Length specialization / inherited Origin Binding unsupported; cascading diagnostics |
-| 22 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 23 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 24 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 22 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | GenerationFailed_Kd: shared operation refers to invalid storage or projection |
+| 23 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom/computed Property access; cascading unresolved bindings |
+| 24 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom setters, getter results and Contract Property calls |
 | 25 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 26 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 27 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -89,10 +92,10 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 identities and exact commands: Release compiler/test-project build PASS with zero
 warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
 program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
-The syntax-catalog test includes all 21 existing milestone sources. That audit's
-failed program-15/16/17 probes are superseded by their completions. Programs 18–21
+The current syntax-catalog test includes all 24 milestone sources. That audit's
+failed program-15/16/17/18 probes are superseded by their completions. Programs 19–21
 retain failed build probes; their expected output remains specification-derived.
-Programs 22–38 have no source files or executed tests yet. Debug, full managed
+Programs 22–24 have source files and failing build probes; see the authoring record below. Programs 25–38 have no source files or executed tests yet. Debug, full managed
 regressions and NativeAOT were not run for this restructuring.
 
 Earlier [program 14 regressions](../PLAN_HISTORY.md#program14-completion),
@@ -112,14 +115,14 @@ kimi run milestones/Milestone1.kimi
 
 Replace `1` with the milestone number. `run` executes an existing build; it does
 not compile source. No separate project file is needed. Output uses fixed string
-literals so programs 1–21 do not require numeric formatting or interpolation.
-Programs 2–21 use `Console.writeLine` through the default Kimi alias. Only the
+literals so programs 1–24 do not require numeric formatting or interpolation.
+Programs 2–24 use `Console.writeLine` through the default Kimi alias. Only the
 Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 
 ## Roadmap from program 15 to core completion
 
 The current plan has **38 programs**, including **24 programs numbered 15–38**.
-Programs 15–21 are concrete below; 22–38 are future source targets, not implemented
+Programs 15–24 are concrete below; 25–38 are future source targets, not implemented
 capabilities. This count is a decomposition of scope, not an effort or delivery
 estimate. Passing programs 13/14 does not
 establish general Slice, Iterator, callable, or object support.
@@ -198,7 +201,7 @@ Each implementation target needs three kinds of evidence:
 - **Required rejection:** separate variants for invalid Moves, escaping Origins,
   conflicting Loans and failed constraints. Do not edit the canonical program
   to run a variant; reject invalid sources before artifact publication.
-- **Implementation contracts:** inspect shared generation/ABI and measure the
+- **Implementation contracts:** inspect the active generation profile and ABI and measure the
   relevant allocation, complexity and resource bounds. Correct stdout alone
   cannot prove these requirements. No NativeAOT verification is implied.
 
@@ -213,7 +216,7 @@ continues to own active execution scope, acceptance tracking, dependencies,
 states and exact next actions; [PLAN_HISTORY.md](../PLAN_HISTORY.md) owns run
 history. This roadmap does not replace the active target or mark any work done.
 
-### Verification scopes for future programs 22–38
+### Verification scopes for programs 22–38
 
 Every row inherits the three evidence gates above. The canonical program is a
 small successful Application. Rejection/Abort cases use separate source copies;
@@ -225,7 +228,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 
 | Program / main prerequisites | Canonical program | Separate semantic checks | Implementation evidence |
 | --- | --- | --- | --- |
-| 22 / 18–21 | Pass compound generic values through shared bodies and concrete entries; preserve different Type operations and selected specializations. | Different layouts and same-layout/different-destructor Types; finite recursive metadata, growing substitutions, invalid infinite layout; required-limit diagnostics versus optional-budget fallback. | Inspect entry/context ABI, operation dispatch, fixed scratch-frame reservations and reuse; compare budget-zero/bounded optimization semantics; measure warm allocations and deterministic logical plans. |
+| 22 / 18–21 | Pass compound generic values through per-substitution concrete bodies; preserve different Type operations and selected specializations. | Different layouts and same-layout/different-destructor Types; finite recursion, growing substitutions, invalid infinite layout and required resource-limit diagnostics. | Inspect concrete FunctionAbi and ordinary frames, selected body identities and deterministic finite generation; measure relevant warm allocations. Shared contexts, scratch frames and optional sharing budgets are deferred (§21.3.1). |
 | 23 / 4, 7 | Read/write stored standard, custom and computed Copy Properties with observable evaluation order. | Access permissions, differing setter inputs where permitted, single receiver/RHS/getter evaluation; reject writes or exclusive borrows into getter-result temporaries. | Distinguish direct Places from accessor calls; verify standard storage access and custom dispatch without invented get/set round trips. |
 | 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Owned getter results and legal receiver consumption, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
 | 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
@@ -1178,11 +1181,127 @@ closed compound/pair arguments and inherited defaults/Origins, with positive and
 negative contract matching. Remove the specialization and adjust expected values
 to 10/30/10/4/7; supply every index to suppress default messages; vary source
 lifetimes without changing selection. Inspect direct and forwarded selected
-Member Identities. Program 22 separately checks shared entry ABI, fixed frames and
-budget invariance; this program introduces no partial/conditional specialization.
+Member Identities. Program 22 separately checks concrete entry ABI and finite
+generation limits; this program introduces no partial/conditional specialization.
 
 Focus: [full specialization](../spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
 and [implementation selection and generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+
+## Milestone 22: concrete generic generation
+
+`forward` calls `relay` with a dependent Type argument. A fixed array and a nested
+Tuple exercise different compound layouts; the original Copy array remains usable.
+Direct and forwarded `i32` calls select the explicit specialization. `Red` and
+`Blue` have identical field layouts but different destruction operations, each
+performed once after transfer through both generic entries.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Compound layouts preserved.
+Specialization preserved.
+Red received.
+Red destroyed.
+Blue received.
+Blue destroyed.
+Generic generation finished.
+```
+
+Separate checks: vary layouts and array lengths; remove the specialization and
+expect 10/20; reuse a moved Non-Copy argument (reject); exercise finite recursive
+calls with an unchanged key, growing `T -> Box<T>` substitutions, excessive finite
+substitution sets and invalid infinitely recursive inline layouts. Resource limits
+must diagnose rather than hang, crash or publish incomplete artifacts.
+
+Native stdout does not prove monomorphization. Companion implementation checks
+must inspect concrete entries and call signatures, selected member identities,
+per-substitution Type operations and ordinary frames, and confirm removal of the
+transitional shared fallback. Allocation measurements belong to implementation
+completion. Shared contexts, scratch frames and optional sharing-budget tests are
+deferred, not acceptance conditions of this initial profile.
+
+Focus: [generation policy](../spec/21-layout-runtime-and-code-generation.md#2131-policy-and-sharing-conditions),
+[finite generation](../spec/21-layout-runtime-and-code-generation.md#2135-generation-limits-and-code-merging),
+and [calls and frames](../spec/21-layout-runtime-and-code-generation.md#214-checked-lowering-and-internal-abi).
+
+## Milestone 23: basic Copy Properties
+
+Construction first-places `raw` and `level` without accessor calls. Standard
+`raw` access is direct. Assigning to the custom `level` evaluates the RHS before
+the receiver, once each, then calls the setter without a getter. One explicit
+read invokes the custom getter. The computed `doubled` has no storage and updates
+`raw` through its setter; its getter is evaluated once.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Standard access finished.
+Input evaluated.
+Receiver evaluated.
+Custom set.
+Custom get.
+Computed set.
+Computed get.
+Copy properties finished.
+```
+
+Separate checks: restrict `raw`'s setter and reject an external write/exclusive
+borrow while allowing a read; vary values; use a computed setter with a different
+input Type; check compound assignment's receiver/getter/RHS/setter order. Reject
+writes and exclusive borrows into owned getter-result temporaries, including
+nested projections. Verify direct standard operations do not synthesize accessor
+calls and custom operations do not expose backing storage.
+
+Focus: [standard operations](../spec/11-properties.md#111-standard-access-and-acquisition),
+[accessor functions](../spec/11-properties.md#112-accessor-functions),
+[construction](../spec/11-properties.md#1131-construction-and-destruction),
+and [assignment](../spec/13-operators-and-assignment.md#137-assignment).
+
+## Milestone 24: ownership-bearing Properties
+
+`Holder` first-places Resource 1 without calling its setter. Replacement transfers
+Resource 2 to the setter and destroys Resource 1 before installing it. The computed
+view returns a receiver-bounded borrow. `Viewed.item` maps to the standard shared
+slot-borrow operation, even though the implementation has a custom setter; it does
+not expose a Move or exclusive borrow. `Parcel.result` consumes its receiver and
+returns its owned field, whose destruction responsibility transfers to `owned`.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Setter entered.
+Resource 1 destroyed.
+Borrowed resource is 2.
+Borrowed resource is 2.
+Holder scope finished.
+Resource 2 destroyed.
+Owned getter received.
+Resource 3 destroyed.
+Ownership properties finished.
+```
+
+Separate checks: a setter that discards its input must destroy that input and keep
+the old value; direct standard replacement witnesses and explicit computed
+implementations must preserve requirement contracts. Borrow an owned getter result
+for one call (allowed), then retain the borrow past its temporary lifetime (reject).
+Reject replacement while a view remains live, shared extraction of a Non-Copy
+field, use of a consumed Parcel, direct Move/exclusive borrow through the custom
+setter, and incompatible requirement operations. Verify exact destruction counts,
+temporary lifetimes and retained witness identity without hidden copies.
+
+Focus: [Non-Copy setters](../spec/11-properties.md#1124-non-copy-custom-setters),
+[getter temporaries](../spec/11-properties.md#1123-getter-results-and-temporaries),
+and [standard witnesses](../spec/11-properties.md#1142-standard-operation-witnesses).
+
+### Programs 22–24 authoring verification (2026-09-22)
+
+All three sources pass the syntax catalog. Native Application builds were probed
+with Debug and Release compilers, each at O0 and O2, using byte-identical source
+copies in separate Application projects. Program 22 fails LLVM artifact
+generation; 23 and 24 fail final Binding. No native output/exit test ran. The
+expected outputs and separate checks above are targets, not passing test claims.
+Full target/variant/rejection harnesses remain implementation work under PLAN.
+See [session evidence](../PLAN_HISTORY.md#programs22-24-authoring).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining
