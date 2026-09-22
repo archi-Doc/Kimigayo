@@ -23,10 +23,11 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 
 ## 3. Current position
 
-- **Verified source HEAD** `08c9da68` plus documentation records. Debug/Release builds are warning-free; each full suite passes 11,324 tests. Session evidence: `bin/verify/20260922-132129-session-p22-instances`; all existing harnesses (1–12 and 14–18) and 160 generic-entry native O0/O2 executions pass.
+- **Verified source HEAD** `fcf053e` plus documentation records. Debug/Release builds are warning-free; each full suite passes 11,342 tests. Session evidence: `bin/verify/20260922-141532-session-p19-completion`; all existing harnesses (1–12 and 14–19, 858 checks), four associated-result native O0/O2 executions and two exact-source program-13 executions pass.
 - **Optional/try/discard:** the finalized rules are integrated into SPEC.md and its chapters. Parsing, Binding, analysis and native generation support the combinations in STATUS §3.1; the draft is unchanged. No NativeAOT run.
-- **Programs 1–18** pass (O0/O2, target, variants and rejections). **Programs 19–21** exist but fail in Binding (see §4). Programs 22–24 are authored specification targets: 22 fails artifact generation; 23/24 fail Property Binding. Programs 25–38 are not written yet. Source creation does not complete an implementation milestone.
+- **Programs 1–19** have verified native execution. P19 is complete: unchanged source, Debug/Release O0/O2, 53 harness checks per configuration. The user-directed P19 session ends here; no later milestone implementation was started. **Programs 20–21** retain their failed Binding probes. Programs 22–24 are authored targets with prior failed build probes; 25–38 are not written yet. Source creation does not complete an implementation milestone.
 - **P22 progress:** each concrete call context of a verified generic body is re-analyzed under its substitution (`OwnershipAnalysis.AnalyzeInstance`) and lowered by the ordinary `BodyLowering` under the caller-facing entry ABI (`LlvmEmitter.LowerInstances`). Scalar functions, Never bodies, length-generic functions, generic struct constructors and field reads now monomorphize. Refused instances still use the shared path (`GenericStoragePlan*`, `LlvmModuleWriter.GenericStorage`/`SharedCalls`, `BodyLowering.Shared`); selected explicit specializations keep their selected body.
+- **P19 generation boundary:** associated-value and requirement-call bodies use concrete entries and verified conformance witnesses. Unlike the transitional P22 paths above, these entries must pass concrete ownership/lowering; they have no shared fallback.
 
 ## 4. Milestones (execution order)
 
@@ -35,7 +36,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | Order | ID | Program subject | State | Specific acceptance beyond §5 |
 | --- | --- | --- | --- | --- |
 | 1 | P22 | Generic generation by monomorphization | IN_PROGRESS | Every generic body reaches generation as per-substitution concrete bodies through ordinary lowering. Programs 8–11 and 18 and all existing generic tests pass without the shared path, which is then removed. Growing keys (`T -> Box<T>`) and oversized substitution sets produce resource diagnostics (§21.3.5). |
-| 2 | P19 | Contracts, associated Types, conditional/nested conformance | TODO | Current `InvalidPattern_Kd` / `UnprovenConstraint_Kd` failures resolved by implementing the specified proofs, not by relaxing checks. |
+| 2 | P19 | Contracts, associated Types, conditional/nested conformance | DONE | Associated identities normalize after container substitution; verified requirement mappings select concrete instances. Unchanged target and 53 checks pass in Debug/Release; full regressions and earlier harnesses pass. Broader Contract boundaries remain in STATUS. |
 | 3 | P20 | Type/length/Origin inference, defaults, forwarding | TODO | Generic returned element borrows dereference (no `UnsupportedBinding_Kd`); owned/borrowed defaults per §7.2. |
 | 4 | P21 | Explicit full specialization | TODO | Length specialization and inherited default/Origin contracts, without cascading diagnostics. |
 | 5 | P29 | Dynamic Array | TODO | §4.7 capacity, mutation, Non-Copy elements, owning iteration and mandatory allocation bounds; settles issue G3. |
@@ -55,7 +56,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | 19 | P37 | Integrated processing application | TODO | Collections, borrows, iteration and closures combined. |
 | 20 | P38 | Integrated core application | TODO | Properties, inheritance, objects and formatting combined. |
 
-P22 comes first because monomorphization changes how every later generic body is generated. The Binding work of P19–P21 does not depend on P22 and may proceed if P22 is blocked. Collections, comparison and formatting (P29–P32) precede Properties and objects because most later programs use them.
+P22 remains the general generation migration. P19 was completed first at the user's direction, adding only its required associated-Type/Contract concrete generation path; it does not complete P22. Collections, comparison and formatting (P29–P32) precede Properties and objects because most later programs use them.
 
 ### Toolchain track (after P38, or earlier when instructed)
 
@@ -81,7 +82,7 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. **P22 remaining instance shapes:** element reborrows of length-generic borrowed arrays (`values[index]@ref/T` in `W.total`/`get`: the instance plan reaches `BodyLowering.StructBorrows` as a plain reborrow, "Reborrow has no matching reference source"; compare the concrete sequence plan), borrowed string references forwarded to generic callees (`ReferenceParameterFits` compares the callee's unsubstituted formal; a fix was reverted unverified because the probe source `forward<string>(s@ref)` did not bind, so find the valid borrow form first), T-result forwarding (`OwnershipAnalysis` call result storage reads `call.BoundType` unsubstituted; the shared template refuses it too), then `BodyLowering.Closures`. Find refusals with a temporary probe that records `Lower` failures in `LowerInstances`.
+1. **P22 remaining instance shapes:** element reborrows of length-generic borrowed arrays (`values[index]@ref/T` in `W.total`/`get`: "Reborrow has no matching reference source"; compare the concrete sequence plan), borrowed string references forwarded to generic callees (`ReferenceParameterFits` compares the unsubstituted formal; find the valid borrow form before changing it), then `BodyLowering.Closures`. P19 now normalizes associated storage Types, substitutes projected field layouts and uses the concrete call-result Type for slot placement. General T-result forwarding still fails the transitional shared template; do not treat the P19 concrete Contract path as completion of that migration.
 2. **P22 migration:** when no instance falls back, delete the shared path and its tests, drop the transitional `SharedEntries` bookkeeping, and add the §21.3.5 resource diagnostics (growing keys such as `T -> Box<T>`, oversized substitution sets).
 3. **P22 program:** `milestones/Milestone22.kimi` now exercises compound entries, forwarding, explicit selection and same-layout/different-destructor Types. Resolve its shared-storage generation failure, then add its target/variant/rejection harness and finite-generation/ABI checks. Programs 23/24 and their README expectations are also authored; implement their Property operations and harnesses at P23/P24.
 4. **Remaining optional/try combinations:** preserve the same rules as explicit Option/Result when extending representation support. Add Never enum payload layout and unreachable-arm plans (`OwnershipAnalysis.Enums`/`Match`, `AggregateLayout`), static scalar-reference storage (`ReferenceTypes`), and owning unnamed iteration under P28/P29. Custom getter execution follows P23/P24. Add native cleanup cases before removing the corresponding STATUS limits.
@@ -94,3 +95,4 @@ Features that a program's source does not use belong to the milestone that owns 
 | G4 | The Kimi catalog lacks Weak and the rc/arc ownership family required by §22.1 and §13.5.8–9. | P34/P35 |
 | G7 | `AggregateLayoutPool` uses 32-bit offsets and depth 64; larger layouts are rejected instead of supported or diagnosed per §21. | P25 |
 | G10 | Named function groups used as Function Types need selection, Origin and erasure paths (overloads, generics, members). | P26 |
+| G11 | Whole Copy aggregate-field acquisition through a shared receiver needs a concrete storage-copy plan; currently rejected with UnsupportedOwnership_Kd (AssociatedForwardingTest). | P23 |

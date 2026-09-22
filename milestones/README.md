@@ -4,7 +4,7 @@ Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md
 Programs 1–24 have source files; programs 25–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 19–24 are specification targets beyond current
+not an execution claim. Milestones 20–24 are specification targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -42,7 +42,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-22**, after authoring programs 22–24; older results retain their original verification scope. Build means a native
+As of **2026-09-22**, after program 19 completion and authoring programs 22–24; older results retain their original verification scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -67,7 +67,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 16 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
 | 17 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
 | 18 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
-| 19 | YES | FAIL (Release/O2) | NOT_RUN | InvalidPattern_Kd / UnprovenConstraint_Kd for associated results/nested conformance |
+| 19 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 53 checks per configuration; [evidence](../PLAN_HISTORY.md#program19-completion) |
 | 20 | YES | FAIL (Release/O2) | NOT_RUN | UnsupportedBinding_Kd when dereferencing generic returned element borrows |
 | 21 | YES | FAIL (Release/O2) | NOT_RUN | Length specialization / inherited Origin Binding unsupported; cascading diagnostics |
 | 22 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | GenerationFailed_Kd: shared operation refers to invalid storage or projection |
@@ -93,7 +93,7 @@ identities and exact commands: Release compiler/test-project build PASS with zer
 warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
 program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
 The current syntax-catalog test includes all 24 milestone sources. That audit's
-failed program-15/16/17/18 probes are superseded by their completions. Programs 19–21
+failed program-15/16/17/18/19 probes are superseded by their completions. Programs 20–21
 retain failed build probes; their expected output remains specification-derived.
 Programs 22–24 have source files and failing build probes; see the authoring record below. Programs 25–38 have no source files or executed tests yet. Debug, full managed
 regressions and NativeAOT were not run for this restructuring.
@@ -1068,7 +1068,7 @@ readTwice returns two associated values; readNumber additionally requires their
 Type to equal i32. Nested Wrappers must compose the same evidence. Wrapper<i32>
 is legal storage without gaining Source merely because a read member exists.
 
-Expected stdout (not execution evidence):
+Verified stdout (Debug/Release, native O0/O2; exit 0, empty stderr):
 
 ```text
 Associated numbers are 21, 21.
@@ -1086,13 +1086,38 @@ Separate rejection exercises:
 - Remove `T is Source` from readTwice: favorable concrete callers cannot provide
   missing definition-side evidence.
 
-Future verification should use another numeric value, inspect retained
-requirement-to-member mappings, and reject contradictory associated bindings or
-duplicate conformances. No runtime Contract View or caller-side member search is
-introduced. Refinement diamonds, bound nested Contracts, ambiguity and conditional
-proof failures belong to program 19's companion tests, not its short canonical
-body. Contract Property requirements and operation witnesses belong to program 24;
-generation/ABI inspection belongs to program 22.
+Verification uses another numeric value, renamed Types/members, false Boolean
+values, a deeper Wrapper and observable read effects. The harness also rejects
+contradictory associated bindings and duplicate conformances, in addition to the
+five cases above, before publishing LLVM or executable artifacts.
+
+```powershell
+./backend/windows-x64/test-milestone19.ps1 -Configuration Debug
+./backend/windows-x64/test-milestone19.ps1 -Configuration Release
+```
+
+Each configuration passes 53 checks: canonical single-source O2 build/run, six
+O0/O2 variants through native/executable/input run modes, and seven O0/O2 rejection
+cases. `AssociatedForwardingTest` checks projection normalization, retained
+requirement/member identities, ownership, invalid evidence, and concrete tuple
+results. The focused associated-projection/proof warm Binding test allocates zero
+bytes; this is not a whole-program allocation guarantee.
+
+Associated identities normalize after container substitution, including nested
+conditional conformances. Requirement calls use verified mappings and concrete
+per-substitution bodies; they do not perform caller-side member search or runtime
+Contract dispatch. Current native evidence covers the canonical scalar results
+and a constructed Copy tuple result. Whole aggregate-field acquisition through a
+shared receiver still diagnoses unsupported ownership; general bound/refinement
+composition retains the limits in STATUS. Existing Binding tests cover broader
+refinement/conditional-proof validity without establishing general native support.
+Contract Property operations belong to program 24; complete generation migration
+and resource limits belong to program 22.
+
+Debug/Release full suites pass 11,342 tests each; all existing milestone harnesses
+(1–12 and 14–19) pass in Release, and program 13 passes exact-source O0/O2 probes.
+Reports and identities are linked from the [completion record](../PLAN_HISTORY.md#program19-completion).
+No NativeAOT verification was run.
 
 Focus: [associated Types](../spec/08-generics-constraints-and-contracts.md#843-associated-types),
 [implementation matching](../spec/08-generics-constraints-and-contracts.md#845-implementation-matching),

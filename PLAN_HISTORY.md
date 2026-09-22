@@ -29,6 +29,11 @@ A few lines per session. Evidence lives in commits and `bin/verify/` (earlier ru
 
 ## Retained anchors
 
+<a id="program19-completion"></a>
+- **2026-09-22 — Program 19 complete:** `566e946` normalizes substituted associated identities; `d31fe90` verifies associated-value ownership; `fcf053e` selects verified Contract witnesses, lowers concrete instances and adds the native harness. Original target source unchanged (SHA-256 `54E15FC6F53572DAE80241DB225DD6061AFB3ED82AB9963415DE1629729D5261`). Initial Binding, ownership and generation failures are retained under `bin/verify/p19-initial`.
+- Unit evidence: `bin/verify/20260922-141305-unit-p19-native-unit` (212 tests, four native executions, 53 P19 Debug checks). Final `./verify.ps1 -Mode Session -Fixtures 'AssociatedForwarding*.ll' -Milestone 1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17,18,19 -Name p19-completion`: warning-free builds, 11,342 tests each, four native executions and 858 Release harness checks; `bin/verify/20260922-141532-session-p19-completion` also holds two exact-source program-13 O0/O2 probes. P19 returns the specified three stdout lines, exit 0, empty stderr in both configurations/optimizations.
+- Focused warm associated-projection/proof Binding allocates zero bytes; the exploratory whole-source probe measured 2,304 bytes over eight warm passes, so no whole-program zero-allocation claim. Shared-receiver whole aggregate-field acquisition remains rejected (PLAN G11). No SPEC change, draft edit, NativeAOT run or subsequent milestone implementation.
+
 Links from other documents point here. Each record's full text is in `git show 32324537:PLAN_HISTORY.md`.
 
 <a id="program14-completion"></a>

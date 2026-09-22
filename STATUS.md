@@ -4,7 +4,7 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 
 ## Summary
 
-- **Verification baseline (2026-09-22):** Debug/Release builds are warning-free; each full managed suite passes 11,319 tests. The existing milestone harnesses (1–12 and 14–18) pass their Release O0/O2 targets, variants and rejections; the new optional/try fixtures pass 46 O0/O2 executions. Programs 19–21 fail in Binding. NativeAOT is not run.
+- **Verification baseline (2026-09-22):** Debug/Release builds are warning-free; each full managed suite passes 11,342 tests. All existing milestone harnesses (1–12 and 14–19) pass 858 Release checks; program 13 passes exact-source O0/O2 execution. P19 also passes 53 Debug harness checks and four associated-result native executions in each configuration. Programs 20–21 retain failed Binding probes. Evidence: `bin/verify/20260922-141532-session-p19-completion`; NativeAOT is not run.
 - **Generic generation:** the specification's initial profile monomorphizes (§21.3.1). Scalar, Never and length-generic functions, generic struct constructors/field reads, forwarded generic calls inside generic bodies, enum payload constructions and owned result joins are generated as one concrete body per closed substitution; explicit specializations keep their selected body. Other instances (element reborrows of length-generic borrowed arrays, borrowed string references forwarded to generic callees) still use the earlier shared path (see §4 Shared generics) until PLAN milestone P22 completes.
 - **Mods:** the host interface is deferred (Appendix D); `Compilation.Bind` does not execute Mods.
 
@@ -137,6 +137,25 @@ Existing representation limits remain: enums containing Never and static scalar-
 
 ## 4. LLVM Generation Coverage
 
+**Program 19:** explicit associated identities normalize after each container
+substitution, including nested conditional conformances. Universally verified
+associated-value bodies undergo concrete ownership analysis; requirement calls
+use verified requirement-to-member mappings without new member lookup or runtime
+dispatch. Concrete ordinary lowering executes scalar associated results and
+constructed Copy tuple results, preserving receiver borrows, call order and
+result-slot initialization. Debug/Release O0/O2 evidence includes changed names,
+values, Boolean results, deeper wrappers and read effects. Missing/contradictory
+associated identities, absent definition/call premises, incompatible receivers
+and duplicate conformances reject before artifacts are published.
+
+This does not establish arbitrary bound/refinement composition, inherited receiver
+adjustments, specialization of this new Contract generation path or Property
+witness execution. Whole Copy aggregate-field acquisition through a shared
+receiver still reports `UnsupportedOwnership_Kd`; the focused test retains that
+boundary. The isolated associated-projection/proof warm Binding test allocates
+zero bytes, not a whole-program allocation guarantee. General generation migration
+and resource diagnostics remain P22 work.
+
 `LlvmEmitter` supports the windows-x64-v1 Application profile, implicit top-level entry or eligible `public func main() -> ()`, with final Binding/startup/ownership required. Supported nested groups/structs/enums/Contracts and bounded generic/closure/default paths are admitted. Supported source-module bodies share one final module and ABI map; all modules retain source-error, container and unused-body checks. Only the selected implicit startup wrapper is emitted. Library inspection emits internal language functions and no OS entry, with null manifest entry/subsystem; LLVM verification and COFF generation are verified. Native Application build/run reject Library inspection output. Unsupported bodies remain rejected.
 
 | Area | Implemented generation and recorded execution | Limits |
@@ -242,7 +261,7 @@ Supported source-module common generation is verified for transitive calls, shar
 | CI and distribution | `.github/workflows/test.yml` explicitly selects Linux Release, xUnitTest project, nonzero-test minimum and serial tests. `publish.yml` retains a less explicit test command and manual NuGet pack/push. These workflows are distinct; neither execution nor publication was performed by this migration. Windows native/PR coverage and evidence retention still need review. |
 | Performance | Binding/type/CFG/ABI/layout/constant buffers reuse capacity; targeted warm tests measure zero allocation on their own workloads. Shared module preparation, graph loading, process startup and every Binding path are not allocation-free guarantees. Historical require-expression Binding measured 72 bytes/pass; front-end samples did not establish a speedup. The original extended benchmark input failure remains a separate finding. |
 
-Programs 1–18 have Release target-level native coverage, including Debug/Release O0/O2 target and variant coverage for programs 15–18. Programs 19–21 retain failed O2 build probes, not executable support. Authored programs 22–24 pass syntax parsing but fail Debug/Release O0/O2 native build probes: 22 reports `GenerationFailed_Kd` for invalid shared storage/projection; 23/24 report `UnsupportedBinding_Kd` for Property operations, with cascading unresolved bindings. Their native tests are NOT_RUN. Programs 25–38 are planned. See [authoring evidence](PLAN_HISTORY.md#programs22-24-authoring). Parser coverage and adopted documentation do not establish end-to-end executability. User constructor, closure, generic, reference and sequence support should be read from the bounded areas above, not older blanket omissions.
+Programs 1–19 have Release target-level native coverage, including Debug/Release O0/O2 target and variant coverage for programs 15–19. Programs 20–21 retain failed O2 build probes, not executable support. Authored programs 22–24 pass syntax parsing but fail Debug/Release O0/O2 native build probes: 22 reports `GenerationFailed_Kd` for invalid shared storage/projection; 23/24 report `UnsupportedBinding_Kd` for Property operations, with cascading unresolved bindings. Their native tests are NOT_RUN. Programs 25–38 are planned. See [authoring evidence](PLAN_HISTORY.md#programs22-24-authoring). Parser coverage and adopted documentation do not establish end-to-end executability. User constructor, closure, generic, reference and sequence support should be read from the bounded areas above, not older blanket omissions.
 
 ## 7. Language Test Execution
 
