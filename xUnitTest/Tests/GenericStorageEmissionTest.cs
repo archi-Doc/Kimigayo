@@ -174,6 +174,22 @@ public class GenericStorageEmissionTest
         Assert.Equal(WindowsLowering.GetValue(BoundType.String)!.Layout.Stride, address.Representation!.Layout.Stride);
     }
 
+    [Theory]
+    [InlineData("func run<T>(value: ref/T, c: uniq/Counter) -> i32\n    c.add(2)\n    return c.read()\nlet v = true\nvar c = Counter.init(40)\nlet n = run(v, c)")]
+    [InlineData("func run<T>(value: ref/T) -> i32\n    var c = Counter.init(1)\n    c.add(2)\n    return c.read()\nlet v = true\nlet n = run(v)")]
+    [InlineData("func run<T>(value: ref/T, c: ref/Counter) -> i32 => c.read()\nlet v = true\nlet c = Counter.init(3)\nlet n = run(v, c)")]
+    public void MonomorphizesConcreteMemberCallReceivers(string source)
+    {
+        // SPEC 21.3.1: a concrete callee's receiver Origin is instantiated at the call site and then seen
+        // under the instance's substitution; the instance body is lowered instead of the shared entry.
+        const string Counter = "struct Counter\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func add(self: uniq/Self, amount: i32) => self.value += amount\n    public func read(self: ref/Self) -> i32 => self.value\n";
+        var c = MinimalEmissionTest.Analyze(Counter + source);
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        var instance = Assert.Single(Instances(module));
+        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Call);
+    }
+
     [Fact]
     public void MonomorphizesForwardedStringReferences()
     {

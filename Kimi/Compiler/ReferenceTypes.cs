@@ -30,7 +30,8 @@ internal static class ReferenceTypes
 
     internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsBorrow(type) || IsPointer(type);
 
-    internal static bool CallTypeMatches(BoundType? formal, BoundType? actual, BoundCall call)
+    // instance: the closed call of a monomorphized instance whose substitution the actual Type already carries (SPEC 21.3.1).
+    internal static bool CallTypeMatches(BoundType? formal, BoundType? actual, BoundCall call, BoundCall? instance = null)
     {
         if (formal is null || actual is null || formal.Kind != actual.Kind || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
             formal.Length != actual.Length || !ReferenceEquals(formal.LengthExpression, actual.LengthExpression) ||
@@ -50,7 +51,7 @@ internal static class ReferenceTypes
 
         for (var i = 0; i < formal.Components.Count; i++)
         {
-            if (!CallTypeMatches(formal.Components[i], actual.Components[i], call))
+            if (!CallTypeMatches(formal.Components[i], actual.Components[i], call, instance))
             {
                 return false;
             }
@@ -70,7 +71,10 @@ internal static class ReferenceTypes
                 return false;
             }
 
-            return ReferenceEquals(call.Target.Declaration.CodeContext.Compilation.Binding.InstantiateStorageOrigin(pattern, call), value);
+            var binding = call.Target.Declaration.CodeContext.Compilation.Binding;
+            var expected = binding.InstantiateStorageOrigin(pattern, call);
+            // Inside an instance, the call-site Origin of a concrete callee's parameter is itself substituted.
+            return ReferenceEquals(expected, value) || (instance is not null && ReferenceEquals(binding.InstantiateStorageOrigin(expected, instance), value));
         }
     }
 

@@ -59,7 +59,7 @@ internal sealed partial class BodyLowering
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
             !ReferenceEquals(SignatureType(this, call.BoundType), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
-            !ReferenceTypes.CallTypeMatches(generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType, plan))
+            !ReferenceTypes.CallTypeMatches(generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType, plan, this.instance))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
@@ -91,7 +91,7 @@ internal sealed partial class BodyLowering
                 (isDefault && (parameter <= previousDefault || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
                     !ReferenceEquals(omitted.Parameter.Scope.Owner, target) || !ScalarDefaults.SupportsValue(omitted.ParameterType))) ||
                 acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection) || acquisition.ParameterIndex != parameter ||
-                !ReferenceTypes.CallTypeMatches(generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, parameterType, plan) ||
+                !ReferenceTypes.CallTypeMatches(generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, parameterType, plan, this.instance) ||
                 (acquisition.Kind != ArgumentOperationKind.Value && !ReferenceTypes.IsString(parameterType) && !ReferenceTypes.IsBorrow(parameterType)))
             {
                 return Fail("Invalid call argument mapping or acquisition.", out failure);
