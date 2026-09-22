@@ -191,11 +191,11 @@ internal sealed partial class GenericStoragePlan
         {
             var op = body.Operations[id];
             var testIssue = op.Kind is OwnershipOperationKind.TestMessage or OwnershipOperationKind.TestAbort;
+            // A Call without a destination Place delivers or forwards its result directly; the verified value
+            // plan carries it, and each instance lowers it concretely (SPEC 21.3.1), so no shared leaf is needed.
             if (op.Place < -1 || op.Place >= body.Places.Count || op.Input < -1 || op.Input >= (testIssue ? body.Operations.Count : body.Places.Count) ||
                 op.Projection < -1 || op.Projection >= body.Projections.Count ||
-                (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.ActivateCallBorrows or OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestAbort) &&
-                 !(op.Kind == OwnershipOperationKind.Call && op.Source is InvocationKoto { BoundCall.ReturnType: var result } &&
-                   (ReferenceEquals(result, BoundType.Unit) || ReferenceEquals(result, BoundType.Never)))))
+                (op.Place < 0 && op.Kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.ActivateCallBorrows or OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestAbort or OwnershipOperationKind.Call)))
             {
                 return Fail("Shared operation refers to invalid storage or projection.", out failure);
             }
@@ -735,7 +735,7 @@ internal sealed partial class GenericStoragePlan
                             arguments.Count != directTarget.Parameters.Count || arguments.Count != directSyntax.ArgumentNodes.Count + direct.DefaultArguments.Length + (direct.Receiver is null ? 0 : 1) ||
                             direct.ArgumentOperations.Length != directSyntax.ArgumentNodes.Count || direct.ArgumentToParameter.Length != directSyntax.ArgumentNodes.Count ||
                             !(directTarget.IsConstructor ? ReferenceEquals(direct.DeclaringType, direct.ReturnType) : ReferenceTypes.CallTypeMatches(binding.InstantiateStorageType(directTarget.BoundSymbol!.Type!, direct), direct.ReturnType, direct)) ||
-                            !(op.Place < 0 ? ReferenceEquals(direct.ReturnType, BoundType.Unit) || ReferenceEquals(direct.ReturnType, BoundType.Never) : ReferenceEquals(body.Places[op.Place].Type, direct.ReturnType)) ||
+                            !(op.Place < 0 || ReferenceEquals(body.Places[op.Place].Type, direct.ReturnType)) || // A destination-less call delivers its result directly.
                             !ReferenceEquals(directSyntax.BoundType, direct.ReturnType))
                         {
                             return Fail($"Shared direct call to '{direct.Target.Name}' requires a checked function and prepared arguments.", out failure);
@@ -970,7 +970,9 @@ internal sealed partial class GenericStoragePlan
                     kind = SharedStorageOperation.Return;
                     break;
                 default:
-                    return Fail("Generic storage CFG contains an operation without a shared lowering: " + op.Kind + ".", out failure);
+                    // A verified operation without a shared representation (for example a directly delivered
+                    // call result) is lowered by each instance (SPEC 21.3.1); the walk has nothing to check.
+                    break;
             }
 
             var next = -1;

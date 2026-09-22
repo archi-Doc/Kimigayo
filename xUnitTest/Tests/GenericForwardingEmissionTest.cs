@@ -30,15 +30,19 @@ public class GenericForwardingEmissionTest
         => ScalarEmissionTest.EmitFixture("GenericForwardingRecursive", "func count<T>(value: T) -> i32 => 77\nspecialize func count<i32>(value: i32) -> i32 => if value == 0 => 0 else => count<i32>(value - 1) + 1\nrequire count<i32>(4) == 4 else => $abort(\"recursion\")", string.Empty);
 
     [Fact]
-    public void RejectsUnsupportedDependentResultForwarding()
+    public void ForwardsDependentResults()
+        => ScalarEmissionTest.EmitFixture("GenericForwardingDependentResult", "func identity<T>(value: T) -> T => value\nfunc forward<T>(value: T) -> T => identity<T>(value)\nConsole.writeLine(forward<string>(\"owned\"))\nrequire forward<i32>(7) == 7 else => $abort(\"result\")", "owned\n");
+
+    [Fact]
+    public void ExecutesProgram22()
     {
-        // The transitional template walk still refuses direct result forwarding; the instance path takes over when that walk becomes a pure validator (PLAN P22).
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value\nfunc forward<T>(value: T) -> T => identity<T>(value)\nConsole.writeLine(forward<string>(\"owned\"))");
-        Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Ownership.Result.IsVerified);
-        using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
+        // The unchanged Milestone 22 source (concrete generic entries, compound layouts, specialization
+        // forwarding and distinct destruction) lowers per instance and runs natively.
+        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../milestones/Milestone22.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        ScalarEmissionTest.EmitFixture("GenericForwardingProgram22", source, "Compound layouts preserved.\nSpecialization preserved.\nRed received.\nRed destroyed.\nBlue received.\nBlue destroyed.\nGeneric generation finished.\n");
     }
 
     [Fact]
