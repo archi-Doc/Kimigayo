@@ -257,11 +257,12 @@ public class GenericStorageEmissionTest
         const string Source = "func count<T>(value: T) -> i32 => 77\nspecialize func count<i32>(value: i32) -> i32 => 5\nrequire count<i32>(1) == 5 and count<i64>(1) == 77 else => $abort(\"selection\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var selected = Assert.Single(module.SharedEntries);
-        Assert.NotNull(selected.Selected);
+        // The selected body is called directly (SPEC 21.3.4); no transitional entry or shared body remains.
+        Assert.Empty(module.SharedEntries);
         var instance = Assert.Single(Instances(module));
         Assert.Equal(["i64"], instance.Abi.Parameters.Select(x => x.Type).ToArray());
-        ScalarEmissionTest.EmitFixture("GenericStorageSelectedSpecialization", Source, string.Empty);
+        var ir = ScalarEmissionTest.EmitFixture("GenericStorageSelectedSpecialization", Source, string.Empty);
+        Assert.DoesNotContain("__kimi_shared", ir, StringComparison.Ordinal);
     }
 
     [Fact]

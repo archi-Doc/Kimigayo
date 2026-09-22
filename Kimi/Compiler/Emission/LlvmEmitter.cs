@@ -283,6 +283,13 @@ public sealed class LlvmEmitter
             }
         }
 
+        // Selected specializations are called directly. The transitional shared path is emitted only
+        // while a refused instance still needs its entry and the shared bodies those entries call.
+        if (module.SharedEntries.TrueForAll(x => x.Selected is not null))
+        {
+            module.SharedEntries.Clear();
+        }
+
         failure = null;
         return true;
     }

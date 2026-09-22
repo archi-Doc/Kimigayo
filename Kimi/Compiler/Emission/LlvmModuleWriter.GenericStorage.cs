@@ -6,9 +6,9 @@ internal static partial class LlvmModuleWriter
 {
     private static void WriteSharedStorage(EmissionModule module, TextWriter output)
     {
-        if (module.SharedBodies.Count == 0)
+        if (module.SharedEntries.Count == 0)
         {
-            return;
+            return; // Every generic call reached a monomorphized instance; no shared body is called.
         }
 
         // Metadata executes already verified ownership operations. Context carries no live flags.
