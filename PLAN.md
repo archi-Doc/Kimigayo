@@ -23,7 +23,7 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 
 ## 3. Current position
 
-- **HEAD** `32324537` plus the 2026-09-22 plan/specification restructuring. Debug/Release builds are warning-free; each full suite passes 11,212 tests.
+- **HEAD** `fdaeed9b` (2026-09-22 restructuring) plus the P22 probe record. Debug/Release builds are warning-free; each full suite passes 11,212 tests (session verification `bin/verify/20260922-095911-session-p22-probe`).
 - **Programs 1–18** pass (O0/O2, target, variants and rejections). **Programs 19–21** exist but fail in Binding (see §4). Programs 22–38 are not written yet.
 - The shared generic generation path (`GenericStoragePlan*`, `LlvmModuleWriter.GenericStorage`, `LlvmModuleWriter.SharedCalls`, `BodyLowering.Shared`) still generates the supported generic subset.
 
@@ -33,7 +33,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 
 | Order | ID | Program subject | State | Specific acceptance beyond §5 |
 | --- | --- | --- | --- | --- |
-| 1 | P22 | Generic generation by monomorphization | TODO | Every generic body reaches generation as per-substitution concrete bodies through ordinary lowering. Programs 8–11 and 18 and all existing generic tests pass without the shared path, which is then removed. Growing keys (`T -> Box<T>`) and oversized substitution sets produce resource diagnostics (§21.3.5). |
+| 1 | P22 | Generic generation by monomorphization | IN_PROGRESS | Every generic body reaches generation as per-substitution concrete bodies through ordinary lowering. Programs 8–11 and 18 and all existing generic tests pass without the shared path, which is then removed. Growing keys (`T -> Box<T>`) and oversized substitution sets produce resource diagnostics (§21.3.5). |
 | 2 | P19 | Contracts, associated Types, conditional/nested conformance | TODO | Current `InvalidPattern_Kd` / `UnprovenConstraint_Kd` failures resolved by implementing the specified proofs, not by relaxing checks. |
 | 3 | P20 | Type/length/Origin inference, defaults, forwarding | TODO | Generic returned element borrows dereference (no `UnsupportedBinding_Kd`); owned/borrowed defaults per §7.2. |
 | 4 | P21 | Explicit full specialization | TODO | Length specialization and inherited default/Origin contracts, without cascading diagnostics. |
@@ -80,7 +80,7 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. **P22 design unit:** instantiate the verified ownership plan per closed substitution and lower it with the existing concrete `BodyLowering`; start with one generic function from program 8 behind the same call path, then compare IR and native results.
+1. **P22 instance analysis:** build each closed instance's ownership plan by rerunning `OwnershipAnalysis` on the generic function with a substitution context (the `Place` Type/acquisition and the Koto/`BoundCall` Type reads go through `Binding.InstantiateStorageType` / `InstantiateForwardedCall`), after the universal verification still passes. Substituting Place Types in the universal plan is insufficient: `T` places carry `CopyOrMove` acquisitions and non-scalar value flow (probe 2026-09-22). Then lower the instance with `BodyLowering` under the entry ABI that `GenericStoragePlan` already computes for callers (`SharedStorageEntry.Abi`), routing the body's own signature Types through the substitution; start with `choose<i32>` (GenericStorageEmissionTest `ChooseCopy`).
 2. **P22 migration:** move programs 8–11 and 18 and the generic test families to monomorphized generation; delete the shared path when nothing uses it.
 3. **P22 program:** author `milestones/Milestone22.kimi` and its harness from the §21.3/§21.4 contract, after your instruction to create the program.
 

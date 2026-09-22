@@ -14,6 +14,7 @@ A few lines per session. Evidence lives in commits and `bin/verify/` (earlier ru
 | 2026-09-21 | Origin system redesign integrated; Programs 17 and 18. |
 | 2026-09-22 | Named argument boundary; direct foreign import calls; raw pointer operations and C layout (T26s–T26ah); final suites 11,212 tests per configuration. |
 | 2026-09-22 | Restructuring: initial profile monomorphizes and generic code sharing is deferred (§21.3.1, Appendix D); Mod host deferred (§20.7, Appendix D); PLAN rebuilt around Milestone Programs with finite completion conditions (old M/I/T IDs superseded); PLAN/STATUS/history compacted; `verify.ps1` added; per-unit commits authorized. |
+| 2026-09-22 | P22 probe (reverted, no code commit): lowering a verified generic body with substituted Place Types and signature Types through the ordinary `BodyLowering` fails for every existing generic fixture, because the verified plan itself depends on the Types (`CopyOrMove` acquisitions, `ScalarResult` value flow such as Phi vs. slot arrivals). P22 next action changed to per-substitution ownership analysis. Session verification passed at `fdaeed9b` (11,212 tests per configuration; programs 8–11 and 18 Release). |
 
 ## Retained anchors
 
