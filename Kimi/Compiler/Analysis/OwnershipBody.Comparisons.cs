@@ -285,7 +285,7 @@ public sealed partial class OwnershipBody
             (uint)loan.Place < (uint)this.Places.Count && (uint)loan.Read < (uint)this.Operations.Count && loan.Parent < index && loan.Depth > 0 &&
             loan.Call is null && loan.Guard == -1 && !loan.Access && loan.Projection == -1 &&
             this.Operations[loan.Read].Kind == OwnershipOperationKind.Read && this.Operations[loan.Read].Place == loan.Place &&
-            ReferenceEquals(this.Operations[loan.Read].Source, plan.Receiver) && ReferenceEquals(this.Places[loan.Place].Type, plan.ReceiverType) &&
+            ReferenceEquals(this.Operations[loan.Read].Source, plan.Receiver) && ReferenceEquals(this.Places[loan.Place].Type, this.Concrete(plan.ReceiverType)) &&
             (loan.Mode != LoanRequirement.Uniq || this.Places[loan.Place].Type.Semantics == SemanticsKind.Uniq || this.Places[loan.Place].Mutable) &&
             this.LoanInputs[loan.Read] == loan.Parent && this.LoanStates[loan.Read] == index &&
             (loan.Parent < 0 || this.ComparisonLoans[loan.Parent].Depth <= loan.Depth) &&

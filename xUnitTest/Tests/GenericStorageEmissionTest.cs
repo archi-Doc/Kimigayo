@@ -213,6 +213,19 @@ public class GenericStorageEmissionTest
         Assert.NotEmpty(Instances(module));
     }
 
+    [Theory]
+    [InlineData("func apply<F>(f: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\nlet n: i32 = 0\nvar f = func [var n] () -> i32\n    n += 1\n    return n\nlet r = apply(f@uniq)")]
+    [InlineData("struct Item\n    public let value: i32 = 3\nfunc apply<T, F>(value: ref/T, visit: uniq/F) -> bool\n    F is Callable<uniq, (ref/T) -> bool>\n    return visit(value)\nlet item = Item.init()\nvar visit = func (value: ref/Item) => value.value == 3\nlet r = apply(item@ref, visit@uniq)")]
+    public void MonomorphizesCallableConstraintCalls(string source)
+    {
+        // SPEC 21.3.1: the exclusive Callable receiver Loan of the instance body validates against the
+        // substituted receiver Type, so the constrained call lowers per instance.
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.SharedEntries);
+        Assert.Contains(Instances(module), x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
+    }
+
     [Fact]
     public void MonomorphizesForwardedStringReferences()
     {

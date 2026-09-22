@@ -255,11 +255,21 @@ public sealed partial class OwnershipBody
 
     internal List<OwnershipIdentity>? Identities { get; set; }
 
+    /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
+    internal BoundCall? Instance { get; set; }
+
+    internal Binding? InstanceBinding { get; set; }
+
     public bool IsReachable(int operation) => this.Reachable[operation];
+
+    // A declared Type as this body's plan sees it; an instance plan sees its closed substitution.
+    internal BoundType? Concrete(BoundType? type) => type is null || this.Instance is null ? type : this.InstanceBinding!.InstantiateStorageType(type, this.Instance);
 
     internal void Reset(FunctionKoto function)
     {
         this.Function = function;
+        this.Instance = null;
+        this.InstanceBinding = null;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();

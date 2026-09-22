@@ -49,6 +49,9 @@ public sealed partial class OwnershipAnalysis
                 return null;
             }
 
+            // Validations that run later, during lowering, see the instance's substitution through the body itself.
+            target.Instance = call;
+            target.InstanceBinding = this.compilation.Binding;
             this.instanceCount++;
             return target;
         }
