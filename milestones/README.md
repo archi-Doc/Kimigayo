@@ -70,7 +70,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 18 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
 | 19 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 53 checks per configuration; [evidence](../PLAN_HISTORY.md#program19-completion) |
 | 20 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 55 checks per configuration; [evidence](../PLAN_HISTORY.md#program20-completion) |
-| 21 | YES | BLOCKED (G15) | NOT_RUN | Length slots, inherited binders and defaults bind and generate (harness authored, 61 Debug checks against the Copy-read spelling); the program reads references with `*`, which SPEC §13.3 reserves for raw pointers (PLAN G15) |
+| 21 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 61 checks per configuration (harness added 2026-09-23) |
 | 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 47 checks per configuration (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom/computed Property access; cascading unresolved bindings |
 | 24 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom setters, getter results and Contract Property calls |
@@ -1172,7 +1172,8 @@ and [argument preparation](../spec/07-functions-and-callable-values.md#72-parame
 ## Milestone 21: explicit full specialization and inherited contracts
 
 All calls supply explicit Type/length arguments to separate selection from
-program 20's inference target. The complete `<3, i32>` specialization reverses
+program 20's inference target. Selected references are read as their Copy
+referents (SPEC §3.3); prefix `*` belongs to raw pointers only. The complete `<3, i32>` specialization reverses
 indexing. It inherits the original universal source Origin and default contract,
 without redeclaring an Origin binder or optional marker. Both the direct call
 and generic forward must retain that selection. A two-element i64 array selects
@@ -1180,7 +1181,7 @@ the ordinary body; a shorter-lived i32 array uses the same specialization under
 another valid Origin binding. Omitted index evaluation still belongs to the
 original declaration; supplying it skips that evaluation.
 
-Expected stdout (not execution evidence):
+Expected stdout (verified natively at O0/O2 by `backend/windows-x64/test-milestone21.ps1`):
 
 ```text
 Default index evaluated.
