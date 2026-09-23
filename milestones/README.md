@@ -1,10 +1,10 @@
 # Language milestones
 
 Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md).
-Programs 1–24, 29 and 32 have source files; programs 25–28, 30–31 and 33–38 have design and verification scopes.
+Programs 1–29 and 32 have source files; programs 30–31 and 33–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 23–24 are authored targets beyond current
+not an execution claim. Milestones 23–28 are authored targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -39,6 +39,10 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone22](Milestone22.kimi) | Concrete generic entries, compound layouts, specialization forwarding and distinct destruction operations |
 | [Milestone23](Milestone23.kimi) | Standard/custom/computed Copy Properties, direct storage and assignment evaluation order |
 | [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
+| [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
+| [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
+| [Milestone27](Milestone27.kimi) | Saved Index/Range resolution, nested/sub-Slice views, splitting, empty views and backing/element Origins |
+| [Milestone28](Milestone28.kimi) | User Iterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
 | [Milestone32](Milestone32.kimi) | User/generic UTF-8 formatting, independent owning strings, short-circuit writes, fixed-buffer reuse and bounded Console interpolation |
 
@@ -78,10 +82,10 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom/computed Property access; cascading unresolved bindings |
 | 24 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom setters, getter results and Contract Property calls |
-| 25 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 26 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 27 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 28 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 25 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Base construction reports `UnsupportedBinding_Kd`, followed by unresolved/inherited-access diagnostics; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
+| 26 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Compound/generic capture and callable paths report `InvalidCaptureBinding_Kd`, `UnsupportedBinding_Kd` and `NotCallable_Kd`; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
+| 27 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Range resolution/general Slice operations report `UnsupportedBinding_Kd` with unresolved/Type/result cascades; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
+| 28 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | User Iterable is unresolved; associated-Type/Constraint and generic iterator-state operations fail Binding; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
 | 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
 | 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -118,15 +122,15 @@ kimi run milestones/Milestone1.kimi
 
 Replace `1` with the milestone number. `run` executes an existing build; it does
 not compile source. No separate project file is needed. Output uses fixed string
-literals so programs 1–24 do not require numeric formatting or interpolation.
-Programs 2–24 use `Console.writeLine` through the default Kimi alias. Only the
+literals so programs 1–29 do not require numeric formatting or interpolation.
+Programs 2–29 use `Console.writeLine` through the default Kimi alias. Only the
 Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 
 ## Roadmap from program 15 to core completion
 
 The current plan has **38 programs**, including **24 programs numbered 15–38**.
-Programs 15–24 are concrete below; 25–38 are future source targets, not implemented
-capabilities. This count is a decomposition of scope, not an effort or delivery
+Programs 15–29 and 32 are concrete below; 30–31 and 33–38 are future source targets.
+Source creation is not implemented capability. This count is a decomposition of scope, not an effort or delivery
 estimate. Passing programs 13/14 does not
 establish general Slice, Iterator, callable, or object support.
 
@@ -1322,6 +1326,166 @@ Focus: [Non-Copy setters](../spec/11-properties.md#1124-non-copy-custom-setters)
 [getter temporaries](../spec/11-properties.md#1123-getter-results-and-temporaries),
 and [standard witnesses](../spec/11-properties.md#1142-standard-operation-witnesses).
 
+## Milestone 25: inheritance, base storage and layered cleanup
+
+`Derived` constructs its inline `Base` before evaluating its own Field initializer
+and constructor body. The base's private `resource` and the derived Field of the
+same Name remain distinct. An inherited standard Property reads and writes the
+base slot, and the inherited Type function keeps its declaring identity. Moving
+the complete derived value transfers both layers; cleanup runs derived `deinit`,
+derived Fields, base `deinit`, then base Fields, exactly once.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Base field initialized.
+Base constructor finished.
+Derived field initialized.
+Derived constructor finished.
+Inherited access finished.
+Derived value moved.
+Derived deinit.
+Derived resource destroyed.
+Base deinit.
+Base resource destroyed.
+Inheritance finished.
+```
+
+Separate checks: omitted/defaulted base arguments, multiple inheritance layers,
+generic base substitution, protected/private access, incomplete construction and
+ordinary transfers before construction starts. Abort during base/derived
+construction must not promise unwinding. Reject accessible inherited-Name
+redeclarations, derivation from a sealed Type, invalid base calls, use after Move
+and Partial Moves across a user-`deinit` layer. Inspect base offsets, distinct
+Field identities and each layer's construction/cleanup state. Inherited standard
+storage and Type members require no ObjectCallCompatible publication; borrowed
+method/custom-accessor projection remains subject to that separate deferred proof
+boundary and is not silently assumed by this program.
+
+Focus: [inheritance](../spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
+[constructors](../spec/06-declarations-and-containers.md#623-constructors),
+[member projection](../spec/09-names-signatures-and-access.md#951-base-subobject-receiver-projection),
+and [layered cleanup](../spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
+
+## Milestone 26: general closures, Callable and owning erasure
+
+`inspectTwice` moves an unconstrained generic value into a concrete environment
+and retains a borrowed visitor whose own capture borrows external `bias`. Shared
+Callable calls inspect the Packet twice and destroy it once on helper return.
+An exclusive Callable mutates a captured Tuple snapshot; a consuming Callable
+transfers a Packet out of its environment. A separate shared closure with an
+Owned, Non-Copy Packet environment is moved into a common Function Type, moved
+again as that same Type, called twice and destroyed once. A Function Item is
+also copied into a common value while remaining independently callable.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Packet destroyed.
+Generic capture total is 20.
+Compound capture advanced to 8.
+Consumed packet.
+Packet destroyed.
+Erased calls finished.
+Packet destroyed.
+General closures finished.
+```
+
+Separate checks: nested captures and capture order, alternative compound Types,
+result borrows from external captures, zero-sized captures and common values
+with inline versus heap environments. Reject bare capture of unproven-Copy `T`,
+escaping external dependencies, moved-closure reuse, exclusive calls on immutable
+owned closures, consuming calls through borrowed receivers and erasure of
+non-Owned or exclusive/consuming-only environments. Inspect concrete entries,
+indirect-call ABI and exact remaining-capture cleanup. Measure no per-call
+environment allocation; account for permitted erasure allocation separately.
+
+Focus: [captures and invocation](../spec/07-functions-and-callable-values.md#76-function-expressions),
+[Callable](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
+[closure dependencies](../spec/15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results),
+and [environment/erasure layout](../spec/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
+
+## Milestone 27: general Slice, Index and Range
+
+The two Range boundaries evaluate once in source order. Resolving against a row
+length produces `[1, 3)`; slicing nested rows preserves the element Type and
+backing storage. `middle` survives the local handles used to form it, is split
+without copying elements, and supports a from-end empty view and a generic tail.
+`^0` is a boundary but not an element, and applying the saved Range to a shorter
+length fails through `tryResolve`. Shared string access preserves its Non-Copy
+owner. A `Slice<ref/i32>` read copies the inner reference with its original
+dependency, distinct from the Slice's backing-slot dependency.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Start evaluated.
+End evaluated.
+Nested views retain 20 and 30.
+End boundary is not an element.
+Short target rejected.
+Last text.
+Last text.
+Slice Origins preserved.
+```
+
+Separate checks: full/empty/inclusive ranges, `Index.init`, zero-sized elements,
+`tryGet`/`trySlice`/`trySplitAt` success and failure, saved bounds reapplied to
+different targets, receiver/boundary evaluation and negative-bound Abort order.
+Reject escaping local or temporary backing, mutation conflicting with a retained
+view (including an empty one), Non-Copy indexed Move, Slice element writes and
+element-Type covariance. Check that resolving metadata adds no storage Loan;
+views and reslices preserve the original Loan footprint and nested Origins.
+Measure O(1) view operations without backing allocation or element copying.
+Mutable-element Slice remains outside this milestone.
+
+Focus: [bounds and failure](../spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure),
+[Slice lifetimes](../spec/04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions),
+[element results](../spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
+and [required costs](../spec/04-arrays-indexing-and-slices.md#468-representation-and-performance).
+
+## Milestone 28: user Iterable/Iterator and element responsibilities
+
+`Batch<T>` maps Iterable's Element and Iterator to `T` and `Drain<T>`. Its consuming
+`iterate` runs once, transferring the cursor; each `next` exchanges one Option
+slot with `None`. A `continue` destroys Item 1 before the next call. Early exit
+destroys Item 2, then the cursor's unyielded Items 4 and 3 in reverse Field order.
+`View<T>` separately maps to a cursor over external Slice storage, with explicit
+associated-Type Origin equality. A retained first reference survives subsequent
+`next` calls and exhaustion; a temporary View also drives a `for` loop.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Owned iterator acquired.
+Continue after item 1.
+Item 1 destroyed.
+Exit after item 2.
+Item 2 destroyed.
+Item 4 destroyed.
+Item 3 destroyed.
+Owned iteration finished.
+Borrowed iterator acquired.
+External first is 10; remaining total is 50.
+Borrowed iterator acquired.
+General iteration finished.
+```
+
+Separate checks: owned exhaustion and repeated `None`, empty external input,
+exhaustive `for`, return/named exit through a loop, receiver evaluation once,
+retaining multiple previously yielded references and dependent/non-Copy `T`.
+Reject missing Iterable/Iterator proof, mismatched associated Element identity,
+bare iteration over a user owner without shared conformance, moved iterable reuse
+and lending results that borrow the iterator or its owned storage. Inspect the
+retained requirement mappings, short `next` receiver Loans and exact yielded/
+unyielded cleanup. No hidden clone or array of iteration values is permitted;
+measure O(1) iterator state and no per-element management allocation.
+
+Focus: [iteration acquisition](../spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
+[associated Types](../spec/08-generics-constraints-and-contracts.md#843-associated-types),
+[Kimi protocol requirements](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations),
+and [component cleanup](../spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
+
 ## Milestone 29: dynamic Array growth, mutation and owning iteration
 
 A typed empty literal has length and capacity zero and allocates nothing. `reserve`
@@ -1388,6 +1552,20 @@ finite substitution sets (bounded at 1024 contexts per body), is covered by a un
 and 24 fail final Binding; no native output/exit test ran for them, and their
 expected outputs and separate checks above are targets, not passing test claims.
 See [session evidence](../PLAN_HISTORY.md#programs22-24-authoring).
+
+### Programs 25–28 authoring verification (2026-09-24)
+
+All four sources pass syntax parsing. The source catalog explicitly records them
+as pending Binding, alongside 23–24, and checks that all 30 authored sources are
+present. Sixteen byte-identical-source Application builds were attempted with the
+Debug and Release compilers at O0 and O2; all fail Binding before native execution.
+The table records those failures, not successful native tests. Full managed
+regressions pass 12,119 tests in each configuration with warning-free compiler
+builds; the final source catalog/alias checks pass 58 tests in each configuration.
+No new milestone completion, rejection-harness or allocation evidence is claimed.
+Existing native harness results retain their prior scope. Source/compiler hashes,
+commands, diagnostics and logs are recorded in the
+[authoring session](../PLAN_HISTORY.md#programs25-28-authoring).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining

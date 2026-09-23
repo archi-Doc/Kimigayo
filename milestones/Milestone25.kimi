@@ -1,0 +1,47 @@
+// Milestone 25: inline base construction, inherited storage and layered cleanup.
+struct Resource
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit
+        match self.id
+            1 => Console.writeLine("Base resource destroyed.")
+            2 => Console.writeLine("Derived resource destroyed.")
+            _ => $abort("Unexpected resource")
+
+group Construction
+    public func baseField() -> Resource
+        Console.writeLine("Base field initialized.")
+        return Resource.init(1)
+    public func derivedField() -> Resource
+        Console.writeLine("Derived field initialized.")
+        return Resource.init(2)
+
+open struct Base
+    let resource: Resource = Construction.baseField()
+    public var count: i32
+    protected init(count: i32)
+        self.count = count
+        Console.writeLine("Base constructor finished.")
+    public func marker() -> i32 => 25
+    deinit => Console.writeLine("Base deinit.")
+
+struct Derived : Base
+    let resource: Resource = Construction.derivedField() // The base's private Name may be reused.
+    public let extra: i32
+    public init(count: i32, extra: i32) : base(count)
+        self.extra = extra
+        Console.writeLine("Derived constructor finished.")
+    deinit => Console.writeLine("Derived deinit.")
+
+public func main()
+    do
+        var value = Derived.init(3, 7)
+        require value.count == 3 and value.extra == 7 else => $abort("Base placement failed")
+        value.count = 5 // Inherited standard Property: access the base storage directly.
+        require value.count + value.extra == 12 else => $abort("Inherited write failed")
+        require Derived.marker() == 25 else => $abort("Inherited Type member failed")
+        Console.writeLine("Inherited access finished.")
+        let moved = value@move // Transfer every layer without another constructor call.
+        require moved.count == 5 and moved.extra == 7 else => $abort("Derived Move failed")
+        Console.writeLine("Derived value moved.")
+    Console.writeLine("Inheritance finished.")

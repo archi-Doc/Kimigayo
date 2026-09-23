@@ -1,0 +1,104 @@
+// Milestone 28: user Iterable/Iterator mappings, owned cleanup and external borrows.
+struct Item
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit
+        match self.id
+            1 => Console.writeLine("Item 1 destroyed.")
+            2 => Console.writeLine("Item 2 destroyed.")
+            3 => Console.writeLine("Item 3 destroyed.")
+            4 => Console.writeLine("Item 4 destroyed.")
+            _ => $abort("Unexpected item")
+
+struct Drain<T>
+    Self is Iterator
+    associate Iterator.Element is T
+    var first: Option<T>
+    var second: Option<T>
+    var third: Option<T>
+    var fourth: Option<T>
+    var position: i32 = 0
+    public init(a: T, b: T, c: T, d: T)
+        self.first = .Some(a@move)
+        self.second = .Some(b@move)
+        self.third = .Some(c@move)
+        self.fourth = .Some(d@move)
+    public func next(self: uniq/Self) -> Option<T>
+        require self.position < 4 else => return .None
+        self.position = self.position + 1
+        return match self.position
+            1 => Kimi.Intrinsics.exchange(self.first@uniq, with: .None)
+            2 => Kimi.Intrinsics.exchange(self.second@uniq, with: .None)
+            3 => Kimi.Intrinsics.exchange(self.third@uniq, with: .None)
+            _ => Kimi.Intrinsics.exchange(self.fourth@uniq, with: .None)
+
+struct Batch<T>
+    Self is Iterable
+    associate Iterable.Element is T
+    associate Iterable.Iterator is Drain<T>
+    let cursor: Drain<T>
+    public init(a: T, b: T, c: T, d: T)
+        self.cursor = Drain<T>.init(a@move, b@move, c@move, d@move)
+    public func iterate(self: Self) -> Drain<T>
+        Console.writeLine("Owned iterator acquired.")
+        return self.cursor@move
+
+struct Cursor<T> {source}
+    Self is Iterator
+    associate Iterator.Element is ref/T during source
+    let values: Slice<T>{slice}
+        origin slice.source == source
+    var position: isize = 0
+    public init(values: Slice<T>)
+        origin values.source == source
+        self.values = values
+    public func next(self: uniq/Self) -> Option<ref/T during source>
+        require self.position < self.values.length else => return .None
+        let index = self.position
+        self.position = self.position + 1
+        return .Some(self.values[index]@ref)
+
+struct View<T> {source}
+    Self is Iterable
+    associate Iterable.Element is ref/T during source
+    associate Iterable.Iterator is Cursor<T>{cursor}
+        origin cursor.source == source
+    let values: Slice<T>{slice}
+        origin slice.source == source
+    public init(values: Slice<T>)
+        origin values.source == source
+        self.values = values
+    public func iterate(self: Self) -> Cursor<T>{result}
+        origin result.source == source
+        Console.writeLine("Borrowed iterator acquired.")
+        return Cursor<T>.init(self.values)
+
+public func main()
+    let batch = Batch<Item>.init(Item.init(1), Item.init(2), Item.init(3), Item.init(4))
+    for item in batch@move
+        if item.id == 1
+            Console.writeLine("Continue after item 1.")
+            continue
+        require item.id == 2 else => $abort("Owned iteration order failed")
+        Console.writeLine("Exit after item 2.")
+        exit // Destroy item 2, then the unyielded items 4 and 3 in reverse field order.
+    Console.writeLine("Owned iteration finished.")
+
+    let values: [3 of i32] = [10, 20, 30]
+    var cursor = View<i32>.init(values[..]).iterate()
+    let first: ref/i32 = match cursor.next()
+        .Some(let item) => item
+        .None => $abort("Missing first element")
+    var total: i32 = 0
+    loop
+        match cursor.next()
+            .Some(let item) => total = total + item
+            .None => exit
+    require first == 10 and total == 50 else => $abort("External borrow did not survive next")
+    match cursor.next()
+        .Some(_) => $abort("Exhausted iterator restarted")
+        .None => Console.writeLine("External first is 10; remaining total is 50.")
+    for item in View<i32>.init(values[1..])
+        require item == 20 else => $abort("Borrowed iteration order failed")
+        exit
+    Console.writeLine("General iteration finished.")
