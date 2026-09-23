@@ -33,6 +33,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.TestTempDirectory => this.ValidTempDirectory(symbol),
                         KimiDeclarationId.MakeObj => this.ValidMakeObj(),
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
+                        KimiDeclarationId.Equatable or KimiDeclarationId.Comparable => this.ValidComparisonContract(symbol, entry.Id),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
                         KimiDeclarationId.Index => this.ValidIndex(symbol),
@@ -80,6 +81,11 @@ public sealed partial class KimiLibrary
             {
                 var next = (FunctionKoto)((ContractKoto)symbol.Declaration).Members[1];
                 matches = ReferenceEquals(next.BoundSymbol?.Type?.Symbol, this.Option);
+            }
+
+            if (matches && entry.Id == KimiDeclarationId.Comparable)
+            {
+                matches = symbol.Contract is { } contract && contract.Ancestors.Contains(this.GetSymbol(KimiDeclarationId.Equatable)!);
             }
 
             if (!matches)
@@ -216,6 +222,38 @@ public sealed partial class KimiLibrary
                 SemanticsKind: SemanticsKind.Ref, SemanticsParameter: null, OriginExpression: null, OriginName: null, OriginArguments: null,
             },
         };
+
+    private bool ValidComparisonContract(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var ordering = id == KimiDeclarationId.Comparable;
+        if (symbol.Intrinsic != IntrinsicKind.None || !ReferenceEquals(symbol.Scope, this.Scope) ||
+            symbol.Declaration is not ContractKoto { HasIncompatibleBindingHeader: false, Members.Count: 1, ConstraintNodes.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration ||
+            !ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) ||
+            declaration.Bases.Count != (ordering ? 1 : 0) || (ordering && !BareName(declaration.Bases[0], "Equatable")) ||
+            declaration.Members[0] is not FunctionKoto { IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 2, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function ||
+            function.Name != (ordering ? "compare" : "equals") || function.NameBoundaryIndex >= 0 ||
+            !BareName(function.ReturnType, ordering ? "i32" : "bool"))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < 2; i++)
+        {
+            var parameter = function.Parameters[i];
+            if (parameter.InternalName != (i == 0 ? "self" : "other") || parameter.ExternalName != parameter.InternalName ||
+                parameter.DefaultValue is not null || parameter.AttributeChain is not null ||
+                parameter.Type is not TypeSemanticsKoto
+                {
+                    SemanticsKind: SemanticsKind.Ref, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null,
+                    Type: TypeSemanticsKoto { Identifier: "Self", Type: null, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null },
+                })
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private bool ValidIterator(BindingSymbol symbol)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
