@@ -728,6 +728,12 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
+        // SPEC 8.8.3: specializations never enter the candidate set, so an invalid one cannot fail a call.
+        if (function.IsSpecialization)
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
         if (InvalidDeclarationContext(function))
         {
             return CandidateApplicability.Error;
@@ -739,11 +745,6 @@ public sealed partial class Binding
         Array.Clear(origins, 0, function.Origins.Count);
         Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
         OriginInference? originInference = null;
-
-        if (function.IsSpecialization)
-        {
-            return CandidateApplicability.Inapplicable;
-        }
 
         for (var i = 0; i < function.GenericArguments.Count; i++)
         {

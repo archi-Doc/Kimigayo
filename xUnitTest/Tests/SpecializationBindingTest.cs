@@ -113,6 +113,15 @@ public class SpecializationBindingTest
         Assert.Empty(output.ToString());
     }
 
+    // SPEC 8.8.3: specializations never enter the candidate set; an invalid one does not fail calls to the original.
+    [Fact]
+    public void InvalidSpecializationDoesNotCascadeIntoCalls()
+    {
+        var c = MinimalEmissionTest.Analyze(Ordinary + "specialize func weight<i32>(other: ref/i32) -> i32 => 2\nfunc forward<T>(value: ref/T) -> i32 => weight<T>(value)\nlet value: i32 = 4\nlet result = weight<i32>(value@ref) + forward<i32>(value@ref)");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.All(c.Binding.Issues, x => Assert.Equal(Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd, x.Code));
+    }
+
     [Fact]
     public void StillChecksOrdinaryBody()
     {
