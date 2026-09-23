@@ -9,6 +9,7 @@ internal sealed partial class BodyLowering
 {
     private static readonly FunctionAbi CheckFormatting = new("__kimi_format_check", "void", [new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
     private static readonly FunctionAbi HintFormatting = new("__kimi_format_hint", "void", [new("ptr", "writer"), new("i64", "hint")]);
+    private static readonly FunctionAbi StatusFormatting = new("__kimi_format_healthy", "i1", [new("ptr", "writer")]);
     private static readonly FunctionAbi FinishFormatting = new("__kimi_format_finish", "void", [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
     private static readonly FunctionAbi LiteralFormatting = new("__kimi_format_literal", "void", WindowsLowering.GetCompilerFunction(CompilerFunctionKind.WriterWrite)!.Parameters, resultSlot: true);
     private readonly Dictionary<BoundFormatting, FormattingEstimate> formattingEstimates = new(ReferenceEqualityComparer.Instance);
@@ -27,6 +28,9 @@ internal sealed partial class BodyLowering
         this.formattingRuntimeUsed = true;
         switch (syntax.Operation)
         {
+            case FormattingOperation.Status when value.Count == 1 && ReferenceEquals(ValueType(body, id), BoundType.Boolean):
+                function.AddCall(id, StatusFormatting, [this.PhysicalOperand(body, Input(body, id, 0))]);
+                return true;
             case FormattingOperation.Capacity when value.Count == 0 && ReferenceEquals(ValueType(body, id), BoundType.ISize):
                 function.AddScalar(EmissionOpcode.Scalar, id, [new(EmissionOperandKind.Integer, 0), new(EmissionOperandKind.Integer, this.EstimateFormatting(plan).Capacity)], type: "i64", op: "add");
                 return true;

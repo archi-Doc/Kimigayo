@@ -8,6 +8,52 @@ public sealed partial class OwnershipAnalysis
 {
     private readonly Dictionary<FormattingKoto, int> formattingPlaces = new(ReferenceEqualityComparer.Instance);
 
+    private int TryWrite(BoundFormatting plan)
+    {
+        var acquisition = plan.Acquisition!;
+        var depth = this.comparisonDepth++;
+        var reference = this.PrepareCallArgument(acquisition, acquisition.ArgumentNodes[0], acquisition.BoundCall!.ArgumentOperations[0], immediate: true);
+        this.formattingPlaces[plan.Writer] = reference;
+        var region = this.checkingRegion;
+        var mark = this.terminalSeeds.Count;
+        var join = this.New(OwnershipOperationKind.Branch, plan.Root);
+        var completes = reference >= 0;
+        foreach (var write in plan.Writes)
+        {
+            if (!completes)
+            {
+                var partDepth = this.comparisonDepth++;
+                this.PrepareCallArgument(write, write.ArgumentNodes[1], write.BoundCall!.ArgumentOperations[1]);
+                this.EndComparisonLoans(partDepth, write);
+                this.comparisonDepth = partDepth;
+                continue;
+            }
+
+            var status = this.Temporary(plan.Check);
+            this.SetValue(this.Value(status), OwnershipValueKind.Formatting, [this.Value(reference)]);
+            var branch = this.Emit(OwnershipOperationKind.Branch, plan.Check);
+            this.SetValue(branch, OwnershipValueKind.Alias, [this.Value(status)]);
+            var next = this.New(OwnershipOperationKind.Branch, write);
+            this.Connect(branch, join, OwnershipEdgeKind.False);
+            this.Connect(branch, next, OwnershipEdgeKind.True);
+            this.current = next;
+            completes = this.Call(write) >= 0;
+        }
+
+        if (completes)
+        {
+            this.Connect(this.current, join);
+        }
+
+        this.current = reference >= 0 ? join : -1;
+        this.checkingRegion = region;
+        this.FilterTerminalSeeds(plan.Root, mark);
+        var result = reference >= 0 ? this.Call(plan.Outcome) : -1;
+        this.EndComparisonLoans(depth, plan.Root);
+        this.comparisonDepth = depth;
+        return result;
+    }
+
     private int Formatting(BoundFormatting plan)
     {
         var buffer = this.Call(plan.Heap);

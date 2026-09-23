@@ -9,7 +9,7 @@ public sealed partial class OwnershipAnalysis
     private static bool IsDirectExclusiveBorrow(Koto source)
         => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.PayloadBorrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq };
 
-    private int PrepareCallArgument(InvocationKoto call, Koto source, BoundArgumentOperation argument)
+    private int PrepareCallArgument(InvocationKoto call, Koto source, BoundArgumentOperation argument, bool immediate = false)
     {
         if (ReferenceTypes.IsBorrow(argument.ParameterType) &&
             (argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection ||
@@ -28,7 +28,7 @@ public sealed partial class OwnershipAnalysis
                 source = conversion.Left;
             }
 
-            var reservation = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? this.NewCallReservation(call) : -1;
+            var reservation = !immediate && type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? this.NewCallReservation(call) : -1;
             var result = this.BorrowStruct(source, type, reservation);
             if (reservation >= 0 && result >= 0)
             {

@@ -50,6 +50,22 @@ public sealed partial class Binding
                 return; // A declaration is not an invocation.
             }
 
+            if (node is MacroKoto { Formatting: { Acquisition: { } acquisition } root })
+            {
+                this.Queue(acquisition.ArgumentNodes[0]);
+                foreach (var write in root.Writes)
+                {
+                    if (write.BoundCall is { } selected)
+                    {
+                        this.Call(selected);
+                    }
+
+                    this.Queue(write.ArgumentNodes[1]);
+                }
+
+                return;
+            }
+
             if (node is FieldKoto local)
             {
                 this.Queue(local.InitializerKoto);

@@ -803,7 +803,8 @@ public sealed partial class Binding
 
         if (unary is MacroKoto)
         {
-            return this.BindAbort(unary, scope);
+            return unary.Operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "tryWrite" } }
+                ? this.BindTryWrite(unary, scope) : this.BindAbort(unary, scope);
         }
 
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)

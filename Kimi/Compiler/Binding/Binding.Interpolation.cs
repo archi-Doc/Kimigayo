@@ -13,6 +13,10 @@ internal sealed class BoundFormatting(Koto root)
 {
     internal Koto Root { get; } = root;
 
+    internal InvocationKoto? Acquisition { get; set; }
+
+    internal InvocationKoto Outcome { get; set; } = null!;
+
     internal InvocationKoto Heap { get; set; } = null!;
 
     internal InvocationKoto Adapter { get; set; } = null!;
@@ -38,6 +42,79 @@ internal sealed class BoundFormatting(Koto root)
 
 public sealed partial class Binding
 {
+    private BoundType? BindTryWrite(UnaryKoto syntax, BindingScope scope)
+    {
+        if (syntax.Operand is not InvocationKoto { ArgumentNodes.Count: 2 } source ||
+            source.GetArgumentLabel(0) is not null || source.GetArgumentLabel(1) is not null ||
+            source.ArgumentNodes[1] is not (StringLiteralKoto or InterpolatedStringKoto))
+        {
+            return Fail(syntax, BindingFailure.Unsupported);
+        }
+
+        var actual = this.BindNode(source.ArgumentNodes[0], scope);
+        var writerType = actual is { Semantics: not SemanticsKind.Owner, Components.Count: 1 } ? actual.Components[0] : actual;
+        if (ReferenceEquals(actual, BoundType.Never))
+        {
+            writerType = this.Library.GetSymbol(KimiDeclarationId.Utf8Writer)!.Type;
+        }
+
+        if (writerType?.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer)
+        {
+            return Fail(syntax, BindingFailure.TypeMismatch);
+        }
+
+        var plan = new BoundFormatting(syntax);
+        syntax.Formatting = plan;
+        var dummy = new FormattingKoto(syntax, FormattingOperation.Storage) { Parent = syntax, Plan = plan };
+        dummy.Resolve(BoundType.Unit);
+        plan.Acquisition = this.FormattingCall(syntax, KimiDeclarationId.WriterWrite, [source.ArgumentNodes[0], dummy], scope, writerType);
+        if (plan.Acquisition.BoundCall is not { } acquired)
+        {
+            syntax.Formatting = null;
+            return Complete(syntax, null);
+        }
+
+        plan.Writer = new(syntax, FormattingOperation.Storage) { Parent = syntax, Plan = plan };
+        plan.Writer.Resolve(this.PreparedBorrowType(source.ArgumentNodes[0], acquired.ArgumentOperations[0].ParameterType!));
+        plan.Check = new(syntax, FormattingOperation.Status) { Parent = syntax, Plan = plan };
+        plan.Check.Resolve(BoundType.Boolean);
+        var valid = true;
+        if (source.ArgumentNodes[1] is InterpolatedStringKoto text)
+        {
+            for (var i = 0; i < text.Segments.Length; i++)
+            {
+                this.BindNode(text.Segments[i], scope);
+                if (text.Segments[i].Literal.Length != 0)
+                {
+                    Add(text.Segments[i]);
+                }
+
+                if (i < text.Expressions.Length)
+                {
+                    Add(text.Expressions[i]);
+                }
+            }
+
+            Complete(text, BoundType.String);
+        }
+        else
+        {
+            Add(source.ArgumentNodes[1]);
+        }
+
+        plan.Outcome = this.FormattingCall(syntax, KimiDeclarationId.WriterStatus, [plan.Writer], scope, writerType);
+        Complete(source.Method, BoundType.Unit);
+        Complete(source, plan.Outcome.BoundType);
+        return Complete(syntax, valid ? plan.Outcome.BoundType : null);
+
+        void Add(Koto value)
+        {
+            var call = this.FormattingCall(syntax, KimiDeclarationId.WriterWrite, [plan.Writer, value], scope, writerType);
+            plan.Writes.Add(call);
+            valid &= call.BoundCall is not null;
+        }
+    }
+
     private BoundType? BindInterpolation(InterpolatedStringKoto syntax, BindingScope scope)
     {
         var plan = new BoundFormatting(syntax);

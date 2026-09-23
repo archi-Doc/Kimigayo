@@ -31,5 +31,6 @@ internal enum FormattingOperation : byte
     Capacity,
     Hint,
     Check,
+    Status,
     Finish,
 }

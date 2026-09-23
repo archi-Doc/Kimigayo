@@ -725,6 +725,16 @@ public sealed partial class OwnershipBody
             }
 
             var node = this.Values[value];
+            if (operation.Kind == OwnershipOperationKind.Borrow && operation.Place >= 0 && node.Kind == OwnershipValueKind.Address && node.Count == 0 &&
+                this.Places[operation.Place].Type.Semantics == SemanticsKind.Owner &&
+                (operation.Place == place || this.borrowDependencies[(operation.Place * this.Places.Count) + place] != LoanRequirement.None))
+            {
+                // Borrowing an owned dependent handle delegates its stored input
+                // authority. The dependency must name this actual ancestor Place;
+                // a sibling with the same Origin is not an ancestor.
+                return true;
+            }
+
             if (node.Kind == OwnershipValueKind.Call && operation.Kind == OwnershipOperationKind.Call)
             {
                 // A returned reference descends from the one acquired argument

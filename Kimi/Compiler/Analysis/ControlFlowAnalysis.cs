@@ -405,6 +405,18 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case MacroKoto { Formatting: { Acquisition: { } acquisition } tryWrite }:
+                var rootFlow = this.Visit(acquisition, reachable);
+                var normalRoot = rootFlow.Normal;
+                foreach (var write in tryWrite.Writes)
+                {
+                    var part = this.Visit(write, reachable && rootFlow.Normal);
+                    rootFlow = new(rootFlow.Normal && part.Normal, part.Type, Union(rootFlow.Transfers, rootFlow.Normal ? part.Transfers : null), rootFlow.Pending || part.Pending);
+                }
+
+                this.Visit(tryWrite.Outcome, reachable && normalRoot);
+                flow = rootFlow with { Normal = normalRoot, Type = this.types.GetExpressionType(node) };
+                break;
             case InterpolatedStringKoto { Formatting: { } formatting }:
                 var formattingFlow = this.Visit(formatting.Heap, reachable);
                 var adapterFlow = this.Visit(formatting.Adapter, reachable && formattingFlow.Normal);
@@ -549,6 +561,17 @@ public sealed class ControlFlowAnalysis
                 flow = this.VisitSequence(block.Items, 0, block.Items.Count, reachable);
                 break;
             case InvocationKoto call when this.types.TryGetCallReceiver(call, out var receiver):
+                if (call.Method is not FormattingKoto && call.BoundCall is { Target.CompilerFunction: CompilerFunctionKind.WriterWrite } selected)
+                {
+                    for (var i = 0; i < call.ArgumentNodes.Count; i++)
+                    {
+                        if (selected.ArgumentToParameter[i] == 1 && call.ArgumentNodes[i] is InterpolatedStringKoto literal)
+                        {
+                            this.Warn(literal, "This argument creates an owning string before writing. Use $tryWrite(writer, literal) to write directly and skip later expressions after failure.");
+                        }
+                    }
+                }
+
                 // A committed direct callee is a designator, not a function-value acquisition.
                 // Bound receiver syntax precedes the explicit arguments exactly once.
                 var receiverFlow = receiver is null ? new Flow(true, ControlFlowType.Unit) : this.Visit(receiver, reachable);

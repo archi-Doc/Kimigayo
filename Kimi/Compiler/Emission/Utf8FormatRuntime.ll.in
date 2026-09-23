@@ -32,6 +32,14 @@ failure:
   unreachable
 }
 
+define internal i1 @__kimi_format_healthy(ptr %writer) #0 {
+entry:
+  %address = getelementptr i8, ptr %writer, i64 56
+  %failed = load i8, ptr %address, align 1
+  %healthy = icmp eq i8 %failed, 0
+  ret i1 %healthy
+}
+
 define internal void @__kimi_format_hint(ptr %writer, i64 %hint) #0 {
 entry:
   %hintp = getelementptr i8, ptr %writer, i64 24

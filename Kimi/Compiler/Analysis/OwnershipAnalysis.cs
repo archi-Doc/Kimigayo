@@ -608,6 +608,8 @@ public sealed partial class OwnershipAnalysis
                 return this.CreateClosure(closure);
             case ParenthesizedKoto parentheses:
                 return this.Expression(parentheses.Operand, use, acquisition);
+            case MacroKoto { Formatting: { } tryWrite }:
+                return this.TryWrite(tryWrite);
             case MacroKoto { Operand: InvocationKoto abort } when ReferenceEquals(abort.BoundCall?.Target, this.compilation.Library.Abort):
                 return this.Call(abort);
             case InterpolatedStringKoto { Formatting: { } formatting }:
