@@ -10,6 +10,7 @@ public sealed partial class OwnershipBody
     private bool[] borrowLive = [];
     private int[] checkingBorrowHeads = [];
     private LoanRequirement[] borrowDependencies = [];
+    private bool[] borrowRootLoss = [];
     private int[] borrowDefinitions = [];
     private int[] slicePaths = [];
 
@@ -43,6 +44,8 @@ public sealed partial class OwnershipBody
 
         Grow(ref this.borrowDependencies, checked(count * count));
         this.borrowDependencies.AsSpan(0, count * count).Clear();
+        Grow(ref this.borrowRootLoss, count);
+        this.borrowRootLoss.AsSpan(0, count).Clear();
         var any = false;
         for (var p = 0; p < count; p++)
         {
@@ -169,7 +172,8 @@ public sealed partial class OwnershipBody
                             }
                         }
 
-                        var conflict = !external && ((this.BorrowRootState(p, root) & PlaceState.MustInit) == 0 || accessConflict);
+                        var rootLost = !external && (this.BorrowRootState(p, root) & PlaceState.MustInit) == 0;
+                        var conflict = rootLost || (!external && accessConflict);
                         var value = this.Values[accessId];
                         if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence && value.Count > 0)
                         {
@@ -186,6 +190,16 @@ public sealed partial class OwnershipBody
 
                         if (conflict)
                         {
+                            // One diagnostic per invalidated root: the operation that invalidates it
+                            // (a Move or an access conflict) is reported, not every later use of a
+                            // Loan that depends on the dangling root (PLAN G13).
+                            ref var reported = ref this.borrowRootLoss[root];
+                            if (reported && rootLost)
+                            {
+                                continue;
+                            }
+
+                            reported = true;
                             var reservation = activating ? r : operation.Reservation >= 0 ? operation.Reservation : this.reservationPlaces[p];
                             this.ReportIssue(new(activating ? this.Operations[op].Source : operation.Source, OwnershipFailure.ComparisonLoanConflict, Reservation: reservation, Activation: activating));
                         }

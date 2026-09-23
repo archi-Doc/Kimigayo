@@ -32,6 +32,17 @@ public class LendingRuleTest
             "let values: [2 of i32] = [1, 2]\nvar total = 0\nfor value in values\n    total += value\nrequire total == 3 and values[0] == 1 else => $abort(\"iteration\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    // PLAN G13: moving the root of a live Loan is reported once, at the Move, not at every later use of the Loan.
+    [Fact]
+    public void MovingALentRootIsReportedOnce()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Item\n    public var value: i32 = 3\n    deinit => ()\nfunc borrow(item: ref/Item) -> ref{item}/Item => item\nfunc take(item: Item) => ()\nvar item = Item.init()\nlet view = borrow(item@ref)\ntake(item@move)\nlet a = view.value\nlet b = view.value\nlet c = view.value\nrequire a + b + c == 9 else => $abort(\"sum\")");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var issue = Assert.Single(c.Ownership.Issues);
+        Assert.Equal(OwnershipFailure.ComparisonLoanConflict, issue.Failure);
+        Assert.Equal("item@move", issue.Source.Parent?.ToString()); // Reported at the Move, not at the reads of view.
+    }
+
     [Theory]
     [InlineData("var values: [2 of i32] = [1, 2]\nfor value in values\n    values = [3, 4]", OwnershipFailure.ComparisonLoanConflict)]
     [InlineData("let number = 1\nlet taken = number@move\nlet again = number", OwnershipFailure.PossiblyMovedUse)]
