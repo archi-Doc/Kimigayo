@@ -81,11 +81,11 @@ CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
 [Type composition](../03-types-and-values.md#3-types-and-values), [compound Types](../03-types-and-values.md#32-compound-types), [Semantics](../03-types-and-values.md#33-type-semantics), [generic application](../12-expressions.md#1242-invocation-and-generic-application), [Origins](../15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations).
 
 ```ebnf
-Type                 := FunctionType | OptionalType
-OptionalType         := SemanticsType ("?")*
+Type                 := FunctionType | AnnotatedType
+AnnotatedType        := SemanticsType ("?")* BorrowOrigin?
 FunctionType         := FunctionParameters "->" Type
 FunctionParameters   := "(" TrailingList<Type>? ")"
-SemanticsType        := Semantics BorrowOrigin? "/" SemanticsType | TypeAtom
+SemanticsType        := Semantics "/" SemanticsType | TypeAtom
 TypeAtom             := CoreType | "(" Type ")"
 ObjectSemantics      := "obj" | "rc" | "arc" | "objref" | "objuniq"
 RuntimeContractType  := ContractReference
@@ -119,7 +119,7 @@ Semantics            := "owner" | "ref" | "uniq" | "obj" | "rc" | "arc"
                       | "objref" | "objuniq" | "unsafe" | Name
 OriginHeader         := "{" TrailingList<Name>? "}" // struct/enum only, closed schema.
 OriginBindingSet     := "{" Name ","? "}" // Introduces a fresh set name.
-BorrowOrigin         := "{" OriginExpression ","? "}"
+BorrowOrigin         := "during" OriginAtom
 OriginExpression     := OriginAtom ("and" OriginAtom)*
 OriginAtom           := Name ("." Name)? | "static" | "(" OriginExpression ")"
 OriginRelation       := "origin" OriginExpression ("==" | "outlives") OriginExpression
@@ -301,7 +301,7 @@ Try                  := "try" Try | Adapted
 Adapted              := Prefix ("@" OperationTarget PostfixSuffix*)*
 OperationTarget      := "move" | Semantics | AdaptationType
 AdaptationType       := AdaptationCore ("?")*
-AdaptationCore       := Semantics BorrowOrigin? "/" AdaptationCore | AdaptationAtom
+AdaptationCore       := Semantics "/" AdaptationCore | AdaptationAtom
 AdaptationAtom       := ContainerPath | UnitType | "(" Type ")"
                       | "(" Type "," TrailingList<Type>? ")"
                       | "[" ArrayLength "of" Type "]"
@@ -428,7 +428,7 @@ Each concrete accessor occurs at most once, in either order. Let forbids set; va
 
 ## F.7. Origin grammar
 
-The productions in F.2 have separate roles: a closed Type schema (possibly empty), a fresh binding-set name, or a single borrow expression. There are no function/accessor Origin lists or Origin mappings.
+The productions in F.2 distinguish schema/set braces from the postfix borrow annotation `during OriginAtom`. An intersection immediately after `during` needs parentheses; relation operands keep the full OriginExpression grammar. There are no function/accessor Origin lists or Origin mappings.
 
 An `OriginRelation` is attached to its owning declaration, one indentation level below it. Type, function and accessor relations share the leading Constraint region and precede executable items or members. Field, enum Case, associated-Type specification, local and Container-alias relations are attached to that declaration. Relations are declaration metadata, permitted only in these leading or attached positions. A declaration-only signature may have only such clauses.
 

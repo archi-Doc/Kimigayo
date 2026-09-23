@@ -372,7 +372,7 @@ For `s: Slice<T>`, members receive and Copy the handle by value. Element and par
 | `s.indices: ResolvedRange` | Read-only snapshot under the metadata rules |
 | `s[index]` | Shared element access; accepts `isize` or `Index` |
 | `s[range]` | `Slice<T>` retaining `s.source`; accepts `Range` or `ResolvedRange`, checked against the current length |
-| `s.tryGet(index)` | `Option<ref{s.source}/T>`; separate `isize` and `Index` overloads |
+| `s.tryGet(index)` | `Option<ref/T during s.source>`; separate `isize` and `Index` overloads |
 | `s.trySlice(range)` | `Option<Slice<T>>` retaining `s.source`; separate `Range` and `ResolvedRange` overloads |
 | `s.splitAt(index)` | `(Slice<T>, Slice<T>)`, both retaining `s.source`, covering `[0, p)` and `[p, length)` |
 | `s.trySplitAt(index)` | `Option` of that Tuple |
@@ -403,10 +403,10 @@ func first<T>(s: Slice<T>) -> T
     T is Copy
     return s[0]
 
-func firstRef<T>(s: Slice<T>) -> ref{s.source}/T
+func firstRef<T>(s: Slice<T>) -> ref/T during s.source
     return s[0]@ref // Borrow the slot regardless of T's Copy capability.
 
-func head<T, E>(s: Slice<Result<T, E>>) -> ref{s.source}/Result<T, E>
+func head<T, E>(s: Slice<Result<T, E>>) -> ref/Result<T, E> during s.source
     return s[0]@ref // Plain s[0] fails definition checking: Copy bindings return a value.
 
 let values: [4 of i32] = [10, 20, 30, 40]
@@ -435,7 +435,7 @@ shared[0] = 20 // Error: Slice elements are read-only.
 
 ### 4.6.7. Slice iteration and nested Origins
 
-`Slice` implements Iterable with `Element = ref{source}/T`, including for Copy elements, yielding shared references in index order. The iterator keeps a handle and a position, not owned elements. Yielded references borrow the backing slots, not the iterator's receiver or storage, which satisfies the [non-lending protocol](14-control-flow.md#1462-iteration-protocol-and-acquisition). The iterator stays exhausted after `None`.
+`Slice` implements Iterable with `Element = ref/T during source`, including for Copy elements, yielding shared references in index order. The iterator keeps a handle and a position, not owned elements. Yielded references borrow the backing slots, not the iterator's receiver or storage, which satisfies the [non-lending protocol](14-control-flow.md#1462-iteration-protocol-and-acquisition). The iterator stays exhausted after `None`.
 
 Element-internal Origins are kept separate from slot-borrow Origins:
 
@@ -515,7 +515,7 @@ values@uniq.append(values[0]) // The element Copy finishes before receiver activ
 | `tryInsert(key: K, value: V) -> Result<(), (K, V)>` | Append; `Ok(())` | Unchanged; `Err((input key, input value))` |
 | `insertOrReplace(key: K, value: V) -> Option<V>` | Append; `None` | Keep the stored key and position; `Some(old value)` |
 | `remove(key: ref/K) -> Option<(K, V)>` | `None` | Remove and return the stored key and value |
-| `tryGet(self: ref/Self, key: ref/K) -> Option<ref{self}/V>` | `None` | Shared reference to the stored value |
+| `tryGet(self: ref/Self, key: ref/K) -> Option<ref/V during self>` | `None` | Shared reference to the stored value |
 | `clear() -> ()` | Destroy all entries in the order of §4.7.6 | Same |
 
 A duplicate is the only `Err` outcome of `tryInsert`; no dedicated error Type is introduced. Both value arguments are acquired before lookup, unlike Dictionary literals (§12.3.4). `insertOrReplace` secures the old result, stores the new value and then destroys the unused input key; delivery follows that cleanup. Removing a key and later adding an equal key appends a new position. No API mutates a stored key.

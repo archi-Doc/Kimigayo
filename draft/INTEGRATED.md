@@ -34,6 +34,7 @@
 | `2026-09-20 Parameter Names and Defaults.md` | 取り込み済み | §7.2（PLAN_HISTORY 2026-09-20） |
 | `2026-09-21 Named Argument Boundary.md` | 取り込み済み | §7.2、§20（PLAN_HISTORY 2026-09-22、言語版 0.0.2） |
 | `2026-09-23 Explicit Transfer and Exclusive Borrow.md` | 取り込み済み | 第 2–4、6–8、10–17、22 章と付録 A/D/E/F（コミット `3dcb401d`、実装 `4bdea22d`） |
+| `2026-09-23 Borrow Origin Suffix.md` | 取り込み済み | 第 1–4、6、8–9、11、13–15、21–22 章、付録 A.12/A.22/F.2/F.4/F.7（後置 `during`、結合・Optional・Adaptation・診断） |
 
 ## Design
 

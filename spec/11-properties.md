@@ -116,7 +116,7 @@ Standard accessors need no Copy constraint. A stored custom getter needs a proof
 struct Box<T>
     public var item: T
 
-func view<T>(box: ref/Box<T>) -> ref{box}/T
+func view<T>(box: ref/Box<T>) -> ref/T during box
     return box.item@ref/T
 
 func readCopy<T>(box: ref/Box<T>) -> T
@@ -263,10 +263,10 @@ Complete an accessor from an existing storage contract before applying function 
 
 ```kimi
 struct View {source}
-    public var value: ref{source}/i32
-        get(self: ref/Self) -> ref{source}/i32
+    public var value: ref/i32 during source
+        get(self: ref/Self) -> ref/i32 during source
             return storage
-        set(self: uniq/Self, value: ref{source}/i32) -> ()
+        set(self: uniq/Self, value: ref/i32 during source) -> ()
             storage = value
 ```
 

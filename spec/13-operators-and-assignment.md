@@ -173,7 +173,7 @@ Explicit @ Operation
 | `E@Semantics` | The same, with the Core, immediate Referent Type or object View Target taken from the operand as applicable |
 | `E@move` | The [transfer](#1353-defined-adaptations) of a Movable Place; no effect on a Temporary Value |
 
-An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. The result Origins are inferred from the operand, the operation, Loans and applicable constraints to obtain the complete result Type. Origin information in aliases, generic Types and operands is kept; constraints are never erased and validity is never extended. Adaptation and runtime `is` targets contain no written Origin list at any layer; `exit to Label: value` belongs to control-transfer syntax.
+An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. Outer borrow Origins are inferred from the operand, operation, Loans and constraints. Complete aggregate payload Types keep their own annotations and dependencies. Runtime `is` keeps its Origin-free target restrictions; `exit to Label: value` belongs to control-transfer syntax.
 
 ```text
 Adaptation Target
@@ -186,6 +186,17 @@ Adaptation Target
 **Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. A bare built-in Semantics name or `move` not followed by a slash completes the target, and a following `.`, `(` or `[` continues the postfix chain (§13.1); `move` cannot be a prefix. Otherwise the remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target, including optional suffixes. Generic adjacency follows §12.4.2. Written borrow Origins are forbidden on the target's outer Semantics chain, including through grouping; those Origins are inferred. Complete Types inside an Option or another aggregate retain their own annotations and dependencies. Named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
 
 `a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses the target `T/b` and fails Semantics lookup if `T` is only a Core; whitespace cannot change this. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping, as in `x@(i32)`, preserves the adaptation. Group a complete Function Type target, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and is never retried after a conversion failure.
+
+An ungrouped AdaptationType has no trailing `during`. Use `@(Type)` for a suffix annotation; Types already delimited inside generic arguments, tuples or arrays need no additional grouping. Semantics shorthand and `@move` accept neither `?` nor `during`. Fix attachment and expand Optional before checking the outer-chain prohibition; grouping alone cannot evade it.
+
+| Spelling | Parse and eligibility |
+| --- | --- |
+| `saved@(ref/T? during a)`, `saved@(ref/T during a)?`, `saved@Option<ref/T during a>` | Target is `Option<ref/T during a>`; its payload annotation is retained |
+| `saved@(ref/T? during value.source).count` | `)` ends the target; `.count` selects a member of the result, if eligible |
+| `saved@ref/T? during a` | Syntax error: group the annotated target |
+| `value@(ref/T during a)` | Invalid written Origin on the outer borrow |
+| `x@View<T>{v} / y` | `(x@View<T>{v}) / y`; the set suffix completes the Type head |
+| `x@s{a}/T` | `(x@s{a}) / T`; if s is only a Semantics binding, Type lookup fails. Never reinterpret it as a brace borrow annotation |
 
 For a single-layer value Type with Core `T`, `@ref` and `@ref/T` select the same Borrow/Reborrow operation when applicable. For a nested borrow, shorthand keeps the immediate Referent Type: applying `@ref` to `ref/ref/T` copies that outer shared reference. It adds no layer and never becomes `@objref`. A fully specified target can instead request a borrow of reference-value storage under [Borrow and Reborrow](#1355-explicit-borrow-and-reborrow). Type names, aliases, generic applications, grouping and Tuple syntax are accepted as target syntax without implying that every adaptation is defined.
 
@@ -211,7 +222,7 @@ The extended Container path syntax (§9.6.1) neither relaxes the Origin restrict
 
 An optional suffix applies to the complete target Type (§3.2.3), not to Semantics shorthand. For `x: i32`, both `x@i32?` and `x@ref/i32?` fail because no conversion to the respective Option Type exists. A value already of that complete Option Type can be acquired normally. This adds neither borrow-then-wrap nor user-defined conversion.
 
-For `saved: Option<ref{a}/T>`, `saved@ref{a}/T?` and `saved@Option<ref{a}/T>` both acquire the same complete Option Type. The annotation describes its existing payload dependency; it does not request a new borrow or extend a lifetime. In contrast, `value@ref{a}/T` cannot prescribe the new borrow's Origin.
+For `saved: Option<ref/T during a>`, `saved@(ref/T? during a)` and `saved@Option<ref/T during a>` both acquire the same complete Option Type. The annotation describes its existing payload dependency; it does not request a new borrow or extend a lifetime. In contrast, `value@(ref/T during a)` cannot prescribe the new borrow's Origin.
 
 ### 13.5.2. Static selection and inference
 
@@ -255,7 +266,7 @@ number@i32     // Identity Acquisition: Copy.
 // resource@Resource // Error: a bare Non-Copy Place is not transferred; write @move.
 ```
 
-**Origin Restriction** is common static result fitting, not another value operation. The acquisition or Borrow and its effect are determined first; then only the shortening permitted by the variance and outlives rules is applied. Identity Acquisition is checked before this use-site restriction. Core, Semantics, dependencies and Loans are preserved; no Copy, Move or Borrow is added, lifetimes are not extended, and arbitrary nested Origins are not rewritten. For example, fitting `ref{longer}/T` to `ref{shorter}/T` requires `longer` to outlive `shorter`. An exclusive same-Type adaptation still uses Reborrow.
+**Origin Restriction** is common static result fitting, not another value operation. The acquisition or Borrow and its effect are determined first; then only the shortening permitted by the variance and outlives rules is applied. Identity Acquisition is checked before this use-site restriction. Core, Semantics, dependencies and Loans are preserved; no Copy, Move or Borrow is added, lifetimes are not extended, and arbitrary nested Origins are not rewritten. For example, fitting `ref/T during longer` to `ref/T during shorter` requires `longer` to outlive `shorter`. An exclusive same-Type adaptation still uses Reborrow.
 
 A target that changes both Core and Semantics must be one defined operation; no hidden convert-then-borrow sequence is inserted:
 
@@ -320,10 +331,10 @@ Ordinary initialization, access, reborrow, Loan and Origin checks apply. Shared 
 The effective static Type and declared constraints are used; an inventory of derived Types or an optimizer's guess of the Dynamic Type is not Sealed evidence. Open Views, runtime Contract Views and base subobjects do not qualify. No ordinary argument receives an implicit payload projection; only a selected same-complete-Type shared receiver may use the implicit path of §12.4.4.
 
 ```kimi
-func borrowPayload<T>(source: objref/T) -> ref{source}/T
+func borrowPayload<T>(source: objref/T) -> ref/T during source
     T is Sealed
     return source@ref/T
-func borrowPayloadMut<T>(source: objuniq/T) -> uniq{source}/T
+func borrowPayloadMut<T>(source: objuniq/T) -> uniq/T during source
     T is Sealed
     return source@uniq/T
 
@@ -361,7 +372,7 @@ let slot = reference@ref/ref/i32     // ref/ref/i32; also depends on reference's
 // reference = other@ref            // Error while slot's Loan is live.
 ```
 
-For `reference: ref/i32`, `reference@uniq/ref/i32` borrows the writable slot exclusively; it grants no mutable access to `number`. A `let` reference slot cannot be exclusively borrowed this way. `reference@ref@ref` remains `ref/i32`. Direct borrow annotations remain forbidden in an Adaptation Target, including grouped and generic inner Types. Binding-set names are allowed, and any attached relations belong to the enclosing declaration; actual result dependencies are inferred or kept from existing Types.
+For `reference: ref/i32`, `reference@uniq/ref/i32` borrows the writable slot exclusively; it grants no mutable access to `number`. A `let` reference slot cannot be exclusively borrowed this way. `reference@ref@ref` remains `ref/i32`. Written Origins on the target's outer Semantics chain are forbidden; complete aggregate payload annotations follow §13.5.1. Binding-set names are allowed, and any attached relations belong to the enclosing declaration; actual result dependencies are inferred or kept from existing Types.
 
 A new Borrow depends on the target Place and on the owner's validity. Copying a shared reference preserves its referent Origins rather than using the lifetime of the variable holding it. A Reborrow lends referent capability without moving the parent reference; while the child Loan is live, conflicting access through the parent is forbidden. A `let` binding holding an exclusive reference does not by itself prevent Reborrow. A bare borrow value is reborrowed in the mode its position requires, and in its own mode where no Type is expected; `@move` transfers the reference itself.
 
@@ -565,7 +576,7 @@ owned animal -> checked cast -> success(dog) or failure(original)
 
 For an exclusive result whose variant is not yet known, the possible child Loan is tracked conservatively; the parent cannot conflict until that dependency ends. An owning cast never restores the source binding on failure. It neither destroys nor copies the object and changes no reference counts. Destroying the result follows the normal responsibility of the branch it holds.
 
-Target validity and accessibility, Semantics preservation, [Owned erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), result Origins and Loans, and destruction dependencies are checked statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. The source is evaluated and secured once. For a source certified by Owned payload erasure, a missing fixed Origin binding may be supplied as `static` only where the §15.2.3 proof covered that binding. Thus a cast to a concrete `Box<ref{static}/i32>` may be valid when Runtime Type Identity, Supports and all other checks match; this is a static proof, not a runtime recovery of an Origin. The handle's outer borrow Origin is preserved. Non-static bindings are never invented, per-call callable Origins are never bound, and no other information excluded from that proof is rewritten; a target needing unpreserved or uncertified information is rejected. API names and Option/Result branching syntax remain design boundaries: these guarantees define no cast spelling and add no checked cast to `@`.
+Target validity and accessibility, Semantics preservation, [Owned erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), result Origins and Loans, and destruction dependencies are checked statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. The source is evaluated and secured once. For a source certified by Owned payload erasure, a missing fixed Origin binding may be supplied as `static` only where the §15.2.3 proof covered that binding. Thus a cast to a concrete `Box<ref/i32 during static>` may be valid when Runtime Type Identity, Supports and all other checks match; this is a static proof, not a runtime recovery of an Origin. The handle's outer borrow Origin is preserved. Non-static bindings are never invented, per-call callable Origins are never bound, and no other information excluded from that proof is rewritten; a target needing unpreserved or uncertified information is rejected. API names and Option/Result branching syntax remain design boundaries: these guarantees define no cast spelling and add no checked cast to `@`.
 
 ## 13.7. Assignment
 

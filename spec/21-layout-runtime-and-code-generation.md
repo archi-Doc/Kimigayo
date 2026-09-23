@@ -187,10 +187,10 @@ An object handle's Runtime Type Identity is `CoreId(D)`, excluding its root `obj
 | Comparison, assuming valid Types | Runtime Type Identity |
 | --- | --- |
 | `obj/D` and `rc/D` for the same actual `D` | Equal |
-| `Box<ref{a}/i32>` and `Box<ref{b}/i32>` | Equal |
+| `Box<ref/i32 during a>` and `Box<ref/i32 during b>` | Equal |
 | `Box<ref/i32>` and `Box<i32>` | Different |
 | `Box<objref/C>` and `Box<obj/C>` | Different: inner Semantics are retained |
-| `obj/Box<ref{a}/i32>` and `obj/Box<i32>` | Different after root-handle removal |
+| `obj/Box<ref/i32 during a>` and `obj/Box<i32>` | Different after root-handle removal |
 
 Equal runtime identity implies neither equal value representation, layout, ABI, ownership operations, assignment compatibility, Origins nor Loans; it neither authorizes code sharing nor skips validation. Equal names, layouts, member sets or descriptor addresses alone do not define identity either. Fixed-array Type structure keeps the evaluated length and the element-Type key; general Const arguments beyond function lengths are not introduced. Other identity and key purposes are separated under [generation keys](#2132-identity-and-generation-keys).
 

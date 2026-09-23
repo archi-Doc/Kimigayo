@@ -342,10 +342,10 @@ A nested declaration's effective Origin schema contains its own and inherited sl
 
 ```kimi
 struct View<T> {source}
-    let value: ref{source}/T
+    let value: ref/T during source
     public struct Tag
     public contract Source
-        func read(self: ref/Self) -> ref{source}/T
+        func read(self: ref/Self) -> ref/T during source
 
 func inspect<T>(value: View<T>.Tag{tag}, item: ref/T)
     origin tag.source == item

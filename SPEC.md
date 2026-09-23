@@ -87,7 +87,7 @@ Implementation coverage, verified support boundaries and the status of the execu
 
 ## Where to start
 
-- **Origins:** [schemas, names, relations and canonical contracts](spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations), [prefix attachment](spec/03-types-and-values.md#336-nested-semantics-and-type-grouping), and [completion and omission](spec/15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision).
+- **Origins:** [schemas, names, relations and canonical contracts](spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations), [postfix borrow attachment](spec/03-types-and-values.md#336-nested-semantics-and-type-grouping), and [completion and omission](spec/15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision).
 - **Initial implementation profile:** generics are [monomorphized](spec/21-layout-runtime-and-code-generation.md#2131-policy-and-sharing-conditions); generic code sharing and the Mod host are deferred ([Appendix D](spec/appendices/D-deferred-features.md)).
 - **Standard declarations and functions:** [Kimi declaration and function reference](#kimi-declaration-and-function-reference).
 - **First executable program:** [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output and native build](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution).

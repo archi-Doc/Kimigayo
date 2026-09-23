@@ -312,18 +312,18 @@ repeat:
 clean up iterator on normal exit and ordinary transfers
 ~~~
 
-Each `for` binding is an immutable `let` binding scoped to that iteration's body; there is no implicit `var` form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right, and named slots must be distinct. When the yielded element is a shared reference to a Tuple (`ref{source}/(A, B)`, as bare iteration over an owned array yields), each component is acquired under the [match rules for borrowed Subjects](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): a Copy component is copied and a Non-Copy component binds as `ref{source}/T`. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
+Each `for` binding is an immutable `let` binding scoped to that iteration's body; there is no implicit `var` form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right, and named slots must be distinct. When the yielded element is a shared reference to a Tuple (`ref/(A, B) during source`, as bare iteration over an owned array yields), each component is acquired under the [match rules for borrowed Subjects](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): a Copy component is copied and a Non-Copy component binds as `ref/T during source`. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
 
 The receiver Loan of `next` ends before the loop body. Results may keep existing external dependencies but cannot borrow that exclusive receiver or iterator-owned storage; lending iteration is deferred.
 
 | Iterable | Yielded value and acquisition |
 | --- | --- |
-| `ref/Array<T>`, `ref/[N of T]` | `ref{source}/T`, as the Slice iteration of `values[..]` |
-| `ref/Dictionary<K, V>` | `(ref{source}/K, ref{source}/V)` pairs in insertion order, through the Kimi shared pair iterator |
+| `ref/Array<T>`, `ref/[N of T]` | `ref/T during source`, as the Slice iteration of `values[..]` |
+| `ref/Dictionary<K, V>` | `(ref/K during source, ref/V during source)` pairs in insertion order, through the Kimi shared pair iterator |
 | `ref/Slice<T>`, `ref/ResolvedRange` | The Copy value is read and iterated as below; the local keeps no Loan of its own |
 | Array or fixed array under `owner` Semantics | Elements consumed as `T` |
 | `ResolvedRange` | `isize`; an unresolved `Range` is not Iterable |
-| `Slice` | `ref{source}/T`, even for Copy elements |
+| `Slice` | `ref/T during source`, even for Copy elements |
 | Dictionary under `owner` Semantics | `(K, V)` pairs consumed in insertion order |
 
 Bare iteration over an owned collection Place therefore borrows it and yields shared references, while `for item in values@move` consumes the collection and yields owned elements. A consumed source remains unavailable until validly reinitialized. A user Type offers shared iteration through a member that returns an Iterable view, such as a Slice; a shared Iterable requirement is a design boundary ([Appendix D](appendices/D-deferred-features.md#d1-enum-and-pattern-extensions)).
@@ -462,7 +462,7 @@ A position containing `uniq/T` permits only Wildcard or Binding, optionally grou
 
 ```kimi
 enum Box {source}
-    Value(uniq{source}/Option<i32>)
+    Value(uniq/Option<i32> during source)
 
 match box
     .Value(let value)

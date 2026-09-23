@@ -155,7 +155,7 @@ struct Node
     var next: obj/Node
 
 struct View {source}
-    var data: ref{source}/Data
+    var data: ref/Data during source
 ```
 
 `Data` is an assumed Core; the instance borrow's Origin is explicitly declared and bound.
@@ -297,11 +297,11 @@ The header supports ordinary generic parameters and an optional closed Origin sc
 
 ```kimi
 enum View<T> {source}
-    Some(ref{source}/T)
+    Some(ref/T during source)
     None
 
 enum MutView<T> {source}
-    Some(uniq{source}/T)
+    Some(uniq/T during source)
     None
 
 func makeView<T>(value: ref/T)
@@ -310,7 +310,7 @@ func makeView<T>(value: ref/T)
     return .Some(value)
 ```
 
-The result annotation maps the enum's abstract `source` to the input's Origin. It describes borrows stored in an owned enum, whereas `ref{value}/T` annotates a direct result borrow. The [single-Origin shorthand](15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets) also permits `View<T>{value}`; the named mapping makes the assignment explicit.
+`{result}` names the result's binding set; the relation equates its `source` slot with the input's Origin. This describes borrowed contents of an owned enum, whereas `ref/T during value` annotates a direct result borrow. `View<T>{value}` cannot apply an existing Origin: a suffix only introduces a fresh set name (§15.3.1).
 
 At construction, payload dependencies bind to the enum's Origin arguments, and every stored value is validated against that contract. Variance and Loan requirements are inferred from the occurrences in all Cases under the ordinary fixed-point rules. Selecting a Case does not weaken the Type's Origin contract. Storing or moving out a `uniq/T` payload transfers the exclusive reference value, not its referent; a shared read reborrows it and suspends conflicting exclusive access. The ordinary storage, lifetime and unique Loan-anchor rules still apply.
 

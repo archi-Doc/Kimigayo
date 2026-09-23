@@ -23,7 +23,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
 | `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and `Iterable` with associated Type `Element = isize` under §4.6.3 |
-| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref{source}/T`; backing Origin is explicit or inferred under ordinary rules |
+| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
 | `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and consuming Iterable conformance |
 | `Stringify` | `func stringify(self: ref/Self) -> string`; returns an independent owned string |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
@@ -172,7 +172,7 @@ struct Cache<T>
         public var count: i32 = 0
 ```
 
-Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate. Cache<ref{a}/i32>.Statistics.count and the corresponding b reference use one key after both full references pass their checks.
+Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate. Cache<ref/i32 during a>.Statistics.count and the corresponding b reference use one key after both full references pass their checks.
 
 Require the stored value to be Owned and satisfy existing static-storage conditions; do not require every enclosing Type argument to be Owned. Preserve full Origins for access and lifetime checking. Under §8.10 and §21.3, verify one representation, initialization and destruction plan for all valid Origin bindings sharing a key, including the required operations, evidence and callees. Owned storage alone does not prove initializer shareability. Reuse verified typed plans and finalize concrete layout at instantiation; do not choose by the first accessing Origin or split failing plans into Origin-specific storage. Initializers may depend on ordinary runtime state.
 

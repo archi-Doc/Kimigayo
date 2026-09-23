@@ -208,14 +208,14 @@ origin-expression := Name
 A direct safe-borrow parameter, receiver or local used as an Origin denotes its value's outer borrow Origin, never the lifetime of the variable's storage:
 
 ```kimi
-func first<T>(x: ref/T) -> ref{x}/T
+func first<T>(x: ref/T) -> ref/T during x
 ```
 
 `x.source` denotes the abstract Origin `source` carried by `x`. Qualification is required so that values of the same Origin-bearing Type remain distinguishable:
 
 ```kimi
 struct View<T> {source}
-    func get(self: ref/Self) -> ref{self.source}/T
+    func get(self: ref/Self) -> ref/T during self.source
 ```
 
 The same projection applies to Origin-bearing local values, under ordinary lexical visibility; executable uses require definite initialization. A bare value name with no outer safe-borrow Origin is invalid as an Origin, even if its owned outer Type has borrowed contents; select a declared Origin with `x.source` instead. Thus `{r}` for a local `r: ref/T` always refers to `r`'s referent. Borrowing `r`'s slot uses an explicit layered Borrow (§13.5.5), whose slot Origin is inferred. Storage Origins of owned locals likewise remain compiler-internal and are inferred from initialization. Local values cannot supply Origins in public signatures or outside their lexical scope.
@@ -248,10 +248,10 @@ Intersections are renormalized after substitution or a change of proof evidence,
 ### 15.2.3. `static` and `Owned`
 
 ```kimi
-func empty() -> ref{static}/string
+func empty() -> ref/string during static
 ```
 
-A shared borrow from `static` has no non-static lifetime dependency and must satisfy the [static-source rules](11-properties.md#1132-static-storage). A new safe borrow of mutable static storage has a finite Origin. Safe code cannot derive `uniq{static}/T` from longevity alone, because an exclusive borrow also requires a unique Loan anchor; an abstract Origin whose Loan requirement is `uniq` cannot be bound to `static` in safe code.
+A shared borrow from `static` has no non-static lifetime dependency and must satisfy the [static-source rules](11-properties.md#1132-static-storage). A new safe borrow of mutable static storage has a finite Origin. Safe code cannot derive `uniq/T during static` from longevity alone, because an exclusive borrow also requires a unique Loan anchor; an abstract Origin whose Loan requirement is `uniq` cannot be bound to `static` in safe code.
 
 `static` describes an Origin. `Owned` expresses independence from non-static lifetime dependencies; it is neither ownership Semantics nor permission to allocate storage:
 
@@ -262,11 +262,11 @@ func register<F>(f: F)
 
 A valid complete Type `T` is `Owned` exactly when every Origin in **OwnedOrigins(T)** equals `static`; an empty set satisfies the condition. OwnedOrigins is the conservative dependency closure of the Type's outer Origin; its Semantics target (value referent, object payload or View Target, or raw-pointer pointee Type); all instantiated Type and Origin arguments, including unused slots; bases; stored Fields; enum payloads; Tuple components; array elements; and concrete Closure captures. Aliases are expanded and declaration bindings substituted before traversal. Recursive Types use the structural fixed-point rules, not circular conformance evidence. A base or runtime-Contract view contributes its visible Type and Origin arguments; its hidden payload was certified at erasure (§15.8.1).
 
-The OwnedOrigins of a nested Type include inherited explicit Origins and unused outer Type arguments (§6.1.3), so an empty `Outer<ref{local}/i32>.Tag` is not Owned. These Type-level dependencies imply neither a retained outer instance nor an actual Loan. Static storage uses the shared key of §22.2.4 without erasing full-reference lifetime checks.
+The OwnedOrigins of a nested Type include inherited explicit Origins and unused outer Type arguments (§6.1.3), so an empty `Outer<ref/i32 during local>.Tag` is not Owned. These Type-level dependencies imply neither a retained outer instance nor an actual Loan. Static storage uses the shared key of §22.2.4 without erasing full-reference lifetime checks.
 
 Callable Types contribute every fixed Origin in their complete Type: a Function Item's bound generic and Origin arguments, a concrete Closure's captures and fixed signature Origins, and the fixed Origins written in a common Function Type's parameter and result Types. Only Origins bound per call, such as the direct-input quantification of §8.6 and §15.4, are excluded, because they have no fixed binding to prove. A common Function Type's hidden environment is certified Owned at erasure. An Owned proof never infers or rewrites a callable's per-call contract.
 
-Established outlives facts are used: `a outlives static` proves `a` equal to `static`, since `static` is the maximum Origin. An unbound or unproven abstract Origin yields Unknown, not a proof of `not Owned`; required evidence is resolved by the ordinary deadline. A generic definition proves Owned for its own Type parameters and abstract Origins only from its declared Constraints and bounds (§8.10); that proof cannot wait for instantiation. Empty containers and unselected Cases do not weaken this Type-level check. In particular, `unsafe/(ref{local}/i32)`, and a wrapper with that non-static Type argument, cannot prove Owned even if no safe-borrow Field is visible. Traversing a pointee Type neither dereferences a pointer nor creates a Loan; unsafe implementations must still expose their actual lifetime dependencies and uphold pointer validity.
+Established outlives facts are used: `a outlives static` proves `a` equal to `static`, since `static` is the maximum Origin. An unbound or unproven abstract Origin yields Unknown, not a proof of `not Owned`; required evidence is resolved by the ordinary deadline. A generic definition proves Owned for its own Type parameters and abstract Origins only from its declared Constraints and bounds (§8.10); that proof cannot wait for instantiation. Empty containers and unselected Cases do not weaken this Type-level check. In particular, `unsafe/(ref/i32 during local)`, and a wrapper with that non-static Type argument, cannot prove Owned even if no safe-borrow Field is visible. Traversing a pointee Type neither dereferences a pointer nor creates a Loan; unsafe implementations must still expose their actual lifetime dependencies and uphold pointer validity.
 
 This revision requires Owned for static storage, concrete payload erasure into base or runtime-Contract views, common Function Type environment erasure, cyclic-factory payloads (§13.5.8), and explicitly declared Owned Constraints. A lifetime-hiding library API states that requirement explicitly; the compiler does not infer an "indefinite retention" capability from a private body. Ordinary storage and concrete object allocation impose no blanket Owned requirement. Owned never discharges acquisition, Loan, destruction-order, unsafe or concurrency checks.
 
@@ -285,12 +285,16 @@ Type schema: Pair.left, Pair.right
 ### 15.3.1. Borrow annotations and binding sets
 
 ```kimi
-ref{source}/T                    // Origin of this borrow layer
+ref/T during source                    // Origin of this borrow layer
 View<T>{v}                       // Name this Type occurrence's binding set
-ref{borrow}/View<T>{v}           // Outer borrow and inner slots are distinct
+ref/View<T>{v} during borrow           // Outer borrow and inner slots are distinct
 ```
 
-Borrow annotations precede `/` and contain one Origin expression, optionally followed by a trailing comma. Only `ref`, `uniq`, `objref`, `objuniq`, and a Semantics parameter proven to be a safe borrow accept them. `owner`, `obj`, `rc`, `arc` and `unsafe` do not. Whole-Type parentheses do not accept a borrow annotation.
+Borrow annotations use postfix `during` with the attachment and order of §3.3.6. Only `ref`, `uniq`, `objref`, `objuniq`, and a Semantics parameter proven to be a safe borrow accept them. `owner`, `obj`, `rc`, `arc` and `unsafe` do not. Whole-Type parentheses do not accept an annotation from outside.
+
+The argument is one Origin atom: a simple name, `value.slot`/`set.slot`, `static`, or a parenthesized Origin expression. An intersection after `during` must be parenthesized: `during (a and b)`. Parenthesized single atoms are valid; empty parentheses, lists, trailing commas, `_`, calls and arbitrary value expressions are not. In `f(x: ref/T during a,)`, the comma belongs to the parameter list.
+
+An outer `and` belongs to the surrounding grammar: `T is ref/U during a and Copy` is a requirement conjunction. In a Type-only position, `ref/T during a and b` is invalid, never reparsed by lookup. Relation clauses retain unrestricted Origin expressions on either side of `outlives` or `==`; these operators and the clause end delimit the operands. An annotation neither creates Loans nor extends lifetimes or performs acquisition, conversion or Reborrow.
 
 A named Type reference's `{name}` introduces one binding-set name, with an optional trailing comma. It is never application of an existing Origin or set. The Type must have a nonempty schema known at definition; unknown generic schemas, duplicate names and use of a set as a scalar Origin are errors. Name each required occurrence separately and relate its slots. There is no whole-set equality, positional Origin application, mapping such as `{source => x}`, or call-site `f{a}(...)` application. `_` is neither a binder nor an inference request. Empty braces are permitted only on Type declaration headers (§15.3.2).
 
@@ -302,7 +306,7 @@ func identity<T>(value: View<T>) -> View<T>{result}
 
 Naming preserves the Type, dependencies and quantification. Adding or removing a valid unused set name, or consistently renaming it and its references, leaves the contract unchanged. Naming an already complete Type does not reopen its bindings. Prefer a value projection when it directly names the needed slot; set names remain available for results, nested occurrences and other Type expressions.
 
-Parse the brace role from its syntactic position, independent of whitespace or lookup success. Braces after a Name followed by `/` annotate Semantics; declaration context selects a Type schema header; a named Type suffix names a set. Failed lookup never changes that role. Reject old Origin lists on functions, constructors and accessors, old `origin`/`from` borrow annotations, and wrong-role brace contents.
+Parse the brace role from syntactic position, independent of whitespace or lookup success: declaration context selects a Type schema header; a named Type suffix names a set. A following `/` does not turn a set into a borrow annotation. Reject brace borrow annotations before `/`, old Origin lists on functions, constructors and accessors, `origin`/`from` borrow annotations, and wrong-role brace contents.
 
 **Projection.** A direct safe-borrow value name denotes its outer borrow Origin (§15.2.1). `value.source` selects a declared slot from the value's Type. Normalize aliases and redundant owner prefixes, then peel only consecutive safe-borrow layers to find that schema. Do not search through Fields, Type arguments or raw pointers. A set projection selects the corresponding slot of its named occurrence. Unknown slots are errors. Projection reads compile-time Type information; it invokes neither dereference nor getters and grants no initialization or Loan permission.
 
@@ -320,15 +324,15 @@ A written header **closes the schema**. Without one, collect simple Origin names
 
 ```kimi
 struct View<T>
-    public let value: ref{source}/T
+    public let value: ref/T during source
 
 struct Pair<A, B> {left, right}
-    public let first: ref{left}/A
-    public let second: ref{right}/B
+    public let first: ref/A during left
+    public let second: ref/B during right
 
 struct Typo
-    let first: ref{source}/i32
-    let second: ref{souce}/i32 // Error: two implicit candidates.
+    let first: ref/i32 during source
+    let second: ref/i32 during souce // Error: two implicit candidates.
 ```
 
 In headerless storage, a simple name is an own-slot candidate; collision with a visible inherited Origin is an error, not implicit capture. A Type directly referencing inherited Origins in storage requires a closed header, using `{}` if it adds no slots. In a closed Type, references resolve to its declared slots or the visible enclosing Origins.
@@ -336,7 +340,7 @@ In headerless storage, a simple name is an own-slot candidate; collision with a 
 ```kimi
 struct Outer<T> {source}
     struct Inner {}
-        let value: ref{source}/T
+        let value: ref/T during source
 ```
 
 Every fragment of a split struct repeats the same closed header, including `{}` for zero own slots. Slot count, order and names agree under §6.1.2. Type relations occupy the same unique Constraint definition region as other Type Constraints; other fragments share it. This adds no Origin header to split groups.
@@ -378,8 +382,8 @@ Closed conditions independent of declaration parameters are definition-time proo
 In an ordinary named function, constructor, explicit accessor or Contract callable requirement, an unbound simple name in a permitted signature borrow annotation introduces a universally quantified scalar Origin. Relations and local annotations only reference existing names. Specializations and inherited stored accessor positions retain the original contract without adding binders. Input and result completion follow §15.4.
 
 ```kimi
-func nested<T>(x: ref/(ref{s}/T), y: ref{s}/T)
-func constant() -> ref{s}/i32
+func nested<T>(x: ref/(ref/T during s), y: ref/T during s)
+func constant() -> ref/i32 during s
 // Result-only s is universal too; a local referent cannot satisfy it.
 ```
 
@@ -407,7 +411,7 @@ func useView<T>(x: View<T>, callback: (View<T>{c}) -> ())
 
 ### 15.3.5. Variance, Loan requirements and Phantom Origins
 
-Origin relations are not value conversions. Preserve the complete-Type variance rules: `ref{o}/T` is covariant in `o` and `T`; `uniq{o}/T` is covariant in `o` and invariant in `T`; function parameters reverse polarity and results preserve it. Mutable storage follows its representation's invariance requirements. Infer declaration variance from all occurrences and solve recursive Types to a fixed point; no explicit variance annotations are added. These rules add no ordinary inheritance upcast or callable value operation.
+Origin relations are not value conversions. Preserve the complete-Type variance rules: `ref/T during o` is covariant in `o` and `T`; `uniq/T during o` is covariant in `o` and invariant in `T`; function parameters reverse polarity and results preserve it. Mutable storage follows its representation's invariance requirements. Infer declaration variance from all occurrences and solve recursive Types to a fixed point; no explicit variance annotations are added. These rules add no ordinary inheritance upcast or callable value operation.
 
 Slots retain inferred Loan requirements `none < ref < uniq`: shared borrow use requires `ref`, exclusive use requires `uniq`, and multiple/nested uses propagate the stronger requirement. The requirement identifies necessary caller-side Loan retention; it neither grants a Loan nor changes structural Copy classification. Keep actual Place, authority, anchor and Reborrow identities across acquisition, storage, calls, results and destruction. Equal or shortened Origins never merge distinct Loans or manufacture exclusive access.
 
@@ -415,7 +419,7 @@ Slots retain inferred Loan requirements `none < ref < uniq`: shared borrow use r
 struct RawView<T> {source}
     let pointer: unsafe/T
     let count: isize
-    func get(self: ref/Self, index: isize) -> ref{self.source}/T
+    func get(self: ref/Self, index: isize) -> ref/T during self.source
 ```
 
 A header slot without a corresponding safe stored reference is a **Phantom Origin**. Its dependency is retained, but its declaration grants no pointer validity, Loan, Copy or access authority. Unsafe implementations or verified intrinsics must establish initialization, bounds, alignment, permissions and retention. Required input-derived Loans remain attached to dependent values. Treat a general phantom slot as invariant when safe shortening cannot be established structurally; verified intrinsic Types retain their established metadata. No general phantom authority inference is introduced. Static Origins still obey §15.2.3's source and unique-anchor restrictions.
@@ -437,7 +441,7 @@ Use equality substitution, reflexivity, transitivity and meet laws. Preserve com
 
 ### 15.3.7. Canonical contracts and verification
 
-Retain normalized complete Types, binders and scopes, fixed bindings, activation conditions, relations, intrinsic well-formedness and Loan requirements/dependencies. For example, `ref{borrow}/View<T>{v}` requires `v.source outlives borrow`. Intrinsic conditions are definition premises and use-site obligations, not access permissions.
+Retain normalized complete Types, binders and scopes, fixed bindings, activation conditions, relations, intrinsic well-formedness and Loan requirements/dependencies. For example, `ref/View<T>{v} during borrow` requires `v.source outlives borrow`. Intrinsic conditions are definition premises and use-site obligations, not access permissions.
 
 Schema slots have stable declaration-bound identities; distinct declarations with the same spelling remain distinct. Identify anonymous inputs by declaration, input position, normalized Type occurrence and target slot. Grouping and redundant owner prefixes create no new slots. Recursive Types establish finite schemas before computing dependency/variance fixed points; never discover infinitely expanded anonymous slots during instantiation.
 
@@ -470,7 +474,7 @@ func makeMarker() -> Marker{r}
     origin static outlives r.source // Redundant; source defaults to static.
 ```
 
-A directly annotated result-only scalar name, such as `ref{s}/T`, remains an explicit universal contract. No dedicated syntax universally quantifies an otherwise unconstrained aggregate result slot. Locals, storage and nested signatures follow their own completion rules. Completion occurs once: substitution may renormalize expressions but never rerun elision or change binders when a condition becomes trivial. A relation on a complete Type checks its binding rather than rebinding it.
+A directly annotated result-only scalar name, such as `ref/T during s`, remains an explicit universal contract. No dedicated syntax universally quantifies an otherwise unconstrained aggregate result slot. Locals, storage and nested signatures follow their own completion rules. Completion occurs once: substitution may renormalize expressions but never rerun elision or change binders when a condition becomes trivial. A relation on a complete Type checks its binding rather than rebinding it.
 
 ### 15.4.2. Position rules
 
@@ -508,6 +512,8 @@ func inner<T>(items: ref/Array<View<T>{v}>) -> View<T>{r}
 ```
 
 Evaluate conditional direct-borrow inputs under every admitted Semantics condition. Do not add an implicit Owned constraint or weaken fixed dependencies to make elision succeed. An Origin-compatible result still requires valid Type formation and actual Loan authority.
+
+For `func f<T>(x: ref/T? during a) -> ref/T`, x is an Option rather than a direct borrowed input, so the shared result defaults to `static`. Dependence on a requires an explicit result `during a`. If this default causes a result fitting/lifetime error, explain the omitted-input boundary and suggest visible explicit Origins without choosing among multiple candidates. A function correctly returning `static` needs no warning.
 
 ### 15.4.4. Locals and independent Type expressions
 
@@ -554,15 +560,15 @@ The following independent member-signature excerpts are declared inside `View<T>
 ```kimi
 struct View<T> {source}
     func get(self: ref/Self)
-        -> ref{self.source}/T
+        -> ref/T during self.source
 ```
 
-Returning `uniq{self.source}/T` from `self: uniq/Self` is invalid, because detaching the result from the current `self` Loan could allow a second exclusive borrow:
+Returning `uniq/T during self.source` from `self: uniq/Self` is invalid, because detaching the result from the current `self` Loan could allow a second exclusive borrow:
 
 ```kimi
 struct View<T> {source}
     func bad(self: uniq/Self)
-        -> uniq{self.source}/T       // Error
+        -> uniq/T during self.source       // Error
 ```
 
 One valid form consumes the Origin-bearing owner, so that moving `self` prevents reuse of the capability:
@@ -570,7 +576,7 @@ One valid form consumes the Origin-bearing owner, so that moving `self` prevents
 ```kimi
 struct View<T> {source}
     func into_uniq(self: Self)
-        -> uniq{self.source}/T
+        -> uniq/T during self.source
 ```
 
 Alternatively, the result reborrows through the current exclusive receiver; the parent Loan stays active, and access through it is suspended, while the returned reborrow is live:
@@ -578,7 +584,7 @@ Alternatively, the result reborrows through the current exclusive receiver; the 
 ```kimi
 struct View<T> {source}
     func get_uniq(self: uniq/Self)
-        -> uniq{self}/T
+        -> uniq/T during self
 ```
 
 ## 15.6. Borrow checking
@@ -622,7 +628,7 @@ Type checking generates these constraints:
 | Subtyping       | Assignment and argument passing require `type(value) <: type(destination)`. |
 | Liveness        | If a value containing `o` may be used after `P`, then `P` belongs to `region(o)`. |
 | Outlives        | `a : b` requires `region(a) ⊇ region(b)`.                    |
-| Well-formedness | Every Origin in `T` observable through `ref{o}/T` or `uniq{o}/T` must outlive `o`. |
+| Well-formedness | Every Origin in `T` observable through `ref/T during o` or `uniq/T during o` must outlive `o`. |
 | Calls           | Origin arguments and result Loan requirements are instantiated as described in §15.6.4. |
 
 The well-formedness rule prevents borrowed contents from expiring before the outer borrow.
@@ -707,7 +713,7 @@ These static and capture anchors are kept when composing [receiver-preservation 
 Every Origin in a function signature is universally quantified. The implementation must work for every legal caller instantiation, so a local region cannot be widened to satisfy a universal return Origin:
 
 ```kimi
-func bad(x: ref/i32) -> ref{x}/i32
+func bad(x: ref/i32) -> ref/i32 during x
     let local: i32 = 1
     return local@ref // Error: the local cannot satisfy the universal Origin x.
 ```
@@ -726,7 +732,7 @@ Destruction that observes no Origin or Loan adds no lifetime requirement. Every 
 
 ```kimi
 struct Logger {sink}
-    let out: uniq{sink}/Writer
+    let out: uniq/Writer during sink
 
     deinit
         observe(self.out)
@@ -831,7 +837,7 @@ Erasing a concrete payload behind a base or runtime-Contract view requires its c
 ```text
 Dog owns only i32/string data -> Owned payload -> base/contract erasure allowed
 Dog stores a local ref       -> non-Owned     -> initial erasure rejected
-objref{local}/Animal     -> borrow remains local even when payload is Owned
+objref/Animal during local     -> borrow remains local even when payload is Owned
 ```
 
 This is not a blanket `{static}` requirement on object handles or exact concrete views; same-target operations keep the existing lifetime rules. An erased view certifies that the check succeeded, and later upcasts and casts inherit that certification without runtime Origin queries. Only proof-covered fixed Origin bindings may be supplied as `static` in a checked cast (§13.6.2); per-call callable Origins and the handle's outer Origin are not reconstructed. Existing borrowed-field Types remain valid; hiding their non-static dependencies needs a later existential-view design. Owned does not waive pointer validity, Loan, destruction or concurrency checks.
@@ -855,7 +861,7 @@ When the whole result Type is omitted and inferred from the body, its Origin and
 ```kimi
 let text = makeText()
 let get = func [text@move] () => text@ref
-// Internal signature: call(self: ref/Self) -> ref{self}/string.
+// Internal signature: call(self: ref/Self) -> ref/string during self.
 let view = get()
 let moved = get@move // Error if view is still used below.
 inspectText(view)
