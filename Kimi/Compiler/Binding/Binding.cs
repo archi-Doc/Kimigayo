@@ -93,6 +93,7 @@ public sealed partial class Binding
             this.resultCursor = 0;
             this.ResetStartup();
             this.specializations.Clear();
+            this.specializationsByOriginal.Clear();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
             this.referentReads.Clear();

@@ -7,6 +7,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, Specialization> specializations = new(ReferenceEqualityComparer.Instance);
+    // SPEC 8.8.3: selection is keyed by the original; each original lists its verified specializations.
+    private readonly Dictionary<BindingSymbol, List<FunctionKoto>> specializationsByOriginal = new(ReferenceEqualityComparer.Instance);
 
     internal bool IsVerifiedSpecialization(FunctionKoto function) => this.specializations.ContainsKey(function);
 
@@ -92,12 +94,17 @@ public sealed partial class Binding
 
     internal FunctionKoto? SelectSpecialization(BoundCall call)
     {
-        foreach (var pair in this.specializations)
+        if (!this.specializationsByOriginal.TryGetValue(call.Target, out var candidates))
         {
-            if (ReferenceEquals(pair.Value.Original, call.Target) && SameSpecializationArguments(pair.Value.Arguments, call.TypeArguments) &&
-                SameSpecializationLengths(pair.Value.Lengths, call.LengthArguments))
+            return null;
+        }
+
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            var specialization = this.specializations[candidates[i]];
+            if (SameSpecializationArguments(specialization.Arguments, call.TypeArguments) && SameSpecializationLengths(specialization.Lengths, call.LengthArguments))
             {
-                return pair.Key;
+                return candidates[i];
             }
         }
 
@@ -266,12 +273,17 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var previous in this.specializations)
+            if (!this.specializationsByOriginal.TryGetValue(original!, out var siblings))
             {
-                if (ReferenceEquals(previous.Value.Original, original) && SameSpecializationArguments(previous.Value.Arguments, arguments) &&
-                    SameSpecializationLengths(previous.Value.Lengths, lengths))
+                this.specializationsByOriginal.Add(original!, siblings = new());
+            }
+
+            for (var i = 0; i < siblings.Count; i++)
+            {
+                var previous = this.specializations[siblings[i]];
+                if (SameSpecializationArguments(previous.Arguments, arguments) && SameSpecializationLengths(previous.Lengths, lengths))
                 {
-                    Fail(previous.Key, BindingFailure.Duplicate);
+                    Fail(siblings[i], BindingFailure.Duplicate);
                     Fail(function, BindingFailure.Duplicate);
                     valid = false;
                 }
@@ -279,7 +291,8 @@ public sealed partial class Binding
 
             if (valid)
             {
-                this.specializations.Add(function, new(original, arguments, lengths));
+                this.specializations.Add(function, new(original!, arguments, lengths));
+                siblings.Add(function);
             }
         }
 
