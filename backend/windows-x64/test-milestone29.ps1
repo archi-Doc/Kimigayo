@@ -90,6 +90,11 @@ $variants = [ordered]@{
     IndexValues = @{ source = (Edit-KimiSource $original 'insert(^0,' 'insert(Index.init(0, fromEnd: true),' 'remove(^1)' 'remove(Index.init(1, fromEnd: true))'); stdout = $expected }
     CompleteIteration = @{ source = $complete; stdout = $completeOutput }
     Capacity = @{ source = (Edit-KimiSource $original '    Console.writeLine("Cleared the spare tasks.")' $capacityChecks); stdout = $expected }
+    SharedReads = @{ source = (Edit-KimiSource $original '    match tasks@uniq.pop()' ('    let item = tasks[0]' + "`n" + '    let explicit = tasks[0]@ref' + "`n" + '    require item.id == 5 and explicit.id == 5 else => $abort("Shared read")' + "`n" + '    match tasks@uniq.pop()')); stdout = $expected }
+    SharedSliceIteration = @{ source = (Edit-KimiSource $original '    var spare: Array<Task>' ('    let view = tasks[..]' + "`n" + '    require view.length == 2 and view[0].id == 5 else => $abort("Slice")' + "`n" + '    var total = 0' + "`n" + '    for item in tasks => total += item.id' + "`n" + '    require total == 7 else => $abort("Shared iteration")' + "`n" + '    var spare: Array<Task>')); stdout = $expected }
+    ResultIteration = @{ source = (Edit-KimiSource $original 'for task in tasks@move' 'for task in (if true => tasks@move else => tasks@move)'); stdout = $expected }
+    ClearAbort = @{ source = "struct Task`n    public let id: i32`n    public init(id: i32) => self.id = id`n    deinit`n        if self.id == 2 => `$abort(`"stop`")`n        Console.writeLine(`"drop`")`nvar values: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]`nvalues@uniq.clear()`nConsole.writeLine(`"after`")`n"; stdout = "drop`n"; exit = 1; stderr = '{name}.kimi:5:28: abort KIMI_E_ABORT: stop' + "`n" }
+    AbandonedArgument = @{ source = "struct Task`n    public let id: i32`n    public init(id: i32) => self.id = id`n    deinit => Console.writeLine(`"drop`")`nvar values: Array<Task> = []`nlet completed = work: do`n    values@uniq.insert(value: Task.init(1), index: (index: do`n        exit to work: false`n        exit to index: 0@isize`n    ))`n    exit to work: true`nrequire not completed and values.length == 0 else => `$abort(`"abandon`")`nConsole.writeLine(`"done`")`n"; stdout = "drop`ndone`n" }
     EmptyRemove = @{ source = "var values: Array<i32> = []`nlet n = values@uniq.remove(^1)`n"; stdout = ''; exit = 1; stderr = '{name}.kimi:2:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds' + "`n" }
     EndRemove = @{ source = "var values: Array<i32> = [1]`nlet n = values@uniq.remove(^0)`n"; stdout = ''; exit = 1; stderr = '{name}.kimi:2:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds' + "`n" }
     InvalidInsert = @{ source = "var values: Array<i32> = []`nvalues@uniq.insert(^1, 7)`n"; stdout = ''; exit = 1; stderr = '{name}.kimi:2:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds' + "`n" }
@@ -124,6 +129,8 @@ $invalid = [ordered]@{
     SharedMutation = @{ source = (Edit-KimiSource $original 'tasks@uniq.append(Task.init(1))' 'tasks@ref.append(Task.init(1))'); diagnostic = 'NoApplicableOverload_Kd' }
     ElementMove = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let invalid = tasks[0]@move' + "`n" + '    tasks[0] = Task.init(5)')); diagnostic = 'UnsupportedOwnership_Kd' }
     LiveBorrow = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks@ref' + "`n" + '    tasks[0] = Task.init(5)' + "`n" + '    let invalid = view.length')); diagnostic = 'ComparisonLoanConflict_Kd' }
+    LiveElement = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks[0]' + "`n" + '    tasks[0] = Task.init(5)' + "`n" + '    let invalid = view.id')); diagnostic = 'ComparisonLoanConflict_Kd' }
+    LiveEmptySlice = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks[0..0]' + "`n" + '    tasks@uniq.reserve(0)' + "`n" + '    let invalid = view.length' + "`n" + '    tasks[0] = Task.init(5)')); diagnostic = 'CallActivationConflict_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

@@ -34,8 +34,11 @@ internal sealed partial class BodyLowering
             _ => null,
         };
         var receiverPlace = body.Places[plan.Receiver];
+        var acquiredSource = syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow &&
+            ReferenceTypes.IsDynamicArray(receiverPlace.Type) && ReferenceEquals(receiverPlace.Type, SignatureType(this, borrow.BoundType))
+            ? ElementAccess.ValueSource(borrow.Left) : syntaxReceiver;
         if (syntaxReceiver is null || plan.Projection < -1 ||
-            (plan.Projection < 0 && !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source), syntaxReceiver) &&
+            (plan.Projection < 0 && !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source), acquiredSource) &&
                 !(syntaxReceiver.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var local) && local == plan.Receiver)))
         {
             return Fail("Sequence receiver does not match its evaluated source.", out failure);

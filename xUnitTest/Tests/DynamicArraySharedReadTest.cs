@@ -30,6 +30,13 @@ public class DynamicArraySharedReadTest
         => ScalarEmissionTest.EmitFixture("DynamicArraySharedReadFieldWrite", Task.Replace("public let id", "public var id", StringComparison.Ordinal) + "var values: Array<Task> = [Task.init(41)]\nvalues[0].id += 1\nlet item = values[0]\nrequire item.id == 42 else => $abort(\"value\")", "drop\n");
 
     [Theory]
+    [InlineData("SliceField", "values[..][0].id")]
+    [InlineData("SharedField", "(values@ref)[0].id")]
+    [InlineData("ExclusiveField", "(values@uniq)[0].id")]
+    public void ChainedReadsThroughViewsBorrowTheNonCopyElement(string name, string read)
+        => ScalarEmissionTest.EmitFixture("DynamicArraySharedRead" + name, Task + "var values: Array<Task> = [Task.init(42)]\nrequire " + read + " == 42 else => $abort(\"value\")", "drop\n");
+
+    [Theory]
     [InlineData("func make() -> Array<Task> => [Task.init(42)]\nlet item = make()[0]\nlet id = item.id")]
     [InlineData("func inspect(item: ref/Task, ignored: ()) => ()\nvar values: Array<Task> = [Task.init(42)]\ninspect(values[0], values@uniq.clear())")]
     public void RejectsExpiredOrInvalidatedSharedReads(string source)

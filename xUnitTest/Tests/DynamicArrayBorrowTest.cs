@@ -22,6 +22,10 @@ public class DynamicArrayBorrowTest
         => ScalarEmissionTest.EmitFixture("DynamicArrayBorrowScalar", "var values: Array<i32> = [42]\nlet item = values[0]@ref\nrequire item == 42 else => $abort(\"value\")\nvalues[0] = 7", string.Empty);
 
     [Fact]
+    public void AnImmediateHandleBorrowCanBeIndexedAndSliced()
+        => ScalarEmissionTest.EmitFixture("DynamicArrayBorrowImmediateHandle", "var values: Array<i32> = [20, 22]\nrequire (values@ref)[0] + (values@uniq)[1] == 42 else => $abort(\"value\")\nrequire (values@ref)[..].length == 2 else => $abort(\"view\")", string.Empty);
+
+    [Fact]
     public void ATemporaryReceiverLivesThroughTheCall()
         => ScalarEmissionTest.EmitFixture("DynamicArrayBorrowTemporary", Task + "func make() -> Array<Task> => [Task.init(42)]\nfunc inspect(item: ref/Task) => require item.id == 42 else => $abort(\"value\")\ninspect(make()[0]@ref)\nConsole.writeLine(\"done\")", "drop\ndone\n");
 

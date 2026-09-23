@@ -93,7 +93,7 @@ public sealed partial class Binding
             target = parentheses;
         }
 
-        var place = target.Parent is ConversionKoto || (target.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, target)) ||
+        var place = target.Parent is ConversionKoto || (source.Left.BoundType?.Kind == BoundTypeKind.Array && target.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, target)) ||
             (target.Parent is BinaryKoto assignment && ReferenceEquals(assignment.Left, target) && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals);
         return !place && StructStorage.IsStruct(element) && this.ProveCopy(element, source) == ConstraintProof.Refuted
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [element], origin: this.PlaceOrigin(source.Left))
