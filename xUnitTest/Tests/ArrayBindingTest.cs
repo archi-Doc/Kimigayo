@@ -16,7 +16,7 @@ public class ArrayBindingTest
     public void BorrowedHandlesReadMetadataThroughTheReference()
         => ScalarEmissionTest.EmitFixture(
             "ArrayBorrowedHandle",
-            Task + "func describe(tasks: ref/Array<Task>) -> isize => tasks.length\nfunc room(tasks: ref/Array<Task>) -> isize => tasks.capacity\nlet tasks: Array<Task> = []\nrequire describe(tasks@ref) == 0 and room(tasks@ref) == 0 and describe(tasks@ref) == 0 else => $abort(\"borrowed\")\nConsole.writeLine(\"ok\")",
+            Task + "func describe(tasks: ref/Array<Task>) -> isize => tasks.length\nfunc room(tasks: ref/Array<Task>) -> isize => tasks.capacity\nfunc count(tasks: uniq/Array<Task>) -> isize => tasks.indices.length\nvar tasks: Array<Task> = []\nrequire describe(tasks@ref) == 0 and room(tasks@ref) == 0 and count(tasks@uniq) == 0 and describe(tasks@ref) == 0 else => $abort(\"borrowed\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
     // SPEC 4.5: a handle transfers as a value; the callee releases an owned parameter and a result is secured by its caller.
