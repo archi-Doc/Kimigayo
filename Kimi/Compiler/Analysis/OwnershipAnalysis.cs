@@ -657,7 +657,8 @@ public sealed partial class OwnershipAnalysis
                 return this.ConversionValue(conversion);
             case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
                 return this.ReadPointer(element, use);
-            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType):
+            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) ||
+                (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))):
                 return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) ||
                 (ReferenceTypes.IsValue(member.BoundType) && ElementAccess.BorrowedPathRoot(member) is not null):
@@ -1074,11 +1075,6 @@ public sealed partial class OwnershipAnalysis
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         var invoke = this.Emit(OwnershipOperationKind.Call, call);
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
-        if (borrows && !ReferenceTypes.IndependentResult(plan.ReturnType))
-        {
-            this.Unsupported(call); // A dependent result needs a verified extending Loan contract.
-        }
-
         if (!acquired || ReferenceEquals(call.BoundType, BoundType.Never))
         {
             if (borrows)
@@ -1110,12 +1106,12 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(this.Value(result), OwnershipValueKind.Alias, [invoke]);
         }
 
-        // Normal return first initializes the independent result, then releases argument Loans.
-        // Dependent-result signatures need extension of this lifetime and remain unsupported.
+        // Result Origins retain their source Loans independently of call-argument Loans.
+        // Secure the result before ending the latter.
         var loanEnd = this.EndComparisonLoans(loanDepth, call);
         if (borrows)
         {
-            this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, LoanRequirement.None));
+            this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, ReferenceTypes.IndependentResult(plan.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref));
         }
 
         this.comparisonDepth = loanDepth;

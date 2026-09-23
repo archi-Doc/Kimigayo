@@ -10,6 +10,7 @@ public sealed partial class OwnershipBody
     private bool[] borrowLive = [];
     private int[] checkingBorrowHeads = [];
     private LoanRequirement[] borrowDependencies = [];
+    private LoanRequirement[] retainedBorrowAuthority = [];
     private bool[] borrowRootLoss = [];
     private int[] borrowDefinitions = [];
     private int[] slicePaths = [];
@@ -57,6 +58,7 @@ public sealed partial class OwnershipBody
             return;
         }
 
+        this.RetainBorrowAuthority(count);
         this.PrepareSlicePaths();
         this.PrepareCheckingBorrowEdges();
         Grow(ref this.borrowDefinitions, count);
@@ -153,9 +155,10 @@ public sealed partial class OwnershipBody
                             continue;
                         }
 
-                        var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && ReferenceTypes.IsBorrow(this.Places[root].Type);
-                        var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, mode, accessMode) ||
-                            this.ElementAccessConflicts(operation, root, mode);
+                        var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type));
+                        var authority = this.BorrowModeAt(p, root, op, this.retainedBorrowAuthority[(p * count) + root]);
+                        var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
+                            this.ElementAccessConflicts(operation, root, authority);
                         if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce &&
                             this.IsDisjointProjection(accessId, p))
                         {
@@ -212,7 +215,7 @@ public sealed partial class OwnershipBody
         {
             if (ReferenceTypes.IsString(type))
             {
-                return; // The existing projection-aware call/guard Loan plans verify this representation.
+                return; // Argument references use the existing call/guard Loan plans; dependent results retain their own Origins.
             }
 
             if (type.Origin is { } origin)
@@ -254,7 +257,7 @@ public sealed partial class OwnershipBody
                 for (var root = 0; root < count; root++)
                 {
                     var candidate = this.Places[root];
-                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array || ScalarTypes.Supports(candidate.Type)) &&
+                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (ReferenceEquals(candidate.Type, BoundType.String) || StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array || ScalarTypes.Supports(candidate.Type)) &&
                         ReferenceEquals(candidate.Source, origin.Binder) && (!ScalarTypes.Supports(candidate.Type) || this.IsBorrowedPlace(root)))
                     {
                         Record(root);
@@ -264,8 +267,28 @@ public sealed partial class OwnershipBody
                 void Record(int root)
                 {
                     var index = (place * count) + root;
+                    if (this.borrowDependencies[index] >= mode)
+                    {
+                        return;
+                    }
+
                     this.borrowDependencies[index] = (LoanRequirement)Math.Max((int)this.borrowDependencies[index], (int)mode);
                     any = true;
+                    var source = this.Places[root].Type;
+                    if (ReferenceTypes.IsBorrow(source) || ReferenceTypes.IsString(source))
+                    {
+                        // A reborrow's access mode comes from its own Type. Only
+                        // nested dependencies survive here; retain the parent's
+                        // stronger authority separately through value transfer.
+                        for (var i = 0; i < source.Components.Count; i++)
+                        {
+                            AddType(place, source.Components[i]);
+                        }
+                    }
+                    else
+                    {
+                        AddType(place, source);
+                    }
                 }
             }
         }
@@ -454,6 +477,83 @@ public sealed partial class OwnershipBody
             }
 
             level = parent;
+        }
+    }
+
+    // Origin equality preserves identity, not permission: a shared result can
+    // still retain the exclusive authority acquired by an input. Transfer only
+    // authority for roots already present in the result's declared dependencies.
+    private void RetainBorrowAuthority(int count)
+    {
+        Grow(ref this.retainedBorrowAuthority, checked(count * count));
+        this.borrowDependencies.AsSpan(0, count * count).CopyTo(this.retainedBorrowAuthority);
+        bool changed;
+        do
+        {
+            changed = false;
+            for (var id = 0; id < this.Operations.Count; id++)
+            {
+                var operation = this.Operations[id];
+                switch (operation.Kind)
+                {
+                    case OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern:
+                        Merge(operation.Input, operation.Place);
+                        break;
+                    case OwnershipOperationKind.Write or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.PayloadPlacement:
+                        Merge(operation.Place, operation.Input);
+                        break;
+                    case OwnershipOperationKind.Call:
+                        for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
+                        {
+                            Merge(operation.Place, input.Place);
+                        }
+
+                        break;
+                }
+
+                if (this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } alias && this.ValueOperands[alias.Start] is >= 0 and var value)
+                {
+                    Merge(ValuePlaceForBorrow(operation), ValuePlaceForBorrow(this.Operations[value]));
+                }
+            }
+
+            for (var i = 0; i < this.Constructions.Count; i++)
+            {
+                var plan = this.Constructions[i];
+                for (var p = 0; p < plan.PayloadCount; p++)
+                {
+                    Merge(plan.Place, plan.PayloadStart + p);
+                }
+            }
+
+            for (var i = 0; i < this.Decompositions.Count; i++)
+            {
+                var plan = this.Decompositions[i];
+                for (var p = 0; p < plan.PayloadCount; p++)
+                {
+                    Merge(plan.PayloadStart + p, plan.Place);
+                }
+            }
+        }
+        while (changed);
+
+        void Merge(int destination, int source)
+        {
+            if (destination < 0 || source < 0 || destination == source)
+            {
+                return;
+            }
+
+            for (var root = 0; root < count; root++)
+            {
+                ref var target = ref this.retainedBorrowAuthority[(destination * count) + root];
+                var input = this.retainedBorrowAuthority[(source * count) + root];
+                if (target != LoanRequirement.None && input > target)
+                {
+                    target = input;
+                    changed = true;
+                }
+            }
         }
     }
 

@@ -21,7 +21,7 @@ internal sealed partial class BodyLowering
             var plan = body.CallLoans[i];
             if ((uint)plan.Call >= (uint)body.Operations.Count || this.callLoanPlans[plan.Call] >= 0 ||
                 body.Operations[plan.Call] is not { Kind: OwnershipOperationKind.Call, Source: InvocationKoto { BoundCall: { } call } } ||
-                plan.ResultRequirement != LoanRequirement.None || !ReferenceTypes.IndependentResult(call.ReturnType))
+                plan.ResultRequirement != (plan.Result < 0 || ReferenceTypes.IndependentResult(call.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref))
             {
                 return Fail("Invalid call result Loan contract.", out failure);
             }
@@ -45,7 +45,7 @@ internal sealed partial class BodyLowering
                 (plan.End >= 0 && ((uint)plan.End >= (uint)body.Operations.Count || body.Operations[plan.End].Kind != OwnershipOperationKind.EndComparisonLoans ||
                     !ReferenceEquals(body.Operations[plan.End].Source, body.Operations[plan.Call].Source))))
             {
-                return Fail("Call Loans must end after securing an independent normal result.", out failure);
+                return Fail("Call Loans must end after securing the normal result and its Origin dependencies.", out failure);
             }
 
             this.callLoanPlans[plan.Call] = i;

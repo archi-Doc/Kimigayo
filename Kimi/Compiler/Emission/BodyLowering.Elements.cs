@@ -26,7 +26,7 @@ internal sealed partial class BodyLowering
 
     private static bool IsCopyElement(BoundType type, int depth = 0)
     {
-        if (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit))
+        if (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || type.Kind == BoundTypeKind.Slice)
         {
             return true;
         }
