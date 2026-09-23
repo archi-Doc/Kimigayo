@@ -46,7 +46,7 @@ internal sealed partial class BodyLowering
         }
 
         var address = new EmissionOperand(EmissionOperandKind.SlotAddress, plan.Receiver);
-        var borrowedArray = ReferenceTypes.IsArray(receiver);
+        var borrowedArray = ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver);
         if (!borrowedArray && value.Count != 0)
         {
             return Fail("Owned sequence metadata must not carry a reference operand.", out failure);

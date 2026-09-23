@@ -46,7 +46,7 @@ public sealed partial class OwnershipAnalysis
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
-        this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
+        this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDynamicArray(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
         this.body.Sequences.Add(new(op, kind, receiver, projection, index, end, element));
         return this.RegisterTemporary(result);
     }
@@ -79,7 +79,7 @@ public sealed partial class OwnershipAnalysis
             return root;
         }
 
-        return this.Expression(source, ReferenceTypes.IsArray(source.BoundType) ? PlaceUseKind.Read : PlaceUseKind.Consume);
+        return this.Expression(source, ReferenceTypes.IsArray(source.BoundType) || ReferenceTypes.IsDynamicArray(source.BoundType) ? PlaceUseKind.Read : PlaceUseKind.Consume);
     }
 
     private int SequenceMember(MemberAccessKoto source)

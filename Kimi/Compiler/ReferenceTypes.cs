@@ -16,7 +16,11 @@ internal static class ReferenceTypes
     internal static bool IsTuple(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
         && type.Components[0].Kind == BoundTypeKind.Tuple;
 
-    internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) || IsTuple(type) ||
+    // SPEC 4.5: a borrowed Array is a reference to its handle storage.
+    internal static bool IsDynamicArray(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+        && type.Components[0].Kind == BoundTypeKind.Array;
+
+    internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) || IsTuple(type) || IsDynamicArray(type) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && type.Components[0].Kind is BoundTypeKind.Closure or BoundTypeKind.Parameter) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } && ScalarTypes.Supports(type.Components[0])) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } &&

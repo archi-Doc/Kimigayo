@@ -11,8 +11,15 @@ public class ArrayBindingTest
 {
     private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => ()\n";
 
+    // SPEC 4.6.1: a borrowed handle shares access for the metadata operation and is read through the reference.
+    [Fact]
+    public void BorrowedHandlesReadMetadataThroughTheReference()
+        => ScalarEmissionTest.EmitFixture(
+            "ArrayBorrowedHandle",
+            Task + "func describe(tasks: ref/Array<Task>) -> isize => tasks.length\nfunc room(tasks: ref/Array<Task>) -> isize => tasks.capacity\nlet tasks: Array<Task> = []\nrequire describe(tasks@ref) == 0 and room(tasks@ref) == 0 and describe(tasks@ref) == 0 else => $abort(\"borrowed\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
     [Theory]
-    [InlineData("func describe(tasks: ref/Array<Task>) -> isize => tasks.length\nlet tasks: Array<Task> = []\nlet n = describe(tasks@ref)")]
     [InlineData("let tasks: Array<Task> = [Task.init(1), Task.init(2)]\nlet room: isize = tasks.capacity\nlet all = tasks.indices")]
     [InlineData("let numbers: Array<i32> = [1, 2, 3]\nlet n: isize = numbers.length")]
     public void ArrayTypesLiteralsAndMetadataBind(string source)
