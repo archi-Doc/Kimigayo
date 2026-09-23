@@ -231,10 +231,18 @@ public sealed partial class Binding
             }
 
             var definition = (FunctionKoto)original!.Declaration;
-            if (definition.TypeConstraints.Count != 0 || definition.AttributeChain is not null ||
+            if (definition.AttributeChain is not null ||
                 definition.Parameters.Any(x => x.AttributeChain is not null))
             {
                 Fail(function, BindingFailure.Unsupported, true);
+                continue;
+            }
+
+            // SPEC 8.8.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
+            var constraints = this.CheckConstraints(definition.TypeConstraints, definition, arguments, scope, null, null, lengths);
+            if (constraints != ConstraintProof.Proven)
+            {
+                Fail(function, constraints == ConstraintProof.Error ? BindingFailure.InvalidConstraint : constraints == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, constraints == ConstraintProof.Unknown);
                 continue;
             }
 

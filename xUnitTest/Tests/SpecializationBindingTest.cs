@@ -18,6 +18,24 @@ public class SpecializationBindingTest
             Lengths + "specialize func pick<3, i32>(values: ref/[3 of i32]) -> i32 => 1\nfunc forward<length N, T>(values: ref/[N of T]) -> i32 => pick<N, T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [2 of i32] = [1, 2]\nrequire pick<3, i32>(a@ref) == 1 and pick<2, i32>(b@ref) == 0 and forward<3, i32>(a@ref) == 1 and forward<2, i32>(b@ref) == 0 else => $abort(\"selection\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    // SPEC 8.8.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
+    private const string Constrained = "func twice<T>(value: T) -> T\n    T is Copy\n    return value\n";
+
+    [Fact]
+    public void ConstrainedOriginalsAcceptSatisfyingSpecializations()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationConstrained",
+            Constrained + "specialize func twice<i32>(value: i32) -> i32 => value + value\nrequire twice<i32>(4) == 8 and twice<bool>(true) == true else => $abort(\"twice\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    [Fact]
+    public void RejectsSpecializationsThatViolateInheritedConstraints()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Token\n    deinit => ()\n" + Constrained + "specialize func twice<Token>(value: Token) -> Token => value@move");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsatisfiedConstraint_Kd);
+    }
+
     // SPEC 8.8.1: an instance method's specialization restates the receiver at the original's position.
     private const string Receiver = "struct Scale\n    var unit: i32 = 1\n    public func weight<U>(self: ref/Self, other: ref/U) -> i32 => self.unit\n";
 
