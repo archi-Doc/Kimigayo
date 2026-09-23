@@ -1,10 +1,10 @@
 # UTF-8書式化・文字列補間 — 仕様変更案
 
-- 日付: 2026-09-20（2026-09-22 最終版、2026-09-23 明示的な転送と排他借用に適合）
+- 日付: 2026-09-20（2026-09-22 最終版、2026-09-23 明示的な転送・排他借用と Borrow Origin Suffix に適合）
 - 状態: 設計案。例は提案APIを使用し、実装済み機能や検証済みABIを示さない。
-- 優先順位: 本案で変更する事項は[SPEC.md](../../SPEC.md)およびその参照先より優先する。変更しない事項には既存仕様を適用する。他の設計案の未統合機能を前提としない。
+- 優先順位: 本案で変更する事項は[SPEC.md](../../SPEC.md)およびその参照先より優先する。変更しない事項には既存仕様を適用する。借用Originの表記には[2026-09-23 Borrow Origin Suffix](../Changes/2026-09-23%20Borrow%20Origin%20Suffix.md)を適用し、それ以外の設計案の未統合機能を前提としない。
 - 取得: 転送・借用の綴りは現行仕様（§3.1の転送`@move`、§10.2の引数適合、§13.5の明示操作）に従う。裸の式は所有Placeから転送も排他貸与も開始しない。直接の所有Placeを`uniq/T`へ渡す点には`@uniq`、所有受け手（`owner/Self`）の操作には`@move`を書き、借用値と排他参照経由のPlaceは裸で再借用する。本案は取得規則に例外を加えない。
-- Origin: 構文・省略・互換性は[§15.3–4](../../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations)に従う。署名は直接借用入力からの結果省略（§15.4.3）を使い、省略できない位置だけ`origin`節で書く。`Type{name}`は常にbinding setの命名であり、Originの適用ではない。
+- Origin: 借用注釈は Borrow Origin Suffix 案の後置`during`を使い、省略・互換性は[§15.3–4](../../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations)に従う。署名は直接借用入力からの結果省略（§15.4.3）を使い、直接借用の明示注釈は`ref/T during source`、名前付き型のスロット間の関係は`origin`節で書く。`Type{name}`は常にbinding setの命名であり、Originの適用ではない。型宣言の`{source}`はスキーマヘッダーであり、`during`へ置き換えない。
 - 目的: 書式化を1回の評価と書き込みで実行し、借用とバッファ再利用によって不要な確保・コピー・再検証を避ける。
 
 ## 1. 基本方針
@@ -39,7 +39,7 @@ contract Utf8Format
 | `FixedBuffer {source}` | Non-Copy。呼び出し側の固定長バイト領域を排他的に借用する。`source`のLoan要求は`uniq` |
 | `HeapBuffer` | Non-Copy。伸長可能なヒープ領域を所有する |
 | `Utf8Slice {source}` | Copy。検証済みUTF-8領域を共有借用する。参照カウント更新なし。`source`のLoan要求は`ref` |
-| `Utf8Writer<W> {target}` | Non-Copy。`W is BufferWriter`。`uniq{target}/W`と失敗状態を保持する。`target`のLoan要求は`uniq` |
+| `Utf8Writer<W> {target}` | Non-Copy。`W is BufferWriter`。`uniq/W during target`と失敗状態を保持する。`target`のLoan要求は`uniq` |
 
 `reserve`の直接借用入力は受け手だけなので、結果の`source`は省略規則で`self`に補完される。`Utf8Writer<W>`を入力にとる関数では、外側の借用と省略された`target`が独立した入力Originになり、`target`が外側の借用を包含する整形式条件を保持する。適合実装との互換性は正規化されたOrigin契約で判定し、明示・省略の表記だけで区別しない。
 
