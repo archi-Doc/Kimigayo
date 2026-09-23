@@ -459,9 +459,18 @@ internal sealed partial class BodyLowering
         }
 
         var source = (BinaryKoto)body.Operations[plan.Operation].Source;
-        var layout = this.aggregateLayouts.Get(SignatureType(this, source.Left.BoundType)!)!;
-        var field = layout.IsArray ? 0 : plan.Element;
-        var representation = layout.Fields[field];
+        var receiverType = SignatureType(this, source.Left.BoundType)!;
+        var dynamicArray = receiverType.Kind == BoundTypeKind.Array;
+        var layout = this.aggregateLayouts.Get(receiverType)!;
+        var field = layout.IsArray || dynamicArray ? 0 : plan.Element;
+        // The Array layout describes its handle; the indexed storage has T's own layout.
+        var representation = dynamicArray ? FunctionAbi.GetValue(receiverType.Components[0], this.aggregateLayouts) : layout.Fields[field];
+        var elementLayout = dynamicArray ? this.aggregateLayouts.Get(receiverType.Components[0]) : layout.Children[field];
+        if (representation is null)
+        {
+            return Fail("Array element has no supported storage representation.", out failure);
+        }
+
         if (write)
         {
             var input = IsScalar(body.Places[operation.Input].Type) ? Input(body, id, 0) : -1;
@@ -485,7 +494,7 @@ internal sealed partial class BodyLowering
                 return Fail("Element store input is no longer initialized.", out failure);
             }
 
-            var child = layout.Children[field];
+            var child = elementLayout;
             var isString = ReferenceEquals(representation, WindowsLowering.String);
             var destination = new EmissionOperand(EmissionOperandKind.ElementAddress, plan.Operation);
             if (isString || child is { NeedsDestruction: true })
@@ -534,7 +543,7 @@ internal sealed partial class BodyLowering
         if (address)
         {
             var location = -1;
-            if (layout.IsArray && !this.TryGetLocation(source, directory, constants, out location))
+            if ((layout.IsArray || dynamicArray) && !this.TryGetLocation(source, directory, constants, out location))
             {
                 return Fail("Element bounds check requires a source location.", out failure);
             }
@@ -544,6 +553,14 @@ internal sealed partial class BodyLowering
             var receiver = layout.Value.Layout.Size == 0 ? new EmissionOperand(EmissionOperandKind.NullAddress, 0)
                 : plan.Parent < 0 ? new EmissionOperand(EmissionOperandKind.SlotAddress, plan.Root)
                 : new EmissionOperand(EmissionOperandKind.ElementAddress, body.Projections[plan.Parent].Operation);
+            if (dynamicArray)
+            {
+                // A dynamic element retains the root-wide access Loan; resolving it never
+                // creates a movable path. Replacement uses the ordinary destroy/store below.
+                function.AddScalar(EmissionOpcode.Sequence, id, [receiver, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, -1)], place: body.Operations.Count + id, location: location, op: "SliceAddress", check: ArithmeticCheckKind.Bounds, representation: representation);
+                return true;
+            }
+
             function.AddScalar(
                 EmissionOpcode.ElementAddress,
                 id,
@@ -566,7 +583,7 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if (layout.Children[field] is { } aggregate)
+            if (elementLayout is { } aggregate)
             {
                 var start = function.Operands.Count;
                 function.Operands.Add(new(EmissionOperandKind.ElementAddress, plan.Operation));

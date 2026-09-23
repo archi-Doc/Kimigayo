@@ -236,7 +236,7 @@ internal static class ElementAccess
             }
         }
 
-        if (source is IndexKoto && type.Kind == BoundTypeKind.FixedArray && type.Components.Count == 1)
+        if (source is IndexKoto && type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && type.Components.Count == 1)
         {
             element = type.Components[0];
             return true;
