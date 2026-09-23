@@ -24,14 +24,14 @@ The following declarations are required. The default Kimi alias makes `Text` vis
 | --- | --- | --- |
 | `Kimi` | `Utf8Format`, `BufferWriter` | Static Contracts above |
 | `Kimi` | `BufferFull` | Ordinary, stateless Copy struct; public `init()` |
-| `Kimi` | `WriteWindow {source}` | Verified intrinsic, Non-Copy; covariant `source`, required Loan `uniq` |
-| `Kimi` | `Utf8Writer {target}` | Verified intrinsic, Non-Copy; covariant `target`, required Loan `uniq` |
-| `Kimi.Text` | `FixedBuffer {source}` | Verified intrinsic, Non-Copy; covariant `source`, required Loan `uniq` |
+| `Kimi` | `WriteWindow {source}` | Verified intrinsic, Non-Copy; covariant `source`, required Loan `uniq`; opts out of ObjectPayload (§8.4.7.2) |
+| `Kimi` | `Utf8Writer {target}` | Verified intrinsic, Non-Copy; covariant `target`, required Loan `uniq`; opts out of ObjectPayload |
+| `Kimi.Text` | `FixedBuffer {source}` | Verified intrinsic, Non-Copy; covariant `source`, required Loan `uniq`; opts out of ObjectPayload |
 | `Kimi.Text` | `HeapBuffer` | Ordinary Non-Copy struct owning a growable allocation |
 | `Kimi.Text` | `Utf8Slice {source}` | Ordinary Copy struct with a private `Slice<u8>`; required Loan `ref` |
 | `Kimi.Text` | `InvalidUtf8` | Ordinary, stateless Copy struct; public `init()` |
 
-Only the error types expose initializers. The other types are obtained through the operations below. Intrinsic Origin slots and permissions are fixed compiler metadata (§15.3.5); raw pointers and a source-declared phantom Origin cannot reproduce their authority. Window, view and adapter management performs no heap allocation, reference-count update or management callback.
+Only the error types expose initializers. The other types are obtained through the operations below. Intrinsic Origin slots and permissions are fixed compiler metadata (§15.3.5); raw pointers and a source-declared phantom Origin cannot reproduce their authority. Window, view and adapter management performs no heap allocation, reference-count update or management callback; the three ObjectPayload opt-outs forbid making these Loan-bound adapters object payloads, while the no-allocation requirement remains a requirement on the operations.
 
 ### 1.2. Effects and erasure
 
@@ -260,9 +260,9 @@ The lexical syntax is §2.9. Each embedded expression fits `write<T>(value: ref/
 
 | Expression | Adaptation | T |
 | --- | --- | --- |
-| Owned Place or temporary, including Copy values | Shared borrow | Expression Type |
+| Owned Place or temporary, including Copy values, whatever the access path | Shared borrow | Expression Type |
 | `ref/U` | Exact | U |
-| `uniq/U` or Place through an exclusive reference | Shared Reborrow | U |
+| `uniq/U` | Shared Reborrow | U |
 
 A bare expression does not Move its source. `\(x@move)` borrows the transferred temporary. Literals use normal default Types, without an expected `string` Type.
 
@@ -276,7 +276,7 @@ let message = "My number is \(self.number)"
 
 `$tryWrite(writer, literal)` is a Composition Root operation, not a Function value. Its result is `Result<(), BufferFull>` and it creates no combined string.
 
-The first operand is acquired as `uniq/Utf8Writer`: a bare directly owned Place is rejected with a suggestion to use `@uniq`; a borrowed value reborrows normally. The second operand must syntactically be an ordinary or raw string literal, with or without substitutions. Use `write` for an arbitrary string value.
+The first operand is acquired as `uniq/Utf8Writer`; it is an operand, not a Receiver Expression (§7.3), so a bare owned Place is rejected, whatever its access path, with a suggestion to use `@uniq`, and a borrowed value reborrows normally. The second operand must syntactically be an ordinary or raw string literal, with or without substitutions. Use `write` for an arbitrary string value.
 
 Evaluate the first operand once and activate its exclusive borrow immediately, before any embedded expression. Call borrow reservations (§15.6.7) do not apply. Write segments and values left to right using §5.2 Adaptation. At the first failure stop without evaluating later expressions; an adapter already failed at entry skips all expressions. Still check every expression's Types, conformance and control-transfer targets statically. Embedded expressions cannot read the borrowed adapter or its source. Preserve original temporary scopes and the targets of `return`, `exit` and `yield`. Drop uncommitted Windows and retain committed output.
 

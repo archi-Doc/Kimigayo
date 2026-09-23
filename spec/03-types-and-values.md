@@ -185,7 +185,7 @@ An empty environment or `func []` implies neither purity, a function-pointer ABI
 
 ### 3.2.2. Weak reference values
 
-`Kimi.Weak<S>` is a compiler-managed Non-Copy struct Core. After normalization, `S` must be a complete `rc/T` or `arc/T` satisfying the object View Target rules. A generic definition needs the same evidence: for a pair `<s/T>`, `s` must be `rc` or `arc`. A bare payload Core, `obj`, an object borrow, or `Weak` itself is not a valid `S`.
+`Kimi.Weak<S>` is a compiler-managed Non-Copy struct Core. After normalization, `S` must be a complete `rc/T` or `arc/T` satisfying the object View Target rules. In a generic definition, `S` is either `rc/X` or `arc/X` over an [Object Target](08-generics-constraints-and-contracts.md#8472-objectpayload) `X`, or a pair's own `s/T` whose [admitted Semantics set](08-generics-constraints-and-contracts.md#87-constraint-proof-system) is contained in {`rc`, `arc`}, which also supplies the target's pair evidence. A bare payload Core, `obj`, an object borrow, or `Weak` itself is not a valid `S`.
 
 A Weak owns one responsibility for a particular weak management area; it never owns the payload strongly. Its outer Semantics is ordinary `owner`, and `ref/Weak<S>` borrows the Weak slot. Normal acquisition Moves a Weak, and `Kimi.Intrinsics.clone` explicitly duplicates its weak responsibility. Users cannot replace its fields or `deinit`.
 
@@ -258,7 +258,7 @@ In the table, `T` denotes a Core; in object forms it may also denote a valid run
 | owning | owner, obj, rc, arc |
 | reference | ref, uniq, obj, rc, arc, objref, objuniq, unsafe |
 
-A Requirement on a Semantics binding may also name a concrete Semantics (`owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe`), which tests equality with it. Concrete names and categories combine under the [Requirement expression rules](08-generics-constraints-and-contracts.md#83-requirement-expressions), as in `s is ref or obj`.
+A Requirement on a Semantics binding may also name a concrete Semantics (`owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe`), which tests equality with it. Concrete names and categories combine under the [Requirement expression rules](08-generics-constraints-and-contracts.md#83-requirement-expressions), as in `s is ref or obj`. In generic checking, every such requirement is decided by the binding's [admitted set](08-generics-constraints-and-contracts.md#87-constraint-proof-system): the Semantics its premises allow.
 
 `reference` includes every non-`owner` representation, including raw pointers, and establishes no safe-borrow guarantee. `s is borrow` requires an outer safe borrow; `s is owning or borrow` permits every outer Semantics except `unsafe`. These tests apply to the outer layer only; they guarantee nothing about nested Types or payloads. The category `owning` is distinct from the recursive `Owned` guarantee. There are no categories named `owned`, `counted`, `pointer`, `safe` or `all`.
 
@@ -383,7 +383,7 @@ ref/(ref/T during inner) during outer    // Separate inner and outer Origins.
 
 Prefixes associate to the right: `ref/ref/T during outer` annotates only the outer reference. Parentheses group complete Types and permit per-layer annotations. `ref/((i32) -> bool)` borrows a function value, while `(ref/i32) -> bool` takes one borrowed integer; `ref/(i32) -> bool` is invalid because a Function Type needs its own parameter list. Grouping adds neither a Tuple nor a borrow.
 
-For identity, applicability, layout and Origin analysis, aliases are expanded and every Type layer is preserved: `ref/ref/T` differs from `ref/T`. Grouping and redundant `owner` prefixes normalize away, but `owner/V` keeps `V`'s references and Object Semantics. Object Semantics require a supported Core or runtime Contract View Target, not a Type that already has Semantics applied: `ref/obj/T` is valid, while `obj/ref/T` does not box a reference. Generic substitutions obey the same rules; see [generic slots](08-generics-constraints-and-contracts.md#81-generic-type-parameters).
+For identity, applicability, layout and Origin analysis, aliases are expanded and every Type layer is preserved: `ref/ref/T` differs from `ref/T`. Grouping and redundant `owner` prefixes normalize away, but `owner/V` keeps `V`'s references and Object Semantics. Object Semantics require an [Object Target](08-generics-constraints-and-contracts.md#8472-objectpayload): an ObjectPayload Core, a runtime Contract View Target or a pair target with pair evidence. A Type that already has Semantics applied or a Core that opts out of ObjectPayload is not one: `ref/obj/T` is valid, while `obj/ref/T` does not box a reference. Generic substitutions obey the same rules; see [generic slots](08-generics-constraints-and-contracts.md#81-generic-type-parameters).
 
 Each Type layer keeps its Origin dependencies under the [position-specific elision rules](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision); an outer annotation cannot replace an inner one. In parameter Types, an outer direct borrow and each omitted aggregate slot introduce independent input Origins under §15.4; nested borrow layers still require explicit bindings. Local initializers may infer all layers, and instance Fields require explicit bindings throughout. The examples above illustrate composition, not unrestricted Origin omission.
 
@@ -421,6 +421,20 @@ These are alternative outcomes, not fallback stages: a failed direct Move cannot
 | Through a shared reference | Resolves a `ref`, `objref`, `rc` or `arc` reference |
 
 A **borrow value** is an expression whose outer Semantics belongs to the `borrow` category (§3.3); a stored reference is both a borrow value and, through its path, a Place. The path's authority bounds every borrow of the Place ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-movable-places), [§13.5.5](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow)); a temporary is not a Place and has no path.
+
+**Value kinds.** For acquisition, the source of an expression is classified in the following order. The access path is used only for permissions and for the Movable Place rules (§15.1.5); it does not change the value kind.
+
+| Value kind | Definition |
+| --- | --- |
+| Borrow value | A value of `ref`, `uniq`, `objref` or `objuniq` Type, whether stored in a Place (`var r = x@uniq` makes `r` one, as does a field `link: uniq/T`) or returned by a call |
+| Owned Place | A Place holding an owned value or an owned handle (`obj`, `rc`, `arc`), whatever its access path |
+| Owned temporary | A Temporary Value that is neither of the above |
+
+An **object-kind input** is an owned handle or an `objref`/`objuniq` value; every other input is a **value-kind input**.
+
+A **Receiver Expression** is the expression in the receiver position of a call: a method call, a custom, computed or required accessor, or a direct call of a Closure or function value ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers), §7.6.3, §11.2). It may be a Place or a temporary, and it is acquired implicitly under §7.3 whatever its value kind. The `self` argument of an unbound call `Type.method(x, ...)` is an argument, not a Receiver Expression, and an assignment target is not one either (§13.7). The Subject Place of `match` and `for` (§15.1.6) is a separate notion.
+
+The **lending point** of a borrow, Reborrow or projection is the storage it targets: for an owned Place, the Place reached by following standard field, Tuple-element and array-element projections that call no user code as far as they extend; for an owned temporary, that temporary; for a borrow value, its referent; for an object borrow, the object, and for a payload projection, the payload; for a base projection (§9.5.1), the selected base subobject. Reference slots and owners that are protected to keep the target valid follow the dependency rules of §15.6.7 and are not part of the lending point.
 
 **Initialization** places a value in an empty Place. **Destruction** ends a value's lifetime and its responsibility; if the storage remains, that Place becomes Uninitialized after normal completion. Nothing can access storage after the storage's own lifetime ends.
 

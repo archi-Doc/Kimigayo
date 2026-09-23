@@ -69,7 +69,7 @@ Statements in single-item bodies supply Unit only if they structurally complete 
 The Target Result Type is fixed as Unit for `for`, `while`, `defer`, `set`, `init`, `deinit`, and discarded `if`/`match`/`do`/`loop` expressions. Explicit transfers must still fit it: `return 123` in a Unit function and `loop => exit 1` in Discard Context are errors. A value-used loop takes its result from self-targeted exits, never from its body end. Receiving a transfer does not additionally supply an implicit body result.
 
 ```kimi
-if ready => visited@uniq.insert(id)   // A bool result may be discarded.
+if ready => visited.insert(id)        // A bool result may be discarded.
 let bad: i32 = if ready
     compute()                   // Discarded; implicit Unit does not fit i32.
 else => 0
@@ -376,8 +376,8 @@ let value = if ready
 else => 0
 
 match command@move
-    .Put(let key, let value) => table@uniq.insert(key@move, value@move) // Discard Option<V>.
-    .Clear => table@uniq.clear()                                        // Unit.
+    .Put(let key, let value) => table.insert(key@move, value@move) // Discard Option<V>.
+    .Clear => table.clear()                                        // Unit.
     _ => ()
 ```
 

@@ -28,7 +28,7 @@ In ordinary expressions, `is`/`is not` ends after one named struct Core, and out
 
 Unparenthesized comparison chains such as `a < b < c`, `a == b == c` and `a < b == flag` are syntax errors; write `a < b and b < c` or `(a < b) == flag`. Each comparison still requires valid operand Types.
 
-`@` is one token. All adaptations share one precedence level and left associativity, below the level-2 prefix operators: `-x@i64` means `(-x)@i64`. Targets may contain qualified names, `/` and generic arguments, so a result adapted to such a target must be parenthesized before selection, calls or indexing: `(x@T).name`, `(f@T)()`, `(a@T)[0]`. After a bare built-in Semantics shorthand or `@move` the target is complete, and the postfix chain continues: `buffer@uniq.clear()`, `counter@uniq()`, `builder@move.finish()` and `a@uniq[0]` group as `(buffer@uniq).clear()` and so on. Use `(x@Number) / divisor` for division after adaptation.
+`@` is one token. All adaptations share one precedence level and left associativity, below the level-2 prefix operators: `-x@i64` means `(-x)@i64`. Targets may contain qualified names, `/` and generic arguments, so a result adapted to such a target must be parenthesized before selection, calls or indexing: `(x@T).name`, `(f@T)()`, `(a@T)[0]`. After a bare built-in Semantics shorthand or `@move` the target is complete, and the postfix chain continues: `tasks@uniq.length`, `counter@uniq()`, `builder@move.finish()` and `a@uniq[0]` group as `(tasks@uniq).length` and so on. Use `(x@Number) / divisor` for division after adaptation.
 
 Prefix `try` binds below `@` and above the multiplicative operators, so `try x@move` is `try (x@move)` and `try a + 1` is `(try a) + 1`. Extracting before adapting needs grouping, `(try f())@i64`, and a level-2 prefix operator cannot take a `try` expression directly: write `-(try x)` or `not (try x)`.
 
@@ -42,7 +42,7 @@ Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | `a + b << count` | `(a + b) << count` |
 | `a + b@i64 * c` | `a + ((b@i64) * c)` |
 | `value@i64@f64` | `(value@i64)@f64` |
-| `list@uniq.add(1).add(2)` | `((list@uniq).add(1)).add(2)` |
+| `builder@move.add(1).add(2)` | `((builder@move).add(1)).add(2)` |
 | `try pending@move * 2` | `(try (pending@move)) * 2` |
 | `not ready and flags & mask != 0` | `(not ready) and ((flags & mask) != 0)` |
 | `a < b and b <= c or done` | `((a < b) and (b <= c)) or done` |
@@ -328,14 +328,14 @@ A fully specified `@ref/T` or `@uniq/T` may project a complete object payload wh
 
 Ordinary initialization, access, reborrow, Loan and Origin checks apply. Shared projections may coexist; conflicting parent access, moving or releasing the owner, and replacing the handle remain forbidden while a dependent projection is live. No ownership transfer or reference-count operation occurs. Neither `rc` nor `arc` grants exclusive access, even with one strong reference.
 
-The effective static Type and declared constraints are used; an inventory of derived Types or an optimizer's guess of the Dynamic Type is not Sealed evidence. Open Views, runtime Contract Views and base subobjects do not qualify. No ordinary argument receives an implicit payload projection; only a selected same-complete-Type shared receiver may use the implicit path of §12.4.4.
+The effective static Type and declared constraints are used; an inventory of derived Types or an optimizer's guess of the Dynamic Type is not Sealed evidence. Open Views, runtime Contract Views and base subobjects do not qualify. No ordinary argument receives an implicit payload projection; only a selected same-complete-Type shared or exclusive receiver uses the implicit path of §12.4.4 through [receiver acquisition](07-functions-and-callable-values.md#73-explicit-receivers).
 
 ```kimi
 func borrowPayload<T>(source: objref/T) -> ref/T during source
-    T is Sealed
+    T is Sealed and ObjectPayload   // Sealed for the projection, ObjectPayload to form objref/T
     return source@ref/T
 func borrowPayloadMut<T>(source: objuniq/T) -> uniq/T during source
-    T is Sealed
+    T is Sealed and ObjectPayload
     return source@uniq/T
 
 // a and b are writable obj/Cell<i32> Places; Cell is non-open.
@@ -428,7 +428,7 @@ Abort and cleanup follow the ordinary failure and lifetime rules: completed Move
 
 ### 13.5.7. Object upcasts
 
-Let `S` be the source's static Core View Target and `V` a different target. An upcast requires a static proof of `Supports(S, V)` that remains valid for every more-derived Dynamic Type. Concrete Core support follows the base graph. Static conformance alone does not establish this persistence: [inherited conformance](08-generics-constraints-and-contracts.md#844-conformance) depends on matching, and the [runtime Contract extension](08-generics-constraints-and-contracts.md#85-runtime-contracts) must guarantee persistent Supports for its Views. [Payload erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), initialization, access, Origins and Loans are validated in every row.
+Let `S` be the source's static Core View Target and `V` a different target. An upcast requires a static proof of `Supports(S, V)` that remains valid for every more-derived Dynamic Type. Concrete Core support follows the base graph. The target view must itself be formable: a Core that opts out of ObjectPayload (§8.4.7.2) is never a target. Static conformance alone does not establish this persistence: [inherited conformance](08-generics-constraints-and-contracts.md#844-conformance) depends on matching, and the [runtime Contract extension](08-generics-constraints-and-contracts.md#85-runtime-contracts) must guarantee persistent Supports for its Views. [Payload erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), initialization, access, Origins and Loans are validated in every row.
 
 | Source | Explicit operation | Acquisition and result |
 | --- | --- | --- |
@@ -452,7 +452,7 @@ A checked cast (§13.6.2) is needed when the source view cannot guarantee the ta
 
 ### 13.5.8. Object ownership creation and sharing
 
-These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. Both labels precede any name-required boundary and permit name omission; every argument value is required. The Weak operations in §13.5.9 likewise permit omission of their `value` label. `T` is a valid concrete object payload Core, and `S` a valid complete `rc`/`arc` handle Type. Eligibility is an intrinsic formation rule, not a user Contract, and does not extend the current object and runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
+These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. Both labels precede any name-required boundary and permit name omission; every argument value is required. The Weak operations in §13.5.9 likewise permit omission of their `value` label. `T` satisfies [ObjectPayload](08-generics-constraints-and-contracts.md#8472-objectpayload): every creation API declares `T is ObjectPayload`, and the cyclic factories additionally `T is Owned`. `S` is a valid complete `rc`/`arc` handle Type. Eligibility is an intrinsic formation rule, not a user Contract, and does not extend the current object and runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
 
 | API | Input -> result | Contract |
 | --- | --- | --- |
@@ -463,7 +463,7 @@ These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary i
 | `Kimi.Intrinsics.makeRcCyclic<T, F>(build)` | `F -> rc/T` | Cyclic construction, below |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>(build)` | `F -> arc/T` | The corresponding `arc` construction |
 
-Any valid complete owner Core other than Never may be the concrete payload, including open struct Cores; only projection to ordinary value borrows additionally requires Sealed (§13.5.5.1). Generic signatures must prove the target's validity from their declared constraints (§8.10).
+Any valid complete owner Core other than Never that does not opt out of ObjectPayload may be the concrete payload, including open struct Cores; only projection to ordinary value borrows additionally requires Sealed (§13.5.5.1). Generic signatures must prove the target's validity from their declared constraints (§8.10).
 
 **Normal creation** acquires the complete input once by bare acquisition or transfer (`makeObj(value@move)` for a Non-Copy Place), allocates object storage and Moves `T` into the payload, without transferring ownership of the original storage and without repeating constructors, accessors or `deinit`. The initial exact-`T` view is published only after metadata and payload initialization. No blanket Owned constraint applies to concrete payload creation, and normal external dependencies are preserved; view erasure separately requires the existing Owned proof.
 
@@ -471,7 +471,7 @@ Any valid complete owner Core other than Never may be the concrete payload, incl
 
 **Lifecycle.** Objects pass through Building, Alive, Destroying and Freed. Building exposes no ordinary strong or payload access. Strong = 1 is published once; the last live strong changes one to zero and begins irreversible destruction, which destroys the complete Dynamic Type and then frees the original allocation (§21.2.3). A surviving weak table does not keep the object alive. `obj` has the corresponding construction and destruction boundary without a strong count.
 
-**Cyclic construction.** The `rc` factory requires `T is Owned` and `F is Callable<owner, (Weak<rc/T>) -> T>`; the `arc` factory substitutes `arc`. `F` is acquired normally and called once with an owned receiver; `F` itself need not be Copy or Owned. The `T` constraint is specific to this factory: `T`'s dependencies are not yet known when the Weak is published to the builder, and inferring them only from `F`'s captures would miss distinct Loans obtained through helpers or mutable static state.
+**Cyclic construction.** The `rc` factory requires `T is ObjectPayload`, `T is Owned` and `F is Callable<owner, (Weak<rc/T>) -> T>`; the `arc` factory substitutes `arc`. `F` is acquired normally and called once with an owned receiver; `F` itself need not be Copy or Owned. The `T` constraint is specific to this factory: `T`'s dependencies are not yet known when the Weak is published to the builder, and inferring them only from `F`'s captures would miss distinct Loans obtained through helpers or mutable static state.
 
 1. Allocate unpublished object storage and a side table holding a construction guard and one builder Weak.
 2. Pass that Weak by value to the builder. It may be moved or cloned, but `upgrade` returns `None` during Building. No uninitialized payload or construction receiver is exposed.
@@ -538,7 +538,7 @@ A stored Weak to a payload that keeps a local borrow cannot outlive that borrow 
 
 ### 13.6.1. Runtime is tests
 
-In ordinary expressions, `value is T` and `value is not T` are non-associative comparisons. The right side is one named struct Core, optionally qualified and with resolved Type arguments, but without Semantics, Origin, binding name or requirement composition. Aliases are expanded and accessibility is checked. Unresolved Type parameters, associated Types and non-struct targets are outside this initial syntax.
+In ordinary expressions, `value is T` and `value is not T` are non-associative comparisons. The right side is one named struct Core, optionally qualified and with resolved Type arguments, but without Semantics, Origin, binding name or requirement composition. Aliases are expanded and accessibility is checked. Unresolved Type parameters, associated Types and non-struct targets are outside this initial syntax. The object form of the right side under the left side's Semantics must be formable (§8.4.7.2), because refinement (§14.10) gives the operand that Effective Type; a Core that opts out of ObjectPayload is rejected even though a false-only test would otherwise be accepted.
 
 The left side must have Type `obj/S`, `rc/S`, `arc/S`, `objref/S` or `objuniq/S` with a struct Core `S`. It is evaluated once, and the result is `Supports(RuntimeObjectType(value), T)` or its negation. Generic identity includes the relevant arguments. The test itself neither Copies, Moves nor Consumes the operand, changes no counts, and acquires no stronger authority; getter and call evaluation, required shared access, temporaries and cleanup keep their normal effects.
 
@@ -556,7 +556,7 @@ Well-typed tests are accepted even when static information proves them always tr
 
 The object model also defines view-support tests for any valid View Target and a distinct exact-Type test. A support test queries `Supports(RuntimeObjectType(value), V)`; an exact test compares Runtime Type Identity with a concrete Core and excludes derived Types. The source syntax for Contract-view tests and exact tests remains deferred and does not extend the initial `is` syntax above. A `bool` saved in a variable carries no refinement provenance.
 
-For a statically valid checked cast to `V`, success is exactly the same `Supports` predicate, always evaluated on the original object's Dynamic Type, including from a Contract view. Failure is an ordinary absence or error result, never Abort or unsafe reinterpretation.
+For a statically valid checked cast to `V`, whose validity includes formation of the result Type (an opted-out target is rejected, §8.4.7.2), success is exactly the same `Supports` predicate, always evaluated on the original object's Dynamic Type, including from a Contract view. Failure is an ordinary absence or error result, never Abort or unsafe reinterpretation.
 
 | Source | Conceptual result | Acquisition and failure |
 | --- | --- | --- |
@@ -590,6 +590,8 @@ Target validity and accessibility, Semantics preservation, [Owned erasure](15-ow
 4. Place the temporary by the ordinary Copy/Move rules, transferring its responsibility as applicable and leaving the destination Initialized.
 
 For a custom, computed or required `set`, the secured input is passed to the setter instead of steps 3–4. A standard `set` places storage directly under the permissions of §11.1 and may restore incomplete storage. A constructor's first placement follows §11.3.1. A destination rooted in a getter-owned temporary is restricted by §11.2.3.
+
+The target of an assignment, compound assignment, increment or decrement is not a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)): it is located and acquired with write permission under the path, `let`/`var` and Property permissions of §11.1, needs no `@uniq`/`@objuniq` whatever its access path, and starts no call reservation (§15.6.7). Getters invoked while locating the target, and the receiver of a custom, computed or required `set`, are Receiver Expressions and are acquired under §7.3.
 
 Replacement uses the existing storage without invoking incoming constructors or declaration initializers. A complete old value is cleaned up by its exact Type's full destruction chain, and an incomplete one under [partial cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup). A derived value's base view is not a whole-value target. Destination and ancestor permissions and Loans are checked first. If cleanup of the old value does not complete normally, nothing is installed; the old state is not restored, and execution does not continue with an observably empty destination.
 
@@ -628,7 +630,7 @@ Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result m
 
 String `+=` remains subject to the deferred operator ownership design of [§13.3](#133-arithmetic-bitwise-and-shift-operators); this section's evaluation order does not supply its missing acquisition rules.
 
-Reading and writing are selected independently under Chapter 11: standard operations use permitted storage access, and custom, computed and required operations call their accessors. The read result must support the operator, and the operator's result must fit the `set` input. Valid receivers and Loans are required through every stage, and an owning getter may consume a receiver that `set` needs. No duplication is inserted, borrowing is not retried after a failed Move, and a setter is never bypassed through exclusive storage access. Evaluation remains target and read first, then the right-hand side, and updates of getter-owned temporaries remain forbidden (§11.2.3).
+Reading and writing are selected independently under Chapter 11: standard operations use permitted storage access, and custom, computed and required operations call their accessors. The destination is an assignment target, not a Receiver Expression (§13.7.1). The read result must support the operator, and the operator's result must fit the `set` input. Valid receivers and Loans are required through every stage, and an owning getter may consume a receiver that `set` needs. No duplication is inserted, borrowing is not retried after a failed Move, and a setter is never bypassed through exclusive storage access. Evaluation remains target and read first, then the right-hand side, and updates of getter-owned temporaries remain forbidden (§11.2.3).
 
 ```kimi
 values[nextIndex()] += amount() // Index, old value, amount, addition, write.

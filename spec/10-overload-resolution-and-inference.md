@@ -49,24 +49,22 @@ Adaptations are compared in this order, best first:
 
 Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies when bare or transfers under `@move` ([Copy and Move](03-types-and-values.md#35-copy-and-move)), and Copy versus transfer adds no ranking preference. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value parameter: overload selection never transfers a bare Place. Origin subtyping that needs no value operation remains permitted.
 
-The initial borrow adaptations are listed below. In the owner-Place and owner-temporary rows `T` has `owner` Semantics; in the value-reborrow rows it is the complete immediate Referent Type. A Place "through an exclusive reference" is one whose [access path](03-types-and-values.md#34-values-places-and-storage) resolves a `uniq` or `objuniq` reference; its child borrow stays within the parent's authority. Adding a layer around an existing reference or object handle requires a fully specified explicit [storage-borrow target](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow); it is not an implicit argument adaptation.
+The initial borrow adaptations are listed below. In the owner-Place and owner-temporary rows `T` has `owner` Semantics; in the value-reborrow rows it is the complete immediate Referent Type. A Place reached through an exclusive reference ([access path](03-types-and-values.md#34-values-places-and-storage)) is an owned Place for this table and is not exclusively borrowed implicitly at an argument position; its explicit child borrow stays within the parent's authority. Adding a layer around an existing reference or object handle requires a fully specified explicit [storage-borrow target](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow); it is not an implicit argument adaptation.
 
 | Input | Expected | Operation / class |
 | --- | --- | --- |
 | Readable `T` Place | `ref/T` | Shared borrow / cross |
 | Owner `T` temporary | `ref/T` | Materialize once and shared-borrow / cross |
-| `T` Place through an exclusive reference | `uniq/T` | Child exclusive borrow / cross |
 | `uniq/T` | `uniq/T` | Call reborrow / same |
 | `uniq/T` | `ref/T` | Shared reborrow / cross |
 | Accessible `obj/T` Place | `objref/T` | Shared object borrow / cross |
-| `obj/T` Place through an exclusive reference | `objuniq/T` | Child exclusive object borrow / cross |
 | `objuniq/T` | `objuniq/T` | Object call reborrow / same |
 | `objuniq/T` | `objref/T` | Shared object reborrow / cross |
 | `ref/T` or `uniq/T`, Copy `T` | `T` | Copy read / cross |
 
-The Copy read is the [read through a reference](03-types-and-values.md#33-type-semantics) of §3.3 applied at an argument: it copies the referent, removes one reference layer and never extracts a Non-Copy referent. A required exclusive reborrow is not Exact even when the written Types match. Type and declaration permissions and the Place-versus-temporary form are checked during applicability; flow-dependent initialization and active Loan conflicts are checked after selection. Borrow adaptations neither extend lifetimes nor duplicate ownership. Selected exclusive adaptations use [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations); these checks do not change applicability or ranking. A directly owned Place is never exclusively borrowed implicitly: write `x@uniq` or `x@objuniq` ([lending rule](15-ownership-and-lifetime-analysis.md#1515-movable-places)). No further `rc`/`arc`, exclusive-temporary or outer-layer borrow adaptations are inferred from this table.
+The Copy read is the [read through a reference](03-types-and-values.md#33-type-semantics) of §3.3 applied at an argument: it copies the referent, removes one reference layer and never extracts a Non-Copy referent. A required exclusive reborrow is not Exact even when the written Types match. Type and declaration permissions and the Place-versus-temporary form are checked during applicability; flow-dependent initialization and active Loan conflicts are checked after selection. Borrow adaptations neither extend lifetimes nor duplicate ownership. Selected exclusive adaptations use [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations); these checks do not change applicability or ranking. An owned Place is exclusively borrowed implicitly only as a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)); at an argument position write `x@uniq` or `x@objuniq`, whatever the access path ([lending rule](15-ownership-and-lifetime-analysis.md#1515-movable-places)). A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and no candidate switch arises from implicit exclusive borrowing; between a by-value candidate and a shared-borrow candidate, Copy capability decides as before. No further `rc`/`arc`, exclusive-temporary or outer-layer borrow adaptations are inferred from this table.
 
-[Inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) defines its member-only operations and rankings separately; they do not apply to ordinary arguments or unbound calls. Same-complete-Type Sealed payload receiver projection (§12.4.4) ranks as a cross-Semantics Borrow/Reborrow: ordinary lookup, applicability, comparison and access checking run first, and the selected receiver is evaluated and applied once. It adds no implicit projection to ordinary arguments and grants no inherited-base completeness.
+[Inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) and same-complete-Type Sealed payload receiver projection (§12.4.4) are member-receiver operations supplied by implicit receiver acquisition (§7.3); they do not apply to ordinary arguments or unbound calls and take no part in candidate comparison. Ordinary lookup, applicability, comparison and access checking run first, and the selected receiver is evaluated and applied once. Neither adds an implicit projection to ordinary arguments or grants inherited-base completeness.
 
 Fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is handled separately and adds no rank to this table. There are no implicit object upcasts, numeric-width, signedness, integer/float or user-defined conversions, and no unlimited dereference or conversion chains; raw dereference is explicit. The existing Never and Origin rules remain Type rules and add no overload priorities.
 
@@ -119,7 +117,7 @@ These declarations have distinct parameter Signatures; declarations that differ 
 
 Pairwise comparison yields better, worse, equivalent or incomparable. **Only equivalent candidates proceed to the next step.** A candidate is selected only if it is better than every other applicable candidate:
 
-1. Compare adaptation quality for the receiver and each explicit source argument. A dominates B only if it is no worse everywhere and better somewhere; all-equal proceeds, and opposing advantages are incomparable. Named arguments are matched by the same source expression, not by candidate parameter order. Defaults are excluded, and numeric costs are never summed.
+1. Compare adaptation quality for each explicit source argument. The receiver is excluded: its acquisition is common to the function group, because every function with a receiver in the group shares one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). A dominates B only if it is no worse everywhere and better somewhere; all-equal proceeds, and opposing advantages are incomparable. Named arguments are matched by the same source expression, not by candidate parameter order. Defaults are excluded, and numeric costs are never summed.
 2. Compare substituted parameter Types at the same positions. A dominates B if every Type is equal or a defined subtype and at least one is a strict subtype; all-equal proceeds, and unrelated Types or opposing subtype advantages are incomparable.
 3. Prefer a function with no generic parameters of its own, including length parameters. A generic enclosing Type alone does not make the function generic.
 4. Prefer fewer defaults used by this call.
@@ -131,7 +129,7 @@ Numeric Types are not ranked by width, Constraints not by strength or clause cou
 func inspect(value: ref/i32) -> () => ()
 func inspect(value: uniq/i32) -> () => ()
 var x: i32 = 0
-inspect(x)      // Shared candidate only: a directly owned Place is not lent exclusively without @uniq.
+inspect(x)      // Shared candidate only: an owned Place is not lent exclusively at an argument position without @uniq.
 inspect(x@ref)  // Shared candidate: Exact.
 inspect(x@uniq) // Exclusive candidate: same-semantics beats cross-semantics.
 let action: (uniq/i32) -> () = inspect
@@ -139,7 +137,18 @@ let action: (uniq/i32) -> () = inspect
 
 The exclusive candidate wins for an exclusive input because its Semantics match, not because exclusivity is stronger. Candidates `(i32, ref/i32)` and `(ref/i32, i32)` are incomparable for two `i32` locals. Likewise, `f<T>(T)` and `f<U>(Box<U>)` remain tied for `Box<i32>` when substitution makes both parameter Types equal and the later steps tie.
 
-A Place reached through an exclusive reference remains ambiguous between `ref/T` and `uniq/T` candidates, since both are cross-Semantics borrows; write `@ref` or `@uniq`. Field Move eligibility and its generic limits follow [Field Move](11-properties.md#1112-move-paths-and-inherited-fields).
+A Place reached through an exclusive reference is likewise applicable only to the shared candidate when bare; `@uniq` selects the exclusive candidate. Field Move eligibility and its generic limits follow [Field Move](11-properties.md#1112-move-paths-and-inherited-fields).
+
+```kimi
+func bump(score: Score) -> Score     // Overloading by argument remains available.
+func bump(score: uniq/Score) -> ()
+
+struct Game
+    var score: Score
+    func play(self: uniq/Self)
+        bump(self.score@uniq)        // The uniq candidate.
+        bump(self.score)             // Only the by-value candidate; an error when Score is Non-Copy.
+```
 
 ## 10.5. Inference boundaries and specialization
 

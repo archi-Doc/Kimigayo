@@ -56,7 +56,7 @@ Optional Type spelling is defined in [§3.2.3](spec/03-types-and-values.md#323-o
 ### Part V. Ownership, cleanup, and failure
 
 - [15. Ownership and lifetime analysis](spec/15-ownership-and-lifetime-analysis.md)
-  - [Lending rule](spec/15-ownership-and-lifetime-analysis.md#1515-movable-places): a bare Place never Moves or lends exclusively; `@move` transfers and `@uniq` lends a directly owned Place.
+  - [Lending rule](spec/15-ownership-and-lifetime-analysis.md#1515-movable-places): a bare Place never Moves; `@move` transfers, a new exclusive lending of an owned Place needs `@uniq`/`@objuniq` except for a [Receiver Expression](spec/07-functions-and-callable-values.md#73-explicit-receivers), which is acquired implicitly, and borrow values are reborrowed without a spelling.
   - [Call borrow reservations](spec/15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations): preparation, activation and non-escaping explicit borrows.
 - [16. Scope exit and destruction](spec/16-scope-exit-and-destruction.md)
 - [17. Failure handling](spec/17-failure-handling.md)
@@ -101,7 +101,7 @@ This table indexes the required declarations in [§22.1](spec/22-core-execution-
 
 | Declaration container | Declarations / functions | Reference |
 | --- | --- | --- |
-| `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees) |
+| `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees) |
 | `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Equatable`, `Comparable`, `Iterator`, `Iterable` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
 | `Kimi` | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` | [Formatting declarations](spec/utf8-formatting.md#1-contracts-and-declarations) |
 | `Kimi.Text` | `FixedBuffer`, `HeapBuffer`, `Utf8Slice`, `InvalidUtf8`; `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](spec/utf8-formatting.md#2-text-operations) |

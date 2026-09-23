@@ -470,7 +470,7 @@ Checks may be eliminated, shared or hoisted out of loops only when safety is pro
 
 `Array<T>` and `Dictionary<K, V>` are Non-Copy owning collections. They accept valid complete stored Types without blanket Copy or Owned constraints. Dictionary requires `K is Equatable` and the key stability of §12.3.4, not a public Hash constraint. Types and Origins are fixed at the declaration; mutation never restarts inference.
 
-The operations below are public instance APIs. Mutations use `self: uniq/Self` unless stated otherwise, so a directly owned collection is lent with `@uniq` (`values@uniq.append(...)`) and a collection reached through an exclusive reference is reborrowed implicitly. Value parameters are acquired once by bare acquisition or transfer, without deep cloning or implicit count increments. A rejected Move is not restored; returned inputs can be recovered from a `Result`. Removal transfers the stored responsibility, even for Copy elements. Owning a reference value neither owns nor extends its referent's lifetime.
+The operations below are public instance APIs. Mutations use `self: uniq/Self` unless stated otherwise, so a collection in receiver position is acquired exclusively without a spelling (`values.append(...)`, [§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), whether it is directly owned or reached through an exclusive reference, provided its lending point is exclusively writable (§15.1.5); passing a collection to a `uniq` parameter still needs `@uniq`. Value parameters are acquired once by bare acquisition or transfer, without deep cloning or implicit count increments. A rejected Move is not restored; returned inputs can be recovered from a `Result`. Removal transfers the stored responsibility, even for Copy elements. Owning a reference value neither owns nor extends its referent's lifetime.
 
 Precondition failures Abort. Ordinary absence uses `Option`, and recoverable rejection that returns its inputs uses `Result`. A try-prefixed API name promises only its specified recoverable outcome, not propagation by a try expression (§17.2.4); a corresponding Abort API need not exist. A discarded `Result` follows the normal warning rule.
 
@@ -484,6 +484,14 @@ Precondition failures Abort. Ordinary absence uses `Option`, and recoverable rej
 | Lookup, absence or duplicate rejection | Values, order, length and capacity are preserved |
 
 These postconditions do not roll back external effects of arguments, equality or destructors.
+
+**Naming convention.** Because the functions of one Name share one receiver shape (§7.3), a shared variant and an exclusive variant of one operation need different names. Kimi declarations and the examples of this specification follow the convention below; user code is not required to.
+
+| Pair | Convention | Example |
+| --- | --- | --- |
+| Returns a new value / changes in place | Adjective (past participle) / verb | `sorted` / `sort` |
+| Returns a shared reference / returns an exclusive reference | Suffix `Uniq` on the exclusive variant | `tryGet` / `tryGetUniq` |
+| Only inspects / advances or takes | Different verbs | `peek` / `next` |
 
 ### 4.7.2. Array operations
 
@@ -503,14 +511,14 @@ The index is resolved once in the body against the entry length `L`. For a from-
 
 ```kimi
 var values: Array<i32> = []
-values@uniq.reserve(additional: 3)
-values@uniq.append(10)
-values@uniq.insert(^0, 30)
-values@uniq.insert(^1, 20) // [10, 20, 30]
-let last = values@uniq.remove(^1) // 30; capacity is unchanged.
+values.reserve(additional: 3)  // The receiver is acquired exclusively without a spelling.
+values.append(10)
+values.insert(^0, 30)
+values.insert(^1, 20)          // [10, 20, 30]
+let last = values.remove(^1)   // 30; capacity is unchanged.
 let first = values[0]
-values@uniq.append(first)
-values@uniq.append(values[0]) // The element Copy finishes before receiver activation.
+values.append(first)
+values.append(values[0])       // The element Copy finishes before receiver activation.
 ```
 
 ### 4.7.3. Dictionary operations and indexed replacement
@@ -538,11 +546,11 @@ From receiver identification through placement, structural mutation, Move and de
 
 ```kimi
 var names: Dictionary<i32, string> = [:]
-match names@uniq.tryInsert(1, "first")
+match names.tryInsert(1, "first")
     .Ok(()) => ()
     .Err(let entry) => Kimi.Console.writeLine(entry.1)
 names[1] = "replacement" // Existing-key replacement, not insertion.
-let removed = names@uniq.remove(1) // A temporary key is borrowed under §10.2.
+let removed = names.remove(1) // A temporary key is borrowed under §10.2.
 ```
 
 ### 4.7.4. Capacity and allocation

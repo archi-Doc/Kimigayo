@@ -547,7 +547,7 @@ Inherited group static storage is another supplied operation: it ensures initial
 
 #### 21.3.4.1. Closed selection and dependency validation
 
-The defining Kotonoha closes its explicit-specialization set under §8.8.3. Artifacts keep declarations, selection sets and mappings, complete contracts, verified bodies and legitimate deferred obligations, and preserve defining Symbols, environments and dependencies without exposing private names to callers.
+The defining Kotonoha closes its explicit-specialization set under §8.8.3. Artifacts keep declarations, selection sets and mappings, complete contracts, verified bodies and legitimate deferred obligations, and preserve defining Symbols, environments and dependencies without exposing private names to callers. ObjectPayload opt-outs and `T is ObjectPayload` requirements belong to these contracts (§8.4.7.2).
 
 Every environment-selected specialization's target, arguments, Constraints, inherited contract and body are checked before its artifact is finalized, even if unused; excluded syntax follows §19.5. Unused verified bodies need no machine code, while every use still checks its own contract, initialization and Loans. Shared calls and function references reach the statically selected implementation, never one selected from a value's Dynamic Type or from registration or load order.
 

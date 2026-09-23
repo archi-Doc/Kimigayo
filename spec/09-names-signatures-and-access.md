@@ -49,7 +49,7 @@ Types are normalized by resolved Symbol and Kotonoha/version, expanding transpar
 | `s` applied to another slot `U` | `Apply(OuterSemantics(Slot(i)), Slot(j))` |
 | Length `N` / fixed array | `LengthSlot(i)` / `FixedArray(LengthExpression, ElementType)`; lengths compare under [length normalization](04-arrays-indexing-and-slices.md#44-function-length-parameters) |
 
-These rewrites apply recursively, and comparison is by structural alpha-equivalence. There is no simplification from accidental equality after instantiation or from arbitrary Constraint proofs. The pair target `T` alone is not `Slot(i)`. Slot kind controls binding and validation but cannot alone distinguish overloads: `f<T>(value: T)` and `f<s/U>(value: s/U)` conflict. `ref/T` and `uniq/T`, including as receivers, remain distinct. Applied Semantics distinguish use-site Types, not Container identities.
+These rewrites apply recursively, and comparison is by structural alpha-equivalence. There is no simplification from accidental equality after instantiation or from arbitrary Constraint proofs. The pair target `T` alone is not `Slot(i)`. Slot kind controls binding and validation but cannot alone distinguish overloads: `f<T>(value: T)` and `f<s/U>(value: s/U)` conflict. `ref/T` and `uniq/T`, including as receivers, remain distinct. Distinct receiver shapes therefore give distinct Signatures, but the functions of one member group must still share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), so `read(self: ref/Self)` and `read(self: uniq/Self)` cannot coexist under one Name. Applied Semantics distinguish use-site Types, not Container identities.
 
 For Signature comparison only, Origin names, lists and lifetime relations are excluded; complete Types and Origin contracts are kept for semantic checks. Return Types, external and internal parameter names, defaults, the argument-name contract's K (§7.2.2), access, `unsafe` and Constraints cannot independently distinguish overloads.
 
@@ -58,7 +58,7 @@ An **API signature**, used for [accessibility checks](#932-api-signature-accessi
 ```kimi
 struct Reader
     func read(self: ref/Self) -> i32 => 0
-    func read(self: uniq/Self) -> i32 => 0 // Distinct receiver Semantics.
+    func read(self: ref/Self, offset: i32) -> i32 => 0 // Distinct parameter list; the same receiver shape.
 
 func identity<T>(value: T) -> T => value
 func identity<U>(value: U) -> U => value // Error: same normalized Signature.
@@ -302,15 +302,29 @@ A derived `f(string)` with an accessible base `f(i32)` is a declaration error un
 
 Generic bodies use their [definition-site source environment](18-modules-and-dependencies.md#18-modules-and-dependencies), including during deferred instantiation; caller aliases and extensions never enlarge their candidate sets.
 
+**Groups gathered from constraints.** Member lookup on a generic parameter collects the same-name requirements available from its Constraints (§8.4.6). If the requirements with receivers in such a group do not share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), the use is an error; no syntax selects among them.
+
+```kimi
+contract Reader
+    func read(self) -> i32
+contract Consumer
+    func read(self: uniq/Self) -> i32
+
+func use<T>(value: uniq/T) -> i32
+    T is Reader
+    T is Consumer
+    return value.read()                    // Error: the gathered read requirements differ in receiver shape.
+```
+
 ### 9.5.1. Base subobject receiver projection
 
 For `receiver.member`, when ordinary lookup selects an instance declaration in a base `B` of the receiver's static Effective Core `D`, **Base Subobject Receiver Projection** locates that declaration's inline base subobject along the unique inheritance path, substituting base Type and Origin arguments at each layer. Accessibility, including the protected-receiver restrictions, is checked against the original receiver before projection. Static members need no projection, and Type-qualified unbound calls and function values keep the ordinary argument rules.
 
-For a declaration receiver `ref/B` or `uniq/B`, the corresponding shared Borrow or exclusive Borrow/Reborrow of that subobject is formed with the original receiver's permissions; a shared receiver cannot supply exclusive access. The source is evaluated once, before explicit call arguments, preserving its storage anchor, nested dependencies and parent Loan restrictions. A borrowed custom or computed accessor, or a method, borrows the whole base subobject. Standard Property access instead projects to its permitted storage Place under §11.1.2 without forming a whole-base borrow, preserving the original owned, borrowed or object receiver classification.
+For a declaration receiver `ref/B` or `uniq/B`, the corresponding shared Borrow or exclusive Borrow/Reborrow of that subobject is formed with the original receiver's permissions; a shared receiver cannot supply exclusive access. This projection is one of the operations that implicit receiver acquisition supplies to a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)): a bare owned Place of Type `D` is projected exclusively for a `uniq/B` declaration when its lending point is exclusively writable (§15.1.5), and the checks of §7.3 apply. The source is evaluated once, before explicit call arguments, preserving its storage anchor, nested dependencies and parent Loan restrictions. A borrowed custom or computed accessor, or a method, borrows the whole base subobject. Standard Property access instead projects to its permitted storage Place under §11.1.2 without forming a whole-base borrow, preserving the original owned, borrowed or object receiver classification.
 
-For ordinary value receivers, `ref/D -> ref/B` and `uniq/D -> uniq/B` rank as same-Semantics Reborrow, and `owner/D -> ref/B`, `owner/D -> uniq/B` and `uniq/D -> ref/B` as cross-Semantics Borrow/Reborrow under [argument adaptation](10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals). These are member-receiver operations only, never Exact conversions. Projection adds no preference based on inheritance depth and cannot reopen lookup. Candidate analysis records the operations without committing them before selection.
+These are member-receiver operations only, never Exact conversions or [argument adaptations](10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals). Because every function with a receiver in the selected group shares one receiver shape (§7.3), the projection is common to the group and takes no part in Best Candidate comparison (§10.4); it adds no preference based on inheritance depth and cannot reopen lookup. Candidate analysis records the operation without committing it before selection.
 
-An ordinary borrowed-receiver implementation used through projection requires published [ObjectCallCompatible Proven](12-expressions.md#1244-object-receiver-compatibility); a use of a NotProven implementation is rejected without inspecting the private body or retrying overload selection. A method that replaces all of `self` may work on a complete `B` but cannot replace the base inside `D`. Neither projection nor an escaping unrestricted exclusive borrow may permit whole-base Move, Replacement, reconstruction or acquisition of a sliced owner. The body keeps its declaration's Self and result contract. Receiver-derived results keep the projected Loan and cannot outlive the original storage; construction, destruction and ancestor-completeness restrictions still apply.
+An ordinary borrowed-receiver implementation used through projection requires published [ObjectCallCompatible Proven](12-expressions.md#1244-object-receiver-compatibility), checked after overload selection; a use of a NotProven implementation is rejected without inspecting the private body or retrying overload selection, and the status never excludes a candidate. A method that replaces all of `self` may work on a complete `B` but cannot replace the base inside `D`. Neither projection nor an escaping unrestricted exclusive borrow may permit whole-base Move, Replacement, reconstruction or acquisition of a sliced owner. The body keeps its declaration's Self and result contract. Receiver-derived results keep the projected Loan and cannot outlive the original storage; construction, destruction and ancestor-completeness restrictions still apply.
 
 For Object Semantics, the receiver of the statically selected ObjectCallCompatible implementation is adjusted, preserving the complete object's identity, Dynamic Type, metadata and cleanup. Projection creates no public object view or owning or counting handle and changes no reference count. An owning receiver requirement (`owner/B`, `obj/B`, `rc/B` or `arc/B`) cannot be satisfied by projection; it needs an independently permitted acquisition or an explicit object upcast.
 

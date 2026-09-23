@@ -175,7 +175,21 @@ Neither accessor needs to keep the Property's full access domain, and `set` acce
 
 ### 11.2.2. Computed properties
 
-A computed Property has no storage, initializer, bodyless standard accessor or inline `has` list. Its explicit getter result must match the header Type after Origin completion. The optional setter returns Unit and may have a different input Type. Instance receivers follow explicit ordinary function contracts, including ownership-bearing receivers; static accessors omit `self`.
+A computed Property has no storage, initializer, bodyless standard accessor or inline `has` list. Its explicit getter result must match the header Type after Origin completion. The optional setter returns Unit and may have a different input Type. Instance receivers follow explicit ordinary function contracts, including ownership-bearing receivers; static accessors omit `self`. A Property access acquires its receiver as a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)): a `get(self: uniq/Self)` getter acquires an owned Place exclusively without a spelling when its lending point is exclusively writable (§15.1.5), and the acquisition fails, without a Copy or another fallback, when it is not.
+
+```kimi
+struct Meter
+    var hits: i32 = 0
+    public computed reading: i32
+        get(self: uniq/Self) -> i32
+            self.hits += 1
+            return self.hits
+
+var meter = Meter.init()
+let seen = meter.reading    // Supplies meter@uniq.
+let fixed = makeMeter()
+// let bad = fixed.reading  // Error: a let binding cannot be acquired exclusively.
+```
 
 ```kimi
 struct Temperature
@@ -202,13 +216,14 @@ Non-Copy results must be legally created or acquired; a shared receiver cannot s
 
 Stored custom `get`, computed `get` and Contract `get` produce function results; adaptations apply to that result, not to backing storage.
 
-**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and exclusive receiver adaptation preserve this restriction; a reference returned by a getter keeps its referent's own capabilities (`holder.view@uniq` reborrows a returned `uniq/T`). Updating the Property itself through `set` is separate and remains allowed (§13.7).
+**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and the implicit or explicit exclusive receiver acquisition of §7.3 preserve this restriction: a `uniq/Self` method or getter cannot be called on an owned getter result, and no Copy is modified instead. A reference returned by a getter keeps its referent's own capabilities (`holder.view@uniq` reborrows a returned `uniq/T`, and `holder.view.update()` reborrows it implicitly). Updating the Property itself through `set` is separate and remains allowed (§13.7).
 
 ```kimi
 // position: Point is Copy, with custom get and standard set.
 object.position.x = 10          // Error: updates only the getter temporary.
 object.position.x += 1          // Error.
 let edit = object.position@uniq/Point // Error.
+// object.position.normalize()  // Error if normalize takes uniq/Self: the getter temporary cannot be acquired exclusively.
 var next = object.position
 next.x = 10                     // OK: ordinary local storage.
 object.position = next          // OK: calls position's set.

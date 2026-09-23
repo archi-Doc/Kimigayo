@@ -122,12 +122,127 @@ struct Meter
 
 var meter = Meter.init(0)
 let shown = meter.read()   // Shared receiver: implicit borrow.
-meter@uniq.update(5)       // Exclusive receiver: the owned Place is lent explicitly.
+meter.update(5)            // Exclusive receiver: the owned Place is acquired implicitly.
 ```
 
-**Method calls.** For `receiver.method(arguments)`, the receiver is evaluated and adapted first, regardless of its parameter position, and recorded at the declared position of `self`. The receiver expression is adapted to the declared receiver Type under the [argument adaptation rules](10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals): a shared receiver is borrowed implicitly; an exclusive receiver requires `@uniq`/`@objuniq` on a directly owned Place and is reborrowed implicitly from a borrow value or a Place reached through an exclusive reference; an owning receiver Copies a Copy Place and otherwise requires `@move`. A chain such as `builder@uniq.add(1).add(2)` lends once; each later receiver is the previous exclusive result. The explicit positional and named arguments are matched against the remaining parameters in their written order; `self` cannot also be supplied by an argument label. Defaults then follow the ordinary order. Exclusive preparation follows [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). Cleanup inside the callee still uses the full written parameter order.
+**Receiver shape.** A receiver's **shape** is `ref/Self`, `uniq/Self`, owning `Self` or one permitted object-Semantics form. Within a function group fixed by member lookup (§9.5), every function that has a receiver must have the same receiver shape; functions without a receiver are not counted. For a group formed by a Type's declarations, a violation is a declaration error: different parameters or labels do not exempt it, mutually exclusive `when` conditions (§8.4.8) do not exempt it, Contract requirements and refined requirements obey it (§8.4.1), an explicit full specialization keeps its original's receiver shape (§8.8.2), and same-name declarations in a base and a derived struct are already excluded by the inherited-Name rule (§6.2.2). A group gathered from generic constraints is checked at the use (§9.5). The `get` and `set` of one Property are distinct operations and are exempt. The receiver acquisition of a call is therefore fixed by the Name alone, before overload resolution, and Best Candidate comparison covers only the explicit arguments (§10.4). Shared and exclusive variants of one operation need different names; Kimi declarations follow the naming convention of §4.7.1.
 
-**Unbound references.** A Type-qualified instance function reference is unbound: a call through `Type.method` supplies all parameters explicitly in their written positions, including `self` at its declared position, with the ordinary argument order and receiver compatibility checks. The receiver accepts either positional supply at its declared position or a named `self:` argument, regardless of the written boundary. Ordinary parameters keep their declared name contracts; no positional skipping or positional supply after named arguments is allowed. An unbound function value likewise keeps `self` as an ordinary position of its callable signature, captures no receiver and remains subject to the unsafe-function restrictions. `value.method` without invocation does not form a bound-method value in this revision. None of this introduces extension functions, implicit `self` lookup, or a conversion for an otherwise incompatible object receiver.
+```kimi
+struct Counter
+    var value: i32
+    func peek(self) -> i32 => self.value + 1
+    func next(self: uniq/Self) -> i32
+        self.value += 1
+        return self.value
+    // func next(self, by: i32) -> i32     // Error: next would have two receiver shapes.
+
+struct Buffer
+    func insert(self: uniq/Self, index: isize, value: i32)
+    func insert(self: uniq/Self, index: Index, value: i32)   // OK: the same shape.
+```
+
+**Method calls.** For `receiver.method(arguments)`, the receiver is evaluated and acquired first, regardless of its parameter position, and recorded at the declared position of `self`. The receiver expression is a Receiver Expression ([§3.4](03-types-and-values.md#34-values-places-and-storage)) and is acquired implicitly: its acquisition is the same as writing the operation of the following table on it, selected by the receiver requirement and by whether the input is value-kind or object-kind. The explicit positional and named arguments are matched against the remaining parameters in their written order; `self` cannot also be supplied by an argument label. Defaults then follow the ordinary order. Exclusive preparation follows [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). Cleanup inside the callee still uses the full written parameter order.
+
+| Receiver requirement | Value-kind input `p` | Object-kind input `p` |
+| --- | --- | --- |
+| `ref/Self`, `uniq/Self` | `p@ref`, `p@uniq`; a borrow value is reborrowed in the required mode | The complete payload projection `p@ref/T`, `p@uniq/T` (§13.5.5.1) when the View Target is exactly the same complete Sealed Type `T`; otherwise `p@objref`, `p@objuniq` |
+| `objref/Self`, `objuniq/Self` | Not applicable | `p@objref`, `p@objuniq` |
+| Declaration in a base `B` | The projection of §9.5.1 | The same |
+| Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and otherwise nothing is supplied (write `p@move.m()`); a `ref/T` or `uniq/T` value is Copy read when the referent is Copy (§10.2) | An owned temporary passes as is; an owned Place requires `p@move`; there is no Copy read from an object borrow |
+
+**Checks.** The acquisition is checked in the following order, and the call is an error when any check fails:
+
+1. *The supplied operation is legal* under the existing explicit rules, including static storage (§15.2.3), values of generic Semantics (§8.9), `rc`/`arc` (shared access only, §13.5.5.2), Property permissions (§11.1), getter-result storage (§11.2.3) and the exclusive acquisition conditions of §15.1.5.
+2. *The path's receiver compatibility holds.* For a value-kind path, the complete result Type must fit the required Type; an object-borrow path follows object receiver compatibility (§12.4.3–4) and a base-projection path follows §9.5.1. For example, `objuniq/T` satisfies a `uniq/Self` receiver through this path rule, not through a Type conversion.
+3. *The post-selection use conditions hold.* When a protected object borrow or a base projection was selected, the selected candidate must be ObjectCallCompatible Proven after overload selection (§12.4.4.1, §9.5.1); a complete Sealed payload projection is an ordinary complete-value call and needs no proof (§12.4.4). Proven never excludes a candidate, and a missing proof never reselects another candidate.
+
+**Consequences.**
+
+- *No fallback.* When a check fails, the call does not switch to a Copy read, a materialized temporary or any other acquisition; in particular, no Copy is modified with its update discarded.
+- *Explicit spellings.* Writing the table's operation explicitly has the same meaning: for a value-kind input and a receiver that requires exclusivity, `p@uniq.m()` equals `p.m()` through the preparation path of §15.6.7, and a redundant spelling is accepted. A different explicit operation is that other operation, as written: `tasks@uniq.length` lends `tasks` exclusively and then reads it through shared access.
+- *Chains.* Each call acquires the previous call's result as its receiver by this table. Acquisition never reaches back through an earlier call, and reservations are separated per call (§15.6.7).
+
+```kimi
+struct Meter
+    var hits: i32 = 0
+    public computed reading: i32
+        get(self: uniq/Self) -> i32
+            self.hits += 1
+            return self.hits
+
+group Registry
+    public var meter: Meter = Meter.init()
+
+struct Builder
+    func add(self: uniq/Self, value: i32) -> uniq/Self   // Returns an exclusive reference.
+    func with(self: Self, value: i32) -> Self            // Returns an owned value.
+    func view(self) -> ref/Self                          // Returns a shared reference.
+    func finish(self: uniq/Self)
+
+// holder and tasks are var locals.
+var meter = Meter.init()
+let seen = meter.reading              // Supplies meter@uniq.
+holder.items.append(1)                // Supplies holder.items@uniq.
+let shared = Registry.meter.reading   // Mutable static: supplies Registry.meter@uniq.
+makeResource().consume()              // An owned temporary passes as is.
+
+var builder = makeBuilder()
+builder.add(1).add(2)                 // The second receiver reborrows the uniq result.
+makeBuilder().with(1).finish()        // The owned temporary result of with is borrowed exclusively for finish.
+// builder.view().finish()            // Error: no exclusive acquisition from a ref result.
+
+let count: i32 = 0
+var next = func [var count] (value: i32) -> i32
+    count += 1
+    return value + count
+let a = next(1)                       // 2. Exclusive call: supplies next@uniq.
+let b = applyTwice(10, next@uniq)     // 15. applyTwice of §8.6; an argument needs the spelling.
+
+holder@uniq.items.append(1)           // The same as holder.items.append(1).
+tasks@uniq.length                     // A different operation: lend tasks exclusively, then read it through shared access.
+```
+
+The following calls fail a check:
+
+```kimi
+struct Point
+    Self is Copy
+    var x: i32
+    var y: i32
+    func normalize(self: uniq/Self)
+        ...
+
+let p = makePoint()
+p.normalize()             // Error: p is a let binding; no Copy is modified instead.
+
+func plot(p: Point)
+    p.normalize()         // Error: an owned-Type parameter.
+
+func plotRef(p: ref/Point)
+    p.normalize()         // Error: only shared permission.
+
+let tick = func [var count] () -> i32   // Copy: the only capture is an i32.
+    count += 1
+    return count
+let n = tick()            // Error: a let-bound Closure; no Copy is advanced instead.
+
+var q = p                 // Valid: the Copy is explicit.
+q.normalize()
+makePoint().normalize()   // Valid: a temporary from the start.
+```
+
+**Diagnostics.** When a Receiver Expression cannot be acquired, the diagnostic follows the failed check, and a fix is suggested only when the fixed program satisfies every acquisition, permission and Loan condition. The main causes, not an exhaustive list, are:
+
+| Failed check | Suggestion |
+| --- | --- |
+| Immutable owned storage: a `let` binding, an owned-Type parameter, a `let`-bound Closure | Make it `var`; for a parameter, `var local = p@move` (`var local = p` when Copy) |
+| Only shared permission: a `ref`/`objref` value, `rc`/`arc`, a shared path | Make the upstream exclusive, for example `self: uniq/Self` on the enclosing method |
+| Storage whose direct exclusive borrow is forbidden: a stored Property with a custom `set`, getter-result storage | Read the value into a local, modify it and write it back through `set`; not suggested when the value cannot be acquired or `set` is inaccessible |
+| `set` access, receiver incompleteness, ObjectCallCompatible | The existing diagnostics |
+
+A missing spelling at a position other than a Receiver Expression uses the existing exclusive-borrow diagnostic and suggests `@uniq`/`@objuniq`, including for a Place reached through an exclusive reference. A receiver-shape violation reports every declaration or requirement whose shape differs. Loan conflicts at an implicit lending point carry the notes of §15.6.7.
+
+**Unbound references.** A Type-qualified instance function reference is unbound: a call through `Type.method` supplies all parameters explicitly in their written positions, including `self` at its declared position, with the ordinary argument order and receiver compatibility checks. The receiver accepts either positional supply at its declared position or a named `self:` argument, regardless of the written boundary; it is an ordinary argument, not a Receiver Expression, so an owned Place supplied to a `uniq/Self` position needs `@uniq`. Ordinary parameters keep their declared name contracts; no positional skipping or positional supply after named arguments is allowed. An unbound function value likewise keeps `self` as an ordinary position of its callable signature, captures no receiver and remains subject to the unsafe-function restrictions. `value.method` without invocation does not form a bound-method value in this revision. None of this introduces extension functions, implicit `self` lookup, or a conversion for an otherwise incompatible object receiver.
 
 ## 7.4. Function constraints
 
@@ -260,15 +375,9 @@ Each concrete Closure has one minimum **Call Receiver Requirement**, inferred fr
 
 These are the access requirements of one body, not three independently selected implementations. A Move on any possible body path requires a Consuming call. Legitimate generic effects are resolved before the requirement is finalized. Overload resolution is not rerun per receiver, `let` and Property permissions are not relaxed, and ownership cannot rescue an otherwise invalid body. The internal `call` and receiver notation introduce no source member or hidden `self` name.
 
-A direct call acquires the minimum receiver as a method receiver (§7.3, §10.2): the callee expression is the receiver and the receiver requirement is its declared Type.
+A direct call acquires the minimum receiver as a method receiver: the callee expression is a Receiver Expression whose receiver requirement is the internal receiver Type, and it is acquired implicitly under [§7.3](#73-explicit-receivers). An owned Closure Place is thus borrowed without a spelling for a Shared or Exclusive call when its lending point is exclusively writable (§15.1.5), `uniq/F` and `ref/F` values are reborrowed in the required mode, a `ref/F` value cannot supply an Exclusive call, and a Consuming call Copies a Copy Closure and otherwise needs `c@move()`. A temporary Closure passes as is.
 
-| Requirement | Directly owned closure | `uniq/F` value | `ref/F` value | Temporary |
-| --- | --- | --- | --- | --- |
-| Shared | `c()` | `c()` | `c()` | `f()()` |
-| Exclusive | `c@uniq()` | `c()` (exclusive Reborrow) | Error | `f()@uniq()` |
-| Consuming | `c()` if `F` is Copy, otherwise `c@move()` | Copy read if `F` is Copy, otherwise error | Same | `f()()` |
-
-A captured `uniq` alone does not grant exclusive access to a `let`-owned Closure. Borrowed access cannot Move an unowned environment, although a permitted Copy may provide a separate owned call value. A closure reached through an exclusive reference, such as a captured or stored `uniq` environment, is reborrowed without a spelling.
+A captured `uniq` alone does not grant exclusive access to a `let`-owned Closure: the `let` binding is immutable owned storage, and a Copy of it is never advanced in its place. Borrowed access cannot Move an unowned environment, although a permitted Copy may provide a separate owned call value.
 
 ```kimi
 let text = makeText()
@@ -279,12 +388,17 @@ reader() // Shared call; a transferred capture does not imply a consuming call.
 var next = func [var count] () -> i32
     count += 1
     return count
-let first = next@uniq() // Exclusive call: the owned closure is lent explicitly.
+let first = next()      // Exclusive call: the owned closure is acquired implicitly.
 
 let item = makeResource() // Non-Copy.
 let take = func [item@move] () => item@move
 let taken = take@move() // Transfers item out of the consumed closure.
 // take()               // Error: the Non-Copy closure was consumed.
+
+let tick = func [var count] () -> i32 // Copy: the only capture is an i32.
+    count += 1
+    return count
+// let n = tick()       // Error: a let-bound closure cannot be acquired exclusively; no Copy is advanced instead.
 ```
 
 The internal call signature keeps the complete receiver, parameter and result Types, per-call Origins, fixed captured Origins and result Loan dependencies. Receiver protection starts before later arguments; eligible exclusive receivers use §15.6.7 reservation and activation, including indirect and Callable calls. The required Loans last through uses of dependent results. Generic calls follow the declared [Callable receiver](08-generics-constraints-and-contracts.md#86-callable-constraints), even when instantiation reveals a weaker body requirement.

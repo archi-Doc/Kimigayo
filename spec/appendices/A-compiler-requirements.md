@@ -102,7 +102,7 @@ Persist §15.6.4’s static effects and returned Loan anchors in artifacts/calla
 
 Represent let/var storage, standard operations, custom/computed accessor signatures, and Contract requirements explicitly. Preserve storage/base identities, complete Types/Origins, accessor access, function boundaries, and witness mappings. Standard get is not a synthesized source function; Copy does not change its result Type.
 
-Validate direct/child Place permissions, receiver adaptations under the lending rule (§15.1.5), generic Copy proof, the transfer operation `@move` on Copy and Non-Copy Places, first-placement history, construction-call bans, getter temporary restrictions, and normal cleanup before lowering. Preserve Contract result restrictions through witness optimization. Update parser, writer, grammar, serialization, diagnostics, and artifact invalidation for accessor syntax and the transfer operation.
+Validate direct/child Place permissions, implicit receiver acquisition and explicit adaptations under the lending rule (§7.3, §15.1.5), generic Copy proof, the transfer operation `@move` on Copy and Non-Copy Places, first-placement history, construction-call bans, getter temporary restrictions, and normal cleanup before lowering. Preserve Contract result restrictions through witness optimization. Update parser, writer, grammar, serialization, diagnostics, and artifact invalidation for accessor syntax and the transfer operation.
 
 Cover private-set Move rejection; custom-get result versus storage borrowing; non-Copy custom setters and self-assignment; construction branch joins; partial inherited access and ancestor deinit; reference-result Origins; static accessor effects; and Contract by-value versus shared-slot witnesses.
 
@@ -139,6 +139,8 @@ Verify multi-level generic base projection, original protected-receiver checks, 
 Verify object creation's Copy/Move input states, payload eligibility, fresh identity, initial strong count, allocation failure, and source-storage responsibility. Strong-owner duplication must preserve identity without retaining a Loan on source-handle storage; cover count overflow, release through different views, exactly one final cleanup, and resurrection rejection.
 
 Test capture versus call acquisition, unused/nested explicit captures, let/var, reference/referent lifetimes, Copy/Move-consuming calls, every Callable receiver, per-call Origins, variant cast Loans, static inherited calls, and construction/destruction restrictions. Verify public status, use legality, complete dynamic cleanup, and receiver adjustment independently of load order and optimization.
+
+Verify implicit receiver acquisition (§7.3) against its explicit spelling by semantic case, not by the absence of a spelling: equal evaluation order and count for receivers with side-effecting indices or getters, equal reservations (shared reads during reservation accepted, overlapping exclusive acquisitions rejected), equal retained result Loans, equal object paths (no ObjectCallCompatible proof for a Sealed payload projection, Proven required for a protected object path), and no additional Copy, heap allocation or reference-count operation. Accept bare exclusive receivers and redundant explicit spellings, preserve the effect of a different explicit spelling, and reject bare owned Places at exclusive non-receiver positions, including Places reached through exclusive references. Diagnose the main causes of §7.3 and receiver-shape violations in Type declarations, Contract requirements, specializations and constraint-gathered groups, naming every mismatching declaration.
 
 ## A.9. Refinement and require verification
 
@@ -366,10 +368,14 @@ Index named aliases per document and reuse Container member indexes for opening 
 ## A.19. Complete payloads and whole-value updates
 
 Verify the intrinsic Sealed Identity, normalized outer owner Core, open/Never rejection,
-outer-only classification, and four-valued proof rules. Check generic signature
-formation before body generation; no missing capability or Origin proof may become
-a deferred layout obligation. Recheck both positive and negative evidence after
-openness, Type formation, effect, or specialization changes.
+outer-only classification, and four-valued proof rules. Verify the intrinsic ObjectPayload
+Identity, its direct and premise-based judgments, the `Self is not ObjectPayload` opt-out
+and its inheritance, Object Target evidence including pair evidence from admitted Semantics
+sets, and the rejection of every object form, creation, upcast, cast and `is` test over an
+opted-out Core (§8.4.7.2). Check generic signature formation before body generation; no
+missing capability or Origin proof may become a deferred layout obligation. Recheck both
+positive and negative evidence after openness, opt-out, Type formation, effect, or
+specialization changes.
 
 Test every §13.5.5 payload projection, exact internal Type/Origin identity, outer
 lifetime shortening, owner retention, parent suspension, shared coexistence,
