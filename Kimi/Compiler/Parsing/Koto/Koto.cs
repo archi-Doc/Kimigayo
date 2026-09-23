@@ -495,6 +495,8 @@ public abstract class Koto
 
     internal BoundType? ErasedFunctionType { get; set; }
 
+    internal BoundFormatting? Formatting { get; set; }
+
     internal BindingFailure BindingFailure { get; set; }
 
     /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>

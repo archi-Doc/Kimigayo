@@ -50,6 +50,7 @@ internal sealed partial class BodyLowering
         this.functions = functions;
         this.flow = flow;
         this.arguments.Clear();
+        this.formattingEstimates.Clear();
         var count = body.Operations.Count;
         Grow(ref this.deliveries, count);
         this.deliveries.AsSpan(0, count).Fill(-1);
@@ -232,6 +233,13 @@ internal sealed partial class BodyLowering
     private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (body.Values[index].Kind == OwnershipValueKind.Formatting)
+        {
+            var valid = this.LowerFormatting(body, function, constants, projectDirectory, index, out failure);
+            this.AddStringFlags(function, operation, index);
+            return valid;
+        }
+
         if (operation.Kind is OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestMessage or OwnershipOperationKind.TestAbort)
         {
             return this.LowerVerification(body, function, index, out failure);

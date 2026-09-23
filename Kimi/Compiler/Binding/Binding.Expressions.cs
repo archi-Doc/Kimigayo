@@ -351,6 +351,8 @@ public sealed partial class Binding
                 return Complete(node, BoundType.Char);
             case StringLiteralKoto:
                 return Complete(node, BoundType.String);
+            case InterpolatedStringKoto interpolation:
+                return this.BindInterpolation(interpolation, scope);
             case NumberLiteralKoto number:
                 var numberType = DefaultLiteralType(number, expected);
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))

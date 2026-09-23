@@ -392,6 +392,7 @@ internal enum OwnershipValueKind : byte
     BorrowedFieldWrite,
     BorrowedUpdate,
     Sequence,
+    Formatting,
     PatternProjection,
     Closure,
     Capture,

@@ -296,6 +296,12 @@ public sealed partial class OwnershipBody
         bool Uses(int id, int place)
         {
             var operation = this.Operations[id];
+            if (this.Values[id] is { Kind: OwnershipValueKind.Formatting, Count: 1 } formatting &&
+                ValuePlaceForBorrow(this.Operations[this.ValueOperands[formatting.Start]]) == place)
+            {
+                return true;
+            }
+
             if (operation.Kind == OwnershipOperationKind.ActivateCallBorrows)
             {
                 for (var r = operation.Reservation; r >= 0; r = this.CallReservations[r].Next)

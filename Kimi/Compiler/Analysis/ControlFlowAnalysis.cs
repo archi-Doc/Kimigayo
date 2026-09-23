@@ -405,6 +405,18 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case InterpolatedStringKoto { Formatting: { } formatting }:
+                var formattingFlow = this.Visit(formatting.Heap, reachable);
+                var adapterFlow = this.Visit(formatting.Adapter, reachable && formattingFlow.Normal);
+                formattingFlow = new(formattingFlow.Normal && adapterFlow.Normal, formattingFlow.Type, Union(formattingFlow.Transfers, adapterFlow.Transfers), formattingFlow.Pending || adapterFlow.Pending);
+                foreach (var write in formatting.Writes)
+                {
+                    var writeFlow = this.Visit(write, reachable && formattingFlow.Normal);
+                    formattingFlow = new(formattingFlow.Normal && writeFlow.Normal, writeFlow.Type, Union(formattingFlow.Transfers, formattingFlow.Normal ? writeFlow.Transfers : null), formattingFlow.Pending || writeFlow.Pending);
+                }
+
+                flow = formattingFlow with { Type = this.types.GetExpressionType(node) };
+                break;
             case SyntaxFormKoto { Akind: KotoKind.EnumCase }:
                 // Case payloads are declaration Types, including their Origin names.
                 // Binding validates them; constructing a Case is a separate expression.

@@ -212,6 +212,7 @@ public sealed partial class OwnershipAnalysis
         this.temporaries.Clear();
         this.loops.Clear();
         this.arguments.Clear();
+        this.formattingPlaces.Clear();
         this.placeValues.Clear();
         this.resultHeads.Clear();
         this.resultJoins.Clear();
@@ -609,6 +610,10 @@ public sealed partial class OwnershipAnalysis
                 return this.Expression(parentheses.Operand, use, acquisition);
             case MacroKoto { Operand: InvocationKoto abort } when ReferenceEquals(abort.BoundCall?.Target, this.compilation.Library.Abort):
                 return this.Call(abort);
+            case InterpolatedStringKoto { Formatting: { } formatting }:
+                return this.Formatting(formatting);
+            case FormattingKoto formattingValue:
+                return this.FormattingValue(formattingValue);
             case IdentifierNameKoto:
                 if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
                 {

@@ -137,7 +137,7 @@ public sealed partial class Binding
                 return operand?.Kind == BoundTypeKind.Constructed && (operand.Symbol == this.Library.Option || operand.Symbol == this.Library.Result) ? operand.Components[0] : null;
             case BoolLiteralKoto or IsKoto { IsRuntimeTest: true }:
                 return BoundType.Boolean;
-            case StringLiteralKoto:
+            case StringLiteralKoto or InterpolatedStringKoto:
                 return BoundType.String;
             case CharLiteralKoto:
                 return BoundType.Char;

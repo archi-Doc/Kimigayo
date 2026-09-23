@@ -787,7 +787,7 @@ public sealed partial class Binding
         }
 
         var receiver = this.CallReceiver(generic?.Identifier ?? call.Method);
-        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not MemberAccessKoto)
+        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not (MemberAccessKoto or FormattingKoto { Operation: FormattingOperation.Callee }))
         {
             return CandidateApplicability.Inapplicable;
         }

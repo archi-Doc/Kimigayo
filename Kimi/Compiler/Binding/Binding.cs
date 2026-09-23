@@ -831,6 +831,7 @@ public sealed partial class Binding
         public override void Visit(Koto node)
         {
             node.BindingState = BindingState.Unvisited;
+            node.Formatting = null;
             node.BindingFailure = BindingFailure.None;
             node.BoundMeaning = null;
             node.ErasedFunctionType = null;

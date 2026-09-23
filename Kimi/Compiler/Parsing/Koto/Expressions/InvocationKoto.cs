@@ -10,6 +10,11 @@ namespace Kimi.Compiler.Parsing;
 /// </summary>
 public sealed class InvocationKoto : ApplicationKoto
 {
+    internal InvocationKoto(Koto root, Koto method, IReadOnlyList<Koto> arguments)
+        : base(root, method, arguments)
+    {
+    }
+
     /// <summary>Gets the selected call plan for the current Binding, or null before selection.</summary>
     public BoundCall? BoundCall => this.BindingState == BindingState.Resolved && !this.IsValueCall ? this.CallStorage : null;
 

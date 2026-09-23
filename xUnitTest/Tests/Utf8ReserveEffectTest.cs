@@ -10,12 +10,16 @@ public class Utf8ReserveEffectTest
 {
     private const string State = "group State\n    public var value: i32 = 0\n";
     private const string Writer = "struct Writer\n    Self is BufferWriter\n    public var local: i32 = 1\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n";
+    private const string Formatter = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        ";
 
     [Theory]
     [InlineData("", "_ = minimum")]
     [InlineData("", "self.local += 1")]
     [InlineData("group Helpers\n    public func pure(value: i32) -> i32 => value + 1\n", "_ = Helpers.pure(self.local)")]
     [InlineData("group Constants\n    public let value: i32 = 1\n", "_ = Constants.value")]
+    [InlineData("", "_ = Text.toString(42)")]
+    [InlineData("", "_ = \"value: \\(42)\"")]
+    [InlineData(Formatter + "return writer.write(42)\n", "_ = \"value: \\(Value.init())\"")]
     public void InputAuthorityAndImmutableStateAreAllowed(string prefix, string operation)
     {
         var c = Analyze(prefix, operation);
@@ -30,6 +34,8 @@ public class Utf8ReserveEffectTest
     [InlineData(State + "struct Noisy\n    public init() => ()\n    deinit\n        _ = State.value\n", "_ = Noisy.init()")]
     [InlineData(State + "struct Initializer\n    let value: i32 = State.value\n", "_ = Initializer.init()")]
     [InlineData("", "Console.writeLine(\"external\")")]
+    [InlineData(State + Formatter + "_ = State.value\n        return .Ok(())\n", "_ = \"value: \\(Value.init())\"")]
+    [InlineData(State + Formatter + "_ = State.value\n        return .Ok(())\n", "_ = Text.toString(Value.init())")]
     public void AmbientOrUnknownEffectsInvalidateTheConformance(string prefix, string operation)
     {
         var c = Analyze(prefix, operation);

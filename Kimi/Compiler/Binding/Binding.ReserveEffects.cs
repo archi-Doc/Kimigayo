@@ -74,10 +74,21 @@ public sealed partial class Binding
                     return;
                 }
 
-                this.Function(call.Target);
+                this.Call(call);
                 for (var i = 0; i < call.DefaultArguments.Length; i++)
                 {
                     this.Queue(call.DefaultArguments[i].Expression);
+                }
+            }
+
+            if (node.Formatting is { } formatting)
+            {
+                foreach (var write in formatting.Writes)
+                {
+                    if (write.BoundCall is { } selected)
+                    {
+                        this.Call(selected);
+                    }
                 }
             }
 
@@ -134,17 +145,43 @@ public sealed partial class Binding
             return this.valid;
         }
 
+        private void Call(BoundCall call)
+        {
+            if (call.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
+            {
+                if (call.TypeArguments.Length == 0 || call.TypeArguments[0] is not { } valueType)
+                {
+                    this.valid = false;
+                }
+                else if (!FormattingTypes.IsBuiltin(valueType))
+                {
+                    if (binding.FormattingImplementation(call, valueType, KimiDeclarationId.Utf8Format) is { } implementation)
+                    {
+                        this.Function(implementation.Target);
+                    }
+                    else
+                    {
+                        this.valid = false;
+                    }
+                }
+
+                return;
+            }
+
+            this.Function(call.Target);
+        }
+
         private void Function(BindingSymbol symbol)
         {
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
-                // These operations use their inputs and the allocator only. A
-                // formatting call can invoke arbitrary user effects and is excluded.
+                // These operations use their inputs and the allocator only.
+                // Formatting dispatch is checked through its selected witness.
                 this.valid &= symbol.CompilerFunction is
                     CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or
                     >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
                     CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
-                    >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus;
+                    >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat;
                 return;
             }
 

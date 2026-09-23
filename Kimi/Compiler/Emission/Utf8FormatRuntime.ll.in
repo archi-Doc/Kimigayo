@@ -14,6 +14,83 @@ entry:
   %kind = zext i1 %heap to i8
   %kindp = getelementptr i8, ptr %ret, i64 16
   store i8 %kind, ptr %kindp, align 1
+  ; The private owner remains in the original temporary cleanup order, now empty.
+  call void @llvm.memset.p0.i64(ptr %buffer, i8 0, i64 32, i1 false)
+  ret void
+}
+
+define internal void @__kimi_format_check(ptr %writer, ptr %location, i64 %location_length) #0 {
+entry:
+  %failedp = getelementptr i8, ptr %writer, i64 56
+  %failed = load i8, ptr %failedp, align 1
+  %ok = icmp eq i8 %failed, 0
+  br i1 %ok, label %success, label %failure
+success:
+  ret void
+failure:
+  call void @__kimi_abort(i32 {{reason_format}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+}
+
+define internal void @__kimi_format_hint(ptr %writer, i64 %hint) #0 {
+entry:
+  %hintp = getelementptr i8, ptr %writer, i64 24
+  store i64 %hint, ptr %hintp, align 8
+  ret void
+}
+
+; Only compiler-created owning roots use this entry. Literal size is checked
+; immediately, before the next expression, even when its physical copy is delayed.
+define internal void @__kimi_format_literal(ptr %ret, ptr %self, ptr %value, i32 %kind, ptr %location, i64 %location_length) #0 {
+entry:
+  %buffer = load ptr, ptr %self, align 8
+  %lengthp = getelementptr i8, ptr %buffer, i64 16
+  %length = load i64, ptr %lengthp, align 8
+  %pendingp = getelementptr i8, ptr %self, i64 40
+  %pending = load i64, ptr %pendingp, align 8
+  %literalp = getelementptr i8, ptr %value, i64 8
+  %literal = load i64, ptr %literalp, align 8
+  %room0 = sub i64 9223372036854775807, %length
+  %room = sub i64 %room0, %pending
+  %overflow = icmp ugt i64 %literal, %room
+  br i1 %overflow, label %size_failure, label %append
+append:
+  %data = load ptr, ptr %value, align 8
+  %empty = icmp eq i64 %pending, 0
+  br i1 %empty, label %defer, label %flush
+defer:
+  %datap = getelementptr i8, ptr %self, i64 32
+  store ptr %data, ptr %datap, align 8
+  store i64 %literal, ptr %pendingp, align 8
+  %logicalp = getelementptr i8, ptr %self, i64 48
+  %logical = add i64 %length, %literal
+  store i64 %logical, ptr %logicalp, align 8
+  store i32 0, ptr %ret, align 4
+  ret void
+flush:
+  call void @__kimi_format_bytes(ptr %ret, ptr %self, ptr %data, i64 %literal, ptr %location, i64 %location_length)
+  ret void
+size_failure:
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+}
+
+define internal void @__kimi_format_finish(ptr %ret, ptr %buffer, ptr %writer, ptr %location, i64 %location_length) #0 {
+entry:
+  %reservation = alloca [40 x i8], align 8
+  call void @__kimi_format_check(ptr %writer, ptr %location, i64 %location_length)
+  %pendingp = getelementptr i8, ptr %writer, i64 40
+  %pending = load i64, ptr %pendingp, align 8
+  %empty = icmp eq i64 %pending, 0
+  br i1 %empty, label %take, label %flush
+flush:
+  call void @__kimi_writer_reserve(ptr %reservation, ptr %writer, i64 0, ptr %location, i64 %location_length)
+  call void @__kimi_format_check(ptr %writer, ptr %location, i64 %location_length)
+  %window = getelementptr i8, ptr %reservation, i64 8
+  call void @__kimi_utf8_commit(ptr %window, i64 0)
+  br label %take
+take:
+  call void @__kimi_format_take_string(ptr %ret, ptr %buffer)
   ret void
 }
 
@@ -88,6 +165,13 @@ entry:
   br i1 %stopped, label %full, label %dispatch
 dispatch:
   %destination = load ptr, ptr %self, align 8
+  %pendingp = getelementptr i8, ptr %self, i64 40
+  %pending = load i64, ptr %pendingp, align 8
+  %room = sub i64 9223372036854775807, %pending
+  %overflow = icmp ugt i64 %amount, %room
+  br i1 %overflow, label %size_failure, label %select
+select:
+  %requested = add i64 %amount, %pending
   %kindp = getelementptr i8, ptr %self, i64 16
   %kind = load i64, ptr %kindp, align 8
   switch i64 %kind, label %user [
@@ -95,12 +179,12 @@ dispatch:
     i64 1, label %heap
   ]
 fixed:
-  call void @__kimi_buffer_reserve(ptr %ret, ptr %destination, i64 %amount, i1 false, i64 0, ptr %location, i64 %location_length)
+  call void @__kimi_buffer_reserve(ptr %ret, ptr %destination, i64 %requested, i1 false, i64 0, ptr %location, i64 %location_length)
   br label %check
 heap:
   %hintp = getelementptr i8, ptr %self, i64 24
   %hint = load i64, ptr %hintp, align 8
-  call void @__kimi_buffer_reserve(ptr %ret, ptr %destination, i64 %amount, i1 true, i64 %hint, ptr %location, i64 %location_length)
+  call void @__kimi_buffer_reserve(ptr %ret, ptr %destination, i64 %requested, i1 true, i64 %hint, ptr %location, i64 %location_length)
   br label %check
 user:
   %functionp = getelementptr i8, ptr %self, i64 8
@@ -126,7 +210,22 @@ full:
   call void @__kimi_writer_fail(ptr %ret, ptr %self)
   ret void
 done:
+  %haspending = icmp ne i64 %pending, 0
+  br i1 %haspending, label %prepend, label %complete
+prepend:
+  %pendingdatap = getelementptr i8, ptr %self, i64 32
+  %pendingdata = load ptr, ptr %pendingdatap, align 8
+  %window = getelementptr i8, ptr %ret, i64 8
+  %address = call ptr @__kimi_window_address(ptr %window)
+  call void @llvm.memcpy.p0.p0.i64(ptr %address, ptr %pendingdata, i64 %pending, i1 false)
+  call void @__kimi_window_advance(ptr %window, i64 %pending)
+  store i64 0, ptr %pendingp, align 8
+  br label %complete
+complete:
   ret void
+size_failure:
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
 }
 
 define internal void @__kimi_utf8_commit(ptr %window, i64 %amount) #0 {
