@@ -78,7 +78,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 26 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 27 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 28 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged source, shared-view/cleanup variants and required rejections pass through `test-milestone29.ps1`; allocation/cost probes pass, but P29 remains IN_PROGRESS for the G17 ownership-stage diagnostic guards |
+| 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
 | 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 32 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -1365,9 +1365,9 @@ These runtime and rejection checks pass through `test-milestone29.ps1` and the
 `DynamicArray*` native fixtures. Instrumented native probes verify allocation and
 growth-transfer bounds, failed shrink preservation and representable capacity
 limits; repeated shared views allocate no storage, and warm Binding, ownership,
-validation, emission and whole-pipeline probes allocate zero bytes. P29 remains
-IN_PROGRESS because zero-sized elements and shared string iteration still need
-ownership-stage Unsupported diagnostics (PLAN G17); neither publishes partial IR.
+validation, emission and whole-pipeline probes allocate zero bytes. Zero-sized
+elements and shared string iteration, which are outside the verified generation
+boundary, are rejected by ownership analysis with `UnsupportedOwnership_Kd`.
 
 Focus: [Array operations](../spec/04-arrays-indexing-and-slices.md#472-array-operations),
 [capacity](../spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation),
