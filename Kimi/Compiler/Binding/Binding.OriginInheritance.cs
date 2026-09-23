@@ -117,9 +117,18 @@ public sealed partial class Binding
                     }
                 }
 
+                // An omitted name is inherited through the first parameter position the original binds it at.
+                for (var p = 0; inherited is null && p < definition.Parameters.Count; p++)
+                {
+                    if (definition.Parameters[p].Type.BoundType is { } parameter && MentionsOrigin(parameter, definitionOrigins[i].Origin))
+                    {
+                        inherited = inputs[p];
+                    }
+                }
+
                 if (inherited is null)
                 {
-                    return false; // An omitted named binder is not inherited yet.
+                    return false; // A result-only binder has no position to inherit from.
                 }
 
                 binders[definitionOrigins[i].Slot] = inherited;
@@ -178,6 +187,32 @@ public sealed partial class Binding
         finally
         {
             this.originScratch.Return(inputs, clearArray: true);
+        }
+
+        static bool MentionsOrigin(BoundType type, BoundOrigin origin)
+        {
+            if (ReferenceEquals(type.Origin, origin))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (ReferenceEquals(type.OriginArguments[i], origin))
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (MentionsOrigin(type.Components[i], origin))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         void MapInputSlots(BoundType pattern, BoundType actual)

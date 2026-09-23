@@ -49,6 +49,13 @@ public class SpecializationBindingTest
             Named + "specialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{source}/i32 => values[2]@ref/i32\nfunc forward<T>(values: ref{source}/[3 of T]) -> ref{source}/T => first<T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [3 of bool] = [true, false, false]\ndo\n    let local: [3 of i32] = [7, 8, 9]\n    require first<i32>(local@ref) == 9 else => $abort(\"local\")\nrequire first<i32>(a@ref) == 3 and forward<i32>(a@ref) == 3 and first<bool>(b@ref) == true else => $abort(\"first\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    [Fact]
+    public void OmittedBinderNamesAreInheritedThroughTheirInputs()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationOmittedBinders",
+            Named + "specialize func first<i32>(values: ref/[3 of i32]) -> ref/i32 => values[2]@ref/i32\nlet a: [3 of i32] = [1, 2, 3]\ndo\n    let local: [3 of i32] = [7, 8, 9]\n    require first<i32>(local@ref) == 9 else => $abort(\"local\")\nrequire first<i32>(a@ref) == 3 else => $abort(\"first\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
     [Theory]
     [InlineData("specialize func first<i32>(values: ref{other}/[3 of i32]) -> ref{other}/i32 => values[2]@ref/i32")]
     [InlineData("specialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{static}/i32 => values[2]@ref/i32")]
