@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class LengthCallBindingTest
 {
-    private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value\n";
+    private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value@move\n";
 
     [Theory]
     [InlineData("keep<2, i32>(a)", 2)]
@@ -34,8 +34,8 @@ public class LengthCallBindingTest
     [Theory]
     [InlineData("let N: isize = 2\nlet a: [2 of i32] = [1, 2]\nlet result = keep<N, i32>(a)")]
     [InlineData("group Sizes\n    public let N: isize = 2\nlet a: [2 of i32] = [1, 2]\nlet result = keep<Sizes.N, i32>(a)")]
-    [InlineData("func forward<length M, U>(a: [M of U]) -> [M of U] => keep<M, U>(a)")]
-    [InlineData("func forward<length M, U>(a: [M of U]) -> [M of U] => keep(a)")]
+    [InlineData("func forward<length M, U>(a: [M of U]) -> [M of U] => keep<M, U>(a@move)")]
+    [InlineData("func forward<length M, U>(a: [M of U]) -> [M of U] => keep(a@move)")]
     [InlineData("let result: [0 of i32] = keep([])")]
     public void UsesConstantsCallerSlotsAndExpectedTypes(string source)
     {

@@ -23,8 +23,8 @@ public class TerminalWhileContinuationTest
     [Theory]
     [InlineData("var x: i32", "x = 3\n                exit", "let y = x", "()", OwnershipFailure.UninitializedUse)]
     [InlineData("let x: i32", "x = 3\n                exit", "x = 4", "()", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"", "Console.writeLine(s)\n                exit", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "Console.writeLine(s)\n                return", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "_ = s@move\n                exit", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "_ = s@move\n                return", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void ZeroIterationsAndTerminalHistoriesKeepTheirStates(string declaration, string body, string after, string use, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, body, after, use));
@@ -38,7 +38,7 @@ public class TerminalWhileContinuationTest
     [Fact]
     public void ReturnOnlyEffectsDoNotEnterTheSkippedSuccessor()
     {
-        var c = MinimalEmissionTest.Analyze(Source("let s = \"s\"", "Console.writeLine(s)\n                return", "Console.writeLine(s)", "()"));
+        var c = MinimalEmissionTest.Analyze(Source("let s = \"s\"", "_ = s@move\n                return", "Console.writeLine(s)", "()"));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

@@ -73,7 +73,7 @@ public class TestExecutionAnalysisTest
     [InlineData("require", true)]
     public void LazyMessageMoveOnlyReachesExpectContinuation(string operation, bool verified)
     {
-        var c = Analyze("#Test\nfunc sample()\n    let text = \"message\"\n    $" + operation + "(true, message: text)\n    Console.writeLine(text)");
+        var c = Analyze("#Test\nfunc sample()\n    let text = \"message\"\n    $" + operation + "(true, message: text@move)\n    Console.writeLine(text)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Equal(verified, c.Ownership.Result.IsVerified);
     }

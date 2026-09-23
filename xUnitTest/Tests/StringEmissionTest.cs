@@ -7,19 +7,21 @@ namespace XunitTest;
 
 public class StringEmissionTest
 {
-    private const string Conditional = "var c = true\nvar text = \"old\"\nif c => Console.writeLine(text)\ntext = \"new\"\nConsole.writeLine(text)";
-    private const string Loop = "var text = \"outer\"\nvar i = 0\nwhile i < 3\n    if i == 1 => Console.writeLine(text)\n    text = \"next\"\n    i += 1\nConsole.writeLine(text)";
+    // writeLine borrows its argument (SPEC 22.4); the conditional Moves are written as transfers of a temporary.
+    private const string Conditional = "var c = true\nvar text = \"old\"\nif c => Console.writeLine(text@move)\ntext = \"new\"\nConsole.writeLine(text)";
+    private const string Loop = "var text = \"outer\"\nvar i = 0\nwhile i < 3\n    if i == 1 => Console.writeLine(text@move)\n    text = \"next\"\n    i += 1\nConsole.writeLine(text)";
 
     public static TheoryData<string, string, string, string> Fixtures => new()
     {
         { "StringLocal", "let text = \"hello\"\nConsole.writeLine(text)", "hello\n", "hello=1" },
-        { "StringMove", "let text = \"hello\"\nlet other = text\nConsole.writeLine(other)", "hello\n", "hello=1" },
+        { "StringMove", "let text = \"hello\"\nlet other = text@move\nConsole.writeLine(other)", "hello\n", "hello=1" },
         { "StringDrop", "let text = \"drop\"", string.Empty, "drop=1" },
-        { "StringDiscardMove", "let text = \"drop\"\ntext", string.Empty, "drop=1" },
-        { "StringEmpty", "var text = \"\"\ntext = text\nConsole.writeLine(text)", "\n", "=1" },
+        { "StringDiscardMove", "let text = \"drop\"\ntext@move", string.Empty, "drop=1" },
+        { "StringEmpty", "var text = \"\"\ntext = text@move\nConsole.writeLine(text)", "\n", "=1" },
         { "StringUnicode", "let text = \"日本語\\0\"\nConsole.writeLine(text)", "日本語\0\n", "日本語\0=1" },
         { "StringReplace", "var text = \"old\"\ntext = \"new\"\nConsole.writeLine(text)", "new\n", "old=1;new=1" },
-        { "StringSelf", "var text = \"self\"\ntext = text\nConsole.writeLine(text)", "self\n", "self=1" },
+        { "StringSelf", "var text = \"self\"\ntext = text@move\nConsole.writeLine(text)", "self\n", "self=1" },
+        { "StringBorrowTwice", "let text = \"twice\"\nConsole.writeLine(text)\nConsole.writeLine(text)", "twice\ntwice\n", "twice=1" },
         { "StringReinitialize", "var text = \"old\"\nConsole.writeLine(text)\ntext = \"new\"", "old\n", "old=1;new=1" },
         { "StringConditionalTrue", Conditional, "old\nnew\n", "old=1;new=1" },
         { "StringConditionalFalse", Conditional.Replace("true", "false"), "new\n", "old=1;new=1" },
@@ -34,10 +36,10 @@ public class StringEmissionTest
         { "StringPhi", "var c = true\nlet result = work: do\n    var text = \"local\"\n    if c => Console.writeLine(text)\n    exit to work: 42\nif result == 42 => Console.writeLine(\"ok\")", "local\nok\n", "local=1;ok=1" },
         { "StringExitRhs", "loop\n    var text = \"old\"\n    text = (exit)", string.Empty, "old=1" },
         { "StringReturnRhs", "func f() -> i32\n    var text = \"old\"\n    text = (return 42)\nif f() == 42 => Console.writeLine(\"ok\")", "ok\n", "old=1;ok=1" },
-        { "StringSkipped", "if false\n    var text = \"skipped\"\n    text = text\nConsole.writeLine(\"ok\")", "ok\n", "skipped=0;ok=1" },
+        { "StringSkipped", "if false\n    var text = \"skipped\"\n    text = text@move\nConsole.writeLine(\"ok\")", "ok\n", "skipped=0;ok=1" },
         { "StringPhiCleanup", "func choose(c: bool, move: bool) -> i32\n    let n = if c\n        var text = \"join\"\n        if move => Console.writeLine(text)\n        yield 40 + 2\n    else => 7\n    return n\nif choose(true, true) == 42 and choose(true, false) == 42 and choose(false, true) == 7 => Console.writeLine(\"ok\")", "join\nok\n", "join=2;ok=1" },
         { "StringDiscardSelection", "if true => (if true => \"a\" else => \"b\")", string.Empty, "a=1;b=0" },
-        { "StringExplicitMain", "public func main()\n    var text = \"main\"\n    text = text\n    Console.writeLine(text)", "main\n", "main=1" },
+        { "StringExplicitMain", "public func main()\n    var text = \"main\"\n    text = text@move\n    Console.writeLine(text)", "main\n", "main=1" },
     };
 
     [Theory]
@@ -64,7 +66,9 @@ public class StringEmissionTest
     [InlineData("func unused() -> string => " + MinimalEmissionTest.FloatExpression + "\nConsole.writeLine(\"ok\")")]
     [InlineData("func unused(text: uniq/string) => ()\nConsole.writeLine(\"ok\")")]
     [InlineData("let text = \"a\"\ntext@string\nConsole.writeLine(text)")]
-    [InlineData("let text = \"a\"\nConsole.writeLine(text)\nConsole.writeLine(text)")]
+    [InlineData("let text = \"a\"\nlet taken = text@move\nConsole.writeLine(text)")]
+    [InlineData("let text = \"a\"\nlet taken = text\nConsole.writeLine(text)")]
+    [InlineData("let text = \"a\"\nConsole.writeLine(text@uniq)")]
     [InlineData("var text: string\nvar c = true\nif c => text = \"a\"\nConsole.writeLine(text)")]
     public void UnsupportedResultsAndInvalidMovesPublishNoIr(string source)
     {
@@ -128,11 +132,11 @@ public class StringEmissionTest
     [Fact]
     public void SelfAssignmentKeepsBothMovesAndNoOldValueDestruction()
     {
-        var c = MinimalEmissionTest.Analyze("var text = \"self\"\ntext = text\nConsole.writeLine(text)");
+        var c = MinimalEmissionTest.Analyze("var text = \"self\"\ntext = text@move\nConsole.writeLine(text)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
-        Assert.Equal(4, function.Instructions.Count(x => x.Opcode == EmissionOpcode.MoveString));
-        Assert.DoesNotContain(function.Instructions, x => x.Callee == WindowsLowering.DestroyString);
+        Assert.Equal(3, function.Instructions.Count(x => x.Opcode == EmissionOpcode.MoveString)); // writeLine borrows; it no longer moves.
+        Assert.Equal(1, function.Instructions.Count(x => x.Callee == WindowsLowering.DestroyString)); // Only the scope-end cleanup; the old value is never destroyed.
         Assert.Empty(function.LiveFlags);
     }
 

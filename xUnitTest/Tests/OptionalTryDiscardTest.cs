@@ -98,7 +98,7 @@ public class OptionalTryDiscardTest
     [InlineData("SingleLayer", "func source() -> i32?? => .Some(.None)\nfunc run() -> bool?\n    let inner = try source()\n    let isNone = match inner\n        .None => true\n        .Some(_) => false\n    return .Some(isNone)\nmatch run()\n    .Some(true) => ()\n    _ => $abort(\"flattened\")")]
     [InlineData("Borrow", "struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc wrap(x: ref/S) -> ref{x}/S? => .Some(x)\nfunc run(x: ref/S) -> i32?\n    let r = try wrap(x)\n    return .Some(r.n)\nlet s = S.init(8)\nmatch run(s)\n    .Some(8) => ()\n    _ => $abort(\"borrow\")")]
     [InlineData("Lambda", "func source() -> i32? => .Some(8)\nlet f = func () -> i32? => .Some(try source())\nmatch f()\n    .Some(8) => ()\n    _ => $abort(\"lambda\")")]
-    [InlineData("Generic", "func unwrap<T>(x: T?) -> T? => .Some(try x)\nmatch unwrap<i32>(.Some(8))\n    .Some(8) => ()\n    _ => $abort(\"generic\")\n_ = unwrap<string>(.Some(\"owned\"))")]
+    [InlineData("Generic", "func unwrap<T>(x: T?) -> T? => .Some(try x@move)\nmatch unwrap<i32>(.Some(8))\n    .Some(8) => ()\n    _ => $abort(\"generic\")\n_ = unwrap<string>(.Some(\"owned\"))")]
     public void ExecutesCombinations(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -144,7 +144,7 @@ public class OptionalTryDiscardTest
     [InlineData("Whole", "_", "sum += 1", 2)]
     [InlineData("Named", "pair", "sum += pair.0", 4)]
     public void UnnamedIterationPreservesShape(string name, string binding, string body, int total)
-        => EmitChecked("OptionalTryFor" + name, $"let pairs: [2 of (i32, i32)] = [(1, 2), (3, 4)]\nvar sum = 0\nfor {binding} in pairs => {body}\nrequire sum == {total} else => $abort(\"iteration\")", string.Empty);
+        => EmitChecked("OptionalTryFor" + name, $"let pairs: [2 of (i32, i32)] = [(1, 2), (3, 4)]\nvar sum = 0\nfor {binding} in pairs@move => {body}\nrequire sum == {total} else => $abort(\"iteration\")", string.Empty);
 
     [Fact]
     public void RebindingRetainsCurrentTryArms()
@@ -185,7 +185,7 @@ public class OptionalTryDiscardTest
     [InlineData("let _value: i32 = 3\n_ = _value", true)]
     [InlineData("func make<T>() -> T? => .None\nfunc run() -> i32?\n    let x: i32 = try make()\n    return .Some(x)", false)]
     [InlineData("func make<T>() -> T? => .None\nfunc run() -> i32?\n    let x: i32 = try make<i32>()\n    return .Some(x)", true)]
-    [InlineData("func make() -> string? => .Some(\"owned\")\nfunc run() -> ()?\n    let saved = make()\n    _ = try saved\n    _ = saved\n    return .Some(())", false)]
+    [InlineData("func make() -> string? => .Some(\"owned\")\nfunc run() -> ()?\n    let saved = make()\n    _ = try saved@move\n    _ = saved@move\n    return .Some(())", false)]
     [InlineData("func run(x: ref/(i32?)) -> i32? => .Some(try x)", false)]
     [InlineData("func run<T>(x: T) -> i32? => .Some(try x)", false)]
     [InlineData("func run() -> i32?\n    return .Some(1)\n    _ = try 1", false)]
@@ -221,7 +221,7 @@ public class OptionalTryDiscardTest
     [Fact]
     public void GenericWarningsAreIssuedAtDefinitionOnce()
     {
-        var c = MinimalEmissionTest.Analyze("func process<T>(x: Result<T, i32>) -> Result<(), i32>\n    try x\n    return .Ok(())\n_ = process<()>(.Ok(()))\n_ = process<i32>(.Ok(1))");
+        var c = MinimalEmissionTest.Analyze("func process<T>(x: Result<T, i32>) -> Result<(), i32>\n    try x@move\n    return .Ok(())\n_ = process<()>(.Ok(()))\n_ = process<i32>(.Ok(1))");
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
         var warning = Assert.Single(c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings);
         Assert.Equal(3, warning.Priority);
@@ -254,7 +254,7 @@ public class OptionalTryDiscardTest
 
     [Fact]
     public void SuccessMoveDestroysOnlyTheSecuredValue()
-        => EmitChecked("OptionalTryMoveCleanup", "struct Token\n    deinit => Console.writeLine(\"destroy\")\nfunc run(x: Token?) -> Token? => .Some(try x)\n_ = run(.Some(Token.init()))\nConsole.writeLine(\"after\")", "destroy\nafter\n");
+        => EmitChecked("OptionalTryMoveCleanup", "struct Token\n    deinit => Console.writeLine(\"destroy\")\nfunc run(x: Token?) -> Token? => .Some(try x@move)\n_ = run(.Some(Token.init()))\nConsole.writeLine(\"after\")", "destroy\nafter\n");
 
     [Theory]
     [InlineData("try source()")]
@@ -301,7 +301,14 @@ public class OptionalTryDiscardTest
 
     [Fact]
     public void OptionalIdentityAcquisitionMovesOwnedPayload()
-        => EmitChecked("OptionalTryIdentityMove", "struct Token\n    deinit => Console.writeLine(\"destroy\")\nlet x: Token? = .Some(Token.init())\n_ = x@Token?", "destroy\n");
+    {
+        // SPEC 13.5.3: Identity Acquisition never transfers a Non-Copy Place; the transferred temporary is acquired instead.
+        const string Declaration = "struct Token\n    deinit => Console.writeLine(\"destroy\")\nlet x: Token? = .Some(Token.init())\n";
+        var rejected = MinimalEmissionTest.Analyze(Declaration + "_ = x@Token?");
+        Assert.False(rejected.Binding.Result.IsComplete);
+        Assert.Contains(rejected.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
+        EmitChecked("OptionalTryIdentityMove", Declaration + "_ = x@move@Token?", "destroy\n");
+    }
 
     private static void EmitChecked(string name, string source, string expected)
     {

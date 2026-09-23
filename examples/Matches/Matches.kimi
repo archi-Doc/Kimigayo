@@ -1,7 +1,7 @@
 func classify(text: string) -> string
-    return match text
+    return match text@move
         "ok" => "accepted"
-        let other => other
+        let other => other@move
 
 public func main()
     Console.writeLine(classify("ok"))

@@ -21,8 +21,8 @@ public class PartialLogicalReplayTest
     [Theory]
     [InlineData("var x: i32", "truth(stop()) and (if c => return else => effect(x = 3))", "()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "truth(stop()) or (if c => effect(x = 3) else => return)", "let y = x", "()", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "truth(stop()) and (if c => stopTake(s) else => true)", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "truth(stop()) or (if c => true else => take(s))", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "truth(stop()) and (if c => stopTake(s@move) else => true)", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "truth(stop()) or (if c => true else => take(s@move))", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "truth(stop()) and (if effect(x = 3) => return else => true)", "x = 4", "()", OwnershipFailure.ReassignedLet)]
     public void NoncompletingLeftDoesNotEraseRhsOrSkippedHistories(string declaration, string expression, string after, string use, OwnershipFailure failure)
     {
@@ -57,16 +57,16 @@ public class PartialLogicalReplayTest
     [InlineData("and")]
     [InlineData("or")]
     public void TerminalMoveDoesNotPolluteNormalLogicalSuccessor(string op)
-        => Emit("NormalMove" + op, Source("let s = \"s\"", "c " + op + " (if c => stopTake(s) else => true)", "Console.writeLine(s)", "()"));
+        => Emit("NormalMove" + op, Source("let s = \"s\"", "c " + op + " (if c => stopTake(s@move) else => true)", "Console.writeLine(s)", "()"));
 
     [Theory]
     [InlineData("var x: i32", "c and (if c => return else => effect(x = 3))", "let y = x", "()", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "c or (if c => effect(x = 3) else => return)", "let y = x", "()", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "c and (if c => return else => true)", "x = 4", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "c and (if c => stopTake(s) else => true)", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "c or (if c => true else => stopTake(s))", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "c and (if c => return else => take(s))", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "c or (if take(s) => return else => true)", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "c and (if c => stopTake(s@move) else => true)", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "c or (if c => true else => stopTake(s@move))", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "c and (if c => return else => take(s@move))", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "c or (if take(s@move) => return else => true)", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "c and (if c => return else => effect(x = 3))", "x = 4", "()", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "c or (if effect(x = 3) => return else => true)", "()", "x = 4", OwnershipFailure.ReassignedLet)]
     public void SkippedNormalAndTerminalPathsKeepTheirOwnEffects(string declaration, string expression, string after, string use, OwnershipFailure failure)

@@ -25,8 +25,9 @@ internal sealed partial class BodyLowering
             foreach (var identity in identities)
             {
                 var source = identity.Source;
-                if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding != ConversionBinding.Identity ||
-                    SignatureType(lowering, source.BoundType) is not { } type || !Binding.SupportsIdentityAcquisition(type) ||
+                // A transfer (@move) designates its consumed input like Identity Acquisition, for every acquired Type.
+                if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding is not (ConversionBinding.Identity or ConversionBinding.Transfer) ||
+                    SignatureType(lowering, source.BoundType) is not { } type || (source.ConversionBinding == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type)) ||
                     !ReferenceEquals(type, SignatureType(lowering, source.Left.BoundType)) || !ReferenceEquals(type, SignatureType(lowering, source.Right.BoundType)) ||
                     !ReferenceEquals(type, body.Places[identity.Place].Type))
                 {

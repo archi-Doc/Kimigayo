@@ -151,16 +151,33 @@ public sealed partial class Binding
     private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature, SemanticsKind receiver = SemanticsKind.Ref)
     {
         var receiverType = call.Method.BoundType!;
-        if (receiver == SemanticsKind.Uniq && (receiverType.Semantics == SemanticsKind.Ref ||
-            (receiverType.Semantics == SemanticsKind.Owner && KotoHelper.UnwrapParentheses(call.Method) is IdentifierNameKoto && !Writable(call.Method))))
+        if (receiver == SemanticsKind.Uniq)
         {
-            return Fail(call, BindingFailure.InvalidAssignment);
+            if (receiverType.Semantics == SemanticsKind.Ref)
+            {
+                return Fail(call, BindingFailure.InvalidAssignment);
+            }
+
+            // SPEC 7.6.3: a directly owned closure is lent exclusively only by c@uniq(); a closure reached
+            // through an exclusive reference is reborrowed without a spelling.
+            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && PathAuthority(call.Method) != SemanticsKind.Uniq)
+            {
+                return Fail(call, BindingFailure.ExclusiveBorrowRequired);
+            }
         }
 
-        if (receiver == SemanticsKind.Owner && receiverType.Kind == BoundTypeKind.Semantics &&
-            this.ProveCopy(receiverType.Components[0], call) != ConstraintProof.Proven)
+        if (receiver == SemanticsKind.Owner)
         {
-            return Fail(call, BindingFailure.InvalidAssignment);
+            if (receiverType.Kind == BoundTypeKind.Semantics && this.ProveCopy(receiverType.Components[0], call) != ConstraintProof.Proven)
+            {
+                return Fail(call, BindingFailure.InvalidAssignment);
+            }
+
+            // SPEC 7.6.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
+            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && this.ProveCopy(receiverType, call) != ConstraintProof.Proven)
+            {
+                return Fail(call, BindingFailure.TransferRequired);
+            }
         }
 
         var parameters = signature.Components[0];

@@ -120,7 +120,8 @@ foreach ($level in @('O0', 'O2')) {
 $invalid = [ordered]@{
     MissingInitialization = $original.Replace("    else`n        current = Item.init(12)`n", '')
     MissingRepair = $original.Replace('            current = Item.init(20)', '            // current = Item.init(20)')
-    MovedRead = $original.Replace('            consume(current, initial + 1)', "            consume(current, initial + 1)`n            let invalid = current.value")
+    MovedRead = $original.Replace('            consume(current@move, initial + 1)', "            consume(current@move, initial + 1)`n            let invalid = current.value")
+    BareTransfer = $original.Replace('            consume(current@move, initial + 1)', '            consume(current, initial + 1)')
     CurrentLoan = $original.Replace('            total = total + selected.value', "            current.value = 99`n            total = total + selected.value")
     FallbackLoan = $original.Replace('let fallback =', 'var fallback =').Replace('            total = total + selected.value', "            fallback.value = 99`n            total = total + selected.value")
 }
@@ -139,6 +140,7 @@ foreach ($level in @('O0', 'O2')) {
         $stem = Join-Path $directory "bin/x86_64-pc-windows-msvc/$name"
         $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
         $required = if ($name -eq 'MissingInitialization') { 'UninitializedPlace_Kd' }
+            elseif ($name -eq 'BareTransfer') { 'TransferRequired_Kd' }
             elseif ($name -in @('CurrentLoan', 'FallbackLoan')) { 'ComparisonLoanConflict_Kd' }
             else { 'MovedPlace_Kd' }
         $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')

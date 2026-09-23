@@ -22,7 +22,7 @@ public class ScopedConditionalContinuationTest
     [Theory]
     [InlineData("let x: i32\nvalue(true)\nlet y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x = 1\nvalue(false)\nx = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"\nConsole.writeLine(s)\nvalue(true)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\n_ = s@move\nvalue(true)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void OmittedDefaultCannotRestoreCallerFacts(string tail, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Default + tail);
@@ -44,8 +44,8 @@ public class ScopedConditionalContinuationTest
     }
 
     [Theory]
-    [InlineData("Console.writeLine(s)\n            return", "return")]
-    [InlineData("return", "Console.writeLine(s)\n            return")]
+    [InlineData("_ = s@move\n            return", "return")]
+    [InlineData("return", "_ = s@move\n            return")]
     public void ScopedBranchMovesReachTheOuterContinuation(string yes, string no)
     {
         var c = MinimalEmissionTest.Analyze("func f(c: bool, s: string)\n    do\n        if c\n            " + yes + "\n        else\n            " + no + "\n    Console.writeLine(s)");
@@ -90,7 +90,7 @@ public class ScopedConditionalContinuationTest
     [Theory]
     [InlineData("let x: i32 = do => if stop() => 1 else => 2\nlet y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32\ndo\n    if stop() => x = 1\nlet y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"\ndo\n    if stop() => Console.writeLine(x) else => ()\nConsole.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"\ndo\n    if stop() => _ = x@move else => ()\nConsole.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     public void ScopedMissingConditionsRetainSourceFacts(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);

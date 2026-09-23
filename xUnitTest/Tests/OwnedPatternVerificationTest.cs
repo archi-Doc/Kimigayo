@@ -38,7 +38,7 @@ public class OwnedPatternVerificationTest
         var source = "func run() -> string\n    let outer = \"outer\"\n    let result: string = target: " + selection +
             "\n        let inner = \"inner\"\n        match (\"subject\", 1)\n            (_, let n) if (" + transfer +
             " to target: \"result\") => $abort(\"selected\")\n            _ => $abort(\"fallback\")" + otherwise +
-            "\n    return result\nConsole.writeLine(run())";
+            "\n    return result@move\nConsole.writeLine(run())";
         var fixture = "VerificationOwnedPattern" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, "result\n");
         StringEmissionTest.WriteAuditedFixture(fixture, source, ir, "result\n", "outer=1;inner=1;subject=1;result=1", order: [2, 1, 0, 3]);
@@ -55,12 +55,12 @@ public class OwnedPatternVerificationTest
                 match (("first", "second"), Packet.Pair("third", "fourth"), "remaining")
                     (let pair, let packet, _)
                         if consume
-                            match packet
+                            match packet@move
                                 .Pair(let a, let b)
                                     Console.writeLine(a)
                                     Console.writeLine(b)
                                 .Empty => ()
-                        match pair
+                        match pair@move
                             (let a, let b) => ()
             run(true)
             run(false)
@@ -68,7 +68,8 @@ public class OwnedPatternVerificationTest
         const string Fixture = "VerificationOwnedPatternAggregateBindings";
         const string Output = "third\nfourth\n";
         var ir = ScalarEmissionTest.EmitFixture(Fixture, Source, Output);
-        StringEmissionTest.WriteAuditedFixture(Fixture, Source, ir, Output, "first=2;second=2;third=2;fourth=2;remaining=2", order: [2, 3, 1, 0, 4, 1, 0, 3, 2, 4]);
+        // writeLine borrows a and b (SPEC 22.4); the arm destroys them in reverse acquisition order.
+        StringEmissionTest.WriteAuditedFixture(Fixture, Source, ir, Output, "first=2;second=2;third=2;fourth=2;remaining=2", order: [3, 2, 1, 0, 4, 1, 0, 3, 2, 4]);
     }
 
     [Fact]
@@ -79,7 +80,7 @@ public class OwnedPatternVerificationTest
                 Number(i32)
                 Text(string)
             func classify(value: Item) -> i32
-                return match value
+                return match value@move
                     .Text("a") => 1
                     .Text("a\0") => 2
                     .Text("a\0b") => 3

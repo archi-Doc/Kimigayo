@@ -11,6 +11,9 @@ internal enum ConversionBinding : byte
     Abrupt,
     Numeric,
     Identity,
+
+    // SPEC 13.5.3: @move or an owning-Semantics spelling transfers a Movable Place, even a Copy one.
+    Transfer,
     Borrow,
     PayloadBorrow,
 

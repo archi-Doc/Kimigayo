@@ -74,7 +74,7 @@ function Build-And-Run([string] $InputPath, [string] $Directory, [string] $Name,
     Copy-Item -LiteralPath "$stem.link.build.json" -Destination (Join-Path $work "$Name.$Level.build.json")
 }
 
-$expected = "Stateful result is 13.`nNested capture result is 18.`nCaptured message.`nClosure run finished.`n"
+$expected = "Stateful result is 13.`nNested capture result is 18.`nCaptured message.`nCaptured message.`nClosure run finished.`n"
 Build-And-Run $source (Split-Path $source) 'Milestone12' 'O2' $expected
 $original = [IO.File]::ReadAllText($source)
 $variants = [ordered]@{
@@ -100,14 +100,15 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    ConsumedClosure = $original + "`n    send()`n"
+    ConsumedClosure = $original + "`n    send@move()`n    send()`n"
     MovedCapture = $original + "`n    Console.writeLine(message)`n"
     ImmutableReceiver = $original.Replace('var next =', 'let next =')
     ImmutableCapture = $original.Replace('[var count]', '[count]')
     SharedConstraint = $original.Replace('Callable<uniq,', 'Callable<ref,')
     MutableErasure = $original.Replace('    let result =', "    let invalid: (i32) -> i32 = next`n    let result =")
     WrongArgument = $original.Replace('applyTwice(10,', 'applyTwice(true,')
-    ImplicitMove = $original.Replace('func [message]', 'func')
+    ImplicitMove = $original.Replace('func [message@move]', 'func')
+    BareCapture = $original.Replace('[message@move]', '[message]')
     MissingOuter = $original.Replace('func [offset] ()', 'func [] ()')
     DuplicateCapture = $original.Replace('[var count]', '[var count, count]')
 }

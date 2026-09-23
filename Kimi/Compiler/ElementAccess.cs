@@ -42,17 +42,24 @@ internal static class ElementAccess
         => ReferenceEquals(type, BoundType.Never) && KotoHelper.UnwrapParentheses(source) is BinaryKoto element &&
             IsSyntax(element) && TryType(element, out var destination, out _) ? destination : type;
 
+    // A transferred operand (x@move) or an Identity acquisition is the operand Place's own value:
+    // its temporary keeps the Place's syntax, so both unwrap like a label.
     internal static Koto ValueSource(Koto source)
     {
         while (true)
         {
             source = KotoHelper.UnwrapParentheses(source);
-            if (source is not LabeledKoto labeled)
+            switch (source)
             {
-                return source;
+                case LabeledKoto labeled:
+                    source = labeled.Target;
+                    break;
+                case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity } conversion:
+                    source = conversion.Left;
+                    break;
+                default:
+                    return source;
             }
-
-            source = labeled.Target;
         }
     }
 

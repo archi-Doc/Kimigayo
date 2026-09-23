@@ -18,7 +18,7 @@ public class GuardEmissionTest
         { "Unit", "match ()\n    let n if true => ()\n    () => ()\nConsole.writeLine(\"ok\")", "ok\n" },
         { "Boolean", "match false\n    true if true => ()\n    false if false => ()\n    true => ()\n    false => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Return", "func f() -> string\n    match 1\n        let n if (return \"ok\") => \"bad\"\n        _ => \"other\"\n    return \"after\"\nConsole.writeLine(f())", "ok\n" },
-        { "StringCondition", "func echo(text: string) -> string => text\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "StringCondition", "func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "ShortCircuit", "func test() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch 1\n    _ if false and test() => ()\n    _ if true or test() => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "BodyVar", "match 1\n    var n if n == 1\n        n += 1\n        if n == 2 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Nested", "match 1\n    let n if (match n\n        let x if x == 1 => true\n        _ => false\n    ) => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
@@ -32,7 +32,7 @@ public class GuardEmissionTest
         { "ReturnCandidate", "func f() -> i32\n    match 7\n        let n if (return n) => ()\n        _ => ()\n    return 0\nif f() == 7 => Console.writeLine(\"ok\")", "ok\n" },
         { "GuardContinue", "var n = 0\nwhile n < 2\n    n += 1\n    match n\n        _ if (if n == 1 => continue else => true) => Console.writeLine(\"ok\")\n        _ => ()", "ok\n" },
         { "CheckedBody", "func f() -> i32\n    return match 7\n        let n if (return 9) => n\n        _ => 0\nif f() == 9 => Console.writeLine(\"ok\")", "ok\n" },
-        { "ConditionalMove", "var text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => ()\ntext = \"b\"\nConsole.writeLine(text)", "a\nb\n" },
+        { "ConditionalMove", "var text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text@move)\n        exit to check: false\n    ) => ()\n    _ => ()\ntext = \"b\"\nConsole.writeLine(text)", "a\nb\n" },
     };
 
     [Theory]
@@ -47,8 +47,9 @@ public class GuardEmissionTest
     [InlineData("match 1\n    _ => ()\n    _ if 1.0 + 2.0 > 0.0 => ()", true)]
     [InlineData("let result = work: match 1\n    _ if (yield to work: true) => true\n    _ => false")]
     [InlineData("match 1\n    var n if ++n == 2 => ()\n    _ => ()")]
-    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => Console.writeLine(text)")]
-    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => ()\n    _ => Console.writeLine(text)")]
+    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        _ = text@move\n        exit to check: false\n    ) => ()\n    _ => Console.writeLine(text)")]
+    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        _ = text@move\n        exit to check: false\n    ) => ()\n    _ => ()\n    _ => Console.writeLine(text)")]
+    [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => Console.writeLine(text)", true)]
     public void GuardSupportPreservesInvalidUseRejection(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -111,7 +112,7 @@ public class GuardEmissionTest
     [InlineData(false)]
     public void GuardTemporaryCleanupPrecedesEitherContinuation(bool success)
     {
-        var source = "func echo(text: string) -> string => text\nmatch 1\n    _ if echo(\"a\") == \"" + (success ? "a" : "b") + "\" => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
+        var source = "func echo(text: string) -> string => text@move\nmatch 1\n    _ if echo(\"a\") == \"" + (success ? "a" : "b") + "\" => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
         var stdout = success ? "selected\n" : "fallback\n";
         var name = "GuardCleanup" + success;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
@@ -132,7 +133,7 @@ public class GuardEmissionTest
     [InlineData("boolean")]
     public void MalformedGuardPlansFailBeforeWriting(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         var arm = body.MatchArms[0];
@@ -227,17 +228,18 @@ public class GuardEmissionTest
     [InlineData(true)]
     public void FalseGuardMoveReachesLaterCheckingState(bool covered)
     {
-        var source = "let text = \"a\"\nmatch 1\n    _ if (check: do\n        Console.writeLine(text)\n        exit to check: false\n    ) => ()\n" + (covered ? "    _ => ()\n" : string.Empty) + "    _ => Console.writeLine(text)";
+        var source = "let text = \"a\"\nmatch 1\n    _ if (check: do\n        _ = text@move\n        exit to check: false\n    ) => ()\n" + (covered ? "    _ => ()\n" : string.Empty) + "    _ => Console.writeLine(text)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.False(c.Ownership.Result.IsVerified);
         Assert.True(c.Ownership.Result.ErrorCount > 0);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
     }
 
     [Fact]
     public void OuterComparisonLoanSurvivesGuardCleanup()
     {
-        const string Source = "let text = \"a\"\ntext == (match 1\n    _ if (check: do\n        defer => Console.writeLine(text)\n        exit to check: true\n    ) => \"a\"\n    _ => \"b\"\n)";
+        const string Source = "let text = \"a\"\ntext == (match 1\n    _ if (check: do\n        defer => _ = text@move\n        exit to check: true\n    ) => \"a\"\n    _ => \"b\"\n)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);

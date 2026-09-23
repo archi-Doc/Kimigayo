@@ -142,7 +142,7 @@ public class NamedAliasTest
     [Fact]
     public void FunctionValueBindingAndSourceReloadRetainTheOriginalDeclaration()
     {
-        var c = Parse("alias O => ::Kimi.Console\nlet f: (string) -> () = O.writeLine\nf(\"x\")");
+        var c = Parse("alias O => ::Kimi.Console\nlet f: (ref/string) -> () = O.writeLine\nf(\"x\")");
         for (var pass = 0; pass < 2; pass++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));

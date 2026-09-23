@@ -2,11 +2,11 @@ public func main()
     var original = "before"
     let selected = work: do
         defer => original = "after"
-        exit to work: (if true => original else => "unused")
+        exit to work: (if true => original@move else => "unused")
     Console.writeLine(selected)
     Console.writeLine(original)
 
     var text = "old"
     var keep = false
-    text = if keep => text else => "new"
+    text = if keep => text@move else => "new"
     Console.writeLine(text)

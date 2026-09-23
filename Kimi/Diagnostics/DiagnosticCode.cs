@@ -114,6 +114,8 @@ public enum DiagnosticCode
     ReassignedLet_Kd,
     UnsupportedOwnership_Kd,
     DefaultArgumentMove_Kd,
+    TransferRequired_Kd,
+    ExclusiveBorrowRequired_Kd,
 
     InvalidPattern_Kd,
     NonExhaustiveMatch_Kd,

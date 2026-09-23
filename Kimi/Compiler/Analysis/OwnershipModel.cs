@@ -132,6 +132,9 @@ public enum OwnershipFailure : byte
     ComparisonLoanConflict,
     DefaultArgumentMove,
     Internal,
+
+    // SPEC 15.1.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
+    TransferRequired,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);

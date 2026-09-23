@@ -9,34 +9,34 @@ public class ElementMoveEmissionTest
 {
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "Let", "let a = (\"first\", \"last\")\nlet taken = a.0\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "Repair", "var a = (\"first\", \"last\")\nlet taken = a.0\na.0 = \"new\"\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
-        { "Self", "var a = (\"first\", 42)\na.0 = a.0\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;ok=1" },
-        { "Sibling", "var a: [2 of string] = [\"first\", \"last\"]\na[0] = a[1]\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "ArrayGap", "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;ok=1" },
-        { "Nested", "var a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0\nlet other = a.1.1\na.1.0 = \"newFirst\"\na.1.1 = \"newLast\"\nlet whole = a\nConsole.writeLine(\"ok\")", "sibling=1;first=1;last=1;newFirst=1;newLast=1;ok=1" },
-        { "Aggregate", "let a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0\nConsole.writeLine(\"ok\")", "first=1;last=1;sibling=1;ok=1" },
-        { "ReplacePartial", "var a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0.0\na.0 = (\"newFirst\", \"newLast\")\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;last=1;sibling=1;newFirst=1;newLast=1;ok=1" },
-        { "ReplaceRoot", "var a = (\"first\", \"last\")\nlet taken = a.0\na = (\"newFirst\", \"newLast\")\nConsole.writeLine(\"ok\")", "first=1;last=1;newFirst=1;newLast=1;ok=1" },
-        { "Branch", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "BranchRepair", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    if take\n        let taken = a.0\n    a.0 = \"new\"\n    let whole = a\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=2;ok=1" },
-        { "BranchParent", "func f(take: bool)\n    var a = ((\"first\", \"last\"), \"sibling\")\n    if take\n        let taken = a.0\n    else\n        let taken = a.0.0\n    a.0 = (\"newFirst\", \"newLast\")\n    let whole = a\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;sibling=2;newFirst=2;newLast=2;ok=1" },
-        { "Loop", "var a = (\"first\", \"last\")\nvar i = 0\nloop\n    let taken = a.0\n    a.0 = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=1;last=1;new=3;ok=1" },
-        { "Defer", "var a = (\"first\", \"last\")\nwork: do\n    defer => a.0 = \"new\"\n    let taken = a.0\n    exit to work\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
-        { "Return", "func f() -> string\n    let a = (\"first\", \"last\")\n    return a.0\nlet taken = f()\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "DynamicSibling", "var a: (string, [1 of i32]) = (\"first\", [40])\nlet taken = a.0\nvar i: isize = 0\na.1[i] += 2\nif a.1[i] == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
-        { "LiteralIdentity", "var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[(0x0)]\na[0b0] = \"new\"\nlet whole = a\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
-        { "ZeroSize", "var a: ([0 of string], i32) = ([], 42)\nlet taken = a.0\na.0 = []\nlet whole = a\nConsole.writeLine(\"ok\")", "ok=1" },
-        { "ExclusiveSibling", "var a = (40, \"first\")\na.0 += work: do\n    let taken = a.1\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
-        { "CoveredArm", "var a = (\"first\", \"last\")\nmatch true\n    _ => ()\n    true => (work: do\n        let taken = a.0\n    )\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "BranchSwapHoles", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0\n    else\n        let taken = a.1\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "Dead", "func f()\n    return\n    var a = (\"first\", 0)\n    let taken = a.0\n    a.0 = \"new\"\n    let whole = a\nf()\nConsole.writeLine(\"ok\")", "ok=1" },
-        { "LoopLifetime", "var i = 0\nloop\n    let a = (\"first\", \"last\")\n    if i == 0\n        let taken = a.0\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=3;last=3;ok=1" },
-        { "ConditionalWhole", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let whole = a\n    else\n        let taken = a.0\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "BranchPhi", "func f(take: bool) -> i32\n    return if take => (work: do\n        let a = (\"first\", \"last\")\n        if take\n            let taken = a.0\n        exit to work: 40\n    ) else => 2\nif f(true) + f(false) == 42 => Console.writeLine(\"ok\")", "first=1;last=1;ok=1" },
-        { "NestedArray", "var a: [2 of (string, [2 of string])] = [(\"a\", [\"b\", \"c\"]), (\"d\", [\"e\", \"f\"])]\nlet taken = a[0].1[1]\na[0].1[1] = \"new\"\nlet whole = a[0]\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;f=1;new=1;ok=1" },
-        { "DynamicReplacement", "var a: (string, [2 of string]) = (\"first\", [\"old\", \"last\"])\nlet taken = a.0\nvar i: isize = 0\na.1[i] = \"new\"\nConsole.writeLine(\"ok\")", "first=1;old=1;last=1;new=1;ok=1" },
-        { "ConditionalSelf", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    a.0 = if take => a.0 else => \"new\"\n    let whole = a\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=1;ok=1" },
+        { "Let", "let a = (\"first\", \"last\")\nlet taken = a.0@move\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "Repair", "var a = (\"first\", \"last\")\nlet taken = a.0@move\na.0 = \"new\"\nlet whole = a@move\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
+        { "Self", "var a = (\"first\", 42)\na.0 = a.0@move\nlet whole = a@move\nConsole.writeLine(\"ok\")", "first=1;ok=1" },
+        { "Sibling", "var a: [2 of string] = [\"first\", \"last\"]\na[0] = a[1]@move\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "ArrayGap", "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]@move\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;ok=1" },
+        { "Nested", "var a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0@move\nlet other = a.1.1@move\na.1.0 = \"newFirst\"\na.1.1 = \"newLast\"\nlet whole = a@move\nConsole.writeLine(\"ok\")", "sibling=1;first=1;last=1;newFirst=1;newLast=1;ok=1" },
+        { "Aggregate", "let a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0@move\nConsole.writeLine(\"ok\")", "first=1;last=1;sibling=1;ok=1" },
+        { "ReplacePartial", "var a = ((\"first\", \"last\"), \"sibling\")\nlet taken = a.0.0@move\na.0 = (\"newFirst\", \"newLast\")\nlet whole = a@move\nConsole.writeLine(\"ok\")", "first=1;last=1;sibling=1;newFirst=1;newLast=1;ok=1" },
+        { "ReplaceRoot", "var a = (\"first\", \"last\")\nlet taken = a.0@move\na = (\"newFirst\", \"newLast\")\nConsole.writeLine(\"ok\")", "first=1;last=1;newFirst=1;newLast=1;ok=1" },
+        { "Branch", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
+        { "BranchRepair", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\n    a.0 = \"new\"\n    let whole = a@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=2;ok=1" },
+        { "BranchParent", "func f(take: bool)\n    var a = ((\"first\", \"last\"), \"sibling\")\n    if take\n        let taken = a.0@move\n    else\n        let taken = a.0.0@move\n    a.0 = (\"newFirst\", \"newLast\")\n    let whole = a@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;sibling=2;newFirst=2;newLast=2;ok=1" },
+        { "Loop", "var a = (\"first\", \"last\")\nvar i = 0\nloop\n    let taken = a.0@move\n    a.0 = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=1;last=1;new=3;ok=1" },
+        { "Defer", "var a = (\"first\", \"last\")\nwork: do\n    defer => a.0 = \"new\"\n    let taken = a.0@move\n    exit to work\nlet whole = a@move\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
+        { "Return", "func f() -> string\n    let a = (\"first\", \"last\")\n    return a.0@move\nlet taken = f()\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "DynamicSibling", "var a: (string, [1 of i32]) = (\"first\", [40])\nlet taken = a.0@move\nvar i: isize = 0\na.1[i] += 2\nif a.1[i] == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
+        { "LiteralIdentity", "var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[(0x0)]@move\na[0b0] = \"new\"\nlet whole = a@move\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
+        { "ZeroSize", "var a: ([0 of string], i32) = ([], 42)\nlet taken = a.0@move\na.0 = []\nlet whole = a@move\nConsole.writeLine(\"ok\")", "ok=1" },
+        { "ExclusiveSibling", "var a = (40, \"first\")\na.0 += work: do\n    let taken = a.1@move\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
+        { "CoveredArm", "var a = (\"first\", \"last\")\nmatch true\n    _ => ()\n    true => (work: do\n        let taken = a.0@move\n    )\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "BranchSwapHoles", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\n    else\n        let taken = a.1@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
+        { "Dead", "func f()\n    return\n    var a = (\"first\", 0)\n    let taken = a.0@move\n    a.0 = \"new\"\n    let whole = a@move\nf()\nConsole.writeLine(\"ok\")", "ok=1" },
+        { "LoopLifetime", "var i = 0\nloop\n    let a = (\"first\", \"last\")\n    if i == 0\n        let taken = a.0@move\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=3;last=3;ok=1" },
+        { "ConditionalWhole", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let whole = a@move\n    else\n        let taken = a.0@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
+        { "BranchPhi", "func f(take: bool) -> i32\n    return if take => (work: do\n        let a = (\"first\", \"last\")\n        if take\n            let taken = a.0@move\n        exit to work: 40\n    ) else => 2\nif f(true) + f(false) == 42 => Console.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "NestedArray", "var a: [2 of (string, [2 of string])] = [(\"a\", [\"b\", \"c\"]), (\"d\", [\"e\", \"f\"])]\nlet taken = a[0].1[1]@move\na[0].1[1] = \"new\"\nlet whole = a[0]@move\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;f=1;new=1;ok=1" },
+        { "DynamicReplacement", "var a: (string, [2 of string]) = (\"first\", [\"old\", \"last\"])\nlet taken = a.0@move\nvar i: isize = 0\na.1[i] = \"new\"\nConsole.writeLine(\"ok\")", "first=1;old=1;last=1;new=1;ok=1" },
+        { "ConditionalSelf", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    a.0 = if take => a.0@move else => \"new\"\n    let whole = a@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=1;ok=1" },
     };
 
     [Theory]
@@ -52,19 +52,20 @@ public class ElementMoveEmissionTest
     }
 
     [Theory]
-    [InlineData("let a = (\"first\", 0)\nlet taken = a.0\nlet twice = a.0")]
-    [InlineData("let a = (\"first\", 0)\nlet taken = a.0\nlet whole = a")]
-    [InlineData("var a = (\"first\", 0)\nlet whole = a\na.0 = \"new\"")]
-    [InlineData("let a = (\"first\", 0)\nlet taken = a.0\na.0 = \"new\"")]
+    [InlineData("let a = (\"first\", 0)\nlet taken = a.0@move\nlet twice = a.0@move")]
+    [InlineData("let a = (\"first\", 0)\nlet taken = a.0@move\nlet whole = a@move")]
+    [InlineData("var a = (\"first\", 0)\nlet whole = a@move\na.0 = \"new\"")]
+    [InlineData("let a = (\"first\", 0)\nlet taken = a.0@move\na.0 = \"new\"")]
     [InlineData("var a: [1 of string]\na[0] = \"new\"")]
-    [InlineData("var a = ((\"first\", \"last\"), 0)\nlet taken = a.0\na.0.0 = \"new\"")]
-    [InlineData("var a: [2 of string] = [\"first\", \"last\"]\nvar i: isize = 0\nlet taken = a[i]")]
-    [InlineData("var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0 + 0]")]
-    [InlineData("var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]\nvar i: isize = 0\na[i] = \"new\"")]
-    [InlineData("func f(take: bool)\n    let a = (\"first\", 0)\n    if take\n        let taken = a.0\n    let whole = a")]
-    [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0\n    let twice = a.0")]
-    [InlineData("var a = (\"first\", 0)\nloop\n    let taken = a.0\n    continue")]
+    [InlineData("var a = ((\"first\", \"last\"), 0)\nlet taken = a.0@move\na.0.0 = \"new\"")]
+    [InlineData("var a: [2 of string] = [\"first\", \"last\"]\nvar i: isize = 0\nlet taken = a[i]@move")]
+    [InlineData("var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0 + 0]@move")]
+    [InlineData("var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]@move\nvar i: isize = 0\na[i] = \"new\"")]
+    [InlineData("func f(take: bool)\n    let a = (\"first\", 0)\n    if take\n        let taken = a.0@move\n    let whole = a@move")]
+    [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0@move\n    let twice = a.0@move")]
+    [InlineData("var a = (\"first\", 0)\nloop\n    let taken = a.0@move\n    continue")]
     [InlineData("let taken = (\"first\", 0).0")]
+    [InlineData("let a = (\"first\", 0)\nlet taken = a.0")]
     public void InvalidOrUnsupportedMovesPublishNoIr(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -76,7 +77,7 @@ public class ElementMoveEmissionTest
     [Fact]
     public void RemainingPartsFollowReverseLogicalOrder()
     {
-        const string Source = "let a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0\nConsole.writeLine(\"ok\")";
+        const string Source = "let a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0@move\nConsole.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveOrder", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementMoveOrder", Source, ir, "ok\n", "sibling=1;first=1;last=1;ok=1", order: [3, 1, 2, 0]);
     }
@@ -84,17 +85,17 @@ public class ElementMoveEmissionTest
     [Fact]
     public void ArrayGapsAndMovedResultKeepDestructionOrder()
     {
-        const string Source = "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]\nConsole.writeLine(\"ok\")";
+        const string Source = "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]@move\nConsole.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveArrayOrder", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementMoveArrayOrder", Source, ir, "ok\n", "a=1;b=1;c=1;d=1;e=1;ok=1", order: [5, 2, 4, 3, 1, 0]);
     }
 
     [Theory]
-    [InlineData("let a = (\"first\", 0)\nlet taken = a.0\nlet twice = a.0")]
-    [InlineData("let a: ([0 of string], i32) = ([], 0)\nlet taken = a.0\nlet twice = a.0")]
-    [InlineData("func f(take: bool)\n    var a = ((\"first\", \"last\"), 0)\n    if take\n        let taken = a.0\n    a.0.0 = \"new\"")]
-    [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0\n    let twice = a.0")]
-    [InlineData("var a = (\"first\", 0)\ndefer\n    let whole = a\nlet taken = a.0")]
+    [InlineData("let a = (\"first\", 0)\nlet taken = a.0@move\nlet twice = a.0@move")]
+    [InlineData("let a: ([0 of string], i32) = ([], 0)\nlet taken = a.0@move\nlet twice = a.0@move")]
+    [InlineData("func f(take: bool)\n    var a = ((\"first\", \"last\"), 0)\n    if take\n        let taken = a.0@move\n    a.0.0 = \"new\"")]
+    [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0@move\n    let twice = a.0@move")]
+    [InlineData("var a = (\"first\", 0)\ndefer\n    let whole = a@move\nlet taken = a.0@move")]
     public void MissingValuesAreRejectedByOwnership(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -110,7 +111,7 @@ public class ElementMoveEmissionTest
     [InlineData("type")]
     public void CorruptedMovePlansFailAndReanalysisRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]");
+        var c = MinimalEmissionTest.Analyze("let a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]@move");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];
@@ -132,10 +133,10 @@ public class ElementMoveEmissionTest
     [Fact]
     public void OnlyConditionalRemaindersNeedFlags()
     {
-        var c = MinimalEmissionTest.Analyze("let a = (\"first\", \"last\")\nlet taken = a.0");
+        var c = MinimalEmissionTest.Analyze("let a = (\"first\", \"last\")\nlet taken = a.0@move");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         Assert.Empty(module.GetFunction(0).PathFlags);
-        c = MinimalEmissionTest.Analyze("func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0\nf(true)");
+        c = MinimalEmissionTest.Analyze("func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\nf(true)");
         Assert.True(c.Emission.TryPrepare(out module, out error), error);
         var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.PathFlags.Count != 0);
         Assert.Single(function.PathFlags);
@@ -151,15 +152,15 @@ public class ElementMoveEmissionTest
     [Fact]
     public void SparsePathsDoNotExpandTheDeclaredArrayLength()
     {
-        var c = MinimalEmissionTest.Analyze("var a: [1000000 of string]\nlet taken = a[42]");
+        var c = MinimalEmissionTest.Analyze("var a: [1000000 of string]\nlet taken = a[42]@move");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
         Assert.Equal(2, c.Ownership.Bodies[0].MovePathCount); // Root plus the one referenced element.
     }
 
     [Theory]
-    [InlineData("func inspect(a: ref/(string, i32)) => ()\nvar a = (\"first\", 0)\nlet taken = a.0\ninspect(a)")]
-    [InlineData("func inspect(a: ref/(string, i32), b: string) => ()\nvar a = (\"first\", 0)\ninspect(a, a.0)")]
+    [InlineData("func inspect(a: ref/(string, i32)) => ()\nvar a = (\"first\", 0)\nlet taken = a.0@move\ninspect(a)")]
+    [InlineData("func inspect(a: ref/(string, i32), b: string) => ()\nvar a = (\"first\", 0)\ninspect(a, a.0@move)")]
     public void PartialMoveDoesNotBypassWholeBorrowRules(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -193,8 +194,8 @@ public class ElementMoveEmissionTest
     }
 
     [Theory]
-    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(work: do\n    let taken = a.0\n    exit to work: 0\n)] += 2")]
-    [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += work: do\n    let taken = a.0\n    exit to work: 2")]
+    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(work: do\n    let taken = a.0@move\n    exit to work: 0\n)] += 2")]
+    [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += work: do\n    let taken = a.0@move\n    exit to work: 2")]
     public void MoveConflictsWithReceiverProtectionAndOverlappingExclusiveLoans(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -206,7 +207,7 @@ public class ElementMoveEmissionTest
     [Fact]
     public void BoundsAbortDoesNotDestroyRemainingPartsOrTheMovedResult()
     {
-        const string Source = "var a: (string, [1 of i32]) = (\"first\", [0])\nlet taken = a.0\na.1[1] = 42";
+        const string Source = "var a: (string, [1 of i32]) = (\"first\", [0])\nlet taken = a.0@move\na.1[1] = 42";
         const string Error = "Hello.kimi:3:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveBounds", Source, string.Empty, 1, Error);
         StringEmissionTest.WriteAuditedFixture("ElementMoveBounds", Source, ir, string.Empty, "first=0", 1, Error);
@@ -215,7 +216,7 @@ public class ElementMoveEmissionTest
     [Fact]
     public void IndexTransferCleansPartialParentAfterSecuringTheResult()
     {
-        const string Source = "func f() -> i32\n    var a: (string, [1 of i32]) = (\"first\", [0])\n    let taken = a.0\n    a.1[(return 42)] = 0\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
+        const string Source = "func f() -> i32\n    var a: (string, [1 of i32]) = (\"first\", [0])\n    let taken = a.0@move\n    a.1[(return 42)] = 0\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveIndexTransfer", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementMoveIndexTransfer", Source, ir, "ok\n", "first=1;ok=1", order: [0, 1]);
     }
@@ -223,14 +224,14 @@ public class ElementMoveEmissionTest
     [Fact]
     public void NonterminatingDeferPreventsLaterPartialCleanup()
     {
-        const string Source = "func f()\n    let a = (\"first\", \"last\")\n    let taken = a.0\n    defer => loop => ()\n    return\nf()";
+        const string Source = "func f()\n    let a = (\"first\", \"last\")\n    let taken = a.0@move\n    defer => loop => ()\n    return\nf()";
         ScalarEmissionTest.EmitFixture("ElementMoveDivergent", Source, string.Empty, timeoutMilliseconds: 300);
     }
 
     [Fact]
     public void WarmPartialMoveAnalysisAndEmissionAllocateNothing()
     {
-        const string Source = "func f(take: bool)\n    var a = ((\"first\", \"last\"), \"sibling\")\n    if take\n        let taken = a.0.0\n    a.0 = (\"newFirst\", \"newLast\")\n    let whole = a\nf(true)\nf(false)";
+        const string Source = "func f(take: bool)\n    var a = ((\"first\", \"last\"), \"sibling\")\n    if take\n        let taken = a.0.0@move\n    a.0 = (\"newFirst\", \"newLast\")\n    let whole = a@move\nf(true)\nf(false)";
         var c = MinimalEmissionTest.Analyze(Source);
         for (var i = 0; i < 100; i++)
         {

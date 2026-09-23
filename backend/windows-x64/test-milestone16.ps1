@@ -86,7 +86,7 @@ $variants = [ordered]@{
     Reverse = @{ source = $original.Replace('if useFirst', 'if not useFirst'); stdout = $expected }
     SameOrigin = @{ source = $original.Replace('Pair.init(first@ref, second@ref)', 'Pair.init(first@ref, first@ref)').Replace('=> 10 else => 20', '=> 10 else => 10'); stdout = $expected }
     Missing = @{ source = $original.Replace('return .Found(self.second)', 'return .Missing').Replace('.Missing => $abort("Expected a selected Cell")', '.Missing => first@ref').Replace('=> 10 else => 20', '=> 10 else => 10'); stdout = $expected }
-    RetainedEnum = @{ source = $original.Replace('            let result = pair.choose(useFirst)', "            let retained = pair.choose(useFirst)`n            let result = retained"); stdout = $expected }
+    RetainedEnum = @{ source = $original.Replace('            let result = pair.choose(useFirst)', "            let retained = pair.choose(useFirst)`n            let result = retained@move"); stdout = $expected }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {

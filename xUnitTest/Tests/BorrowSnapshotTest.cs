@@ -22,7 +22,7 @@ public class BorrowSnapshotTest(ITestOutputHelper output)
 
         for (var i = 0; i < count; i++)
         {
-            source.Append("    var p").Append(i).Append(" = (Counter.init(), Counter.init())\n    let a").Append(i).Append(" = relay(p").Append(i).Append(".0@uniq)\n    let m").Append(i).Append(" = p").Append(i).Append(".1\n");
+            source.Append("    var p").Append(i).Append(" = (Counter.init(), Counter.init())\n    let a").Append(i).Append(" = relay(p").Append(i).Append(".0@uniq)\n    let m").Append(i).Append(" = p").Append(i).Append(".1@move\n");
         }
 
         for (var i = 0; i < count; i++)

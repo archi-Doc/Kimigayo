@@ -353,6 +353,7 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.PayloadPlacement:
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.Consume:
+                // A transfer (@move) of a Copy aggregate is the same byte transfer as its Copy.
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
                     !(operation.Kind == OwnershipOperationKind.Consume
                         ? FitsValue(place.Type, body.Places[operation.Input].Type)
@@ -363,7 +364,8 @@ internal sealed partial class BodyLowering
                     (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.slotResultWrites[id] == 0 && this.slotFunctionPlaces[place.Id] != 2) ||
                     (operation.Kind == OwnershipOperationKind.Consume && place.Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
                     !this.IsPreparedAggregateCopy(body, id)) ||
-                    (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition != place.Acquisition))
+                    (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition != place.Acquisition &&
+                    !(operation.Acquisition == AcquisitionKind.Move && place.Acquisition == AcquisitionKind.Copy)))
                 {
                     return Fail($"Aggregate transfer requires distinct, Type-matched verified storage ({body.Function.Name}, {id}: {operation.Kind}, {place.Id}/{place.Kind}/{place.Type.Name} <- {operation.Input}, result write {this.slotResultWrites[id]}).", out failure);
                 }

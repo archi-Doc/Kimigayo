@@ -10,7 +10,8 @@ public class SequenceEmissionTest
 {
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "ArrayValues", "var a: [3 of i32] = [2, 4, 6]\nvar sum = 0\nfor value in a\n    a = [9, 9, 9]\n    sum += value\nrequire sum == 12 and a[0] == 9 else => $abort(\"snapshot\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        // SPEC 14.6.2: only a consumed array may be reinitialized inside its own loop; the consumed values are still iterated.
+        { "ArrayValues", "var a: [3 of i32] = [2, 4, 6]\nvar sum = 0\nfor value in a@move\n    a = [9, 9, 9]\n    sum += value\n    require a[0] == 9 else => $abort(\"snapshot\")\nrequire sum == 12 else => $abort(\"snapshot\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "ArrayEmpty", "let a: [0 of bool] = []\nfor value in a => $abort(\"empty\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "ArrayOnce", "func make() -> [2 of f64]\n    Console.writeLine(\"once\")\n    return [1.5, 2.5]\nvar sum: f64 = 0.0\nfor value in make() => sum += value\nrequire sum == 4.0 else => $abort(\"sum\")", "once\n" },
         { "ArrayTransfer", "let a: [3 of i32] = [1, 2, 3]\nvar sum = 0\nouter: for value in a\n    defer => Console.writeLine(\"step\")\n    for other in a\n        if value == 1 => continue to outer\n        sum += value + other\n        exit to outer\nrequire sum == 3 else => $abort(\"transfer\")", "step\nstep\n" },
@@ -61,11 +62,11 @@ public class SequenceEmissionTest
     [InlineData("let a: [1 of i32] = [1]\nfor (i, i) in a.indices => ()")]
     [InlineData("let a: [1 of i32] = [1]\nfor i in a.indices => exit 1")]
     [InlineData("let a: [1 of i32]\na.indices")]
-    [InlineData("let a: [2 of string] = [\"a\", \"b\"]\nConsole.writeLine(a[0])\na.indices")]
+    [InlineData("let a: [2 of string] = [\"a\", \"b\"]\n_ = a[0]@move\na.indices")]
     [InlineData("let a: [1 of i32] = [1]\nvar s = a[..]\ns[0] = 2")]
     [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\na[0] = 2\nlet n = s[0]")]
     [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\na = [2]\nlet n = s[0]")]
-    [InlineData("let a: [1 of string] = [\"a\"]\nlet s = a[..]\nConsole.writeLine(a[0])\ns.length")]
+    [InlineData("let a: [1 of string] = [\"a\"]\nlet s = a[..]\n_ = a[0]@move\ns.length")]
     [InlineData("func make() -> [1 of i32] => [42]\nlet s = make()[..]\nlet n = s[0]")]
     [InlineData("let s = scope: do\n    let a: [1 of i32] = [1]\n    exit to scope: a[..]\nlet n = s[0]")]
     [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\nlet n = s[(work: do\n    a[0] = 2\n    exit to work: 0)]")]

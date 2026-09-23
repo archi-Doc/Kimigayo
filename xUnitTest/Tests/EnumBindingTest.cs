@@ -61,7 +61,7 @@ public class EnumBindingTest
     [Fact]
     public void PayloadOperationsKeepOrderAndAcquisition()
     {
-        var c = Parse("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a, b)");
+        var c = Parse("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a@move, b@move)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var invocation = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.True(c.Binding.TryGetEnumConstruction(invocation, out var plan));
@@ -119,6 +119,18 @@ public class EnumBindingTest
     {
         var c = Parse(source);
         Assert.False(c.Bind().IsComplete);
+    }
+
+    // SPEC 6.3.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload.
+    [Theory]
+    [InlineData("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a, b@move)")]
+    [InlineData("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a@move, b)")]
+    [InlineData("enum Message\n    Write(string)\nlet text = \"text\"\nlet x = Message.Write(text)")]
+    public void BarePayloadPlacesRequireATransfer(string source)
+    {
+        var c = Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
     }
 
     [Theory]

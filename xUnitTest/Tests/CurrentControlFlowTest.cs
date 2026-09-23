@@ -131,11 +131,11 @@ public class CurrentControlFlowTest
     [InlineData("func f() => defer => Console.writeLine(\"later\")", true)]
     [InlineData("func f()\n    var text = \"old\"\n    defer => Console.writeLine(text)\n    text = \"new\"", true)]
     [InlineData("func f()\n    let text: string\n    defer => Console.writeLine(text)\n    text = \"new\"", true)]
-    [InlineData("func f()\n    let text = \"old\"\n    defer => Console.writeLine(text)\n    Console.writeLine(text)", false)]
-    [InlineData("func f()\n    let text = \"old\"\n    if false => Console.writeLine(text)\n    Console.writeLine(text)", false)]
+    [InlineData("func f()\n    let text = \"old\"\n    defer => Console.writeLine(text)\n    _ = text@move", false)]
+    [InlineData("func f()\n    let text = \"old\"\n    if false => _ = text@move\n    Console.writeLine(text)", false)]
     [InlineData("func f()\n    let n: i32\n    while true\n        n = 1\n        exit\n    let value = n", false)]
     [InlineData("func f()\n    let n: i32\n    loop\n        n = 1\n        exit\n    let value = n", true)]
-    [InlineData("func f() -> string\n    return (work: do\n        let text = \"value\"\n        defer => Console.writeLine(\"cleanup\")\n        exit to work: text\n    )", true)]
+    [InlineData("func f() -> string\n    return (work: do\n        let text = \"value\"\n        defer => Console.writeLine(\"cleanup\")\n        exit to work: text@move\n    )", true)]
     [InlineData("func f()\n    require true else => defer => loop => ()", true)]
     [InlineData("func f()\n    require true else => defer => ()", false)]
     [InlineData("func f() -> i32 => unsafe => return 1", true)]
@@ -179,7 +179,7 @@ public class CurrentControlFlowTest
     }
 
     [Theory]
-    [InlineData("func f(text: string) -> string\n    return text\n    return text", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(text: string) -> string\n    return text@move\n    return text@move", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f() -> i32\n    let value: i32\n    return 1\n    return value", OwnershipFailure.UninitializedUse)]
     public void UnreachableOwnershipUsesTheStateBeforeTransferCleanup(string source, OwnershipFailure failure)
     {

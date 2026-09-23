@@ -125,7 +125,7 @@ public class ElementUpdateEmissionTest
     [InlineData("var a: [2 of i32] = [0, 0]\nlet i: isize = 1\na[0] += ++a[i]")]
     [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    a[0]++\n    exit to work: 0\n)]++")]
     [InlineData("var a: [1 of i32] = [0]\na[0] += (work: do\n    defer => a[0] = 1\n    exit to work: 42\n)")]
-    [InlineData("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (work: do\n    take(a)\n    exit to work: 42\n)")]
+    [InlineData("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (work: do\n    take(a@move)\n    exit to work: 42\n)")]
     public void AccessProtectionExtendsThroughTheRightSide(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

@@ -20,7 +20,7 @@ public class ScalarMatchContinuationTest
 
     [Theory]
     [InlineData("var x: i32", "true => return\n                false => x = 3", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "true\n                    Console.writeLine(s)\n                    return\n                false => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "true\n                    _ = s@move\n                    return\n                false => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "true\n                    x = 3\n                    yield to choice\n                false => ()", "x = 4", "()", OwnershipFailure.ReassignedLet)]
     public void TerminalAndCaughtArmsKeepOwnershipHistory(string declaration, string arms, string after, string use, OwnershipFailure failure)
     {

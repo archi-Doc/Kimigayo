@@ -30,8 +30,8 @@ public class MixedConditionReplayTest
     [Theory]
     [InlineData("var x: i32", "if truth(stop())\n                if c => return else => x = 3\n            else => x = 4", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "if truth(stop()) => x = 4 else\n                if c => x = 3 else => return", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "if truth(stop())\n                if c\n                    Console.writeLine(s)\n                    return\n                else => ()\n            else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "if truth(stop()) => () else\n                if c => return else => Console.writeLine(s)", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if truth(stop())\n                if c\n                    _ = s@move\n                    return\n                else => ()\n            else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if truth(stop()) => () else\n                if c => return else => _ = s@move", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "if truth(stop())\n                if c\n                    x = 3\n                    return\n                else => ()\n            else => ()", "x = 4", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "if truth(stop()) => () else\n                if c => return else => x = 3", "x = 4", OwnershipFailure.ReassignedLet)]
     public void PartialMissingConditionBodiesKeepTerminalAndNormalEffects(string declaration, string dead, string use, OwnershipFailure failure)
@@ -91,8 +91,8 @@ public class MixedConditionReplayTest
     [InlineData("var x: i32", "if truth(stop()) => () else => x = 3", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "if truth(stop()) => x = 3", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "if c => return else if truth(stop()) => x = 3 else => x = 4", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "if truth(stop()) => Console.writeLine(s) else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "if truth(stopTake(s)) => () else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if truth(stop()) => _ = s@move else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if truth(stopTake(s@move)) => () else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "if truth(stop()) => x = 3 else => ()", "x = 4", OwnershipFailure.ReassignedLet)]
     public void EveryCheckingBranchMustSupportTheGuarantee(string declaration, string dead, string use, OwnershipFailure failure)
     {
@@ -124,7 +124,7 @@ public class MixedConditionReplayTest
 
     [Theory]
     [InlineData("Initialization", "var x: i32", "if c => x = 3 else if truth(stop()) => () else => ()\n            let y = x")]
-    [InlineData("Move", "let s = \"s\"", "if c => () else if truth(stopTake(s)) => () else => ()\n            Console.writeLine(s)")]
+    [InlineData("Move", "let s = \"s\"", "if c => () else if truth(stopTake(s@move)) => () else => ()\n            Console.writeLine(s)")]
     [InlineData("Let", "let x: i32", "if c => () else if truth(stop()) => x = 3 else => ()\n            x = 4")]
     public void LaterTerminalEffectsDoNotEnterTheNormalSuccessor(string name, string declaration, string dead)
         => ScalarEmissionTest.EmitFixture("NeverMixedCondition" + Configuration + "CompletingNormal" + name, Source(declaration, dead, "()") + "\nConsole.writeLine(\"done\")", "done\n");
@@ -132,8 +132,8 @@ public class MixedConditionReplayTest
     [Theory]
     [InlineData("var x: i32", "if c => () else if truth(stop()) => x = 3 else => x = 4", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "if c => x = 3 else if truth(stop()) => () else => x = 4", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "if c => () else if truth(stopTake(s)) => () else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "if c => Console.writeLine(s) else if truth(stop()) => () else => ()\n            Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if c => () else if truth(stopTake(s@move)) => () else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if c => _ = s@move else if truth(stop()) => () else => ()\n            Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "if c => () else if truth(stop()) => x = 3 else => ()", "x = 4", OwnershipFailure.ReassignedLet)]
     public void EarlierNormalAndLaterTerminalHistoriesBothMatter(string declaration, string dead, string use, OwnershipFailure failure)
     {

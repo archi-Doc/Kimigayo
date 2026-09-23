@@ -32,8 +32,8 @@ public class ShortCircuitContinuationTest
     [Theory]
     [InlineData("var x: i32", "let b = c and effect(x = 3)", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "let b = c or effect(x = 3)", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "let b = c and take(x)", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "let b = c or take(x)", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "let b = c and take(x@move)", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "let b = c or take(x@move)", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "let b = c and effect(x = 3)", "x = 4", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "let b = c or effect(x = 3)", "x = 4", OwnershipFailure.ReassignedLet)]
     public void SkippedOperandPathsRetainOrdinaryDiagnostics(string declaration, string dead, string use, OwnershipFailure failure)
@@ -100,13 +100,13 @@ public class ShortCircuitContinuationTest
     [Theory]
     [InlineData("var x: i32", "c and (return)", "x = 3", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "c or (return)", "x = 3", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "c and truth(stopTake(s))", "()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "c or truth(stopTake(s))", "()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "c and truth(stopTake(s@move))", "()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "c or truth(stopTake(s@move))", "()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "c and (do\n                x = 3\n                return\n                true\n            )", "()", "()", "x = 4", OwnershipFailure.ReassignedLet)]
     [InlineData("var x: i32", "truth(stop()) and effect(x = 3)", "()", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "truth(stop()) or effect(x = 3)", "()", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x: i32", "truth(stop()) and effect(x = 3)", "()", "()", "x = 4", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"", "truth(stop()) and take(s)", "()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "truth(stop()) and take(s@move)", "()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void TerminalRightEffectsReachOnlyEnclosingJoins(string declaration, string expression, string after, string tail, string use, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, "return", "let b = " + expression + "\n            " + after, tail, use) + Helpers + "\nfunc stopTake(s: string) -> Never => stop()");
@@ -118,7 +118,7 @@ public class ShortCircuitContinuationTest
 
     [Fact]
     public void TerminalRightMoveDoesNotPolluteTheSkippedSuccessor()
-        => ScalarEmissionTest.EmitFixture("NeverMixedLogicalRight" + Configuration + "SkippedMove", Source("let s = \"s\"", "return", "let b = c and truth(stopTake(s))\n            Console.writeLine(s)", "()", "()") + "\nConsole.writeLine(\"done\")" + Helpers + "\nfunc stopTake(s: string) -> Never => stop()", "done\n");
+        => ScalarEmissionTest.EmitFixture("NeverMixedLogicalRight" + Configuration + "SkippedMove", Source("let s = \"s\"", "return", "let b = c and truth(stopTake(s@move))\n            Console.writeLine(s)", "()", "()") + "\nConsole.writeLine(\"done\")" + Helpers + "\nfunc stopTake(s: string) -> Never => stop()", "done\n");
 
     [Theory]
     [InlineData("c")]

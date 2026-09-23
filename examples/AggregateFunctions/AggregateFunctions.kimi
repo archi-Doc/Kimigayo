@@ -1,13 +1,13 @@
 func echo(value: (string, i32)) -> (string, i32)
     defer => Console.writeLine("leaving echo")
-    return value
+    return value@move
 
-func echoArray(value: [2 of string]) -> [2 of string] => value
-func echoEmpty(value: [0 of string]) -> [0 of string] => value
+func echoArray(value: [2 of string]) -> [2 of string] => value@move
+func echoEmpty(value: [0 of string]) -> [0 of string] => value@move
 
 let saved = echo(echo(("hello", 42)))
 let words: [2 of string] = ["first", "second"]
-let returned = echoArray(words)
+let returned = echoArray(words@move)
 let empty: [0 of string] = []
-echoEmpty(empty)
+echoEmpty(empty@move)
 Console.writeLine("aggregate functions complete")

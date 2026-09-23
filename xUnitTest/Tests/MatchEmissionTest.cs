@@ -17,7 +17,7 @@ public class MatchEmissionTest
         { "Unit", "match ()\n    () => Console.writeLine(\"ok\")", "ok\n" },
         { "String", "match \"a\"\n    \"b\" => Console.writeLine(\"bad\")\n    \"a\" => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Empty", "match \"\"\n    \"\" => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "StringResult", "let text = match \"a\"\n    \"b\" => \"bad\"\n    let other => other\nConsole.writeLine(text)", "a\n" },
+        { "StringResult", "let text = match \"a\"\n    \"b\" => \"bad\"\n    let other => other@move\nConsole.writeLine(text)", "a\n" },
         { "Covered", "let n = match 0\n    _ => 1\n    0 => 2\nif n == 1 => Console.writeLine(\"ok\")", "ok\n" },
         { "Duplicate", "let text = match 0\n    0 => \"ok\"\n    -0 => \"bad\"\n    _ => \"other\"\nConsole.writeLine(text)", "ok\n" },
         { "BoolCovered", "let text = match false\n    true => \"bad\"\n    false => \"ok\"\n    _ => \"other\"\nConsole.writeLine(text)", "ok\n" },
@@ -27,7 +27,7 @@ public class MatchEmissionTest
         { "Grouping", "match 1\n    ((1)) => Console.writeLine(\"ok\")\n    (let other) => ()", "ok\n" },
         { "AllReturnCovered", "func f() -> i32\n    match 0\n        _ => return 1\n        0 => ()\n    return 2\nif f() == 1 => Console.writeLine(\"ok\")", "ok\n" },
         { "CoveredNestedPhi", "let text = match 0\n    _ => \"ok\"\n    0 => if true => \"bad\" else => \"other\"\nConsole.writeLine(text)", "ok\n" },
-        { "CoveredCall", "func echo(text: string) -> string => text\nlet text = match 0\n    _ => \"ok\"\n    0 => echo(\"bad\")\nConsole.writeLine(text)", "ok\n" },
+        { "CoveredCall", "func echo(text: string) -> string => text@move\nlet text = match 0\n    _ => \"ok\"\n    0 => echo(\"bad\")\nConsole.writeLine(text)", "ok\n" },
         { "ComparisonLoan", "let text = \"a\"\nif text == (match 0\n    0 => \"a\"\n    _ => \"b\"\n) => Console.writeLine(text)", "a\n" },
         { "Unicode", "match \"日本語\\0\"\n    \"日本語\" => Console.writeLine(\"bad\")\n    \"日本語\\0\" => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Continue", "var n = 0\nwhile n < 3\n    n += 1\n    match n\n        1 => continue\n        2 => Console.writeLine(\"two\")\n        _ => exit", "two\n" },
@@ -46,15 +46,15 @@ public class MatchEmissionTest
 
     public static TheoryData<string, string, string, string> Audits => new()
     {
-        { "OwnedLiteral", "let text = \"a\"\nmatch text\n    \"a\" => Console.writeLine(\"ok\")\n    _ => ()", "ok\n", "a=1;ok=1" },
-        { "OwnedBinding", "let text = \"a\"\nmatch text\n    let other => Console.writeLine(other)", "a\n", "a=1" },
+        { "OwnedLiteral", "let text = \"a\"\nmatch text@move\n    \"a\" => Console.writeLine(\"ok\")\n    _ => ()", "ok\n", "a=1;ok=1" },
+        { "OwnedBinding", "let text = \"a\"\nmatch text@move\n    let other => Console.writeLine(other)", "a\n", "a=1" },
         { "OwnedWildcard", "match \"a\"\n    _ => Console.writeLine(\"ok\")", "ok\n", "a=1;ok=1" },
-        { "OwnedResult", "let result = match \"a\"\n    let other => other\nConsole.writeLine(result)", "a\n", "a=1" },
-        { "OwnedCall", "func echo(text: string) -> string => text\nmatch echo(\"a\")\n    let other => Console.writeLine(other)", "a\n", "a=1" },
+        { "OwnedResult", "let result = match \"a\"\n    let other => other@move\nConsole.writeLine(result)", "a\n", "a=1" },
+        { "OwnedCall", "func echo(text: string) -> string => text@move\nmatch echo(\"a\")\n    let other => Console.writeLine(other)", "a\n", "a=1" },
         { "OwnedSelection", "match (if true => \"a\" else => \"b\")\n    let other => Console.writeLine(other)", "a\n", "a=1;b=0" },
-        { "Replacement", "var text = \"a\"\ntext = match text\n    \"b\" => \"c\"\n    let other => other\nConsole.writeLine(text)", "a\n", "a=1;b=0;c=0" },
+        { "Replacement", "var text = \"a\"\ntext = match text@move\n    \"b\" => \"c\"\n    let other => other@move\nConsole.writeLine(text)", "a\n", "a=1;b=0;c=0" },
         { "OwnedLoop", "var n = 0\nwhile n < 3\n    match \"a\"\n        \"b\" => ()\n        let text => Console.writeLine(text)\n    n += 1", "a\na\na\n", "a=3;b=0" },
-        { "Defer", "let result = match \"subject\"\n    let text\n        defer => Console.writeLine(\"cleanup\")\n        yield text\nConsole.writeLine(result)", "cleanup\nsubject\n", "subject=1;cleanup=1" },
+        { "Defer", "let result = match \"subject\"\n    let text\n        defer => Console.writeLine(\"cleanup\")\n        yield text@move\nConsole.writeLine(result)", "cleanup\nsubject\n", "subject=1;cleanup=1" },
         { "DeferredMatch", "var n = 0\nwhile n < 2\n    defer\n        match \"a\"\n            let text => Console.writeLine(text)\n    n += 1", "a\na\n", "a=2" },
         { "EmptySubject", "match \"\"\n    \"\" => Console.writeLine(\"ok\")\n    _ => ()", "ok\n", "=1;ok=1" },
         { "ConditionalBinding", "match \"a\"\n    var text\n        if true => Console.writeLine(text)\n        text = \"b\"\n        Console.writeLine(text)", "a\nb\n", "a=1;b=1" },
@@ -74,7 +74,7 @@ public class MatchEmissionTest
     [Theory]
     [InlineData("match 0\n    _ => ()\n    0 => 1.0 + 2.0", true)]
     [InlineData("let text = \"a\"\ntext == (match text\n    _ => \"a\"\n)")]
-    [InlineData("match \"a\"\n    let text\n        Console.writeLine(text)\n        Console.writeLine(text)")]
+    [InlineData("match \"a\"\n    let text\n        _ = text@move\n        Console.writeLine(text)")]
     [InlineData("match 1.0\n    _ if true => ()\n    _ => ()", true)]
     public void ArmSupportPreservesConflictRejection(string source, bool emitted = false)
     {
@@ -92,7 +92,7 @@ public class MatchEmissionTest
         {
             "abrupt" => "func f()\n    match (return)\n        _ => Console.writeLine(\"unused\")\nf()",
             "covered" => "match 0\n    _ => ()\n    0\n        var text = \"a\"\n        if true => Console.writeLine(text)\n        text = \"b\"",
-            _ => "func echo(text: string) -> string => text\nlet result = match echo(\"a\")\n    \"b\" => \"other\"\n    let text => text\nConsole.writeLine(result)",
+            _ => "func echo(text: string) -> string => text@move\nlet result = match echo(\"a\")\n    \"b\" => \"other\"\n    let text => text@move\nConsole.writeLine(result)",
         };
         var c = MinimalEmissionTest.Analyze(source);
         for (var i = 0; i < 100; i++)
@@ -137,7 +137,7 @@ public class MatchEmissionTest
     [InlineData("arrival")]
     public void MalformedPlansFailBeforeWriting(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let result = match \"a\"\n    \"b\" => \"other\"\n    let text => text\nConsole.writeLine(result)");
+        var c = MinimalEmissionTest.Analyze("let result = match \"a\"\n    \"b\" => \"other\"\n    let text => text@move\nConsole.writeLine(result)");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var match = body.Matches[0];
@@ -177,7 +177,7 @@ public class MatchEmissionTest
     [Fact]
     public void SubjectAliasesAcquiredStorageAndFinalArmHasNoTest()
     {
-        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text\nmatch echo(\"a\")\n    \"\" => ()\n    let text => Console.writeLine(text)");
+        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text@move\nmatch echo(\"a\")\n    \"\" => ()\n    let text => Console.writeLine(text)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count > 0);
         var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.SlotAddresses.Count == body.Places.Count);

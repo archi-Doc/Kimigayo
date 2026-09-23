@@ -10,7 +10,7 @@ public class SharedAbortEmissionTest
     [Theory]
     [InlineData("RequirePass", "func check<T>(value: ref/T, flag: bool) -> i32\n    require flag else => $abort(\"failed\")\n    return 42\nlet v = true\nrequire check(v, true) == 42 else => $abort(\"wrong\")", "", 0, "", "failed=0;wrong=0")]
     [InlineData("RequireFail", "func check<T>(value: ref/T, flag: bool) -> i32\n    require flag else => $abort(\"failed\")\n    return 42\nlet v = true\nlet n = check(v, false)", "", 1, "Hello.kimi:2:26: abort KIMI_E_ABORT: failed\n", "failed=0")]
-    [InlineData("OwnedMessage", "func fail<T>(value: ref/T)\n    let message = \"stop\"\n    let held = \"held\"\n    $abort(message)\nlet v = true\nfail(v)", "", 1, "Hello.kimi:4:5: abort KIMI_E_ABORT: stop\n", "stop=0;held=0")]
+    [InlineData("OwnedMessage", "func fail<T>(value: ref/T)\n    let message = \"stop\"\n    let held = \"held\"\n    $abort(message@move)\nlet v = true\nfail(v)", "", 1, "Hello.kimi:4:5: abort KIMI_E_ABORT: stop\n", "stop=0;held=0")]
     [InlineData("SkipCleanup", "func fail<T>(value: ref/T)\n    defer => Console.writeLine(\"cleanup\")\n    $abort(\"stop\")\n    Console.writeLine(\"after\")\nlet v = true\nfail(v)", "", 1, "Hello.kimi:3:5: abort KIMI_E_ABORT: stop\n", "cleanup=0;stop=0;after=0")]
     [InlineData("Conditional", "func choose<T>(value: ref/T, flag: bool) -> i32 => if flag => 42 else => $abort(\"bad\")\nlet v = true\nrequire choose(v, true) == 42 else => $abort(\"wrong\")", "", 0, "", "bad=0;wrong=0")]
     [InlineData("MessageOnce", "func fail<T>(value: ref/T)\n    $abort((message: do\n        Console.writeLine(\"once\")\n        exit to message: \"stop\"\n    ))\nlet v = true\nfail(v)", "once\n", 1, "Hello.kimi:2:5: abort KIMI_E_ABORT: stop\n", "once=1;stop=0")]

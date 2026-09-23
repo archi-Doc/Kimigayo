@@ -48,9 +48,12 @@ internal static partial class WindowsLowering
     internal static readonly FunctionAbi Abort = new("__kimi_abort", Unit.ComputationType, [new("i32", "reason"), new("ptr", "location"), new("i64", "location_length"), new("i64", "os_error")], noReturn: true);
 
     // Hidden diagnostic context follows the ordinary parameters (SPEC 21.4.2, 22.5.1).
-    internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, WriteLine.Parameters);
-    internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, WriteLine.Parameters, noReturn: true);
+    internal static readonly AbiParameter[] OwnedStringParameters = [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)];
+
+    // SPEC 22.4-22.5.5: writeLine borrows its string handle and releases nothing.
+    internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(StringReference.ArgumentType!, "text", AbiParameterKind.SharedReference, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
+    internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, OwnedStringParameters);
+    internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters, noReturn: true);
     internal static readonly FunctionAbi TestTempDirectory = new("__kimi_test_temp", "void", [new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>

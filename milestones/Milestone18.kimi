@@ -12,23 +12,23 @@ struct Resource
 
 struct Box<T>
     let value: T
-    public init(value: T) => self.value = value
+    public init(value: T) => self.value = value@move
     // No user deinit: an owned receiver may transfer its stored value.
-    public func take(self: Self) -> T => self.value
+    public func take(self: Self) -> T => self.value@move
 
 enum Delivery<T>
     Ready(T)
     Missing
 
 func relay<T>(value: T) -> T
-    let pending: T = value
+    let pending: T = value@move
     defer => Console.writeLine("Generic result secured.")
-    return pending
+    return pending@move
 
 func choose<T>(first: T, second: T, useFirst: bool) -> T
-    return if useFirst => first else => second
+    return if useFirst => first@move else => second@move
 
-func package<T>(value: T) -> Delivery<T> => .Ready(value)
+func package<T>(value: T) -> Delivery<T> => .Ready(value@move)
 
 public func main()
     do
@@ -37,8 +37,8 @@ public func main()
             Box<[2 of Resource]>.init([Resource.init(1), Resource.init(2)]),
             Box<[2 of Resource]>.init([Resource.init(3), Resource.init(4)]),
             true)
-        let delivered = package(relay(selected.take()))
-        match delivered
+        let delivered = package(relay(selected@move.take()))
+        match delivered@move
             .Ready(let items)
                 require items[0].id == 1 and items[1].id == 2 else => $abort("Composite transfer failed")
                 Console.writeLine("Resources received.")
@@ -46,7 +46,7 @@ public func main()
     do
         // The same relay also accepts a nested tuple containing an owned string.
         let message: (string, (i32, bool)) = relay(("Tuple received.", (7, true)))
-        match message
+        match message@move
             (let text, (7, true)) => Console.writeLine(text)
             _ => $abort("Tuple transfer failed")
     let original: [2 of i32] = [5, 8]

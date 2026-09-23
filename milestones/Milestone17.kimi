@@ -13,7 +13,7 @@ struct Resource
 
 func prepare() -> [2 of Resource]
     var items: [2 of Resource] = [Resource.init(1), Resource.init(2)]
-    let extracted = items[0] // Move the complete Resource, not one of its fields.
+    let extracted = items[0]@move // Move the complete Resource, not one of its fields.
     require extracted.id == 1 else => $abort("Partial Move failed")
     items[0] = Resource.init(3) // Restore whole-array completeness.
     do
@@ -26,7 +26,7 @@ func prepare() -> [2 of Resource]
     Kimi.Intrinsics.replace(items[1]@uniq, with: Resource.init(5))
     require items[1].id == 5 else => $abort("Replacement failed")
     defer => Console.writeLine("Prepared result.")
-    return items // Secure the array before defer and extracted's destruction.
+    return items@move // Secure the array before defer and extracted's destruction.
 
 public func main()
     do

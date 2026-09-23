@@ -61,7 +61,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 10 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 11 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 12 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 13 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 45 checks per configuration (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
+| 13 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 47 checks per configuration (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
 | 14 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 15 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
 | 16 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
@@ -744,6 +744,7 @@ the concrete source remains usable. The common value itself is Non-Copy.
 ```text
 Stateful result is 13.
 Nested capture result is 18.
+Captured message.
 Captured message.
 Closure run finished.
 ```

@@ -5,13 +5,13 @@ struct Family<T>
         public let value: T
 
         public init(value: T)
-            self.value = value
+            self.value = value@move
 
     public enum Result
         Value(T)
 
     public group Helpers
-        public func identity(value: T) -> T => value
+        public func identity(value: T) -> T => value@move
 
     public contract Sink
         func put(value: T)
@@ -24,7 +24,7 @@ public func main()
     let cell = Family<i32>.Cell.init(42)
     IntegerSink.put(cell.value)
     let result = Family<i32>.Result.Value(IntTools.identity(cell.value))
-    match result
+    match result@move
         .Value(let value)
             require value == 42 else => $abort("Wrong nested binding")
             Kimi.Console.writeLine("Nested bindings preserved.")

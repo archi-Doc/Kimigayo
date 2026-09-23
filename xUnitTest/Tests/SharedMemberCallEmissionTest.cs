@@ -10,9 +10,9 @@ public class SharedMemberCallEmissionTest
     private const string Counter = "struct Counter\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func add(self: uniq/Self, amount: i32) => self.value += amount\n    public func read(self: ref/Self) -> i32 => self.value\n";
 
     [Theory]
-    [InlineData("ConstructBorrow", Counter + "func run<T>(value: ref/T) -> i32\n    var c = Counter.init(1)\n    c.add(2)\n    return c.read()\nlet v = true\nrequire run(v) == 3 else => $abort(\"result\")", "")]
+    [InlineData("ConstructBorrow", Counter + "func run<T>(value: ref/T) -> i32\n    var c = Counter.init(1)\n    c@uniq.add(2)\n    return c.read()\nlet v = true\nrequire run(v) == 3 else => $abort(\"result\")", "")]
     [InlineData("TemporaryReceiver", Counter + "func make() -> Counter\n    Console.writeLine(\"made\")\n    return Counter.init(42)\nfunc run<T>(value: ref/T) -> i32 => make().read()\nlet v = true\nrequire run(v) == 42 else => $abort(\"result\")", "made\n")]
-    [InlineData("ExternalReceiver", Counter + "func run<T>(value: ref/T, c: uniq/Counter) -> i32\n    c.add(2)\n    return c.read()\nlet v = true\nvar c = Counter.init(40)\nrequire run(v, c) == 42 and c.read() == 42 else => $abort(\"result\")", "")]
+    [InlineData("ExternalReceiver", Counter + "func run<T>(value: ref/T, c: uniq/Counter) -> i32\n    c.add(2)\n    return c.read()\nlet v = true\nvar c = Counter.init(40)\nrequire run(v, c@uniq) == 42 and c.read() == 42 else => $abort(\"result\")", "")]
     [InlineData("Empty", "struct Empty\n    public init() => ()\n    public func answer(self: Self) -> i32 => 42\nfunc run<T>(value: ref/T) -> i32 => Empty.init().answer()\nlet v = true\nrequire run(v) == 42 else => $abort(\"result\")", "")]
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedMemberCall" + name, source, stdout);
@@ -22,8 +22,8 @@ public class SharedMemberCallEmissionTest
     [InlineData(true)]
     public void OwnedReceiverTransfersAndCleansStringFieldsOnce(bool named)
     {
-        const string Source = "struct Pair\n    let first: string\n    let second: string\n    public init(first: string, second: string)\n        self.first = first\n        self.second = second\n    public func take(self: Self) -> string => self.first\nfunc run<T>(value: ref/T) -> string\n    let pair = Pair.init(\"first\", \"second\")\n    return pair.take()\nlet v = true\nConsole.writeLine(run(v))";
-        var source = named ? Source.Replace("func run<T>", "func word(text: string) -> string\n    Console.writeLine(\"arg\")\n    return text\nfunc run<T>").Replace("Pair.init(\"first\", \"second\")", "Pair.init(second: word(\"second\"), first: word(\"first\"))") : Source;
+        const string Source = "struct Pair\n    let first: string\n    let second: string\n    public init(first: string, second: string)\n        self.first = first@move\n        self.second = second@move\n    public func take(self: Self) -> string => self.first@move\nfunc run<T>(value: ref/T) -> string\n    let pair = Pair.init(\"first\", \"second\")\n    return pair@move.take()\nlet v = true\nConsole.writeLine(run(v))";
+        var source = named ? Source.Replace("func run<T>", "func word(text: string) -> string\n    Console.writeLine(\"arg\")\n    return text@move\nfunc run<T>").Replace("Pair.init(\"first\", \"second\")", "Pair.init(second: word(\"second\"), first: word(\"first\"))") : Source;
         var name = named ? "SharedMemberCallOwnedNamed" : "SharedMemberCallOwned";
         var stdout = named ? "arg\narg\nfirst\n" : "first\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
@@ -33,7 +33,7 @@ public class SharedMemberCallEmissionTest
     [Fact]
     public void ExclusiveReceiverAllowsPreparedSharedInspection()
     {
-        var c = MinimalEmissionTest.Analyze(Counter + "func run<T>(value: ref/T, c: uniq/Counter)\n    c.add(c.read())\nlet v = true\nvar c = Counter.init(1)\nrun(v, c)");
+        var c = MinimalEmissionTest.Analyze(Counter + "func run<T>(value: ref/T, c: uniq/Counter)\n    c.add(c.read())\nlet v = true\nvar c = Counter.init(1)\nrun(v, c@uniq)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
@@ -44,7 +44,7 @@ public class SharedMemberCallEmissionTest
     {
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt reborrow authority is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze(Counter + "func run(value: ref/bool, c: uniq/Counter) => c.add(1)\nlet v = true\nvar c = Counter.init(1)\nrun(v, c)");
+        var c = MinimalEmissionTest.Analyze(Counter + "func run(value: ref/bool, c: uniq/Counter) => c.add(1)\nlet v = true\nvar c = Counter.init(1)\nrun(v, c@uniq)");
         Assert.True(c.Emission.TryPrepare(out _, out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "run");
         var borrow = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);

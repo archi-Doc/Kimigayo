@@ -135,7 +135,7 @@ public class ContractBindingTest
     [Fact]
     public void VerifiedConformanceDischargesGenericCalls()
     {
-        var c = Parse("contract C\n    func f()\nstruct S {}\n    Self is C\n    public func f() => ()\nfunc use<T>(value: T)\n    T is C\n    ()\nfunc caller(value: S) => use(value)");
+        var c = Parse("contract C\n    func f()\nstruct S {}\n    Self is C\n    public func f() => ()\nfunc use<T>(value: T)\n    T is C\n    ()\nfunc caller(value: S) => use(value@move)");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 

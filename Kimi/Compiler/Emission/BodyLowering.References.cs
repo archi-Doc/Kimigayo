@@ -168,14 +168,9 @@ internal sealed partial class BodyLowering
                 body.SymbolPlaces.TryGetValue(symbol, out var anchor) && anchor == operation.Place;
         }
 
-        var expression = operation.Source;
-        while (expression is LabeledKoto labeled)
-        {
-            expression = KotoHelper.UnwrapParentheses(labeled.Target);
-        }
-
-        // Storage authorization is checked after the string plans are prepared.
-        return source.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && ReferenceEquals(source.Source, expression);
+        // A transferred or Identity-acquired operand (text@move, text@owner) is borrowed through the
+        // operand's own temporary. Storage authorization is checked after the string plans are prepared.
+        return source.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && ReferenceEquals(source.Source, ElementAccess.ValueSource(operation.Source));
     }
 
     private EmissionOperand ReferenceOperand(OwnershipBody body, int value)

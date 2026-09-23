@@ -13,8 +13,8 @@ public class ElementBorrowOwnerEmissionTest
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "Parameter", "func f(a: (string, i32)) -> bool => same(a.0, a.0)\nif f((\"held\", 0)) => Console.writeLine(\"ok\")", "ok\n" },
-        { "ParameterArray", "func f(a: [2 of string]) -> bool => a[0] < a[1]\nlet a: [2 of string] = [\"first\", \"last\"]\nif f(a) => Console.writeLine(\"ok\")", "ok\n" },
-        { "ParameterMoveAfter", "func f(a: (string, i32)) -> (string, i32)\n    let equal = same(a.0, a.0)\n    return a\nif f((\"held\", 0)).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
+        { "ParameterArray", "func f(a: [2 of string]) -> bool => a[0] < a[1]\nlet a: [2 of string] = [\"first\", \"last\"]\nif f(a@move) => Console.writeLine(\"ok\")", "ok\n" },
+        { "ParameterMoveAfter", "func f(a: (string, i32)) -> (string, i32)\n    let equal = same(a.0, a.0)\n    return a@move\nif f((\"held\", 0)).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterNested", "func f(a: (string, (string, i32))) -> bool => same(a.0, a.1.0)\nif f((\"held\", (\"held\", 42))) => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterDefer", "func f(a: (string, i32))\n    defer\n        if a.0 == \"held\" => Console.writeLine(\"ok\")\nf((\"held\", 0))", "ok\n" },
         { "Literal", "if (\"held\", 42).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
@@ -32,7 +32,7 @@ public class ElementBorrowOwnerEmissionTest
         { "Guard", "match \"other\"\n    let s if same(make().0, s) => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"ok\")", "ok\n" },
         { "NestedGuard", "func three(a: ref/string, b: ref/string, c: ref/string) -> bool => b == c\nmatch \"other\"\n    let s if three(make().0, s, \"other\") => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")", "ok\n" },
         { "IndependentResult", "func inspect(a: ref/string) -> (string, i32) => (\"held\", 0)\nif inspect(make().0).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
-        { "MixedLocal", "let a = (\"held\", 0)\nif same(a.0, make().0) and same(make().0, a.0) => Console.writeLine(\"ok\")\nlet moved = a", "ok\n" },
+        { "MixedLocal", "let a = (\"held\", 0)\nif same(a.0, make().0) and same(make().0, a.0) => Console.writeLine(\"ok\")\nlet moved = a@move", "ok\n" },
         { "DeferClones", "func f(flag: bool)\n    defer\n        if same((work: do\n            exit to work: (\"held\", 0)\n        ).0, make().0) => Console.writeLine(\"ok\")\n    if flag => return\nf(true)\nf(false)", "ok\nok\n" },
         { "Repeated", "var n = 0\nloop\n    if not same(make().0, (\"held\", 0).0) => exit\n    n += 1\n    if n < 3 => continue\n    exit\nif n == 3 => Console.writeLine(\"ok\")", "ok\n" },
         { "Unreachable", "func f()\n    return\n    let equal = same(make().0, (\"held\", 0).0)\nf()\nConsole.writeLine(\"ok\")", "ok\n" },
@@ -45,9 +45,9 @@ public class ElementBorrowOwnerEmissionTest
         => ScalarEmissionTest.EmitFixture("ElementBorrowOwner" + name, Same + Make + source, stdout);
 
     [Theory]
-    [InlineData("func inspect(a: ref/string, b: (string, i32)) => ()\nfunc f(a: (string, i32)) => inspect(a.0, a)", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func take(a: (string, i32)) -> string => \"held\"\nfunc f(a: (string, i32)) -> bool => a.0 == take(a)", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func f(a: (string, i32)) -> bool\n    let moved = a\n    return same(a.0, a.0)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func inspect(a: ref/string, b: (string, i32)) => ()\nfunc f(a: (string, i32)) => inspect(a.0, a@move)", OwnershipFailure.ComparisonLoanConflict)]
+    [InlineData("func take(a: (string, i32)) -> string => \"held\"\nfunc f(a: (string, i32)) -> bool => a.0 == take(a@move)", OwnershipFailure.ComparisonLoanConflict)]
+    [InlineData("func f(a: (string, i32)) -> bool\n    let moved = a@move\n    return same(a.0, a.0)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let value = make().0", OwnershipFailure.Unsupported)]
     [InlineData("func f(a: [1 of string], i: isize) -> bool => same(a[i], \"held\")", OwnershipFailure.Unsupported)]
     public void BorrowingDoesNotGrantMoveOrDynamicAccess(string source, OwnershipFailure failure)

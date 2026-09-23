@@ -13,8 +13,8 @@ public class PartialScopeContinuationTest
     private const string Default = "func value(c: bool, y: i32 = (do\n    var n: i32\n    do\n        if c\n            n = 1\n            loop => continue\n        n = 2\n        loop => continue\n    n\n)) -> i32 => y\n";
 
     [Theory]
-    [InlineData("let s = \"s\"", "Console.writeLine(s)\n            return", "stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "return", "Console.writeLine(s)\n        stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "_ = s@move\n            return", "stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "return", "_ = s@move\n        stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("var x: i32", "x = 1\n            return", "stop()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "x = 2\n        stop()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x: i32", "x = 1\n            return", "stop()", "x = 2", OwnershipFailure.ReassignedLet)]
@@ -34,7 +34,7 @@ public class PartialScopeContinuationTest
     [InlineData("Initialized", "var x: i32", "x = 1\n            return", "x = 2\n        stop()", "let y = x", "done\n")]
     [InlineData("Nested", "var x: i32", "if c => x = 1 else => x = 3\n            return", "x = 2\n        stop()", "let y = x", "done\n")]
     [InlineData("Deep", "var x: i32", "x = 1\n            if c => return\n            stop()", "x = 2\n        stop()", "let y = x", "done\n")]
-    [InlineData("MoveBefore", "let s = \"s\"", "Console.writeLine(s)\n            return", "Console.writeLine(s)\n        stop()", "()", "s\ndone\n")]
+    [InlineData("MoveBefore", "let s = \"s\"", "Console.writeLine(s)\n            _ = s@move\n            return", "Console.writeLine(s)\n        _ = s@move\n        stop()", "()", "s\ndone\n")]
     public void ReturnPathsExecuteAndLaterSourceIsCheckingOnly(string name, string declaration, string yes, string tail, string use, string stdout)
         => ScalarEmissionTest.EmitFixture("NeverPartialScope" + Configuration + name, Source(declaration, yes, tail, use) + "\nConsole.writeLine(\"done\")", stdout);
 
@@ -56,7 +56,7 @@ public class PartialScopeContinuationTest
 
     [Theory]
     [InlineData("let x: i32\nvalue(true)\nlet y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"\nConsole.writeLine(s)\nvalue(false)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\n_ = s@move\nvalue(false)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void OmittedPartialDefaultDoesNotRestoreCallerFacts(string tail, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Default + tail);
@@ -85,8 +85,8 @@ public class PartialScopeContinuationTest
             timeoutMilliseconds: 200);
 
     [Theory]
-    [InlineData("func f(c: bool, d: bool, s: string)\n    if c\n        if d\n            Console.writeLine(s)\n            return\n        stop()\n    else\n        return\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool, d: bool, s: string)\n    if c\n        return\n    else\n        if d => return\n        Console.writeLine(s)\n        stop()\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(c: bool, d: bool, s: string)\n    if c\n        if d\n            _ = s@move\n            return\n        stop()\n    else\n        return\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f(c: bool, d: bool, s: string)\n    if c\n        return\n    else\n        if d => return\n        _ = s@move\n        stop()\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(c: bool, d: bool)\n    var x: i32\n    if c\n        if d => return\n        x = 1\n        stop()\n    else\n        x = 2\n        return\n    let y = x", OwnershipFailure.UninitializedUse)]
     public void TerminalSelectionJoinsIncludeNestedPartialPaths(string source, OwnershipFailure failure)
     {
@@ -127,7 +127,7 @@ public class PartialScopeContinuationTest
     [Fact]
     public void LabeledScopePathsPreserveMoveHistory()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, s: string)\n    loop\n        do\n            if c => exit\n            Console.writeLine(s)\n            stop()\n        Console.writeLine(s)");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool, s: string)\n    loop\n        do\n            if c => exit\n            _ = s@move\n            stop()\n        Console.writeLine(s)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);

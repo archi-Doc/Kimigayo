@@ -110,7 +110,7 @@ $invalid = [ordered]@{
     StrongerInput = $original.Replace('(job: ref/Pipeline.Job)', '(job: uniq/Pipeline.Job)')
     ConflictingOwner = $original.Replace('        let accepted =', "        accumulator.read()`n        let accepted =")
     WrongProjection = $original.Replace('accumulator@uniq/Pipeline.Accumulator', 'accumulator@uniq/Pipeline.Job')
-    ImplicitCapture = $original.Replace('func [target]', 'func')
+    ImplicitCapture = $original.Replace('func [target@move]', 'func')
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"

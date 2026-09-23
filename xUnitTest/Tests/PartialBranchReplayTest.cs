@@ -24,7 +24,7 @@ public class PartialBranchReplayTest
 
     [Theory]
     [InlineData("Initialization", "var x: i32", "inner: if c\n                x = 3\n                yield to inner\n            else => x = 4\n            let y = x")]
-    [InlineData("DeadMove", "let s = \"s\"", "inner: if c\n                yield to inner\n                Console.writeLine(s)\n            else => ()\n            Console.writeLine(s)")]
+    [InlineData("DeadMove", "let s = \"s\"", "inner: if c\n                yield to inner\n                _ = s@move\n            else => ()\n            Console.writeLine(s)")]
     [InlineData("DeadLet", "let x: i32", "inner: if c\n                yield to inner\n                x = 3\n            else => ()\n            x = 4")]
     [InlineData("MissingCondition", "var x: i32", "inner: if c => x = 3 else if truth(stop()) => yield to inner else => x = 4\n            let y = x")]
     [InlineData("LocalLoan", "var counter = Counter.init()", "inner: if c\n                let r = counter@ref\n                let n = r.value\n                yield to inner\n            else => ()\n            counter.value = 9")]
@@ -33,8 +33,8 @@ public class PartialBranchReplayTest
 
     [Theory]
     [InlineData("var x: i32", "inner: if c\n                yield to inner\n                x = 3\n            else => x = 4\n            let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "inner: if c\n                Console.writeLine(s)\n                yield to inner\n            else => ()\n            Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "inner: if c => () else\n                Console.writeLine(s)\n                yield to inner\n            Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "inner: if c\n                _ = s@move\n                yield to inner\n            else => ()\n            Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "inner: if c => () else\n                _ = s@move\n                yield to inner\n            Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "inner: if c\n                x = 3\n                yield to inner\n            else => ()\n            x = 4", OwnershipFailure.ReassignedLet)]
     public void CaughtSelectionArrivalsRetainTheirOwnEffects(string declaration, string dead, OwnershipFailure failure)
     {
@@ -81,7 +81,7 @@ public class PartialBranchReplayTest
         => Emit("Normal" + name, Source("var x: i32", dead, "()", "()"));
 
     [Theory]
-    [InlineData("Move", "let s = \"s\"", "if c\n                Console.writeLine(s)\n                return\n            else => ()\n            Console.writeLine(s)")]
+    [InlineData("Move", "let s = \"s\"", "if c\n                _ = s@move\n                return\n            else => ()\n            Console.writeLine(s)")]
     [InlineData("Let", "let x: i32", "if c\n                x = 3\n                return\n            else => ()\n            x = 4")]
     [InlineData("Loan", "var counter = Counter.init()\n    let r = counter@ref", "if c\n                counter.value = 9\n                return\n            else => ()\n            let n = r.value")]
     public void TerminalEffectsDoNotPolluteNormalSuccessors(string name, string declaration, string dead)
@@ -103,9 +103,9 @@ public class PartialBranchReplayTest
     [InlineData("var x: i32", "if c => x = 3 else => return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "if c => x = 3 else if c => return else => ()\n            let y = x", "()", "()", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "if c => return\n            let y = x", "()", "()", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "if c\n                Console.writeLine(s)\n                return\n            else => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "if c => return else => Console.writeLine(s)", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "if c => return else => Console.writeLine(s)\n            Console.writeLine(s)", "()", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if c\n                _ = s@move\n                return\n            else => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if c => return else => _ = s@move", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "if c => return else => _ = s@move\n            Console.writeLine(s)", "()", "()", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "if c\n                x = 3\n                return\n            else => ()", "()", "x = 4", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "if c => return else => x = 3\n            x = 4", "()", "()", OwnershipFailure.ReassignedLet)]
     public void EveryRelevantPathRetainsItsEffects(string declaration, string dead, string tail, string use, OwnershipFailure failure)

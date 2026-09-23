@@ -45,13 +45,14 @@ public class BorrowStructEmissionTest
 
     [Theory]
     [InlineData("add(counter@uniq, 1)")]
-    [InlineData("finish(counter)")]
+    [InlineData("finish(counter@move)")]
     [InlineData("counter.value = 99")]
     [InlineData("counter = Counter.init()")]
     public void DestructorKeepsStoredLoanAlive(string statement)
     {
-        var source = File.ReadAllText(Path.Combine(FindRoot(), "milestones", "Milestone5.kimi"))
-            .Replace("// Mutating or moving counter here", statement + "\n        // Mutating or moving counter here");
+        var milestone = File.ReadAllText(Path.Combine(FindRoot(), "milestones", "Milestone5.kimi"));
+        Assert.Contains("// Mutating or moving counter here", milestone);
+        var source = milestone.Replace("// Mutating or moving counter here", statement + "\n        // Mutating or moving counter here");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
@@ -60,7 +61,9 @@ public class BorrowStructEmissionTest
 
     [Theory]
     [InlineData("var c = Counter.init()\nlet r = borrow(c@ref)\nadd(c@uniq, 1)\nlet n = r.value")]
-    [InlineData("func take(c: Counter) => ()\nvar c = Counter.init()\nlet r = borrow(c@ref)\ntake(c)\nlet n = r.value")]
+    [InlineData("func take(c: Counter) => ()\nvar c = Counter.init()\nlet r = borrow(c@ref)\ntake(c@move)\nlet n = r.value")]
+    [InlineData("func take(c: Counter) => ()\nvar c = Counter.init()\ntake(c)")]
+    [InlineData("var c = Counter.init()\nadd(c, 1)")]
     [InlineData("func bad() -> ref{static}/Counter\n    let c = Counter.init()\n    return c@ref")]
     [InlineData("func bad(c: ref/Counter)\n    c.value = 9")]
     [InlineData("let c = Counter.init()\nadd(c@uniq, 1)")]

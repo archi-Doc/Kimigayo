@@ -24,11 +24,11 @@ public class PartialScopedReplayTest
 
     [Theory]
     [InlineData("Initialization", "var x: i32", "inner: do\n                if c\n                    x = 3\n                    exit to inner\n                else => x = 4", "let y = x")]
-    [InlineData("DeadMove", "let s = \"s\"", "inner: do\n                if c\n                    exit to inner\n                    Console.writeLine(s)\n                else => ()", "Console.writeLine(s)")]
+    [InlineData("DeadMove", "let s = \"s\"", "inner: do\n                if c\n                    exit to inner\n                    _ = s@move\n                else => ()", "Console.writeLine(s)")]
     [InlineData("DeadLet", "let x: i32", "inner: do\n                if c\n                    exit to inner\n                    x = 3\n                else => ()", "x = 4")]
     [InlineData("LocalLoan", "var counter = Counter.init()", "inner: do\n                if c\n                    let r = counter@ref\n                    let n = r.value\n                    exit to inner\n                else => ()", "counter.value = 9")]
     [InlineData("MissingCondition", "var x: i32", "inner: do\n                if c => x = 3 else if truth(stop()) => exit to inner else => x = 4", "let y = x")]
-    [InlineData("MissingConditionMove", "let s = \"s\"", "inner: do\n                if c => () else if truth(stop())\n                    Console.writeLine(s)\n                    exit to inner\n                else => ()", "Console.writeLine(s)")]
+    [InlineData("MissingConditionMove", "let s = \"s\"", "inner: do\n                if c => () else if truth(stop())\n                    _ = s@move\n                    exit to inner\n                else => ()", "Console.writeLine(s)")]
     [InlineData("MissingConditionLet", "let x: i32", "inner: do\n                if c => () else if truth(stop())\n                    x = 3\n                    exit to inner\n                else => ()", "x = 4")]
     public void CaughtArrivalsExcludeLaterDeadEffectsAndIncludeCleanup(string name, string declaration, string dead, string after)
         => Emit("CaughtNormal" + name, Source(declaration, dead, after, "()") + Counter);
@@ -36,8 +36,8 @@ public class PartialScopedReplayTest
     [Theory]
     [InlineData("var x: i32", "inner: do\n                if c => exit to inner else => x = 3", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "inner: do\n                if c\n                    exit to inner\n                    x = 3\n                else => x = 4", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "inner: do\n                if c\n                    Console.writeLine(s)\n                    exit to inner\n                else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "inner: do\n                if c => () else\n                    Console.writeLine(s)\n                    exit to inner", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "inner: do\n                if c\n                    _ = s@move\n                    exit to inner\n                else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "inner: do\n                if c => () else\n                    _ = s@move\n                    exit to inner", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "inner: do\n                if c\n                    x = 3\n                    exit to inner\n                else => ()", "x = 4", OwnershipFailure.ReassignedLet)]
     public void CaughtScopeArrivalsRetainTheirEffects(string declaration, string dead, string after, OwnershipFailure failure)
     {
@@ -64,7 +64,7 @@ public class PartialScopedReplayTest
 
     [Theory]
     [InlineData("Initialization", "var x: i32", "do\n                if c => return else => x = 3", "let y = x")]
-    [InlineData("Move", "let s = \"s\"", "do\n                if c\n                    Console.writeLine(s)\n                    return\n                else => ()", "Console.writeLine(s)")]
+    [InlineData("Move", "let s = \"s\"", "do\n                if c\n                    _ = s@move\n                    return\n                else => ()", "Console.writeLine(s)")]
     [InlineData("Let", "let x: i32", "do\n                if c\n                    x = 3\n                    return\n                else => ()", "x = 4")]
     public void TerminalEffectsDoNotEnterScopeNormalSuccessors(string name, string declaration, string dead, string after)
         => Emit("Normal" + name, Source(declaration, dead, after, "()"));
@@ -73,8 +73,8 @@ public class PartialScopedReplayTest
     [InlineData("var x: i32", "do\n                if c => return else => x = 3", "()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "do\n                if c => x = 3 else => return", "()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "do\n                if c => return", "let y = x", "()", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "do\n                if c\n                    Console.writeLine(s)\n                    return\n                else => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "do\n                if c => return else => Console.writeLine(s)", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "do\n                if c\n                    _ = s@move\n                    return\n                else => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "do\n                if c => return else => _ = s@move", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "do\n                if c\n                    x = 3\n                    return\n                else => ()", "()", "x = 4", OwnershipFailure.ReassignedLet)]
     public void ScopeJoinsKeepOnlyCommonGuarantees(string declaration, string dead, string after, string use, OwnershipFailure failure)
     {

@@ -14,7 +14,7 @@ public class AbortEmissionTest
         { "AbortLiteral", "$abort(\"failed\")", string.Empty, 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: failed\n" },
         { "AbortEmpty", "$abort(\"\")", string.Empty, 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: \n" },
         { "AbortUnicode", "$abort(\"日本語\\0x\")", string.Empty, 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: 日本語\0x\n" },
-        { "AbortOwned", "let text = \"owned\"\n$abort(text)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: owned\n" },
+        { "AbortOwned", "let text = \"owned\"\n$abort(text@move)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: owned\n" },
         { "AbortShadow", "func abort(text: string) => Console.writeLine(text)\n$abort(\"builtin\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: builtin\n" },
         { "AbortNested", "$abort($abort(\"inner\"))", string.Empty, 1, "Hello.kimi:1:8: abort KIMI_E_ABORT: inner\n" },
         { "AbortOnce", "$abort((message: do\n    Console.writeLine(\"once\")\n    exit to message: \"message\"\n))", "once\n", 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: message\n" },
@@ -35,7 +35,7 @@ public class AbortEmissionTest
 
     [Theory]
     [InlineData("$abort(\"failed\")")]
-    [InlineData("let message = \"failed\"\n$abort(message)")]
+    [InlineData("let message = \"failed\"\n$abort(message@move)")]
     [InlineData("if false\n    $abort(\"failed\")\nConsole.writeLine(\"ok\")")]
     [InlineData("let value: i32 = if true => 1 else => $abort(\"failed\")\nif value == 1 => Console.writeLine(\"ok\")")]
     public void ExplicitAbortPassesEveryCompilerStage(string source)
@@ -68,9 +68,9 @@ public class AbortEmissionTest
     }
 
     [Theory]
-    [InlineData("let text: string\n$abort(text)", OwnershipFailure.UninitializedUse)]
-    [InlineData("let text = \"x\"\nConsole.writeLine(text)\n$abort(text)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let text = \"x\"\n$abort(text)\nConsole.writeLine(text)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let text: string\n$abort(text@move)", OwnershipFailure.UninitializedUse)]
+    [InlineData("let text = \"x\"\n_ = text@move\n$abort(text@move)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", OwnershipFailure.UninitializedUse)]
     public void RejectsOwnershipViolationsIncludingUnreachableUses(string source, OwnershipFailure failure)
     {
@@ -100,7 +100,7 @@ public class AbortEmissionTest
     [Fact]
     public void RebindReloadAndWarmPassesPreserveTheBuiltin()
     {
-        var c = MinimalEmissionTest.Analyze("let text = \"x\"\n$abort(text)");
+        var c = MinimalEmissionTest.Analyze("let text = \"x\"\n$abort(text@move)");
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));

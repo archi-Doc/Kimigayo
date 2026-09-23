@@ -55,8 +55,8 @@ public class GenericCallFormationBindingTest
     }
 
     [Theory]
-    [InlineData("take<Box<U>>(value)")]
-    [InlineData("take(value)")]
+    [InlineData("take<Box<U>>(value@move)")]
+    [InlineData("take(value@move)")]
     public void DependentArgumentsUseCallerEvidence(string expression)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is Copy\ngroup Consumer\n    func take<T>(value: T) => ()\n    func call<U>(value: Box<U>)\n        U is Copy\n        " + expression);

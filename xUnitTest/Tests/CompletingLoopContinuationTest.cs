@@ -14,11 +14,11 @@ public class CompletingLoopContinuationTest
     [Theory]
     [InlineData("var x: i32", "loop\n            if c => return\n            exit", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "loop\n            if c\n                x = 1\n                return\n            exit", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "loop\n            if c\n                Console.writeLine(s)\n                return\n            exit", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "loop\n            if c => return\n            Console.writeLine(s)\n            exit", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "loop\n            if c\n                _ = s@move\n                return\n            exit", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "loop\n            if c => return\n            _ = s@move\n            exit", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "loop\n            if c\n                x = 1\n                return\n            exit", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("var x: i32", "while c\n            return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "while c\n            Console.writeLine(s)\n            return", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "while c\n            _ = s@move\n            return", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void EscapingPathsRetainTheirFacts(string declaration, string loop, string tail, string use, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, loop, tail, use));
@@ -61,7 +61,7 @@ public class CompletingLoopContinuationTest
 
     [Theory]
     [InlineData("var x: i32", "return", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "Console.writeLine(x)\n                return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "_ = x@move\n                return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     public void TerminalSelectionsKeepLoopEscapePaths(string declaration, string early, string use, OwnershipFailure failure)
     {
         var source = Stop + "func f(c: bool, d: bool)\n    " + declaration + "\n    if c\n        loop\n            if d\n                " + early + "\n            exit\n        stop()\n    else => return\n    " + use;

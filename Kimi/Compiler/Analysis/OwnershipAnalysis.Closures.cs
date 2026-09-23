@@ -22,13 +22,15 @@ public sealed partial class OwnershipAnalysis
             var read = -1;
             if (closure.EnvironmentType is not null)
             {
-                if (source.Captures is null && this.body.Places[place].Acquisition != AcquisitionKind.Copy)
+                // SPEC 7.6.2: a bare capture Copies and needs definition-side Copy proof; x@move transfers.
+                var transfer = capture.Environment.TransferCapture;
+                if (!transfer && this.body.Places[place].Acquisition != AcquisitionKind.Copy)
                 {
-                    this.Unsupported(source); // Implicit capture must have definition-side Copy proof.
+                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
                 }
 
                 var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);
-                read = this.Emit(OwnershipOperationKind.Consume, source, place, acquired, this.body.Places[place].Acquisition);
+                read = this.Emit(OwnershipOperationKind.Consume, source, place, acquired, transfer ? AcquisitionKind.Move : this.body.Places[place].Acquisition);
                 this.Emit(OwnershipOperationKind.CallEntry, source, acquired);
             }
             else

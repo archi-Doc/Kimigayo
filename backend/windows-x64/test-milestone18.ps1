@@ -91,7 +91,7 @@ $variants = [ordered]@{
     Names = @{ source = $original.Replace('Resource', 'Ticket').Replace('Box', 'Crate').Replace('Delivery', 'Parcel').Replace('relay', 'send').Replace('pending', 'secured').Replace('choose', 'select').Replace('package', 'wrap'); stdout = $expected.Replace('Resource', 'Ticket') }
     Values = @{ source = $values; stdout = $valueOutput }
     Second = @{ source = $second; stdout = $secondOutput }
-    Early = @{ source = $original.Replace("    return pending", "    if true => return pending`n    return pending"); stdout = $expected }
+    Early = @{ source = $original.Replace("    return pending@move", "    if true => return pending@move`n    return pending@move"); stdout = $expected }
     Unused = @{ source = $unused; stdout = $expected }
 }
 foreach ($level in @('O0', 'O2')) {
@@ -112,13 +112,13 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    SelectedMoved = @{ source = $original.Replace('        match delivered', "        let invalid = selected`n        match delivered"); diagnostic = 'MovedPlace_Kd' }
-    DeliveredMoved = @{ source = $original.Replace('            .Missing => $abort("Missing resources")', "            .Missing => `$abort(`"Missing resources`")`n        let invalid = delivered"); diagnostic = 'MovedPlace_Kd' }
+    SelectedMoved = @{ source = $original.Replace('        match delivered@move', "        let invalid = selected@move`n        match delivered@move"); diagnostic = 'MovedPlace_Kd' }
+    DeliveredMoved = @{ source = $original.Replace('            .Missing => $abort("Missing resources")', "            .Missing => `$abort(`"Missing resources`")`n        let invalid = delivered@move"); diagnostic = 'MovedPlace_Kd' }
     BoxDestructor = @{ source = $original.Replace('    // No user deinit:', "    deinit => ()`n    // No user deinit:"); diagnostic = 'UnsupportedOwnership_Kd' }
-    Duplicate = @{ source = "func duplicate<T>(value: T) -> (T, T) => (value, value)`n" + $original; diagnostic = 'MovedPlace_Kd' }
-    DeferredMove = @{ source = $original.Replace('    return pending', "    defer => discard(pending)`n    return pending") + "`nfunc discard<T>(value: T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
-    DeferredRead = @{ source = $original.Replace('    return pending', "    defer => observe<T>(pending@ref/T)`n    return pending") + "`nfunc observe<T>(value: ref/T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
-    TypeMismatch = @{ source = $original.Replace('package(relay(selected.take()))', 'package<[2 of i32]>(relay(selected.take()))'); diagnostic = 'NoApplicableOverload_Kd' }
+    Duplicate = @{ source = "func duplicate<T>(value: T) -> (T, T) => (value@move, value@move)`n" + $original; diagnostic = 'MovedPlace_Kd' }
+    DeferredMove = @{ source = $original.Replace('    return pending@move', "    defer => discard(pending@move)`n    return pending@move") + "`nfunc discard<T>(value: T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
+    DeferredRead = @{ source = $original.Replace('    return pending@move', "    defer => observe<T>(pending@ref/T)`n    return pending@move") + "`nfunc observe<T>(value: ref/T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
+    TypeMismatch = @{ source = $original.Replace('package(relay(selected@move.take()))', 'package<[2 of i32]>(relay(selected@move.take()))'); diagnostic = 'NoApplicableOverload_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

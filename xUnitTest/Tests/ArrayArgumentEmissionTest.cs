@@ -43,8 +43,8 @@ public class ArrayArgumentEmissionTest
 
     [Theory]
     [InlineData("Drop", "func use(x: [2 of string]) => ()\nuse([\"first\", \"last\"])", "first=1;last=1", new[] { 1, 0 })]
-    [InlineData("Partial", "func take(x: [2 of string]) -> string => x[0]\nlet result = take([\"first\", \"last\"])", "first=1;last=1", new[] { 1, 0 })]
-    [InlineData("Move", "func use(x: [1 of string]) => ()\nlet value = \"moved\"\nuse([value])", "moved=1", new[] { 0 })]
+    [InlineData("Partial", "func take(x: [2 of string]) -> string => x[0]@move\nlet result = take([\"first\", \"last\"])", "first=1;last=1", new[] { 1, 0 })]
+    [InlineData("Move", "func use(x: [1 of string]) => ()\nlet value = \"moved\"\nuse([value@move])", "moved=1", new[] { 0 })]
     public void ArrayArgumentsRetainOneCleanupResponsibility(string name, string source, string counts, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("ArrayArgument" + name, source, string.Empty);
@@ -58,7 +58,7 @@ public class ArrayArgumentEmissionTest
     [Fact]
     public void CandidateProbesDoNotConsumeOwnedElements()
     {
-        var c = MinimalEmissionTest.Analyze("func use(x: [1 of string]) => ()\nfunc use(x: [1 of i32]) => ()\nlet value = \"moved\"\nuse([value])\nConsole.writeLine(value)");
+        var c = MinimalEmissionTest.Analyze("func use(x: [1 of string]) => ()\nfunc use(x: [1 of i32]) => ()\nlet value = \"moved\"\nuse([value@move])\nConsole.writeLine(value)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
         Assert.False(c.Emission.Validate(out _));

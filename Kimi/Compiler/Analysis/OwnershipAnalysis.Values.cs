@@ -208,8 +208,10 @@ public sealed partial class OwnershipAnalysis
 
     private int ConversionValue(ConversionKoto conversion)
     {
-        var identity = conversion.ConversionBinding == ConversionBinding.Identity;
-        var input = this.Expression(conversion.Left, identity ? PlaceUseKind.Consume : PlaceUseKind.Read);
+        // SPEC 13.5.3: a transfer consumes its Place by Move even when the Type is Copy; a temporary passes its ownership.
+        var transfer = conversion.ConversionBinding == ConversionBinding.Transfer;
+        var identity = conversion.ConversionBinding == ConversionBinding.Identity || transfer;
+        var input = this.Expression(conversion.Left, identity ? PlaceUseKind.Consume : PlaceUseKind.Read, transfer ? AcquisitionKind.Move : null);
         if (conversion.ConversionBinding == ConversionBinding.None)
         {
             this.Unsupported(conversion);

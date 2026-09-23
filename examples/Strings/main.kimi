@@ -5,6 +5,6 @@ public func main()
         if i == 1 => Console.writeLine(text)
         text = "next"
         i += 1
-    text = text
+    text = text@move
     defer => Console.writeLine(text)
     Console.writeLine("done")

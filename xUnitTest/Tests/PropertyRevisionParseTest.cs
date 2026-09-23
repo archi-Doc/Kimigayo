@@ -4,6 +4,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 using static XunitTest.ParseTestHelper;
@@ -25,27 +26,45 @@ public class PropertyRevisionParseTest
         ParseSuccess($"let {name}: i32 = 1\nlet result = {name}");
     }
 
+    // SPEC 13.5.1: a bare @move (like a bare built-in Semantics name) completes the target, and a following
+    // selection, call or index continues the postfix chain; an ordinary Type named move keeps its qualified forms.
     [Theory]
-    [InlineData("move")]
-    [InlineData("move<i32>")]
-    [InlineData("move.Member")]
-    [InlineData("move/i32")]
-    [InlineData("Group.move")]
-    public void MoveIsAnOrdinaryAdaptationTarget(string target)
+    [InlineData("move", "move")]
+    [InlineData("move<i32>", "move<i32>")]
+    [InlineData("Group.move", "Group.move")]
+    public void MoveIsTheTransferOperationTarget(string target, string written)
     {
         var tree = ParseSuccess("let value = source@" + target);
         var conversion = Assert.IsType<ConversionKoto>(Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items)).InitializerKoto);
-        Assert.Equal(target, conversion.Right.ToString());
+        Assert.Equal(written, conversion.Right.ToString());
         Assert.Equal("source", conversion.Left.ToString());
         RoundTrip(tree);
     }
 
+    [Fact]
+    public void MoveTargetEndsBeforeAPostfixSelection()
+    {
+        var tree = ParseSuccess("let value = source@move.Member");
+        var access = Assert.IsType<MemberAccessKoto>(Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items)).InitializerKoto);
+        var conversion = Assert.IsType<ConversionKoto>(access.Left);
+        Assert.Equal("move", conversion.Right.ToString());
+        Assert.Equal("Member", access.Right.ToString());
+        RoundTrip(tree);
+    }
+
+    [Fact]
+    public void MoveIsNotASemanticsPrefix()
+    {
+        var tree = Parse("let value = source@move/i32\nlet after = 1");
+        Assert.Contains(tree.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd));
+        Assert.Equal("after", Assert.IsType<FieldKoto>(tree.GeneratedFunction!.Body!.Items.Last()).NameKoto.IdentifierName);
+    }
+
     [Theory]
-    [InlineData("x@move")]
-    [InlineData("var x@move")]
     [InlineData("var x@ref")]
     [InlineData("var x@uniq")]
-    public void RejectsRemovedCaptureOperations(string capture)
+    [InlineData("x@copy")]
+    public void RejectsUnavailableCaptureOperations(string capture)
     {
         var tree = Parse($"let f = func[{capture}]() => ()\nlet after = 1");
         Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
@@ -57,6 +76,8 @@ public class PropertyRevisionParseTest
     [InlineData("var x")]
     [InlineData("x@ref")]
     [InlineData("x@uniq")]
+    [InlineData("x@move")]
+    [InlineData("var x@move")]
     public void PreservesCurrentCaptureForms(string capture)
         => RoundTrip(ParseSuccess($"let f = func[{capture}]() => ()"));
 

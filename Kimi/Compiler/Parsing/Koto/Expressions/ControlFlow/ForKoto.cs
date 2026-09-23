@@ -25,6 +25,9 @@ public sealed class ForKoto : ExpressionKoto
     /// <summary>Gets a value indicating whether the bindings use tuple syntax.</summary>
     public bool IsTupleBinding { get; private set; }
 
+    /// <summary>Gets or sets the implicit whole-range Slice Type through which a bare fixed-array Place is iterated (SPEC 14.6.2), or null.</summary>
+    internal BoundType? SharedIterable { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="ForKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete expression span.</param>

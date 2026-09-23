@@ -14,7 +14,7 @@ public class WhileConditionContinuationTest
     [Theory]
     [InlineData("let x: i32\nwhile stop() => ()\nlet y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x = 1\nwhile stop() => ()\nx = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("func take(s: string) -> Never => stop()\nlet x = \"s\"\nwhile take(x) => ()\nConsole.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func take(s: string) -> Never => stop()\nlet x = \"s\"\nwhile take(x@move) => ()\nConsole.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("while stop()\n    var n: i32\n    let y = n", OwnershipFailure.UninitializedUse)]
     public void MissingWhileConditionRetainsAcquiredState(string source, OwnershipFailure failure)
     {
@@ -42,7 +42,7 @@ public class WhileConditionContinuationTest
 
     [Theory]
     [InlineData("var x = 1\nwhile stop() => x = 2\nlet y = x")]
-    [InlineData("let x = \"s\"\nwhile stop() => Console.writeLine(x)\nConsole.writeLine(x)")]
+    [InlineData("let x = \"s\"\nwhile stop() => _ = x@move\nConsole.writeLine(x)")]
     public void BodyEffectsOutsideTheLoopStillRequireAJoin(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);

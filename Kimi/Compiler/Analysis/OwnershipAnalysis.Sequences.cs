@@ -104,8 +104,9 @@ public sealed partial class OwnershipAnalysis
 
     private void Iterate(ForKoto source)
     {
-        var array = source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
-        var slice = source.Iterable.BoundType?.Kind == BoundTypeKind.Slice;
+        var shared = source.SharedIterable;
+        var array = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
+        var slice = shared is not null || source.Iterable.BoundType?.Kind == BoundTypeKind.Slice;
         var element = slice ? source.Bindings[0].BoundType! : array ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
         if (array && (!this.SupportsType(element) || this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven))
         {
@@ -113,7 +114,21 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        var iterable = this.Expression(source.Iterable);
+        int iterable;
+        if (shared is not null)
+        {
+            // SPEC 14.6.2: a bare fixed-array Place is borrowed for the loop as its implicit whole-range Slice.
+            var depth = this.comparisonDepth++;
+            var receiver = this.SequenceReceiver(source.Iterable, out var projection);
+            iterable = receiver < 0 ? -1 : this.SequenceValue(source, shared, SequenceOperation.Slice, receiver, projection);
+            this.EndComparisonLoans(depth, source);
+            this.comparisonDepth = depth;
+        }
+        else
+        {
+            iterable = this.Expression(source.Iterable);
+        }
+
         if (iterable < 0)
         {
             return;

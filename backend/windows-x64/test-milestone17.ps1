@@ -89,7 +89,6 @@ $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
     Names = @{ source = $original.Replace('Resource', 'Handle').Replace('items', 'storage').Replace('prepare', 'assemble'); stdout = $expected.Replace('Resource', 'Handle') }
     Values = @{ source = $values; stdout = $valueOutput }
-    Implicit = @{ source = $original.Replace('@uniq', ''); stdout = $expected }
     Typed = @{ source = $original.Replace('@uniq', '@uniq/Resource'); stdout = $expected }
     Literal = @{ source = $original.Replace('items[0]', 'items[((0x0))]').Replace('items[1]', 'items[(0b1)]'); stdout = $expected }
 }
@@ -111,12 +110,14 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    MissingReturn = @{ source = $original.Replace('return items //', 'items //'); diagnostic = 'ControlFlow_Kd' }
+    Implicit = @{ source = $original.Replace('@uniq', ''); diagnostic = 'ExclusiveBorrowRequired_Kd' }
+    MissingReturn = @{ source = $original.Replace('return items@move //', 'items@move //'); diagnostic = 'ControlFlow_Kd' }
+    BareReturn = @{ source = $original.Replace('return items@move //', 'return items //'); diagnostic = 'TransferRequired_Kd' }
     MissingRepair = @{ source = $original.Replace('    items[0] = Resource.init(3)', '    // items[0] = Resource.init(3)'); diagnostic = 'MovedPlace_Kd' }
     MovedRead = @{ source = $original.Replace('    items[0] = Resource.init(3)', "    let invalid = items[0].id`n    items[0] = Resource.init(3)"); diagnostic = 'MovedPlace_Kd' }
     Overlap = @{ source = $original.Replace('swap(items[0]@uniq, items[1]@uniq)', 'swap(items[0]@uniq, items[((0x0))]@uniq)'); diagnostic = 'CallReservationConflict_Kd|CallActivationConflict_Kd|ComparisonLoanConflict_Kd' }
-    ReservedMove = @{ source = $original.Replace('with: Resource.init(4)', 'with: items[1]'); diagnostic = 'CallReservationConflict_Kd|ComparisonLoanConflict_Kd' }
-    DeferredMovedRead = @{ source = $original.Replace('    return items', "    defer => Console.writeLine(if items[0].id == 4 => `"bad`" else => `"bad`")`n    return items"); diagnostic = 'MovedPlace_Kd' }
+    ReservedMove = @{ source = $original.Replace('with: Resource.init(4)', 'with: items[1]@move'); diagnostic = 'CallReservationConflict_Kd|ComparisonLoanConflict_Kd' }
+    DeferredMovedRead = @{ source = $original.Replace('    return items@move', "    defer => Console.writeLine(if items[0].id == 4 => `"bad`" else => `"bad`")`n    return items@move"); diagnostic = 'MovedPlace_Kd' }
     Immutable = @{ source = $original.Replace('    var items:', '    let items:'); diagnostic = 'InvalidAssignment_Kd|InvalidConversion_Kd|ImmutablePlace_Kd|UnsupportedBinding_Kd' }
     RetainedBorrow = @{ source = $original.Replace('    Kimi.Intrinsics.replace', "    let held = items[1]@ref`n    Kimi.Intrinsics.replace").Replace('    require items[1].id == 5', '    require held.id == 5'); diagnostic = 'ComparisonLoanConflict_Kd|CallActivationConflict_Kd' }
     UnknownOverlap = @{ source = $original.Replace('    Kimi.Intrinsics.swap', "    let index: isize = 1`n    Kimi.Intrinsics.swap").Replace('swap(items[0]@uniq, items[1]@uniq)', 'swap(items[0]@uniq, items[index]@uniq)'); diagnostic = 'UnsupportedOwnership_Kd|CallReservationConflict_Kd|CallActivationConflict_Kd|ComparisonLoanConflict_Kd' }

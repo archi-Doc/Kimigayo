@@ -18,7 +18,7 @@ public class DefaultOwnershipTest
     [InlineData("struct S\n    public let text: string\nfunc f(x: S, y: string = x.text) => ()")]
     [InlineData("func f(x: string, y: (string, i32) = (x, 1)) => ()")]
     [InlineData("func f(x: string, y: [1 of string] = [x]) => ()")]
-    [InlineData("func f(x: string, y: Option<string> = .Some(x)) => ()")]
+    [InlineData("func f(x: string, y: Option<string> = .Some(x@move)) => ()")]
     [InlineData("func f(x: string, y: string = (scope: do\n    var local = \"a\"\n    local = x\n    exit to scope: local\n)) => ()")]
     public void OwnedSubplacesAndAggregateInputsCannotMoveInDefaults(string source)
     {
@@ -52,10 +52,10 @@ public class DefaultOwnershipTest
     [InlineData("func f(x: string, y: string = (if false => x else => \"ok\")) => ()")]
     [InlineData("func f(x: string, y: string = (do => x)) => ()")]
     [InlineData("func f(x: string, y: string = (loop => exit x)) => ()")]
-    [InlineData("func take(value: string) -> i32 => 1\nfunc f(x: string, y: i32 = take(x)) => ()")]
+    [InlineData("func take(value: string) -> i32 => 1\nfunc f(x: string, y: i32 = take(x@move)) => ()")]
     [InlineData("contract C\n    func f(x: string, y: string = x)")]
-    [InlineData("func f(x: string, y: string = x@string) => ()")]
-    [InlineData("struct S\n    public func take(self: Self) -> i32 => 1\nfunc f(x: S, y: i32 = x.take()) => ()")]
+    [InlineData("func f(x: string, y: string = x@owner) => ()")]
+    [InlineData("struct S\n    public func take(self: Self) -> i32 => 1\nfunc f(x: S, y: i32 = x@move.take()) => ()")]
     public void DefinitePreparedArgumentMovesAreDeclarationErrors(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

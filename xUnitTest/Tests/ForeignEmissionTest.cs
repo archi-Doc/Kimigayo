@@ -510,11 +510,11 @@ public class ForeignEmissionTest
     [Theory]
     [InlineData("func update(p: unsafe/bool, n: unsafe/i32)\n    unsafe\n        *p = not *p\n        *n += 1\npublic func main() => ()")]
     [InlineData("struct R\n    public var n: i32\n    deinit => ()\nfunc take(p: unsafe/R) -> R\n    unsafe => return *p\npublic func main() => ()")]
-    [InlineData("struct R\n    public var n: i32\n    deinit => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value\npublic func main() => ()")]
-    [InlineData("func update(p: unsafe/string, value: string)\n    unsafe => *p = value\nfunc take(p: unsafe/string) -> string\n    unsafe => return *p\npublic func main() => ()")]
-    [InlineData("enum E\n    Empty\n    Value(string)\nfunc update(p: unsafe/E, value: E)\n    unsafe => *p = value\nfunc take(p: unsafe/E) -> E\n    unsafe => return *p\npublic func main() => ()")]
-    [InlineData("enum E<T>\n    Empty\n    Value(T)\nfunc update(p: unsafe/E<E<string>>, value: E<E<string>>)\n    unsafe => *p = value\npublic func main() => ()")]
-    [InlineData("#Layout(\"C\")\nstruct R\n    public var a: u8\n    public var b: u64\n    deinit => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value\npublic func main() => ()")]
+    [InlineData("struct R\n    public var n: i32\n    deinit => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
+    [InlineData("func update(p: unsafe/string, value: string)\n    unsafe => *p = value@move\nfunc take(p: unsafe/string) -> string\n    unsafe => return *p\npublic func main() => ()")]
+    [InlineData("enum E\n    Empty\n    Value(string)\nfunc update(p: unsafe/E, value: E)\n    unsafe => *p = value@move\nfunc take(p: unsafe/E) -> E\n    unsafe => return *p\npublic func main() => ()")]
+    [InlineData("enum E<T>\n    Empty\n    Value(T)\nfunc update(p: unsafe/E<E<string>>, value: E<E<string>>)\n    unsafe => *p = value@move\npublic func main() => ()")]
+    [InlineData("#Layout(\"C\")\nstruct R\n    public var a: u8\n    public var b: u64\n    deinit => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
     [InlineData("func update(p: unsafe/(i32, i64))\n    unsafe\n        let value = *p\n        *p = value\npublic func main() => ()")]
     [InlineData("struct P\n    public var a: u8\n    public var b: (i32, [2 of u16])\nfunc update(p: unsafe/P)\n    unsafe\n        (*p).b.1[1] += 1\n        let a = (*p).a\n        p[1].b.0 = 3\npublic func main() => ()")]
     [InlineData("func compare(p: unsafe/string, h: unsafe/(string, i32))\n    unsafe\n        let a = *p == \"x\"\n        let b = (*h).0 < p[1]\npublic func main() => ()")]
@@ -985,7 +985,7 @@ public class ForeignEmissionTest
     [InlineData("[2 of string]")]
     public void OwnedAggregatePointerWritesHaveCompleteCleanupPlans(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"func update(p: unsafe/{type}, value: {type})\n    unsafe => *p = value\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func update(p: unsafe/{type}, value: {type})\n    unsafe => *p = value@move\npublic func main() => ()");
         using var writer = new StringWriter();
         Assert.True(c.Emission.WriteIr(writer, out var failure), MinimalEmissionTest.Describe(c, failure));
     }
@@ -1126,7 +1126,7 @@ public class ForeignEmissionTest
                     let aligned = (bytes + 192)@unsafe/E<u128>
                     aligned[1] = .Value(340282366920938463463374607431768211455)
                     let wide = aligned[1]
-                    match wide
+                    match wide@move
                         .Empty => $abort("wide tag")
                         .Value(let value)
                             require value == 340282366920938463463374607431768211455 else => $abort("wide value")
@@ -1239,7 +1239,7 @@ public class ForeignEmissionTest
                     // VirtualAlloc's zero bytes are valid initialized scalar fields.
                     // Each Non-Copy source is read exactly once; no raw owner is destroyed.
                     let first = take(bytes@unsafe/Resource)
-                    use(first)
+                    use(first@move)
                     let tuple = *((bytes + 16)@unsafe/(Resource, Resource))
                     let array = ((bytes + 32)@unsafe/[2 of Resource])[0]
                     let empty = *((bytes + 64)@unsafe/Empty)
@@ -1263,7 +1263,7 @@ public class ForeignEmissionTest
     [Fact]
     public void MovingAPointerReadValuePreventsItsReuse()
     {
-        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    deinit => ()\nfunc test(p: unsafe/R)\n    unsafe\n        let value = *p\n        let moved = value\n        let again = value\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    deinit => ()\nfunc test(p: unsafe/R)\n    unsafe\n        let value = *p\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.ErrorCount > 0);
         using var writer = new StringWriter();
@@ -1274,7 +1274,7 @@ public class ForeignEmissionTest
     [Fact]
     public void PointerReplacementConsumesTheSourceOwner()
     {
-        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    deinit => ()\nfunc test(p: unsafe/R, value: R)\n    unsafe => *p = value\n    let again = value\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    deinit => ()\nfunc test(p: unsafe/R, value: R)\n    unsafe => *p = value@move\n    let again = value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.ErrorCount > 0);
         using var writer = new StringWriter();
@@ -1300,7 +1300,7 @@ public class ForeignEmissionTest
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 let value = R.init(1)
                 Console.writeLine("rhs")
-                unsafe => *p = value
+                unsafe => *p = value@move
                 Console.writeLine("after")
             """;
         ScalarEmissionTest.EmitFixture("ForeignPointerOwnedAbort", source, "rhs\n", 1, "Hello.kimi:5:27: abort KIMI_E_ABORT: old\n");

@@ -19,9 +19,9 @@ public class OriginRedesignTest
     [InlineData("func identity(x: V<i32>) -> V<i32>{r}\n    origin r.source == x.source\n    let value: V<i32> = x\n    return value")]
     [InlineData("func identity(x: ref/V<i32>) -> ref{x.source}/i32 => x.value")]
     [InlineData("func identity(x: V<i32>{v}) -> V<i32>{r}\n    origin v.source == r.source\n    return x")]
-    [InlineData("func shorten(x: V<i32>) -> V<i32>{r}\n    origin x.source outlives r.source\n    return x\nfunc use(x: V<i32>)\n    let y = shorten(x)")]
+    [InlineData("func shorten(x: V<i32>) -> V<i32>{r}\n    origin x.source outlives r.source\n    return x@move\nfunc use(x: V<i32>)\n    let y = shorten(x@move)")]
     [InlineData("func shorten(x: ref{a}/i32, y: ref{b}/i32) -> ref{b}/i32\n    origin a outlives b\n    return x")]
-    [InlineData("func same(x: V<i32>, y: V<i32>)\n    origin x.source == y.source\n    ()\nfunc use(x: V<i32>, y: V<i32>) => same(x, y)")]
+    [InlineData("func same(x: V<i32>, y: V<i32>)\n    origin x.source == y.source\n    ()\nfunc use(x: V<i32>, y: V<i32>) => same(x@move, y@move)")]
     [InlineData("func bounded(x: ref{a}/i32, y: ref{b}/i32)\n    origin a outlives b\n    ()\nfunc use(x: ref/i32, y: ref/i32) => bounded(x, y)")]
     [InlineData("func forward(x: ref{a}/i32, y: ref{b}/i32) -> ref{b}/i32\n    origin a outlives b\n    let result: ref{b}/i32 = x\n    return result")]
     [InlineData("func composite(x: ref{a}/i32, y: ref{b}/i32, z: ref{c}/i32) -> ref{b and c}/i32\n    origin a outlives b and c\n    return x")]
@@ -34,7 +34,7 @@ public class OriginRedesignTest
     [InlineData("func f(x: uniq/(ref{a}/i32), y: ref{b}/i32) -> uniq/(ref{b}/i32)\n    origin a outlives b\n    origin b outlives a\n    return x")]
     [InlineData("func f(x: ref{a}/i32, y: ref{b}/i32) -> ref{b}/i32\n    origin (a) outlives b\n    return x")]
     [InlineData("struct S {source}\n    let value: ref{source}/i32\n    let source: i32\n    func f(x: V<i32>) -> ref{source}/i32 => $abort(\"unused\")")]
-    [InlineData("func identity<T>(x: T) -> T => x\nfunc f(x: V<i32>)\n    let y = identity<V<i32>{v}>(x)\n        origin v.source == x.source")]
+    [InlineData("func identity<T>(x: T) -> T => x@move\nfunc f(x: V<i32>)\n    let y = identity<V<i32>{v}>(x@move)\n        origin v.source == x.source")]
     [InlineData("func f(x: ref/V<i32>)\n    let y = x@ref/V<i32>{v}\n        origin v.source == x.source")]
     public void CompletesDeclarationOriginContracts(string source)
     {

@@ -20,7 +20,7 @@ public class BorrowedFieldUpdateTest
     [InlineData("RhsReturn", Counter + "func change(counter: uniq/Counter) -> i32\n    counter.value += (return 7)\n    return 0\nvar counter = Counter.init()\nrequire change(counter@uniq) == 7 and counter.value == 1 else => $abort(\"transfer\")")]
     [InlineData("AssignRhsReturn", Counter + "func change(counter: uniq/Counter) -> i32\n    counter.value = (return 7)\n    return 0\nvar counter = Counter.init()\nrequire change(counter@uniq) == 7 and counter.value == 1 else => $abort(\"transfer\")")]
     [InlineData("Snapshot", "func change(pair: uniq/(i32, bool))\n    let previous = pair.0\n    pair.0 += previous\nvar pair: (i32, bool) = (21, true)\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")")]
-    [InlineData("TupleOwnedCleanup", "func change(pair: uniq/(i32, string))\n    pair.0 += 41\nvar pair: (i32, string) = (1, \"owned\")\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")\nlet text = pair.1")]
+    [InlineData("TupleOwnedCleanup", "func change(pair: uniq/(i32, string))\n    pair.0 += 41\nvar pair: (i32, string) = (1, \"owned\")\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")\nlet text = pair.1@move")]
     public void ExecutesExclusiveScalarUpdates(string name, string source)
         => ScalarEmissionTest.EmitFixture("BorrowedFieldUpdate" + name, source, string.Empty);
 

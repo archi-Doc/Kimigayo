@@ -30,7 +30,8 @@ public class MinimalEmissionTest
         var ir = writer.ToString();
         Assert.Contains("%kimi.string = type { ptr, i64, i8 }", ir);
         Assert.Contains("define void @__kimi_start() noreturn #0", ir);
-        Assert.Contains("call void @__kimi_write_line(ptr %p", ir);
+        Assert.Contains("call void @__kimi_write_line(ptr noundef nonnull align 8 dereferenceable(24) %p", ir);
+        Assert.Contains("call void @__kimi_destroy_string(ptr %p", ir);
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
         Assert.DoesNotContain("byval", ir);
         Assert.DoesNotContain("sret", ir);
@@ -43,7 +44,8 @@ public class MinimalEmissionTest
     [InlineData("public func main(x: i32) => Console.writeLine(\"a\")")]
     [InlineData("if false => " + FloatExpression, true)]
     [InlineData("let x: string\nConsole.writeLine(x)")]
-    [InlineData("let x = \"a\"\nConsole.writeLine(x)\nConsole.writeLine(x)")]
+    [InlineData("let x = \"a\"\nConsole.writeLine(x)\nConsole.writeLine(x)", true)]
+    [InlineData("let x = \"a\"\nlet taken = x@move\nConsole.writeLine(x)")]
     [InlineData("func writeLine(x: string) => " + FloatExpression + "\nwriteLine(\"a\")", true)]
     [InlineData("let x = " + FloatExpression + "\nConsole.writeLine(\"a\")", true)]
     [InlineData("Console.writeLine(\"a\")\nlet flag = " + FloatExpression, true)]

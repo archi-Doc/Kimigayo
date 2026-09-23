@@ -21,9 +21,9 @@ public class GuardedMatchContinuationTest
     }
 
     [Theory]
-    [InlineData("let s = \"s\"", "true if take(s) => return\n                _ => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "true if take(s@move) => return\n                _ => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "true if check(x = 3, c) => return\n                _ => ()", "x = 4", "()", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"", "true if (guard: do\n                    Console.writeLine(s)\n                    exit to guard: false\n                ) => return\n                _ => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "true if (guard: do\n                    _ = s@move\n                    exit to guard: false\n                ) => return\n                _ => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("var x: i32", "true if c => return\n                _ => x = 3", "()", "let y = x", OwnershipFailure.UninitializedUse)]
     public void FalseGuardsAndTerminalArmsPreserveEffects(string declaration, string arms, string after, string use, OwnershipFailure failure)
     {

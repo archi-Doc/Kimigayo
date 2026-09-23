@@ -115,9 +115,11 @@ public class ContinuationVerificationTest
     [InlineData("OwnedArray", "[2 of (i32, string)]", "[(2, \"first\"), (3, \"last\")]", "value[1].0", "first=1;last=1")]
     public void DefaultsInspectAcquiredAggregateArguments(string name, string type, string value, string read, string drops)
     {
+        // A Copy aggregate is acquired bare; an owned one needs @move (SPEC 15.1.5).
+        var transfer = drops.Length == 0 ? string.Empty : "@move";
         var source = "func inspect(value: " + type + ", result: i32 = " + read + ") -> i32 => result\n" +
-            "func forward(value: " + type + ") -> i32 => inspect(value)\n" +
-            "let value: " + type + " = " + value + "\nif forward(value) != 3 => $abort(\"prepared aggregate\")";
+            "func forward(value: " + type + ") -> i32 => inspect(value" + transfer + ")\n" +
+            "let value: " + type + " = " + value + "\nif forward(value" + transfer + ") != 3 => $abort(\"prepared aggregate\")";
         var fixture = "VerificationContinuation" + Configuration + "Acquired" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, string.Empty);
         if (drops.Length != 0)

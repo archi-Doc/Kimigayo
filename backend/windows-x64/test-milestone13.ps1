@@ -109,7 +109,8 @@ foreach ($level in @('O0', 'O2')) {
 }
 $invalid = [ordered]@{
     ElementI32 = @{ source = $original.Replace('associate Iterator.Element is ref{source}/T', 'associate Iterator.Element is i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    MovedSamples = @{ source = $original.Replace("    var total: i32 = 0`n", "    let moved = samples`n    var total: i32 = 0`n"); diagnostic = 'MovedPlace_Kd' }
+    MovedSamples = @{ source = $original.Replace("    var total: i32 = 0`n", "    let moved = samples@move`n    var total: i32 = 0`n"); diagnostic = 'MovedPlace_Kd' }
+    BareSamples = @{ source = $original.Replace("    var total: i32 = 0`n", "    let moved = samples`n    var total: i32 = 0`n"); diagnostic = 'TransferRequired_Kd' }
     SelfOrigin = @{ source = $original.Replace('-> Option<ref{source}/T>', '-> Option<ref{self}/T>'); diagnostic = 'IncompatibleContractImplementation_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {

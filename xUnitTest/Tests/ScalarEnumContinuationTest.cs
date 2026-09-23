@@ -34,7 +34,7 @@ public class ScalarEnumContinuationTest
     [InlineData(false)]
     public void WholeEnumAcquisitionHonorsItsDeclaredCopyCapability(bool copy)
     {
-        var source = Source("E<i32>", ".Some(2)", ".Some(let n) => x = n\n                .None => return", "var x = 1", "let again = subject");
+        var source = Source("E<i32>", ".Some(2)", ".Some(let n) => x = n\n                .None => return", "var x = 1", copy ? "let again = subject" : "let again = subject@move", move: !copy);
         if (copy)
         {
             source = source.Replace("enum E<T>\n", "enum E<T>\n    Self is Copy when T is Copy\n", StringComparison.Ordinal);
@@ -56,8 +56,8 @@ public class ScalarEnumContinuationTest
         }
     }
 
-    private static string Source(string type, string value, string arms, string declaration, string tail)
+    private static string Source(string type, string value, string arms, string declaration, string tail, bool move = true)
         => "enum E<T>\n    Some(T)\n    None\nfunc stop() -> Never => $abort(\"enum continuation\")\nfunc f(c: bool)\n    " + declaration +
-            "\n    let subject: " + type + " = " + value + "\n    do\n        loop\n            if c => return else => exit\n            match subject\n                " + arms +
+            "\n    let subject: " + type + " = " + value + "\n    do\n        loop\n            if c => return else => exit\n            match subject" + (move ? "@move" : string.Empty) + "\n                " + arms +
             "\n        stop()\n    " + tail + "\nf(true)";
 }

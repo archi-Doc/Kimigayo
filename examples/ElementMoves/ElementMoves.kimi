@@ -1,22 +1,22 @@
 // A let can supply a Move. Its remaining sibling is still usable.
 let original = ("taken", 40)
-let text = original.0
+let text = original.0@move
 if original.1 == 40 => Console.writeLine(text)
 
 // A constructed var can repair a missing static element.
 var values: [2 of string] = ["first", "last"]
-let first = values[0]
+let first = values[0]@move
 values[(0x0)] = "replacement"
-values[1] = values[1]
-let complete = values
+values[1] = values[1]@move
+let complete = values@move
 
 // Both branch outcomes retain exactly one destruction responsibility per string.
 func replace(take: bool)
     var pair = ("old", "sibling")
     if take
-        let old = pair.0
+        let old = pair.0@move
     pair.0 = "new"
-    let complete = pair
+    let complete = pair@move
 
 replace(true)
 replace(false)

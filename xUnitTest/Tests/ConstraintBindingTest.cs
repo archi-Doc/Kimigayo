@@ -81,7 +81,7 @@ public class ConstraintBindingTest
     [Fact]
     public void ForwardedPairConstraintsRetainTargetProjectionIdentity()
     {
-        var c = Parse("func required<s/T>(value: s/T)\n    T is i32\n    s is owning\n    ()\nfunc caller<r/U>(value: r/U)\n    U is i32\n    r is owning\n    required(value)");
+        var c = Parse("func required<s/T>(value: s/T)\n    T is i32\n    s is owning\n    ()\nfunc caller<r/U>(value: r/U)\n    U is i32\n    r is owning\n    required(value@move)");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 

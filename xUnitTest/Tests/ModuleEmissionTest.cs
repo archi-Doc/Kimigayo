@@ -20,8 +20,8 @@ public class ModuleEmissionTest
     }
 
     [Theory]
-    [InlineData("Owned", "let text = Lib.Api.make()\nLib.Api.take(text)", "public group Api\n    public func make() -> string => \"owned\"\n    public func take(text: string) => Console.writeLine(text)", "owned\n")]
-    [InlineData("Generic", "require Lib.Api.keep(42) == 42 else => $abort(\"generic\")", "public group Api\n    public func keep<T>(value: T) -> T => value", "")]
+    [InlineData("Owned", "let text = Lib.Api.make()\nLib.Api.take(text@move)", "public group Api\n    public func make() -> string => \"owned\"\n    public func take(text: string) => Console.writeLine(text)", "owned\n")]
+    [InlineData("Generic", "require Lib.Api.keep(42) == 42 else => $abort(\"generic\")", "public group Api\n    public func keep<T>(value: T) -> T => value@move", "")]
     [InlineData("Default", "require Lib.Api.add(40) == 42 else => $abort(\"default\")", "public group Api\n    public func add(value: i32, extra: i32 = 2) -> i32 => value + extra", "")]
     [InlineData("Main", "require Lib.main(41) == 42 else => $abort(\"library main\")", "public func main(value: i32) -> i32 => value + 1", "")]
     [InlineData("Static", "require Lib.Api.answer == 42 else => $abort(\"static\")", "public group Api\n    public let answer: i32 = 42", "")]
@@ -55,7 +55,7 @@ public class ModuleEmissionTest
     }
 
     [Theory]
-    [InlineData("public func unused()\n    let text = \"moved\"\n    Console.writeLine(text)\n    Console.writeLine(text)")]
+    [InlineData("public func unused()\n    let text = \"moved\"\n    _ = text@move\n    Console.writeLine(text)")]
     [InlineData("public group State\n    public var counter: i32 = 0")]
     [InlineData("Console.writeLine(\"runtime\")")]
     public void RejectsInvalidOrUnsupportedUnusedDependency(string library)

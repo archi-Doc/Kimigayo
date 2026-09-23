@@ -7,25 +7,25 @@ namespace XunitTest;
 
 public class GenericStorageEmissionTest
 {
-    internal const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n    public func take(self: Self) -> T => self.value\n";
-    private const string Choose = "func choose<T>(a: T, b: T, first: bool) -> T => if first => a else => b\n";
+    internal const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n";
+    private const string Choose = "func choose<T>(a: T, b: T, first: bool) -> T => if first => a@move else => b@move\n";
     private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     public static TheoryData<string, string, string> Fixtures => new()
     {
-        { "String", Box + "let b = Box<string>.init(\"text\")\nConsole.writeLine(b.take())", "text\n" },
-        { "Array", Box + "let b = Box<[3 of i32]>.init([2, 4, 6])\nvar total = 0\nfor x in b.take() => total += x\nrequire total == 12 else => $abort(\"array\")\nConsole.writeLine(\"ok\")", "ok\n" },
-        { "Scalars", Box + "let a = Box<i32>.init(42)\nlet b = Box<bool>.init(true)\nrequire a.take() == 42 and b.take() else => $abort(\"scalar\")", string.Empty },
-        { "Unit", Box + "let b = Box<()>.init(())\nb.take()\nConsole.writeLine(\"ok\")", "ok\n" },
-        { "EmptyArray", Box + "let b = Box<[0 of i32]>.init([])\nfor x in b.take() => $abort(\"empty\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "String", Box + "let b = Box<string>.init(\"text\")\nConsole.writeLine(b@move.take())", "text\n" },
+        { "Array", Box + "let b = Box<[3 of i32]>.init([2, 4, 6])\nvar total = 0\nfor x in b@move.take() => total += x\nrequire total == 12 else => $abort(\"array\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "Scalars", Box + "let a = Box<i32>.init(42)\nlet b = Box<bool>.init(true)\nrequire a@move.take() == 42 and b@move.take() else => $abort(\"scalar\")", string.Empty },
+        { "Unit", Box + "let b = Box<()>.init(())\nb@move.take()\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "EmptyArray", Box + "let b = Box<[0 of i32]>.init([])\nfor x in b@move.take() => $abort(\"empty\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "ChooseBoth", Choose + "Console.writeLine(choose(\"first\", \"other\", true))\nConsole.writeLine(choose(\"other\", \"second\", false))", "first\nsecond\n" },
         { "ChooseCopy", Choose + "let a: i32 = 12\nlet b: i32 = 30\nrequire choose(a, b, true) + choose(a, b, false) == a + b else => $abort(\"copy\")", string.Empty },
         { "ChoiceDestruction", Token + Choose + "do\n    let selected = choose(Token.init(1), Token.init(2), true)\n    Console.writeLine(\"returned\")\ndo\n    let selected = choose(Token.init(3), Token.init(4), false)\n    Console.writeLine(\"returned second\")", "two\nreturned\none\nthree\nreturned second\nfour\n" },
-        { "BoxDestruction", Token + Box + "do\n    let box = Box<Token>.init(Token.init(1))\n    let value = box.take()\n    Console.writeLine(\"taken\")\nConsole.writeLine(\"done\")", "taken\none\ndone\n" },
-        { "UnusedBox", Token + Box + Choose + "do\n    let box = choose(Box<Token>.init(Token.init(1)), Box<Token>.init(Token.init(2)), true)\n    let value = box.take()\n    Console.writeLine(\"taken\")", "two\ntaken\none\n" },
+        { "BoxDestruction", Token + Box + "do\n    let box = Box<Token>.init(Token.init(1))\n    let value = box@move.take()\n    Console.writeLine(\"taken\")\nConsole.writeLine(\"done\")", "taken\none\ndone\n" },
+        { "UnusedBox", Token + Box + Choose + "do\n    let box = choose(Box<Token>.init(Token.init(1)), Box<Token>.init(Token.init(2)), true)\n    let value = box@move.take()\n    Console.writeLine(\"taken\")", "two\ntaken\none\n" },
         { "CopyPremise", "func again<T>(value: T) -> T\n    T is Copy\n    let first = value\n    return value\nrequire again<i32>(42) == 42 else => $abort(\"copy\")", string.Empty },
         { "CopyBox", Box.Replace("    let value: T", "    Self is Copy when T is Copy\n    let value: T") + "let b = Box<i32>.init(42)\nrequire b.take() + b.take() == 84 else => $abort(\"copy box\")", string.Empty },
-        { "MultiField", Token + "struct Pair<T>\n    let first: T\n    let second: T\n    let third: T\n    public init(a: T, b: T, c: T)\n        self.first = a\n        self.second = b\n        self.third = c\n    public func take(self: Self) -> T => self.first\ndo\n    let pair = Pair<Token>.init(Token.init(1), Token.init(2), Token.init(3))\n    let first = pair.take()\n    Console.writeLine(\"returned\")", "three\ntwo\nreturned\none\n" },
+        { "MultiField", Token + "struct Pair<T>\n    let first: T\n    let second: T\n    let third: T\n    public init(a: T, b: T, c: T)\n        self.first = a@move\n        self.second = b@move\n        self.third = c@move\n    public func take(self: Self) -> T => self.first@move\ndo\n    let pair = Pair<Token>.init(Token.init(1), Token.init(2), Token.init(3))\n    let first = pair@move.take()\n    Console.writeLine(\"returned\")", "three\ntwo\nreturned\none\n" },
     };
 
     [Theory]
@@ -34,8 +34,8 @@ public class GenericStorageEmissionTest
         => ScalarEmissionTest.EmitFixture("GenericStorage" + name, source, stdout);
 
     [Theory]
-    [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value.take())")]
-    [InlineData("group Outer\n    public group Inner\n        public func choose<T>(a: T, b: T, first: bool) -> T => if first => a else => b\nConsole.writeLine(Outer.Inner.choose(\"a\", \"b\", true))")]
+    [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value@move.take())")]
+    [InlineData("group Outer\n    public group Inner\n        public func choose<T>(a: T, b: T, first: bool) -> T => if first => a@move else => b@move\nConsole.writeLine(Outer.Inner.choose(\"a\", \"b\", true))")]
     public void GenericCallsBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -43,10 +43,10 @@ public class GenericStorageEmissionTest
     }
 
     [Theory]
-    [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value.take())", true)]
-    [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value.take())\nConsole.writeLine(value.take())", false)]
-    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n    public func take(self: Self) -> T => self.value\n    deinit => ()\nConsole.writeLine(\"unused\")", false)]
-    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n    public func twice(self: Self) -> T\n        let first = self.value\n        return self.value\nConsole.writeLine(\"unused\")", false)]
+    [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value@move.take())", true)]
+    [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value@move.take())\nConsole.writeLine(value@move.take())", false)]
+    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n    deinit => ()\nConsole.writeLine(\"unused\")", false)]
+    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func twice(self: Self) -> T\n        let first = self.value@move\n        return self.value@move\nConsole.writeLine(\"unused\")", false)]
     public void ChecksGenericOwnershipAtDefinition(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -63,8 +63,8 @@ public class GenericStorageEmissionTest
     [InlineData(Box + "let value = Box<i32>.init()")]
     [InlineData(Box + "let value = Box<i32>.init(1)\nvalue.value")]
     [InlineData(Choose + "choose(\"text\", true, true)")]
-    [InlineData("func twice<T>(value: T) -> T\n    let first = value\n    return value\nlet actual = twice<i32>(42)")]
-    [InlineData("func twice<T>(value: T) -> T\n    let first = value\n    return value\nConsole.writeLine(\"unused\")")]
+    [InlineData("func twice<T>(value: T) -> T\n    let first = value@move\n    return value@move\nlet actual = twice<i32>(42)")]
+    [InlineData("func twice<T>(value: T) -> T\n    let first = value@move\n    return value@move\nConsole.writeLine(\"unused\")")]
     [InlineData("func copied<T>(value: T) -> T\n    T is Copy\n    return value\nConsole.writeLine(copied<string>(\"text\"))")]
     public void RejectsInvalidInputsBeforeEmission(string source)
     {
@@ -99,7 +99,7 @@ public class GenericStorageEmissionTest
     public void MonomorphizesStructConstructorsAndFieldReads(string type, string value)
     {
         // The constructor's receiver is the call's instantiated Box<type>; take reads its substituted field.
-        var c = MinimalEmissionTest.Analyze(Box + $"let b = Box<{type}>.init({value})\nlet v = b.take()");
+        var c = MinimalEmissionTest.Analyze(Box + $"let b = Box<{type}>.init({value})\nlet v = b@move.take()");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Empty(module.PendingEntries);
         var instances = Instances(module);
@@ -113,7 +113,7 @@ public class GenericStorageEmissionTest
     public void MonomorphizesNestedGenericCalls(string type, string value, string physical)
     {
         // SPEC 21.3.1: the forwarded call inside outer<T> binds to inner's own instance under outer's substitution.
-        const string Nested = "func inner<T>(value: T, n: i32) -> i32 => n + 1\nfunc outer<T>(value: T, n: i32) -> i32 => inner<T>(value, n)\n";
+        const string Nested = "func inner<T>(value: T, n: i32) -> i32 => n + 1\nfunc outer<T>(value: T, n: i32) -> i32 => inner<T>(value@move, n)\n";
         var c = MinimalEmissionTest.Analyze(Nested + $"let v = outer<{type}>({value}, 1)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Empty(module.PendingEntries);
@@ -132,7 +132,7 @@ public class GenericStorageEmissionTest
     public void MonomorphizesEnumPayloadConstruction(string type, string value)
     {
         // A committed CopyOrMove payload acquisition resolves to the instance's exact Copy or Move (SPEC 21.3.1).
-        var c = MinimalEmissionTest.Analyze(Token + $"func wrap<T>(x: T) -> Option<T> => .Some(x)\nlet v = wrap<{type}>({value})");
+        var c = MinimalEmissionTest.Analyze(Token + $"func wrap<T>(x: T) -> Option<T> => .Some(x@move)\nlet v = wrap<{type}>({value})");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Empty(module.PendingEntries);
         var instance = Assert.Single(Instances(module));
@@ -172,8 +172,8 @@ public class GenericStorageEmissionTest
     }
 
     [Theory]
-    [InlineData("func run<T>(value: ref/T, c: uniq/Counter) -> i32\n    c.add(2)\n    return c.read()\nlet v = true\nvar c = Counter.init(40)\nlet n = run(v, c)")]
-    [InlineData("func run<T>(value: ref/T) -> i32\n    var c = Counter.init(1)\n    c.add(2)\n    return c.read()\nlet v = true\nlet n = run(v)")]
+    [InlineData("func run<T>(value: ref/T, c: uniq/Counter) -> i32\n    c.add(2)\n    return c.read()\nlet v = true\nvar c = Counter.init(40)\nlet n = run(v, c@uniq)")]
+    [InlineData("func run<T>(value: ref/T) -> i32\n    var c = Counter.init(1)\n    c@uniq.add(2)\n    return c.read()\nlet v = true\nlet n = run(v)")]
     [InlineData("func run<T>(value: ref/T, c: ref/Counter) -> i32 => c.read()\nlet v = true\nlet c = Counter.init(3)\nlet n = run(v, c)")]
     public void MonomorphizesConcreteMemberCallReceivers(string source)
     {
@@ -204,7 +204,7 @@ public class GenericStorageEmissionTest
     public void MonomorphizesEnumPatternTests()
     {
         // SPEC 21.3.1: enum Pattern tests inside a generic body inspect the substituted subject Type per instance.
-        var c = MinimalEmissionTest.Analyze("func present<T>(items: Slice<T>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [2 of i32] = [4, 5]\nlet n = present(values[..])");
+        var c = MinimalEmissionTest.Analyze("func present<T>(items: Slice<T>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor@uniq.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [2 of i32] = [4, 5]\nlet n = present(values[..])");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Empty(module.PendingEntries);
         Assert.NotEmpty(Instances(module));
@@ -227,7 +227,7 @@ public class GenericStorageEmissionTest
     public void MonomorphizesCopyOrMovePatternBindings()
     {
         // SPEC 21.3.1: the try binding of a T payload copies for i32 and moves for string in each instance.
-        var c = MinimalEmissionTest.Analyze("func unwrap<T>(x: T?) -> T? => .Some(try x)\nlet a = unwrap<i32>(.Some(8))\nlet b = unwrap<string>(.Some(\"owned\"))");
+        var c = MinimalEmissionTest.Analyze("func unwrap<T>(x: T?) -> T? => .Some(try x@move)\nlet a = unwrap<i32>(.Some(8))\nlet b = unwrap<string>(.Some(\"owned\"))");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Empty(module.PendingEntries);
         Assert.Equal(2, Instances(module).Length);
@@ -240,7 +240,7 @@ public class GenericStorageEmissionTest
     {
         // SPEC 21.3.5: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource
         // failure, distinguished from semantic and representation errors.
-        var c = MinimalEmissionTest.Analyze(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value), n - 1)\nlet r = grow<i32>(1, 3)");
+        var c = MinimalEmissionTest.Analyze(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)");
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
         Assert.False(c.Emission.WriteIr(output, out var error));
@@ -275,7 +275,7 @@ public class GenericStorageEmissionTest
     [Fact]
     public void FiniteGenericRecursionReusesItsInstance()
     {
-        var c = MinimalEmissionTest.Analyze("func count<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value, n - 1) + 1\nrequire count<i32>(7, 3) == 3 else => $abort(\"recursion\")");
+        var c = MinimalEmissionTest.Analyze("func count<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value@move, n - 1) + 1\nrequire count<i32>(7, 3) == 3 else => $abort(\"recursion\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.False(c.Emission.FailureIsResourceLimit);
         Assert.Empty(module.PendingEntries);
@@ -332,7 +332,7 @@ public class GenericStorageEmissionTest
     {
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt projection, cleanup, parameter or acquisition plan is rejected on the ordinary body.
-        var c = MinimalEmissionTest.Analyze("struct Box\n    let value: string\n    public init(value: string) => self.value = value\n    public func take(self: Self) -> string => self.value\nlet b = Box.init(\"text\")\nConsole.writeLine(b.take())");
+        var c = MinimalEmissionTest.Analyze("struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         if (defect == "projection")
@@ -364,7 +364,7 @@ public class GenericStorageEmissionTest
     [Fact]
     public void RebindingInvalidatesEntriesAndRestoresOnlyCurrentTypes()
     {
-        var c = MinimalEmissionTest.Analyze(Box + "let b = Box<i32>.init(42)\nrequire b.take() == 42 else => $abort(\"value\")");
+        var c = MinimalEmissionTest.Analyze(Box + "let b = Box<i32>.init(42)\nrequire b@move.take() == 42 else => $abort(\"value\")");
         for (var i = 0; i < 3; i++)
         {
             Assert.True(c.Emission.Validate(out var error), error);

@@ -21,7 +21,7 @@ public class ProjectedBorrowEmissionTest
     [InlineData("Empty", "[0 of i32]", "[]", "require r.length == 0 else => $abort(\"generic\")")]
     public void GenericField(string name, string type, string value, string check)
     {
-        var source = "struct Box<T>\n    let prefix: isize\n    let values: T\n    public init(prefix: isize, values: T)\n        self.prefix = prefix\n        self.values = values\n    public func view(self: ref/Self) -> ref{self}/T => self.values@ref/T\n" +
+        var source = "struct Box<T>\n    let prefix: isize\n    let values: T\n    public init(prefix: isize, values: T)\n        self.prefix = prefix\n        self.values = values@move\n    public func view(self: ref/Self) -> ref{self}/T => self.values@ref/T\n" +
             $"let values: {type} = {value}\nlet b = Box<{type}>.init(99, values)\nlet r = b.view()\n{check}";
         ScalarEmissionTest.EmitFixture("ProjectedBorrowGeneric" + name, source, string.Empty);
     }

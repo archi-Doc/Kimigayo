@@ -85,7 +85,7 @@ $variants = [ordered]@{
     Names = @{ source = $original.Replace('Source', 'Provider').Replace('Element', 'Item').Replace('Wrapper', 'Envelope').Replace('read', 'fetch'); stdout = $expected }
     Values = @{ source = $original.Replace('21', '37'); stdout = $expected.Replace('21', '37') }
     False = @{ source = $original.Replace('true', 'false'); stdout = $expected.Replace('true', 'false') }
-    Nested = @{ source = $original.Replace('Wrapper<Wrapper<NumberSource>>.init(number)', 'Wrapper<Wrapper<Wrapper<NumberSource>>>.init(Wrapper<Wrapper<NumberSource>>.init(number))'); stdout = $expected }
+    Nested = @{ source = $original.Replace('Wrapper<Wrapper<NumberSource>>.init(number@move)', 'Wrapper<Wrapper<Wrapper<NumberSource>>>.init(Wrapper<Wrapper<NumberSource>>.init(number@move))'); stdout = $expected }
     Effects = @{ source = $effects; stdout = $effectOutput }
 }
 foreach ($level in @('O0', 'O2')) {

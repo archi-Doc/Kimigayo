@@ -45,5 +45,5 @@ public func main()
     // view is destroyed and its shared Loan has ended.
 
     add(counter@uniq, 1)
-    finish(counter) // Move is valid after all dependent borrows have ended.
+    finish(counter@move) // Transfer is valid after all dependent borrows have ended.
     Console.writeLine("Done.")

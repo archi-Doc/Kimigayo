@@ -95,6 +95,9 @@ public static class Constants
     public const string OwningKeyword = "owning";
     public const string ReferenceKeyword = "reference";
 
+    /// <summary>The transfer operation written after <c>@</c> (SPEC §13.5.3); an ordinary Name elsewhere.</summary>
+    public const string MoveOperation = "move";
+
     public const char LfChar = '\n';
     public const char CrChar = '\r';
 

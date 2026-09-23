@@ -138,22 +138,28 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private int ElementValue(BinaryKoto source, PlaceUseKind use)
+    private int ElementValue(BinaryKoto source, PlaceUseKind use, AcquisitionKind? acquisition = null)
     {
         var depth = this.comparisonDepth++;
         var projection = this.LocateElement(source);
-        var result = this.AcquireElement(source, projection, use == PlaceUseKind.Consume);
+        var result = this.AcquireElement(source, projection, use == PlaceUseKind.Consume, acquisition);
         this.EndComparisonLoans(depth, source);
         this.comparisonDepth = depth;
         return result;
     }
 
-    private int AcquireElement(BinaryKoto source, int projection, bool allowMove = false)
+    private int AcquireElement(BinaryKoto source, int projection, bool allowMove = false, AcquisitionKind? acquisition = null)
     {
         var result = -1;
         if (projection >= 0 && this.flow!.Nodes[source].CanCompleteNormally)
         {
             result = this.Temporary(source, projection: projection);
+            if (allowMove && acquisition is null && this.body.Places[result].Acquisition != AcquisitionKind.Copy)
+            {
+                // SPEC 3.5: a bare element never Moves; write values[i]@move or pair.0@move.
+                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+            }
+
             if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
                 (!allowMove || this.body.Places[result].Acquisition is not (AcquisitionKind.Move or AcquisitionKind.CopyOrMove) || this.body.Projections[projection].Path != projection ||
                     !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))

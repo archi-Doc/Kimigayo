@@ -180,7 +180,9 @@ public class StartupBindingTest
         Assert.Equal("()", call.ReturnType.Name);
         Assert.Equal(new[] { 0 }, call.ArgumentToParameter.ToArray());
         var function = Assert.IsType<FunctionKoto>(call.Target.Declaration);
-        Assert.Equal("string", Assert.Single(function.Parameters).Type.BoundType!.Name);
+        var parameter = Assert.Single(function.Parameters).Type.BoundType!; // SPEC 22.4: writeLine(text: ref/string) borrows its argument.
+        Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (parameter.Kind, parameter.Semantics));
+        Assert.Equal("string", Assert.Single(parameter.Components).Name);
         Assert.Null(function.Body);
         Assert.Null(function.ExpressionBody);
     }

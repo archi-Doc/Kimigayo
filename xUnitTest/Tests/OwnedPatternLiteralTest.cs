@@ -15,7 +15,7 @@ public class OwnedPatternLiteralTest
                 Empty
                 Text(string, i32)
             func route(value: Packet) -> i32
-                return match value
+                return match value@move
                     .Text("", _) => 1
                     .Text("é", let n) if n > 0 => n
                     .Text("e\u(301)", _) => 3
@@ -29,7 +29,7 @@ public class OwnedPatternLiteralTest
             if route(.Empty) != 6 => $abort("inactive")
             if route(.Text("é", 0)) != 5 => $abort("false guard")
             let pair = (("left", "right"), 9)
-            let selected = match pair
+            let selected = match pair@move
                 (("left", "wrong"), _) => 0
                 (("left", "right"), let n) => n
                 _ => 1

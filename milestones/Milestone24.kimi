@@ -18,16 +18,16 @@ struct Holder
     public var item: Resource
         set(value: Resource) -> ()
             Console.writeLine("Setter entered.")
-            storage = value
+            storage = value@move
     public computed view: ref/Resource
         get() -> ref/Resource => self.item@ref/Resource
-    public init(value: Resource) => self.item = value
+    public init(value: Resource) => self.item = value@move
 
 struct Parcel
     let item: Resource
-    public init(value: Resource) => self.item = value
+    public init(value: Resource) => self.item = value@move
     public computed result: Resource
-        get(self: Self) -> Resource => self.item
+        get(self: Self) -> Resource => self.item@move
 
 func inspect(value: ref/Resource)
     require value.id == 2 else => $abort("Wrong borrowed resource")
@@ -46,7 +46,7 @@ public func main()
         Console.writeLine("Holder scope finished.")
     do
         let parcel = Parcel.init(Resource.init(3))
-        let owned = parcel.result
+        let owned = parcel@move.result
         require owned.id == 3 else => $abort("Owned getter transfer failed")
         Console.writeLine("Owned getter received.")
     Console.writeLine("Ownership properties finished.")

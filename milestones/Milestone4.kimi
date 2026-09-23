@@ -22,6 +22,6 @@ public func main()
         counter.value = counter.value + number
         number = number + 1
 
-    finish(counter) // Moves ownership and destruction responsibility.
+    finish(counter@move) // Transfers ownership and destruction responsibility.
     // counter cannot be read or borrowed after this Move.
     Console.writeLine("Done.")

@@ -18,7 +18,7 @@ group Pipeline
         var accepted: isize = 0
         loop
             require accepted < limit else => exit
-            match iterator.next()
+            match iterator@uniq.next()
                 .Some(let item)
                     if visit(item)
                         accepted = accepted + 1
@@ -38,7 +38,7 @@ public func main()
     var accumulator = ::Kimi.Intrinsics.makeObj<Pipeline.Accumulator>(Pipeline.Accumulator.init())
     do
         let target = accumulator@uniq/Pipeline.Accumulator
-        var visit = func [target] (job: ref/Pipeline.Job) -> bool
+        var visit = func [target@move] (job: ref/Pipeline.Job) -> bool
             require job.amount > 0 else => return false
             target.add(job.amount)
             return true
@@ -52,7 +52,7 @@ public func main()
     do
         let old = Kimi.Intrinsics.exchange(accumulator@uniq/Pipeline.Accumulator, with: Pipeline.Accumulator.init())
         require old.read() == 12 else => $abort("Exchange lost the old payload")
-        accumulator.add(old.read())
-    let complete = func [accumulator] () => Pipeline.finish(accumulator)
-    complete() // Consumes the closure and transfers its obj handle to finish.
+        (accumulator@uniq/Pipeline.Accumulator).add(old.read())
+    let complete = func [accumulator@move] () => Pipeline.finish(accumulator@move)
+    complete@move() // Consumes the closure and transfers its obj handle to finish.
     Console.writeLine("Pipeline finished.")

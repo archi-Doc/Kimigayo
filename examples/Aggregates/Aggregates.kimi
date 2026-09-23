@@ -1,5 +1,5 @@
 var pair = ("first", "second")
-pair = pair
+pair = pair@move
 pair = ("replacement", "last")
 
 let numbers: [3 of i32] = [1, 2, 3]

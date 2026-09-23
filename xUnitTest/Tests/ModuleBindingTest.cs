@@ -43,7 +43,7 @@ public class ModuleBindingTest
 
     [Theory]
     [InlineData("public func unused() => missing()", false, true)]
-    [InlineData("public func unused()\n    let text = \"moved\"\n    ::Kimi.Console.writeLine(text)\n    ::Kimi.Console.writeLine(text)", true, false)]
+    [InlineData("public func unused()\n    let text = \"moved\"\n    _ = text@move\n    ::Kimi.Console.writeLine(text)", true, false)]
     [InlineData("public func unused() => ()", true, true)]
     public void UnusedDependencyBodiesAreChecked(string library, bool bound, bool owned)
     {
@@ -327,8 +327,8 @@ public class ModuleBindingTest
     [InlineData(true, "internal", false)]
     public void ImportedCallTypesObserveLateLibraryApiValidation(bool defaults, string access, bool valid)
     {
-        var library = "public group Api\n    " + access + " contract Hidden\n    public struct Source {}\n        Self is Hidden\n    public enum E<T>\n        T is Hidden\n        A\n    public func take(value: E<Source>) -> E<Source> => value";
-        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "group Consumer\n    func call(value: E<Source>) => take(value)", library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var library = "public group Api\n    " + access + " contract Hidden\n    public struct Source {}\n        Self is Hidden\n    public enum E<T>\n        T is Hidden\n        A\n    public func take(value: E<Source>) -> E<Source> => value@move";
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "group Consumer\n    func call(value: E<Source>) => take(value@move)", library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Verify();
         foreach (var module in c.SourceModules)
         {

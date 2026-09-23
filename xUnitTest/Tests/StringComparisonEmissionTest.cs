@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class StringComparisonEmissionTest
 {
-    private const string Echo = "func echo(text: string) -> string => text\n";
+    private const string Echo = "func echo(text: string) -> string => text@move\n";
 
     public static TheoryData<string, string, string, string> Fixtures => new()
     {
@@ -21,12 +21,12 @@ public class StringComparisonEmissionTest
         { "Loop", "let text = \"a\"\nvar n = 0\nwhile n < 3\n    if text == \"a\" => n += 1\nConsole.writeLine(text)", "a\n", "a=4" },
         { "ReturnLiteral", "func f() -> string\n    let text = \"a\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
         { "Defer", "var text = \"a\"\ndefer\n    if text == \"a\" => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
-        { "BranchTransfer", "func f(c: bool) -> string\n    let text = \"a\"\n    if text == (if c => (return \"x\") else => \"a\") => return text\n    return \"bad\"\nConsole.writeLine(f(false))\nConsole.writeLine(f(true))", "a\nx\n", "a=3;x=1;bad=0" },
+        { "BranchTransfer", "func f(c: bool) -> string\n    let text = \"a\"\n    if text == (if c => (return \"x\") else => \"a\") => return text@move\n    return \"bad\"\nConsole.writeLine(f(false))\nConsole.writeLine(f(true))", "a\nx\n", "a=3;x=1;bad=0" },
         { "Skipped", Echo + "if false and echo(\"skip\") == \"skip\" => Console.writeLine(\"bad\")\nif true or echo(\"skip\") == \"skip\" => Console.writeLine(\"ok\")", "ok\n", "skip=0;bad=0;ok=1" },
         { "RepeatedConditional", Echo + "var n = 0\nwhile n < 4\n    if n == 1 and echo(\"once\") == \"once\" => Console.writeLine(\"ok\")\n    n += 1", "ok\n", "once=2;ok=1" },
         { "LoopExit", "let text = \"a\"\nif text == (loop => exit \"a\") => Console.writeLine(text)", "a\n", "a=2" },
         { "AbandonedCleanup", "func f() -> string\n    var text = \"a\"\n    defer => text = \"b\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;b=1;x=1;bad=0" },
-        { "CheckingContinuation", Echo + "func f() -> string\n    let text = \"a\"\n    text == (work: do\n        return \"x\"\n        echo(text)\n        exit to work: \"a\"\n    )\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
+        { "CheckingContinuation", Echo + "func f() -> string\n    let text = \"a\"\n    text == (work: do\n        return \"x\"\n        echo(text@move)\n        exit to work: \"a\"\n    )\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
         { "TwoReturns", "func f(c: bool) -> string\n    let text = \"a\"\n    text == (if c => (return \"x\") else => (return \"y\"))\n    return \"bad\"\nConsole.writeLine(f(true))\nConsole.writeLine(f(false))", "x\ny\n", "a=2;x=1;y=1;bad=0" },
     };
 
@@ -46,8 +46,8 @@ public class StringComparisonEmissionTest
     }
 
     [Theory]
-    [InlineData("func f() -> string\n    let text = \"a\"\n    text == (return text)\n    return \"x\"")]
-    [InlineData(Echo + "let text = \"a\"\ntext == echo(text)")]
+    [InlineData("func f() -> string\n    let text = \"a\"\n    text == (return text@move)\n    return \"x\"")]
+    [InlineData(Echo + "let text = \"a\"\ntext == echo(text@move)")]
     [InlineData("var text = \"a\"\ntext == do\n    defer => text = \"b\"\n    exit \"a\"")]
     [InlineData("var text = \"a\"\ntext == (if false\n    text = \"b\"\n    yield \"a\"\nelse => \"a\")")]
     public void ConflictingOperationsAreLanguageErrors(string source)

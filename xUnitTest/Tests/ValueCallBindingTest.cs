@@ -14,7 +14,7 @@ public class ValueCallBindingTest
     [InlineData("func apply(f: (()) -> bool) -> bool => f(())")]
     [InlineData("func apply(f: ((i32, bool)) -> bool) -> bool => f((42, true))")]
     [InlineData("func apply(f: (i64, bool) -> i32) -> i32 => (f)(42, true)")]
-    [InlineData("func apply<T>(f: (T) -> bool, value: T) -> bool => f(value)")]
+    [InlineData("func apply<T>(f: (T) -> bool, value: T) -> bool => f(value@move)")]
     [InlineData("func apply(f: () -> Never) -> i32 => f()")]
     public void BindsPositionalSignature(string source)
     {
@@ -49,7 +49,7 @@ public class ValueCallBindingTest
     [Fact]
     public void ReloadAndWarmBindingRetainValuePlan()
     {
-        var c = MinimalEmissionTest.Analyze("func apply<T>(f: (T) -> bool, value: T) -> bool => f(value)");
+        var c = MinimalEmissionTest.Analyze("func apply<T>(f: (T) -> bool, value: T) -> bool => f(value@move)");
         Assert.True(c.Binding.Result.IsComplete);
         var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = call.BoundValueCall;

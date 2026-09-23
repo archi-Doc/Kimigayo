@@ -86,12 +86,16 @@ public sealed class BoundMatch
 
     internal bool Pending { get; set; }
 
+    /// <summary>Gets or sets the shared borrow Type of an owned Non-Copy Place Subject (SPEC 15.1.6 subject rule), or null for an owned Subject.</summary>
+    internal BoundType? SharedSubject { get; set; }
+
     internal void Reset(MatchKoto? syntax)
     {
         this.Syntax = syntax!;
         this.IsCurrent = syntax is not null;
         this.Coverage = default;
         this.Invalid = this.Pending = false;
+        this.SharedSubject = null;
         this.ExpectedType = null;
         this.ResultType = null;
         this.PositionStorage.Clear();

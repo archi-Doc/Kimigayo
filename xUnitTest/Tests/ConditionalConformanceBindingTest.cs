@@ -36,7 +36,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("string", false)]
     public void GenericCallDischargesSubstitutedConditions(string argument, bool valid)
     {
-        var c = Parse($"contract C\nstruct S<T>\n    Self is C when T is Copy\nfunc take<T>(x: T)\n    T is C\n    ()\nfunc use(x: S<{argument}>) => take(x)");
+        var c = Parse($"contract C\nstruct S<T>\n    Self is C when T is Copy\nfunc take<T>(x: T)\n    T is C\n    ()\nfunc use(x: S<{argument}>) => take(x@move)");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 

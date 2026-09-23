@@ -90,6 +90,18 @@ public sealed class TypeSemanticsKoto : TypeKoto
         }
     }
 
+    /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a synthesized bare operation target such as <c>move</c>.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The source span of the generating syntax.</param>
+    /// <param name="operation">The operation target name.</param>
+    internal TypeSemanticsKoto(ref TokenReader reader, SourceSpan range, string operation)
+        : base(ref reader, range)
+    {
+        this.coreTypeToken = TokenKind.Identifier;
+        this.semanticsKind = SemanticsKind.Owner;
+        this.nameOrSemanticsParameter = operation;
+    }
+
     /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a compound type with explicit semantics.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

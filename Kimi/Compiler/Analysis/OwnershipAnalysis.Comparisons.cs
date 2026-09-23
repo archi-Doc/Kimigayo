@@ -35,6 +35,15 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
+    /// <summary>Gets the Place syntax a string argument borrows.</summary>
+    /// <param name="argument">The written argument.</param>
+    /// <returns>The borrowed Place syntax; an explicit <c>text@ref</c> is the same preparation as the bare argument.</returns>
+    internal static Koto BorrowedArgumentSource(Koto argument)
+    {
+        var source = KotoHelper.UnwrapParentheses(argument);
+        return source is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } written ? KotoHelper.UnwrapParentheses(written.Left) : source;
+    }
+
     private int InspectString(Koto source, out int loan, out int reference)
     {
         loan = -1;
@@ -82,7 +91,7 @@ public sealed partial class OwnershipAnalysis
 
     private int BorrowArgument(InvocationKoto call, BoundArgumentOperation argument)
     {
-        var source = KotoHelper.UnwrapParentheses(argument.Source!);
+        var source = BorrowedArgumentSource(argument.Source!);
         if (source is BinaryKoto element && ElementAccess.IsSyntax(element))
         {
             return this.BorrowStringElement(element, call, argument.ParameterType, out _);
@@ -97,7 +106,7 @@ public sealed partial class OwnershipAnalysis
 
         // An owned expression already materializes its result and registers its
         // enclosing-expression cleanup. Borrow that storage without another Move.
-        var place = source is IdentifierNameKoto && source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter
+        var place = source is IdentifierNameKoto && source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture
             ? this.Local(source) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {

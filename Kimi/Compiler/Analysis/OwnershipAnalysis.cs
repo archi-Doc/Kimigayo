@@ -132,6 +132,7 @@ public sealed partial class OwnershipAnalysis
                 OwnershipFailure.ComparisonLoanConflict => issue.Activation ? DiagnosticCode.CallActivationConflict_Kd :
                     issue.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
                 OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
+                OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
                 OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
                 _ => DiagnosticCode.UnsupportedOwnership_Kd,
             });
@@ -440,9 +441,25 @@ public sealed partial class OwnershipAnalysis
         }
 
         // Only locals and parameters reach here; temporaries transfer without a Place use.
+        var stored = this.body.PlaceStorage[place];
+        if (acquisition is null)
+        {
+            // SPEC 15.1.5: a bare exclusive reference is reborrowed in its own mode; @move transfers it.
+            if (stored.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
+            {
+                return this.BorrowStruct(source, stored.Type);
+            }
+
+            // SPEC 3.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
+            if (stored.Acquisition != AcquisitionKind.Copy)
+            {
+                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+            }
+        }
+
         this.CheckAcquisition(place, acquisition);
         var value = this.Temporary(source, false);
-        this.Emit(OwnershipOperationKind.Consume, source, place, value, acquisition ?? this.body.PlaceStorage[place].Acquisition);
+        this.Emit(OwnershipOperationKind.Consume, source, place, value, acquisition ?? stored.Acquisition);
         return this.RegisterTemporary(value);
     }
 
@@ -648,7 +665,7 @@ public sealed partial class OwnershipAnalysis
             case IndexKoto element when ReferenceTypes.IsArray(element.Left.BoundType):
                 return this.ReadSlice(element);
             case BinaryKoto element when ElementAccess.IsSyntax(element):
-                return this.ElementValue(element, use);
+                return this.ElementValue(element, use, acquisition);
             case BinaryKoto binary:
                 return this.Binary(binary);
             case IfKoto conditional:

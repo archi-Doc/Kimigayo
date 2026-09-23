@@ -359,6 +359,12 @@
   + Name="DefaultArgumentMove_Kd"
     Message="A default expression cannot move a preceding prepared argument or its owned contents"
 
+  + Name="TransferRequired_Kd"
+    Message="A bare Place is never moved; write @move to transfer it, or borrow it with @ref or @uniq"
+
+  + Name="ExclusiveBorrowRequired_Kd"
+    Message="A directly owned Place is not lent exclusively without @uniq or @objuniq"
+
   + Name="ComparisonLoanConflict_Kd"
     Message="This operation conflicts with an active inspection, argument, or element access loan"
 

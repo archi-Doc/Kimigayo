@@ -116,7 +116,7 @@ $invalid = [ordered]@{
     InvalidMain = 'public func main() -> i32 => 0'
     MixedStartup = "public func main() => ()`nConsole.writeLine(`"mixed`")"
     ReturnFromDefer = "public func main()`n    defer => return"
-    DeferredMovedUse = "public func main()`n    let text = `"x`"`n    defer => Console.writeLine(text)`n    Console.writeLine(text)"
+    DeferredMovedUse = "public func main()`n    let text = `"x`"`n    defer => Console.writeLine(text)`n    let taken = text@move"
     DeferredUninitializedUse = "public func main()`n    let text: string`n    defer => Console.writeLine(text)"
 }
 foreach ($entry in $invalid.GetEnumerator()) {

@@ -22,7 +22,7 @@ public class FloatConversionEmissionTest
         { "FloatConvertChain", "let x: f32 = 1.25\nif x@f32@f64@f64 == 1.25 => Console.writeLine(\"ok\")", "ok\n" },
         { "FloatConvertPhi", "func widen(x: f32, flag: bool) -> f64\n    var y: f64 = 0.0\n    defer => y = 0.0\n    y = if flag => x@f64 else => (-x)@f64\n    return y@f64\nif widen(1.25, true) == 1.25 and widen(1.25, false) == -1.25 => Console.writeLine(\"ok\")", "ok\n" },
         { "FloatConvertOrder", "func first() -> f32\n    Console.writeLine(\"first\")\n    return 1.25\nfunc second() -> f32\n    Console.writeLine(\"second\")\n    return 2.5\nfunc sum(a: f64, b: f64) -> f64 => a + b\nif sum(first()@f64, second()@f64) == 3.75 => Console.writeLine(\"ok\")", "first\nsecond\nok\n" },
-        { "FloatConvertAggregate", "var x: f32 = -0.0\nlet a = (x@f64, \"owned\")\nlet b: [2 of f64] = [x@f64, 1.25@f64]\nlet c = a\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "FloatConvertAggregate", "var x: f32 = -0.0\nlet a = (x@f64, \"owned\")\nlet b: [2 of f64] = [x@f64, 1.25@f64]\nlet c = a@move\nConsole.writeLine(\"ok\")", "ok\n" },
         { "FloatConvertAbrupt", "func f() -> f64\n    (return 1.25)@f32\nif f() == 1.25 => Console.writeLine(\"ok\")", "ok\n" },
         { "FloatConvertUnaryAlias", "let x: f32 = -0.0\nif 1.0 / (+x)@f64 < 0.0 => Console.writeLine(\"ok\")", "ok\n" },
     };

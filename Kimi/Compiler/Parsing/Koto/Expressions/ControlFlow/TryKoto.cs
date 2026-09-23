@@ -25,10 +25,11 @@ public sealed class TryKoto : MatchKoto
         this.nonePattern = Pattern(ref reader, span, Case(ref reader, span, "None"), null);
         this.errorPattern = Pattern(ref reader, span, Case(ref reader, span, "Err"), "$try.error");
         this.noneValue = Case(ref reader, span, "None");
-        this.errorValue = new InvocationKoto(ref reader, span, Case(ref reader, span, "Err"), [Name(ref reader, span, "$try.error")]);
+        // SPEC 17.2.4: the extracted payloads are transferred out of their generated bindings (SPEC 15.1.5).
+        this.errorValue = new InvocationKoto(ref reader, span, Case(ref reader, span, "Err"), [Transfer(ref reader, span, "$try.error")]);
         this.Failure = new ReturnKoto(ref reader, span, this.errorValue);
         var arms = (List<MatchArmKoto>)this.Arms;
-        arms.Add(new(success, Name(ref reader, span, "$try.value")));
+        arms.Add(new(success, Transfer(ref reader, span, "$try.value")));
         arms.Add(new(this.errorPattern, this.Failure));
         foreach (var arm in arms)
         {
@@ -65,6 +66,9 @@ public sealed class TryKoto : MatchKoto
 
     private static IdentifierNameKoto Name(ref TokenReader reader, SourceSpan span, string name)
         => new(ref reader, new Token(TokenKind.Identifier, span), name);
+
+    private static ConversionKoto Transfer(ref TokenReader reader, SourceSpan span, string name)
+        => new(ref reader, span, Name(ref reader, span, name), new TypeSemanticsKoto(ref reader, span, Constants.MoveOperation));
 
     private static SyntaxFormKoto Case(ref TokenReader reader, SourceSpan span, string name)
         => new(ref reader, span, KotoKind.InferredCase, ".", [Name(ref reader, span, name)]);

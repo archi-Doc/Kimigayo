@@ -27,8 +27,8 @@ public class TerminalBranchReplayTest
     [InlineData("var x: i32", "return", "if c\n                x = 3\n                return\n            else => return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "if c => return else\n                x = 3\n                return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "if c\n                x = 3\n                return\n            else\n                x = 4\n                return", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "return", "if c\n                Console.writeLine(s)\n                return\n            else => return", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "return", "if c => return else\n                Console.writeLine(s)\n                exit", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "return", "if c\n                _ = s@move\n                return\n            else => return", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "return", "if c => return else\n                _ = s@move\n                exit", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "return", "if c\n                x = 3\n                return\n            else => return", "()", "x = 4", OwnershipFailure.ReassignedLet)]
     public void EveryBranchMustSupportTheCommonGuarantee(string declaration, string early, string dead, string tail, string use, OwnershipFailure failure)
     {

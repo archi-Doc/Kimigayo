@@ -121,7 +121,8 @@ Console.writeLine("ok")
 $anchor = '// Mutating or moving counter here'
 $invalid = [ordered]@{
     LiveLoanMutation = $original.Replace($anchor, "add(counter@uniq, 1)`n        $anchor")
-    LiveLoanMove = $original.Replace($anchor, "finish(counter)`n        $anchor")
+    LiveLoanMove = $original.Replace($anchor, "finish(counter@move)`n        $anchor")
+    BareExclusive = $original.Replace('add(counter@uniq, 1)', 'add(counter, 1)')
     LiveLoanReplacement = $original.Replace($anchor, "counter = Counter.init()`n        $anchor")
     LiveLoanFieldWrite = $original.Replace($anchor, "counter.value = 99`n        $anchor")
     EscapedLocal = $original.Replace('return counter', "let local = Counter.init()`n    return local@ref")

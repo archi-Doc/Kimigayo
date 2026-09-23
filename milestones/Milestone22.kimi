@@ -9,9 +9,9 @@ struct Blue
     public init(id: i32) => self.id = id
     deinit => Console.writeLine("Blue destroyed.")
 
-func relay<T>(value: T) -> T => value
+func relay<T>(value: T) -> T => value@move
 
-func forward<T>(value: T) -> T => relay<T>(value)
+func forward<T>(value: T) -> T => relay<T>(value@move)
 
 specialize func relay<i32>(value: i32) -> i32 => value + 1
 

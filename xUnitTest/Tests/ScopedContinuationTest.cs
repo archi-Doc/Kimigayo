@@ -15,10 +15,10 @@ public class ScopedContinuationTest
     [InlineData("let n: i32 = do => stop()\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n: i32\ndo => stop()\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n = 1\ndo => stop()\nn = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"\ndo\n    Console.writeLine(s)\n    stop()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"\ndo\n    Console.writeLine(s)\n    loop => continue\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"\ndo\n    stop()\n    Console.writeLine(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func take(s: string) -> Never => stop()\nlet s = \"s\"\ndo => take(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\ndo\n    _ = s@move\n    stop()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\ndo\n    _ = s@move\n    loop => continue\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\ndo\n    stop()\n    _ = s@move\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func take(s: string) -> Never => stop()\nlet s = \"s\"\ndo => take(s@move)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void TerminalScopeStatePreservesInvalidatedFacts(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
@@ -50,7 +50,7 @@ public class ScopedContinuationTest
     [Theory]
     [InlineData("let x: i32\nvalue()\nlet y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x = 1\nvalue()\nx = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"\nConsole.writeLine(s)\nvalue()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\n_ = s@move\nvalue()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void OmittedScopedDefaultDoesNotRestoreCallerFacts(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Default + source);

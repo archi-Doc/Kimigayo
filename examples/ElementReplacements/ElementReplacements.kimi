@@ -5,7 +5,7 @@ rows[0] = makeRow()
 
 let replacement = ("replacement", 2)
 var index: isize = 1
-rows[index] = replacement
+rows[index] = replacement@move
 rows[0].0 = "renamed"
 
 var state = (40, "old")

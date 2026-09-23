@@ -22,11 +22,11 @@ public class OwnedPathBorrowTest
     [InlineData("Tuple", Pair + "var t: (i32, (Counter, Counter)) = (5, (Counter.init(), Counter.init()))\nlet a = t.1.0@uniq\nt.0 += 1\na.value += t.0\nrequire t.1.0.value == 7 and t.1.1.value == 1 else => $abort(\"value\")")]
     [InlineData("Parameter", Pair + "func f(p: Pair) -> i32\n    let a = p.left@ref\n    let b = p.right@ref\n    return a.value + b.value\nrequire f(Pair.init()) == 2 else => $abort(\"value\")")]
     [InlineData("Release", Pair + "var pair = Pair.init()\nlet a = pair.left@uniq\na.value += 1\npair.left.value += 1\nlet whole = pair@ref\nrequire whole.left.value == 3 else => $abort(\"value\")")]
-    [InlineData("Arguments", Calls + "var pair = Pair.init()\ng(pair.left@uniq)\ng(pair.left)\nrequire pair.left.value == 3 else => $abort(\"value\")")]
-    [InlineData("SiblingArguments", Calls + "var pair = Pair.init()\nh(pair.left, pair.right)\nrequire pair.left.value == 2 and pair.right.value == 1 else => $abort(\"value\")")]
+    [InlineData("Arguments", Calls + "var pair = Pair.init()\ng(pair.left@uniq)\ng(pair.left@uniq)\nrequire pair.left.value == 3 else => $abort(\"value\")")]
+    [InlineData("SiblingArguments", Calls + "var pair = Pair.init()\nh(pair.left@uniq, pair.right@uniq)\nrequire pair.left.value == 2 and pair.right.value == 1 else => $abort(\"value\")")]
     [InlineData("SharedArguments", Calls + "let pair = Pair.init()\nrequire r(pair.left, pair.left) == 2 else => $abort(\"value\")")]
-    [InlineData("Receiver", Calls + "var pair = Pair.init()\npair.left.bump()\nrequire pair.left.value == 2 else => $abort(\"value\")")]
-    [InlineData("SiblingCall", Calls + "var pair = Pair.init()\nlet a = pair.left@uniq\ng(pair.right)\na.value += pair.right.value\nrequire pair.left.value == 3 else => $abort(\"value\")")]
+    [InlineData("Receiver", Calls + "var pair = Pair.init()\npair.left@uniq.bump()\nrequire pair.left.value == 2 else => $abort(\"value\")")]
+    [InlineData("SiblingCall", Calls + "var pair = Pair.init()\nlet a = pair.left@uniq\ng(pair.right@uniq)\na.value += pair.right.value\nrequire pair.left.value == 3 else => $abort(\"value\")")]
     public void ExecutesOwnedPathBorrows(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -41,11 +41,11 @@ public class OwnedPathBorrowTest
     [InlineData(Pair + "var pair = Pair.init()\nlet a = pair.left@uniq\nlet b = pair@ref\na.value += b.right.value")]
     [InlineData(Pair + "var pair = Pair.init()\nlet a = pair.left@ref\npair = Pair.init()\nlet x = a.value")]
     [InlineData(Pair + "var pair = Pair.init()\nlet a = pair.left@ref\npair.left.value = 3\nlet x = a.value")]
-    [InlineData(Pair + "var pair = Pair.init()\nlet a = pair.left@ref\nlet m = pair.left\nlet x = a.value")]
+    [InlineData(Pair + "var pair = Pair.init()\nlet a = pair.left@ref\nlet m = pair.left@move\nlet x = a.value")]
     [InlineData(Outer + "var o = Outer.init()\nlet a = o.inner.c@uniq\nlet b = o.inner@ref\na.value += b.d.value")]
     [InlineData(Outer + "var o = Outer.init()\nlet a = o.inner@ref\no.inner.d.value += 1\nlet x = a.c.value")]
-    [InlineData(Calls + "var pair = Pair.init()\nh(pair.left, pair.left)")]
-    [InlineData(Calls + "var pair = Pair.init()\nlet a = pair.left@uniq\ng(pair.left)\na.value += 1")]
+    [InlineData(Calls + "var pair = Pair.init()\nh(pair.left@uniq, pair.left@uniq)")]
+    [InlineData(Calls + "var pair = Pair.init()\nlet a = pair.left@uniq\ng(pair.left@uniq)\na.value += 1")]
     public void RejectsOverlappingOwnedPathBorrows(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

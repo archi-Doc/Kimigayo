@@ -312,9 +312,11 @@ public sealed partial class Binding
                     }
 
                     actual = this.ArgumentType(source, actual);
+                    this.transferRequired = this.lendingRequired = false;
                     if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
                     {
-                        return Fail(use, BindingFailure.TypeMismatch);
+                        // SPEC 6.3.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
+                        return Fail(use, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch);
                     }
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
@@ -430,6 +432,12 @@ public sealed partial class Binding
                 {
                     plan.IsValid = false;
                     Fail(entry.Key, BindingFailure.InvalidConstraint);
+                }
+                else if (proof != ConstraintProof.Proven && operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource))
+                {
+                    // SPEC 6.3.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload; write value@move.
+                    plan.IsValid = false;
+                    Fail(payloadSource, BindingFailure.TransferRequired);
                 }
 
                 plan.SetAcquisition(i, operation.Kind == ArgumentOperationKind.CopyRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);

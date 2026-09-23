@@ -1,10 +1,10 @@
 var useOriginal = true
 var pair = ("old", 1)
-pair = if useOriginal => pair else => ("new", 2)
+pair = if useOriginal => pair@move else => ("new", 2)
 
 let saved = work: do
     defer => Console.writeLine("cleanup")
-    exit to work: pair
+    exit to work: pair@move
 
 let words: [2 of string] = loop
     exit ["first", "second"]

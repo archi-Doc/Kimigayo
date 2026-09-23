@@ -14,11 +14,11 @@ public class PatternBindingTest
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    Option<i32>.Some(let n,) => n\n    Option<i32>.None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    (::Kimi.Option<i32>.Some(let n)) => n\n    (::Kimi.Option<i32>.None) => 0")]
-    [InlineData("enum E\n    A(i32)\n    B\nfunc f(x: E) -> i32 => match x\n    E.A(let n) => n\n    E.B => 0")]
+    [InlineData("enum E\n    A(i32)\n    B\nfunc f(x: E) -> i32 => match x@move\n    E.A(let n) => n\n    E.B => 0")]
     [InlineData("func f(x: (i32, bool)) -> i32 => match x\n    (let n, _) => n")]
     [InlineData("func f(x: ()) -> i32 => match x\n    () => 1")]
     [InlineData("func f(x: bool) -> i32 => match x\n    (true) => 1\n    false => 0")]
-    [InlineData("func f(x: string) -> i32 => match x\n    \"yes\" => 1\n    (_) => 0")]
+    [InlineData("func f(x: string) -> i32 => match x@move\n    \"yes\" => 1\n    (_) => 0")]
     [InlineData("func f(x: char) -> i32 => match x\n    'A' => 1\n    _ => 0")]
     [InlineData("func f(x: Option<Option<i32>>) -> i32 => match x\n    .Some(.Some(let n)) => n\n    .Some(_) => 1\n    .None => 0")]
     [InlineData("func f(x: Option<(i32, bool)>) -> i32 => match x\n    .Some((let n, _)) => n\n    .None => 0")]
@@ -26,11 +26,11 @@ public class PatternBindingTest
     [InlineData("func f(x: Option<i32>) -> i32\n    return match x\n        .Some(let n)\n            yield n\n        .None\n            yield 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => if n > 0 => n else => 0\n    .None => 0")]
     [InlineData("func f(x: Option<i32>)\n    match x\n        .Some(_)\n            ()\n        .None => ()")]
-    [InlineData("func f<T>(x: Option<T>) => match x\n    .Some(let value) => ()\n    .None => ()")]
+    [InlineData("func f<T>(x: Option<T>) => match x@move\n    .Some(let value) => ()\n    .None => ()")]
     [InlineData("func f(x: ref{static}/i32) => match x\n    let r => ()")]
     [InlineData("func f(x: uniq/i32) => match x\n    _ => ()")]
     [InlineData("func f(x: Option<ref{static}/i32>) => match x\n    .Some(let r) => ()\n    .None => ()")]
-    [InlineData("func f(x: Option<uniq{a}/i32>) => match x\n    .Some(let r) => ()\n    .None => ()")]
+    [InlineData("func f(x: Option<uniq{a}/i32>) => match x@move\n    .Some(let r) => ()\n    .None => ()")]
     [InlineData("func f(x: Option<Option<i32>>) -> i32 => match x\n    .Some(let inner) => match inner\n        .Some(let n) => n\n        .None => 0\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let Option) => Option\n    Option<i32>.None => 0")]
     public void SupportedPatternsBindAndCheckFlow(string source)
@@ -167,7 +167,7 @@ public class PatternBindingTest
     [Fact]
     public void InferredMatchResultAndGenericAcquisitionAreRetained()
     {
-        var c = Parse("func f(x: bool)\n    let r = match x\n        true => 1\n        false => 2\nfunc generic<T>(x: Option<T>) => match x\n    .Some(let value) => ()\n    .None => ()");
+        var c = Parse("func f(x: bool)\n    let r = match x\n        true => 1\n        false => 2\nfunc generic<T>(x: Option<T>) => match x@move\n    .Some(let value) => ()\n    .None => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var selections = Matches(c);
         Assert.Equal("i32", selections[0].BoundType!.Name);
@@ -203,7 +203,7 @@ public class PatternBindingTest
     [InlineData("string", "\"A\"", "\"\\u(41)\"")]
     public void EscapedLiteralsHaveTheSameCoverageValue(string type, string first, string second)
     {
-        var c = Parse($"func f(x: {type}) => match x\n    {first} => ()\n    {second} => ()\n    _ => ()");
+        var c = Parse($"func f(x: {type}) => match x@move\n    {first} => ()\n    {second} => ()\n    _ => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(0, Assert.Single(c.Binding.PatternWarnings).CoveringArm);
         Assert.All(Walk(Plan(c).Syntax.Arms[0].Pattern), p => Assert.False(c.Binding.TryGetEnumConstruction(p, out _)));
@@ -263,7 +263,7 @@ public class PatternBindingTest
     [Fact]
     public void StoredReferenceBindingsRetainOriginsAndOwnedAccess()
     {
-        var c = Parse("enum View {a}\n    Some(ref{a}/i32)\nfunc f(x: View)\n    origin x.a == static\n    match x\n        .Some(let r) => ()");
+        var c = Parse("enum View {a}\n    Some(ref{a}/i32)\nfunc f(x: View)\n    origin x.a == static\n    match x@move\n        .Some(let r) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var binding = Assert.Single(Plan(c).Positions, p => p.Kind == BoundPatternKind.Binding);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
@@ -354,13 +354,14 @@ public class PatternBindingTest
     }
 
     [Theory]
-    [InlineData("i32", PatternAcquisition.Copy)]
-    [InlineData("string", PatternAcquisition.Move)]
-    [InlineData("ref{static}/i32", PatternAcquisition.Copy)]
-    [InlineData("uniq/i32", PatternAcquisition.Move)]
-    public void OwnedBindingAcquisitionUsesTheCompleteStoredType(string type, PatternAcquisition acquisition)
+    [InlineData("i32", "x", PatternAcquisition.Copy)]
+    [InlineData("string", "x@move", PatternAcquisition.Move)]
+    [InlineData("ref{static}/i32", "x", PatternAcquisition.Copy)]
+    [InlineData("uniq/i32", "x", PatternAcquisition.Move)]
+    public void OwnedBindingAcquisitionUsesTheCompleteStoredType(string type, string subject, PatternAcquisition acquisition)
     {
-        var c = Parse($"func f(x: {type}) => match x\n    let value => ()");
+        // SPEC 15.1.6: a bare Non-Copy Place is shared-borrowed; the owned subject needs x@move.
+        var c = Parse($"func f(x: {type}) => match {subject}\n    let value => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var binding = Assert.Single(Plan(c).Positions);
         Assert.Equal(acquisition, binding.Acquisition);

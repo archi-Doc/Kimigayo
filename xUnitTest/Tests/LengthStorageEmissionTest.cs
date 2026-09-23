@@ -7,8 +7,8 @@ namespace XunitTest;
 
 public class LengthStorageEmissionTest
 {
-    private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value\n";
-    private const string Choose = "func choose<length N, T>(a: [N of T], b: [N of T], first: bool) -> [N of T] => if first => a else => b\n";
+    private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value@move\n";
+    private const string Choose = "func choose<length N, T>(a: [N of T], b: [N of T], first: bool) -> [N of T] => if first => a@move else => b@move\n";
     private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     [Theory]
@@ -50,9 +50,9 @@ public class LengthStorageEmissionTest
         => ScalarEmissionTest.EmitFixture("LengthStorage" + name, source, stdout);
 
     [Theory]
-    [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a\n    return a\nlet b = twice<2, i32>([1, 2])")]
-    [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a\n    return a\nConsole.writeLine(\"unused definition\")")]
-    [InlineData(Keep + "let a: [1 of string] = [\"one\"]\nlet b = keep(a)\nlet c = keep(a)")]
+    [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a@move\n    return a@move\nlet b = twice<2, i32>([1, 2])")]
+    [InlineData("func twice<length N, T>(a: [N of T]) -> [N of T]\n    let first = a@move\n    return a@move\nConsole.writeLine(\"unused definition\")")]
+    [InlineData(Keep + "let a: [1 of string] = [\"one\"]\nlet b = keep(a@move)\nlet c = keep(a@move)")]
     public void RejectsPotentialMovesBeforeEmission(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

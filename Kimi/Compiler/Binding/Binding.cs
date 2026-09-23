@@ -543,6 +543,8 @@ public sealed partial class Binding
                     BindingFailure.InvalidAssociatedType => DiagnosticCode.InvalidAssociatedType_Kd,
                     BindingFailure.InvalidPattern => DiagnosticCode.InvalidPattern_Kd,
                     BindingFailure.NonExhaustiveMatch => DiagnosticCode.NonExhaustiveMatch_Kd,
+                    BindingFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
+                    BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))

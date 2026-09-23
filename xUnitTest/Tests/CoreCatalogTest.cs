@@ -234,8 +234,8 @@ public class CoreCatalogTest
     public void OwnershipOperationsKeepIdentityThroughQualifiedAndAliasLookup(string prefix, string qualifier)
     {
         var c = Compilation.CreateForTest();
-        var source = prefix + "var x: i32 = 1\nvar y: i32 = 2\n" + qualifier + "replace(x, with: 3)\n" +
-            qualifier + "exchange(x, with: 4)\n" + qualifier + "swap(x, y)\n" + qualifier + "makeObj(5)";
+        var source = prefix + "var x: i32 = 1\nvar y: i32 = 2\n" + qualifier + "replace(x@uniq, with: 3)\n" +
+            qualifier + "exchange(x@uniq, with: 4)\n" + qualifier + "swap(x@uniq, y@uniq)\n" + qualifier + "makeObj(5)";
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         var expected = new[] { c.Library.Replace, c.Library.Exchange, c.Library.Swap, c.Library.MakeObj };
         for (var iteration = 0; iteration < 3; iteration++)

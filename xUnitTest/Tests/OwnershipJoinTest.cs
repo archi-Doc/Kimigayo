@@ -21,12 +21,14 @@ public class OwnershipJoinTest
     [Theory]
     [InlineData("    else\n        current = Item.init(12)\n", "", OwnershipFailure.UninitializedUse)]
     [InlineData("            current = Item.init(20)", "            // current = Item.init(20)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("            consume(current, initial + 1)", "            consume(current, initial + 1)\n            let invalid = current.value", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("        current.value = current.value + 1", "        current.value = current.value + 1\n        consume(current, initial + 1)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("            consume(current@move, initial + 1)", "            consume(current@move, initial + 1)\n            let invalid = current.value", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("        current.value = current.value + 1", "        current.value = current.value + 1\n        consume(current@move, initial + 1)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("            total = total + selected.value", "            current.value = 99\n            total = total + selected.value", OwnershipFailure.ComparisonLoanConflict)]
     public void RejectsInvalidJoin(string before, string after, OwnershipFailure failure)
     {
-        var c = MinimalEmissionTest.Analyze(Source().Replace(before, after, StringComparison.Ordinal));
+        var source = Source();
+        Assert.Contains(before, source, StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(source.Replace(before, after, StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, issue => issue.Failure == failure);
         Assert.False(c.Emission.Validate(out _));

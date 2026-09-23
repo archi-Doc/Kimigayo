@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class StringFunctionEmissionTest
 {
-    private const string Echo = "func echo(text: string) -> string => text\n";
+    private const string Echo = "func echo(text: string) -> string => text@move\n";
 
     public static TheoryData<string, string, string, string> Fixtures => new()
     {
@@ -17,22 +17,22 @@ public class StringFunctionEmissionTest
         { "Discard", Echo + "echo(\"discard\")", string.Empty, "discard=1" },
         { "Unused", "func unused(text: string) => ()\nunused(\"unused\")", string.Empty, "unused=1" },
         { "Literal", "func make() -> string => \"literal\"\nConsole.writeLine(make())", "literal\n", "literal=1" },
-        { "Branch", "func choose(a: string, b: string, c: bool) -> string\n    return if c => a else => b\nConsole.writeLine(choose(\"a\", \"b\", true))\nConsole.writeLine(choose(\"a\", \"b\", false))", "a\nb\n", "a=2;b=2" },
+        { "Branch", "func choose(a: string, b: string, c: bool) -> string\n    return if c => a@move else => b@move\nConsole.writeLine(choose(\"a\", \"b\", true))\nConsole.writeLine(choose(\"a\", \"b\", false))", "a\nb\n", "a=2;b=2" },
         { "Conditional", "func maybe(text: string, c: bool)\n    if c => Console.writeLine(text)\nmaybe(\"yes\", true)\nmaybe(\"no\", false)", "yes\n", "yes=1;no=1" },
-        { "NamedUnit", "func f(a: string, gap: (), b: string, n: i32) -> string\n    Console.writeLine(a)\n    if n == 7 => return b\n    return \"bad\"\nConsole.writeLine(f(b: \"b\", gap: Console.writeLine(\"gap\"), n: 7, a: \"a\"))", "gap\na\nb\n", "a=1;b=1;gap=1;bad=0" },
-        { "Replace", Echo + "var text = \"old\"\ntext = echo(text)\ntext = echo(\"new\")\nConsole.writeLine(text)", "new\n", "old=1;new=1" },
-        { "Forward", Echo + "func forward(text: string) -> string\n    defer => Console.writeLine(\"cleanup\")\n    return echo(text)\nConsole.writeLine(forward(\"forward\"))", "cleanup\nforward\n", "cleanup=1;forward=1" },
+        { "NamedUnit", "func f(a: string, gap: (), b: string, n: i32) -> string\n    Console.writeLine(a)\n    if n == 7 => return b@move\n    return \"bad\"\nConsole.writeLine(f(b: \"b\", gap: Console.writeLine(\"gap\"), n: 7, a: \"a\"))", "gap\na\nb\n", "a=1;b=1;gap=1;bad=0" },
+        { "Replace", Echo + "var text = \"old\"\ntext = echo(text@move)\ntext = echo(\"new\")\nConsole.writeLine(text)", "new\n", "old=1;new=1" },
+        { "Forward", Echo + "func forward(text: string) -> string\n    defer => Console.writeLine(\"cleanup\")\n    return echo(text@move)\nConsole.writeLine(forward(\"forward\"))", "cleanup\nforward\n", "cleanup=1;forward=1" },
         { "Loop", Echo + "var i = 0\nwhile i < 3\n    echo(\"iteration\")\n    i += 1", string.Empty, "iteration=3" },
-        { "Recursion", "func repeat(text: string, n: i32) -> string\n    if n == 0 => return text\n    return repeat(text, n - 1)\nConsole.writeLine(repeat(\"recursive\", 3))", "recursive\n", "recursive=1" },
-        { "Snapshot", "func take() -> string\n    var text = \"before\"\n    defer => text = \"after\"\n    return text\nConsole.writeLine(take())", "before\n", "before=1;after=1" },
+        { "Recursion", "func repeat(text: string, n: i32) -> string\n    if n == 0 => return text@move\n    return repeat(text@move, n - 1)\nConsole.writeLine(repeat(\"recursive\", 3))", "recursive\n", "recursive=1" },
+        { "Snapshot", "func take() -> string\n    var text = \"before\"\n    defer => text = \"after\"\n    return text@move\nConsole.writeLine(take())", "before\n", "before=1;after=1" },
         { "EarlyArgument", "func callee(a: string, b: string) => Console.writeLine(\"bad\")\nfunc f()\n    callee(\"pending\", (return))\nf()", string.Empty, "pending=1;bad=0" },
         { "Shadow", "func writeLine(text: string) => ()\nwriteLine(\"shadow\")", string.Empty, "shadow=1" },
-        { "Local", "public func main()\n    func local(text: string) -> string => text\n    Console.writeLine(local(\"local\"))", "local\n", "local=1" },
+        { "Local", "public func main()\n    func local(text: string) -> string => text@move\n    Console.writeLine(local(\"local\"))", "local\n", "local=1" },
         { "Empty", Echo + "Console.writeLine(echo(\"\"))", "\n", "=1" },
-        { "UnusedBody", "func unused(text: string) -> string => text\nConsole.writeLine(\"ok\")", "ok\n", "ok=1" },
-        { "MixedAbi", "func f(! first => a: string, gap: (), n: i8, b: string, flag: bool, last => z: string) -> string\n    if flag and n == -7\n        Console.writeLine(a)\n        Console.writeLine(b)\n        return z\n    return \"bad\"\nConsole.writeLine(f(last: \"z\", b: \"b\", n: -7, gap: (), first: \"a\", flag: true))", "a\nb\nz\n", "a=1;b=1;z=1;bad=0" },
+        { "UnusedBody", "func unused(text: string) -> string => text@move\nConsole.writeLine(\"ok\")", "ok\n", "ok=1" },
+        { "MixedAbi", "func f(! first => a: string, gap: (), n: i8, b: string, flag: bool, last => z: string) -> string\n    if flag and n == -7\n        Console.writeLine(a)\n        Console.writeLine(b)\n        return z@move\n    return \"bad\"\nConsole.writeLine(f(last: \"z\", b: \"b\", n: -7, gap: (), first: \"a\", flag: true))", "a\nb\nz\n", "a=1;b=1;z=1;bad=0" },
         { "ResultArgument", Echo + "Console.writeLine(echo(if true => echo(\"a\") else => echo(\"b\")))", "a\n", "a=1;b=0" },
-        { "LoopResult", Echo + "func f(text: string) -> string\n    var n = 0\n    return loop\n        n += 1\n        if n < 3 => continue\n        exit echo(text)\nConsole.writeLine(f(\"loop\"))", "loop\n", "loop=1" },
+        { "LoopResult", Echo + "func f(text: string) -> string\n    var n = 0\n    return loop\n        n += 1\n        if n < 3 => continue\n        exit echo(text@move)\nConsole.writeLine(f(\"loop\"))", "loop\n", "loop=1" },
         { "DeferredCalls", Echo + "var n = 0\nloop\n    defer => echo(\"deferred\")\n    n += 1\n    if n < 3 => continue\n    exit", string.Empty, "deferred=3" },
         { "ResultAbandoned", Echo + "func take(a: string, b: ()) => ()\nfunc f()\n    take(echo(\"abandoned\"), (return))\nf()", string.Empty, "abandoned=1" },
         { "ParameterLoop", "func f(text: string, c: bool)\n    var n = 0\n    loop\n        n += 1\n        if n < 3 => continue\n        if c => Console.writeLine(text)\n        exit\nf(\"yes\", true)\nf(\"no\", false)", "yes\n", "yes=1;no=1" },
@@ -63,8 +63,8 @@ public class StringFunctionEmissionTest
 
     [Theory]
     [InlineData("ArgumentAbort", "func f(text: string, n: i32) => ()\nvar x = 2147483647\nf(\"pending\", x + 1)", 3, 14, "pending=0")]
-    [InlineData("CalleeAbort", "func f(text: string) -> string\n    var x = 2147483647\n    x += 1\n    return text\nConsole.writeLine(f(\"held\"))", 3, 5, "held=0")]
-    [InlineData("ReturnAbort", "func f(text: string) -> string\n    defer\n        var x = 2147483647\n        x += 1\n    return text\nConsole.writeLine(f(\"secured\"))", 4, 9, "secured=0")]
+    [InlineData("CalleeAbort", "func f(text: string) -> string\n    var x = 2147483647\n    x += 1\n    return text@move\nConsole.writeLine(f(\"held\"))", 3, 5, "held=0")]
+    [InlineData("ReturnAbort", "func f(text: string) -> string\n    defer\n        var x = 2147483647\n        x += 1\n    return text@move\nConsole.writeLine(f(\"secured\"))", 4, 9, "secured=0")]
     public void AbortDoesNotDeliverOrDestroyOwnedValues(string name, string source, int line, int column, string destructions)
     {
         name = "StringFunction" + name;
@@ -76,7 +76,7 @@ public class StringFunctionEmissionTest
     [Fact]
     public void DivergentDeferHasNoReturnAndDoesNotForwardTheResultSlot()
     {
-        const string Source = Echo + "func f(text: string) -> string\n    defer => loop => ()\n    return echo(text)\nConsole.writeLine(f(\"held\"))";
+        const string Source = Echo + "func f(text: string) -> string\n    defer => loop => ()\n    return echo(text@move)\nConsole.writeLine(f(\"held\"))";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 1 && x.Operations.Any(o => o.Source is LoopKoto));
@@ -94,7 +94,8 @@ public class StringFunctionEmissionTest
     [Fact]
     public void ParameterProduceExplicitlyInitializesItsFlag()
     {
-        var c = MinimalEmissionTest.Analyze("func f(text: string, c: bool)\n    if c => Console.writeLine(text)\nf(\"text\", true)");
+        // writeLine borrows its argument (SPEC 22.4); a conditional transfer keeps the parameter's live flag.
+        var c = MinimalEmissionTest.Analyze("func f(text: string, c: bool)\n    if c\n        _ = text@move\nf(\"text\", true)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 2);
         var function = module.GetFunction(c.Ownership.Bodies.ToList().IndexOf(body));
@@ -204,7 +205,7 @@ public class StringFunctionEmissionTest
     [Fact]
     public void IncomingSlotsAndLogicalNamesHaveNoExtraAllocations()
     {
-        var c = MinimalEmissionTest.Analyze("func f(a: string, gap: (), b: string) -> string => b\nConsole.writeLine(f(\"a\", (), \"b\"))");
+        var c = MinimalEmissionTest.Analyze("func f(a: string, gap: (), b: string) -> string => b@move\nConsole.writeLine(f(\"a\", (), \"b\"))");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.Abi.ResultSlot);
         Assert.Equal(new[] { "ret", "a0", "a2" }, function.Abi.Parameters.Select(x => x.Name));

@@ -205,7 +205,12 @@ public sealed partial class KimiLibrary
         function.Parameters[0] is
         {
             ExternalName: "text", InternalName: "text", DefaultValue: null, AttributeChain: null,
-            Type: TypeSemanticsKoto { Type: null, Identifier: "string", SemanticsKind: SemanticsKind.Owner, OriginExpression: null, OriginName: null, OriginArguments: null },
+            // SPEC 22.4: writeLine borrows its text as ref/string.
+            Type: TypeSemanticsKoto
+            {
+                Type: TypeSemanticsKoto { Type: null, Identifier: "string", SemanticsKind: SemanticsKind.Owner },
+                SemanticsKind: SemanticsKind.Ref, SemanticsParameter: null, OriginExpression: null, OriginName: null, OriginArguments: null,
+            },
         };
 
     private bool ValidIterator(BindingSymbol symbol)

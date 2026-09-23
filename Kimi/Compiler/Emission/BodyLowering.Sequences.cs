@@ -27,6 +27,8 @@ internal sealed partial class BodyLowering
         var syntaxReceiver = operation.Source switch
         {
             BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
+            // A bare array Place iterates through its implicit Slice, whose temporary is sourced by the loop itself.
+            ForKoto { SharedIterable: not null } loop => plan.Kind == SequenceOperation.Slice ? ElementAccess.ValueSource(loop.Iterable) : loop,
             ForKoto loop when plan.Kind is SequenceOperation.Start or SequenceOperation.End or SequenceOperation.ArrayRead or SequenceOperation.Borrow => ElementAccess.ValueSource(loop.Iterable),
             _ => null,
         };
@@ -149,8 +151,22 @@ internal sealed partial class BodyLowering
 
         if (plan.Kind == SequenceOperation.Slice)
         {
-            if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) || operation.Source is not IndexKoto { Right: RangeKoto { IsInclusive: false } rangeSyntax } source ||
-                SignatureType(this, source.BoundType) is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||
+            // A whole-range Slice is written values[..] or implied by bare iteration over an array Place (SPEC 14.6.2).
+            Koto? startSyntax = null;
+            Koto? endSyntax = null;
+            BoundType? sliceType = null;
+            if (operation.Source is IndexKoto { Right: RangeKoto { IsInclusive: false } rangeSyntax } source)
+            {
+                startSyntax = rangeSyntax.Start;
+                endSyntax = rangeSyntax.End;
+                sliceType = SignatureType(this, source.BoundType);
+            }
+            else if (operation.Source is ForKoto { SharedIterable: { } implicitSlice })
+            {
+                sliceType = SignatureType(this, implicitSlice);
+            }
+
+            if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) || sliceType is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||
                 !ReferenceEquals(slice, ValueType(body, id)) || !ReferenceEquals(slice.Components[0], receiver.Components[0]))
             {
                 return Fail("Slice construction requires a full sequence and its backing Origin.", out failure);
@@ -161,7 +177,7 @@ internal sealed partial class BodyLowering
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
-            if (!Endpoint(rangeSyntax.Start, plan.Index) || !Endpoint(rangeSyntax.End, plan.End) ||
+            if (!Endpoint(startSyntax, plan.Index) || !Endpoint(endSyntax, plan.End) ||
                 FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } sliceElement ||
                 !this.TryGetLocation(operation.Source, directory, constants, out var sliceLocation))
             {

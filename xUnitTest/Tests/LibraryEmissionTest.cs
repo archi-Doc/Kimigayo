@@ -13,7 +13,7 @@ public class LibraryEmissionTest
     [InlineData("Main", "public func main(value: i32) -> i32 => value + 1")]
     [InlineData("MainAbort", "public func main() => $abort(\"must not execute\")")]
     [InlineData("Functions", "public group Api\n    public func answer() -> i32 => 42\n    public func text() -> string => \"library\"")]
-    [InlineData("Generic", "public group Api\n    public func keep<T>(value: T) -> T => value")]
+    [InlineData("Generic", "public group Api\n    public func keep<T>(value: T) -> T => value@move")]
     [InlineData("Cleanup", "public struct Value\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit => Console.writeLine(\"drop\")")]
     public void EmitsInspectionWithoutAnOsEntry(string name, string source)
     {
@@ -42,7 +42,8 @@ public class LibraryEmissionTest
     [InlineData("let pending: i32")]
     [InlineData("Console.writeLine(\"runtime\")")]
     [InlineData("func unused() => missing()")]
-    [InlineData("func unused()\n    let text = \"moved\"\n    Console.writeLine(text)\n    Console.writeLine(text)")]
+    [InlineData("func unused()\n    let text = \"moved\"\n    let taken = text@move\n    Console.writeLine(text)")]
+    [InlineData("public group Api\n    public func keep<T>(value: T) -> T => value")]
     [InlineData("group State\n    var value: i32 = 1")]
     public void InvalidOrUnsupportedLibraryCannotWrite(string source)
     {

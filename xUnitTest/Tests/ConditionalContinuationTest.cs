@@ -13,8 +13,8 @@ public class ConditionalContinuationTest
     [Theory]
     [InlineData("var x: i32", "x = 1\n        return", "return", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "x = 1\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "Console.writeLine(x)\n        return", "return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "return", "Console.writeLine(x)\n        return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "_ = x@move\n        return", "return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "_ = x@move\n        return", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "x = 1\n        return", "return", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "return", "x = 1\n        return", "x = 2", OwnershipFailure.ReassignedLet)]
     public void AllTerminalPathsContributeTheirState(string declaration, string yes, string no, string tail, OwnershipFailure failure)
@@ -79,8 +79,8 @@ public class ConditionalContinuationTest
     }
 
     [Theory]
-    [InlineData("func f(c: bool, d: bool)\n    let x = \"s\"\n    if c\n        if d\n            Console.writeLine(x)\n            return\n        else => return\n    else => return\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    if c\n        Console.writeLine(x)\n        return\n    else => return\n    Console.writeLine(x)")]
+    [InlineData("func f(c: bool, d: bool)\n    let x = \"s\"\n    if c\n        if d\n            _ = x@move\n            return\n        else => return\n    else => return\n    Console.writeLine(x)")]
+    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    if c\n        _ = x@move\n        return\n    else => return\n    Console.writeLine(x)")]
     public void NestedAndAlreadyUnreachableJoinsRetainMoves(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

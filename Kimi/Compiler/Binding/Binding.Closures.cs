@@ -83,7 +83,8 @@ public sealed partial class Binding
             for (var i = 0; i < captures.Length; i++)
             {
                 var capture = captures[i];
-                if (capture.IsMutable || capture.Operation is not null)
+                var transfer = capture.Operation == Constants.MoveOperation;
+                if (capture.IsMutable || (capture.Operation is not null && !transfer))
                 {
                     return Fail(function, BindingFailure.Unsupported);
                 }
@@ -99,9 +100,16 @@ public sealed partial class Binding
                     return Fail(function, BindingFailure.Unsupported);
                 }
 
-                if (source is null || this.Capture(function, source, scope) is null)
+                if (source is null || this.Capture(function, source, scope) is not { } environment)
                 {
                     return Fail(function, BindingFailure.Capture);
+                }
+
+                // SPEC 7.6.2: a bare capture Copies; a Non-Copy binding is transferred only by x@move.
+                environment.TransferCapture = transfer;
+                if (!transfer && this.ProveCopy(source.Type!, function) != ConstraintProof.Proven)
+                {
+                    return Fail(function, BindingFailure.TransferRequired);
                 }
             }
         }
@@ -185,7 +193,8 @@ public sealed partial class Binding
         {
             foreach (var capture in captures)
             {
-                if (capture.Operation is not null)
+                var transfer = capture.Operation == Constants.MoveOperation;
+                if (capture.Operation is not null && !transfer)
                 {
                     return Fail(function, BindingFailure.Unsupported);
                 }
@@ -202,6 +211,12 @@ public sealed partial class Binding
                 }
 
                 environment.MutableCapture = capture.IsMutable;
+                // SPEC 7.6.2: a bare capture Copies; a Non-Copy binding is transferred only by x@move.
+                environment.TransferCapture = transfer;
+                if (!transfer && this.ProveCopy(source.Type!, function) != ConstraintProof.Proven)
+                {
+                    return Fail(function, BindingFailure.TransferRequired);
+                }
             }
         }
 
@@ -306,9 +321,11 @@ public sealed partial class Binding
                         plan.Receiver = SemanticsKind.Uniq;
                     }
                 }
-                else if (binding.ProveCopy(symbol.Type!, function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
-                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !InspectedString(use))
+                else if (use.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ||
+                    (binding.ProveCopy(symbol.Type!, function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
+                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !InspectedString(use)))
                 {
+                    // SPEC 7.6.3: transferring a capture out of the environment makes the call Consuming.
                     plan.Receiver = SemanticsKind.Owner;
                 }
             }

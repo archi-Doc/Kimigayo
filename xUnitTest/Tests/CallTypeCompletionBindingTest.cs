@@ -53,7 +53,7 @@ public class CallTypeCompletionBindingTest
     [InlineData("(E<Source>, i32)")]
     public void ValidInstantiatedTypesRetainCallPlan(string type)
     {
-        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value\n    func call(value: " + type + ") => take(value)");
+        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value@move\n    func call(value: " + type + ") => take(value@move)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(Call(c).BoundCall);
         var restored = Reload(c);
@@ -95,7 +95,7 @@ public class CallTypeCompletionBindingTest
     [Fact]
     public void WarmInstantiatedCallChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value\n    func call(value: unsafe/E<Source>) => take(value)");
+        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value@move\n    func call(value: unsafe/E<Source>) => take(value)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

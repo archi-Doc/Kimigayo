@@ -1,4 +1,4 @@
-func echo(text: string) -> string => text
+func echo(text: string) -> string => text@move
 
 public func main()
     let text = "apple"

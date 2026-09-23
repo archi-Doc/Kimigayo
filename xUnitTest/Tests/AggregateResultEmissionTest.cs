@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class AggregateResultEmissionTest
 {
-    private const string Self = "var c = true\nvar pair = (\"old\", 1)\npair = if c => pair else => (\"new\", 2)";
+    private const string Self = "var c = true\nvar pair = (\"old\", 1)\npair = if c => pair@move else => (\"new\", 2)";
     private const string Deferred = "var i = 0\nloop\n    defer\n        let pair = if i == 1 => (\"first\", 1) else => (\"later\", 2)\n    i += 1\n    if i == 3 => exit\n    continue";
 
     public static TheoryData<string, string, string, string> Fixtures => new()
@@ -25,8 +25,8 @@ public class AggregateResultEmissionTest
         { "AggregateSelectionPayload", "let nested = (if true => (\"a\", 1) else => (\"b\", 2), \"outer\")", string.Empty, "a=1;b=0;outer=1" },
         { "AggregateSelectionDeferred", Deferred, string.Empty, "first=1;later=2" },
         { "AggregateSelectionRepeated", "var i = 0\nwhile i < 3\n    let pair = if i == 0 => (\"first\", 1) else => (\"later\", 2)\n    i += 1", string.Empty, "first=1;later=2" },
-        { "AggregateSelectionSnapshot", "var pair = (\"old\", 1)\nlet saved = work: do\n    defer => pair = (\"new\", 2)\n    exit to work: pair", string.Empty, "old=1;new=1" },
-        { "AggregateSelectionOutward", "let pair = outer: do\n    let inner = work: do\n        exit to work: (if false => (\"a\", 1) else => exit to outer: (\"b\", 2))\n    exit to outer: inner", string.Empty, "a=0;b=1" },
+        { "AggregateSelectionSnapshot", "var pair = (\"old\", 1)\nlet saved = work: do\n    defer => pair = (\"new\", 2)\n    exit to work: pair@move", string.Empty, "old=1;new=1" },
+        { "AggregateSelectionOutward", "let pair = outer: do\n    let inner = work: do\n        exit to work: (if false => (\"a\", 1) else => exit to outer: (\"b\", 2))\n    exit to outer: inner@move", string.Empty, "a=0;b=1" },
         { "AggregateSelectionArray", "let values: [2 of string] = if true => [\"a\", \"b\"] else => [\"c\", \"d\"]", string.Empty, "a=1;b=1;c=0;d=0" },
         { "AggregateSelectionArrayLoop", "let values: [2 of string] = loop => exit [\"a\", \"b\"]", string.Empty, "a=1;b=1" },
         { "AggregateSelectionZero", "let values: [0 of string] = if true => [] else => []", string.Empty, string.Empty },
@@ -101,7 +101,7 @@ public class AggregateResultEmissionTest
     [Fact]
     public void SnapshotKeepsItsValueAcrossDeferredReplacement()
     {
-        const string Source = "var pair = (\"old\", 1)\nlet saved = work: do\n    defer => pair = (\"new\", 2)\n    exit to work: pair";
+        const string Source = "var pair = (\"old\", 1)\nlet saved = work: do\n    defer => pair = (\"new\", 2)\n    exit to work: pair@move";
         var ir = ScalarEmissionTest.EmitFixture("AggregateSelectionSnapshotOrder", Source, string.Empty);
         StringEmissionTest.WriteAuditedFixture("AggregateSelectionSnapshotOrder", Source, ir, string.Empty, "old=1;new=1", order: [0, 1]);
     }
@@ -170,7 +170,7 @@ public class AggregateResultEmissionTest
     [InlineData(true)]
     public void ADeferredConsumerCannotReadASecuredUndeliveredResult(bool text)
     {
-        var source = "var original = (\"old\", 1)\nvar target = (\"init\", 1)\nlet saved = work: do\n    defer => target = (\"cleanup\", 1)\n    exit to work: original";
+        var source = "var original = (\"old\", 1)\nvar target = (\"init\", 1)\nlet saved = work: do\n    defer => target = (\"cleanup\", 1)\n    exit to work: original@move";
         if (text)
         {
             source = source.Replace("(\"old\", 1)", "\"old\"").Replace("(\"init\", 1)", "\"init\"").Replace("(\"cleanup\", 1)", "\"cleanup\"");

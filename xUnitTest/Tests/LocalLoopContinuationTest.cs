@@ -14,7 +14,7 @@ public class LocalLoopContinuationTest
     [Theory]
     [InlineData("let x: i32\n", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("let x = 1\n", "x = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let x = \"s\"\nConsole.writeLine(x)\n", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"\n_ = x@move\n", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     public void LocalLoopEffectsDoNotRestoreEnclosingFacts(string before, string after, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(before + Loop + after);

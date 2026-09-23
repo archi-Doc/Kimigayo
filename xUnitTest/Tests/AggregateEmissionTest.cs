@@ -12,8 +12,8 @@ public class AggregateEmissionTest
         { "AggregateTuple", "let value = (\"a\", \"b\")", "a=1;b=1" },
         { "AggregateArray", "let value: [2 of string] = [\"a\", \"b\"]", "a=1;b=1" },
         { "AggregateNested", "let value = (\"a\", (\"b\", \"c\"))", "a=1;b=1;c=1" },
-        { "AggregateMove", "let value = (\"a\", \"b\")\nlet other = value", "a=1;b=1" },
-        { "AggregateSelf", "var value = (\"a\", \"b\")\nvalue = value", "a=1;b=1" },
+        { "AggregateMove", "let value = (\"a\", \"b\")\nlet other = value@move", "a=1;b=1" },
+        { "AggregateSelf", "var value = (\"a\", \"b\")\nvalue = value@move", "a=1;b=1" },
         { "AggregateReplace", "var value = (\"a\", \"b\")\nvalue = (\"c\", \"d\")", "a=1;b=1;c=1;d=1" },
         { "AggregateLoop", "var i = 0\nwhile i < 3\n    let value = (\"a\", \"b\")\n    i += 1", "a=3;b=3" },
         { "AggregateCopy", "let value: (u8, u64) = (2, 7)\nlet other = value\nlet again = value", string.Empty },
@@ -21,12 +21,12 @@ public class AggregateEmissionTest
         { "AggregateUnit", "let value: [2 of ()] = [(), ()]", string.Empty },
         { "AggregateTuplePattern", "let value = (1, 2)\nmatch value\n    (let a, _) => ()", string.Empty },
         { "AggregateEmpty", "let value: [0 of string] = []", string.Empty },
-        { "AggregateConditional", "var flag = true\nvar value = (\"a\", \"b\")\nif flag => value\nvalue = (\"c\", \"d\")", "a=1;b=1;c=1;d=1" },
-        { "AggregateConditionalSkip", "var flag = false\nvar value = (\"a\", \"b\")\nif flag => value\nvalue = (\"c\", \"d\")", "a=1;b=1;c=1;d=1" },
-        { "AggregateConditionalLoop", "var value = (\"a\", \"b\")\nvar i = 0\nwhile i < 3\n    if i == 1 => value\n    value = (\"c\", \"d\")\n    i += 1", "a=1;b=1;c=3;d=3" },
+        { "AggregateConditional", "var flag = true\nvar value = (\"a\", \"b\")\nif flag => value@move\nvalue = (\"c\", \"d\")", "a=1;b=1;c=1;d=1" },
+        { "AggregateConditionalSkip", "var flag = false\nvar value = (\"a\", \"b\")\nif flag => value@move\nvalue = (\"c\", \"d\")", "a=1;b=1;c=1;d=1" },
+        { "AggregateConditionalLoop", "var value = (\"a\", \"b\")\nvar i = 0\nwhile i < 3\n    if i == 1 => value@move\n    value = (\"c\", \"d\")\n    i += 1", "a=1;b=1;c=3;d=3" },
         { "AggregateMixed", "let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())", "a=1;b=1" },
         { "AggregateResultPayload", "let value = (if true => \"a\" else => \"b\", \"c\")", "a=1;b=0;c=1" },
-        { "AggregateCallPayload", "func echo(x: string) -> string => x\nlet value = (echo(\"a\"), \"b\")", "a=1;b=1" },
+        { "AggregateCallPayload", "func echo(x: string) -> string => x@move\nlet value = (echo(\"a\"), \"b\")", "a=1;b=1" },
         { "AggregatePartialExit", "loop\n    let value: (string, i32) = (\"a\", (exit))", "a=1" },
         { "AggregatePartialReturn", "func f() -> ()\n    let value: (string, i32) = (\"a\", (return))\nf()", "a=1" },
         { "AggregateArrayPartialExit", "loop\n    let value: [2 of string] = [\"a\", (exit)]", "a=1" },
@@ -49,7 +49,7 @@ public class AggregateEmissionTest
     [Fact]
     public void WarmAnalysisAndEmissionAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("let value = (\"a\", (2, \"b\"))\nlet moved = value\nlet array: [2 of i32] = [1, 2]\nlet copied = array");
+        var c = MinimalEmissionTest.Analyze("let value = (\"a\", (2, \"b\"))\nlet moved = value@move\nlet array: [2 of i32] = [1, 2]\nlet copied = array");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);
@@ -77,7 +77,7 @@ public class AggregateEmissionTest
     [InlineData("flag")]
     public void InvalidAggregatePlansDoNotWriteIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("var value = (\"a\", 1)\nif true => value\nvalue = (\"b\", 2)");
+        var c = MinimalEmissionTest.Analyze("var value = (\"a\", 1)\nif true => value@move\nvalue = (\"b\", 2)");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var construction = body.ConstructionStorage[0];

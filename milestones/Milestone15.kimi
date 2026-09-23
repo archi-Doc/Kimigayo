@@ -21,7 +21,7 @@ func run(useFirst: bool)
         step = step + 1
         defer => Console.writeLine("Iteration finished.")
         if step == 2
-            consume(current, initial + 1)
+            consume(current@move, initial + 1)
             current = Item.init(20) // Repair before the continue backedge.
             continue
         do

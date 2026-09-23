@@ -25,9 +25,9 @@ public class MixedRequireContinuationTest
     [InlineData("var x: i32", "require c else\n                x = 3\n                return", "let y = x", "x = 2", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "require c else\n                x = 3\n                return\n            x = 4", "let y = x", "()", OwnershipFailure.UninitializedUse)]
     [InlineData("let x: i32", "require c else\n                x = 3\n                return", "x = 4", "()", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"", "require c else\n                Console.writeLine(s)\n                return", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "require c else => return\n            Console.writeLine(s)", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "require take(s) else => return", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "require c else\n                _ = s@move\n                return", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "require c else => return\n            _ = s@move", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "require take(s@move) else => return", "Console.writeLine(s)", "()", OwnershipFailure.PossiblyMovedUse)]
     public void EffectsRemainSpecificToTheirSourcePaths(string declaration, string dead, string use, string tail, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, "return", dead, use, tail) + "\nfunc take(s: string) -> bool => true");

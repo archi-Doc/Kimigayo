@@ -5,14 +5,14 @@ struct Toolkit
             let value: T
 
             public init(value: T)
-                self.value = value
+                self.value = value@move
 
             // No deinit: extracting a Non-Copy field is permitted.
-            public func take(self: Self) -> T => self.value
+            public func take(self: Self) -> T => self.value@move
 
     public group Selection
         public func choose<T>(first: T, second: T, useFirst: bool) -> T
-            return if useFirst => first else => second
+            return if useFirst => first@move else => second@move
 
 public func main()
     defer => Console.writeLine("Generic scope finished.")
@@ -21,10 +21,10 @@ public func main()
         Toolkit.Storage.Box<string>.init("Unused item."),
         true)
     // The unselected Box is destroyed in choose; selected is consumed here.
-    Console.writeLine(selected.take())
+    Console.writeLine(selected@move.take())
 
     let numbers = Toolkit.Storage.Box<[3 of i32]>.init([2, 4, 6])
-    let values = numbers.take()
+    let values = numbers@move.take()
     var total: i32 = 0
     for value in values
         total = total + value

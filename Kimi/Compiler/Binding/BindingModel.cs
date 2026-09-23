@@ -106,6 +106,10 @@ internal enum BindingFailure : byte
     SplitCLayoutStorage,
     InvalidCLayout,
     InvalidInlineLayout,
+
+    // SPEC 15.1.5 lending rule: a bare Non-Copy Place needs @move, and a directly owned Place needs @uniq.
+    TransferRequired,
+    ExclusiveBorrowRequired,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
@@ -164,6 +168,9 @@ public sealed class BindingSymbol
     internal int Slot { get; set; }
 
     internal bool MutableCapture { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
+    internal bool TransferCapture { get; set; }
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>

@@ -13,7 +13,7 @@ public func main()
     ]
     var total: i32 = 0
     let answer: i32 = scan: loop
-        for command in commands
+        for command in commands@move
             let amount: i32 = match command
                 .Data((let value, true)) if value > 0 => value
                 .Data(_) => continue

@@ -252,6 +252,5 @@ entry:
   %length = load i64, ptr %length_ptr, align 8
   call void @__kimi_stdout(ptr %data, i64 %length, ptr %location, i64 %location_length)
   call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr %location, i64 %location_length)
-  call void @__kimi_destroy_string(ptr %text, ptr %location, i64 %location_length)
   ret void
 }

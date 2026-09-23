@@ -1,5 +1,5 @@
 // T? is exactly Option<T>; each try extracts one layer.
-func unwrap<T>(value: T?) -> T? => .Some(try value)
+func unwrap<T>(value: T?) -> T? => .Some(try value@move)
 
 func prepare(ready: bool) -> Result<i32, string>
     if ready => return .Ok(8)
@@ -28,7 +28,8 @@ _ = process(false)
 _ = unwrap<string>(.Some("owned payload"))
 
 // Each unnamed slot keeps the acquisition and lifetime of a named slot.
+// pairs@move consumes the Copy array, so the tuple bindings acquire owned components.
 let pairs: [2 of (i32, i32)] = [(1, 10), (2, 20)]
 var total = 0
-for (key, _) in pairs => total += key
+for (key, _) in pairs@move => total += key
 require total == 3 else => $abort("iteration")

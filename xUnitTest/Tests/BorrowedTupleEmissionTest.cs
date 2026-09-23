@@ -25,7 +25,7 @@ public class BorrowedTupleEmissionTest
     [InlineData("var pair: (i32, bool) = (1, true)\nlet r = pair@ref\npair.0 = 2\nlet n = r.0")]
     [InlineData("let pair: (i32, bool)\nlet r = pair@ref\nlet n = r.0")]
     [InlineData("func view(pair: ref/(i32, bool)) -> ref{pair}/(i32, bool) => pair\nlet r = view((1, true))\nlet n = r.0")]
-    [InlineData("let pair: (i32, string) = (1, \"owned\")\nlet moved = pair.1\nlet r = pair@ref\nlet n = r.0")]
+    [InlineData("let pair: (i32, string) = (1, \"owned\")\nlet moved = pair.1@move\nlet r = pair@ref\nlet n = r.0")]
     public void RejectsInvalidLifetimeOrInitialization(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -51,7 +51,7 @@ public class BorrowedTupleEmissionTest
     [Fact]
     public void BorrowingDoesNotConsumeOwnedTupleElements()
     {
-        const string Source = "func read(pair: ref/(i32, string)) -> i32 => pair.0\nlet pair: (i32, string) = (42, \"owned\")\nrequire read(pair) == 42 else => $abort(\"value\")\nlet text = pair.1";
+        const string Source = "func read(pair: ref/(i32, string)) -> i32 => pair.0\nlet pair: (i32, string) = (42, \"owned\")\nrequire read(pair) == 42 else => $abort(\"value\")\nlet text = pair.1@move";
         var ir = ScalarEmissionTest.EmitFixture("BorrowedTupleCleanup", Source, string.Empty);
         StringEmissionTest.WriteAuditedFixture("BorrowedTupleCleanup", Source, ir, string.Empty, "owned=1", order: [0]);
     }

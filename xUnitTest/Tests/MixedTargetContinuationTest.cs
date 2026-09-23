@@ -32,8 +32,8 @@ public class MixedTargetContinuationTest
     [Theory]
     [InlineData("var x: i32", "return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "x = 1\n                return", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "Console.writeLine(x)\n                return", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "return", "Console.writeLine(x)", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "_ = x@move\n                return", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "_ = x@move", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "x = 1\n                return", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "return", "x = 1", "x = 2", OwnershipFailure.ReassignedLet)]
     public void EscapingFactsAreNotReplacedByTheMergedState(string declaration, string early, string tail, string use, OwnershipFailure failure)
@@ -71,7 +71,7 @@ public class MixedTargetContinuationTest
 
     [Theory]
     [InlineData("var x: i32", "return", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "Console.writeLine(x)\n                return", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "_ = x@move\n                return", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "x = 1\n                return", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     public void BareTransfersDoNotEraseEarlierHistory(string declaration, string early, string tail, string use, OwnershipFailure failure)
     {
@@ -94,10 +94,10 @@ public class MixedTargetContinuationTest
     [InlineData("AbortExit", "var x: i32", "x = 3\n            stop()", "x = 2", "let y = x", false)]
     [InlineData("Divergence", "var x: i32", "x = 3\n            loop => continue", "x = 2", "let y = x", true)]
     [InlineData("DivergenceExit", "var x: i32", "x = 3\n            loop => continue", "x = 2", "let y = x", false)]
-    [InlineData("Move", "var x = \"old\"", "Console.writeLine(x)\n            x = \"new\"", "()", "Console.writeLine(x)", true)]
-    [InlineData("MoveExit", "var x = \"old\"", "Console.writeLine(x)\n            x = \"new\"", "()", "Console.writeLine(x)", false)]
-    [InlineData("Borrow", "var x = \"old\"", "inspect(x)\n            Console.writeLine(x)\n            x = \"new\"", "()", "Console.writeLine(x)", true)]
-    [InlineData("BorrowExit", "var x = \"old\"", "inspect(x)\n            Console.writeLine(x)\n            x = \"new\"", "()", "Console.writeLine(x)", false)]
+    [InlineData("Move", "var x = \"old\"", "_ = x@move\n            x = \"new\"", "()", "Console.writeLine(x)", true)]
+    [InlineData("MoveExit", "var x = \"old\"", "_ = x@move\n            x = \"new\"", "()", "Console.writeLine(x)", false)]
+    [InlineData("Borrow", "var x = \"old\"", "inspect(x)\n            _ = x@move\n            x = \"new\"", "()", "Console.writeLine(x)", true)]
+    [InlineData("BorrowExit", "var x = \"old\"", "inspect(x)\n            _ = x@move\n            x = \"new\"", "()", "Console.writeLine(x)", false)]
     public void LinearEffectsRetainSeparateTargets(string name, string declaration, string dead, string tail, string use, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedEffect" + Configuration + name,
@@ -109,8 +109,8 @@ public class MixedTargetContinuationTest
     [Theory]
     [InlineData("var x: i32", "return", "let n = 3", "x = 2", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "return", "x = 3", "()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = \"s\"", "return", "Console.writeLine(x)", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = \"s\"", "Console.writeLine(x)\n                return", "let n = 3", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "return", "_ = x@move", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x = \"s\"", "_ = x@move\n                return", "let n = 3", "()", "Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "return", "x = 3", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "return", "x = 3\n            return\n            exit", "()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("let x: i32", "x = 1\n                return", "x = 3", "()", "()", OwnershipFailure.ReassignedLet)]
@@ -159,7 +159,7 @@ public class MixedTargetContinuationTest
     [Fact]
     public void ReplayedCallsStillRejectConflictingArgumentLoans()
     {
-        var c = MinimalEmissionTest.Analyze(Source("let x = \"s\"", "loop\n            if c => return\n            else => exit\n            inspect(x, x)", "()", "()") + "\nfunc inspect(a: ref/string, b: string) => ()");
+        var c = MinimalEmissionTest.Analyze(Source("let x = \"s\"", "loop\n            if c => return\n            else => exit\n            inspect(x, x@move)", "()", "()") + "\nfunc inspect(a: ref/string, b: string) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);

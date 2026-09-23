@@ -48,8 +48,17 @@ public sealed partial class Binding
     private BoundType? BindIteration(ForKoto source, BindingScope scope)
     {
         var iterable = this.BindNode(source.Iterable, scope);
-        var element = iterable?.Kind == BoundTypeKind.FixedArray ? iterable.Components[0] : iterable?.Kind == BoundTypeKind.Slice
-            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [iterable.Components[0]], origin: iterable.Origin) : BoundType.ISize;
+        source.SharedIterable = null;
+        if (iterable?.Kind == BoundTypeKind.FixedArray && IsBarePlace(source.Iterable))
+        {
+            // SPEC 14.6.2 subject rule: a bare fixed-array Place is shared-borrowed and iterated as the
+            // Slice values[..], yielding ref{source}/T; values@move or a temporary consumes the array.
+            source.SharedIterable = this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [iterable.Components[0]], origin: this.PlaceOrigin(source.Iterable));
+        }
+
+        var view = source.SharedIterable ?? iterable;
+        var element = view?.Kind == BoundTypeKind.FixedArray ? view.Components[0] : view?.Kind == BoundTypeKind.Slice
+            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : BoundType.ISize;
         var result = this.BeginResult(source, scope, BoundType.Unit);
         var duplicate = false;
         for (var i = 0; i < source.Bindings.Count; i++)

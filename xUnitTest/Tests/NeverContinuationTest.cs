@@ -15,7 +15,7 @@ public class NeverContinuationTest
 
     [Theory]
     [InlineData("let n: i32 = do => loop => continue\nlet y = n", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"\nConsole.writeLine(s)\ndo => loop => ()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\n_ = s@move\ndo => loop => ()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(y: i32 = (scope: do\n    let n: i32 = do => loop => continue\n    exit to scope: n\n)) => ()\nf(3)", OwnershipFailure.UninitializedUse)]
     public void TransparentDivergentScopesPreserveOwnershipFacts(string source, OwnershipFailure failure)
     {
@@ -103,7 +103,7 @@ public class NeverContinuationTest
     [InlineData("let n: i32 = loop => continue\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n: i32 = loop => ()\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n = 1\nloop => continue\nn = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"\nConsole.writeLine(s)\nloop => ()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\n_ = s@move\nloop => ()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f()\n    return\n    let n: i32 = loop => continue\n    let y = n", OwnershipFailure.UninitializedUse)]
     public void StateNeutralLoopsPreserveInitializationAndMoveFacts(string source, OwnershipFailure failure)
     {
@@ -126,9 +126,9 @@ public class NeverContinuationTest
     [InlineData("let n: i32 = stop()\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n: i32\nstop()\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n = 1\nstop()\nn = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"\nConsole.writeLine(s)\nstop()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\n_ = s@move\nstop()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let n: i32 = stop()\nstop()\nlet y = n", OwnershipFailure.UninitializedUse)]
-    [InlineData("func take(s: string) -> Never => stop()\nlet s = \"s\"\ntake(s)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func take(s: string) -> Never => stop()\nlet s = \"s\"\ntake(s@move)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void NonreturningCallsPreserveInitializationAndMoveFacts(string body, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Stop + body);

@@ -341,7 +341,7 @@ public class RuntimeTypeTest
     [Fact]
     public void EvaluationRetainsCallEffectsExactlyOnce()
     {
-        var c = Parse("struct Dog\nfunc obtain(s: string) -> obj/Dog => obtain(s)\nfunc f(s: string) -> bool => obtain(s) is Dog");
+        var c = Parse("struct Dog\nfunc obtain(s: string) -> obj/Dog => obtain(s@move)\nfunc f(s: string) -> bool => obtain(s@move) is Dog");
         AssertBound(c);
         c.Ownership.Analyze();
         var test = Test(c);

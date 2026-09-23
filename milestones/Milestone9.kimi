@@ -5,7 +5,7 @@ group Demo
             let value: T
 
             public init(value: T)
-                self.value = value
+                self.value = value@move
 
             public func view(self: ref/Self) -> ref{self}/T
                 return self.value@ref/T
@@ -32,7 +32,7 @@ public func main()
     let result = Demo.Search.find<5, i32>(
         batch.view(), func [target] (value: i32) => value == target)
 
-    match result
+    match result@move
         .Found(let index, let value) if index == 3 and value == 6
             Console.writeLine("Found 6 at index 3.")
         .Found(_, _) => $abort("Unexpected search result")

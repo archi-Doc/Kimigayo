@@ -88,5 +88,5 @@ public class PatternWarningCompletionTest
     }
 
     private static string Source(string access, string first, string second)
-        => access + " contract Hidden\npublic struct Value\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\ngroup Consumer\n    func inspect(value: E<Value>) => match value\n        " + first + " => ()\n        " + second + " => ()";
+        => access + " contract Hidden\npublic struct Value\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\ngroup Consumer\n    func inspect(value: E<Value>) => match value@move\n        " + first + " => ()\n        " + second + " => ()";
 }

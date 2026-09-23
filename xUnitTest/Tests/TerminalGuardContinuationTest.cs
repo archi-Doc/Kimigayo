@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -139,13 +140,14 @@ public class TerminalGuardContinuationTest
         Assert.False(body.IsReachable(body.MatchArms[0].BodyEntry));
         // Ownership conservatively retains Pattern failure; lowering proves the
         // catch-all always enters this guard. Its protection end is checking-only.
+        // The writeLine calls end their own argument borrows (SPEC 22.4) and are excluded.
         Assert.All(
-            body.Operations.Select((op, id) => (op, id)).Where(x => x.op.Kind == OwnershipOperationKind.EndComparisonLoans),
+            body.Operations.Select((op, id) => (op, id)).Where(x => x.op.Kind == OwnershipOperationKind.EndComparisonLoans && x.op.Source is not InvocationKoto),
             x => Assert.False(body.IsReachable(x.id)));
     }
 
     [Theory]
-    [InlineData("let s = \"s\"", "return", "Console.writeLine(s)", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "return", "_ = s@move", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "if c => return else => false", "x = 2", "x = 3", OwnershipFailure.ReassignedLet)]
     public void UnselectedBodiesStillCheckEffects(string declaration, string guard, string body, string tail, OwnershipFailure failure)
     {

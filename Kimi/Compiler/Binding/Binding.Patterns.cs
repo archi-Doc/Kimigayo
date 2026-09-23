@@ -152,6 +152,19 @@ public sealed partial class Binding
 
             expected = subject.Components[0];
         }
+        else if (subject is { Semantics: SemanticsKind.Owner } && IsBarePlace(match.Expression) && this.ProveCopy(subject, match.Expression) != ConstraintProof.Proven)
+        {
+            // SPEC 15.1.6 subject rule: an owned Place is shared-borrowed; a proven-Copy Place is copied instead,
+            // which is observationally the same and keeps no Loan. Consuming a Place is written match x@move.
+            if (ReferenceEquals(subject, BoundType.String))
+            {
+                plan.Pending = true;
+                return Fail(match, BindingFailure.Unsupported, true); // ref/string bindings are not lowered yet.
+            }
+
+            subject = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [subject], origin: this.PlaceOrigin(match.Expression));
+            plan.SharedSubject = subject;
+        }
 
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
         if (subject is null)

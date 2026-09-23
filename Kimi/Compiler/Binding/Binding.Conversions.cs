@@ -6,6 +6,25 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // String borrows (ref/string, uniq/string) are formed only as call arguments; string reference locals are not lowered yet.
+    private static bool IsCallArgument(Koto node)
+    {
+        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+        {
+            if (parent is InvocationKoto)
+            {
+                return true;
+            }
+
+            if (parent is not (LabeledKoto or ParenthesizedKoto))
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     private BindingScope? conversionEvidenceScope;
     private NumberLiteralKoto? floatingIntegerLiteral;
 
@@ -114,7 +133,7 @@ public sealed partial class Binding
             BoundType adapted;
             var fits = ObjectTypes.IsBorrow(pattern)
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
-                : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _);
+                : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
                 !FitsType(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))
@@ -126,6 +145,20 @@ public sealed partial class Binding
             Complete(conversion.Right, result);
             conversion.ConversionBinding = ConversionBinding.Borrow;
             return Complete(conversion, result);
+        }
+
+        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.MoveOperation, OriginName: null, OriginExpression: null, OriginArguments: null })
+        {
+            // SPEC 13.5.3: @move transfers a Movable Place, even a Copy one; a Temporary Value passes its ownership.
+            var transferred = this.BindNode(conversion.Left, scope);
+            if (transferred is null)
+            {
+                return Complete(conversion, null);
+            }
+
+            Complete(conversion.Right, transferred);
+            conversion.ConversionBinding = ReferenceEquals(transferred, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
+            return Complete(conversion, transferred);
         }
 
         if (syntax is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
@@ -155,12 +188,12 @@ public sealed partial class Binding
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
                 (StructStorage.IsStruct(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure || ReferenceTypes.IsStorage(operandType) ||
-                    ScalarTypes.Supports(operandType)) &&
+                    ScalarTypes.Supports(operandType) || (ReferenceEquals(operandType, BoundType.String) && IsCallArgument(conversion))) &&
                 shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
             {
                 var referent = IsBorrow(operandType.Semantics) ? operandType.Components[0] : operandType;
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent]);
-                if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _))
+                if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
                     return Fail(conversion, BindingFailure.InvalidAssignment);
                 }
@@ -170,7 +203,8 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics == SemanticsKind.Owner && SupportsIdentityAcquisition(operandType) &&
+            // SPEC 13.5.3: an owning-Semantics spelling that matches the operand's outer Semantics is the transfer.
+            if (semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && operandType.Semantics == semantics &&
                 shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
             {
                 for (var targetNode = conversion.Right; ;)
@@ -184,7 +218,7 @@ public sealed partial class Binding
                     targetNode = targetNode is ParenthesizedTypeKoto parentheses ? parentheses.Type : ((TypeSemanticsKoto)targetNode).Type!;
                 }
 
-                conversion.ConversionBinding = ReferenceEquals(operandType, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
+                conversion.ConversionBinding = ReferenceEquals(operandType, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
                 return Complete(conversion, operandType);
             }
 
@@ -273,10 +307,26 @@ public sealed partial class Binding
             return Complete(conversion, target);
         }
 
-        if (ReferenceEquals(source, target) && SupportsIdentityAcquisition(source))
+        if (ReferenceEquals(source, target))
         {
-            conversion.ConversionBinding = ConversionBinding.Identity;
-            return Complete(conversion, target);
+            // SPEC 13.5.3: a written outermost owner Semantics (@owner/T) transfers; a Type-only target is
+            // Identity Acquisition, which Copies and never transfers a Non-Copy Place.
+            if (syntax is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null } && source.Semantics == SemanticsKind.Owner)
+            {
+                conversion.ConversionBinding = ConversionBinding.Transfer;
+                return Complete(conversion, target);
+            }
+
+            if (SupportsIdentityAcquisition(source))
+            {
+                if (IsBarePlace(conversion.Left) && this.ProveCopy(source, conversion) != ConstraintProof.Proven)
+                {
+                    return Fail(conversion, BindingFailure.TransferRequired);
+                }
+
+                conversion.ConversionBinding = ConversionBinding.Identity;
+                return Complete(conversion, target);
+            }
         }
 
         // Other ownership/borrow adaptations require their own verified paths.

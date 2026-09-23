@@ -19,7 +19,7 @@ struct FlagSource
 
 struct Wrapper<T>
     let value: T
-    public init(value: T) => self.value = value
+    public init(value: T) => self.value = value@move
 
     // Storage is valid without this premise; the Source capability is conditional.
     Self is Source when T is Source
@@ -47,7 +47,7 @@ public func main()
     match readTwice(flag@ref)
         (true, true) => Console.writeLine("Associated flags are true, true.")
         _ => $abort("Flag requirement call failed")
-    let nested = Wrapper<Wrapper<NumberSource>>.init(number)
+    let nested = Wrapper<Wrapper<NumberSource>>.init(number@move)
     require readNumber(nested@ref) == 21 else => $abort("Nested conformance failed")
     // i32 has no user Source conformance, but Wrapper<i32> storage remains legal.
     let storageOnly = Wrapper<i32>.init(99)

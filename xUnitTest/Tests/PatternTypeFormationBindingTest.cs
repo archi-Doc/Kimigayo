@@ -45,7 +45,8 @@ public class PatternTypeFormationBindingTest
     [InlineData("Option<Box<i32>>", ".Some(_)\n    .None")]
     public void ValidSubjectTypesRetainCoverage(string type, string pattern)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: " + type + ") => match value\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
+        // A structural pattern decomposes an owned Non-Copy subject only under `match value@move` (SPEC 15.1.6).
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: " + type + ") => match value@move\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
         var restored = Reload(c);
@@ -98,7 +99,7 @@ public class PatternTypeFormationBindingTest
     [Fact]
     public void WarmPatternFormationChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: Option<Box<i32>>) => match value\n    .Some(_) => ()\n    .None => ()");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: Option<Box<i32>>) => match value@move\n    .Some(_) => ()\n    .None => ()");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

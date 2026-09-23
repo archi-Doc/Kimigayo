@@ -17,17 +17,17 @@ public class StringGuardEmissionTest
     [InlineData("Wildcard", "match \"a\"\n    _ if false => ()\n    _ if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
     [InlineData("Mismatch", "func bad() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch \"a\"\n    \"b\" if bad() => ()\n    \"a\" if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
     [InlineData("BodyVar", "match \"a\"\n    var s if same(s, \"a\")\n        s = \"b\"\n        Console.writeLine(s)\n    _ => ()", "b\n")]
-    [InlineData("Return", "func choose(text: string, wanted: ref/string) -> string\n    return match text\n        let s if same(s, wanted) => s\n        _ => \"other\"\nConsole.writeLine(choose(\"a\", \"a\"))", "a\n")]
-    [InlineData("CallSubject", "func echo(s: string) -> string => s\nmatch echo(\"a\")\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("Return", "func choose(text: string, wanted: ref/string) -> string\n    return match text@move\n        let s if same(s, wanted) => s@move\n        _ => \"other\"\nConsole.writeLine(choose(\"a\", \"a\"))", "a\n")]
+    [InlineData("CallSubject", "func echo(s: string) -> string => s@move\nmatch echo(\"a\")\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("Covered", "match \"a\"\n    _ => Console.writeLine(\"ok\")\n    let s if same(s, s) => Console.writeLine(s)", "ok\n")]
     [InlineData("ShortCircuit", "match \"a\"\n    let s if false and same(s, s) => ()\n    let s if true or same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("Deferred", "defer\n    match \"a\"\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()\nConsole.writeLine(\"ok\")", "ok\na\n")]
     [InlineData("Cleanup", "var flag = true\nmatch \"a\"\n    let s if (check: do\n        defer => flag = false\n        exit to check: same(s, s)\n    ) => if not flag => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("Transfer", "func run() -> string\n    match \"a\"\n        let s if (return \"ok\") => s\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
+    [InlineData("Transfer", "func run() -> string\n    match \"a\"\n        let s if (return \"ok\") => s@move\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
     [InlineData("Loop", "var n = 0\nwhile n < 3\n    n += 1\n    match \"a\"\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()", "a\na\na\n")]
     [InlineData("Nested", "match \"a\"\n    let outer if (match \"a\"\n        let inner if same(outer, inner) => true\n        _ => false\n    ) => Console.writeLine(outer)\n    _ => ()", "a\n")]
     [InlineData("OuterLoan", "let text = \"a\"\nif text == (match \"a\"\n    let s if same(s, \"a\") => \"a\"\n    _ => \"b\"\n) => Console.writeLine(text)", "a\n")]
-    [InlineData("CheckingRead", "func run() -> string\n    match \"a\"\n        let s if (check: do\n            return \"ok\"\n            same(s, s)\n            exit to check: true\n        ) => s\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
+    [InlineData("CheckingRead", "func run() -> string\n    match \"a\"\n        let s if (check: do\n            return \"ok\"\n            same(s, s)\n            exit to check: true\n        ) => s@move\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
     public void Execute(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("StringGuard" + name, Same + source, stdout);
 
@@ -44,9 +44,9 @@ public class StringGuardEmissionTest
 
     [Theory]
     [InlineData("match \"a\"\n    let s if s == \"a\" => ()\n    _ => ()")]
-    [InlineData("match \"a\"\n    let s if (work: do\n        Console.writeLine(s)\n        exit to work: true\n    ) => ()\n    _ => ()")]
+    [InlineData("func take(s: string) => ()\nmatch \"a\"\n    let s if (work: do\n        take(s@move)\n        exit to work: true\n    ) => ()\n    _ => ()")]
     [InlineData("match \"a\"\n    var s if (work: do\n        s = \"b\"\n        exit to work: true\n    ) => ()\n    _ => ()")]
-    [InlineData("match \"a\"\n    let s if (work: do\n        let saved = s\n        exit to work: true\n    ) => ()\n    _ => ()")]
+    [InlineData("match \"a\"\n    let s if (work: do\n        let saved = s@move\n        exit to work: true\n    ) => ()\n    _ => ()")]
     public void InvalidOrUnsupportedCandidateUsePublishesNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

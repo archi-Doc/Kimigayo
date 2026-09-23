@@ -19,6 +19,12 @@ namespace Kimi.Compiler;
 public static partial class Parser
 {
     private const int PrefixBindingPower = 100;
+
+    /// <summary>
+    /// Prefix <c>try</c> binds below <c>@</c> (90) and above the multiplicative operators (80):
+    /// <c>try x@move</c> is <c>try (x@move)</c> and <c>try a * b</c> is <c>(try a) * b</c>.
+    /// </summary>
+    private const int TryBindingPower = 85;
     private const int ComparisonBindingPower = 30;
     private const int RangeLeftBindingPower = 8;
     private const int RangeRightBindingPower = 9;
@@ -1469,6 +1475,12 @@ CloseParameters:
                 string? semanticsParameter = default;
                 if (!CompilerHelper.TryParse(semantics, out var semanticsKind))
                 {
+                    if (semantics.SequenceEqual(Constants.MoveOperation))
+                    {
+                        // @move is an operation, never a Semantics prefix (SPEC §13.5.1).
+                        reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "move as a Semantics prefix");
+                    }
+
                     semanticsParameter = reader.GetIdentifier(token);
                 }
 
@@ -3332,7 +3344,7 @@ CloseParameters:
 
         var left = allowLabel && reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.Colon
             ? ParseLabeledExpression(ref reader)
-            : ParsePrefixExpression(ref reader);
+            : ParsePrefixExpression(ref reader, minBindingPower);
         while (true)
         {
             var tokenKind = reader.CurrentTokenKind;
@@ -3364,6 +3376,12 @@ CloseParameters:
                 {
                     reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                     typeKoto = reader.NewErrorKoto();
+                }
+                else if (IsBareOperationTarget(ref reader))
+                {
+                    // A bare built-in Semantics shorthand or @move completes the target (SPEC §13.5.1);
+                    // a following '.', '(' or '[' continues the postfix chain: x@uniq.m(), f@move().
+                    typeKoto = new TypeSemanticsKoto(ref reader, reader.Read());
                 }
                 else
                 {
@@ -3509,7 +3527,35 @@ CloseParameters:
         return new LabeledKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, target.Span.End), label ?? string.Empty, target);
     }
 
-    private static Koto ParsePrefixExpression(ref TokenReader reader)
+    /// <summary>
+    /// Determines whether the token after <c>@</c> is a bare built-in Semantics name or <c>move</c> that completes
+    /// the operation target by itself, so that no qualified Type parse is attempted (SPEC §13.5.1).
+    /// </summary>
+    private static bool IsBareOperationTarget(ref TokenReader reader)
+    {
+        var token = reader.CurrentToken;
+        if (!token.Kind.IsIdentifierOrContextualKeyword())
+        {
+            return false;
+        }
+
+        var text = reader.GetSpan(token);
+        if (!text.SequenceEqual(Constants.MoveOperation) && !CompilerHelper.TryParse(text, out _))
+        {
+            return false;
+        }
+
+        // A slash starts a full Semantics form, an Origin brace or an optional suffix keeps the diagnostics of
+        // the Type parser, and adjacent generic arguments are not a shorthand.
+        return reader.PeekKind(1) switch
+        {
+            TokenKind.Slash or TokenKind.OpenBrace or TokenKind.Question => false,
+            TokenKind.LessThan => reader.PeekToken(1).Span.Start != token.Span.End,
+            _ => true,
+        };
+    }
+
+    private static Koto ParsePrefixExpression(ref TokenReader reader, int minBindingPower = 0)
     {
 ProcessPrefix:
         var tokenKind = reader.CurrentTokenKind;
@@ -3528,6 +3574,12 @@ ProcessPrefix:
         if ((tokenKind == TokenKind.Try || IsPrefixOperator[(byte)tokenKind]) && reader.CanRead)
         {
             var token = reader.Read();
+            if (tokenKind == TokenKind.Try && minBindingPower > TryBindingPower)
+            {
+                // A level-2 prefix operator cannot take a try expression directly: write -(try x) (SPEC §13.1).
+                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "grouped try operand");
+            }
+
             Koto operand;
             if (IsExpressionBoundary(ref reader))
             {
@@ -3536,7 +3588,7 @@ ProcessPrefix:
             }
             else
             {
-                operand = ParseExpression(ref reader, PrefixBindingPower);
+                operand = ParseExpression(ref reader, tokenKind == TokenKind.Try ? TryBindingPower : PrefixBindingPower);
             }
 
             // $abort accepts exactly one positional Expression, without a label or trailing comma (SPEC F.4).

@@ -24,7 +24,7 @@ public class ElementEmissionTest
         { "ShortCircuit", "let a: [0 of i32] = []\nif false and a[0] == 0 => Console.writeLine(\"bad\")\nConsole.writeLine(\"ok\")" },
         { "Transfer", "func f() -> i32\n    let a: [1 of i32] = [1]\n    return a[(return 42)]\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "Widths", "let a: (i8, u8, i128, f64, char) = (-7, 200, -170141183460469231731687303715884105728, 2.5, '😀')\nif a.0 == -7 and a.1 == 200 and a.2 < 0 and a.3 == 2.5 and a.4 == '😀' => Console.writeLine(\"ok\")" },
-        { "TupleCopyReturn", "func get(p: ((i32, bool), string)) -> (i32, bool) => p.0\nlet p = ((42, true), \"held\")\nlet r = get(p)\nif r.0 == 42 and r.1 => Console.writeLine(\"ok\")" },
+        { "TupleCopyReturn", "func get(p: ((i32, bool), string)) -> (i32, bool) => p.0\nlet p = ((42, true), \"held\")\nlet r = get(p@move)\nif r.0 == 42 and r.1 => Console.writeLine(\"ok\")" },
         { "IndexConversion", "let a: [1 of i32] = [42]\nlet i: u8 = 0\nif a[i@isize] == 42 => Console.writeLine(\"ok\")" },
         { "IndexSelection", "let a: [2 of i32] = [1, 42]\nif a[if true => 1 else => 0] == 42 => Console.writeLine(\"ok\")" },
         { "IndexRead", "let a: [2 of i32] = [1, 42]\nlet indices: [1 of isize] = [1]\nif a[indices[0]] == 42 => Console.writeLine(\"ok\")" },
@@ -60,7 +60,7 @@ public class ElementEmissionTest
 
     [Theory]
     [InlineData("var a: [1 of i32] = [1]\nlet n = a[(work: do\n    a = [2]\n    exit to work: 0\n)]")]
-    [InlineData("func take(a: (string, [1 of i32])) => ()\nlet a: (string, [1 of i32]) = (\"a\", [1])\nlet n = a.1[(work: do\n    take(a)\n    exit to work: 0\n)]")]
+    [InlineData("func take(a: (string, [1 of i32])) => ()\nlet a: (string, [1 of i32]) = (\"a\", [1])\nlet n = a.1[(work: do\n    take(a@move)\n    exit to work: 0\n)]")]
     [InlineData("var a: [1 of i32] = [1]\nlet n = a[(work: do\n    defer => a = [2]\n    exit to work: 0\n)]")]
     public void ReceiverCannotChangeDuringIndexEvaluation(string source)
     {
@@ -73,10 +73,10 @@ public class ElementEmissionTest
     [Theory]
     [InlineData("let a = (1, 2)\nlet n = a.2")]
     [InlineData("let a: [1 of i32] = [1]\nlet i: i32 = 0\nlet n = a[i]")]
-    [InlineData("let a = (\"a\", 1)\nlet text = a.0\nlet twice = a.0")]
+    [InlineData("let a = (\"a\", 1)\nlet text = a.0@move\nlet twice = a.0@move")]
     [InlineData("var a: [1 of f64] = [1.0]\na[0] %= 2.0")]
-    [InlineData("let a: ([0 of string], i32) = ([], 1)\nlet n = a.0\nlet twice = a.0")]
-    [InlineData("let a: [1 of string] = [\"a\"]\nlet i: isize = 0\nlet s = a[i]")]
+    [InlineData("let a: ([0 of string], i32) = ([], 1)\nlet n = a.0@move\nlet twice = a.0@move")]
+    [InlineData("let a: [1 of string] = [\"a\"]\nlet i: isize = 0\nlet s = a[i]@move")]
     public void UnsupportedOrInvalidAccessProducesNoIr(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

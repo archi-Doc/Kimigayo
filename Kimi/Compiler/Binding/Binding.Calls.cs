@@ -453,6 +453,7 @@ public sealed partial class Binding
             var winnerIndex = -1;
             var pending = false;
             var error = false;
+            this.transferRequired = this.lendingRequired = false;
             foreach (var candidate in candidates)
             {
                 if (candidate.Declaration is not FunctionKoto function)
@@ -507,7 +508,8 @@ public sealed partial class Binding
 
             if (applicable == 0)
             {
-                return Fail(call, BindingFailure.NoApplicableCandidate, true);
+                // SPEC 15.1.5: name the missing spelling when a bare Place was the only obstacle.
+                return Fail(call, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate, true);
             }
 
             if (applicable > 1)

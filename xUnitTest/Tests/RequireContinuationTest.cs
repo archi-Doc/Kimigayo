@@ -32,8 +32,8 @@ public class RequireContinuationTest
     [InlineData("var x: i32", "require c else => return", "x = 2\n        stop()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "require c else\n            x = 1\n            return", "stop()", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "require c else\n            if c => return\n            x = 1\n            return", "x = 2\n        stop()", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "require c else\n            Console.writeLine(s)\n            return", "stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "require c else => return", "Console.writeLine(s)\n        stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "require c else\n            _ = s@move\n            return", "stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "require c else => return", "_ = s@move\n        stop()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "require c else\n            x = 1\n            return", "stop()", "x = 2", OwnershipFailure.ReassignedLet)]
     [InlineData("var counter = Counter.init()\n    let r = counter@ref", "require c else\n            counter.value = 9\n            return", "stop()", "let n = r.value", OwnershipFailure.ComparisonLoanConflict)]
     public void FailurePathsDoNotRestoreOwnership(string declaration, string require, string tail, string use, OwnershipFailure failure)
@@ -90,7 +90,7 @@ public class RequireContinuationTest
 
     [Theory]
     [InlineData("let x: i32\nvalue(true)\nlet y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"\nConsole.writeLine(s)\nvalue(false)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"\n_ = s@move\nvalue(false)\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     public void DivergentDefaultPreservesCallerFacts(string tail, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Default + tail);

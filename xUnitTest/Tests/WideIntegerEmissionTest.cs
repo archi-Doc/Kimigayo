@@ -26,7 +26,7 @@ public class WideIntegerEmissionTest
         { "WideSignedZero", "let x: u128 = -0\nif x == 0 => Console.writeLine(\"ok\")", "ok\n" },
         { "WideMatch", $"func f(x: u128) -> i128\n    return match x\n        {UnsignedMax} => {Min}\n        {High} => {Max}\n        _ => 0\nif f({UnsignedMax}) == {Min} and f({High}) == {Max} => Console.writeLine(\"ok\")", "ok\n" },
         { "WideGuard", $"let x: u128 = {UnsignedMax}\nmatch x\n    let y if y == {High} => Console.writeLine(\"bad\")\n    let z if z == {UnsignedMax} => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")", "ok\n" },
-        { "WideTuple", $"var x = (1@u128, \"old\", ({Min}@i128, true))\nlet y = x\nx = y\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "WideTuple", $"var x = (1@u128, \"old\", ({Min}@i128, true))\nlet y = x@move\nx = y@move\nConsole.writeLine(\"ok\")", "ok\n" },
         { "WideArray", $"let x: [2 of u128] = [{High}, {UnsignedMax}]\nlet y = x\nConsole.writeLine(\"ok\")", "ok\n" },
         { "WideMixedAbi", $"func f(a: u8, b: i128, c: f64, d: u128, e: i128, f: string) -> u128\n    Console.writeLine(f)\n    if a == 255 and b == {Min} and c == 1.5 and e == {Max} => return d\n    return 0\nif f(255, {Min}, 1.5, {UnsignedMax}, {Max}, \"call\") == {UnsignedMax} => Console.writeLine(\"ok\")", "call\nok\n" },
         { "WideOrder", "func left() -> u128\n    Console.writeLine(\"left\")\n    return 3\nfunc right() -> u128\n    Console.writeLine(\"right\")\n    return 7\nif left() * right() == 21 => Console.writeLine(\"ok\")", "left\nright\nok\n" },

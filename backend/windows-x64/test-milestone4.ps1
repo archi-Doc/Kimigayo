@@ -105,8 +105,9 @@ foreach ($level in @('O0', 'O2')) {
 }
 
 $invalid = [ordered]@{
-    MovedRead = $original.Replace('finish(counter) //', "finish(counter)`n    let invalid = counter.value //")
-    DoubleMove = $original.Replace('finish(counter) //', "finish(counter)`n    finish(counter) //")
+    MovedRead = $original.Replace('finish(counter@move) //', "finish(counter@move)`n    let invalid = counter.value //")
+    DoubleMove = $original.Replace('finish(counter@move) //', "finish(counter@move)`n    finish(counter@move) //")
+    BareTransfer = $original.Replace('finish(counter@move) //', 'finish(counter) //')
     Incomplete = $original.Replace('self.value = 0', '()')
     ConditionalInit = $original.Replace('self.value = 0', 'if false => self.value = 0')
     LateInit = $original.Replace('self.value = 0', 'defer => self.value = 0')
@@ -114,9 +115,9 @@ $invalid = [ordered]@{
     ImmutableOwner = $original.Replace('var counter =', 'let counter =')
     PrivateConstructor = $original.Replace('public init()', 'init()')
     WrongArgument = $original.Replace('Counter.init()', 'Counter.init(true)')
-    ExplicitDeinit = $original.Replace('finish(counter) //', 'counter.deinit() //')
+    ExplicitDeinit = $original.Replace('finish(counter@move) //', 'counter.deinit() //')
     CopyWithDeinit = $original.Replace('struct Counter', "struct Counter`n    Self is Copy")
-    PartialMove = "struct S`n    public var text: string`n    public init() => self.text = `"held`"`n    deinit => ()`nlet s = S.init()`nConsole.writeLine(s.text)"
+    PartialMove = "struct S`n    public var text: string`n    public init() => self.text = `"held`"`n    deinit => ()`nlet s = S.init()`nlet taken = s.text@move"
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"

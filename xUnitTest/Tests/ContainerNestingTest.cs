@@ -11,8 +11,8 @@ namespace XunitTest;
 public class ContainerNestingTest
 {
     [Theory]
-    [InlineData("struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value\nfunc f() -> i32\n    let result = (Outer<i32>.Helpers{h}).identity(42)\n        origin h.source == static\n    return result")]
-    [InlineData("alias H => (Outer<i32>.Helpers{h})\n    origin h.source == static\nstruct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value\nlet x = H.identity(42)")]
+    [InlineData("struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move\nfunc f() -> i32\n    let result = (Outer<i32>.Helpers{h}).identity(42)\n        origin h.source == static\n    return result")]
+    [InlineData("alias H => (Outer<i32>.Helpers{h})\n    origin h.source == static\nstruct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move\nlet x = H.identity(42)")]
     [InlineData("contract C\nstruct Outer<T>\n    public struct Inner {}\n        Self is C when T is Copy\nfunc accept<T>(value: T)\n    T is C\n    ()\naccept(Outer<i32>.Inner.init())")]
     [InlineData("struct Outer {}\n    private struct Hidden {}\n    public struct Inner {}\n        private func use(value: Hidden) => ()")]
     [InlineData("open struct Outer {}\n    protected struct Inner {}")]
@@ -20,7 +20,7 @@ public class ContainerNestingTest
     [InlineData("struct Outer<T> {}\n    public struct Cell {a}\n        let value: ref{a}/T\n        public init(value: ref{a}/T) => self.value = value\nfunc f(value: ref{x}/i32)\n    let cell = (Outer<i32>.Cell{c}).init(value)\n        origin c.a == x")]
     [InlineData("struct Outer<T> {a}\n    public struct Cell {}\n        let value: ref{a}/T\n        public init(value: ref{a}/T) => self.value = value\nfunc f(value: ref{x}/i32)\n    let cell = (Outer<i32>{o}).Cell.init(value)\n        origin o.a == x")]
     [InlineData("struct Outer {}\n    public group G\n        public struct Inner {}\n            public enum E\n                A\n            public contract C")]
-    [InlineData("struct Outer {}\n    group Helpers\n        func identity(value: Self) -> Self => value")]
+    [InlineData("struct Outer {}\n    group Helpers\n        func identity(value: Self) -> Self => value@move")]
     [InlineData("struct Outer<T> {}\n    public struct Inner<U> {}\n        var first: T\n        var second: U\nfunc use(x: Outer<i32>.Inner<string>) => ()")]
     [InlineData("struct Outer<T> {}\n    public group Helpers\n        public struct Tag {}\nfunc use(x: Outer<i32>.Helpers.Tag) => ()")]
     [InlineData("struct Outer<T> {}\n    public struct Tag {}\n    func use(x: Tag) => ()")]
@@ -97,19 +97,19 @@ public class ContainerNestingTest
 
     [Fact]
     public void NestedConstructionUsesOuterFieldSubstitution()
-        => ScalarEmissionTest.EmitFixture("ContainerNestingFields", "struct Outer<T> {}\n    public struct Inner {}\n        public var value: T\n        public init(value: T) => self.value = value\nvar a = Outer<i32>.Inner.init(42)\nif a.value == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
+        => ScalarEmissionTest.EmitFixture("ContainerNestingFields", "struct Outer<T> {}\n    public struct Inner {}\n        public var value: T\n        public init(value: T) => self.value = value@move\nvar a = Outer<i32>.Inner.init(42)\nif a.value == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
 
     [Fact]
     public void NestedGroupFunctionsRetainOuterBindings()
-        => ScalarEmissionTest.EmitFixture("ContainerNestingGroup", "struct Outer<T> {}\n    public group Helpers\n        public func echo(value: T) -> T => value\nlet a = Outer<i32>.Helpers.echo(42)\nif a == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
+        => ScalarEmissionTest.EmitFixture("ContainerNestingGroup", "struct Outer<T> {}\n    public group Helpers\n        public func echo(value: T) -> T => value@move\nlet a = Outer<i32>.Helpers.echo(42)\nif a == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
 
     [Fact]
     public void BoundAliasKeepsFunctionEnvironment()
-        => ScalarEmissionTest.EmitFixture("ContainerNestingAlias", "alias H => Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public func echo(value: T) -> T => value\nlet a = H.echo(42)\nif a == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
+        => ScalarEmissionTest.EmitFixture("ContainerNestingAlias", "alias H => Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public func echo(value: T) -> T => value@move\nlet a = H.echo(42)\nif a == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
 
     [Fact]
     public void NestedEnumConstructionRetainsOuterBindings()
-        => ScalarEmissionTest.EmitFixture("ContainerNestingEnum", "struct Outer<T> {}\n    public enum Choice\n        Value(T)\nlet x = Outer<i32>.Choice.Value(42)\nmatch x\n    .Value(let value)\n        if value == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
+        => ScalarEmissionTest.EmitFixture("ContainerNestingEnum", "struct Outer<T> {}\n    public enum Choice\n        Value(T)\nlet x = Outer<i32>.Choice.Value(42)\nmatch x@move\n    .Value(let value)\n        if value == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
 
     [Fact]
     public void InheritedNestedReferenceKeepsDefiningIdentity()
@@ -187,7 +187,7 @@ public class ContainerNestingTest
     [Fact]
     public void RoundTripsMergedNestedDeclarations()
     {
-        var c = Parse("struct Outer<T> {}\n    public struct Inner {}\n        var value: T\nstruct Outer<T> {}\n    public struct Inner {}\n        func echo(value: T) -> T => value");
+        var c = Parse("struct Outer<T> {}\n    public struct Inner {}\n        var value: T\nstruct Outer<T> {}\n    public struct Inner {}\n        func echo(value: T) -> T => value@move");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(c.Kotonoha));
         Assert.NotNull(restored);

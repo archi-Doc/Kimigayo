@@ -11,7 +11,7 @@ public class EnumEmissionTest
     [InlineData("Empty", "enum E\n    A\n    B\nlet value: E = .B")]
     [InlineData("Payload", "enum E<T>\n    A(T)\n    B\nlet value: E<(i32, bool)> = .A((12, true))")]
     [InlineData("Array", "enum E<T>\n    A(T)\n    B\nlet values: [2 of E<i64>] = [.A(7), .B]")]
-    [InlineData("Move", "enum E\n    A(string)\n    B\nlet value: E = .A(\"payload\")\nlet moved = value")]
+    [InlineData("Move", "enum E\n    A(string)\n    B\nlet value: E = .A(\"payload\")\nlet moved = value@move")]
     [InlineData("Nested", "enum E<T>\n    A(T)\n    B\nlet value: E<E<i64>> = .A(.A(5))")]
     [InlineData("Return", "enum E<T>\n    A(T)\n    B\nfunc make() -> E<i64> => .A(7)\nlet value = make()")]
     [InlineData("Aligned", "enum E<T>\n    A(u8, T, u16)\n    B\nlet values: [2 of E<u128>] = [.A(3, 340282366920938463463374607431768211455, 9), .B]")]
@@ -24,7 +24,7 @@ public class EnumEmissionTest
     [InlineData("Active", "enum E\n    A(string, string)\n    B(string)\nlet value: E = .A(\"a\", \"b\")", "a=1;b=1")]
     [InlineData("Inactive", "enum E\n    A(string)\n    B\nlet value: E = if true => .B else => .A(\"a\")", "a=0")]
     [InlineData("Replace", "enum E\n    A(string)\n    B\nvar value: E = .A(\"a\")\nvalue = .B", "a=1")]
-    [InlineData("Conditional", "enum E\n    A(string)\n    B\nvar value: E = .A(\"a\")\nif true => value\nvalue = .A(\"b\")", "a=1;b=1")]
+    [InlineData("Conditional", "enum E\n    A(string)\n    B\nvar value: E = .A(\"a\")\nif true => value@move\nvalue = .A(\"b\")", "a=1;b=1")]
     public void ActivePayloadCleanup(string name, string source, string audit)
     {
         name = "EnumCleanup" + name;
