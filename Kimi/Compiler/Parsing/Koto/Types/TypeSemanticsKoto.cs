@@ -34,7 +34,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
     /// </summary>
     public Koto? Type { get; private set; }
 
-    // Most types carry no Origin, so its three members share one lazily created object.
+    // Most types carry no Origin, so annotation data shares one lazily created object.
     private Origin? origin;
 
     /// <inheritdoc/>
@@ -65,11 +65,16 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
     internal string? BindingSetName => this.origin is { IsBindingSet: true } set ? set.Name : null;
 
-    internal void MarkBindingSet()
+    internal bool IsLegacyBorrowCandidate => this.origin is { IsBindingSet: true, FollowedBySlash: true };
+
+    internal SourceSpan BorrowOriginSpan => this.origin?.SourceSpan ?? default;
+
+    internal void MarkBindingSet(bool followedBySlash = false)
     {
         if (this.origin is { } annotation)
         {
             annotation.IsBindingSet = true;
+            annotation.FollowedBySlash = followedBySlash;
         }
     }
 
@@ -143,6 +148,9 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
+        => this.WriteTypeTo(ref builder, writeBorrowOrigin: true);
+
+    internal void WriteTypeTo(ref IndentedStringBuilder builder, bool writeBorrowOrigin)
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
 
@@ -151,12 +159,11 @@ public sealed class TypeSemanticsKoto : TypeKoto
             if (!this.isTransparentWrapper)
             {
                 builder.Append(this.SemanticsKind == SemanticsKind.Parameter ? this.SemanticsParameter : this.SemanticsKind.ToText());
-                this.WriteOriginTo(ref builder);
                 builder.Append(Constants.SlashChar);
             }
 
-            // Prefix Origins no longer need grouping; function arrows still do.
-            var needsParentheses = !this.isTransparentWrapper && this.Type is FunctionTypeKoto;
+            var needsParentheses = !this.isTransparentWrapper && (this.Type is FunctionTypeKoto or OptionalTypeKoto ||
+                this.Type is TypeSemanticsKoto { IsTransparentWrapper: false, HasOrigin: true });
             if (needsParentheses)
             {
                 builder.Append('(');
@@ -173,10 +180,16 @@ public sealed class TypeSemanticsKoto : TypeKoto
             builder.Append(this.Identifier);
         }
 
-        if (this.Type is null || this.isTransparentWrapper)
+        if (this.Type is null || this.isTransparentWrapper || writeBorrowOrigin)
         {
             this.WriteOriginTo(ref builder);
         }
+    }
+
+    internal void SetBorrowOrigin(Koto expression, SourceSpan sourceSpan)
+    {
+        this.SetOrigin(expression, null, sourceSpan.End);
+        this.origin!.SourceSpan = sourceSpan;
     }
 
     internal void SetOrigin(string originName, int end)
@@ -211,6 +224,50 @@ public sealed class TypeSemanticsKoto : TypeKoto
         }
 
         this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, end));
+    }
+
+    internal void WriteOriginTo(ref IndentedStringBuilder builder)
+    {
+        if (this.origin is null)
+        {
+            return;
+        }
+
+        var bindingSet = this.origin.IsBindingSet || this.Type is null || this.isTransparentWrapper;
+        var intersection = !bindingSet && this.OriginExpression is AndKoto;
+        builder.Append(bindingSet ? "{" : " during ");
+        if (intersection)
+        {
+            builder.Append('(');
+        }
+
+        if (this.OriginArguments is { } arguments)
+        {
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(arguments[i].Name);
+                builder.Append(" => ");
+                arguments[i].Value.WriteTo(ref builder);
+            }
+        }
+        else if (this.OriginExpression is { } expression)
+        {
+            expression.WriteTo(ref builder);
+        }
+        else
+        {
+            builder.Append(this.origin.Name);
+        }
+
+        if (bindingSet || intersection)
+        {
+            builder.Append(bindingSet ? '}' : ')');
+        }
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
@@ -286,44 +343,14 @@ public sealed class TypeSemanticsKoto : TypeKoto
         return true;
     }
 
-    private void WriteOriginTo(ref IndentedStringBuilder builder)
-    {
-        if (this.origin is null)
-        {
-            return;
-        }
-
-        builder.Append('{');
-        if (this.OriginArguments is { } arguments)
-        {
-            for (var i = 0; i < arguments.Length; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                builder.Append(arguments[i].Name);
-                builder.Append(" => ");
-                arguments[i].Value.WriteTo(ref builder);
-            }
-        }
-        else if (this.OriginExpression is { } expression)
-        {
-            expression.WriteTo(ref builder);
-        }
-        else
-        {
-            builder.Append(this.origin.Name);
-        }
-
-        builder.Append('}');
-    }
-
     /// <summary>Stores the Origin annotation of a type layer.</summary>
     private sealed class Origin
     {
         public bool IsBindingSet { get; set; }
+
+        public bool FollowedBySlash { get; set; }
+
+        public SourceSpan SourceSpan { get; set; }
 
         public string? Name { get; set; }
 

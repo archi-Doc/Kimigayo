@@ -49,7 +49,7 @@ public class ContractBindingTest
     [Theory]
     [InlineData("public func read(self: ref/Self) -> i32 => 1", true)]
     [InlineData("public func read(self: ref/Self) -> string => \"x\"", false)]
-    [InlineData("public func read(self: ref{static}/Self) -> i32 => 1", false)]
+    [InlineData("public func read(self: ref/Self during static) -> i32 => 1", false)]
     [InlineData("private func read(self: ref/Self) -> i32 => 1", false)]
     [InlineData("public unsafe func read(self: ref/Self) -> i32 => 1", false)]
     [InlineData("public func read() -> i32 => 1", false)]
@@ -97,7 +97,7 @@ public class ContractBindingTest
     [InlineData("associate C.Element is i32", "i32", true)]
     [InlineData("associate C.Element is string", "i32", false)]
     [InlineData("", "i32", false)]
-    [InlineData("associate C.Element is ref{static}/i32", "i32", false)]
+    [InlineData("associate C.Element is ref/i32 during static", "i32", false)]
     public void AssociatedIdentityIsExplicitAndPrecedesMatching(string specification, string result, bool valid)
     {
         var c = Parse($"contract C\n    associate Element\n    func read() -> Element\nstruct S\n    Self is C\n    {specification}\n    public func read() -> {result} => 1");
@@ -213,19 +213,19 @@ public class ContractBindingTest
     }
 
     [Theory]
-    [InlineData("(x: ref{a}/i32) -> ref{a}/i32", true)]
-    [InlineData("(x: ref/i32) -> ref{x}/i32", true)]
-    [InlineData("(x: ref{static}/i32) -> ref{static}/i32", false)]
+    [InlineData("(x: ref/i32 during a) -> ref/i32 during a", true)]
+    [InlineData("(x: ref/i32) -> ref/i32 during x", true)]
+    [InlineData("(x: ref/i32 during static) -> ref/i32 during static", false)]
     public void OriginCorrespondencePreservesInputAndResultContracts(string signature, bool valid)
     {
-        var c = Parse($"contract C\n    func f(x: ref{{r}}/i32) -> ref{{r}}/i32\nstruct S\n    Self is C\n    public func f {signature} => x");
+        var c = Parse($"contract C\n    func f(x: ref/i32 during r) -> ref/i32 during r\nstruct S\n    Self is C\n    public func f {signature} => x");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
     [Fact]
     public void WeakerResultLifetimeFailsEvenThoughInputKeyMatches()
     {
-        var c = Parse("contract C\n    func f(x: ref/i32, y: ref/i32) -> ref{x}/i32\nstruct S {}\n    Self is C\n    public func f(x: ref/i32, y: ref/i32) -> ref{y}/i32 => y");
+        var c = Parse("contract C\n    func f(x: ref/i32, y: ref/i32) -> ref/i32 during x\nstruct S {}\n    Self is C\n    public func f(x: ref/i32, y: ref/i32) -> ref/i32 during y => y");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
@@ -233,7 +233,7 @@ public class ContractBindingTest
     [Fact]
     public void SharedInputOriginsCanMeetAtARequirementCall()
     {
-        var c = Parse("contract C\n    func f(x: ref{a}/i32, y: ref{a}/i32) -> ref{a}/i32\nfunc call<T>(x: ref/i32, y: ref/i32) -> ref{x and y}/i32\n    T is C\n    return T.f(x, y)");
+        var c = Parse("contract C\n    func f(x: ref/i32 during a, y: ref/i32 during a) -> ref/i32 during a\nfunc call<T>(x: ref/i32, y: ref/i32) -> ref/i32 during (x and y)\n    T is C\n    return T.f(x, y)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Equal(OriginKind.Intersection, call.BoundType!.Origin!.Kind);
@@ -276,7 +276,7 @@ public class ContractBindingTest
     [Theory]
     [InlineData("i32", true)]
     [InlineData("T", false)]
-    [InlineData("ref{static}/i32", false)]
+    [InlineData("ref/i32 during static", false)]
     public void GenericAssociatedBindingsMustProveTheirCoreRole(string binding, bool valid)
     {
         var c = Parse($"contract C\n    associate E\nstruct S<T>\n    Self is C\n    associate C.E is {binding}");
@@ -417,7 +417,7 @@ public class ContractBindingTest
     [Fact]
     public void ResultOnlyOriginsCannotEscapeAsUnsubstitutedRequirementBinders()
     {
-        var c = Parse("contract C\n    func f() -> ref{a}/i32\nfunc call<T>()\n    T is C\n    T.f()");
+        var c = Parse("contract C\n    func f() -> ref/i32 during a\nfunc call<T>()\n    T is C\n    T.f()");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
     }

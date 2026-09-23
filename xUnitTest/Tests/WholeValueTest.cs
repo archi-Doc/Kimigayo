@@ -42,13 +42,13 @@ public class WholeValueTest
     [InlineData("arc", "uniq", false)]
     public void GenericPayloadProjectionRequiresCapability(string source, string target, bool expected)
     {
-        var c = Parse($"func project<T>(x: {source}/T) -> {target}{{x}}/T\n    T is Sealed\n    return x@{target}/T");
+        var c = Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed\n    return x@{target}/T");
         Assert.Equal(expected, c.Bind().IsComplete);
     }
 
     [Theory]
-    [InlineData("func f<T>(x: objref/T) -> ref{x}/T => x@ref/T")]
-    [InlineData("open struct S\nfunc f(x: objref/S) -> ref{x}/S => x@ref/S")]
+    [InlineData("func f<T>(x: objref/T) -> ref/T during x => x@ref/T")]
+    [InlineData("open struct S\nfunc f(x: objref/S) -> ref/S during x => x@ref/S")]
     [InlineData("struct S\nfunc read(x: ref/S) => ()\nfunc f(x: objref/S) => read(x)")]
     [InlineData("struct S\n    Self is Sealed")]
     [InlineData("contract C: Sealed\nopen struct S\n    Self is C")]
@@ -112,14 +112,14 @@ public class WholeValueTest
     [InlineData("(i32, string)")]
     public void ObjectsMayHaveNonStructPayloads(string type)
     {
-        var c = Parse($"func f(x: objref/{type}) -> ref{{x}}/{type} => x@ref/{type}");
+        var c = Parse($"func f(x: objref/{type}) -> ref/{type} during x => x@ref/{type}");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]
     public void SealedBorrowedPayloadHasCheckedRuntimeSupport()
     {
-        var c = MinimalEmissionTest.Analyze("struct S\nfunc f(x: objref/S) -> ref{x}/S => x@ref/S\n()");
+        var c = MinimalEmissionTest.Analyze("struct S\nfunc f(x: objref/S) -> ref/S during x => x@ref/S\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.True(c.Ownership.Result.IsVerified);
         Assert.True(c.Emission.Validate(out var error), error);
@@ -154,7 +154,7 @@ public class WholeValueTest
     [InlineData("not Sealed", false)]
     public void ProjectionUsesDeclaredProofRules(string constraint, bool expected)
     {
-        var c = Parse($"func f<T>(x: objref/T) -> ref{{x}}/T\n    T is {constraint}\n    return x@ref/T");
+        var c = Parse($"func f<T>(x: objref/T) -> ref/T during x\n    T is {constraint}\n    return x@ref/T");
         Assert.Equal(expected, c.Bind().IsComplete);
     }
 
@@ -220,8 +220,8 @@ public class WholeValueTest
     }
 
     [Theory]
-    [InlineData("func f(x: objref/Cell<i32>) -> ref{x}/Cell<i64> => x@ref/Cell<i64>")]
-    [InlineData("func f(x: objref/Cell<i32>) -> ref{x}/Cell<i32> => x@ref{x}/Cell<i32>")]
+    [InlineData("func f(x: objref/Cell<i32>) -> ref/Cell<i64> during x => x@ref/Cell<i64>")]
+    [InlineData("func f(x: objref/Cell<i32>) -> ref/Cell<i32> during x => x@(ref/Cell<i32> during x)")]
     public void PayloadProjectionDoesNotConvertInternalTypesOrAcceptTargetOrigin(string function)
     {
         var c = Parse("struct Cell<T>\n    let item: T\n" + function);

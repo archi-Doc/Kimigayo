@@ -177,7 +177,7 @@ An **Adaptation Target** specifies Semantics and a Core, a complete inner Type f
 
 ```text
 Adaptation Target
-├─ Core / immediate Referent Type / object View Target: specified, or taken{the} operand
+├─ Core / immediate Referent Type / object View Target: specified, or taken from the operand
 ├─ Semantics: determined by Type, alias, or explicit Semantics
 └─ Origin: inferred during adaptation
     -> complete result Type retains target, Semantics, and Origin
@@ -187,7 +187,7 @@ Adaptation Target
 
 `a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses the target `T/b` and fails Semantics lookup if `T` is only a Core; whitespace cannot change this. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping, as in `x@(i32)`, preserves the adaptation. Group a complete Function Type target, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and is never retried after a conversion failure.
 
-An ungrouped AdaptationType has no trailing `during`. Use `@(Type)` for a suffix annotation; Types already delimited inside generic arguments, tuples or arrays need no additional grouping. Semantics shorthand and `@move` accept neither `?` nor `during`. Fix attachment and expand Optional before checking the outer-chain prohibition; grouping alone cannot evade it.
+An ungrouped AdaptationType has no trailing `during`. Use `@(Type)` for a suffix annotation; Types already delimited inside generic arguments, tuples or arrays need no additional grouping. Semantics shorthand and `@move` accept neither `?` nor `during`. Fix attachment and expand Optional before checking the outer-chain prohibition; grouping alone cannot evade it. The outer chain ends at a Core: a Function Type's parameter/result contracts retain their own fixed dependencies under §15.3.4.
 
 | Spelling | Parse and eligibility |
 | --- | --- |

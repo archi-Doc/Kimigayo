@@ -27,7 +27,7 @@ public class BorrowedFieldUpdateTest
     [Fact]
     public void EvaluatesReceiverOnceInRequiredOrder()
     {
-        const string Source = Counter + "func locate(p: uniq/Counter) -> uniq{p}/Counter\n    Console.writeLine(\"receiver\")\n    return p\nfunc amount() -> i32\n    Console.writeLine(\"rhs\")\n    return 2\nvar counter = Counter.init()\nlocate(counter@uniq).value = amount()\nlocate(counter@uniq).value += amount()\nlet before = locate(counter@uniq).value++\nrequire before == 4 else => $abort(\"result\")\nrequire counter.value == 5 else => $abort(\"value\")";
+        const string Source = Counter + "func locate(p: uniq/Counter) -> uniq/Counter during p\n    Console.writeLine(\"receiver\")\n    return p\nfunc amount() -> i32\n    Console.writeLine(\"rhs\")\n    return 2\nvar counter = Counter.init()\nlocate(counter@uniq).value = amount()\nlocate(counter@uniq).value += amount()\nlet before = locate(counter@uniq).value++\nrequire before == 4 else => $abort(\"result\")\nrequire counter.value == 5 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
         ScalarEmissionTest.EmitFixture("BorrowedFieldUpdateOrder", Source, "rhs\nreceiver\nreceiver\nrhs\nreceiver\n");

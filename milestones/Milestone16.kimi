@@ -4,14 +4,14 @@ struct Cell
     public init(value: i32) => self.value = value
 
 enum Selection {source}
-    Found(ref{source}/Cell)
+    Found(ref/Cell during source)
     Missing
 
 struct Pair {left, right}
-    let first: ref{left}/Cell
-    let second: ref{right}/Cell
+    let first: ref/Cell during left
+    let second: ref/Cell during right
 
-    public init(first: ref{left}/Cell, second: ref{right}/Cell)
+    public init(first: ref/Cell during left, second: ref/Cell during right)
         self.first = first
         self.second = second
 

@@ -6,7 +6,7 @@ namespace XunitTest;
 
 public class ReturnedBorrowAncestryTest
 {
-    private const string Counter = "struct Counter\n    public var value: i32 = 1\nfunc relay(p: uniq/Counter) -> uniq{p}/Counter\n    return p\nfunc second(a: ref/Counter, b: uniq/Counter) -> uniq{b}/Counter\n    return b\n";
+    private const string Counter = "struct Counter\n    public var value: i32 = 1\nfunc relay(p: uniq/Counter) -> uniq/Counter during p\n    return p\nfunc second(a: ref/Counter, b: uniq/Counter) -> uniq/Counter during b\n    return b\n";
 
     [Theory]
     [InlineData("Update", "func change(p: uniq/Counter)\n    relay(p).value += 1\n    p.value += 1\nvar counter = Counter.init()\nchange(counter@uniq)\nrequire counter.value == 3 else => $abort(\"value\")")]

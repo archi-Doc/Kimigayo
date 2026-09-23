@@ -15,8 +15,8 @@ public class DefaultCallTest
         "func get(a: isize, index: isize = defaultIndex()) -> isize => index + a\n" +
         "require get(note(1)) == 3 and get(note(1), index: 5) == 6 and get(note(2)) == 4 else => $abort(\"defaults\")\nConsole.writeLine(\"done\")";
 
-    private const string Generic = DefaultIndex + "func pick<length N, T>(values: ref{source}/[N of T], index: isize = defaultIndex()) -> ref{source}/T => values[index]@ref/T\n" +
-        "func forward<length N, T>(values: ref{source}/[N of T]) -> ref{source}/T => pick<N, T>(values)\n" +
+    private const string Generic = DefaultIndex + "func pick<length N, T>(values: ref/[N of T] during source, index: isize = defaultIndex()) -> ref/T during source => values[index]@ref/T\n" +
+        "func forward<length N, T>(values: ref/[N of T] during source) -> ref/T during source => pick<N, T>(values)\n" +
         "let numbers: [3 of i32] = [10, 20, 30]\nrequire forward(numbers@ref) == 30 and pick(numbers@ref, 0) == 10 else => $abort(\"generic\")";
 
     [Fact]

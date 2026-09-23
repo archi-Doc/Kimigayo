@@ -149,7 +149,7 @@ public class DefaultBindingTest
     [Fact]
     public void DefaultParameterOriginsAreSubstitutedFromExplicitInputs()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: ref{a}/i32, y: ref{a}/i32 = x) => ()\nfunc use(x: ref{b}/i32) => f(x)");
+        var c = MinimalEmissionTest.Analyze("func f(x: ref/i32 during a, y: ref/i32 during a = x) => ()\nfunc use(x: ref/i32 during b) => f(x)");
         Assert.True(c.Binding.Result.IsComplete);
         var plan = Assert.Single(Calls(c)).BoundCall!;
         var omitted = Assert.Single(plan.DefaultArguments.ToArray());

@@ -68,8 +68,8 @@ public class GenericTypeArgumentBindingTest
     }
 
     [Theory]
-    [InlineData("([2 of ref{a}/i32])")]
-    [InlineData("([2 of ref{static}/i32])")]
+    [InlineData("([2 of ref/i32 during a])")]
+    [InlineData("([2 of ref/i32 during static])")]
     public void NestedBorrowTypesRetainTheirOrigins(string type)
     {
         var c = Parse($"struct Box<T>\nfunc f(value: Box<{type}>) => ()");

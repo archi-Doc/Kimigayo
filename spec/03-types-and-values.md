@@ -49,7 +49,7 @@ Type
 │  │  └─ Common Function
 │  └─ Other named examples: Array<T>, Dictionary<K, V>, Slice<T>
 └─ Origin
-   ├─ Derived{a} borrow source
+   ├─ Derived from a borrow source
    ├─ Declared abstract Origin
    ├─ Intersection of Origins
    └─ static

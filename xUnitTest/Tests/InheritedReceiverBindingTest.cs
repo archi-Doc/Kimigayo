@@ -41,7 +41,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void StorageProjectionSubstitutesOriginsAtEveryBaseLayer()
     {
-        var c = Parse("open struct Base<T>\n    public let view: T\nopen struct Middle<U>: Base<U>\nstruct D<V>: Middle<V>\nfunc use(x: ref/D<ref{a}/i32>) -> ref{a}/i32 => x.view");
+        var c = Parse("open struct Base<T>\n    public let view: T\nopen struct Middle<U>: Base<U>\nstruct D<V>: Middle<V>\nfunc use(x: ref/D<ref/i32 during a>) -> ref/i32 during a => x.view");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var access = Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.True(c.Binding.TryGetReceiverOperation(access, out var plan));

@@ -33,7 +33,7 @@ public class ExternalOriginForwardingTest
     [Fact]
     public void RejectsUnknownPayloadOrigin()
     {
-        var c = MinimalEmissionTest.Analyze(Source().Replace("Found(ref{source}/Cell)", "Found(ref{missing}/Cell)", StringComparison.Ordinal));
+        var c = MinimalEmissionTest.Analyze(Source().Replace("Found(ref/Cell during source)", "Found(ref/Cell during missing)", StringComparison.Ordinal));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.Validate(out _));
     }

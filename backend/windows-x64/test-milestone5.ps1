@@ -98,7 +98,7 @@ foreach ($level in @('O0', 'O2')) {
 struct Item
     public var value: i32 = 3
     deinit => Console.writeLine("drop")
-func borrow(item: ref/Item) -> ref{item}/Item => item
+func borrow(item: ref/Item) -> ref/Item during item => item
 let value = borrow(Item.init()).value
 if value != 3 => $abort("Unexpected value")
 Console.writeLine("ok")
@@ -128,7 +128,7 @@ $invalid = [ordered]@{
     EscapedLocal = @{ source = (Edit-KimiSource $original 'return counter' "let local = Counter.init()`n    return local@ref"); diagnostic = 'TypeMismatch_Kd' }
     SharedWrite = @{ source = (Edit-KimiSource $original 'counter: uniq/Counter' 'counter: ref/Counter'); diagnostic = 'InvalidAssignment_Kd' }
     ImmutableOwner = @{ source = (Edit-KimiSource $original 'var counter = Counter.init()' 'let counter = Counter.init()'); diagnostic = 'InvalidAssignment_Kd' }
-    MissingStoredOrigin = @{ source = (Edit-KimiSource $original 'let counter: ref{source}/Counter' 'let counter: ref/Counter'); diagnostic = 'MissingOriginBinding_Kd' }
+    MissingStoredOrigin = @{ source = (Edit-KimiSource $original 'let counter: ref/Counter during source' 'let counter: ref/Counter'); diagnostic = 'MissingOriginBinding_Kd' }
     WrongArgument = @{ source = (Edit-KimiSource $original 'Counter.init()' 'Counter.init(true)'); diagnostic = 'NoApplicableOverload_Kd' }
     WrongReferent = @{ source = (Edit-KimiSource $original 'borrowCounter(counter@ref)' 'borrowCounter(1)'); diagnostic = 'NoApplicableOverload_Kd' }
     MovedRead = @{ source = (Edit-KimiSource $original 'Console.writeLine("Done.")' "let invalid = counter.value`n    Console.writeLine(`"Done.`")"); diagnostic = 'MovedPlace_Kd' }

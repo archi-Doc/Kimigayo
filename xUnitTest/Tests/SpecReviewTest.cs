@@ -45,8 +45,8 @@ public class SpecReviewTest
         => Assert.NotEmpty(Parse("func f()\n    -> i32\n    => 1").DiagnosticCollection.GetArray());
 
     [Theory]
-    [InlineData("func store<T>(value: ref{b}/T, other: ref{a}/T)\n    origin b outlives a\n    ()")]
-    [InlineData("struct Holder<T> {stored, other}\n    origin other outlives static\n    let value: ref{stored}/T")]
+    [InlineData("func store<T>(value: ref/T during b, other: ref/T during a)\n    origin b outlives a\n    ()")]
+    [InlineData("struct Holder<T> {stored, other}\n    origin other outlives static\n    let value: ref/T during stored")]
     public void OriginBoundsParseAndRoundTrip(string source)
     {
         var parsed = ParseSuccess(source);
@@ -56,8 +56,8 @@ public class SpecReviewTest
     }
 
     [Theory]
-    [InlineData("func bad<T> {a}:(value: ref{a}/T) => ()")]
-    [InlineData("func bad<T> {a}: 1(value: ref{a}/T) => ()")]
+    [InlineData("func bad<T> {a}:(value: ref/T during a) => ()")]
+    [InlineData("func bad<T> {a}: 1(value: ref/T during a) => ()")]
     public void MissingOriginBoundTargetsAreSyntaxErrors(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
 
@@ -71,9 +71,9 @@ public class SpecReviewTest
     }
 
     [Theory]
-    [InlineData("func f<T>(x: ref{a}/T, y: ref{b}/T)\n    origin b outlives a\n    ()", true)]
-    [InlineData("func f<T>(x: ref{a}/T)\n    origin a outlives static\n    ()", true)]
-    [InlineData("func f<T>(x: ref{a}/T, y: ref{b}/T)\n    origin b outlives missing\n    ()", false)]
+    [InlineData("func f<T>(x: ref/T during a, y: ref/T during b)\n    origin b outlives a\n    ()", true)]
+    [InlineData("func f<T>(x: ref/T during a)\n    origin a outlives static\n    ()", true)]
+    [InlineData("func f<T>(x: ref/T during a, y: ref/T during b)\n    origin b outlives missing\n    ()", false)]
     public void OriginRelationsResolveOnlyExistingBinders(string source, bool valid)
     {
         var c = Compilation.CreateForTest();
@@ -85,7 +85,7 @@ public class SpecReviewTest
     public void UnboundedOriginsStillBindCompletely()
     {
         var c = Compilation.CreateForTest();
-        c.Kotonoha.AddSource(new SourceDocument("origins.kimi", "func f<T>(x: ref{a}/T, y: ref{b}/T) => ()"));
+        c.Kotonoha.AddSource(new SourceDocument("origins.kimi", "func f<T>(x: ref/T during a, y: ref/T during b) => ()"));
         Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues.Select(x => x.Code)));
     }
 

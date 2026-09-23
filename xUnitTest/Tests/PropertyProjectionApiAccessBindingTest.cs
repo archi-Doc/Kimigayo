@@ -47,7 +47,7 @@ public class PropertyProjectionApiAccessBindingTest
     [InlineData("S.Element")]
     [InlineData("(S.C.Element)")]
     [InlineData("(i32, [1 of S.C.Element])")]
-    [InlineData("ref{static}/S.C.Element")]
+    [InlineData("ref/S.C.Element during static")]
     [InlineData("(S.C.Element) -> ()")]
     public void NestedHeaderProjectionsRetainAccessChecks(string type)
     {

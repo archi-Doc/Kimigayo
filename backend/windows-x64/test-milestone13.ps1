@@ -108,10 +108,10 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    ElementI32 = @{ source = (Edit-KimiSource $original 'associate Iterator.Element is ref{source}/T' 'associate Iterator.Element is i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    ElementI32 = @{ source = (Edit-KimiSource $original 'associate Iterator.Element is ref/T during source' 'associate Iterator.Element is i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
     MovedSamples = @{ source = (Edit-KimiSource $original "    var total: i32 = 0`n" "    let moved = samples@move`n    var total: i32 = 0`n"); diagnostic = 'MovedPlace_Kd' }
     BareSamples = @{ source = (Edit-KimiSource $original "    var total: i32 = 0`n" "    let moved = samples`n    var total: i32 = 0`n"); diagnostic = 'TransferRequired_Kd' }
-    SelfOrigin = @{ source = (Edit-KimiSource $original '-> Option<ref{source}/T>' '-> Option<ref{self}/T>'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    SelfOrigin = @{ source = (Edit-KimiSource $original '-> Option<ref/T during source>' '-> Option<ref/T during self>'); diagnostic = 'IncompatibleContractImplementation_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

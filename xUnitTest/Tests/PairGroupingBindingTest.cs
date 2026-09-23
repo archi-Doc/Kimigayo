@@ -28,7 +28,7 @@ public class PairGroupingBindingTest
     [Theory]
     [InlineData("(s/(T))")]
     [InlineData("owner/(s/((T)))")]
-    [InlineData("ref{static}/(s/(T))")]
+    [InlineData("ref/(s/(T)) during static")]
     [InlineData("unsafe/(s/((T)))")]
     [InlineData("[2 of s/(T)]")]
     [InlineData("(s/(T), s/((T)))")]

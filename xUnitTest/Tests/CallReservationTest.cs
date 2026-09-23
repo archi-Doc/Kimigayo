@@ -76,7 +76,7 @@ public class CallReservationTest
     [InlineData("func both(c: uniq/Cell, other: uniq/Cell) => ()\nvar c = Cell.init()\nboth(c@uniq, c@uniq)")]
     [InlineData("var c = Cell.init()\nlet r = c@ref\nset(c@uniq, read(r))\nlet n = r.value")]
     [InlineData("func change(c: uniq/Cell) -> i32\n    c.value = 2\n    return 3\nvar c = Cell.init()\nset(c@uniq, change(c@uniq))")]
-    [InlineData("func same(c: uniq/Cell) -> uniq{c}/Cell => c\nvar c = Cell.init()\nset(same(c@uniq), read(c))")]
+    [InlineData("func same(c: uniq/Cell) -> uniq/Cell during c => c\nvar c = Cell.init()\nset(same(c@uniq), read(c))")]
     [InlineData("var c = Cell.init()\nset((if true => c@uniq else => c@uniq), read(c))")]
     [InlineData("var c = Cell.init()\nset((do => c@uniq), read(c))")]
     [InlineData("var c = Cell.init()\nset((match true\n    true => c@uniq\n    false => c@uniq), read(c))")]

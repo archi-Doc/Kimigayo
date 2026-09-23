@@ -79,8 +79,8 @@ public class OptionalTryDiscardTest
     }
 
     [Theory]
-    [InlineData("ref{static}/i32?", "Option<ref{static}/i32>")]
-    [InlineData("ref{static}/(i32?)", "ref{static}/Option<i32>")]
+    [InlineData("ref/i32? during static", "Option<ref/i32 during static>")]
+    [InlineData("ref/(i32?) during static", "ref/Option<i32> during static")]
     [InlineData("i32??", "Option<Option<i32>>")]
     [InlineData("(i32) -> i32?", "(i32) -> Option<i32>")]
     [InlineData("((i32) -> i32)?", "Option<(i32) -> i32>")]
@@ -96,7 +96,7 @@ public class OptionalTryDiscardTest
     [Theory]
     [InlineData("Nested", "func source() -> i32?? => .Some(.Some(8))\nfunc run() -> i32? => .Some(try try source())\nmatch run()\n    .Some(8) => ()\n    _ => $abort(\"nested\")")]
     [InlineData("SingleLayer", "func source() -> i32?? => .Some(.None)\nfunc run() -> bool?\n    let inner = try source()\n    let isNone = match inner\n        .None => true\n        .Some(_) => false\n    return .Some(isNone)\nmatch run()\n    .Some(true) => ()\n    _ => $abort(\"flattened\")")]
-    [InlineData("Borrow", "struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc wrap(x: ref/S) -> ref{x}/S? => .Some(x)\nfunc run(x: ref/S) -> i32?\n    let r = try wrap(x)\n    return .Some(r.n)\nlet s = S.init(8)\nmatch run(s)\n    .Some(8) => ()\n    _ => $abort(\"borrow\")")]
+    [InlineData("Borrow", "struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc wrap(x: ref/S) -> ref/S? during x => .Some(x)\nfunc run(x: ref/S) -> i32?\n    let r = try wrap(x)\n    return .Some(r.n)\nlet s = S.init(8)\nmatch run(s)\n    .Some(8) => ()\n    _ => $abort(\"borrow\")")]
     [InlineData("Lambda", "func source() -> i32? => .Some(8)\nlet f = func () -> i32? => .Some(try source())\nmatch f()\n    .Some(8) => ()\n    _ => $abort(\"lambda\")")]
     [InlineData("Generic", "func unwrap<T>(x: T?) -> T? => .Some(try x@move)\nmatch unwrap<i32>(.Some(8))\n    .Some(8) => ()\n    _ => $abort(\"generic\")\n_ = unwrap<string>(.Some(\"owned\"))")]
     public void ExecutesCombinations(string name, string source)
@@ -161,7 +161,7 @@ public class OptionalTryDiscardTest
 
     [Theory]
     [InlineData("func run(x: i32??) -> i32? => .Some(try try x)")]
-    [InlineData("let x: ref{static}/(i32?)? = .None")]
+    [InlineData("let x: ref/(i32?)? during static = .None")]
     [InlineData("let x: [1 of i32?] = [.None]\n_ = x")]
     [InlineData("for (key, _) in pairs => _ = key\nfor (_, _) in pairs => ()")]
     [InlineData("if true => _ = prepare() else => _ = prepare()")]
@@ -212,9 +212,8 @@ public class OptionalTryDiscardTest
     [InlineData("let x = try\nlet y = 1")]
     [InlineData("_ =")]
     [InlineData("let x = value is Dog?")]
-    [InlineData("let x = value@ref{a}/T")]
-    [InlineData("let x = value@(ref{a}/T)")]
-    [InlineData("let x = value@ref/(ref{a}/T)")]
+    [InlineData("let x = value@(ref/T during a)")]
+    [InlineData("let x = value@ref/(ref/T during a)")]
     public void RejectsReservedAndIncompleteForms(string source)
         => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
 
@@ -294,10 +293,11 @@ public class OptionalTryDiscardTest
     }
 
     [Theory]
-    [InlineData("Optional", "ref{a}/S?")]
-    [InlineData("Expanded", "Option<ref{a}/S>")]
+    [InlineData("Optional", "(ref/S? during a)")]
+    [InlineData("GroupedOptional", "(ref/S during a)?")]
+    [InlineData("Expanded", "Option<ref/S during a>")]
     public void OptionalAdaptationRetainsExistingPayloadOrigins(string name, string target)
-        => EmitChecked("OptionalTryAdaptation" + name, $"struct S\n    public var n: i32 = 8\nfunc identity(x: ref{{a}}/S?) -> ref{{a}}/S? => x@{target}\nfunc wrap(x: ref/S) -> ref{{x}}/S? => .Some(x)\nlet s = S.init()\nmatch identity(wrap(s))\n    .Some(let r) => require r.n == 8 else => $abort(\"payload\")\n    .None => $abort(\"none\")", string.Empty);
+        => EmitChecked("OptionalTryAdaptation" + name, $"struct S\n    public var n: i32 = 8\nfunc identity(x: ref/S? during a) -> ref/S? during a => x@{target}\nfunc wrap(x: ref/S) -> ref/S? during x => .Some(x)\nlet s = S.init()\nmatch identity(wrap(s))\n    .Some(let r) => require r.n == 8 else => $abort(\"payload\")\n    .None => $abort(\"none\")", string.Empty);
 
     [Fact]
     public void OptionalIdentityAcquisitionMovesOwnedPayload()

@@ -33,7 +33,7 @@ public record class DiagnosticCollection
         this.Name = name;
     }
 
-    public void Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null)
+    public void Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null)
     {
         if (!DiagnosticEntries.TryGet(code, out var entry))
         {
@@ -63,6 +63,11 @@ public record class DiagnosticCollection
                 {
                     message = string.Format(message, obj);
                 }
+            }
+
+            if (hint is not null)
+            {
+                message = string.Concat(message, " ", hint);
             }
 
             var diagnostic = new Diagnostic(range, entry, sourceDocument ?? this.SourceDocument) { Message = message };

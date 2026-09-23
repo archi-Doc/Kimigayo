@@ -91,10 +91,10 @@ public class PropertyRevisionParseTest
     [InlineData("group G\n    var item: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value")]
     [InlineData("rootgroup G\n    computed item: T\n        get() -> T => make()")]
     [InlineData("struct S\n    computed item: T\n        set(self: uniq/Self, value: U) -> () => accept(value)\n        get(self: Self) -> T => self.source")]
-    [InlineData("struct S {source}\n    var item: ref{source}/T\n        get(self: ref/Self) -> ref{source}/T => storage\n        set(self: uniq/Self, value: ref{source}/T) -> () => storage = value")]
+    [InlineData("struct S {source}\n    var item: ref/T during source\n        get(self: ref/Self) -> ref/T during source => storage\n        set(self: uniq/Self, value: ref/T during source) -> () => storage = value")]
     [InlineData("contract C\n    property item: T has get")]
     [InlineData("contract C\n    property item: T has set, get")]
-    [InlineData("contract C\n    property item: ref/T\n        get(self: ref/Self) -> ref{self}/T\n        set(self: uniq/Self, value: T) -> ()")]
+    [InlineData("contract C\n    property item: ref/T\n        get(self: ref/Self) -> ref/T during self\n        set(self: uniq/Self, value: T) -> ()")]
     [InlineData("struct S\n    #if true\n        computed item: T\n            get(self: ref/Self) -> T => make()")]
     [InlineData("contract C\n    #switch\n        #case true\n            property item: T\n                get(self: ref/Self) -> T")]
     public void PreservesDeclarationsAndSignatures(string source)
@@ -117,8 +117,8 @@ public class PropertyRevisionParseTest
             struct S
                 var item: T
                 computed view: ref/T
-                    get(self: ref/Self) -> ref{self}/T => self.item@ref
-                    set(self: uniq/Self, value: Container<ref{source}/T>) -> ()
+                    get(self: ref/Self) -> ref/T during self => self.item@ref
+                    set(self: uniq/Self, value: Container<ref/T during source>) -> ()
                         use(value)
             """;
         var tree = ParseSuccess(source);
@@ -132,9 +132,9 @@ public class PropertyRevisionParseTest
         Assert.True(getter.HasExplicitSignature);
         Assert.Equal("ref/Self", getter.ReceiverType!.ToString());
         Assert.Null(getter.ValueType);
-        Assert.Equal("ref{self}/T", getter.ReturnType!.ToString());
+        Assert.Equal("ref/T during self", getter.ReturnType!.ToString());
         Assert.Equal("uniq/Self", setter.ReceiverType!.ToString());
-        Assert.Equal("Container<ref{source}/T>", setter.ValueType!.ToString());
+        Assert.Equal("Container<ref/T during source>", setter.ValueType!.ToString());
         Assert.IsType<CodeBlockKoto>(setter.Body);
         Assert.Equal("ref/Self", source[getter.ReceiverType.Span.Start..getter.ReceiverType.Span.End]);
         Assert.StartsWith("get(self:", source[getter.Span.Start..getter.Span.End]);

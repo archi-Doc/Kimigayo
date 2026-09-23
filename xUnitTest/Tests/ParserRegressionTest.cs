@@ -305,8 +305,8 @@ public class ParserRegressionTest
 
     [Theory]
     [InlineData("Dog{owner}", "owner")]
-    [InlineData("ref{source}/Dog", "source")]
-    [InlineData("ref{collection}/SomeType<List<T>, U>", "collection")]
+    [InlineData("ref/Dog during source", "source")]
+    [InlineData("ref/SomeType<List<T>, U> during collection", "collection")]
     [InlineData("SomeType<T>{collection}", "collection")]
     public void ParsesAndWritesTypeOrigin(string typeText, string expectedOrigin)
     {

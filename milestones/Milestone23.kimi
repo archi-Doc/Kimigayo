@@ -19,7 +19,7 @@ struct Meter
         self.raw = 2
         self.level = 3
 
-func receiver(value: uniq{source}/Meter) -> uniq{source}/Meter
+func receiver(value: uniq/Meter during source) -> uniq/Meter during source
     Console.writeLine("Receiver evaluated.")
     return value
 

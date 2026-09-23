@@ -19,7 +19,7 @@ public class DynamicArraySharedReadTest
 
     [Fact]
     public void ASharedElementCanBePassedAndReturnedAsAReference()
-        => ScalarEmissionTest.EmitFixture("DynamicArraySharedReadReturn", Task + "func first(values: ref/Array<Task>) -> ref{values}/Task => values[0]\nfunc inspect(value: ref/Task) => require value.id == 42 else => $abort(\"value\")\nlet values: Array<Task> = [Task.init(42)]\ninspect(first(values@ref))\ninspect(values[0])\nConsole.writeLine(\"done\")", "done\ndrop\n");
+        => ScalarEmissionTest.EmitFixture("DynamicArraySharedReadReturn", Task + "func first(values: ref/Array<Task>) -> ref/Task during values => values[0]\nfunc inspect(value: ref/Task) => require value.id == 42 else => $abort(\"value\")\nlet values: Array<Task> = [Task.init(42)]\ninspect(first(values@ref))\ninspect(values[0])\nConsole.writeLine(\"done\")", "done\ndrop\n");
 
     [Fact]
     public void ReceiverAndIndexAreEvaluatedOnce()

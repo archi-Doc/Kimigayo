@@ -64,7 +64,7 @@ public class NormalizedConstraintProofBindingTest
     [InlineData("not (Source.Origin.Item and string)", "not i32", ConstraintProof.Unknown)]
     [InlineData("not (Source.Origin.Item and string)", "not (i32 and string)", ConstraintProof.Proven)]
     [InlineData("[2 of Source.Origin.Item]", "[3 of i32]", ConstraintProof.Unknown)]
-    [InlineData("ref{static}/Source.Origin.Item", "i32", ConstraintProof.Unknown)]
+    [InlineData("ref/Source.Origin.Item during static", "i32", ConstraintProof.Unknown)]
     public void NormalizationDoesNotAddLogicalRulesOrEraseTypeStructure(string evidence, string requirement, ConstraintProof expected)
         => this.EquivalentRequirementSpellingsUseTheSameEvidence(evidence, requirement, expected);
 

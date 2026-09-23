@@ -27,10 +27,10 @@ public class PatternBindingTest
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => if n > 0 => n else => 0\n    .None => 0")]
     [InlineData("func f(x: Option<i32>)\n    match x\n        .Some(_)\n            ()\n        .None => ()")]
     [InlineData("func f<T>(x: Option<T>) => match x@move\n    .Some(let value) => ()\n    .None => ()")]
-    [InlineData("func f(x: ref{static}/i32) => match x\n    let r => ()")]
+    [InlineData("func f(x: ref/i32 during static) => match x\n    let r => ()")]
     [InlineData("func f(x: uniq/i32) => match x\n    _ => ()")]
-    [InlineData("func f(x: Option<ref{static}/i32>) => match x\n    .Some(let r) => ()\n    .None => ()")]
-    [InlineData("func f(x: Option<uniq{a}/i32>) => match x@move\n    .Some(let r) => ()\n    .None => ()")]
+    [InlineData("func f(x: Option<ref/i32 during static>) => match x\n    .Some(let r) => ()\n    .None => ()")]
+    [InlineData("func f(x: Option<uniq/i32 during a>) => match x@move\n    .Some(let r) => ()\n    .None => ()")]
     [InlineData("func f(x: Option<Option<i32>>) -> i32 => match x\n    .Some(let inner) => match inner\n        .Some(let n) => n\n        .None => 0\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let Option) => Option\n    Option<i32>.None => 0")]
     public void SupportedPatternsBindAndCheckFlow(string source)
@@ -53,11 +53,11 @@ public class PatternBindingTest
     [InlineData("func f<T>(x: Option<T>) => match x\n    .Some(1) => ()\n    _ => ()")]
     [InlineData("func f(x: i32) => match x\n    true => ()")]
     [InlineData("func f(x: uniq/i32) => match x\n    0 => ()\n    _ => ()")]
-    [InlineData("func f(x: ref{static}/(ref{static}/i32)) => match x\n    0 => ()\n    _ => ()")]
+    [InlineData("func f(x: ref/(ref/i32 during static) during static) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("func f(x: unsafe/i32) => match x\n    0 => ()\n    _ => ()")]
-    [InlineData("func f(x: Option<uniq{a}/i32>) => match x\n    .Some(0) => ()\n    _ => ()")]
+    [InlineData("func f(x: Option<uniq/i32 during a>) => match x\n    .Some(0) => ()\n    _ => ()")]
     [InlineData("struct Data\nfunc f(x: obj/Data) => match x\n    () => ()\n    _ => ()")]
-    [InlineData("func f(x: ref{a}/(uniq{b}/i32)) => match x\n    0 => ()\n    _ => ()")]
+    [InlineData("func f(x: ref/(uniq/i32 during b) during a) => match x\n    0 => ()\n    _ => ()")]
     public void InvalidPatternsSuppressCoverageCascades(string source)
     {
         var c = Parse(source);
@@ -70,8 +70,8 @@ public class PatternBindingTest
     }
 
     [Theory]
-    [InlineData("func f(x: ref{static}/i32) => match x\n    0 => ()\n    _ => ()")]
-    [InlineData("func f(x: Option<ref{static}/i32>) => match x\n    .Some(0) => ()\n    _ => ()")]
+    [InlineData("func f(x: ref/i32 during static) => match x\n    0 => ()\n    _ => ()")]
+    [InlineData("func f(x: Option<ref/i32 during static>) => match x\n    .Some(0) => ()\n    _ => ()")]
     [InlineData("func f(x: Option<i32>) => match x@ref\n    .Some(_) => ()\n    .None => ()")]
     public void SharedStructuralInspectionIsPending(string source)
     {
@@ -246,7 +246,7 @@ public class PatternBindingTest
     [Fact]
     public void SharedAccessDoesNotCreateAnOwnedBodyAcquisition()
     {
-        var c = Parse("func f(x: ref{static}/Option<i32>) => match x\n    .Some(let n) => n\n    .None => 0");
+        var c = Parse("func f(x: ref/Option<i32> during static) => match x\n    .Some(let n) => n\n    .None => 0");
         Assert.False(c.Bind().IsComplete);
         var plan = Plan(c);
         var root = plan.Positions[plan.Arms[0].Pattern];
@@ -263,7 +263,7 @@ public class PatternBindingTest
     [Fact]
     public void StoredReferenceBindingsRetainOriginsAndOwnedAccess()
     {
-        var c = Parse("enum View {a}\n    Some(ref{a}/i32)\nfunc f(x: View)\n    origin x.a == static\n    match x@move\n        .Some(let r) => ()");
+        var c = Parse("enum View {a}\n    Some(ref/i32 during a)\nfunc f(x: View)\n    origin x.a == static\n    match x@move\n        .Some(let r) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var binding = Assert.Single(Plan(c).Positions, p => p.Kind == BoundPatternKind.Binding);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
@@ -356,7 +356,7 @@ public class PatternBindingTest
     [Theory]
     [InlineData("i32", "x", PatternAcquisition.Copy)]
     [InlineData("string", "x@move", PatternAcquisition.Move)]
-    [InlineData("ref{static}/i32", "x", PatternAcquisition.Copy)]
+    [InlineData("ref/i32 during static", "x", PatternAcquisition.Copy)]
     [InlineData("uniq/i32", "x", PatternAcquisition.Move)]
     public void OwnedBindingAcquisitionUsesTheCompleteStoredType(string type, string subject, PatternAcquisition acquisition)
     {

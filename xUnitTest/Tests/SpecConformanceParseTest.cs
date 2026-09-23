@@ -17,13 +17,13 @@ public class SpecConformanceParseTest
     [InlineData("List<char>")]
     [InlineData("()")]
     [InlineData("(i32, string) -> bool")]
-    [InlineData("ref{owner}/(i32, string)")]
+    [InlineData("ref/(i32, string) during owner")]
     [InlineData("List<(i32, string)>")]
     [InlineData("List<(i32) -> bool>")]
     [InlineData("List<List<i32>>")]
-    [InlineData("ref{self.source}/T")]
-    [InlineData("ref{x and y.source}/T")]
-    [InlineData("ref{static}/T")]
+    [InlineData("ref/T during self.source")]
+    [InlineData("ref/T during (x and y.source)")]
+    [InlineData("ref/T during static")]
     [InlineData("Pair<A, B>{pair}")]
     [InlineData("View<T>{view}")]
     [InlineData("has")]
@@ -45,8 +45,8 @@ public class SpecConformanceParseTest
     public void ParsesFunctionOriginsAndSeparatesConstraintsFromExecutableBody()
     {
         var parsed = Parse("""
-            func unwrap<s/T>(value: s{source}/T)
-                -> ref{value and owner}/T
+            func unwrap<s/T>(value: s/T during source)
+                -> ref/T during (value and owner)
                 s is ref or obj
                 T is Comparable and (Equatable or Hashable)
 
@@ -78,7 +78,7 @@ public class SpecConformanceParseTest
                 property item: Element has get, set
 
             struct Logger {sink}
-                let output: uniq{sink}/Writer
+                let output: uniq/Writer during sink
                 deinit
                     self.output.flush()
                     return
@@ -257,8 +257,8 @@ public class SpecConformanceParseTest
     [InlineData("var bad: ref/")]
     [InlineData("var bad: List<i32")]
     [InlineData("var bad: ref/T from")]
-    [InlineData("var bad: ref{source}/T.")]
-    [InlineData("var bad: ref{source}/T and")]
+    [InlineData("var bad: ref/T during source.")]
+    [InlineData("var bad: ref/T during source and")]
     public void RecoversFromMalformedSyntaxWithoutLosingTheNextDeclaration(string source)
     {
         var parsed = Parse(source + "\nvar after = 1");

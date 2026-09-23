@@ -27,7 +27,7 @@ public class BindingBenchmark
         var source = new StringBuilder(this.Scenario switch
         {
             "RuntimeTypeTests" => "struct Dog<T>\nfunc f(x: objref/Dog<i32>)\n",
-            "Origins" => "struct View<T> {a, b}\n    let first: ref{a}/T\n    let second: ref{b}/T\n",
+            "Origins" => "struct View<T> {a, b}\n    let first: ref/T during a\n    let second: ref/T during b\n",
             "Enums" => "enum Entry<T>\n    Value(T, string)\nfunc accept(value: Option<Entry<i32>>) => ()\n",
             "Capabilities" => "struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nvar input: Box<i32>\nfunc identity<T>(value: T) -> T\n    T is Copy and Owned\n    return value\n",
             "Contracts" => "contract Source\n    associate Element\n    func read(self: ref/Self) -> Element\ncontract IntSource: Source\n    Self.Source.Element is i32\nstruct SourceImpl\n    Self is IntSource\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(value: ref/T)\n    T is IntSource\n",
@@ -65,7 +65,7 @@ public class BindingBenchmark
             }
             else if (this.Scenario == "Origins")
             {
-                source.Append("func function").Append(i).Append(" {a, b}(x: View<i32>{a => a, b => b}, y: ref{b}/(ref{a}/i32)) => ()\n");
+                source.Append("func function").Append(i).Append("(x: View<i32>{v}, y: ref/(ref/i32 during a) during b)\n    origin v.a == a\n    origin v.b == b\n    origin a outlives b\n    ()\n");
             }
             else if (this.Scenario == "Capabilities")
             {

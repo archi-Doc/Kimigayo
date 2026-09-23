@@ -176,7 +176,7 @@ Type Descriptor
 ```text
 N(A)      = normalize transparent aliases, resolved associated-Type projections,
             grouping, and redundant owner prefixes
-ArgKey(A) = remove every Origin{N}(A), recursively retaining Type structure
+ArgKey(A) = remove every Origin from N(A), recursively retaining Type structure
             and Semantics; nominal nodes retain Symbol/Kotonoha/version and
             their ordered argument keys
 CoreId(D) = the concrete Core's identity computed by the same rules

@@ -54,7 +54,7 @@ public sealed partial class Binding
         if (iterable?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && IsBarePlace(source.Iterable))
         {
             // SPEC 14.6.2 subject rule: a bare array Place is shared-borrowed and iterated as the
-            // Slice values[..], yielding ref{source}/T; values@move or a temporary consumes the array.
+            // Slice values[..], yielding ref/T during source; values@move or a temporary consumes the array.
             source.SharedIterable = this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [iterable.Components[0]], origin: this.PlaceOrigin(source.Iterable));
         }
 

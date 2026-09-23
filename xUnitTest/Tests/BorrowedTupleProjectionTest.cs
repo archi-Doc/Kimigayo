@@ -15,7 +15,7 @@ public class BorrowedTupleProjectionTest
     [InlineData("Tuple", "func read(pair: ref/((i32, bool), bool)) -> i32\n    let item = pair.0@ref\n    return item.0\nlet pair: ((i32, bool), bool) = ((42, true), false)\nrequire read(pair@ref) == 42 else => $abort(\"value\")")]
     [InlineData("Array", "func read(pair: ref/([2 of i32], bool)) -> i32\n    let item = pair.0@ref\n    return item[0] + item[1]\nlet pair: ([2 of i32], bool) = ([20, 22], true)\nrequire read(pair@ref) == 42 else => $abort(\"value\")")]
     [InlineData("Exclusive", Counter + "func change(pair: uniq/(Counter, bool))\n    let item = pair.0@uniq\n    item.value += 41\nvar pair = (Counter.init(), true)\nchange(pair@uniq)\nrequire pair.0.value == 42 else => $abort(\"value\")")]
-    [InlineData("Returned", Counter + "func first(pair: ref/(Counter, bool)) -> ref{pair}/Counter => pair.0@ref\nlet pair = (Counter.init(), true)\nlet item = first(pair@ref)\nrequire item.value == 1 else => $abort(\"value\")")]
+    [InlineData("Returned", Counter + "func first(pair: ref/(Counter, bool)) -> ref/Counter during pair => pair.0@ref\nlet pair = (Counter.init(), true)\nlet item = first(pair@ref)\nrequire item.value == 1 else => $abort(\"value\")")]
     [InlineData("Implicit", Counter + "func value(item: ref/Counter) -> i32 => item.value\nfunc read(pair: ref/(Counter, bool)) -> i32 => value(pair.0)\nrequire read((Counter.init(), true)) == 1 else => $abort(\"value\")")]
     [InlineData("Padding", "func read(pair: ref/(bool, (i64, i32), u8)) -> i64\n    let item = pair.1@ref\n    return item.0\nlet pair: (bool, (i64, i32), u8) = (true, (42, 7), 255)\nrequire read(pair@ref) == 42 else => $abort(\"offset\")")]
     [InlineData("LastUse", Counter + "func change(pair: uniq/(Counter, bool))\n    let item = pair.0@uniq\n    item.value += 41\n    pair.1 = false\nvar pair = (Counter.init(), true)\nchange(pair@uniq)\nrequire pair.0.value == 42 and not pair.1 else => $abort(\"value\")")]
@@ -47,7 +47,7 @@ public class BorrowedTupleProjectionTest
     }
 
     [Theory]
-    [InlineData(Counter + "func first(pair: ref/(Counter, bool)) -> ref{pair}/Counter => pair.0@ref\nlet item = first((Counter.init(), true))\nlet value = item.value")]
+    [InlineData(Counter + "func first(pair: ref/(Counter, bool)) -> ref/Counter during pair => pair.0@ref\nlet item = first((Counter.init(), true))\nlet value = item.value")]
     [InlineData(Counter + "func bad(pair: uniq/(Counter, bool))\n    let item = pair.0@ref\n    let other = pair.0@uniq\n    other.value = 9\n    let value = item.value")]
     [InlineData(Counter + "func bad(pair: ref/(Counter, bool))\n    let moved = pair.0")]
     [InlineData(Counter + "var counter = Counter.init()\nlet pair = (counter@ref, true)\nlet view = pair@ref\nlet item = view.0@ref\ncounter = Counter.init()\nlet value = item.value")]

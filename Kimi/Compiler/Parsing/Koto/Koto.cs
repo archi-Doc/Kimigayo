@@ -529,8 +529,9 @@ public abstract class Koto
     /// <param name="code">The diagnostic code.</param>
     /// <param name="obj">The first optional diagnostic argument.</param>
     /// <param name="obj2">The second optional diagnostic argument.</param>
-    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
-        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument);
+    /// <param name="hint">An optional context-specific explanation appended to the message.</param>
+    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null, string? hint = null)
+        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument, hint);
 
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>

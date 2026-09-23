@@ -17,8 +17,8 @@ public class ContainerNestingTest
     [InlineData("struct Outer {}\n    private struct Hidden {}\n    public struct Inner {}\n        private func use(value: Hidden) => ()")]
     [InlineData("open struct Outer {}\n    protected struct Inner {}")]
     [InlineData("struct Outer<T> {}\n    T is Owned\n    public group Storage\n        var value: T")]
-    [InlineData("struct Outer<T> {}\n    public struct Cell {a}\n        let value: ref{a}/T\n        public init(value: ref{a}/T) => self.value = value\nfunc f(value: ref{x}/i32)\n    let cell = (Outer<i32>.Cell{c}).init(value)\n        origin c.a == x")]
-    [InlineData("struct Outer<T> {a}\n    public struct Cell {}\n        let value: ref{a}/T\n        public init(value: ref{a}/T) => self.value = value\nfunc f(value: ref{x}/i32)\n    let cell = (Outer<i32>{o}).Cell.init(value)\n        origin o.a == x")]
+    [InlineData("struct Outer<T> {}\n    public struct Cell {a}\n        let value: ref/T during a\n        public init(value: ref/T during a) => self.value = value\nfunc f(value: ref/i32 during x)\n    let cell = (Outer<i32>.Cell{c}).init(value)\n        origin c.a == x")]
+    [InlineData("struct Outer<T> {a}\n    public struct Cell {}\n        let value: ref/T during a\n        public init(value: ref/T during a) => self.value = value\nfunc f(value: ref/i32 during x)\n    let cell = (Outer<i32>{o}).Cell.init(value)\n        origin o.a == x")]
     [InlineData("struct Outer {}\n    public group G\n        public struct Inner {}\n            public enum E\n                A\n            public contract C")]
     [InlineData("struct Outer {}\n    group Helpers\n        func identity(value: Self) -> Self => value@move")]
     [InlineData("struct Outer<T> {}\n    public struct Inner<U> {}\n        var first: T\n        var second: U\nfunc use(x: Outer<i32>.Inner<string>) => ()")]
@@ -123,7 +123,7 @@ public class ContainerNestingTest
     [Fact]
     public void EmptyNestedTypeRetainsUnusedBorrowDependency()
     {
-        var c = Parse("struct Outer<T> {}\n    public struct Tag {}\nfunc f(x: Outer<ref{a}/i32>.Tag) => ()");
+        var c = Parse("struct Outer<T> {}\n    public struct Tag {}\nfunc f(x: Outer<ref/i32 during a>.Tag) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>());
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));

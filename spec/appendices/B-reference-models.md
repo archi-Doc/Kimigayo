@@ -20,7 +20,7 @@ Solution -> Project -> Compilation(inputs)
     -> Common effect-family fixed points, public guarantees, conformance and usage proofs
     -> Generic instantiation and published dependent/representation obligation resolution
        (without directive reselection or new body-derived semantic conditions)
-    -> Explicit implementation selection{the} closed defining set
+    -> Explicit implementation selection from the closed defining set
     -> Concrete control-flow, Access Effect, ownership, Origin, lifetime and cleanup analysis
     -> Final acceptance and supported-generation-set validation
     -> Layout / ValueLowering / FunctionAbi / CleanupPlan
@@ -47,7 +47,7 @@ Parse a directive Condition
     -> retain any implementation-internal validation work with its source-defined traversal
     -> complete required nested Conditions even in unselected reached #switch arms
     -> discard speculative grammar errors only where False #if rules require skipping grammar
-    -> diagnose Names absent{the} prepared environment; do not retry after generic Binding or instantiation
+    -> diagnose Names absent from the prepared environment; do not retry after generic Binding or instantiation
     -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
     -> require a final result and completed validation before finalization
     -> bind and lower only the selected Syntax

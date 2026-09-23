@@ -90,13 +90,13 @@ public class SpecializationBindingTest
     }
 
     // SPEC 8.8.2: written binder names are inherited from the original; the body serves every admitted binding.
-    private const string Named = "func first<T>(values: ref{source}/[3 of T]) -> ref{source}/T => values[0]@ref/T\n";
+    private const string Named = "func first<T>(values: ref/[3 of T] during source) -> ref/T during source => values[0]@ref/T\n";
 
     [Fact]
     public void InheritedBindersKeepTheOriginalContract()
         => ScalarEmissionTest.EmitFixture(
             "SpecializationInheritedBinders",
-            Named + "specialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{source}/i32 => values[2]@ref/i32\nfunc forward<T>(values: ref{source}/[3 of T]) -> ref{source}/T => first<T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [3 of bool] = [true, false, false]\ndo\n    let local: [3 of i32] = [7, 8, 9]\n    require first<i32>(local@ref) == 9 else => $abort(\"local\")\nrequire first<i32>(a@ref) == 3 and forward<i32>(a@ref) == 3 and first<bool>(b@ref) == true else => $abort(\"first\")\nConsole.writeLine(\"ok\")",
+            Named + "specialize func first<i32>(values: ref/[3 of i32] during source) -> ref/i32 during source => values[2]@ref/i32\nfunc forward<T>(values: ref/[3 of T] during source) -> ref/T during source => first<T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [3 of bool] = [true, false, false]\ndo\n    let local: [3 of i32] = [7, 8, 9]\n    require first<i32>(local@ref) == 9 else => $abort(\"local\")\nrequire first<i32>(a@ref) == 3 and forward<i32>(a@ref) == 3 and first<bool>(b@ref) == true else => $abort(\"first\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
     [Fact]
@@ -107,9 +107,9 @@ public class SpecializationBindingTest
             "ok\n");
 
     [Theory]
-    [InlineData("specialize func first<i32>(values: ref{other}/[3 of i32]) -> ref{other}/i32 => values[2]@ref/i32")]
-    [InlineData("specialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{static}/i32 => values[2]@ref/i32")]
-    [InlineData("specialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{source}/i32 => values[2]@ref/i32\nspecialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{source}/i32 => values[1]@ref/i32")]
+    [InlineData("specialize func first<i32>(values: ref/[3 of i32] during other) -> ref/i32 during other => values[2]@ref/i32")]
+    [InlineData("specialize func first<i32>(values: ref/[3 of i32] during source) -> ref/i32 during static => values[2]@ref/i32")]
+    [InlineData("specialize func first<i32>(values: ref/[3 of i32] during source) -> ref/i32 during source => values[2]@ref/i32\nspecialize func first<i32>(values: ref/[3 of i32] during source) -> ref/i32 during source => values[1]@ref/i32")]
     public void RejectsRenamedNarrowedOrDuplicateBinders(string specialization)
     {
         var c = MinimalEmissionTest.Analyze(Named + specialization);
@@ -151,7 +151,7 @@ public class SpecializationBindingTest
     [InlineData("specialize func weight<i32>(other: ref/i32) -> i32 => 2")]
     [InlineData("specialize func weight<i32, i64>(value: ref/i32) -> i32 => 2")]
     [InlineData("specialize func weight<T>(value: ref/T) -> i32 => 2")]
-    [InlineData("specialize func weight<i32>(value: ref{static}/i32) -> i32 => 2")]
+    [InlineData("specialize func weight<i32>(value: ref/i32 during static) -> i32 => 2")]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32 => true")]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32 => 2\nspecialize func weight<i32>(value: ref/i32) -> i32 => 3")]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32\n    i32 is Copy\n    return 2")]

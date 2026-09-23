@@ -110,6 +110,8 @@ public ref struct TokenReader
 
     internal bool HeaderRegion { get; set; }
 
+    internal bool ConstraintRequirement { get; set; }
+
     internal readonly bool SameLine(int end, int start)
         => start >= end && !this.sourceText[end..start].ContainsAny('\r', '\n');
 

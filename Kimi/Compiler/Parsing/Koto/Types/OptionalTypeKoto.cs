@@ -24,8 +24,31 @@ public sealed class OptionalTypeKoto : TypeKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Type.WriteTo(ref builder);
-        builder.Append('?');
+        Koto body = this;
+        var count = 0;
+        while (body is OptionalTypeKoto optional)
+        {
+            count++;
+            body = optional.Type;
+        }
+
+        var annotated = body as TypeSemanticsKoto;
+        if (annotated is { IsTransparentWrapper: false, Type: not null, HasOrigin: true })
+        {
+            annotated.WriteTypeTo(ref builder, writeBorrowOrigin: false);
+        }
+        else
+        {
+            annotated = null;
+            body.WriteTo(ref builder);
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            builder.Append('?');
+        }
+
+        annotated?.WriteOriginTo(ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor) => visitor.Visit(this.Type);

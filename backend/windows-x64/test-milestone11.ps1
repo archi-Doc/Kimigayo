@@ -112,7 +112,7 @@ $invalid = [ordered]@{
     InvalidOrdinary = @{ source = (Edit-KimiSource $original '=> defaultWeight' '=> true'); diagnostic = 'TypeMismatch_Kd' }
     MissingCopy = @{ source = (Edit-KimiSource $original 'result = result + forward<T>(values[index]@ref/T)' "let copied: T = values[index]`n            result = result + forward<T>(values[index]@ref/T)"); diagnostic = 'UnsupportedOwnership_Kd' }
     StaticWrite = @{ source = (Edit-KimiSource $original '    let actual = (' "    Weights.defaultWeight = 3`n    let actual = ("); diagnostic = 'InaccessibleBinding_Kd' }
-    NarrowOrigin = @{ source = (Edit-KimiSource $original 'weight<i32>(value: ref/i32)' 'weight<i32>(value: ref{static}/i32)'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    NarrowOrigin = @{ source = (Edit-KimiSource $original 'weight<i32>(value: ref/i32)' 'weight<i32>(value: ref/i32 during static)'); diagnostic = 'IncompatibleContractImplementation_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"

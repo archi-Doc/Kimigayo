@@ -270,7 +270,7 @@ public static partial class Parser
         return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(start, name.Span.End), KotoKind.RootName, "::", [name]);
     }
 
-    private static Koto ParseFixedArrayType(ref TokenReader reader, bool allowOrigins)
+    private static Koto ParseFixedArrayType(ref TokenReader reader)
     {
         var start = reader.Read().Span.Start;
         var length = ParseArrayLength(ref reader);
@@ -294,7 +294,7 @@ public static partial class Parser
             // The placeholder is forbidden in generic arguments and other compound element Types (SPEC 4.3).
             var allowInference = reader.AllowArrayElementInference;
             reader.AllowArrayElementInference = allowInference && reader.CurrentTokenKind == TokenKind.OpenBracket;
-            element = ParseDeclarationType(ref reader, parseOrigin: true, allowNestedOrigins: allowOrigins);
+            element = ParseDelimitedType(ref reader);
             reader.AllowArrayElementInference = allowInference;
         }
 
@@ -359,14 +359,23 @@ public static partial class Parser
         return left;
     }
 
-    private static Koto ParseTypeArgument(ref TokenReader reader, bool allowOrigins)
+    private static Koto ParseTypeArgument(ref TokenReader reader)
     {
         if (reader.CurrentTokenKind == TokenKind.NumericLiteral || IsLengthExpression(ref reader))
         {
             return ParseArrayLength(ref reader);
         }
 
-        return ParseDeclarationType(ref reader, parseOrigin: true, allowNestedOrigins: allowOrigins);
+        return ParseDelimitedType(ref reader);
+    }
+
+    private static Koto ParseDelimitedType(ref TokenReader reader)
+    {
+        var requirement = reader.ConstraintRequirement;
+        reader.ConstraintRequirement = false;
+        var type = ParseDeclarationType(ref reader);
+        reader.ConstraintRequirement = requirement;
+        return type;
     }
 
     private static bool IsLengthExpression(ref TokenReader reader)

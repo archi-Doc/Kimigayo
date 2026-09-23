@@ -44,18 +44,18 @@ public static partial class Parser
         }
     }
 
-    private static Koto ParseGroupedContainerSuffix(ref TokenReader reader, Koto type, bool allowOrigins)
+    private static Koto ParseGroupedContainerSuffix(ref TokenReader reader, Koto type)
     {
         while (reader.CurrentTokenKind == TokenKind.Dot)
         {
             reader.Advance();
             var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                ? ParseDeclarationType(ref reader, parseOrigin: true, parseFunctionType: false, allowNestedOrigins: allowOrigins, parseContainerSuffix: false)
+                ? ParseDeclarationType(ref reader, parseOrigin: true, parseFunctionType: false, parseContainerSuffix: false)
                 : ParseMemberName(ref reader);
             type = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, member.Span.End), type, member);
             if (reader.CurrentTokenKind == TokenKind.LessThan)
             {
-                type = ParseGenericsPostfix(ref reader, type, allowOrigins);
+                type = ParseGenericsPostfix(ref reader, type);
             }
         }
 

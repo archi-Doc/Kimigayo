@@ -73,7 +73,7 @@ public class PipelineCallableTest
 
     [Theory]
     [InlineData("(value: ref/Item)", "(value: uniq/Item)")]
-    [InlineData("(value: ref/Item)", "(value: ref{static}/Item)")]
+    [InlineData("(value: ref/Item)", "(value: ref/Item during static)")]
     public void RejectsStrongerInputContract(string original, string replacement)
         => Assert.False(MinimalEmissionTest.Analyze(Source.Replace(original, replacement, StringComparison.Ordinal)).Binding.Result.IsComplete);
 }

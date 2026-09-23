@@ -31,7 +31,7 @@ public class DynamicArrayBorrowTest
 
     [Fact]
     public void ReturnedBorrowKeepsTheCallerStorageOrigin()
-        => ScalarEmissionTest.EmitFixture("DynamicArrayBorrowReturned", Task + "func first(values: ref/Array<Task>) -> ref{values}/Task => values[0]@ref\nvar values: Array<Task> = [Task.init(42)]\nlet item = first(values@ref)\nrequire item.id == 42 else => $abort(\"value\")\nvalues@uniq.clear()", "drop\n");
+        => ScalarEmissionTest.EmitFixture("DynamicArrayBorrowReturned", Task + "func first(values: ref/Array<Task>) -> ref/Task during values => values[0]@ref\nvar values: Array<Task> = [Task.init(42)]\nlet item = first(values@ref)\nrequire item.id == 42 else => $abort(\"value\")\nvalues@uniq.clear()", "drop\n");
 
     [Theory]
     [InlineData("Negative", "-1")]

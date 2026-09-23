@@ -223,7 +223,7 @@ public class EnumOwnershipTest
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(body.Constructions[0].Case).Owner.Declaration;
-        c.Kotonoha.CreateCodeContext().Parse(declaration, "Again(ref{static}/i32)");
+        c.Kotonoha.CreateCodeContext().Parse(declaration, "Again(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
         Assert.False(c.Ownership.Analyze().IsVerified);
@@ -232,9 +232,9 @@ public class EnumOwnershipTest
 
     // Self-containing enums are rejected at Binding (InlineLayoutTest); these payloads are finite but unsupported.
     [Theory]
-    [InlineData("enum V<T> {a}\n    Some(ref{a}/T)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
-    [InlineData("func f(x: ref{static}/i32) -> Option<ref{static}/i32> => .Some(x)")]
-    [InlineData("func f(x: uniq/i32) -> Option<uniq{x}/i32> => .Some(x)")]
+    [InlineData("enum V<T> {a}\n    Some(ref/T during a)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
+    [InlineData("func f(x: ref/i32 during static) -> Option<ref/i32 during static> => .Some(x)")]
+    [InlineData("func f(x: uniq/i32) -> Option<uniq/i32 during x> => .Some(x)")]
     public void UnsupportedPayloadTypesCannotBeHiddenByAnEmptyCase(string source)
     {
         var c = Parse(source);

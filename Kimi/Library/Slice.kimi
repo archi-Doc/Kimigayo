@@ -4,14 +4,14 @@ public struct Slice<T> {source}
         return SliceIterator<T>.init(self)
 public struct SliceIterator<T> {source}
     Self is Iterator
-    associate Iterator.Element is ref{source}/T
+    associate Iterator.Element is ref/T during source
     let values: Slice<T>{slice}
         origin slice.source == source
     var position: isize = 0
     public init(values: Slice<T>)
         origin values.source == source
         self.values = values
-    public func next(self: uniq/Self) -> Option<ref{source}/T>
+    public func next(self: uniq/Self) -> Option<ref/T during source>
         require self.position < self.values.length else => return .None
         let index = self.position
         self.position = self.position + 1

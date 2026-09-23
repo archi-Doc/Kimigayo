@@ -114,7 +114,7 @@ $invalid = [ordered]@{
     WrongLength = @{ source = (Edit-KimiSource $original 'pick<3, i32>(numbers@ref, index: 2)' 'pick<2, i32>(numbers@ref, index: 2)'); diagnostic = 'NoApplicableOverload_Kd' }
     PartialArguments = @{ source = (Edit-KimiSource $original 'pick<3, i32>(numbers@ref, index: 2)' 'pick<3>(numbers@ref, index: 2)'); diagnostic = 'NoApplicableOverload_Kd' }
     EscapingLocal = @{ source = (Edit-KimiSource $original '    Console.writeLine("Inference and defaults finished.")' "    var escaped = pick(numbers@ref)`n    do`n        let local: [3 of i32] = [7, 8, 9]`n        escaped = forward(local@ref)`n    require escaped == 7 else => `$abort(`"escape`")`n    Console.writeLine(`"Inference and defaults finished.`")"); diagnostic = 'NoApplicableOverload_Kd' }
-    StaticOrigin = @{ source = (Edit-KimiSource $original 'index: isize = defaultIndex()) -> ref{source}/T' 'index: isize = defaultIndex()) -> ref{static}/T'); diagnostic = 'TypeMismatch_Kd' }
+    StaticOrigin = @{ source = (Edit-KimiSource $original 'index: isize = defaultIndex()) -> ref/T during source' 'index: isize = defaultIndex()) -> ref/T during static'); diagnostic = 'TypeMismatch_Kd' }
     UnboundDefault = @{ source = (Edit-KimiSource $original "public func main()`n" "func make<T>(value: T = `$abort(`"No value`")) -> T => value`n`npublic func main()`n    let m = make()`n"); diagnostic = 'NoApplicableOverload_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {

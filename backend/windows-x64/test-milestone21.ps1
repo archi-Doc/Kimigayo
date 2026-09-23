@@ -78,7 +78,7 @@ $default = "Default index evaluated.`n"
 $expected = "${default}Specialized selection is 30.`nExplicit selection is 10.`n${default}Forwarded selection is 30.`n${default}Ordinary selection is 4.`n${default}Local selection is 9.`nSpecialization finished.`n"
 if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) 'Milestone21' 'O2' $expected }
 $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
-$header = "specialize func pick<3, i32>(`n    values: ref{source}/[3 of i32], index: isize) -> ref{source}/i32`n"
+$header = "specialize func pick<3, i32>(`n    values: ref/[3 of i32] during source, index: isize) -> ref/i32 during source`n"
 $specialization = "// All generic slots are fixed. The Origin binder and default are inherited.`n" + $header +
     "    require index >= 0 and index < 3 else => `$abort(`"Invalid specialized index`")`n    return values[2 - index]@ref/i32`n`n"
 if (-not $original.Contains($specialization)) { throw 'The specialization block anchor does not match the program.' }
@@ -119,16 +119,16 @@ foreach ($level in @('O0', 'O2')) {
 # README rejections: redeclared default or boundary, added/renamed binder, static (narrowed) result,
 # mismatched result Type, label or parameter structure, partial specialization, duplicate key, ambiguous
 # original and an invalid ordinary generic body.
-$signature = '    values: ref{source}/[3 of i32], index: isize) -> ref{source}/i32'
-$ambiguous = "func pick<length N, T>(`n    values: ref{source}/[N of i32], index: isize = 0) -> ref{source}/i32 => values[index]@ref/i32`n`n"
+$signature = '    values: ref/[3 of i32] during source, index: isize) -> ref/i32 during source'
+$ambiguous = "func pick<length N, T>(`n    values: ref/[N of i32] during source, index: isize = 0) -> ref/i32 during source => values[index]@ref/i32`n`n"
 $invalid = [ordered]@{
-    RedeclaredDefault = @{ source = (Edit-KimiSource $original $signature '    values: ref{source}/[3 of i32], index: isize = defaultIndex()) -> ref{source}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    RedeclaredBoundary = @{ source = (Edit-KimiSource $original $signature '    ! values: ref{source}/[3 of i32], index: isize) -> ref{source}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    AddedBinder = @{ source = (Edit-KimiSource $original $signature '    values: ref{extra}/[3 of i32], index: isize) -> ref{extra}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    StaticResult = @{ source = (Edit-KimiSource $original $signature '    values: ref{source}/[3 of i32], index: isize) -> ref{static}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    WrongResult = @{ source = (Edit-KimiSource $original $signature '    values: ref{source}/[3 of i32], index: isize) -> i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    WrongLabel = @{ source = (Edit-KimiSource $original $signature '    items: ref{source}/[3 of i32], index: isize) -> ref{source}/i32' 'return values[2 - index]@ref/i32' 'return items[2 - index]@ref/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    WrongStructure = @{ source = (Edit-KimiSource $original $signature '    values: ref{source}/[3 of i32]) -> ref{source}/i32' 'require index >= 0 and index < 3' 'let index: isize = 0' 'return values[2 - index]@ref/i32' 'return values[2]@ref/i32'); diagnostic = 'SpecializationInputMismatch_Kd' }
+    RedeclaredDefault = @{ source = (Edit-KimiSource $original $signature '    values: ref/[3 of i32] during source, index: isize = defaultIndex()) -> ref/i32 during source'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    RedeclaredBoundary = @{ source = (Edit-KimiSource $original $signature '    ! values: ref/[3 of i32] during source, index: isize) -> ref/i32 during source'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    AddedBinder = @{ source = (Edit-KimiSource $original $signature '    values: ref/[3 of i32] during extra, index: isize) -> ref/i32 during extra'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    StaticResult = @{ source = (Edit-KimiSource $original $signature '    values: ref/[3 of i32] during source, index: isize) -> ref/i32 during static'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    WrongResult = @{ source = (Edit-KimiSource $original $signature '    values: ref/[3 of i32] during source, index: isize) -> i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    WrongLabel = @{ source = (Edit-KimiSource $original $signature '    items: ref/[3 of i32] during source, index: isize) -> ref/i32 during source' 'return values[2 - index]@ref/i32' 'return items[2 - index]@ref/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    WrongStructure = @{ source = (Edit-KimiSource $original $signature '    values: ref/[3 of i32] during source) -> ref/i32 during source' 'require index >= 0 and index < 3' 'let index: isize = 0' 'return values[2 - index]@ref/i32' 'return values[2]@ref/i32'); diagnostic = 'SpecializationInputMismatch_Kd' }
     Partial = @{ source = (Edit-KimiSource $original 'specialize func pick<3, i32>(' 'specialize func pick<3, T>('); diagnostic = 'InvalidTypeFormation_Kd' }
     Duplicate = @{ source = (Edit-KimiSource $original $specialization ($specialization + $specialization)); diagnostic = 'DuplicateBinding_Kd' }
     Ambiguous = @{ source = (Edit-KimiSource $original $specialization ($ambiguous + $specialization)); diagnostic = 'AmbiguousBinding_Kd' }

@@ -16,7 +16,7 @@ public class DocumentationMarkdownIntegrationTest
     public void ClassifiesExternalGenericSemanticsLengthAndOriginNamesFromRealDeclarations()
     {
         const string body = "- by: external\n- factor: internal\n- note: collision\n- self: ordinary\n- s: semantics\n- T: type\n- N: length\n- a: origin\n- return: result\n\n# note\n\nStandard section.";
-        var tree = DocumentationCommentTest.Parse(Comment(body) + "func sample<s/T, length N>(! by => factor: i32, note: ref{a}/i32, self: i32) => ()");
+        var tree = DocumentationCommentTest.Parse(Comment(body) + "func sample<s/T, length N>(! by => factor: i32, note: ref/i32 during a, self: i32) => ()");
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         var doc = DocumentationMarkdownDocument.Parse(comment);
         Assert.All(doc.GetItemCandidates().ToArray().Take(9), item => Assert.Equal(DocumentationMarkdownItemKind.Unclassified, item.Kind));

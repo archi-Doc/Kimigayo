@@ -315,7 +315,7 @@ public sealed partial class Binding
             }
             else
             {
-                issue.Node.AddDiagnostic(issue.Code);
+                issue.Node.AddDiagnostic(issue.Code, hint: this.BorrowOriginHint(issue.Node));
             }
         }
 

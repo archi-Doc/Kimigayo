@@ -20,7 +20,7 @@ public class ScalarBorrowComparisonTest
     [Theory]
     [InlineData("Local", "let x: i32 = 7\nlet r = x@ref\nrequire r == 7@ref else => $abort(\"local\")")]
     [InlineData("Block", "let x: i32 = 7\ndo\n    let r = x@ref\n    require r == 7@ref else => $abort(\"block\")\n    Console.writeLine(\"ok\")")]
-    [InlineData("Returned", "func first(a: ref/[2 of i32]) -> ref{a}/i32 => a[0]@ref/i32\nlet values: [2 of i32] = [7, 8]\ndo\n    let r = first(values@ref)\n    require r == 7@ref else => $abort(\"returned\")\n    Console.writeLine(\"ok\")")]
+    [InlineData("Returned", "func first(a: ref/[2 of i32]) -> ref/i32 during a => a[0]@ref/i32\nlet values: [2 of i32] = [7, 8]\ndo\n    let r = first(values@ref)\n    require r == 7@ref else => $abort(\"returned\")\n    Console.writeLine(\"ok\")")]
     [InlineData("Mixed", "func f(a: ref/i32, b: i32) -> bool => a == b\nlet x: i32 = 7\nlet r = x@ref\nrequire f(x@ref, 7) and not f(x@ref, 8) and r == 7 and r == x and x == r else => $abort(\"mixed\")")]
     public void ComparesReferentsOfReferenceLocals(string name, string source)
     {

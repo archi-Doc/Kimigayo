@@ -4,17 +4,17 @@ func defaultIndex() -> isize
     return 0
 
 func pick<length N, T>(
-    values: ref{source}/[N of T], index: isize = defaultIndex()) -> ref{source}/T
+    values: ref/[N of T] during source, index: isize = defaultIndex()) -> ref/T during source
     return values[index]@ref/T
 
 // All generic slots are fixed. The Origin binder and default are inherited.
 specialize func pick<3, i32>(
-    values: ref{source}/[3 of i32], index: isize) -> ref{source}/i32
+    values: ref/[3 of i32] during source, index: isize) -> ref/i32 during source
     require index >= 0 and index < 3 else => $abort("Invalid specialized index")
     return values[2 - index]@ref/i32
 
 func forward<length N, T>(
-    values: ref{source}/[N of T]) -> ref{source}/T
+    values: ref/[N of T] during source) -> ref/T during source
     // Selection must survive a dependent call; omission uses pick's default.
     return pick<N, T>(values)
 
