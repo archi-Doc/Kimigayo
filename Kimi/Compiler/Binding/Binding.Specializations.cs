@@ -159,15 +159,16 @@ public sealed partial class Binding
             // Do not accept their syntax by merely erasing the generic header. Written binder names
             // are inherited by CompleteSpecializationOrigins (SPEC 8.8.2); a receiver is an ordinary
             // restated parameter matched at the original's position (SPEC 8.8.1).
-            if (function.Modifier != ModifierKind.NoModifier || function.AttributeChain is not null ||
-                function.TypeConstraints.Count != 0 || function.GenericArguments.Count == 0 || function.Parameters.Any(x => x.AttributeChain is not null))
+            if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || function.Parameters.Any(x => x.AttributeChain is not null))
             {
                 Fail(function, BindingFailure.Unsupported, true);
                 continue;
             }
 
-            // SPEC 8.8.2: a specialization header inherits the original's boundary and defaults; it redeclares neither.
-            if (function.NameBoundaryIndex >= 0 || function.Parameters.Any(x => x.DefaultValue is not null))
+            // SPEC 8.8.2: a specialization header inherits the original's access, boundary, defaults and
+            // Constraints; it redeclares none of them.
+            if (function.Modifier != ModifierKind.NoModifier || function.NameBoundaryIndex >= 0 || function.TypeConstraints.Count != 0 ||
+                function.Parameters.Any(x => x.DefaultValue is not null))
             {
                 Fail(function, BindingFailure.IncompatibleImplementation);
                 continue;

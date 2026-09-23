@@ -81,6 +81,7 @@ public class SpecializationBindingTest
     [Theory]
     [InlineData("specialize func find<i32>(value: i32, count: i32 = 1) -> i32 => count")]
     [InlineData("specialize func find<i32>(! value: i32, count: i32) -> i32 => count")]
+    [InlineData("public specialize func find<i32>(value: i32, count: i32) -> i32 => count")]
     public void RejectsRedeclaredDefaultsAndBoundaries(string specialization)
     {
         var c = MinimalEmissionTest.Analyze(Defaults + specialization);
@@ -153,6 +154,7 @@ public class SpecializationBindingTest
     [InlineData("specialize func weight<i32>(value: ref{static}/i32) -> i32 => 2")]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32 => true")]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32 => 2\nspecialize func weight<i32>(value: ref/i32) -> i32 => 3")]
+    [InlineData("specialize func weight<i32>(value: ref/i32) -> i32\n    i32 is Copy\n    return 2")]
     public void RejectsInvalidImplementation(string specialization)
     {
         var c = MinimalEmissionTest.Analyze(Ordinary + specialization);
