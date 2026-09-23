@@ -663,10 +663,10 @@ public sealed partial class OwnershipAnalysis
                 return this.ReadPointer(element, use);
             case IndexKoto slice when slice.BoundType?.Kind == BoundTypeKind.Slice && slice.Right is RangeKoto:
                 return this.CreateSlice(slice);
-            case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Slice:
-                return this.ReadSlice(element);
-            case IndexKoto element when ReferenceTypes.IsArray(element.Left.BoundType):
-                return this.ReadSlice(element);
+            case IndexKoto element when element.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array:
+                return this.ReadSlice(element, acquisition);
+            case IndexKoto element when ReferenceTypes.IsArray(element.Left.BoundType) || ReferenceTypes.IsDynamicArray(element.Left.BoundType):
+                return this.ReadSlice(element, acquisition);
             case BinaryKoto element when ElementAccess.IsSyntax(element):
                 return this.ElementValue(element, use, acquisition);
             case BinaryKoto binary:

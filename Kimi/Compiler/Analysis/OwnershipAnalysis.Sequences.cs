@@ -20,26 +20,42 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    private int ReadSlice(IndexKoto source)
+    private int ReadSlice(IndexKoto source, AcquisitionKind? acquisition)
     {
-        // Snapshot the Copy handle before evaluating the index; its Origin remains
-        // live until the indexed read, even if the original handle is reassigned.
-        var receiver = this.Expression(source.Left, ReferenceTypes.IsArray(source.Left.BoundType) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq ? PlaceUseKind.Read : PlaceUseKind.Consume);
+        var depth = this.comparisonDepth++;
+        var dynamicArray = source.Left.BoundType?.Kind == BoundTypeKind.Array;
+        // Snapshot a Copy Slice/reference, but keep an owned Array in its Place. Protect
+        // the handle throughout index evaluation so it cannot be resized underneath the read.
+        var keepPlace = dynamicArray || (ReferenceTypes.IsArray(source.Left.BoundType) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq);
+        var receiver = this.Expression(source.Left, keepPlace ? PlaceUseKind.Read : PlaceUseKind.Consume);
+        if (dynamicArray && receiver >= 0)
+        {
+            this.Emit(OwnershipOperationKind.LocateReceiver, source.Left, receiver);
+            this.BeginSharedLoan(receiver, access: true);
+        }
+
         var index = this.Value(this.Expression(source.Right));
         if (receiver < 0 || index < 0)
         {
+            this.EndComparisonLoans(depth, source);
+            this.comparisonDepth = depth;
             return -1;
         }
 
-        if (!ScalarTypes.Supports(source.BoundType) &&
+        if (acquisition == AcquisitionKind.Move || (!ScalarTypes.Supports(source.BoundType) &&
             !(source.BoundType?.Kind == BoundTypeKind.Parameter && ReferenceTypes.IsArray(source.Left.BoundType) &&
-            this.compilation.Binding.ProveCopy(source.BoundType, source) == ConstraintProof.Proven))
+            this.compilation.Binding.ProveCopy(source.BoundType, source) == ConstraintProof.Proven)))
         {
             this.Unsupported(source);
+            this.EndComparisonLoans(depth, source);
+            this.comparisonDepth = depth;
             return -1;
         }
 
-        return this.SequenceValue(source, source.BoundType!, SequenceOperation.Read, receiver, index: index);
+        var result = this.SequenceValue(source, source.BoundType!, SequenceOperation.Read, receiver, index: index);
+        this.EndComparisonLoans(depth, source);
+        this.comparisonDepth = depth;
+        return result;
     }
 
     private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1, int element = -1)

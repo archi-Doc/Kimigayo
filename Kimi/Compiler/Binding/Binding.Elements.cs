@@ -21,7 +21,7 @@ public sealed partial class Binding
                     ? Complete(source, receiver!.Components[0]) : Fail(source, BindingFailure.TypeMismatch);
             }
 
-            if (ReferenceTypes.IsArray(receiver) && source.Right is not RangeKoto)
+            if ((ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver)) && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);
                 return Complete(source, receiver!.Components[0].Components[0]);
@@ -43,7 +43,7 @@ public sealed partial class Binding
                 return Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [receiver.Components[0]], origin: this.PlaceOrigin(source.Left)));
             }
 
-            if (receiver?.Kind == BoundTypeKind.Slice)
+            if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);
                 return Complete(source, receiver.Components[0]);

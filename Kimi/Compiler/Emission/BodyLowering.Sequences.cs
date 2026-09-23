@@ -104,15 +104,15 @@ internal sealed partial class BodyLowering
 
         if (plan.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead)
         {
-            var arrayRead = plan.Kind == SequenceOperation.ArrayRead || borrowedArray;
+            var arrayRead = plan.Kind == SequenceOperation.ArrayRead || (borrowedArray && receiver.Kind == BoundTypeKind.FixedArray);
             if (arrayRead && (receiver.Length == 0 || this.aggregateLayouts.Get(receiver)?.Value.Layout.Size == 0))
             {
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
-            var validSource = borrowedArray ? operation.Source is IndexKoto index && ReferenceTypes.IsArray(SignatureType(this, index.Left.BoundType)) :
+            var validSource = borrowedArray ? operation.Source is IndexKoto index && (ReferenceTypes.IsArray(SignatureType(this, index.Left.BoundType)) || ReferenceTypes.IsDynamicArray(SignatureType(this, index.Left.BoundType))) :
                 arrayRead ? operation.Source is ForKoto { Iterable.BoundType.Kind: BoundTypeKind.FixedArray } :
-                operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice };
+                operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice or BoundTypeKind.Array };
             var itemType = receiver.Components[0];
             var itemLayout = plan.Element >= 0 ? this.aggregateLayouts.Get(itemType) : null;
             if (plan.Element < -1 || (plan.Element >= 0 && (operation.Source is not ForKoto { IsTupleBinding: true } tupleLoop ||
@@ -125,7 +125,7 @@ internal sealed partial class BodyLowering
             var readType = plan.Element < 0 ? itemType : itemType.Components[plan.Element];
             // A fixed array's aggregate element (iteration, or a proved-Copy element of a borrowed array) is copied from its element storage.
             var aggregate = arrayRead ? this.aggregateLayouts.Get(ValueType(body, id)!) : null;
-            if (receiver.Kind != (arrayRead ? BoundTypeKind.FixedArray : BoundTypeKind.Slice) || !validSource ||
+            if ((arrayRead ? receiver.Kind != BoundTypeKind.FixedArray : receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array)) || !validSource ||
                 !ReferenceEquals(ValueType(body, id), readType) || (!ScalarTypes.Supports(ValueType(body, id)) && aggregate is null && !ReferenceEquals(ValueType(body, id), BoundType.Unit)) ||
                 (plan.Kind == SequenceOperation.ArrayRead && body.Places[operation.Place].Acquisition != AcquisitionKind.Copy) ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
