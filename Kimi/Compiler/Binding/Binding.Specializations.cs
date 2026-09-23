@@ -94,13 +94,33 @@ public sealed partial class Binding
     {
         foreach (var pair in this.specializations)
         {
-            if (ReferenceEquals(pair.Value.Original, call.Target) && SameSpecializationArguments(pair.Value.Arguments, call.TypeArguments))
+            if (ReferenceEquals(pair.Value.Original, call.Target) && SameSpecializationArguments(pair.Value.Arguments, call.TypeArguments) &&
+                SameSpecializationLengths(pair.Value.Lengths, call.LengthArguments))
             {
                 return pair.Key;
             }
         }
 
         return null;
+    }
+
+    // SPEC 8.8.3: the selection key holds every slot; a length slot is its evaluated value (LengthKey(N)).
+    private static bool SameSpecializationLengths(ReadOnlySpan<BoundLength?> left, ReadOnlySpan<BoundLength?> right)
+    {
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Length; i++)
+        {
+            if (!SameLengthSignature(left[i], right[i], null!, null!))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool SameSpecializationArguments(ReadOnlySpan<BoundType?> left, ReadOnlySpan<BoundType?> right)
@@ -112,6 +132,11 @@ public sealed partial class Binding
 
         for (var i = 0; i < left.Length; i++)
         {
+            if (left[i] is null && right[i] is null)
+            {
+                continue; // A length slot; compared by SameSpecializationLengths.
+            }
+
             if (left[i] is not { } a || right[i] is not { } b || !SignatureEquals(a, b, null!, null!))
             {
                 return false;
@@ -141,11 +166,22 @@ public sealed partial class Binding
             }
 
             var arguments = new BoundType?[function.GenericArguments.Count];
+            var lengths = new BoundLength?[function.GenericArguments.Count];
             var closed = true;
+            var scope = this.scopes[function];
             for (var i = 0; i < arguments.Length; i++)
             {
-                arguments[i] = this.BindType(function.GenericArguments[i], this.scopes[function]);
-                closed &= arguments[i] is { } type && Closed(type);
+                // SPEC 8.8: a length slot takes an evaluated constant (LengthKey(N)); a Type slot takes one closed Type.
+                if (this.IsLengthArgument(function.GenericArguments[i], scope))
+                {
+                    lengths[i] = this.BindLength(function.GenericArguments[i], scope);
+                    closed &= lengths[i] is { IsConstant: true };
+                }
+                else
+                {
+                    arguments[i] = this.BindType(function.GenericArguments[i], scope);
+                    closed &= arguments[i] is { } type && Closed(type);
+                }
             }
 
             if (!closed)
@@ -160,7 +196,7 @@ public sealed partial class Binding
             {
                 if (candidate.Declaration is not FunctionKoto { IsSpecialization: false } ordinary ||
                     ordinary.GenericArguments.Count != arguments.Length || ordinary.Parameters.Count != function.Parameters.Count ||
-                    ordinary.GenericArguments.Any(x => x is not GenericParameterKoto) || candidate.ReceiverIndex >= 0)
+                    !SameSlotKinds(ordinary, lengths) || candidate.ReceiverIndex >= 0)
                 {
                     continue;
                 }
@@ -169,7 +205,7 @@ public sealed partial class Binding
                 for (var p = 0; p < function.Parameters.Count; p++)
                 {
                     equal &= ordinary.Parameters[p].Type.BoundType is { } input &&
-                        this.SubstituteType(input, ordinary, arguments) is { } substituted && function.Parameters[p].Type.BoundType is { } actual &&
+                        this.SubstituteType(input, ordinary, arguments, lengths) is { } substituted && function.Parameters[p].Type.BoundType is { } actual &&
                         SignatureEquals(substituted, actual, ordinary, function);
                 }
 
@@ -194,7 +230,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var valid = this.CompleteSpecializationOrigins(function, definition, arguments);
+            var valid = this.CompleteSpecializationOrigins(function, definition, arguments, lengths);
             for (var p = 0; p < function.Parameters.Count; p++)
             {
                 valid &= function.Parameters[p].ExternalName == definition.Parameters[p].ExternalName;
@@ -208,7 +244,8 @@ public sealed partial class Binding
 
             foreach (var previous in this.specializations)
             {
-                if (ReferenceEquals(previous.Value.Original, original) && SameSpecializationArguments(previous.Value.Arguments, arguments))
+                if (ReferenceEquals(previous.Value.Original, original) && SameSpecializationArguments(previous.Value.Arguments, arguments) &&
+                    SameSpecializationLengths(previous.Value.Lengths, lengths))
                 {
                     Fail(previous.Key, BindingFailure.Duplicate);
                     Fail(function, BindingFailure.Duplicate);
@@ -218,8 +255,22 @@ public sealed partial class Binding
 
             if (valid)
             {
-                this.specializations.Add(function, new(original, arguments));
+                this.specializations.Add(function, new(original, arguments, lengths));
             }
+        }
+
+        // SPEC 8.8.1: every slot is supplied with its original kind, in declaration order.
+        static bool SameSlotKinds(FunctionKoto ordinary, BoundLength?[] lengths)
+        {
+            for (var i = 0; i < lengths.Length; i++)
+            {
+                if (lengths[i] is not null ? ordinary.GenericArguments[i] is not LengthParameterKoto : ordinary.GenericArguments[i] is not GenericParameterKoto)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         static bool Closed(BoundType type)
@@ -227,5 +278,5 @@ public sealed partial class Binding
                 type.LengthExpression is null && type.Components.All(Closed);
     }
 
-    private sealed record Specialization(BindingSymbol Original, BoundType?[] Arguments);
+    private sealed record Specialization(BindingSymbol Original, BoundType?[] Arguments, BoundLength?[] Lengths);
 }

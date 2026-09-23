@@ -49,7 +49,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool CompleteSpecializationOrigins(FunctionKoto function, FunctionKoto definition, BoundType?[] arguments)
+    private bool CompleteSpecializationOrigins(FunctionKoto function, FunctionKoto definition, BoundType?[] arguments, BoundLength?[] lengths)
     {
         var count = InputOriginCount(definition);
         var inputs = this.originScratch.Rent(count);
@@ -105,7 +105,7 @@ public sealed partial class Binding
             var valid = true;
             for (var i = 0; i < definition.Parameters.Count; i++)
             {
-                var pattern = this.SubstituteType(definition.Parameters[i].Type.BoundType!, definition, arguments);
+                var pattern = this.SubstituteType(definition.Parameters[i].Type.BoundType!, definition, arguments, lengths);
                 if (pattern is null)
                 {
                     return false;
@@ -120,7 +120,7 @@ public sealed partial class Binding
                 valid &= ReferenceEquals(pattern, actual);
             }
 
-            if (definition.BoundSymbol.Type is not { } output || this.SubstituteType(output, definition, arguments) is not { } result)
+            if (definition.BoundSymbol.Type is not { } output || this.SubstituteType(output, definition, arguments, lengths) is not { } result)
             {
                 return false;
             }

@@ -8,6 +8,30 @@ public class SpecializationBindingTest
 {
     private const string Ordinary = "func weight<T>(value: ref/T) -> i32 => 1\n";
 
+    // SPEC 8.8: a length slot is supplied as an evaluated constant and enters the selection key (LengthKey(N)).
+    private const string Lengths = "func pick<length N, T>(values: ref/[N of T]) -> i32 => 0\n";
+
+    [Fact]
+    public void LengthSlotsSelectTheSpecialization()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationLengthSlots",
+            Lengths + "specialize func pick<3, i32>(values: ref/[3 of i32]) -> i32 => 1\nfunc forward<length N, T>(values: ref/[N of T]) -> i32 => pick<N, T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [2 of i32] = [1, 2]\nrequire pick<3, i32>(a@ref) == 1 and pick<2, i32>(b@ref) == 0 and forward<3, i32>(a@ref) == 1 and forward<2, i32>(b@ref) == 0 else => $abort(\"selection\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    [Theory]
+    [InlineData("specialize func pick<2, i32>(values: ref/[3 of i32]) -> i32 => 1")]
+    [InlineData("specialize func pick<i32, 3>(values: ref/[3 of i32]) -> i32 => 1")]
+    [InlineData("specialize func pick<N, i32>(values: ref/[3 of i32]) -> i32 => 1")]
+    [InlineData("specialize func pick<3, i32>(values: ref/[3 of i32]) -> i32 => 1\nspecialize func pick<3, i32>(values: ref/[3 of i32]) -> i32 => 2")]
+    public void RejectsInvalidLengthSlots(string specialization)
+    {
+        var c = MinimalEmissionTest.Analyze(Lengths + specialization);
+        Assert.False(c.Binding.Result.IsComplete);
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.Empty(output.ToString());
+    }
+
     [Theory]
     [InlineData("specialize func weight<i32>(value: ref/i32) -> i32 => 2")]
     [InlineData("specialize func weight<i64>(value: ref/i64) -> i32 => 3")]
