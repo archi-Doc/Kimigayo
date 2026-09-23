@@ -8,7 +8,7 @@ internal sealed partial class BodyLowering
 {
     private int BuiltinFormatKind(BoundCall call)
     {
-        var logical = call.Target.CompilerFunction == CompilerFunctionKind.BuiltinFormat ? 0 : 1;
+        var logical = call.Target.CompilerFunction == CompilerFunctionKind.WriterWrite ? 1 : 0;
         var required = call.Receiver is not null && call.ReceiverOperation.ParameterIndex == logical ? call.ReceiverOperation.ParameterType : null;
         for (var i = 0; required is null && i < call.ArgumentOperations.Length; i++)
         {

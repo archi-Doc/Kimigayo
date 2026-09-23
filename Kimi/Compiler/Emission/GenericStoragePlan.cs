@@ -20,6 +20,7 @@ internal sealed class GenericStoragePlan
     private readonly Dictionary<BoundCall, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundCall, FunctionAbi> formattingCalls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionAbi, FunctionAbi> formattingWrites = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(FunctionAbi Write, CompilerFunctionKind Kind), FunctionAbi> formattingConversions = new();
     private readonly Dictionary<FunctionKoto, int> chainCounts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionKoto, int> entryCounts = new(ReferenceEqualityComparer.Instance);
     private IReadOnlyDictionary<FunctionKoto, FunctionAbi>? functions;
@@ -44,6 +45,7 @@ internal sealed class GenericStoragePlan
         this.calls.Clear();
         this.formattingCalls.Clear();
         this.formattingWrites.Clear();
+        this.formattingConversions.Clear();
         this.chainCounts.Clear();
         this.entryCounts.Clear();
         this.ResourceLimitExceeded = false;
@@ -115,7 +117,7 @@ internal sealed class GenericStoragePlan
     }
 
     private static bool IsFormattingCallback(BoundCall call)
-        => call.Target.CompilerFunction is CompilerFunctionKind.TextWriter or CompilerFunctionKind.WriterWrite;
+        => call.Target.CompilerFunction is CompilerFunctionKind.TextWriter or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat;
 
     // The template records the calls its instances forward; each instance resolves them under its substitution.
     private static Template CreateTemplate(OwnershipBody body)
@@ -276,7 +278,7 @@ internal sealed class GenericStoragePlan
             return true;
         }
 
-        if (site.TypeArguments.Length != 1 || site.TypeArguments[0] is not { } self)
+        if (site.TypeArguments.Length != (site.Target.CompilerFunction == CompilerFunctionKind.TextTryFormat ? 2 : 1) || site.TypeArguments[0] is not { } self)
         {
             return Fail("Formatting callback requires a concrete input Type.", out failure);
         }
@@ -325,10 +327,33 @@ internal sealed class GenericStoragePlan
             }
 
             abi = wrapper;
+            if (site.Target.CompilerFunction is CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
+            {
+                abi = this.PrepareFormattingConversion(module, abi, site.Target.CompilerFunction);
+            }
         }
 
         this.formattingCalls.Add(site, abi);
         return true;
+    }
+
+    private FunctionAbi PrepareFormattingConversion(EmissionModule module, FunctionAbi write, CompilerFunctionKind kind)
+    {
+        if (this.formattingConversions.TryGetValue((write, kind), out var result))
+        {
+            return result;
+        }
+
+        var fixedBuffer = kind == CompilerFunctionKind.TextTryFormat;
+        var ret = new AbiParameter("ptr", "ret", AbiParameterKind.ResultSlot);
+        var value = new AbiParameter("ptr", "value", LogicalIndex: 0);
+        var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
+        var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
+        AbiParameter[] parameters = fixedBuffer ? [ret, value, new("ptr", "destination", LogicalIndex: 1), new("i64", "capacity", AbiParameterKind.Context), location, length] : [ret, value, location, length];
+        result = new("__kimi_format_conversion" + this.formattingConversions.Count, "void", parameters, resultSlot: true);
+        this.formattingConversions.Add((write, kind), result);
+        module.FormattingConversions.Add((result, write, fixedBuffer));
+        return result;
     }
 
     /// <summary>A universally verified generic body and the calls its instances forward.</summary>

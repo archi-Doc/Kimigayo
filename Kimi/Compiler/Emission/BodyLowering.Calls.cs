@@ -76,7 +76,7 @@ internal sealed partial class BodyLowering
         var runtime = formatting || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
         var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
-        if (plan.Target.CompilerFunction == CompilerFunctionKind.WriterWrite && this.FormattingCalls?.GetValueOrDefault(plan) is { } userFormat)
+        if (plan.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat && this.FormattingCalls?.GetValueOrDefault(plan) is { } userFormat)
         {
             callee = userFormat;
         }
@@ -216,7 +216,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < callee.Parameters.Length; i++)
         {
             var physical = callee.Parameters[i];
-            if (physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.BuiltinFormat)
+            if (physical.Kind == AbiParameterKind.Context && physical.Type == "i32" && plan.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
             {
                 var kind = this.BuiltinFormatKind(plan);
                 if (kind < 0)
@@ -234,9 +234,10 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (formatting && physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction == CompilerFunctionKind.TextFixed)
+            if (formatting && physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction is CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextTryFormat)
             {
-                if (SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Components.Count: 1 } borrowed ||
+                var destination = plan.Target.CompilerFunction == CompilerFunctionKind.TextFixed ? 0 : 1;
+                if (SignatureType(this, plan.ArgumentOperations[destination].ParameterType) is not { Components.Count: 1 } borrowed ||
                     borrowed.Components[0] is not { Kind: BoundTypeKind.FixedArray, Length: >= 0 } array)
                 {
                     return Fail("Fixed buffer requires a concrete initialized byte array.", out failure);

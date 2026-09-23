@@ -3,6 +3,74 @@
 @__kimi_utf8_true = private unnamed_addr constant [4 x i8] c"true", align 1
 @__kimi_utf8_false = private unnamed_addr constant [5 x i8] c"false", align 1
 @__kimi_utf8_unit = private unnamed_addr constant [2 x i8] c"()", align 1
+@__kimi_format_bounds = private unnamed_addr constant [18 x i8] [i8 0, i8 4, i8 3, i8 6, i8 5, i8 11, i8 10, i8 20, i8 20, i8 40, i8 39, i8 17, i8 24, i8 4, i8 5, i8 2, i8 0, i8 0], align 1
+
+; Fresh formatting buffers contain only validated output. Transfer without a validation pass or copy.
+define internal void @__kimi_format_take_string(ptr %ret, ptr %buffer) #0 {
+entry:
+  call void @__kimi_buffer_bytes(ptr %ret, ptr %buffer)
+  %data = load ptr, ptr %buffer, align 8
+  %heap = icmp ne ptr %data, null
+  %kind = zext i1 %heap to i8
+  %kindp = getelementptr i8, ptr %ret, i64 16
+  store i8 %kind, ptr %kindp, align 1
+  ret void
+}
+
+define internal i64 @__kimi_format_capacity(ptr %value, i32 %kind) #0 {
+entry:
+  %bytes = icmp uge i32 %kind, 16
+  br i1 %bytes, label %length, label %bounded
+length:
+  %lengthp = getelementptr i8, ptr %value, i64 8
+  %size = load i64, ptr %lengthp, align 8
+  ret i64 %size
+bounded:
+  %boundp = getelementptr [18 x i8], ptr @__kimi_format_bounds, i32 0, i32 %kind
+  %bound = load i8, ptr %boundp, align 1
+  %capacity = zext i8 %bound to i64
+  ret i64 %capacity
+}
+
+{{__kimi_text_to_string}}
+entry:
+  %buffer = alloca [32 x i8], align 8
+  %writer = alloca [64 x i8], align 8
+  %result = alloca i32, align 4
+  %capacity = call i64 @__kimi_format_capacity(ptr %value, i32 %kind)
+  call void @__kimi_text_heap(ptr %buffer, i64 %capacity, ptr %location, i64 %location_length)
+  call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 1, ptr null)
+  call void @__kimi_writer_write_builtin(ptr %result, ptr %writer, ptr %value, i32 %kind, ptr %location, i64 %location_length)
+  %tag = load i32, ptr %result, align 4
+  %ok = icmp eq i32 %tag, 0
+  br i1 %ok, label %success, label %failure
+success:
+  call void @__kimi_format_take_string(ptr %ret, ptr %buffer)
+  ret void
+failure:
+  call void @__kimi_abort(i32 {{reason_format}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+}
+
+{{__kimi_text_try_format}}
+entry:
+  %buffer = alloca [32 x i8], align 8
+  %writer = alloca [64 x i8], align 8
+  %result = alloca i32, align 4
+  call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 %capacity)
+  call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 0, ptr null)
+  call void @__kimi_writer_write_builtin(ptr %result, ptr %writer, ptr %value, i32 %kind, ptr %location, i64 %location_length)
+  %tag = load i32, ptr %result, align 4
+  %ok = icmp eq i32 %tag, 0
+  store i32 %tag, ptr %ret, align 4
+  br i1 %ok, label %success, label %done
+success:
+  %payload = getelementptr i8, ptr %ret, i64 8
+  call void @__kimi_buffer_bytes(ptr %payload, ptr %buffer)
+  br label %done
+done:
+  ret void
+}
 
 define internal void @__kimi_writer_fail(ptr %ret, ptr %self) #0 {
 entry:

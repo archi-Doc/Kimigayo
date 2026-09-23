@@ -185,6 +185,7 @@ internal static partial class LlvmModuleWriter
         }
 
         return text.Replace("{{reason_argument_range}}", Reason(WindowsLowering.ArgumentRangeReason), StringComparison.Ordinal)
+            .Replace("{{reason_format}}", Reason(WindowsLowering.FormatReason), StringComparison.Ordinal)
             .Replace("{{reason_size}}", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal);
     }
 

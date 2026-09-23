@@ -218,6 +218,8 @@ internal sealed class EmissionModule
 
     internal List<(FunctionAbi Wrapper, FunctionAbi Implementation)> FormattingWrites { get; } = new();
 
+    internal List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> FormattingConversions { get; } = new();
+
     /// <summary>Gets the generic call entries whose concrete instance is still to be lowered (SPEC 21.3.1); empty once generation succeeds.</summary>
     internal List<GenericStoragePlan.CallEntry> PendingEntries { get; } = new();
 
@@ -249,6 +251,7 @@ internal sealed class EmissionModule
         this.NeedsArrayRuntime = false;
         this.NeedsFormattingRuntime = false;
         this.FormattingWrites.Clear();
+        this.FormattingConversions.Clear();
         this.PendingEntries.Clear();
         this.Objects.Clear();
         this.Externals.Clear();

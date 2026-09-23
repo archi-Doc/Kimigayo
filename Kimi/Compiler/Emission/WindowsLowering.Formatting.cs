@@ -24,6 +24,8 @@ internal static partial class WindowsLowering
         Add(CompilerFunctionKind.WriterStatus, "__kimi_writer_status", "void", [ret, reference], true);
         Add(CompilerFunctionKind.WriterWrite, "__kimi_writer_write_builtin", "void", [ret, reference, new("ptr", "value", LogicalIndex: 1), new("i32", "kind", AbiParameterKind.Context), location, locationLength], true);
         Add(CompilerFunctionKind.BuiltinFormat, "__kimi_format_builtin", "void", [ret, new("ptr", "value", LogicalIndex: 0), new("ptr", "self", LogicalIndex: 1), new("i32", "kind", AbiParameterKind.Context), location, locationLength], true);
+        Add(CompilerFunctionKind.TextToString, "__kimi_text_to_string", "void", [ret, new("ptr", "value", LogicalIndex: 0), new("i32", "kind", AbiParameterKind.Context), location, locationLength], true);
+        Add(CompilerFunctionKind.TextTryFormat, "__kimi_text_try_format", "void", [ret, new("ptr", "value", LogicalIndex: 0), new("ptr", "destination", LogicalIndex: 1), new("i64", "capacity", AbiParameterKind.Context), new("i32", "kind", AbiParameterKind.Context), location, locationLength], true);
         Add(CompilerFunctionKind.TextRelease, "__kimi_text_release", "void", [reference, location, locationLength]);
         Add(CompilerFunctionKind.TextUtf8, "__kimi_text_utf8", "void", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)], true);
         Add(CompilerFunctionKind.TextValidateUtf8, "__kimi_text_validate_utf8", "void", [ret, owned], true);
