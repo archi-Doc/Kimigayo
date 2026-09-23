@@ -18,6 +18,14 @@ public class SpecializationBindingTest
             Lengths + "specialize func pick<3, i32>(values: ref/[3 of i32]) -> i32 => 1\nfunc forward<length N, T>(values: ref/[N of T]) -> i32 => pick<N, T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [2 of i32] = [1, 2]\nrequire pick<3, i32>(a@ref) == 1 and pick<2, i32>(b@ref) == 0 and forward<3, i32>(a@ref) == 1 and forward<2, i32>(b@ref) == 0 else => $abort(\"selection\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    // SPEC 8.8.1, 8.8.3: closed compound arguments (Tuple, fixed array) form distinct selection keys.
+    [Fact]
+    public void CompoundArgumentsSelectTheirSpecializations()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationCompound",
+            Ordinary + "specialize func weight<(i32, bool)>(value: ref/(i32, bool)) -> i32 => 2\nspecialize func weight<[2 of i32]>(value: ref/[2 of i32]) -> i32 => 3\nlet pair = (1, true)\nlet array: [2 of i32] = [1, 2]\nlet n: i32 = 0\nrequire weight<(i32, bool)>(pair@ref) == 2 and weight<[2 of i32]>(array@ref) == 3 and weight<i32>(n@ref) == 1 else => $abort(\"weight\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
     // SPEC 8.8.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
     private const string Constrained = "func twice<T>(value: T) -> T\n    T is Copy\n    return value\n";
 
