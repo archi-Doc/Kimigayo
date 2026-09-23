@@ -79,13 +79,13 @@ Build-And-Run $source (Split-Path $source) 'Milestone9' 'O2' $expected
 $original = [IO.File]::ReadAllText($source)
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    First = @{ source = $original.Replace('let target: i32 = 6', 'let target: i32 = 2').Replace('index == 3 and value == 6', 'index == 0 and value == 2').Replace('Found 6 at index 3.', 'Found 2 at index 0.'); stdout = $expected.Replace('Found 6 at index 3.', 'Found 2 at index 0.') }
-    Last = @{ source = $original.Replace('let target: i32 = 6', 'let target: i32 = 8').Replace('index == 3 and value == 6', 'index == 4 and value == 8').Replace('Found 6 at index 3.', 'Found 8 at index 4.'); stdout = $expected.Replace('Found 6 at index 3.', 'Found 8 at index 4.') }
-    Absent = @{ source = $original.Replace('let target: i32 = 6', 'let target: i32 = 99').Replace('.Missing => $abort("Expected a match")', '.Missing => Console.writeLine("No match.")'); stdout = $expected.Replace('Found 6 at index 3.', 'No match.') }
-    Singleton = @{ source = $original.Replace('[5 of i32]', '[1 of i32]').Replace('[2, 4, 5, 6, 8]', '[6]').Replace('find<5, i32>', 'find<1, i32>').Replace('index == 3', 'index == 0').Replace('Found 6 at index 3.', 'Found 6 at index 0.'); stdout = $expected.Replace('Found 6 at index 3.', 'Found 6 at index 0.') }
-    Wide = @{ source = $original.Replace('i32', 'i64'); stdout = $expected }
-    NonemptyMissing = @{ source = $original.Replace('let empty: [0 of i32] = []', 'let empty: [2 of i32] = [0, 1]').Replace('find<0, i32>', 'find<2, i32>'); stdout = $expected }
-    Abort = @{ source = $original.Replace('value == target)', '$abort("predicate"))'); stdout = ''; abort = '$abort("predicate")' }
+    First = @{ source = (Edit-KimiSource $original 'let target: i32 = 6' 'let target: i32 = 2' 'index == 3 and value == 6' 'index == 0 and value == 2' 'Found 6 at index 3.' 'Found 2 at index 0.'); stdout = (Edit-KimiSource $expected 'Found 6 at index 3.' 'Found 2 at index 0.') }
+    Last = @{ source = (Edit-KimiSource $original 'let target: i32 = 6' 'let target: i32 = 8' 'index == 3 and value == 6' 'index == 4 and value == 8' 'Found 6 at index 3.' 'Found 8 at index 4.'); stdout = (Edit-KimiSource $expected 'Found 6 at index 3.' 'Found 8 at index 4.') }
+    Absent = @{ source = (Edit-KimiSource $original 'let target: i32 = 6' 'let target: i32 = 99' '.Missing => $abort("Expected a match")' '.Missing => Console.writeLine("No match.")'); stdout = (Edit-KimiSource $expected 'Found 6 at index 3.' 'No match.') }
+    Singleton = @{ source = (Edit-KimiSource $original '[5 of i32]' '[1 of i32]' '[2, 4, 5, 6, 8]' '[6]' 'find<5, i32>' 'find<1, i32>' 'index == 3' 'index == 0' 'Found 6 at index 3.' 'Found 6 at index 0.'); stdout = (Edit-KimiSource $expected 'Found 6 at index 3.' 'Found 6 at index 0.') }
+    Wide = @{ source = (Edit-KimiSource $original 'i32' 'i64'); stdout = $expected }
+    NonemptyMissing = @{ source = (Edit-KimiSource $original 'let empty: [0 of i32] = []' 'let empty: [2 of i32] = [0, 1]' 'find<0, i32>' 'find<2, i32>'); stdout = $expected }
+    Abort = @{ source = (Edit-KimiSource $original 'value == target)' '$abort("predicate"))'); stdout = ''; abort = '$abort("predicate")' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -116,26 +116,29 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    WrongPayload = $original.Replace('.Found(index, value)', '.Found(value, index)')
-    WrongCallback = $original.Replace('func [target] (value: i32)', 'func [target] (value: bool)')
-    WrongArity = $original.Replace('if accepts(value)', 'if accepts()')
-    UnprovedCopy = $original.Replace('T is Copy', '')
-    WrongLength = $original.Replace('find<5, i32>', 'find<4, i32>')
-    MissingCase = $original.Replace('.Missing => $abort("Expected a match")', '')
-    CallbackMoved = $original.Replace('if accepts(value)', "let moved = accepts`n                if accepts(value)")
-    ReturnedBorrow = $original.Replace('return self.value@ref/T', "let local: T = self.value`n                return local@ref/T")
+    WrongPayload = @{ source = (Edit-KimiSource $original '.Found(index, value)' '.Found(value, index)'); diagnostic = 'TypeMismatch_Kd' }
+    WrongCallback = @{ source = (Edit-KimiSource $original 'func [target] (value: i32)' 'func [target] (value: bool)'); diagnostic = 'NoApplicableOverload_Kd' }
+    WrongArity = @{ source = (Edit-KimiSource $original 'if accepts(value)' 'if accepts()'); diagnostic = 'NoApplicableOverload_Kd' }
+    UnprovedCopy = @{ source = (Edit-KimiSource $original 'T is Copy' ''); diagnostic = 'TransferRequired_Kd' }
+    WrongLength = @{ source = (Edit-KimiSource $original 'find<5, i32>' 'find<4, i32>'); diagnostic = 'NoApplicableOverload_Kd' }
+    MissingCase = @{ source = (Edit-KimiSource $original '.Missing => $abort("Expected a match")' ''); diagnostic = 'NonExhaustiveMatch_Kd' }
+    CallbackMoved = @{ source = (Edit-KimiSource $original 'if accepts(value)' "let moved = accepts`n                if accepts(value)"); diagnostic = 'TransferRequired_Kd' }
+    ReturnedBorrow = @{ source = (Edit-KimiSource $original 'return self.value@ref/T' "let local: T = self.value`n                return local@ref/T"); diagnostic = 'TypeMismatch_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

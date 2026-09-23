@@ -84,22 +84,16 @@ $specialization = "// All generic slots are fixed. The Origin binder and default
 if (-not $original.Contains($specialization)) { throw 'The specialization block anchor does not match the program.' }
 # README separate checks: the specialization removed (10/30/10/4/7), every index supplied (no default
 # messages), other values, other names and another source lifetime; selection never changes.
-$noSpecialization = $original.Replace($specialization, '').Replace('selected == 30', 'selected == 10').Replace('Specialized selection is 30.', 'Specialized selection is 10.').
-    Replace('explicit == 10', 'explicit == 30').Replace('Explicit selection is 10.', 'Explicit selection is 30.').
-    Replace('forwarded == 30', 'forwarded == 10').Replace('Forwarded selection is 30.', 'Forwarded selection is 10.').
-    Replace('shortLived == 9', 'shortLived == 7').Replace('Local selection is 9.', 'Local selection is 7.')
-$explicitIndex = $original.Replace('pick<3, i32>(numbers@ref)', 'pick<3, i32>(numbers@ref, index: 0)').Replace('pick<N, T>(values)', 'pick<N, T>(values, index: 0)').Replace('pick<2, i64>(wide@ref)', 'pick<2, i64>(wide@ref, index: 0)')
-$values = $original.Replace('[10, 20, 30]', '[12, 22, 32]').Replace('selected == 30', 'selected == 32').Replace('Specialized selection is 30.', 'Specialized selection is 32.').
-    Replace('explicit == 10', 'explicit == 12').Replace('Explicit selection is 10.', 'Explicit selection is 12.').
-    Replace('forwarded == 30', 'forwarded == 32').Replace('Forwarded selection is 30.', 'Forwarded selection is 32.')
-$lifetime = $original.Replace("    let numbers: [3 of i32] = [10, 20, 30]`n    do`n        let selected", "    do`n        let numbers: [3 of i32] = [10, 20, 30]`n        let selected").
-    Replace("    do`n        let explicit", "    let numbers: [3 of i32] = [10, 20, 30]`n    do`n        let explicit")
+$noSpecialization = (Edit-KimiSource $original $specialization '' 'selected == 30' 'selected == 10' 'Specialized selection is 30.' 'Specialized selection is 10.' 'explicit == 10' 'explicit == 30' 'Explicit selection is 10.' 'Explicit selection is 30.' 'forwarded == 30' 'forwarded == 10' 'Forwarded selection is 30.' 'Forwarded selection is 10.' 'shortLived == 9' 'shortLived == 7' 'Local selection is 9.' 'Local selection is 7.')
+$explicitIndex = (Edit-KimiSource $original 'pick<3, i32>(numbers@ref)' 'pick<3, i32>(numbers@ref, index: 0)' 'pick<N, T>(values)' 'pick<N, T>(values, index: 0)' 'pick<2, i64>(wide@ref)' 'pick<2, i64>(wide@ref, index: 0)')
+$values = (Edit-KimiSource $original '[10, 20, 30]' '[12, 22, 32]' 'selected == 30' 'selected == 32' 'Specialized selection is 30.' 'Specialized selection is 32.' 'explicit == 10' 'explicit == 12' 'Explicit selection is 10.' 'Explicit selection is 12.' 'forwarded == 30' 'forwarded == 32' 'Forwarded selection is 30.' 'Forwarded selection is 32.')
+$lifetime = (Edit-KimiSource $original "    let numbers: [3 of i32] = [10, 20, 30]`n    do`n        let selected" "    do`n        let numbers: [3 of i32] = [10, 20, 30]`n        let selected" "    do`n        let explicit" "    let numbers: [3 of i32] = [10, 20, 30]`n    do`n        let explicit")
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
     NoSpecialization = @{ source = $noSpecialization; stdout = "${default}Specialized selection is 10.`nExplicit selection is 30.`n${default}Forwarded selection is 10.`n${default}Ordinary selection is 4.`n${default}Local selection is 7.`nSpecialization finished.`n" }
-    ExplicitIndex = @{ source = $explicitIndex; stdout = $expected.Replace($default, '') }
-    Values = @{ source = $values; stdout = $expected.Replace('Specialized selection is 30.', 'Specialized selection is 32.').Replace('Explicit selection is 10.', 'Explicit selection is 12.').Replace('Forwarded selection is 30.', 'Forwarded selection is 32.') }
-    Names = @{ source = $original.Replace('pick', 'choose').Replace('forward<', 'relay<').Replace('func forward', 'func relay'); stdout = $expected }
+    ExplicitIndex = @{ source = $explicitIndex; stdout = (Edit-KimiSource $expected $default '') }
+    Values = @{ source = $values; stdout = (Edit-KimiSource $expected 'Specialized selection is 30.' 'Specialized selection is 32.' 'Explicit selection is 10.' 'Explicit selection is 12.' 'Forwarded selection is 30.' 'Forwarded selection is 32.') }
+    Names = @{ source = (Edit-KimiSource $original 'pick' 'choose' 'forward<' 'relay<'); stdout = $expected }
     Lifetime = @{ source = $lifetime; stdout = $expected }
 }
 foreach ($level in @('O0', 'O2')) {
@@ -128,17 +122,17 @@ foreach ($level in @('O0', 'O2')) {
 $signature = '    values: ref{source}/[3 of i32], index: isize) -> ref{source}/i32'
 $ambiguous = "func pick<length N, T>(`n    values: ref{source}/[N of i32], index: isize = 0) -> ref{source}/i32 => values[index]@ref/i32`n`n"
 $invalid = [ordered]@{
-    RedeclaredDefault = @{ source = $original.Replace($signature, '    values: ref{source}/[3 of i32], index: isize = defaultIndex()) -> ref{source}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    RedeclaredBoundary = @{ source = $original.Replace($signature, '    ! values: ref{source}/[3 of i32], index: isize) -> ref{source}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    AddedBinder = @{ source = $original.Replace($signature, '    values: ref{extra}/[3 of i32], index: isize) -> ref{extra}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    StaticResult = @{ source = $original.Replace($signature, '    values: ref{source}/[3 of i32], index: isize) -> ref{static}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    WrongResult = @{ source = $original.Replace($signature, '    values: ref{source}/[3 of i32], index: isize) -> i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    WrongLabel = @{ source = $original.Replace($signature, '    items: ref{source}/[3 of i32], index: isize) -> ref{source}/i32').Replace('return values[2 - index]@ref/i32', 'return items[2 - index]@ref/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    WrongStructure = @{ source = $original.Replace($signature, '    values: ref{source}/[3 of i32]) -> ref{source}/i32').Replace('require index >= 0 and index < 3', 'let index: isize = 0').Replace('return values[2 - index]@ref/i32', 'return values[2]@ref/i32'); diagnostic = 'SpecializationInputMismatch_Kd' }
-    Partial = @{ source = $original.Replace('specialize func pick<3, i32>(', 'specialize func pick<3, T>('); diagnostic = 'InvalidTypeFormation_Kd' }
-    Duplicate = @{ source = $original.Replace($specialization, $specialization + $specialization); diagnostic = 'DuplicateBinding_Kd' }
-    Ambiguous = @{ source = $original.Replace($specialization, $ambiguous + $specialization); diagnostic = 'AmbiguousBinding_Kd' }
-    InvalidOrdinaryBody = @{ source = $original.Replace('    return values[index]@ref/T', '    return index'); diagnostic = 'TypeMismatch_Kd' }
+    RedeclaredDefault = @{ source = (Edit-KimiSource $original $signature '    values: ref{source}/[3 of i32], index: isize = defaultIndex()) -> ref{source}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    RedeclaredBoundary = @{ source = (Edit-KimiSource $original $signature '    ! values: ref{source}/[3 of i32], index: isize) -> ref{source}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    AddedBinder = @{ source = (Edit-KimiSource $original $signature '    values: ref{extra}/[3 of i32], index: isize) -> ref{extra}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    StaticResult = @{ source = (Edit-KimiSource $original $signature '    values: ref{source}/[3 of i32], index: isize) -> ref{static}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    WrongResult = @{ source = (Edit-KimiSource $original $signature '    values: ref{source}/[3 of i32], index: isize) -> i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    WrongLabel = @{ source = (Edit-KimiSource $original $signature '    items: ref{source}/[3 of i32], index: isize) -> ref{source}/i32' 'return values[2 - index]@ref/i32' 'return items[2 - index]@ref/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    WrongStructure = @{ source = (Edit-KimiSource $original $signature '    values: ref{source}/[3 of i32]) -> ref{source}/i32' 'require index >= 0 and index < 3' 'let index: isize = 0' 'return values[2 - index]@ref/i32' 'return values[2]@ref/i32'); diagnostic = 'SpecializationInputMismatch_Kd' }
+    Partial = @{ source = (Edit-KimiSource $original 'specialize func pick<3, i32>(' 'specialize func pick<3, T>('); diagnostic = 'InvalidTypeFormation_Kd' }
+    Duplicate = @{ source = (Edit-KimiSource $original $specialization ($specialization + $specialization)); diagnostic = 'DuplicateBinding_Kd' }
+    Ambiguous = @{ source = (Edit-KimiSource $original $specialization ($ambiguous + $specialization)); diagnostic = 'AmbiguousBinding_Kd' }
+    InvalidOrdinaryBody = @{ source = (Edit-KimiSource $original '    return values[index]@ref/T' '    return index'); diagnostic = 'TypeMismatch_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

@@ -78,20 +78,20 @@ function Build-And-Run([string] $InputPath, [string] $Directory, [string] $Name,
 $expected = "Resource 4 destroyed.`nResource 3 destroyed.`nGeneric result secured.`nResources received.`nResource 2 destroyed.`nResource 1 destroyed.`nGeneric result secured.`nTuple received.`nGeneric result secured.`nGeneric values finished.`n"
 if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) 'Milestone18' 'O2' $expected }
 $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
-$second = $original.Replace("        true)", "        false)").Replace('items[0].id == 1 and items[1].id == 2', 'items[0].id == 3 and items[1].id == 4')
+$second = (Edit-KimiSource $original "        true)" "        false)" 'items[0].id == 1 and items[1].id == 2' 'items[0].id == 3 and items[1].id == 4')
 $secondOutput = "Resource 2 destroyed.`nResource 1 destroyed.`nGeneric result secured.`nResources received.`nResource 4 destroyed.`nResource 3 destroyed.`nGeneric result secured.`nTuple received.`nGeneric result secured.`nGeneric values finished.`n"
-$values = $original.Replace('Resource.init(1)', 'Resource.init(11)').Replace('Resource.init(2)', 'Resource.init(12)').Replace('Resource.init(3)', 'Resource.init(13)').Replace('Resource.init(4)', 'Resource.init(14)')
-foreach ($id in 1..4) { $values = $values.Replace("            $id =>", "            $($id + 10) =>").Replace("Resource $id destroyed.", "Resource $($id + 10) destroyed.") }
-$values = $values.Replace('items[0].id == 1 and items[1].id == 2', 'items[0].id == 11 and items[1].id == 12')
+$values = (Edit-KimiSource $original 'Resource.init(1)' 'Resource.init(11)' 'Resource.init(2)' 'Resource.init(12)' 'Resource.init(3)' 'Resource.init(13)' 'Resource.init(4)' 'Resource.init(14)')
+foreach ($id in 1..4) { $values = (Edit-KimiSource $values "            $id =>" "            $($id + 10) =>" "Resource $id destroyed." "Resource $($id + 10) destroyed.") }
+$values = (Edit-KimiSource $values 'items[0].id == 1 and items[1].id == 2' 'items[0].id == 11 and items[1].id == 12')
 $valueOutput = $expected
-foreach ($id in 1..4) { $valueOutput = $valueOutput.Replace("Resource $id destroyed.", "Resource $($id + 10) destroyed.") }
+foreach ($id in 1..4) { $valueOutput = (Edit-KimiSource $valueOutput "Resource $id destroyed." "Resource $($id + 10) destroyed.") }
 $unused = [regex]::Replace($original, '(?ms)^        match delivered\n.*?(?=^    do\n)', "        Console.writeLine(`"Resources received.`")`n")
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Names = @{ source = $original.Replace('Resource', 'Ticket').Replace('Box', 'Crate').Replace('Delivery', 'Parcel').Replace('relay', 'send').Replace('pending', 'secured').Replace('choose', 'select').Replace('package', 'wrap'); stdout = $expected.Replace('Resource', 'Ticket') }
+    Names = @{ source = (Edit-KimiSource $original 'Resource' 'Ticket' 'Box' 'Crate' 'Delivery' 'Parcel' 'relay' 'send' 'pending' 'secured' 'choose' 'select' 'package' 'wrap'); stdout = (Edit-KimiSource $expected 'Resource' 'Ticket') }
     Values = @{ source = $values; stdout = $valueOutput }
     Second = @{ source = $second; stdout = $secondOutput }
-    Early = @{ source = $original.Replace("    return pending@move", "    if true => return pending@move`n    return pending@move"); stdout = $expected }
+    Early = @{ source = (Edit-KimiSource $original "    return pending@move" "    if true => return pending@move`n    return pending@move"); stdout = $expected }
     Unused = @{ source = $unused; stdout = $expected }
 }
 foreach ($level in @('O0', 'O2')) {
@@ -112,13 +112,13 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    SelectedMoved = @{ source = $original.Replace('        match delivered@move', "        let invalid = selected@move`n        match delivered@move"); diagnostic = 'MovedPlace_Kd' }
-    DeliveredMoved = @{ source = $original.Replace('            .Missing => $abort("Missing resources")', "            .Missing => `$abort(`"Missing resources`")`n        let invalid = delivered@move"); diagnostic = 'MovedPlace_Kd' }
-    BoxDestructor = @{ source = $original.Replace('    // No user deinit:', "    deinit => ()`n    // No user deinit:"); diagnostic = 'UnsupportedOwnership_Kd' }
+    SelectedMoved = @{ source = (Edit-KimiSource $original '        match delivered@move' "        let invalid = selected@move`n        match delivered@move"); diagnostic = 'MovedPlace_Kd' }
+    DeliveredMoved = @{ source = (Edit-KimiSource $original '            .Missing => $abort("Missing resources")' "            .Missing => `$abort(`"Missing resources`")`n        let invalid = delivered@move"); diagnostic = 'MovedPlace_Kd' }
+    BoxDestructor = @{ source = (Edit-KimiSource $original '    // No user deinit:' "    deinit => ()`n    // No user deinit:"); diagnostic = 'UnsupportedOwnership_Kd' }
     Duplicate = @{ source = "func duplicate<T>(value: T) -> (T, T) => (value@move, value@move)`n" + $original; diagnostic = 'MovedPlace_Kd' }
-    DeferredMove = @{ source = $original.Replace('    return pending@move', "    defer => discard(pending@move)`n    return pending@move") + "`nfunc discard<T>(value: T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
-    DeferredRead = @{ source = $original.Replace('    return pending@move', "    defer => observe<T>(pending@ref/T)`n    return pending@move") + "`nfunc observe<T>(value: ref/T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
-    TypeMismatch = @{ source = $original.Replace('package(relay(selected@move.take()))', 'package<[2 of i32]>(relay(selected@move.take()))'); diagnostic = 'NoApplicableOverload_Kd' }
+    DeferredMove = @{ source = (Edit-KimiSource $original '    return pending@move' "    defer => discard(pending@move)`n    return pending@move") + "`nfunc discard<T>(value: T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
+    DeferredRead = @{ source = (Edit-KimiSource $original '    return pending@move' "    defer => observe<T>(pending@ref/T)`n    return pending@move") + "`nfunc observe<T>(value: ref/T) => ()`n"; diagnostic = 'MovedPlace_Kd' }
+    TypeMismatch = @{ source = (Edit-KimiSource $original 'package(relay(selected@move.take()))' 'package<[2 of i32]>(relay(selected@move.take()))'); diagnostic = 'NoApplicableOverload_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

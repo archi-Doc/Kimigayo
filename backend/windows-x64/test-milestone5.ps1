@@ -90,9 +90,9 @@ foreach ($level in @('O0', 'O2')) {
                 Copy-Item -LiteralPath $source -Destination $copy
                 if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -cne $sourceHash) { throw 'Source copy differs' }
             }
-            'AbortSum' { [IO.File]::WriteAllText($copy, $original.Replace('while number <= 10', 'while number <= 9'), $utf8) }
-            'AbortFinal' { [IO.File]::WriteAllText($copy, $original.Replace('add(counter@uniq, 1)', 'add(counter@uniq, 2)'), $utf8) }
-            'AlternateCounts' { [IO.File]::WriteAllText($copy, $original.Replace('while number <= 10', 'while number <= 4').Replace('55', '10').Replace('56', '11'), $utf8) }
+            'AbortSum' { [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'while number <= 10' 'while number <= 9'), $utf8) }
+            'AbortFinal' { [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'add(counter@uniq, 1)' 'add(counter@uniq, 2)'), $utf8) }
+            'AlternateCounts' { [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'while number <= 10' 'while number <= 4' '55' '10' '56' '11'), $utf8) }
             'ImmediateTemporary' {
                 $program = @'
 struct Item
@@ -111,7 +111,7 @@ Console.writeLine("ok")
         switch ($name) {
             'AbortSum' { Build-And-Run $project $directory $name $level '' "AbortSum.kimi:42:13: abort KIMI_E_ABORT: Unexpected sum`n" 1 }
             'AbortFinal' { Build-And-Run $project $directory $name $level "Borrowed sum is 55.`nView destroyed; counter is still 55.`n" "AbortFinal.kimi:29:9: abort KIMI_E_ABORT: Unexpected final value`n" 1 }
-            'AlternateCounts' { Build-And-Run $project $directory $name $level $expected.Replace('55', '10').Replace('56', '11') }
+            'AlternateCounts' { Build-And-Run $project $directory $name $level (Edit-KimiSource $expected '55' '10' '56' '11') }
             'ImmediateTemporary' { Build-And-Run $project $directory $name $level "drop`nok`n" }
             default { Build-And-Run $project $directory $name $level $expected }
         }
@@ -120,34 +120,36 @@ Console.writeLine("ok")
 
 $anchor = '// Mutating or moving counter here'
 $invalid = [ordered]@{
-    LiveLoanMutation = $original.Replace($anchor, "add(counter@uniq, 1)`n        $anchor")
-    LiveLoanMove = $original.Replace($anchor, "finish(counter@move)`n        $anchor")
-    BareExclusive = $original.Replace('add(counter@uniq, 1)', 'add(counter, 1)')
-    LiveLoanReplacement = $original.Replace($anchor, "counter = Counter.init()`n        $anchor")
-    LiveLoanFieldWrite = $original.Replace($anchor, "counter.value = 99`n        $anchor")
-    EscapedLocal = $original.Replace('return counter', "let local = Counter.init()`n    return local@ref")
-    SharedWrite = $original.Replace('counter: uniq/Counter', 'counter: ref/Counter')
-    ImmutableOwner = $original.Replace('var counter = Counter.init()', 'let counter = Counter.init()')
-    MissingStoredOrigin = $original.Replace('let counter: ref{source}/Counter', 'let counter: ref/Counter')
-    WrongArgument = $original.Replace('Counter.init()', 'Counter.init(true)')
-    WrongReferent = $original.Replace('borrowCounter(counter@ref)', 'borrowCounter(1)')
-    MovedRead = $original.Replace('Console.writeLine("Done.")', "let invalid = counter.value`n    Console.writeLine(`"Done.`")")
-    TemporaryEscape = $original.Replace('CounterView.init(borrowCounter(counter@ref))', 'CounterView.init(borrowCounter(Counter.init()))')
-    DoubleExclusive = "struct S`n    public var value: i32 = 0`nfunc both(a: uniq/S, b: uniq/S) => ()`nvar s = S.init()`nboth(s@uniq, s@uniq)"
-    ParentDuringReborrow = "struct S`n    public var value: i32 = 0`nfunc bad(s: uniq/S)`n    let r = s@ref`n    s.value = 9`n    let n = r.value`nvar s = S.init()`nbad(s@uniq)"
+    LiveLoanMutation = @{ source = (Edit-KimiSource $original $anchor "add(counter@uniq, 1)`n        $anchor"); diagnostic = 'CallActivationConflict_Kd' }
+    LiveLoanMove = @{ source = (Edit-KimiSource $original $anchor "finish(counter@move)`n        $anchor"); diagnostic = 'MovedPlace_Kd' }
+    BareExclusive = @{ source = (Edit-KimiSource $original 'add(counter@uniq, 1)' 'add(counter, 1)'); diagnostic = 'ExclusiveBorrowRequired_Kd' }
+    LiveLoanReplacement = @{ source = (Edit-KimiSource $original $anchor "counter = Counter.init()`n        $anchor"); diagnostic = 'ComparisonLoanConflict_Kd' }
+    LiveLoanFieldWrite = @{ source = (Edit-KimiSource $original $anchor "counter.value = 99`n        $anchor"); diagnostic = 'ComparisonLoanConflict_Kd' }
+    EscapedLocal = @{ source = (Edit-KimiSource $original 'return counter' "let local = Counter.init()`n    return local@ref"); diagnostic = 'TypeMismatch_Kd' }
+    SharedWrite = @{ source = (Edit-KimiSource $original 'counter: uniq/Counter' 'counter: ref/Counter'); diagnostic = 'InvalidAssignment_Kd' }
+    ImmutableOwner = @{ source = (Edit-KimiSource $original 'var counter = Counter.init()' 'let counter = Counter.init()'); diagnostic = 'InvalidAssignment_Kd' }
+    MissingStoredOrigin = @{ source = (Edit-KimiSource $original 'let counter: ref{source}/Counter' 'let counter: ref/Counter'); diagnostic = 'MissingOriginBinding_Kd' }
+    WrongArgument = @{ source = (Edit-KimiSource $original 'Counter.init()' 'Counter.init(true)'); diagnostic = 'NoApplicableOverload_Kd' }
+    WrongReferent = @{ source = (Edit-KimiSource $original 'borrowCounter(counter@ref)' 'borrowCounter(1)'); diagnostic = 'NoApplicableOverload_Kd' }
+    MovedRead = @{ source = (Edit-KimiSource $original 'Console.writeLine("Done.")' "let invalid = counter.value`n    Console.writeLine(`"Done.`")"); diagnostic = 'MovedPlace_Kd' }
+    TemporaryEscape = @{ source = (Edit-KimiSource $original 'CounterView.init(borrowCounter(counter@ref))' 'CounterView.init(borrowCounter(Counter.init()))'); diagnostic = 'ComparisonLoanConflict_Kd' }
+    DoubleExclusive = @{ source = "struct S`n    public var value: i32 = 0`nfunc both(a: uniq/S, b: uniq/S) => ()`nvar s = S.init()`nboth(s@uniq, s@uniq)"; diagnostic = 'CallActivationConflict_Kd' }
+    ParentDuringReborrow = @{ source = "struct S`n    public var value: i32 = 0`nfunc bad(s: uniq/S)`n    let r = s@ref`n    s.value = 9`n    let n = r.value`nvar s = S.init()`nbad(s@uniq)"; diagnostic = 'ComparisonLoanConflict_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    if ($entry.Value -ceq $original) { throw "Invalid variant no longer changes the source: $($entry.Key)" }
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

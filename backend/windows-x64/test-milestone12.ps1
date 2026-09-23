@@ -79,9 +79,9 @@ Build-And-Run $source (Split-Path $source) 'Milestone12' 'O2' $expected
 $original = [IO.File]::ReadAllText($source)
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Values = @{ source = $original.Replace('applyTwice(10,', 'applyTwice(20,').Replace('result == 13', 'result == 23').Replace('result is 13.', 'result is 23.').Replace('offset: i32 = 5', 'offset: i32 = 7').Replace('== 18', '== 30').Replace('result is 18.', 'result is 30.').Replace('concrete(0) == 5', 'concrete(0) == 7'); stdout = $expected.Replace('is 13.', 'is 23.').Replace('is 18.', 'is 30.') }
-    Names = @{ source = $original.Replace('applyTwice', 'compose').Replace('count', 'counter').Replace('offset', 'bias').Replace('concrete', 'adder').Replace('message', 'payload'); stdout = $expected.Replace('message', 'payload') }
-    Repeat = @{ source = $original.Replace('    let offset:', "    require applyTwice(10, next@uniq) == 17 else => `$abort(`"repeat`")`n    let offset:"); stdout = $expected }
+    Values = @{ source = (Edit-KimiSource $original 'applyTwice(10,' 'applyTwice(20,' 'result == 13' 'result == 23' 'result is 13.' 'result is 23.' 'offset: i32 = 5' 'offset: i32 = 7' '== 18' '== 30' 'result is 18.' 'result is 30.' 'concrete(0) == 5' 'concrete(0) == 7'); stdout = (Edit-KimiSource $expected 'is 13.' 'is 23.' 'is 18.' 'is 30.') }
+    Names = @{ source = (Edit-KimiSource $original 'applyTwice' 'compose' 'count' 'counter' 'offset' 'bias' 'concrete' 'adder' 'message' 'payload'); stdout = (Edit-KimiSource $expected 'message' 'payload') }
+    Repeat = @{ source = (Edit-KimiSource $original '    let offset:' "    require applyTwice(10, next@uniq) == 17 else => `$abort(`"repeat`")`n    let offset:"); stdout = $expected }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -100,29 +100,32 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    ConsumedClosure = $original + "`n    send@move()`n    send()`n"
-    MovedCapture = $original + "`n    Console.writeLine(message)`n"
-    ImmutableReceiver = $original.Replace('var next =', 'let next =')
-    ImmutableCapture = $original.Replace('[var count]', '[count]')
-    SharedConstraint = $original.Replace('Callable<uniq,', 'Callable<ref,')
-    MutableErasure = $original.Replace('    let result =', "    let invalid: (i32) -> i32 = next`n    let result =")
-    WrongArgument = $original.Replace('applyTwice(10,', 'applyTwice(true,')
-    ImplicitMove = $original.Replace('func [message@move]', 'func')
-    BareCapture = $original.Replace('[message@move]', '[message]')
-    MissingOuter = $original.Replace('func [offset] ()', 'func [] ()')
-    DuplicateCapture = $original.Replace('[var count]', '[var count, count]')
+    ConsumedClosure = @{ source = $original + "`n    send@move()`n    send()`n"; diagnostic = 'MovedPlace_Kd' }
+    MovedCapture = @{ source = $original + "`n    Console.writeLine(message)`n"; diagnostic = 'MovedPlace_Kd' }
+    ImmutableReceiver = @{ source = (Edit-KimiSource $original 'var next =' 'let next ='); diagnostic = 'InvalidAssignment_Kd' }
+    ImmutableCapture = @{ source = (Edit-KimiSource $original '[var count]' '[count]'); diagnostic = 'InvalidAssignment_Kd' }
+    SharedConstraint = @{ source = (Edit-KimiSource $original 'Callable<uniq,' 'Callable<ref,'); diagnostic = 'NoApplicableOverload_Kd' }
+    MutableErasure = @{ source = (Edit-KimiSource $original '    let result =' "    let invalid: (i32) -> i32 = next`n    let result ="); diagnostic = 'TypeMismatch_Kd' }
+    WrongArgument = @{ source = (Edit-KimiSource $original 'applyTwice(10,' 'applyTwice(true,'); diagnostic = 'NoApplicableOverload_Kd' }
+    ImplicitMove = @{ source = (Edit-KimiSource $original 'func [message@move]' 'func'); diagnostic = 'TransferRequired_Kd' }
+    BareCapture = @{ source = (Edit-KimiSource $original '[message@move]' '[message]'); diagnostic = 'TransferRequired_Kd' }
+    MissingOuter = @{ source = (Edit-KimiSource $original 'func [offset] ()' 'func [] ()'); diagnostic = 'UnsupportedOwnership_Kd' }
+    DuplicateCapture = @{ source = (Edit-KimiSource $original '[var count]' '[var count, count]'); diagnostic = 'DuplicateBinding_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

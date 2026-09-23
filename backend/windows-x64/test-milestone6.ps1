@@ -80,10 +80,7 @@ $original = [IO.File]::ReadAllText($source)
 foreach ($anchor in @('value >= 7', 'found == 7', 'yield found * 10', 'score == 70', 'exit to validate: false')) {
     if (-not $original.Contains($anchor)) { throw "Review the variants against the current source: $anchor" }
 }
-$cleanup = $original.Replace('public func main()', "public func main()`n    defer => Console.writeLine(`"main cleanup`")").
-    Replace('let found: i32 = search: loop', "let found: i32 = search: loop`n        defer => Console.writeLine(`"iteration cleanup`")").
-    Replace('let score: i32 = if found == 7', "let score: i32 = if found == 7`n        defer => Console.writeLine(`"selection cleanup`")").
-    Replace('let accepted: bool = validate: do', "let accepted: bool = validate: do`n        defer => Console.writeLine(`"validation cleanup`")")
+$cleanup = (Edit-KimiSource $original 'public func main()' "public func main()`n    defer => Console.writeLine(`"main cleanup`")" 'let found: i32 = search: loop' "let found: i32 = search: loop`n        defer => Console.writeLine(`"iteration cleanup`")" 'let score: i32 = if found == 7' "let score: i32 = if found == 7`n        defer => Console.writeLine(`"selection cleanup`")" 'let accepted: bool = validate: do' "let accepted: bool = validate: do`n        defer => Console.writeLine(`"validation cleanup`")")
 $guard = @'
 (probe: do
                 Console.writeLine("guard")
@@ -92,13 +89,13 @@ $guard = @'
 '@
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    SkipThree = @{ source = $original.Replace('value >= 7', 'value >= 3').Replace('found == 7', 'found == 5').Replace('Selected 7.', 'Selected 5.').Replace('score == 70', 'score == 50'); stdout = "Selected 5.`nControl flow passed.`n" }
-    AbortValidation = @{ source = $original.Replace('yield found * 10', 'yield 0'); stdout = "Selected 7.`n"; abort = $true }
-    ElseBranch = @{ source = $original.Replace('found == 7', 'found == 99'); stdout = ''; abort = $true }
-    FalseComparison = @{ source = $original.Replace('score == 70', 'score == 71'); stdout = "Selected 7.`n"; abort = $true }
-    GuardEffects = @{ source = $original.Replace('value >= 7', $guard); stdout = "guard`nguard`nguard`n$expected" }
+    SkipThree = @{ source = (Edit-KimiSource $original 'value >= 7' 'value >= 3' 'found == 7' 'found == 5' 'Selected 7.' 'Selected 5.' 'score == 70' 'score == 50'); stdout = "Selected 5.`nControl flow passed.`n" }
+    AbortValidation = @{ source = (Edit-KimiSource $original 'yield found * 10' 'yield 0'); stdout = "Selected 7.`n"; abort = $true }
+    ElseBranch = @{ source = (Edit-KimiSource $original 'found == 7' 'found == 99'); stdout = ''; abort = $true }
+    FalseComparison = @{ source = (Edit-KimiSource $original 'score == 70' 'score == 71'); stdout = "Selected 7.`n"; abort = $true }
+    GuardEffects = @{ source = (Edit-KimiSource $original 'value >= 7' $guard); stdout = "guard`nguard`nguard`n$expected" }
     Cleanup = @{ source = $cleanup; stdout = ("iteration cleanup`n" * 7) + "Selected 7.`nselection cleanup`nvalidation cleanup`nControl flow passed.`nmain cleanup`n" }
-    AbortCleanup = @{ source = $cleanup.Replace('yield found * 10', 'yield 0'); stdout = ("iteration cleanup`n" * 7) + "Selected 7.`nselection cleanup`nvalidation cleanup`n"; abort = $true }
+    AbortCleanup = @{ source = (Edit-KimiSource $cleanup 'yield found * 10' 'yield 0'); stdout = ("iteration cleanup`n" * 7) + "Selected 7.`nselection cleanup`nvalidation cleanup`n"; abort = $true }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -129,30 +126,33 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    MissingLoopTarget = $original.Replace('exit to search: value', 'exit to missing: value')
-    WrongContinueTarget = $original.Replace('exit to validate: false', 'continue to validate')
-    UnlabeledDoExit = $original.Replace('exit to validate: false', 'exit false')
-    WrongLoopResult = $original.Replace('exit to search: value', 'exit to search: true')
-    WrongYieldResult = $original.Replace('yield found * 10', 'yield true')
-    ImplicitUnitResult = $original.Replace('yield found * 10', 'found * 10')
-    ContinuingRequire = $original.Replace('exit to validate: false', '()')
-    NonBooleanGuard = $original.Replace('value >= 7', 'value')
-    NonExhaustiveMatch = $original.Replace('_ => ()', '// Missing catch-all')
-    EscapedPatternBinding = $original.Replace('yield found * 10', 'yield value * 10')
-    WrongYieldTarget = $original.Replace('yield found * 10', 'yield to validate: found * 10')
-    UnreachableWrongResult = $original.Replace('yield found * 10', "yield found * 10`n        yield true")
+    MissingLoopTarget = @{ source = (Edit-KimiSource $original 'exit to search: value' 'exit to missing: value'); diagnostic = 'ControlFlow_Kd' }
+    WrongContinueTarget = @{ source = (Edit-KimiSource $original 'exit to validate: false' 'continue to validate'); diagnostic = 'ControlFlow_Kd' }
+    UnlabeledDoExit = @{ source = (Edit-KimiSource $original 'exit to validate: false' 'exit false'); diagnostic = 'ControlFlow_Kd' }
+    WrongLoopResult = @{ source = (Edit-KimiSource $original 'exit to search: value' 'exit to search: true'); diagnostic = 'TypeMismatch_Kd' }
+    WrongYieldResult = @{ source = (Edit-KimiSource $original 'yield found * 10' 'yield true'); diagnostic = 'TypeMismatch_Kd' }
+    ImplicitUnitResult = @{ source = (Edit-KimiSource $original 'yield found * 10' 'found * 10'); diagnostic = 'TypeMismatch_Kd' }
+    ContinuingRequire = @{ source = (Edit-KimiSource $original 'exit to validate: false' '()'); diagnostic = 'ControlFlow_Kd' }
+    NonBooleanGuard = @{ source = (Edit-KimiSource $original 'value >= 7' 'value'); diagnostic = 'TypeMismatch_Kd' }
+    NonExhaustiveMatch = @{ source = (Edit-KimiSource $original '_ => ()' '// Missing catch-all'); diagnostic = 'NonExhaustiveMatch_Kd' }
+    EscapedPatternBinding = @{ source = (Edit-KimiSource $original 'yield found * 10' 'yield value * 10'); diagnostic = 'UnresolvedBinding_Kd' }
+    WrongYieldTarget = @{ source = (Edit-KimiSource $original 'yield found * 10' 'yield to validate: found * 10'); diagnostic = 'ControlFlow_Kd' }
+    UnreachableWrongResult = @{ source = (Edit-KimiSource $original 'yield found * 10' "yield found * 10`n        yield true"); diagnostic = 'TypeMismatch_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

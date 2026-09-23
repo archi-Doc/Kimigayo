@@ -79,12 +79,12 @@ Build-And-Run $source (Split-Path $source) 'Milestone11' 'O2' $expected
 $original = [IO.File]::ReadAllText($source)
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    DefaultFour = @{ source = $original.Replace('defaultWeight: i32 = 1', 'defaultWeight: i32 = 4').Replace('(6, 3, 2)', '(6, 12, 8)').Replace('weights are 6, 3, 2', 'weights are 6, 12, 8'); stdout = "Generic weights are 6, 12, 8.`n" }
-    SpecializedFive = @{ source = $original.Replace('ref/i32) -> i32 => 2', 'ref/i32) -> i32 => 5').Replace('(6, 3, 2)', '(15, 3, 2)').Replace('weights are 6, 3, 2', 'weights are 15, 3, 2'); stdout = "Generic weights are 15, 3, 2.`n" }
-    DifferentKey = @{ source = $original.Replace('weight<i32>(value: ref/i32)', 'weight<i64>(value: ref/i64)').Replace('(6, 3, 2)', '(3, 6, 2)').Replace('weights are 6, 3, 2', 'weights are 3, 6, 2'); stdout = "Generic weights are 3, 6, 2.`n" }
-    Empty = @{ source = $original.Replace('integers: [3 of i32] = [10, 20, 30]', 'integers: [0 of i32] = []').Replace('total<3, i32>', 'total<0, i32>').Replace('(6, 3, 2)', '(0, 3, 2)').Replace('weights are 6, 3, 2', 'weights are 0, 3, 2'); stdout = "Generic weights are 0, 3, 2.`n" }
-    Singleton = @{ source = $original.Replace('integers: [3 of i32] = [10, 20, 30]', 'integers: [1 of i32] = [99]').Replace('total<3, i32>', 'total<1, i32>').Replace('(6, 3, 2)', '(2, 3, 2)').Replace('weights are 6, 3, 2', 'weights are 2, 3, 2'); stdout = "Generic weights are 2, 3, 2.`n" }
-    Names = @{ source = $original.Replace('Weights', 'Scores').Replace('weight', 'score').Replace('forward', 'relay').Replace('total', 'sum'); stdout = "Generic scores are 6, 3, 2.`n" }
+    DefaultFour = @{ source = (Edit-KimiSource $original 'defaultWeight: i32 = 1' 'defaultWeight: i32 = 4' '(6, 3, 2)' '(6, 12, 8)' 'weights are 6, 3, 2' 'weights are 6, 12, 8'); stdout = "Generic weights are 6, 12, 8.`n" }
+    SpecializedFive = @{ source = (Edit-KimiSource $original 'ref/i32) -> i32 => 2' 'ref/i32) -> i32 => 5' '(6, 3, 2)' '(15, 3, 2)' 'weights are 6, 3, 2' 'weights are 15, 3, 2'); stdout = "Generic weights are 15, 3, 2.`n" }
+    DifferentKey = @{ source = (Edit-KimiSource $original 'weight<i32>(value: ref/i32)' 'weight<i64>(value: ref/i64)' '(6, 3, 2)' '(3, 6, 2)' 'weights are 6, 3, 2' 'weights are 3, 6, 2'); stdout = "Generic weights are 3, 6, 2.`n" }
+    Empty = @{ source = (Edit-KimiSource $original 'integers: [3 of i32] = [10, 20, 30]' 'integers: [0 of i32] = []' 'total<3, i32>' 'total<0, i32>' '(6, 3, 2)' '(0, 3, 2)' 'weights are 6, 3, 2' 'weights are 0, 3, 2'); stdout = "Generic weights are 0, 3, 2.`n" }
+    Singleton = @{ source = (Edit-KimiSource $original 'integers: [3 of i32] = [10, 20, 30]' 'integers: [1 of i32] = [99]' 'total<3, i32>' 'total<1, i32>' '(6, 3, 2)' '(2, 3, 2)' 'weights are 6, 3, 2' 'weights are 2, 3, 2'); stdout = "Generic weights are 2, 3, 2.`n" }
+    Names = @{ source = (Edit-KimiSource $original 'Weights' 'Scores' 'weight' 'score' 'forward' 'relay' 'total' 'sum'); stdout = "Generic scores are 6, 3, 2.`n" }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -103,28 +103,31 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    WrongInput = $original.Replace('weight<i32>(value: ref/i32)', 'weight<i32>(value: ref/i64)')
-    WrongResult = $original.Replace('ref/i32) -> i32 => 2', 'ref/i32) -> i64 => 2')
-    WrongName = $original.Replace('weight<i32>(value: ref/i32)', 'weight<i32>(other: ref/i32)')
-    DuplicateKey = $original.Replace('    // A generic forwarding', "    specialize func weight<i32>(value: ref/i32) -> i32 => 3`n    // A generic forwarding")
-    MissingOriginal = $original.Replace('specialize func weight<i32>', 'specialize func missing<i32>')
-    WrongLength = $original.Replace('total<3, i32>', 'total<2, i32>')
-    InvalidOrdinary = $original.Replace('=> defaultWeight', '=> true')
-    MissingCopy = $original.Replace('result = result + forward<T>(values[index]@ref/T)', "let copied: T = values[index]`n            result = result + forward<T>(values[index]@ref/T)")
-    StaticWrite = $original.Replace('    let actual = (', "    Weights.defaultWeight = 3`n    let actual = (")
-    NarrowOrigin = $original.Replace('weight<i32>(value: ref/i32)', 'weight<i32>(value: ref/i32 from static)')
+    WrongInput = @{ source = (Edit-KimiSource $original 'weight<i32>(value: ref/i32)' 'weight<i32>(value: ref/i64)'); diagnostic = 'SpecializationInputMismatch_Kd' }
+    WrongResult = @{ source = (Edit-KimiSource $original 'ref/i32) -> i32 => 2' 'ref/i32) -> i64 => 2'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    WrongName = @{ source = (Edit-KimiSource $original 'weight<i32>(value: ref/i32)' 'weight<i32>(other: ref/i32)'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    DuplicateKey = @{ source = (Edit-KimiSource $original '    // A generic forwarding' "    specialize func weight<i32>(value: ref/i32) -> i32 => 3`n    // A generic forwarding"); diagnostic = 'DuplicateBinding_Kd' }
+    MissingOriginal = @{ source = (Edit-KimiSource $original 'specialize func weight<i32>' 'specialize func missing<i32>'); diagnostic = 'MissingSpecializationTarget_Kd' }
+    WrongLength = @{ source = (Edit-KimiSource $original 'total<3, i32>' 'total<2, i32>'); diagnostic = 'NoApplicableOverload_Kd' }
+    InvalidOrdinary = @{ source = (Edit-KimiSource $original '=> defaultWeight' '=> true'); diagnostic = 'TypeMismatch_Kd' }
+    MissingCopy = @{ source = (Edit-KimiSource $original 'result = result + forward<T>(values[index]@ref/T)' "let copied: T = values[index]`n            result = result + forward<T>(values[index]@ref/T)"); diagnostic = 'UnsupportedOwnership_Kd' }
+    StaticWrite = @{ source = (Edit-KimiSource $original '    let actual = (' "    Weights.defaultWeight = 3`n    let actual = ("); diagnostic = 'InaccessibleBinding_Kd' }
+    NarrowOrigin = @{ source = (Edit-KimiSource $original 'weight<i32>(value: ref/i32)' 'weight<i32>(value: ref{static}/i32)'); diagnostic = 'IncompatibleContractImplementation_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

@@ -80,12 +80,12 @@ $original = [IO.File]::ReadAllText($source)
 $empty = [regex]::Replace($original, '(?s)\[7 of Command<\(i32, bool\)>\] = \[.*?\r?\n    \]', '[0 of Command<(i32, bool)>] = []')
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Exhaustion = @{ source = $original.Replace('.Stop, .Data((100, true))', '.Skip, .Data((100, false))'); stdout = $expected }
-    Alternate = @{ source = $original.Replace('.Data((5, true))', '.Data((3, true))').Replace('answer == 12', 'answer == 10').Replace('total is 12.', 'total is 10.'); stdout = $expected.Replace('total is 12.', 'total is 10.') }
-    Empty = @{ source = $empty.Replace('answer == 12', 'answer == 0').Replace('total is 12.', 'total is 0.'); stdout = $expected.Replace('total is 12.', 'total is 0.') }
-    ImmediateStop = @{ source = $original.Replace('.Data((5, true))', '.Stop').Replace('answer == 12', 'answer == 0').Replace('total is 12.', 'total is 0.'); stdout = $expected.Replace('total is 12.', 'total is 0.') }
-    GuardCleanup = @{ source = "func accepts(value: i32) -> bool`n    defer => Console.writeLine(`"Guard cleaned.`")`n    return value > 0`n`n" + $original.Replace('if value > 0', 'if accepts(value)'); stdout = "Guard cleaned.`nGuard cleaned.`nGuard cleaned.`n" + $expected }
-    Abort = @{ source = $original.Replace('answer == 12', 'answer == 11'); stdout = ''; abort = '$abort("Unexpected command total")' }
+    Exhaustion = @{ source = (Edit-KimiSource $original '.Stop, .Data((100, true))' '.Skip, .Data((100, false))'); stdout = $expected }
+    Alternate = @{ source = (Edit-KimiSource $original '.Data((5, true))' '.Data((3, true))' 'answer == 12' 'answer == 10' 'total is 12.' 'total is 10.'); stdout = (Edit-KimiSource $expected 'total is 12.' 'total is 10.') }
+    Empty = @{ source = (Edit-KimiSource $empty 'answer == 12' 'answer == 0' 'total is 12.' 'total is 0.'); stdout = (Edit-KimiSource $expected 'total is 12.' 'total is 0.') }
+    ImmediateStop = @{ source = (Edit-KimiSource $original '.Data((5, true))' '.Stop' 'answer == 12' 'answer == 0' 'total is 12.' 'total is 0.'); stdout = (Edit-KimiSource $expected 'total is 12.' 'total is 0.') }
+    GuardCleanup = @{ source = "func accepts(value: i32) -> bool`n    defer => Console.writeLine(`"Guard cleaned.`")`n    return value > 0`n`n" + (Edit-KimiSource $original 'if value > 0' 'if accepts(value)'); stdout = "Guard cleaned.`nGuard cleaned.`nGuard cleaned.`n" + $expected }
+    Abort = @{ source = (Edit-KimiSource $original 'answer == 12' 'answer == 11'); stdout = ''; abort = '$abort("Unexpected command total")' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -116,27 +116,30 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    WrongPayload = $original.Replace('.Data((5, true))', '.Data(5)')
-    MissingCase = [regex]::Replace($original, '(?m)^\s*\.Stop => exit to scan: total\r?\n', '')
-    WrongPatternArity = $original.Replace('.Data((let value, true))', '.Data((let value, true, _))')
-    DuplicatePatternName = $original.Replace('.Data((let value, true))', '.Data((let value, let value))')
-    CandidateAssignment = $original.Replace('if value > 0', 'if (value = 1)')
-    WrongGuardType = $original.Replace('if value > 0', 'if value')
-    MissingTarget = $original.Replace('exit to scan:', 'exit to missing:')
-    UninitializedTotal = $original.Replace('var total: i32 = 0', 'var total: i32')
-    EscapedPatternName = $original.Replace('total = total + amount', 'total = total + value')
+    WrongPayload = @{ source = (Edit-KimiSource $original '.Data((5, true))' '.Data(5)'); diagnostic = 'TypeMismatch_Kd' }
+    MissingCase = @{ source = [regex]::Replace($original, '(?m)^\s*\.Stop => exit to scan: total\r?\n', ''); diagnostic = 'NonExhaustiveMatch_Kd' }
+    WrongPatternArity = @{ source = (Edit-KimiSource $original '.Data((let value, true))' '.Data((let value, true, _))'); diagnostic = 'InvalidPattern_Kd' }
+    DuplicatePatternName = @{ source = (Edit-KimiSource $original '.Data((let value, true))' '.Data((let value, let value))'); diagnostic = 'DuplicateBinding_Kd' }
+    CandidateAssignment = @{ source = (Edit-KimiSource $original 'if value > 0' 'if (value = 1)'); diagnostic = 'InvalidAssignment_Kd' }
+    WrongGuardType = @{ source = (Edit-KimiSource $original 'if value > 0' 'if value'); diagnostic = 'TypeMismatch_Kd' }
+    MissingTarget = @{ source = (Edit-KimiSource $original 'exit to scan:' 'exit to missing:'); diagnostic = 'ControlFlow_Kd' }
+    UninitializedTotal = @{ source = (Edit-KimiSource $original 'var total: i32 = 0' 'var total: i32'); diagnostic = 'UninitializedPlace_Kd' }
+    EscapedPatternName = @{ source = (Edit-KimiSource $original 'total = total + amount' 'total = total + value'); diagnostic = 'UnresolvedBinding_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

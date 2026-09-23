@@ -78,14 +78,14 @@ function Build-And-Run([string] $InputPath, [string] $Directory, [string] $Name,
 $expected = "Even sample total is 6; first is still 1.`nIterator remains exhausted.`nMiddle slice total is 5.`n"
 if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) 'Milestone13' 'O2' $expected }
 $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
-$middleSeven = $expected.Replace('Middle slice total is 5.', 'Middle slice total is 7.')
+$middleSeven = (Edit-KimiSource $expected 'Middle slice total is 5.' 'Middle slice total is 7.')
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Names = @{ source = $original.Replace('Sample', 'Reading').Replace('Cursor', 'Walker').Replace('value', 'amount'); stdout = $expected }
-    Values = @{ source = $original.Replace('Sample.init(3)', 'Sample.init(5)').Replace('middle == 5', 'middle == 7').Replace('Middle slice total is 5.', 'Middle slice total is 7.'); stdout = $middleSeven }
-    Range = @{ source = $original.Replace('samples[1..3]', 'samples[2..4]').Replace('middle == 5', 'middle == 7').Replace('Middle slice total is 5.', 'Middle slice total is 7.'); stdout = $middleSeven }
-    Position = @{ source = $original.Replace('var position: isize = 0', 'var position: isize = 1').Replace('total == 6 and first.value == 1', 'total == 4 and first.value == 2').Replace('Even sample total is 6; first is still 1.', 'Even sample total is 4; first is still 2.'); stdout = $expected.Replace('Even sample total is 6; first is still 1.', 'Even sample total is 4; first is still 2.') }
-    Odd = @{ source = $original.Replace('item.value % 2 == 0', 'item.value % 2 == 1').Replace('total == 6 and', 'total == 3 and').Replace('Even sample total is 6;', 'Odd sample total is 3;'); stdout = $expected.Replace('Even sample total is 6;', 'Odd sample total is 3;') }
+    Names = @{ source = (Edit-KimiSource $original 'Sample' 'Reading' 'Cursor' 'Walker' 'value' 'amount'); stdout = $expected }
+    Values = @{ source = (Edit-KimiSource $original 'Sample.init(3)' 'Sample.init(5)' 'middle == 5' 'middle == 7' 'Middle slice total is 5.' 'Middle slice total is 7.'); stdout = $middleSeven }
+    Range = @{ source = (Edit-KimiSource $original 'samples[1..3]' 'samples[2..4]' 'middle == 5' 'middle == 7' 'Middle slice total is 5.' 'Middle slice total is 7.'); stdout = $middleSeven }
+    Position = @{ source = (Edit-KimiSource $original 'var position: isize = 0' 'var position: isize = 1' 'total == 6 and first.value == 1' 'total == 4 and first.value == 2' 'Even sample total is 6; first is still 1.' 'Even sample total is 4; first is still 2.'); stdout = (Edit-KimiSource $expected 'Even sample total is 6; first is still 1.' 'Even sample total is 4; first is still 2.') }
+    Odd = @{ source = (Edit-KimiSource $original 'item.value % 2 == 0' 'item.value % 2 == 1' 'total == 6 and' 'total == 3 and' 'Even sample total is 6;' 'Odd sample total is 3;'); stdout = (Edit-KimiSource $expected 'Even sample total is 6;' 'Odd sample total is 3;') }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -108,10 +108,10 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    ElementI32 = @{ source = $original.Replace('associate Iterator.Element is ref{source}/T', 'associate Iterator.Element is i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    MovedSamples = @{ source = $original.Replace("    var total: i32 = 0`n", "    let moved = samples@move`n    var total: i32 = 0`n"); diagnostic = 'MovedPlace_Kd' }
-    BareSamples = @{ source = $original.Replace("    var total: i32 = 0`n", "    let moved = samples`n    var total: i32 = 0`n"); diagnostic = 'TransferRequired_Kd' }
-    SelfOrigin = @{ source = $original.Replace('-> Option<ref{source}/T>', '-> Option<ref{self}/T>'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    ElementI32 = @{ source = (Edit-KimiSource $original 'associate Iterator.Element is ref{source}/T' 'associate Iterator.Element is i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
+    MovedSamples = @{ source = (Edit-KimiSource $original "    var total: i32 = 0`n" "    let moved = samples@move`n    var total: i32 = 0`n"); diagnostic = 'MovedPlace_Kd' }
+    BareSamples = @{ source = (Edit-KimiSource $original "    var total: i32 = 0`n" "    let moved = samples`n    var total: i32 = 0`n"); diagnostic = 'TransferRequired_Kd' }
+    SelfOrigin = @{ source = (Edit-KimiSource $original '-> Option<ref{source}/T>' '-> Option<ref{self}/T>'); diagnostic = 'IncompatibleContractImplementation_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

@@ -79,16 +79,16 @@ $expected = "Default index evaluated.`nInferred selection is 10.`nExplicit selec
 if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) 'Milestone20' 'O2' $expected }
 $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
 # The default index 1 selects the second element everywhere a default is omitted.
-$defaultOne = $original.Replace('return 0', 'return 1').Replace('inferred == 10', 'inferred == 20').Replace('forwarded == 10', 'forwarded == 20').Replace('ordinary == 4', 'ordinary == 5').Replace('shortLived == 7', 'shortLived == 8').Replace('Inferred selection is 10.', 'Inferred selection is 20.').Replace('Forwarded selection is 10.', 'Forwarded selection is 20.').Replace('Ordinary selection is 4.', 'Ordinary selection is 5.').Replace('Local selection is 7.', 'Local selection is 8.')
-$defaultOneOutput = $expected.Replace('Inferred selection is 10.', 'Inferred selection is 20.').Replace('Forwarded selection is 10.', 'Forwarded selection is 20.').Replace('Ordinary selection is 4.', 'Ordinary selection is 5.').Replace('Local selection is 7.', 'Local selection is 8.')
+$defaultOne = (Edit-KimiSource $original 'return 0' 'return 1' 'inferred == 10' 'inferred == 20' 'forwarded == 10' 'forwarded == 20' 'ordinary == 4' 'ordinary == 5' 'shortLived == 7' 'shortLived == 8' 'Inferred selection is 10.' 'Inferred selection is 20.' 'Forwarded selection is 10.' 'Forwarded selection is 20.' 'Ordinary selection is 4.' 'Ordinary selection is 5.' 'Local selection is 7.' 'Local selection is 8.')
+$defaultOneOutput = (Edit-KimiSource $expected 'Inferred selection is 10.' 'Inferred selection is 20.' 'Forwarded selection is 10.' 'Forwarded selection is 20.' 'Ordinary selection is 4.' 'Ordinary selection is 5.' 'Local selection is 7.' 'Local selection is 8.')
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Names = @{ source = $original.Replace('pick', 'choose').Replace('forward', 'relay').Replace('numbers', 'items').Replace('defaultIndex', 'firstIndex'); stdout = $expected }
-    Values = @{ source = $original.Replace('10', '11').Replace('20', '21').Replace('30', '31'); stdout = $expected.Replace('10', '11').Replace('30', '31') }
-    Explicit = @{ source = $original.Replace('let inferred = pick(numbers@ref)', 'let inferred = pick<3, i32>(numbers@ref)'); stdout = $expected }
-    Index = @{ source = $original.Replace('index: 2', 'index: 1').Replace('explicit == 30', 'explicit == 20').Replace('Explicit selection is 30.', 'Explicit selection is 20.'); stdout = $expected.Replace('Explicit selection is 30.', 'Explicit selection is 20.') }
+    Names = @{ source = (Edit-KimiSource $original 'pick' 'choose' 'forward' 'relay' 'numbers' 'items' 'defaultIndex' 'firstIndex'); stdout = $expected }
+    Values = @{ source = (Edit-KimiSource $original '10' '11' '20' '21' '30' '31'); stdout = (Edit-KimiSource $expected '10' '11' '30' '31') }
+    Explicit = @{ source = (Edit-KimiSource $original 'let inferred = pick(numbers@ref)' 'let inferred = pick<3, i32>(numbers@ref)'); stdout = $expected }
+    Index = @{ source = (Edit-KimiSource $original 'index: 2' 'index: 1' 'explicit == 30' 'explicit == 20' 'Explicit selection is 30.' 'Explicit selection is 20.'); stdout = (Edit-KimiSource $expected 'Explicit selection is 30.' 'Explicit selection is 20.') }
     DefaultOne = @{ source = $defaultOne; stdout = $defaultOneOutput }
-    Supplied = @{ source = $original.Replace('let inferred = pick(numbers@ref)', 'let inferred = pick(numbers@ref, index: 0)'); stdout = $expected.Substring("Default index evaluated.`n".Length) }
+    Supplied = @{ source = (Edit-KimiSource $original 'let inferred = pick(numbers@ref)' 'let inferred = pick(numbers@ref, index: 0)'); stdout = $expected.Substring("Default index evaluated.`n".Length) }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -111,11 +111,11 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    WrongLength = @{ source = $original.Replace('pick<3, i32>(numbers@ref, index: 2)', 'pick<2, i32>(numbers@ref, index: 2)'); diagnostic = 'NoApplicableOverload_Kd' }
-    PartialArguments = @{ source = $original.Replace('pick<3, i32>(numbers@ref, index: 2)', 'pick<3>(numbers@ref, index: 2)'); diagnostic = 'NoApplicableOverload_Kd' }
-    EscapingLocal = @{ source = $original.Replace('    Console.writeLine("Inference and defaults finished.")', "    var escaped = pick(numbers@ref)`n    do`n        let local: [3 of i32] = [7, 8, 9]`n        escaped = forward(local@ref)`n    require escaped == 7 else => `$abort(`"escape`")`n    Console.writeLine(`"Inference and defaults finished.`")"); diagnostic = 'NoApplicableOverload_Kd' }
-    StaticOrigin = @{ source = $original.Replace('index: isize = defaultIndex()) -> ref{source}/T', 'index: isize = defaultIndex()) -> ref{static}/T'); diagnostic = 'TypeMismatch_Kd' }
-    UnboundDefault = @{ source = $original.Replace("public func main()`n", "func make<T>(value: T = `$abort(`"No value`")) -> T => value`n`npublic func main()`n    let m = make()`n"); diagnostic = 'NoApplicableOverload_Kd' }
+    WrongLength = @{ source = (Edit-KimiSource $original 'pick<3, i32>(numbers@ref, index: 2)' 'pick<2, i32>(numbers@ref, index: 2)'); diagnostic = 'NoApplicableOverload_Kd' }
+    PartialArguments = @{ source = (Edit-KimiSource $original 'pick<3, i32>(numbers@ref, index: 2)' 'pick<3>(numbers@ref, index: 2)'); diagnostic = 'NoApplicableOverload_Kd' }
+    EscapingLocal = @{ source = (Edit-KimiSource $original '    Console.writeLine("Inference and defaults finished.")' "    var escaped = pick(numbers@ref)`n    do`n        let local: [3 of i32] = [7, 8, 9]`n        escaped = forward(local@ref)`n    require escaped == 7 else => `$abort(`"escape`")`n    Console.writeLine(`"Inference and defaults finished.`")"); diagnostic = 'NoApplicableOverload_Kd' }
+    StaticOrigin = @{ source = (Edit-KimiSource $original 'index: isize = defaultIndex()) -> ref{source}/T' 'index: isize = defaultIndex()) -> ref{static}/T'); diagnostic = 'TypeMismatch_Kd' }
+    UnboundDefault = @{ source = (Edit-KimiSource $original "public func main()`n" "func make<T>(value: T = `$abort(`"No value`")) -> T => value`n`npublic func main()`n    let m = make()`n"); diagnostic = 'NoApplicableOverload_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

@@ -90,10 +90,10 @@ foreach ($level in @('O0', 'O2')) {
                 Copy-Item -LiteralPath $source -Destination $copy
                 if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -cne $sourceHash) { throw 'Source copy differs' }
             }
-            'AbortSum' { [IO.File]::WriteAllText($copy, $original.Replace('while number <= 10', 'while number <= 9'), $utf8) }
+            'AbortSum' { [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'while number <= 10' 'while number <= 9'), $utf8) }
             'DeinitObserves' {
                 $body = "deinit`n        if self.value != 55`n            `$abort(`"Destroyed value changed`")`n        Console.writeLine(`"Counter destroyed.`")"
-                [IO.File]::WriteAllText($copy, $original.Replace('deinit => Console.writeLine("Counter destroyed.")', $body), $utf8)
+                [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'deinit => Console.writeLine("Counter destroyed.")' $body), $utf8)
             }
         }
         $project = Join-Path $directory "$name.kimiproj"
@@ -105,31 +105,34 @@ foreach ($level in @('O0', 'O2')) {
 }
 
 $invalid = [ordered]@{
-    MovedRead = $original.Replace('finish(counter@move) //', "finish(counter@move)`n    let invalid = counter.value //")
-    DoubleMove = $original.Replace('finish(counter@move) //', "finish(counter@move)`n    finish(counter@move) //")
-    BareTransfer = $original.Replace('finish(counter@move) //', 'finish(counter) //')
-    Incomplete = $original.Replace('self.value = 0', '()')
-    ConditionalInit = $original.Replace('self.value = 0', 'if false => self.value = 0')
-    LateInit = $original.Replace('self.value = 0', 'defer => self.value = 0')
-    UninitializedRead = $original.Replace('self.value = 0', 'self.value = self.value + 1')
-    ImmutableOwner = $original.Replace('var counter =', 'let counter =')
-    PrivateConstructor = $original.Replace('public init()', 'init()')
-    WrongArgument = $original.Replace('Counter.init()', 'Counter.init(true)')
-    ExplicitDeinit = $original.Replace('finish(counter@move) //', 'counter.deinit() //')
-    CopyWithDeinit = $original.Replace('struct Counter', "struct Counter`n    Self is Copy")
-    PartialMove = "struct S`n    public var text: string`n    public init() => self.text = `"held`"`n    deinit => ()`nlet s = S.init()`nlet taken = s.text@move"
+    MovedRead = @{ source = (Edit-KimiSource $original 'finish(counter@move) //' "finish(counter@move)`n    let invalid = counter.value //"); diagnostic = 'MovedPlace_Kd' }
+    DoubleMove = @{ source = (Edit-KimiSource $original 'finish(counter@move) //' "finish(counter@move)`n    finish(counter@move) //"); diagnostic = 'MovedPlace_Kd' }
+    BareTransfer = @{ source = (Edit-KimiSource $original 'finish(counter@move) //' 'finish(counter) //'); diagnostic = 'TransferRequired_Kd' }
+    Incomplete = @{ source = (Edit-KimiSource $original 'self.value = 0' '()'); diagnostic = 'UninitializedPlace_Kd' }
+    ConditionalInit = @{ source = (Edit-KimiSource $original 'self.value = 0' 'if false => self.value = 0'); diagnostic = 'UninitializedPlace_Kd' }
+    LateInit = @{ source = (Edit-KimiSource $original 'self.value = 0' 'defer => self.value = 0'); diagnostic = 'UninitializedPlace_Kd' }
+    UninitializedRead = @{ source = (Edit-KimiSource $original 'self.value = 0' 'self.value = self.value + 1'); diagnostic = 'UninitializedPlace_Kd' }
+    ImmutableOwner = @{ source = (Edit-KimiSource $original 'var counter =' 'let counter ='); diagnostic = 'UnsupportedOwnership_Kd' }
+    PrivateConstructor = @{ source = (Edit-KimiSource $original 'public init()' 'init()'); diagnostic = 'NoApplicableOverload_Kd' }
+    WrongArgument = @{ source = (Edit-KimiSource $original 'Counter.init()' 'Counter.init(true)'); diagnostic = 'NoApplicableOverload_Kd' }
+    ExplicitDeinit = @{ source = (Edit-KimiSource $original 'finish(counter@move) //' 'counter.deinit() //'); diagnostic = 'IdentifierExpected_Kd' }
+    CopyWithDeinit = @{ source = (Edit-KimiSource $original 'struct Counter' "struct Counter`n    Self is Copy"); diagnostic = 'UnsatisfiedConstraint_Kd' }
+    PartialMove = @{ source = "struct S`n    public var text: string`n    public init() => self.text = `"held`"`n    deinit => ()`nlet s = S.init()`nlet taken = s.text@move"; diagnostic = 'UnsupportedOwnership_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

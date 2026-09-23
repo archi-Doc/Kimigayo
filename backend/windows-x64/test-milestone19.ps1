@@ -78,14 +78,14 @@ function Build-And-Run([string] $InputPath, [string] $Directory, [string] $Name,
 $expected = "Associated numbers are 21, 21.`nAssociated flags are true, true.`nContract forwarding finished.`n"
 if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) 'Milestone19' 'O2' $expected }
 $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
-$effects = $original.Replace('public func read(self: ref/Self) -> i32 => self.value', "public func read(self: ref/Self) -> i32`n        Console.writeLine(`"Number read.`")`n        return self.value")
+$effects = (Edit-KimiSource $original 'public func read(self: ref/Self) -> i32 => self.value' "public func read(self: ref/Self) -> i32`n        Console.writeLine(`"Number read.`")`n        return self.value")
 $effectOutput = "Number read.`nNumber read.`nAssociated numbers are 21, 21.`nNumber read.`nAssociated flags are true, true.`nNumber read.`nContract forwarding finished.`n"
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Names = @{ source = $original.Replace('Source', 'Provider').Replace('Element', 'Item').Replace('Wrapper', 'Envelope').Replace('read', 'fetch'); stdout = $expected }
-    Values = @{ source = $original.Replace('21', '37'); stdout = $expected.Replace('21', '37') }
-    False = @{ source = $original.Replace('true', 'false'); stdout = $expected.Replace('true', 'false') }
-    Nested = @{ source = $original.Replace('Wrapper<Wrapper<NumberSource>>.init(number@move)', 'Wrapper<Wrapper<Wrapper<NumberSource>>>.init(Wrapper<Wrapper<NumberSource>>.init(number@move))'); stdout = $expected }
+    Names = @{ source = (Edit-KimiSource $original 'Source' 'Provider' 'Element' 'Item' 'Wrapper' 'Envelope' 'read' 'fetch'); stdout = $expected }
+    Values = @{ source = (Edit-KimiSource $original '21' '37'); stdout = (Edit-KimiSource $expected '21' '37') }
+    False = @{ source = (Edit-KimiSource $original 'true' 'false'); stdout = (Edit-KimiSource $expected 'true' 'false') }
+    Nested = @{ source = (Edit-KimiSource $original 'Wrapper<Wrapper<NumberSource>>.init(number@move)' 'Wrapper<Wrapper<Wrapper<NumberSource>>>.init(Wrapper<Wrapper<NumberSource>>.init(number@move))'); stdout = $expected }
     Effects = @{ source = $effects; stdout = $effectOutput }
 }
 foreach ($level in @('O0', 'O2')) {
@@ -109,13 +109,13 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    WrongEquality = @{ source = $original.Replace('    let nested =', "    let invalid = readNumber(flag@ref)`n    let nested ="); diagnostic = 'NoApplicableOverload_Kd' }
-    MissingPremise = @{ source = $original.Replace('    Console.writeLine("Contract forwarding finished.")', '    let invalid = readTwice(storageOnly@ref)'); diagnostic = 'UnprovenConstraint_Kd' }
-    MissingAssociated = @{ source = $original.Replace("    associate Source.Element is i32`n", ''); diagnostic = 'InvalidAssociatedType_Kd' }
-    ExclusiveReceiver = @{ source = $original.Replace('public func read(self: ref/Self) -> i32', 'public func read(self: uniq/Self) -> i32'); diagnostic = 'MissingContractImplementation_Kd' }
-    MissingDefinitionPremise = @{ source = $original.Replace("    T is Source`n    let first", '    let first'); diagnostic = 'UnprovenConstraint_Kd' }
-    ContradictoryAssociated = @{ source = $original.Replace('    associate Source.Element is i32', "    associate Source.Element is i32`n    associate Source.Element is bool"); diagnostic = 'InvalidAssociatedType_Kd' }
-    DuplicateConformance = @{ source = $original.Replace('    Self is Source', "    Self is Source`n    Self is Source"); diagnostic = 'DuplicateBinding_Kd' }
+    WrongEquality = @{ source = (Edit-KimiSource $original '    let nested =' "    let invalid = readNumber(flag@ref)`n    let nested ="); diagnostic = 'NoApplicableOverload_Kd' }
+    MissingPremise = @{ source = (Edit-KimiSource $original '    Console.writeLine("Contract forwarding finished.")' '    let invalid = readTwice(storageOnly@ref)'); diagnostic = 'UnprovenConstraint_Kd' }
+    MissingAssociated = @{ source = (Edit-KimiSource $original "    associate Source.Element is i32`n" ''); diagnostic = 'InvalidAssociatedType_Kd' }
+    ExclusiveReceiver = @{ source = (Edit-KimiSource $original 'public func read(self: ref/Self) -> i32' 'public func read(self: uniq/Self) -> i32'); diagnostic = 'MissingContractImplementation_Kd' }
+    MissingDefinitionPremise = @{ source = (Edit-KimiSource $original "    T is Source`n    let first" '    let first'); diagnostic = 'UnprovenConstraint_Kd' }
+    ContradictoryAssociated = @{ source = (Edit-KimiSource $original '    associate Source.Element is i32' "    associate Source.Element is i32`n    associate Source.Element is bool"); diagnostic = 'InvalidAssociatedType_Kd' }
+    DuplicateConformance = @{ source = (Edit-KimiSource $original '    Self is Source' "    Self is Source`n    Self is Source"); diagnostic = 'DuplicateBinding_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

@@ -85,7 +85,7 @@ foreach ($level in @('O0', 'O2')) {
         if ($name -eq 'Renamed') {
             Copy-Item -LiteralPath $source -Destination $copy
             if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -cne $sourceHash) { throw 'Source copy differs' }
-        } else { [IO.File]::WriteAllText($copy, $original.Replace('let expected: i32 = 55', 'let expected: i32 = 54'), $utf8) }
+        } else { [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'let expected: i32 = 55' 'let expected: i32 = 54'), $utf8) }
         $project = Join-Path $directory "$name.kimiproj"
         [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$level`"`n", $utf8)
         if ($name -eq 'Renamed') { Build-And-Run $project $directory $name $level "Sum is 55.`nDone.`n" }

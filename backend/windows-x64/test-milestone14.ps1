@@ -79,11 +79,11 @@ Build-And-Run $source (Split-Path $source) 'Milestone14' 'O2' $expected
 $original = [IO.File]::ReadAllText($source)
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Names = @{ source = $original.Replace('Pipeline', 'Processing').Replace('Accumulator', 'Counter').Replace('Job', 'Work').Replace('accepted', 'counted').Replace('visit', 'callback'); stdout = $expected.Replace('Pipeline', 'Processing').Replace('Accumulator', 'Counter') }
-    Values = @{ source = $original.Replace('Job.init(6)', 'Job.init(7)').Replace('== 12', '== 13').Replace('is 12.', 'is 13.'); stdout = $expected.Replace('is 12.', 'is 13.') }
-    Exhausted = @{ source = $original.Replace('visit@uniq, 3)', 'visit@uniq, 9)').Replace('accepted == 3', 'accepted == 4').Replace('== 12', '== 112').Replace('is 12.', 'is 112.').Replace('three jobs.', 'four jobs.'); stdout = $expected.Replace('is 12.', 'is 112.').Replace('three jobs.', 'four jobs.') }
-    ZeroLimit = @{ source = $original.Replace('visit@uniq, 3)', 'visit@uniq, 0)').Replace('accepted == 3', 'accepted == 0').Replace('== 12', '== 0').Replace('is 12.', 'is 0.').Replace('three jobs.', 'zero jobs.'); stdout = $expected.Replace('is 12.', 'is 0.').Replace('three jobs.', 'zero jobs.') }
-    RejectAll = @{ source = $original.Replace('job.amount > 0', 'job.amount < -100').Replace('accepted == 3', 'accepted == 0').Replace('== 12', '== 0').Replace('is 12.', 'is 0.').Replace('three jobs.', 'zero jobs.'); stdout = $expected.Replace('is 12.', 'is 0.').Replace('three jobs.', 'zero jobs.') }
+    Names = @{ source = (Edit-KimiSource $original 'Pipeline' 'Processing' 'Accumulator' 'Counter' 'Job' 'Work' 'accepted' 'counted' 'visit' 'callback'); stdout = (Edit-KimiSource $expected 'Pipeline' 'Processing' 'Accumulator' 'Counter') }
+    Values = @{ source = (Edit-KimiSource $original 'Job.init(6)' 'Job.init(7)' '== 12' '== 13' 'is 12.' 'is 13.'); stdout = (Edit-KimiSource $expected 'is 12.' 'is 13.') }
+    Exhausted = @{ source = (Edit-KimiSource $original 'visit@uniq, 3)' 'visit@uniq, 9)' 'accepted == 3' 'accepted == 4' '== 12' '== 112' 'is 12.' 'is 112.' 'three jobs.' 'four jobs.'); stdout = (Edit-KimiSource $expected 'is 12.' 'is 112.' 'three jobs.' 'four jobs.') }
+    ZeroLimit = @{ source = (Edit-KimiSource $original 'visit@uniq, 3)' 'visit@uniq, 0)' 'accepted == 3' 'accepted == 0' '== 12' '== 0' 'is 12.' 'is 0.' 'three jobs.' 'zero jobs.'); stdout = (Edit-KimiSource $expected 'is 12.' 'is 0.' 'three jobs.' 'zero jobs.') }
+    RejectAll = @{ source = (Edit-KimiSource $original 'job.amount > 0' 'job.amount < -100' 'accepted == 3' 'accepted == 0' '== 12' '== 0' 'is 12.' 'is 0.' 'three jobs.' 'zero jobs.'); stdout = (Edit-KimiSource $expected 'is 12.' 'is 0.' 'three jobs.' 'zero jobs.') }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -102,27 +102,30 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    ConsumedClosure = $original + "`n    complete()`n"
-    MovedCapture = $original + "`n    accumulator.read()`n"
-    ImmutableReceiver = $original.Replace('var visit =', 'let visit =')
-    ImmutableOwner = $original.Replace('var accumulator =', 'let accumulator =')
-    SharedConstraint = $original.Replace('Callable<uniq,', 'Callable<ref,')
-    StrongerInput = $original.Replace('(job: ref/Pipeline.Job)', '(job: uniq/Pipeline.Job)')
-    ConflictingOwner = $original.Replace('        let accepted =', "        accumulator.read()`n        let accepted =")
-    WrongProjection = $original.Replace('accumulator@uniq/Pipeline.Accumulator', 'accumulator@uniq/Pipeline.Job')
-    ImplicitCapture = $original.Replace('func [target@move]', 'func')
+    ConsumedClosure = @{ source = $original + "`n    complete()`n"; diagnostic = 'TransferRequired_Kd' }
+    MovedCapture = @{ source = $original + "`n    accumulator.read()`n"; diagnostic = 'MovedPlace_Kd' }
+    ImmutableReceiver = @{ source = (Edit-KimiSource $original 'var visit =' 'let visit ='); diagnostic = 'InvalidAssignment_Kd' }
+    ImmutableOwner = @{ source = (Edit-KimiSource $original 'var accumulator =' 'let accumulator ='); diagnostic = 'InvalidAssignment_Kd' }
+    SharedConstraint = @{ source = (Edit-KimiSource $original 'Callable<uniq,' 'Callable<ref,'); diagnostic = 'NoApplicableOverload_Kd' }
+    StrongerInput = @{ source = (Edit-KimiSource $original '(job: ref/Pipeline.Job)' '(job: uniq/Pipeline.Job)'); diagnostic = 'NoApplicableOverload_Kd' }
+    ConflictingOwner = @{ source = (Edit-KimiSource $original '        let accepted =' "        accumulator.read()`n        let accepted ="); diagnostic = 'ComparisonLoanConflict_Kd' }
+    WrongProjection = @{ source = (Edit-KimiSource $original 'accumulator@uniq/Pipeline.Accumulator' 'accumulator@uniq/Pipeline.Job'); diagnostic = 'InvalidAssignment_Kd' }
+    ImplicitCapture = @{ source = (Edit-KimiSource $original 'func [target@move]' 'func'); diagnostic = 'TransferRequired_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

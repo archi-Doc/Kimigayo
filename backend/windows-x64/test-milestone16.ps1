@@ -81,12 +81,12 @@ if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) 'Milestone16'
 $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Names = @{ source = $original.Replace('Cell', 'Counter').Replace('Pair', 'Inputs').Replace('Selection', 'Choice').Replace('selected', 'chosen'); stdout = $expected }
-    Values = @{ source = $original.Replace('Cell.init(10)', 'Cell.init(31)').Replace('Cell.init(20)', 'Cell.init(42)').Replace('=> 10 else => 20', '=> 31 else => 42').Replace('first.value == 13 and second.value == 24', 'first.value == 34 and second.value == 46'); stdout = $expected }
-    Reverse = @{ source = $original.Replace('if useFirst', 'if not useFirst'); stdout = $expected }
-    SameOrigin = @{ source = $original.Replace('Pair.init(first@ref, second@ref)', 'Pair.init(first@ref, first@ref)').Replace('=> 10 else => 20', '=> 10 else => 10'); stdout = $expected }
-    Missing = @{ source = $original.Replace('return .Found(self.second)', 'return .Missing').Replace('.Missing => $abort("Expected a selected Cell")', '.Missing => first@ref').Replace('=> 10 else => 20', '=> 10 else => 10'); stdout = $expected }
-    RetainedEnum = @{ source = $original.Replace('            let result = pair.choose(useFirst)', "            let retained = pair.choose(useFirst)`n            let result = retained@move"); stdout = $expected }
+    Names = @{ source = (Edit-KimiSource $original 'Cell' 'Counter' 'Pair' 'Inputs' 'Selection' 'Choice' 'selected' 'chosen'); stdout = $expected }
+    Values = @{ source = (Edit-KimiSource $original 'Cell.init(10)' 'Cell.init(31)' 'Cell.init(20)' 'Cell.init(42)' '=> 10 else => 20' '=> 31 else => 42' 'first.value == 13 and second.value == 24' 'first.value == 34 and second.value == 46'); stdout = $expected }
+    Reverse = @{ source = (Edit-KimiSource $original 'if useFirst' 'if not useFirst'); stdout = $expected }
+    SameOrigin = @{ source = (Edit-KimiSource $original 'Pair.init(first@ref, second@ref)' 'Pair.init(first@ref, first@ref)' '=> 10 else => 20' '=> 10 else => 10'); stdout = $expected }
+    Missing = @{ source = (Edit-KimiSource $original 'return .Found(self.second)' 'return .Missing' '.Missing => $abort("Expected a selected Cell")' '.Missing => first@ref' '=> 10 else => 20' '=> 10 else => 10'); stdout = $expected }
+    RetainedEnum = @{ source = (Edit-KimiSource $original '            let result = pair.choose(useFirst)' "            let retained = pair.choose(useFirst)`n            let result = retained@move"); stdout = $expected }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -107,12 +107,12 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    StaticResult = $original.Replace('origin selection.source == self.left and self.right', 'origin selection.source == static')
-    IncompleteIntersection = $original.Replace('origin selection.source == self.left and self.right', 'origin selection.source == self.left')
-    FirstWrite = $original.Replace('        require selected.value', "        first.value = 99`n        require selected.value")
-    SecondWrite = $original.Replace('        require selected.value', "        second.value = 99`n        require selected.value")
-    ParentWrite = $original.Replace('        child.value =', "        target.value = 99`n        child.value =")
-    EscapingLocal = $original.Replace("    var first = Cell.init(10)`n", '').Replace('            let pair =', "            var first = Cell.init(10)`n            let pair =").Replace("    add(first@uniq, 2)`n", '').Replace('first.value == 13 and ', '')
+    StaticResult = (Edit-KimiSource $original 'origin selection.source == self.left and self.right' 'origin selection.source == static')
+    IncompleteIntersection = (Edit-KimiSource $original 'origin selection.source == self.left and self.right' 'origin selection.source == self.left')
+    FirstWrite = (Edit-KimiSource $original '        require selected.value' "        first.value = 99`n        require selected.value")
+    SecondWrite = (Edit-KimiSource $original '        require selected.value' "        second.value = 99`n        require selected.value")
+    ParentWrite = (Edit-KimiSource $original '        child.value =' "        target.value = 99`n        child.value =")
+    EscapingLocal = (Edit-KimiSource $original "    var first = Cell.init(10)`n" '' '            let pair =' "            var first = Cell.init(10)`n            let pair =" "    add(first@uniq, 2)`n" '' 'first.value == 13 and ' '')
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

@@ -79,10 +79,10 @@ Build-And-Run $source (Split-Path $source) 'Milestone8' 'O2' $expected
 $original = [IO.File]::ReadAllText($source)
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Second = @{ source = $original.Replace('true)', 'false)'); stdout = $expected.Replace('Chosen item.', 'Unused item.') }
-    Alternate = @{ source = $original.Replace('[2, 4, 6]', '[1, 3, 5]').Replace('total == 12', 'total == 9').Replace('total is 12.', 'total is 9.'); stdout = $expected.Replace('total is 12.', 'total is 9.') }
-    Empty = @{ source = $original.Replace('[3 of i32]', '[0 of i32]').Replace('[2, 4, 6]', '[]').Replace('total == 12', 'total == 0').Replace('total is 12.', 'total is 0.'); stdout = $expected.Replace('total is 12.', 'total is 0.') }
-    Abort = @{ source = $original.Replace('total == 12', 'total == 11'); stdout = "Chosen item.`n"; abort = '$abort("Unexpected boxed array total")' }
+    Second = @{ source = (Edit-KimiSource $original 'true)' 'false)'); stdout = (Edit-KimiSource $expected 'Chosen item.' 'Unused item.') }
+    Alternate = @{ source = (Edit-KimiSource $original '[2, 4, 6]' '[1, 3, 5]' 'total == 12' 'total == 9' 'total is 12.' 'total is 9.'); stdout = (Edit-KimiSource $expected 'total is 12.' 'total is 9.') }
+    Empty = @{ source = (Edit-KimiSource $original '[3 of i32]' '[0 of i32]' '[2, 4, 6]' '[]' 'total == 12' 'total == 0' 'total is 12.' 'total is 0.'); stdout = (Edit-KimiSource $expected 'total is 12.' 'total is 0.') }
+    Abort = @{ source = (Edit-KimiSource $original 'total == 12' 'total == 11'); stdout = "Chosen item.`n"; abort = '$abort("Unexpected boxed array total")' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -113,32 +113,35 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    WrongFieldType = $original.Replace('Box<string>', 'Box<i32>')
-    MixedChoices = $original.Replace('Box<string>.init("Unused item.")', 'Box<bool>.init(true)')
-    MissingArgument = $original.Replace('.init("Chosen item.")', '.init()')
-    DuplicateArgument = $original.Replace('.init("Chosen item.")', '.init("Chosen item.", "extra")')
-    MovedSelected = $original.Replace('let numbers =', "Console.writeLine(selected@move.take())`n    let numbers =")
-    MovedNumbers = $original.Replace('var total: i32 = 0', "let again = numbers@move.take()`n    var total: i32 = 0")
-    UnprovenCopy = $original.Replace('return if useFirst', "let firstCopy = first`n            return if useFirst")
-    DeinitExtraction = $original.Replace('public func take(self: Self)', "deinit => ()`n`n            public func take(self: Self)")
-    PrivateField = $original.Replace('selected@move.take()', 'selected.value')
-    BareReceiver = $original.Replace('selected@move.take()', 'selected.take()')
-    PrivateGroup = $original.Replace('public group Storage', 'group Storage')
-    ImmutableElement = $original.Replace('total = total + value', 'value = 1')
-    EscapedElement = $original.Replace('require total == 12', 'require value == 12')
-    WrongArrayLength = $original.Replace('[3 of i32]', '[2 of i32]')
+    WrongFieldType = @{ source = (Edit-KimiSource $original 'Box<string>' 'Box<i32>'); diagnostic = 'NoApplicableOverload_Kd' }
+    MixedChoices = @{ source = (Edit-KimiSource $original 'Box<string>.init("Unused item.")' 'Box<bool>.init(true)'); diagnostic = 'NoApplicableOverload_Kd' }
+    MissingArgument = @{ source = (Edit-KimiSource $original '.init("Chosen item.")' '.init()'); diagnostic = 'NoApplicableOverload_Kd' }
+    DuplicateArgument = @{ source = (Edit-KimiSource $original '.init("Chosen item.")' '.init("Chosen item.", "extra")'); diagnostic = 'NoApplicableOverload_Kd' }
+    MovedSelected = @{ source = (Edit-KimiSource $original 'let numbers =' "Console.writeLine(selected@move.take())`n    let numbers ="); diagnostic = 'MovedPlace_Kd' }
+    MovedNumbers = @{ source = (Edit-KimiSource $original 'var total: i32 = 0' "let again = numbers@move.take()`n    var total: i32 = 0"); diagnostic = 'MovedPlace_Kd' }
+    UnprovenCopy = @{ source = (Edit-KimiSource $original 'return if useFirst' "let firstCopy = first`n            return if useFirst"); diagnostic = 'TransferRequired_Kd' }
+    DeinitExtraction = @{ source = (Edit-KimiSource $original 'public func take(self: Self)' "deinit => ()`n`n            public func take(self: Self)"); diagnostic = 'UnsupportedOwnership_Kd' }
+    PrivateField = @{ source = (Edit-KimiSource $original 'selected@move.take()' 'selected.value'); diagnostic = 'UnresolvedBinding_Kd' }
+    BareReceiver = @{ source = (Edit-KimiSource $original 'selected@move.take()' 'selected.take()'); diagnostic = 'TransferRequired_Kd' }
+    PrivateGroup = @{ source = (Edit-KimiSource $original 'public group Storage' 'group Storage'); diagnostic = 'UnresolvedBinding_Kd' }
+    ImmutableElement = @{ source = (Edit-KimiSource $original 'total = total + value' 'value = 1'); diagnostic = 'TypeMismatch_Kd' }
+    EscapedElement = @{ source = (Edit-KimiSource $original 'require total == 12' 'require value == 12'); diagnostic = 'UnresolvedBinding_Kd' }
+    WrongArrayLength = @{ source = (Edit-KimiSource $original '[3 of i32]' '[2 of i32]'); diagnostic = 'NoApplicableOverload_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

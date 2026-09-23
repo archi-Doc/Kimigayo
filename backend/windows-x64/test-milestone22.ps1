@@ -79,13 +79,13 @@ $expected = "Compound layouts preserved.`nSpecialization preserved.`nRed receive
 if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) 'Milestone22' 'O2' $expected }
 $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
 # README separate checks: varied layouts and lengths, the specialization removed (10/20), finite same-key recursion.
-$noSpecialization = $original.Replace("specialize func relay<i32>(value: i32) -> i32 => value + 1`n", '').Replace('require relay<i32>(10) == 11 and forward<i32>(20) == 21', 'require relay<i32>(10) == 10 and forward<i32>(20) == 20')
-$recursion = $original.Replace("func forward<T>(value: T) -> T => relay<T>(value@move)`n", "func forward<T>(value: T) -> T => relay<T>(value@move)`nfunc count<T>(value: ref/T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value, n - 1) + 1`n").Replace('    Console.writeLine("Generic generation finished.")', "    require count<i32>(small[0]@ref, 3) == 3 else => `$abort(`"Recursion failed`")`n    Console.writeLine(`"Generic generation finished.`")")
+$noSpecialization = (Edit-KimiSource $original "specialize func relay<i32>(value: i32) -> i32 => value + 1`n" '' 'require relay<i32>(10) == 11 and forward<i32>(20) == 21' 'require relay<i32>(10) == 10 and forward<i32>(20) == 20')
+$recursion = (Edit-KimiSource $original "func forward<T>(value: T) -> T => relay<T>(value@move)`n" "func forward<T>(value: T) -> T => relay<T>(value@move)`nfunc count<T>(value: ref/T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value, n - 1) + 1`n" '    Console.writeLine("Generic generation finished.")' "    require count<i32>(small[0]@ref, 3) == 3 else => `$abort(`"Recursion failed`")`n    Console.writeLine(`"Generic generation finished.`")")
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Names = @{ source = $original.Replace('relay', 'transmit').Replace('forward', 'convey').Replace('Red', 'Crimson').Replace('Blue', 'Azure'); stdout = $expected.Replace('Red', 'Crimson').Replace('Blue', 'Azure') }
-    Lengths = @{ source = $original.Replace('let small: [2 of i32] = [3, 5]', 'let small: [4 of i32] = [3, 5, 8, 13]').Replace('copied[1] == 5', 'copied[3] == 13'); stdout = $expected }
-    Layouts = @{ source = $original.Replace('let wide: (i64, (i32, bool)) = (9, (7, true))', 'let wide: ((bool, i8), i64) = ((true, 7), 9)').Replace('(9, (7, true)) => Console.writeLine("Compound layouts preserved.")', '((true, 7), 9) => Console.writeLine("Compound layouts preserved.")'); stdout = $expected }
+    Names = @{ source = (Edit-KimiSource $original 'relay' 'transmit' 'forward' 'convey' 'Red' 'Crimson' 'Blue' 'Azure'); stdout = (Edit-KimiSource $expected 'Red' 'Crimson' 'Blue' 'Azure') }
+    Lengths = @{ source = (Edit-KimiSource $original 'let small: [2 of i32] = [3, 5]' 'let small: [4 of i32] = [3, 5, 8, 13]' 'copied[1] == 5' 'copied[3] == 13'); stdout = $expected }
+    Layouts = @{ source = (Edit-KimiSource $original 'let wide: (i64, (i32, bool)) = (9, (7, true))' 'let wide: ((bool, i8), i64) = ((true, 7), 9)' '(9, (7, true)) => Console.writeLine("Compound layouts preserved.")' '((true, 7), 9) => Console.writeLine("Compound layouts preserved.")'); stdout = $expected }
     NoSpecialization = @{ source = $noSpecialization; stdout = $expected }
     Recursion = @{ source = $recursion; stdout = $expected }
 }
@@ -111,12 +111,12 @@ foreach ($level in @('O0', 'O2')) {
 }
 # README separate checks: a moved Non-Copy argument reused (rejected in ownership) and a growing
 # T -> Box<T> substitution (a generation resource limit, SPEC 21.3.5).
-$growing = $original.Replace("func forward<T>(value: T) -> T => relay<T>(value@move)`n", "func forward<T>(value: T) -> T => relay<T>(value@move)`nstruct Box<T>`n    let value: T`n    public init(value: T) => self.value = value@move`nfunc grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)`n").Replace('    Console.writeLine("Generic generation finished.")', "    let invalid = grow<i32>(1, 3)`n    Console.writeLine(`"Generic generation finished.`")")
+$growing = (Edit-KimiSource $original "func forward<T>(value: T) -> T => relay<T>(value@move)`n" "func forward<T>(value: T) -> T => relay<T>(value@move)`nstruct Box<T>`n    let value: T`n    public init(value: T) => self.value = value@move`nfunc grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)`n" '    Console.writeLine("Generic generation finished.")' "    let invalid = grow<i32>(1, 3)`n    Console.writeLine(`"Generic generation finished.`")")
 $invalid = [ordered]@{
-    MovedRed = @{ source = $original.Replace('        let red = forward(Red.init(1))', "        let source = Red.init(1)`n        let red = forward(source@move)`n        let invalid = source@move"); diagnostic = 'MovedPlace_Kd' }
-    MovedBlue = @{ source = $original.Replace('        Console.writeLine("Blue received.")', "        let again = forward(blue@move)`n        Console.writeLine(`"Blue received.`")`n        let invalid = blue@move"); diagnostic = 'MovedPlace_Kd' }
+    MovedRed = @{ source = (Edit-KimiSource $original '        let red = forward(Red.init(1))' "        let source = Red.init(1)`n        let red = forward(source@move)`n        let invalid = source@move"); diagnostic = 'MovedPlace_Kd' }
+    MovedBlue = @{ source = (Edit-KimiSource $original '        Console.writeLine("Blue received.")' "        let again = forward(blue@move)`n        Console.writeLine(`"Blue received.`")`n        let invalid = blue@move"); diagnostic = 'MovedPlace_Kd' }
     GrowingKey = @{ source = $growing; diagnostic = 'GenerationResourceLimit_Kd' }
-    InfiniteLayout = @{ source = $original.Replace("public func main()`n", "struct Loop`n    let next: Loop`n`npublic func main()`n"); diagnostic = 'InvalidInlineLayout_Kd' }
+    InfiniteLayout = @{ source = (Edit-KimiSource $original "public func main()`n" "struct Loop`n    let next: Loop`n`npublic func main()`n"); diagnostic = 'InvalidInlineLayout_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

@@ -81,7 +81,7 @@ if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) 'Milestone15'
 $original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
 $zero = "Flow checked.`nItem destroyed.`nItem destroyed.`n"
 $five = "Iteration finished.`nItem destroyed.`n" + ("Iteration finished.`n" * 4) + "Flow checked.`nItem destroyed.`nItem destroyed.`n"
-$ordered = $original.Replace('    deinit => Console.writeLine("Item destroyed.")', @"
+$ordered = (Edit-KimiSource $original '    deinit => Console.writeLine("Item destroyed.")' @"
     deinit
         if self.value == 30
             Console.writeLine("Fallback destroyed.")
@@ -92,13 +92,13 @@ $ordered = $original.Replace('    deinit => Console.writeLine("Item destroyed.")
 $orderedOne = "Iteration finished.`nConsumed destroyed.`nIteration finished.`nIteration finished.`nFlow checked.`nFallback destroyed.`nRepaired destroyed.`n"
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Names = @{ source = $original.Replace('Item', 'Resource').Replace('current', 'active').Replace('selected', 'chosen'); stdout = $expected.Replace('Item', 'Resource') }
-    Values = @{ source = $original.Replace('init(! 10)', 'init(! 14)').Replace('init(! 12)', 'init(! 17)'); stdout = $expected }
-    ReverseSelection = @{ source = $original.Replace('if step == 1', 'if step != 1').Replace('total == initial + 30', 'total == 50'); stdout = $expected }
-    Zero = @{ source = $original.Replace('while step < 3', 'while step < 0').Replace('total == initial + 30', 'total == 0').Replace('current.value == 21', 'current.value == initial'); stdout = $zero + $zero + "Ownership joins finished.`n" }
-    Five = @{ source = $original.Replace('while step < 3', 'while step < 5').Replace('total == initial + 30', 'total == initial + 90').Replace('current.value == 21', 'current.value == 23'); stdout = $five + $five + "Ownership joins finished.`n" }
+    Names = @{ source = (Edit-KimiSource $original 'Item' 'Resource' 'current' 'active' 'selected' 'chosen'); stdout = (Edit-KimiSource $expected 'Item' 'Resource') }
+    Values = @{ source = (Edit-KimiSource $original 'init(10)' 'init(14)' 'init(12)' 'init(17)'); stdout = $expected }
+    ReverseSelection = @{ source = (Edit-KimiSource $original 'if step == 1' 'if step != 1' 'total == initial + 30' 'total == 50'); stdout = $expected }
+    Zero = @{ source = (Edit-KimiSource $original 'while step < 3' 'while step < 0' 'total == initial + 30' 'total == 0' 'current.value == 21' 'current.value == initial'); stdout = $zero + $zero + "Ownership joins finished.`n" }
+    Five = @{ source = (Edit-KimiSource $original 'while step < 3' 'while step < 5' 'total == initial + 30' 'total == initial + 90' 'current.value == 21' 'current.value == 23'); stdout = $five + $five + "Ownership joins finished.`n" }
     OrderedCleanup = @{ source = $ordered; stdout = $orderedOne + $orderedOne + "Ownership joins finished.`n" }
-    LastUse = @{ source = $original.Replace('            total = total + selected.value', "            total = total + selected.value`n            current.value = current.value + 0"); stdout = $expected }
+    LastUse = @{ source = (Edit-KimiSource $original '            total = total + selected.value' "            total = total + selected.value`n            current.value = current.value + 0"); stdout = $expected }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -118,12 +118,12 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    MissingInitialization = $original.Replace("    else`n        current = Item.init(12)`n", '')
-    MissingRepair = $original.Replace('            current = Item.init(20)', '            // current = Item.init(20)')
-    MovedRead = $original.Replace('            consume(current@move, initial + 1)', "            consume(current@move, initial + 1)`n            let invalid = current.value")
-    BareTransfer = $original.Replace('            consume(current@move, initial + 1)', '            consume(current, initial + 1)')
-    CurrentLoan = $original.Replace('            total = total + selected.value', "            current.value = 99`n            total = total + selected.value")
-    FallbackLoan = $original.Replace('let fallback =', 'var fallback =').Replace('            total = total + selected.value', "            fallback.value = 99`n            total = total + selected.value")
+    MissingInitialization = (Edit-KimiSource $original "    else`n        current = Item.init(12)`n" '')
+    MissingRepair = (Edit-KimiSource $original '            current = Item.init(20)' '            // current = Item.init(20)')
+    MovedRead = (Edit-KimiSource $original '            consume(current@move, initial + 1)' "            consume(current@move, initial + 1)`n            let invalid = current.value")
+    BareTransfer = (Edit-KimiSource $original '            consume(current@move, initial + 1)' '            consume(current, initial + 1)')
+    CurrentLoan = (Edit-KimiSource $original '            total = total + selected.value' "            current.value = 99`n            total = total + selected.value")
+    FallbackLoan = (Edit-KimiSource $original 'let fallback =' 'var fallback =' '            total = total + selected.value' "            fallback.value = 99`n            total = total + selected.value")
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $invalid.GetEnumerator()) {

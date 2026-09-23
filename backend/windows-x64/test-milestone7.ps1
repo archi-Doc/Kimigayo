@@ -79,11 +79,11 @@ Build-And-Run $source (Split-Path $source) 'Milestone7' 'O2' $expected
 $original = [IO.File]::ReadAllText($source)
 $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
-    Triple = @{ source = $original.Replace('value * 2', 'value * 3').Replace('total == 42', 'total == 63').Replace('rowTotal == 20', 'rowTotal == 30'); stdout = $expected }
-    StopAtZero = @{ source = $original.Replace('continue to rows', 'exit to rows').Replace('total == 42', 'total == 20'); stdout = $expected.Replace("Row finished.`nRow finished.`nRow finished.`n", "Row finished.`nRow finished.`n") }
-    Exhaust = @{ source = $original.Replace('value == 7', 'value == 99').Replace('total == 42', 'total == 72').Replace('matrix[2][2] == 7', 'matrix[2][2] == 14'); stdout = $expected }
-    MatrixBounds = @{ source = $original.Replace('matrix[2][2] == 7', 'matrix[3][2] == 7'); stdout = "Row finished.`n" * 3; bounds = 'matrix[3][2]' }
-    SliceBounds = @{ source = $original.Replace('rowView[index]', 'rowView[index + 1]'); stdout = ("Row finished.`n" * 3) + "Matrix total is 42.`n"; bounds = 'rowView[index + 1]' }
+    Triple = @{ source = (Edit-KimiSource $original 'value * 2' 'value * 3' 'total == 42' 'total == 63' 'rowTotal == 20' 'rowTotal == 30'); stdout = $expected }
+    StopAtZero = @{ source = (Edit-KimiSource $original 'continue to rows' 'exit to rows' 'total == 42' 'total == 20'); stdout = (Edit-KimiSource $expected "Row finished.`nRow finished.`nRow finished.`n" "Row finished.`nRow finished.`n") }
+    Exhaust = @{ source = (Edit-KimiSource $original 'value == 7' 'value == 99' 'total == 42' 'total == 72' 'matrix[2][2] == 7' 'matrix[2][2] == 14'); stdout = $expected }
+    MatrixBounds = @{ source = (Edit-KimiSource $original 'matrix[2][2] == 7' 'matrix[3][2] == 7'); stdout = "Row finished.`n" * 3; bounds = 'matrix[3][2]' }
+    SliceBounds = @{ source = (Edit-KimiSource $original 'rowView[index]' 'rowView[index + 1]'); stdout = ("Row finished.`n" * 3) + "Matrix total is 42.`n"; bounds = 'rowView[index + 1]' }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -114,31 +114,34 @@ foreach ($level in @('O0', 'O2')) {
     }
 }
 $invalid = [ordered]@{
-    OuterLength = $original.Replace('[3 of [4 of i32]]', '[2 of [4 of i32]]')
-    InnerLength = $original.Replace('[3 of [4 of i32]]', '[3 of [3 of i32]]')
-    SliceWrite = $original.Replace('var rowTotal: i32 = 0', 'rowView[0] = 99')
-    BorrowedWrite = $original.Replace('var rowTotal: i32 = 0', "var rowTotal: i32 = 0`n    matrix[0][0] = 99")
-    BorrowedReplacement = $original.Replace('var rowTotal: i32 = 0', "var rowTotal: i32 = 0`n    matrix[0] = [9, 9, 9, 9]")
-    ImmutableIndex = $original.Replace('let value = matrix[row][column]', 'row = 0')
-    EscapedIndex = $original.Replace('require total == 42', 'require row == 0')
-    WrongExitResult = $original.Replace('exit to rows //', 'exit to rows: 1 //')
-    MissingTarget = $original.Replace('continue to rows', 'continue to missing')
-    RawRange = $original.Replace('for row in matrix.indices', 'for row in 0..3')
-    WrongIndexType = $original.Replace('rowView[index]', 'rowView[index@i32]')
-    TupleBinding = $original.Replace('for row in matrix.indices', 'for (row, other) in matrix.indices')
-    Uninitialized = $original.Replace('let rowView = matrix[0][..]', "let other: [4 of i32]`n    let rowView = other[..]")
+    OuterLength = @{ source = (Edit-KimiSource $original '[3 of [4 of i32]]' '[2 of [4 of i32]]'); diagnostic = 'TypeMismatch_Kd' }
+    InnerLength = @{ source = (Edit-KimiSource $original '[3 of [4 of i32]]' '[3 of [3 of i32]]'); diagnostic = 'TypeMismatch_Kd' }
+    SliceWrite = @{ source = (Edit-KimiSource $original 'var rowTotal: i32 = 0' 'rowView[0] = 99'); diagnostic = 'InvalidAssignment_Kd' }
+    BorrowedWrite = @{ source = (Edit-KimiSource $original 'var rowTotal: i32 = 0' "var rowTotal: i32 = 0`n    matrix[0][0] = 99"); diagnostic = 'ComparisonLoanConflict_Kd' }
+    BorrowedReplacement = @{ source = (Edit-KimiSource $original 'var rowTotal: i32 = 0' "var rowTotal: i32 = 0`n    matrix[0] = [9, 9, 9, 9]"); diagnostic = 'ComparisonLoanConflict_Kd' }
+    ImmutableIndex = @{ source = (Edit-KimiSource $original 'let value = matrix[row][column]' 'row = 0'); diagnostic = 'InvalidAssignment_Kd' }
+    EscapedIndex = @{ source = (Edit-KimiSource $original 'require total == 42' 'require row == 0'); diagnostic = 'UnresolvedBinding_Kd' }
+    WrongExitResult = @{ source = (Edit-KimiSource $original 'exit to rows //' 'exit to rows: 1 //'); diagnostic = 'TypeMismatch_Kd' }
+    MissingTarget = @{ source = (Edit-KimiSource $original 'continue to rows' 'continue to missing'); diagnostic = 'ControlFlow_Kd' }
+    RawRange = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for row in 0..3'); diagnostic = 'UnsupportedBinding_Kd' }
+    WrongIndexType = @{ source = (Edit-KimiSource $original 'rowView[index]' 'rowView[index@i32]'); diagnostic = 'TypeMismatch_Kd' }
+    TupleBinding = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for (row, other) in matrix.indices'); diagnostic = 'TypeMismatch_Kd' }
+    Uninitialized = @{ source = (Edit-KimiSource $original 'let rowView = matrix[0][..]' "let other: [4 of i32]`n    let rowView = other[..]"); diagnostic = 'UninitializedPlace_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }

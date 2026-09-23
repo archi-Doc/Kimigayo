@@ -90,11 +90,11 @@ foreach ($level in @('O0', 'O2')) {
                 Copy-Item -LiteralPath $source -Destination $copy
                 if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -cne $sourceHash) { throw 'Source copy differs' }
             }
-            'NegativeLimit' { [IO.File]::WriteAllText($copy, $original.Replace('sumTo(10)', 'sumTo(-1)'), $utf8) }
-            'UnexpectedSum' { [IO.File]::WriteAllText($copy, $original.Replace('sumTo(10)', 'sumTo(9)'), $utf8) }
+            'NegativeLimit' { [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'sumTo(10)' 'sumTo(-1)'), $utf8) }
+            'UnexpectedSum' { [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'sumTo(10)' 'sumTo(9)'), $utf8) }
             'ReturnSnapshot' {
                 # The returned i32 must be secured before deferred mutation of its source.
-                [IO.File]::WriteAllText($copy, $original.Replace('var total: i32 = 0', "var total: i32 = 0`n    defer => total = -1"), $utf8)
+                [IO.File]::WriteAllText($copy, (Edit-KimiSource $original 'var total: i32 = 0' "var total: i32 = 0`n    defer => total = -1"), $utf8)
             }
         }
         $project = Join-Path $directory "$name.kimiproj"
@@ -108,28 +108,31 @@ foreach ($level in @('O0', 'O2')) {
 }
 
 $invalid = [ordered]@{
-    WrongArgument = "func f(x: i32) => ()`npublic func main() => f(true)"
-    MissingArgument = "func f(x: i32) => ()`npublic func main() => f()"
-    ExtraArgument = "func f(x: i32) => ()`npublic func main() => f(1, 2)"
-    WrongReturn = "func f() -> i32 => return true`npublic func main() => f()"
-    MissingReturn = "func f() -> i32`n    let x: i32 = 1`npublic func main() => f()"
-    InvalidMain = 'public func main() -> i32 => 0'
-    MixedStartup = "public func main() => ()`nConsole.writeLine(`"mixed`")"
-    ReturnFromDefer = "public func main()`n    defer => return"
-    DeferredMovedUse = "public func main()`n    let text = `"x`"`n    defer => Console.writeLine(text)`n    let taken = text@move"
-    DeferredUninitializedUse = "public func main()`n    let text: string`n    defer => Console.writeLine(text)"
+    WrongArgument = @{ source = "func f(x: i32) => ()`npublic func main() => f(true)"; diagnostic = 'NoApplicableOverload_Kd' }
+    MissingArgument = @{ source = "func f(x: i32) => ()`npublic func main() => f()"; diagnostic = 'NoApplicableOverload_Kd' }
+    ExtraArgument = @{ source = "func f(x: i32) => ()`npublic func main() => f(1, 2)"; diagnostic = 'NoApplicableOverload_Kd' }
+    WrongReturn = @{ source = "func f() -> i32 => return true`npublic func main() => f()"; diagnostic = 'TypeMismatch_Kd' }
+    MissingReturn = @{ source = "func f() -> i32`n    let x: i32 = 1`npublic func main() => f()"; diagnostic = 'ControlFlow_Kd' }
+    InvalidMain = @{ source = 'public func main() -> i32 => 0'; diagnostic = 'InvalidStartupMain_Kd' }
+    MixedStartup = @{ source = "public func main() => ()`nConsole.writeLine(`"mixed`")"; diagnostic = 'MixedStartupBodies_Kd' }
+    ReturnFromDefer = @{ source = "public func main()`n    defer => return"; diagnostic = 'ControlFlow_Kd' }
+    DeferredMovedUse = @{ source = "public func main()`n    let text = `"x`"`n    defer => Console.writeLine(text)`n    let taken = text@move"; diagnostic = 'MovedPlace_Kd' }
+    DeferredUninitializedUse = @{ source = "public func main()`n    let text: string`n    defer => Console.writeLine(text)"; diagnostic = 'UninitializedPlace_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {
     $path = Join-Path $work "$($entry.Key).kimi"
-    [IO.File]::WriteAllText($path, $entry.Value, $utf8)
+    if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
+    [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
     $failure = Invoke-Kimi @('build', $path, '--ToolchainRoot', $ToolchainRoot) 1
     $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
     [IO.File]::WriteAllText((Join-Path $work "$($entry.Key).diagnostics.txt"), $diagnostic, $utf8)
     $stem = Join-Path $work "bin/x86_64-pc-windows-msvc/$($entry.Key)"
     $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($diagnostic -notmatch '\b\w+_Kd\b' -or $record.status -cne 'incomplete' -or
-        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed before emission: $($entry.Key)" }
-    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode })
+    $required = $entry.Value.diagnostic
+    $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
+    if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        (Test-Path "$stem.ll") -or (Test-Path "$stem.O2.exe")) { throw "Invalid input was not diagnosed with $required before emission: $($entry.Key)" }
+    $results.Add(@{ name = $entry.Key; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
 }
 if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
     (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }
