@@ -89,7 +89,7 @@ public sealed partial class Binding
             var root = source switch
             {
                 MemberAccessKoto member => ElementAccess.BorrowedPathRoot(member),
-                IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) => index.Left,
+                IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) => index.Left,
                 _ => null,
             };
             if (root is null)
@@ -169,7 +169,7 @@ public sealed partial class Binding
             return !exclusive;
         }
 
-        if (source is IndexKoto index && ReferenceTypes.IsArray(index.Left.BoundType))
+        if (source is IndexKoto index && (ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType)))
         {
             return !exclusive || index.Left.BoundType!.Semantics == SemanticsKind.Uniq;
         }

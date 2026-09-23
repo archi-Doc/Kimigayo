@@ -155,14 +155,18 @@ internal sealed partial class BodyLowering
         if (plan.Kind == SequenceOperation.Borrow)
         {
             var reference = ValueType(body, id);
-            if (receiver.Kind != BoundTypeKind.Slice || !ReferenceTypes.IsStorage(reference) || reference!.Semantics != SemanticsKind.Ref ||
-                !ReferenceEquals(reference.Components[0], receiver.Components[0]) || !ReferenceEquals(reference.Origin, receiver.Origin) ||
+            var originSource = Binding.PlaceOriginSource(syntaxReceiver);
+            var sameOrigin = receiver.Kind == BoundTypeKind.Slice || borrowedArray
+                ? ReferenceEquals(reference?.Origin, receiverPlace.Type.Origin)
+                : reference?.Origin is { Kind: OriginKind.Projection } origin && ReferenceEquals(origin.Binder, Binding.PlaceOriginBinder(originSource)) && origin.Slot == Binding.PlaceOriginSlot(originSource);
+            if (receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array) || !ReferenceTypes.IsStorage(reference) || reference!.Semantics != SemanticsKind.Ref ||
+                !ReferenceEquals(reference.Components[0], receiver.Components[0]) || !sameOrigin ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
                 (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
                 FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } element ||
                 !this.TryGetLocation(operation.Source, directory, constants, out var borrowLocation))
             {
-                return Fail("Slice element borrow requires a checked index and matching backing Origin.", out failure);
+                return Fail("Sequence element borrow requires a checked index and matching backing Origin.", out failure);
             }
 
             function.AddScalar(EmissionOpcode.Sequence, id, [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, -1)], place: body.Operations.Count + id, location: borrowLocation, op: "SliceAddress", check: ArithmeticCheckKind.Bounds, representation: element);

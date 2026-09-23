@@ -42,11 +42,16 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
-        if (unwrapped is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice } slice && type.Semantics == SemanticsKind.Ref)
+        if (unwrapped is IndexKoto slice && type.Semantics == SemanticsKind.Ref &&
+            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType)))
         {
-            var handle = this.Expression(slice.Left);
+            var depth = this.comparisonDepth++;
+            var handle = this.SequenceReceiver(slice.Left, out var projection);
             var subscript = this.Value(this.Expression(slice.Right));
-            return handle < 0 || subscript < 0 ? -1 : this.SequenceValue(slice, type, SequenceOperation.Borrow, handle, index: subscript);
+            var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(slice, type, SequenceOperation.Borrow, handle, projection, index: subscript);
+            this.EndComparisonLoans(depth, slice);
+            this.comparisonDepth = depth;
+            return borrowedElement;
         }
 
         if (unwrapped is IndexKoto index && ReferenceTypes.IsArray(index.Left.BoundType) &&
