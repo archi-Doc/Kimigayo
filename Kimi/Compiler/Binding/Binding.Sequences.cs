@@ -51,9 +51,9 @@ public sealed partial class Binding
     {
         var iterable = this.BindNode(source.Iterable, scope);
         source.SharedIterable = null;
-        if (iterable?.Kind == BoundTypeKind.FixedArray && IsBarePlace(source.Iterable))
+        if (iterable?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && IsBarePlace(source.Iterable))
         {
-            // SPEC 14.6.2 subject rule: a bare fixed-array Place is shared-borrowed and iterated as the
+            // SPEC 14.6.2 subject rule: a bare array Place is shared-borrowed and iterated as the
             // Slice values[..], yielding ref{source}/T; values@move or a temporary consumes the array.
             source.SharedIterable = this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [iterable.Components[0]], origin: this.PlaceOrigin(source.Iterable));
         }
@@ -83,8 +83,7 @@ public sealed partial class Binding
             return Fail(source, BindingFailure.TypeMismatch);
         }
 
-        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) ||
-            (iterable.Kind == BoundTypeKind.Array && IsBarePlace(source.Iterable)))
+        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
         {
             return Fail(source, BindingFailure.Unsupported);
         }

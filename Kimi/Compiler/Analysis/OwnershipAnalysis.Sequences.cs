@@ -80,7 +80,14 @@ public sealed partial class OwnershipAnalysis
         if (source.BoundType?.Kind == BoundTypeKind.Array)
         {
             // SPEC 4.6.1: an owned Array shares access for the operation and is never consumed by it.
-            return this.Expression(source, PlaceUseKind.Read);
+            var root = this.Expression(source, PlaceUseKind.Read);
+            if (root >= 0)
+            {
+                this.Emit(OwnershipOperationKind.LocateReceiver, receiver, root);
+                this.BeginSharedLoan(root, access: true);
+            }
+
+            return root;
         }
 
         if (source.BoundType?.Kind == BoundTypeKind.FixedArray)
@@ -147,7 +154,7 @@ public sealed partial class OwnershipAnalysis
         int iterable;
         if (shared is not null)
         {
-            // SPEC 14.6.2: a bare fixed-array Place is borrowed for the loop as its implicit whole-range Slice.
+            // SPEC 14.6.2: a bare array Place is borrowed for the loop as its implicit whole-range Slice.
             var depth = this.comparisonDepth++;
             var receiver = this.SequenceReceiver(source.Iterable, out var projection);
             iterable = receiver < 0 ? -1 : this.SequenceValue(source, shared, SequenceOperation.Slice, receiver, projection);

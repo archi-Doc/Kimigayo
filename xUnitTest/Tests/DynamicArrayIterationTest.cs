@@ -40,7 +40,6 @@ public class DynamicArrayIterationTest
     [InlineData("let values: Array<i32> = [1]\nfor value in values@move => ()\nlet n = values.length")]
     [InlineData("var values: Array<i32> = [1]\nlet borrow = values@ref\nfor value in values@move => ()\nlet n = borrow.length")]
     [InlineData("let values: Array<i32> = [1]\nfor value in values@move => value = 2")]
-    [InlineData("let values: Array<i32> = [1]\nfor value in values => ()")]
     [InlineData("let values: Array<(i32, i32)> = [(1, 2)]\nfor (first, second) in values@move => ()")]
     public void RejectsInvalidConsumption(string source)
     {

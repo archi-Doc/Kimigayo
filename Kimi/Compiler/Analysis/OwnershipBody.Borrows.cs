@@ -254,7 +254,7 @@ public sealed partial class OwnershipBody
                 for (var root = 0; root < count; root++)
                 {
                     var candidate = this.Places[root];
-                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple || ScalarTypes.Supports(candidate.Type)) &&
+                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (StructStorage.IsStruct(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array || ScalarTypes.Supports(candidate.Type)) &&
                         ReferenceEquals(candidate.Source, origin.Binder) && (!ScalarTypes.Supports(candidate.Type) || this.IsBorrowedPlace(root)))
                     {
                         Record(root);

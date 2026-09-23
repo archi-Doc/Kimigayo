@@ -27,7 +27,8 @@ public sealed partial class Binding
                 return Complete(source, receiver!.Components[0].Components[0]);
             }
 
-            if (receiver?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice && source.Right is RangeKoto range && !range.IsInclusive)
+            var sequence = ReferenceTypes.IsDynamicArray(receiver) ? receiver!.Components[0] : receiver;
+            if (sequence?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is RangeKoto range && !range.IsInclusive)
             {
                 if (range.Start is { } start)
                 {
@@ -40,7 +41,7 @@ public sealed partial class Binding
                 }
 
                 Complete(range, BoundType.Range);
-                return Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [receiver.Components[0]], origin: this.PlaceOrigin(source.Left)));
+                return Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: this.PlaceOrigin(source.Left)));
             }
 
             if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)

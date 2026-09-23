@@ -233,7 +233,7 @@ internal sealed partial class BodyLowering
                 sliceType = SignatureType(this, implicitSlice);
             }
 
-            if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) || sliceType is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||
+            if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) || sliceType is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||
                 !ReferenceEquals(slice, ValueType(body, id)) || !ReferenceEquals(slice.Components[0], receiver.Components[0]))
             {
                 return Fail("Slice construction requires a full sequence and its backing Origin.", out failure);
