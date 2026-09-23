@@ -270,6 +270,12 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
+        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ScalarTypes.Supports(type))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
+                : ComparisonTypes.IsBuiltin(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+        }
+
         if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) || type.Symbol is not { } symbol)
         {
             return ConstraintProof.Unknown;

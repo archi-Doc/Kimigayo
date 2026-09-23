@@ -39,6 +39,7 @@ internal enum EmissionOpcode : byte
     InitializeLiveFlag,
     StringEquals,
     StringCompare,
+    BuiltinComparison,
     StringPattern,
     CompositePattern,
     PatternRead,

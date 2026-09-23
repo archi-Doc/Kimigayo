@@ -7,6 +7,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private BindingSymbol? builtinFormat;
+    private BindingSymbol? builtinEquals;
+    private BindingSymbol? builtinCompare;
 
     // Compiler-created calls use the same verified witness and storage substitution as source calls.
     // Their input Origins remain the implementation's external inputs; no borrowed value is captured.
@@ -46,6 +48,19 @@ public sealed partial class Binding
 
     private BindingSymbol FormatTarget(BindingSymbol selected, BoundType? self)
     {
+        if (self is not null && selected.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract &&
+            ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration))
+        {
+            ref var cached = ref (contract.LibraryDeclaration == KimiDeclarationId.Equatable ? ref this.builtinEquals : ref this.builtinCompare);
+            cached ??= new(selected.Name, selected.Kind, selected.Declaration, selected.Scope)
+            {
+                CompilerFunction = contract.LibraryDeclaration == KimiDeclarationId.Equatable ? CompilerFunctionKind.BuiltinEquals : CompilerFunctionKind.BuiltinCompare,
+            };
+            cached.Type = selected.Type;
+            cached.ReceiverIndex = selected.ReceiverIndex;
+            return cached;
+        }
+
         if (self is null || !FormattingTypes.IsBuiltin(self) ||
             selected.Scope.Owner.BoundSymbol?.LibraryDeclaration != KimiDeclarationId.Utf8Format)
         {

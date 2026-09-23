@@ -421,6 +421,9 @@ internal static partial class LlvmModuleWriter
                 case EmissionOpcode.StringCompare:
                     WriteStringComparison(output, function, instruction);
                     break;
+                case EmissionOpcode.BuiltinComparison:
+                    WriteBuiltinComparison(output, function, instruction);
+                    break;
                 case EmissionOpcode.StoreStaticString:
                     output.Write("  store %kimi.string { ptr ");
                     if (instruction.Constant < 0)

@@ -79,6 +79,16 @@ public sealed partial class Binding
             Add(formatting);
         }
 
+        if (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) && this.Library.GetSymbol(KimiDeclarationId.Equatable)?.Contract is { } equality)
+        {
+            Add(equality);
+        }
+
+        if (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) && this.Library.GetSymbol(KimiDeclarationId.Comparable)?.Contract is { } ordering)
+        {
+            Add(ordering);
+        }
+
         if (type.Symbol?.Contract is { } own)
         {
             Add(own);

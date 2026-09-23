@@ -62,4 +62,6 @@ public enum CompilerFunctionKind : byte
     WriterStatus,
     WriteLineUtf8,
     BuiltinFormat,
+    BuiltinEquals,
+    BuiltinCompare,
 }
