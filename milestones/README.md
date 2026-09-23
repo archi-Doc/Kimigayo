@@ -62,16 +62,16 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 10 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 11 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 12 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 13 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 47 checks per configuration (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
+| 13 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
 | 14 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
 | 15 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
 | 16 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
 | 17 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
 | 18 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
-| 19 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 53 checks per configuration; [evidence](../PLAN_HISTORY.md#program19-completion) |
-| 20 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 55 checks per configuration; [evidence](../PLAN_HISTORY.md#program20-completion) |
-| 21 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 61 checks per configuration (harness added 2026-09-23) |
-| 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; 47 checks per configuration (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
+| 19 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program19-completion) |
+| 20 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program20-completion) |
+| 21 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23) |
+| 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom/computed Property access; cascading unresolved bindings |
 | 24 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom setters, getter results and Contract Property calls |
 | 25 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -448,7 +448,7 @@ dotnet build Kimigayo.slnx -c Release --no-restore
 ```
 
 The script verifies LLVM IR and native linking, then checks native execution and
-both forms of CLI `run`. Its 47 checks per Debug/Release compiler cover the
+both forms of CLI `run`. Its Debug/Release checks cover the
 unchanged input, byte-identical renamed O0/O2 copies, alternate numeric values,
 immediate temporary borrows, two Abort paths and fourteen rejected inputs.
 Normal output is exactly the five lines above, with empty stderr and exit 0.
@@ -498,7 +498,7 @@ suppression of pending main cleanup. Twelve invalid inputs cover missing or
 wrong transfer targets, result mismatches (including unreachable results), implicit
 Unit, a normally continuing require failure body, non-bool guards, non-exhaustive
 match and escaped arm-local bindings. Rejections must precede IR/executable
-publication. Each configuration has 63 checks; reports and source/compiler/build
+publication. Reports and source/compiler/build
 identities remain under `bin/milestone6/<configuration>/<run-id>/`. Debug is also
 supported. The script does not build or run NativeAOT.
 
@@ -542,7 +542,7 @@ dotnet build Kimigayo.slnx -c Release --no-restore
 ./backend/windows-x64/test-milestone7.ps1 -Configuration Release
 ```
 
-The script performs 52 checks per configuration, covering the unchanged program,
+The script covers the unchanged program,
 byte-identical renamed O0/O2 copies, alternate arithmetic, outer exit instead of
 continue, normal exhaustion, matrix/Slice bounds Abort, and thirteen invalid
 inputs rejected before emission. It checks LLVM verification, linking, exact native
@@ -632,7 +632,7 @@ empty stderr and exit 0, including defer-before-destructor ordering. Variants co
 first/last/singleton matches, absence, nonempty exhaustion, i64 instantiation and
 Abort without cleanup. Eight invalid programs check payload/callback Types, arity,
 Copy constraints, lengths, coverage, moved callbacks and local borrow escape.
-There are 59 checks per compiler configuration. Reports and build identities are
+Reports and build identities are
 retained under `bin/milestone9/<configuration>/<run-id>/`. Debug is also supported;
 the script does not build or run NativeAOT.
 
@@ -667,7 +667,7 @@ dotnet build Kimigayo.slnx -c Release --no-restore
 ./backend/windows-x64/test-milestone10.ps1 -Configuration Release
 ```
 
-The script performs 54 checks per configuration, covering the unchanged source,
+The script covers the unchanged source,
 byte-identical renamed O0/O2 copies, alternate values, exhaustion, empty input,
 immediate Stop, guard cleanup, Abort, and nine invalid inputs. It checks LLVM
 verification, native linking, exact UTF-8 stdout/stderr and exit status through
@@ -882,7 +882,7 @@ Separate rejection exercises:
   one incoming Loan can still refer to current.
 
 `backend/windows-x64/test-milestone15.ps1 -Configuration Release` reproduces
-61 checks: unchanged source, byte-identical renamed O0/O2 copies, renamed symbols,
+the harness checks: unchanged source, byte-identical renamed O0/O2 copies, renamed symbols,
 different values, reversed selection, zero/five iterations, distinguishable
 destructor messages and mutation after the last borrow use, plus five invalid
 variants at both O0/O2. Normal runs check exact stdout, empty stderr and exit 0
@@ -990,7 +990,7 @@ requirements.
 ./backend/windows-x64/test-milestone17.ps1 -Configuration Debug
 ```
 
-Each run has 57 checks: the unchanged target, byte-identical O0/O2 renamed copies,
+Each run checks the unchanged target, byte-identical O0/O2 renamed copies,
 name/value/implicit/typed/literal-index variants, and nine rejection cases at both
 optimization levels. Reports include compiler/source hashes, exact output and
 exit checks; [the completion record](../PLAN_HISTORY.md#program17-completion)
@@ -1040,8 +1040,7 @@ Separate rejection exercises:
 The [native harness](../backend/windows-x64/test-milestone18.ps1) checks the
 unchanged target, byte-identical renamed O0/O2 copies, renamed declarations,
 changed ids, the second Box, early return and unused Delivery cleanup. It also
-rejects seven invalid variants at both optimization levels. The full harness has
-53 checks (39 executions and 14 rejections).
+rejects seven invalid variants at both optimization levels.
 
 ```powershell
 ./backend/windows-x64/test-milestone18.ps1 -Configuration Debug
@@ -1098,7 +1097,7 @@ five cases above, before publishing LLVM or executable artifacts.
 ./backend/windows-x64/test-milestone19.ps1 -Configuration Release
 ```
 
-Each configuration passes 53 checks: canonical single-source O2 build/run, six
+Each configuration checks the canonical single-source O2 build/run, six
 O0/O2 variants through native/executable/input run modes, and seven O0/O2 rejection
 cases. `AssociatedForwardingTest` checks projection normalization, retained
 requirement/member identities, ownership, invalid evidence, and concrete tuple

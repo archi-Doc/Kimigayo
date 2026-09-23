@@ -7,6 +7,7 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 - **Verification baseline (2026-09-23, source `9038c638`):** Debug/Release builds are warning-free; each full managed suite passes 11,493 tests. All 21 milestone harnesses (1–20 and 22) pass 1,011 Release checks. Program 21 builds and runs with the Copy-read spelling only (PLAN G15); Program 29 binds up to its Array operations. Evidence: `bin/verify/20260923-030335-session-p29-session3`.
 - **Generic generation:** the specification's initial profile monomorphizes (§21.3.1). Scalar, Never and length-generic functions, generic struct constructors/field reads, forwarded generic calls inside generic bodies, enum payload constructions and owned result joins are generated as one concrete body per closed substitution; explicit specializations keep their selected body. Every generic shape reaches generation this way; the transitional shared path (writer, entry planning and template walk) is removed, and `BodyLowering` validates each instance under its substitution.
 - **Mods:** the host interface is deferred (Appendix D); `Compilation.Bind` does not execute Mods.
+- **Diagnosis policy:** a program form outside the implemented subset is rejected by Binding or ownership analysis with a diagnostic code (`UnsupportedBinding_Kd`, `UnsupportedOwnership_Kd` or a specific code). A generation failure without a diagnostic is an internal invariant violation to fix, never a documented support boundary; harness rejections name the required code.
 
 ## Feature boundaries added most recently
 
