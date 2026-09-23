@@ -1,5 +1,6 @@
 // Compiler-implemented operations loaded into Kimi.WriteWindow.
 public func push(self: uniq/Self, byte: u8) -> Result<(), BufferFull>
 public func append(self: uniq/Self, bytes: Slice<u8>) -> Result<(), BufferFull>
-public func limit(self: owner/Self, maximum: isize) -> Self
+public func limit(self: owner/Self, maximum: isize) -> Self{r}
+    origin r.source == self.source
 public func commit(self: owner/Self) -> isize

@@ -92,6 +92,7 @@ internal static partial class LlvmModuleWriter
         if (module.NeedsFormattingRuntime)
         {
             output.Write(FormattingRuntime);
+            WriteFormattingWrappers(module, output);
         }
 
         if (module.NeedsStringComparison)

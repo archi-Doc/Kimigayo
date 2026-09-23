@@ -8,6 +8,42 @@ public sealed partial class Binding
 {
     private BindingSymbol? builtinFormat;
 
+    // Compiler-created calls use the same verified witness and storage substitution as source calls.
+    // Their input Origins remain the implementation's external inputs; no borrowed value is captured.
+    internal BoundCall? FormattingImplementation(BoundCall site, BoundType self, KimiDeclarationId identity)
+    {
+        if (this.compilation.Library.GetSymbol(identity) is not { } contract ||
+            this.ResolveConformance(self, contract, site.Target.Declaration, out var path) != ConstraintProof.Proven ||
+            path is not { IsVerified: true, Witnesses.Count: 1 } ||
+            path.Witnesses[0] is not { Implementation: { Declaration: FunctionKoto function } implementation, Function.BasePath: null } witness ||
+            this.StoredType(witness.Function!.DeclaringType, self) is not { } declaring)
+        {
+            return null;
+        }
+
+        var inputs = new BoundOrigin[InputOriginCount(function)];
+        for (var i = 0; i < inputs.Length; i++)
+        {
+            inputs[i] = i < function.Parameters.Count ? this.OriginAtom(function, OriginKind.Input, i) : implementation.AggregateInputOrigins![i - function.Parameters.Count];
+        }
+
+        var origins = new BoundOrigin[implementation.Schema?.Origins.Count ?? 0];
+        for (var i = 0; i < origins.Length; i++)
+        {
+            origins[i] = implementation.Schema!.Origins[i].Origin;
+        }
+
+        var call = new BoundCall();
+        call.Set(implementation, implementation.Type!, null, [], [], declaringType: declaring, origins: origins, inputOrigins: inputs);
+        if (this.InstantiateStorageType(implementation.Type!, call) is not { } result)
+        {
+            return null;
+        }
+
+        call.Set(implementation, result, null, [], [], declaringType: declaring, origins: origins, inputOrigins: inputs);
+        return call;
+    }
+
     private BindingSymbol FormatTarget(BindingSymbol selected, BoundType? self)
     {
         if (self is null || !FormattingTypes.IsBuiltin(self) ||

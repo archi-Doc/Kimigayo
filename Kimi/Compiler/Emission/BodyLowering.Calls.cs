@@ -14,12 +14,15 @@ internal sealed partial class BodyLowering
 
     internal IReadOnlyDictionary<BoundCall, GenericStoragePlan.CallEntry>? GenericCalls { get; set; }
 
+    internal IReadOnlyDictionary<BoundCall, FunctionAbi>? FormattingCalls { get; set; }
+
     internal IReadOnlyDictionary<BoundCall, ObjectCall>? ObjectCalls { get; set; }
 
     internal void ClearFunctionContext()
     {
         this.functions = null;
         this.GenericCalls = null;
+        this.FormattingCalls = null;
         this.ObjectCalls = null;
         this.flow = null;
         this.arguments.Clear();
@@ -73,6 +76,11 @@ internal sealed partial class BodyLowering
         var runtime = formatting || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
         var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
+        if (plan.Target.CompilerFunction == CompilerFunctionKind.WriterWrite && this.FormattingCalls?.GetValueOrDefault(plan) is { } userFormat)
+        {
+            callee = userFormat;
+        }
+
         if (callee is null)
         {
             return Fail("Call target has no selected implementation ABI.", out failure);

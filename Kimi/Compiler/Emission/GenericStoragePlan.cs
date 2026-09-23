@@ -18,6 +18,8 @@ internal sealed class GenericStoragePlan
 
     private readonly Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundCall, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundCall, FunctionAbi> formattingCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<FunctionAbi, FunctionAbi> formattingWrites = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionKoto, int> chainCounts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionKoto, int> entryCounts = new(ReferenceEqualityComparer.Instance);
     private IReadOnlyDictionary<FunctionKoto, FunctionAbi>? functions;
@@ -27,6 +29,8 @@ internal sealed class GenericStoragePlan
     internal static int SubstitutionSetLimit { get; set; } = 1024;
 
     internal IReadOnlyDictionary<BoundCall, CallEntry> Calls => this.calls;
+
+    internal IReadOnlyDictionary<BoundCall, FunctionAbi> FormattingCalls => this.formattingCalls;
 
     /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5).</summary>
     internal bool ResourceLimitExceeded { get; private set; }
@@ -38,6 +42,8 @@ internal sealed class GenericStoragePlan
     {
         this.templates.Clear();
         this.calls.Clear();
+        this.formattingCalls.Clear();
+        this.formattingWrites.Clear();
         this.chainCounts.Clear();
         this.entryCounts.Clear();
         this.ResourceLimitExceeded = false;
@@ -66,22 +72,28 @@ internal sealed class GenericStoragePlan
             this.templates.Add(body.Function, CreateTemplate(body));
         }
 
-        if (this.templates.Count == 0)
+        for (var b = 0; b < compilation.Ownership.Bodies.Count; b++)
         {
-            return true;
-        }
-
-        foreach (var body in compilation.Ownership.Bodies)
-        {
+            var body = compilation.Ownership.Bodies[b];
             if (IsGeneric(body.Function))
             {
                 continue; // Dependent calls receive a concrete context from their caller's entry.
             }
 
-            foreach (var operation in body.Operations)
+            for (var i = 0; i < body.Operations.Count; i++)
             {
-                if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call } ||
-                    call.Target.Declaration is not FunctionKoto target || !this.templates.TryGetValue(target, out var template) || this.calls.ContainsKey(call))
+                var operation = body.Operations[i];
+                if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call })
+                {
+                    continue;
+                }
+
+                if (!this.PrepareFormatting(compilation, module, layouts, call, out failure))
+                {
+                    return false;
+                }
+
+                if (call.Target.Declaration is not FunctionKoto target || !this.templates.TryGetValue(target, out var template) || this.calls.ContainsKey(call))
                 {
                     continue;
                 }
@@ -102,6 +114,9 @@ internal sealed class GenericStoragePlan
         return false;
     }
 
+    private static bool IsFormattingCallback(BoundCall call)
+        => call.Target.CompilerFunction is CompilerFunctionKind.TextWriter or CompilerFunctionKind.WriterWrite;
+
     // The template records the calls its instances forward; each instance resolves them under its substitution.
     private static Template CreateTemplate(OwnershipBody body)
     {
@@ -109,7 +124,7 @@ internal sealed class GenericStoragePlan
         foreach (var operation in body.Operations)
         {
             if (operation.Kind == OwnershipOperationKind.Call && operation.Source is InvocationKoto { BoundCall: { } call } &&
-                call.Target.CompilerFunction == CompilerFunctionKind.None && !calls.Contains(call))
+                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call)) && !calls.Contains(call))
             {
                 calls.Add(call);
             }
@@ -228,6 +243,11 @@ internal sealed class GenericStoragePlan
             entry.ConcreteCalls[i] = inner;
             if (inner.Target.CompilerFunction != CompilerFunctionKind.None)
             {
+                if (!this.PrepareFormatting(compilation, module, layouts, inner, out failure, depth + 1))
+                {
+                    return false;
+                }
+
                 continue; // A verified builtin requirement is lowered through its runtime ABI.
             }
 
@@ -245,6 +265,69 @@ internal sealed class GenericStoragePlan
             }
         }
 
+        return true;
+    }
+
+    private bool PrepareFormatting(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
+    {
+        failure = null;
+        if (!IsFormattingCallback(site) || this.formattingCalls.ContainsKey(site))
+        {
+            return true;
+        }
+
+        if (site.TypeArguments.Length != 1 || site.TypeArguments[0] is not { } self)
+        {
+            return Fail("Formatting callback requires a concrete input Type.", out failure);
+        }
+
+        var writer = site.Target.CompilerFunction == CompilerFunctionKind.TextWriter;
+        if (writer ? self.Symbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.HeapBuffer : FormattingTypes.IsBuiltin(self))
+        {
+            return true;
+        }
+
+        var call = compilation.Binding.FormattingImplementation(site, self, writer ? KimiDeclarationId.BufferWriter : KimiDeclarationId.Utf8Format);
+        if (call?.Target.Declaration is not FunctionKoto target)
+        {
+            return Fail("Formatting callback has no verified conformance witness.", out failure);
+        }
+
+        FunctionAbi? abi;
+        if (IsGeneric(target))
+        {
+            if (!this.templates.TryGetValue(target, out var template) ||
+                !this.PrepareEntry(compilation, module, layouts, call, template, out var entry, out failure, depth + 1))
+            {
+                return Fail(failure ?? "Formatting callback has no verified generic body.", out failure);
+            }
+
+            abi = entry!.Selected ?? entry.Abi;
+        }
+        else
+        {
+            abi = this.functions!.GetValueOrDefault(target);
+        }
+
+        if (abi is not { Result: "void", NoReturn: false, ResultSlot: true, Parameters.Length: 3 } ||
+            abi.Parameters[0].Kind != AbiParameterKind.ResultSlot || abi.Parameters[1].Type != "ptr" || abi.Parameters[2].Type != (writer ? "i64" : "ptr"))
+        {
+            return Fail("Formatting callback has no verified physical signature.", out failure);
+        }
+
+        if (!writer)
+        {
+            if (!this.formattingWrites.TryGetValue(abi, out var wrapper))
+            {
+                wrapper = new("__kimi_writer_write_user" + this.formattingWrites.Count, "void", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)], resultSlot: true);
+                this.formattingWrites.Add(abi, wrapper);
+                module.FormattingWrites.Add(new(wrapper, abi));
+            }
+
+            abi = wrapper;
+        }
+
+        this.formattingCalls.Add(site, abi);
         return true;
     }
 

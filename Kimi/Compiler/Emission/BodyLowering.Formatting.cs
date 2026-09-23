@@ -67,12 +67,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var binding = call.Target.Declaration.CodeContext.Compilation.Binding;
-        if (library.GetSymbol(KimiDeclarationId.BufferWriter) is not { } contract ||
-            binding.ResolveConformance(destination, contract, call.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true, Witnesses.Count: 1 } ||
-            path.Witnesses[0] is not { Implementation.Declaration: FunctionKoto implementation, Function.BasePath: null } ||
-            this.functions!.GetValueOrDefault(implementation) is not { Result: "void", NoReturn: false, ResultSlot: true, Parameters.Length: 3 } abi ||
+        if (this.FormattingCalls?.GetValueOrDefault(call) is not { Result: "void", NoReturn: false, ResultSlot: true, Parameters.Length: 3 } abi ||
             abi.Parameters[0].Kind != AbiParameterKind.ResultSlot || abi.Parameters[1].Type != "ptr" || abi.Parameters[2].Type != "i64")
         {
             return Fail("User Writer erasure requires the selected, effect-checked reserve implementation ABI.", out failure);

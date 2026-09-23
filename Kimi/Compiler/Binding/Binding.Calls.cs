@@ -862,7 +862,10 @@ public sealed partial class Binding
         // Established input types cannot change; expectations only fill unresolved slots.
         if (expected is not null && function.BoundSymbol?.Type is { } returnPattern)
         {
-            this.Infer(this.MemberType(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), declaringType)!, expected, function, arguments, lengths: lengths);
+            // Result expectations use the selected receiver's container Origins, just like inputs.
+            // An abstract container binder must not become a rigid call-site lifetime constraint.
+            returnPattern = this.MemberType(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), declaringType)!;
+            this.Infer(returnPattern, expected, function, arguments, lengths: lengths);
             this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
             if (returnPattern.CarriesOrigin)
             {

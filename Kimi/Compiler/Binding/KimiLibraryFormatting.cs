@@ -87,7 +87,7 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.HeapBufferIntoString => BareName(first, "Self") && FormattingResult(result, "string", "InvalidUtf8"),
             KimiDeclarationId.WindowPush => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && BareName(second, "u8") && FormattingResult(result, "()", "BufferFull"),
             KimiDeclarationId.WindowAppend => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && FormattingValue(second, "Slice") && FormattingResult(result, "()", "BufferFull"),
-            KimiDeclarationId.WindowLimit => BareName(first, "Self") && BareName(second, "isize") && BareName(result, "Self"),
+            KimiDeclarationId.WindowLimit => BareName(first, "Self") && BareName(second, "isize") && FormattingName(result, "Self"),
             KimiDeclarationId.WindowCommit => BareName(first, "Self") && BareName(result, "isize"),
             KimiDeclarationId.WriterWrite => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && FormattingBorrow(second, SemanticsKind.Ref, "T") && FormattingResult(result, "()", "BufferFull") && FormattingPremise(function, "T", "Utf8Format"),
             KimiDeclarationId.WriterStatus => FormattingBorrow(first, SemanticsKind.Ref, "Self") && FormattingResult(result, "()", "BufferFull"),
