@@ -138,9 +138,11 @@ internal static partial class LlvmModuleWriter
 
         if (instruction.ScalarOperator == "SliceRange")
         {
-            output.Write($"  %slicestart{id} = or i64 0, ");
+            Name(output, "  %slicestart", id);
+            output.Write(" = or i64 0, ");
             WriteOperand(output, operands[2]);
-            output.Write($"\n  %slicefinish{id} = or i64 0, ");
+            Name(output, "\n  %slicefinish", id);
+            output.Write(" = or i64 0, ");
             if (operands[4].Value != 0)
             {
                 End();
@@ -150,32 +152,54 @@ internal static partial class LlvmModuleWriter
                 WriteOperand(output, operands[3]);
             }
 
-            output.Write($"\n  %reversed{id} = icmp ugt i64 %slicestart{id}, %slicefinish{id}\n  %pastend{id} = icmp ugt i64 %slicefinish{id}, ");
+            Name(output, "\n  %reversed", id);
+            Name(output, " = icmp ugt i64 %slicestart", id);
+            Name(output, ", %slicefinish", id);
+            Name(output, "\n  %pastend", id);
+            Name(output, " = icmp ugt i64 %slicefinish", id);
+            output.Write(", ");
             End();
-            output.Write($"\n  %invalid{id} = or i1 %reversed{id}, %pastend{id}\n");
+            Name(output, "\n  %invalid", id);
+            Name(output, " = or i1 %reversed", id);
+            Name(output, ", %pastend", id);
+            output.Write('\n');
             WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid");
             if (fixedLength < 0)
             {
-                output.Write($"  %seqbase{id} = load ptr, ptr ");
+                Name(output, "  %seqbase", id);
+                output.Write(" = load ptr, ptr ");
                 Address();
                 output.Write(", align 8\n");
             }
 
-            output.Write($"  %sliceoffset{id} = mul i64 %slicestart{id}, {instruction.Representation!.Layout.Stride}\n  %slicebase{id} = getelementptr i8, ptr ");
+            Name(output, "  %sliceoffset", id);
+            Name(output, " = mul i64 %slicestart", id);
+            output.Write(", ");
+            WriteNumber(output, instruction.Representation!.Layout.Stride);
+            Name(output, "\n  %slicebase", id);
+            output.Write(" = getelementptr i8, ptr ");
             if (fixedLength < 0)
             {
-                output.Write($"%seqbase{id}");
+                Name(output, "%seqbase", id);
             }
             else
             {
                 Address();
             }
 
-            output.Write($", i64 %sliceoffset{id}\n  %slicelength{id} = sub i64 %slicefinish{id}, %slicestart{id}\n  store ptr %slicebase{id}, ptr ");
+            Name(output, ", i64 %sliceoffset", id);
+            Name(output, "\n  %slicelength", id);
+            Name(output, " = sub i64 %slicefinish", id);
+            Name(output, ", %slicestart", id);
+            Name(output, "\n  store ptr %slicebase", id);
+            output.Write(", ptr ");
             WriteSlot(output, function, instruction.Place);
-            output.Write($", align 8\n  %seqdest{id} = getelementptr i8, ptr ");
+            Name(output, ", align 8\n  %seqdest", id);
+            output.Write(" = getelementptr i8, ptr ");
             WriteSlot(output, function, instruction.Place);
-            output.Write($", i64 8\n  store i64 %slicelength{id}, ptr %seqdest{id}, align 8\n");
+            Name(output, ", i64 8\n  store i64 %slicelength", id);
+            Name(output, ", ptr %seqdest", id);
+            output.Write(", align 8\n");
         }
         else if (instruction.ScalarOperator is "indices" or "Slice")
         {
