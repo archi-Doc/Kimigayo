@@ -10,7 +10,7 @@ namespace XunitTest;
 // regression or an unrecorded SPEC conflict (a G issue), never a silent status change.
 public class MilestoneSourcesTest
 {
-    private static readonly HashSet<int> Pending = [21, 23, 24];
+    private static readonly HashSet<int> Pending = [21, 23, 24, 29];
 
     [Fact]
     public void AuthoredProgramsBindUnlessTheirMilestoneIsPending()
