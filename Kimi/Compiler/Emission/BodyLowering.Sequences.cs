@@ -138,10 +138,17 @@ internal sealed partial class BodyLowering
             }
 
             var take = this.GetArrayHelper(ArrayHelperKind.Take, item).Abi;
-            ReadOnlySpan<EmissionOperand> arguments = item.IsScalar
-                ? [address, new(EmissionOperandKind.ConstantAddress, iteratorLocation), new(EmissionOperandKind.ConstantLength, iteratorLocation)]
-                : [address, new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, iteratorLocation), new(EmissionOperandKind.ConstantLength, iteratorLocation)];
-            function.AddCall(id, take, arguments);
+            Span<EmissionOperand> arguments = stackalloc EmissionOperand[4];
+            arguments[0] = address;
+            var count = 1;
+            if (!item.IsScalar)
+            {
+                arguments[count++] = new(EmissionOperandKind.SlotAddress, operation.Place);
+            }
+
+            arguments[count++] = new(EmissionOperandKind.ConstantAddress, iteratorLocation);
+            arguments[count++] = new(EmissionOperandKind.ConstantLength, iteratorLocation);
+            function.AddCall(id, take, arguments[..count]);
             return true;
         }
 

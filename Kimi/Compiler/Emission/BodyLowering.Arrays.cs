@@ -10,6 +10,7 @@ namespace Kimi.Compiler;
 internal sealed partial class BodyLowering
 {
     private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar), ArrayHelper> arrayHelpers = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar), ArrayHelper> arrayHelperCache = new();
     private bool arrayRuntimeUsed;
     private int[] arrayIterators = [];
     private int[] arrayIterationPlaces = [];
@@ -105,6 +106,13 @@ internal sealed partial class BodyLowering
             return existing;
         }
 
+        // Keep syntax-free physical helpers across warm emission, but register only this module's used helpers.
+        if (this.arrayHelperCache.TryGetValue(key, out existing) && ReferenceEquals(existing.Option, option))
+        {
+            this.arrayHelpers.Add(key, existing);
+            return existing;
+        }
+
         var suffix = element.Layout is { } layout ? "a" + layout.Id.ToString(CultureInfo.InvariantCulture) : element.IsString ? "string" : element.Value.ComputationType;
         var prefix = kind switch
         {
@@ -142,6 +150,7 @@ internal sealed partial class BodyLowering
             _ => new(name, unit, [handle, location, length]),
         };
         var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option);
+        this.arrayHelperCache[key] = helper;
         this.arrayHelpers.Add(key, helper);
         return helper;
     }

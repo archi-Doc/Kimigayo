@@ -14,15 +14,19 @@ internal static partial class LlvmModuleWriter
         if (instruction.ScalarOperator == "ArrayIterator")
         {
             // The consumed private handle no longer exposes capacity; that word becomes the next-element cursor.
-            output.Write($"  %iterator_cursor{id} = getelementptr i8, ptr ");
+            Name(output, "  %iterator_cursor", id);
+            output.Write(" = getelementptr i8, ptr ");
             Address();
-            output.Write($", i64 16\n  store i64 0, ptr %iterator_cursor{id}, align 8\n");
+            output.Write(", i64 16\n  store i64 0, ptr ");
+            Name(output, "%iterator_cursor", id);
+            output.Write(", align 8\n");
             return;
         }
 
         if (instruction.ScalarOperator == "FromEnd")
         {
-            output.Write($"  %invalid{id} = icmp slt i64 ");
+            Name(output, "  %invalid", id);
+            output.Write(" = icmp slt i64 ");
             WriteOperand(output, operands[1]);
             output.Write(", 0\n");
             WriteArithmeticFailure(output, constants, instruction, "%invalid");
@@ -30,9 +34,13 @@ internal static partial class LlvmModuleWriter
             WriteOperand(output, operands[1]);
             output.Write(", ptr ");
             Address();
-            output.Write($", align 8\n  %direction{id} = getelementptr i8, ptr ");
+            Name(output, ", align 8\n  %direction", id);
+            output.Write(" = getelementptr i8, ptr ");
             Address();
-            output.Write($", i64 {operands[2].Value}\n  store i8 1, ptr %direction{id}, align 1\n");
+            output.Write(", i64 ");
+            WriteNumber(output, operands[2].Value);
+            Name(output, "\n  store i8 1, ptr %direction", id);
+            output.Write(", align 1\n");
             return;
         }
 
@@ -62,7 +70,7 @@ internal static partial class LlvmModuleWriter
             output.Write(", ");
             if (arrayRead)
             {
-                output.Write((long)operands[2].Value);
+                WriteNumber(output, operands[2].Value);
             }
             else
             {
@@ -75,7 +83,7 @@ internal static partial class LlvmModuleWriter
             output.Write(" = mul i64 ");
             WriteOperand(output, operands[1]);
             output.Write(", ");
-            output.Write(operands.Length == 5 ? (long)operands[3].Value : instruction.Representation!.Layout.Stride);
+            WriteNumber(output, operands.Length == 5 ? (long)operands[3].Value : instruction.Representation!.Layout.Stride);
             output.Write('\n');
             if (operands.Length == 5)
             {
@@ -97,7 +105,9 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
             if (instruction.ScalarOperator is "SliceAddress" or "ArrayAddress")
             {
-                output.Write($"  %v{id} = getelementptr i8, ptr %element{id}, i64 0\n");
+                Name(output, "  %v", id);
+                Name(output, " = getelementptr i8, ptr %element", id);
+                output.Write(", i64 0\n");
             }
             else if (instruction.ScalarOperator != "ArrayStorageRead")
             {
@@ -269,7 +279,7 @@ internal static partial class LlvmModuleWriter
         {
             if (fixedLength >= 0)
             {
-                output.Write(fixedLength);
+                WriteNumber(output, fixedLength);
             }
             else
             {

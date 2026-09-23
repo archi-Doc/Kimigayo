@@ -263,7 +263,7 @@ internal static partial class LlvmModuleWriter
         {
             // SPEC 14.6.2: transfer one element without shifting the remaining buffer or allocating storage.
             output.Write("  %advanced = add i64 %index, 1\n  store i64 %advanced, ptr %cursor_ptr, align 8\n");
-            output.Write(scalar ? "  ret " + helper.Element.ComputationType + " %value\n" : "  ret void\n");
+            WriteArrayReturn(output, helper, scalar);
             WriteArrayBoundsFailure(output);
             return;
         }
@@ -273,7 +273,7 @@ internal static partial class LlvmModuleWriter
         output.Write("\n  %last = sub i64 %length, 1\n  %tail_count = sub i64 %last, %index\n  %tail_bytes = mul i64 %tail_count, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  call void @llvm.memmove.p0.p0.i64(ptr %slot, ptr %next, i64 %tail_bytes, i1 false)\n  store i64 %last, ptr %length_ptr, align 8\n");
-        output.Write(scalar ? "  ret " + helper.Element.ComputationType + " %value\n" : "  ret void\n");
+        WriteArrayReturn(output, helper, scalar);
         WriteArrayBoundsFailure(output);
     }
 
@@ -353,6 +353,13 @@ internal static partial class LlvmModuleWriter
             WriteNumber(output, Stride(helper));
             output.Write(", i1 false)\n");
         }
+    }
+
+    private static void WriteArrayReturn(TextWriter output, ArrayHelper helper, bool scalar)
+    {
+        output.Write("  ret ");
+        output.Write(scalar ? helper.Element.ComputationType : "void");
+        output.Write(scalar ? " %value\n" : "\n");
     }
 
     private static void WriteArrayIncrease(TextWriter output)

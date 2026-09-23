@@ -972,8 +972,9 @@ public sealed partial class Binding
                 case ForKoto iteration:
                     this.Visit(iteration.Iterable);
                     this.Scope = binding.GetScope(iteration.Body, this.Scope);
-                    foreach (var name in iteration.Bindings)
+                    for (var i = 0; i < iteration.Bindings.Count; i++)
                     {
+                        var name = iteration.Bindings[i];
                         binding.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, this.Scope);
                     }
 

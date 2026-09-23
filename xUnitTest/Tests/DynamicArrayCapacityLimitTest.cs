@@ -57,9 +57,13 @@ public class DynamicArrayCapacityLimitTest
     public void InvalidInsertionPositionPrecedesTheAdditionLimit()
         => WriteProbe("BoundsFirst", RuntimeIr(), Handle(long.MaxValue, long.MaxValue) + "\n  call void @__kimi_array_insert_i8(ptr %handle, i64 -1, i8 1, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
+    [Fact]
+    public void CleanupFreeClearDoesNotWalkTheElements()
+        => WriteProbe("ConstantClear", RuntimeIr(), Handle(long.MaxValue, long.MaxValue) + "\n  call void @__kimi_array_clear_i8(ptr %handle, ptr @probe_location, i64 5)\n  %length = load i64, ptr %length_ptr, align 8\n  %empty = icmp eq i64 %length, 0\n  br i1 %empty, label %passed, label %failed\npassed:\n  call void @__kimi_exit(i32 0)\n  unreachable\nfailed:\n  call void @__kimi_exit(i32 93)\n  unreachable", 0, string.Empty);
+
     internal static string RuntimeIr()
     {
-        var compilation = MinimalEmissionTest.Analyze("var values: Array<u8> = []\nvalues@uniq.append(1)\nvalues@uniq.insert(0, 2)");
+        var compilation = MinimalEmissionTest.Analyze("var values: Array<u8> = []\nvalues@uniq.append(1)\nvalues@uniq.insert(0, 2)\nvalues@uniq.clear()");
         using var writer = new StringWriter();
         Assert.True(compilation.Emission.WriteIr(writer, out var error), error);
         return writer.ToString();
