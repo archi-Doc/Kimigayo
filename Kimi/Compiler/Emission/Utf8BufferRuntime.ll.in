@@ -1,5 +1,26 @@
 ; Checked buffer runtime: {data, capacity, length, validated}, Window: {state, start, written, remaining}.
 ; Result has i32 tag (Ok=0, Err=1), with nonempty aligned payload at byte 8.
+declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
+
+{{__kimi_text_writer}}
+entry:
+  call void @llvm.memset.p0.i64(ptr %ret, i8 0, i64 64, i1 false)
+  store ptr %self, ptr %ret, align 8
+  %dispatchp = getelementptr i8, ptr %ret, i64 8
+  %kindp = getelementptr i8, ptr %ret, i64 16
+  store ptr %dispatch, ptr %dispatchp, align 8
+  store i64 %kind, ptr %kindp, align 8
+  ret void
+}
+
+{{__kimi_writer_status}}
+entry:
+  %failedp = getelementptr i8, ptr %self, i64 56
+  %failed = load i8, ptr %failedp, align 1
+  %tag = zext i8 %failed to i32
+  store i32 %tag, ptr %ret, align 4
+  ret void
+}
 
 {{__kimi_write_line_utf8}}
 entry:

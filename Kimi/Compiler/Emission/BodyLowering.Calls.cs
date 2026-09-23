@@ -196,10 +196,24 @@ internal sealed partial class BodyLowering
         }
 
         this.callOperands.Clear();
+        long writerKind = -1;
+        EmissionOperand writerDispatch = default;
+        if (plan.Target.CompilerFunction == CompilerFunctionKind.TextWriter &&
+            !this.PrepareWriterDispatch(library, plan, function, returnType, out writerKind, out writerDispatch, out failure))
+        {
+            return false;
+        }
+
         var location = -1;
         for (var i = 0; i < callee.Parameters.Length; i++)
         {
             var physical = callee.Parameters[i];
+            if (physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction == CompilerFunctionKind.TextWriter)
+            {
+                this.callOperands.Add(physical.Type == "i64" ? new(EmissionOperandKind.Integer, writerKind) : writerDispatch);
+                continue;
+            }
+
             if (formatting && physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction == CompilerFunctionKind.TextFixed)
             {
                 if (SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Components.Count: 1 } borrowed ||

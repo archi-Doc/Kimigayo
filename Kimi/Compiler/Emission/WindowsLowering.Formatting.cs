@@ -20,6 +20,8 @@ internal static partial class WindowsLowering
         var amount = new AbiParameter("i64", "amount", LogicalIndex: 1);
         Add(CompilerFunctionKind.TextFixed, "__kimi_text_fixed", "void", [ret, reference, new("i64", "capacity", AbiParameterKind.Context)], true);
         Add(CompilerFunctionKind.TextHeap, "__kimi_text_heap", "void", [ret, new("i64", "capacity", LogicalIndex: 0), location, locationLength], true);
+        Add(CompilerFunctionKind.TextWriter, "__kimi_text_writer", "void", [ret, reference, new("i64", "kind", AbiParameterKind.Context), new("ptr", "dispatch", AbiParameterKind.Context)], true);
+        Add(CompilerFunctionKind.WriterStatus, "__kimi_writer_status", "void", [ret, reference], true);
         Add(CompilerFunctionKind.TextRelease, "__kimi_text_release", "void", [reference, location, locationLength]);
         Add(CompilerFunctionKind.TextUtf8, "__kimi_text_utf8", "void", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)], true);
         Add(CompilerFunctionKind.TextValidateUtf8, "__kimi_text_validate_utf8", "void", [ret, owned], true);

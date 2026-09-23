@@ -559,6 +559,10 @@ internal static partial class LlvmModuleWriter
                     output.Write('@');
                     output.Write(constants[(int)operand.Value].Name);
                     break;
+                case EmissionOperandKind.FunctionAddress:
+                    output.Write('@');
+                    output.Write((function ?? throw new InvalidOperationException("Function address without a containing function.")).FunctionAddresses[(int)operand.Value].Name);
+                    break;
                 case EmissionOperandKind.ConstantLength:
                     WriteNumber(output, constants[(int)operand.Value].ByteLength);
                     break;
