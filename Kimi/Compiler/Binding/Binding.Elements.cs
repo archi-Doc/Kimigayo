@@ -24,7 +24,8 @@ public sealed partial class Binding
             if ((ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver)) && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);
-                return Complete(source, receiver!.Components[0].Components[0]);
+                var borrowedElement = receiver!.Components[0].Components[0];
+                return Complete(source, ReferenceTypes.IsDynamicArray(receiver) ? this.SequenceReadType(source, borrowedElement) : borrowedElement);
             }
 
             var sequence = ReferenceTypes.IsDynamicArray(receiver) ? receiver!.Components[0] : receiver;
@@ -47,7 +48,7 @@ public sealed partial class Binding
             if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);
-                return Complete(source, receiver.Components[0]);
+                return Complete(source, this.SequenceReadType(source, receiver.Components[0]));
             }
 
             if (receiver is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !ReferenceEquals(receiver, BoundType.Never))
@@ -80,5 +81,22 @@ public sealed partial class Binding
         }
 
         return Complete(source, element);
+    }
+
+    private BoundType SequenceReadType(BinaryKoto source, BoundType element)
+    {
+        // SPEC 4.6.6: a concrete Non-Copy struct is read by shared storage borrow.
+        // Chained projections, assignment and explicit acquisition instead retain the Place.
+        var target = (Koto)source;
+        while (target.Parent is ParenthesizedKoto parentheses)
+        {
+            target = parentheses;
+        }
+
+        var place = target.Parent is ConversionKoto || (target.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, target)) ||
+            (target.Parent is BinaryKoto assignment && ReferenceEquals(assignment.Left, target) && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals);
+        return !place && StructStorage.IsStruct(element) && this.ProveCopy(element, source) == ConstraintProof.Refuted
+            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [element], origin: this.PlaceOrigin(source.Left))
+            : element;
     }
 }
