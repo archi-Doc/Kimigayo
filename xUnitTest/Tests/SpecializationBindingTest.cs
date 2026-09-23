@@ -18,6 +18,29 @@ public class SpecializationBindingTest
             Lengths + "specialize func pick<3, i32>(values: ref/[3 of i32]) -> i32 => 1\nfunc forward<length N, T>(values: ref/[N of T]) -> i32 => pick<N, T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [2 of i32] = [1, 2]\nrequire pick<3, i32>(a@ref) == 1 and pick<2, i32>(b@ref) == 0 and forward<3, i32>(a@ref) == 1 and forward<2, i32>(b@ref) == 0 else => $abort(\"selection\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    // SPEC 8.8.1: an instance method's specialization restates the receiver at the original's position.
+    private const string Receiver = "struct Scale\n    var unit: i32 = 1\n    public func weight<U>(self: ref/Self, other: ref/U) -> i32 => self.unit\n";
+
+    [Fact]
+    public void ReceiverSpecializationsSelectThroughMethodCalls()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationReceiver",
+            Receiver + "    specialize func weight<i32>(self: ref/Self, other: ref/i32) -> i32 => self.unit + other\nfunc relay<U>(scale: ref/Scale, other: ref/U) -> i32 => scale.weight<U>(other)\nlet scale = Scale.init()\nlet n: i32 = 4\nlet flag = true\nrequire scale.weight<i32>(n@ref) == 5 and scale.weight<bool>(flag@ref) == 1 and relay<i32>(scale@ref, n@ref) == 5 else => $abort(\"weight\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    [Theory]
+    [InlineData("    specialize func weight<i32>(self: uniq/Self, other: ref/i32) -> i32 => 2")]
+    [InlineData("    specialize func weight<i32>(other: ref/i32) -> i32 => 2")]
+    [InlineData("    specialize func weight<i32>(self: ref/Self, other: ref/i32) -> i64 => 2")]
+    public void RejectsMismatchedReceiverContracts(string specialization)
+    {
+        var c = MinimalEmissionTest.Analyze(Receiver + specialization);
+        Assert.False(c.Binding.Result.IsComplete);
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.Empty(output.ToString());
+    }
+
     // SPEC 8.8.2: the header inherits the original's boundary and defaults; callers still use the original omission rules.
     private const string Defaults = "func find<T>(value: T, count: i32 = 1) -> i32 => count\n";
 

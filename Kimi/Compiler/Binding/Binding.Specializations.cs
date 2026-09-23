@@ -155,10 +155,11 @@ public sealed partial class Binding
                 continue;
             }
 
-            // Receiver/constraint specializations require their own inherited contract certificates.
+            // Constraint and attribute specializations require their own inherited contract certificates.
             // Do not accept their syntax by merely erasing the generic header. Written binder names
-            // are inherited by CompleteSpecializationOrigins (SPEC 8.8.2).
-            if (symbol.ReceiverIndex >= 0 || function.Modifier != ModifierKind.NoModifier || function.AttributeChain is not null ||
+            // are inherited by CompleteSpecializationOrigins (SPEC 8.8.2); a receiver is an ordinary
+            // restated parameter matched at the original's position (SPEC 8.8.1).
+            if (function.Modifier != ModifierKind.NoModifier || function.AttributeChain is not null ||
                 function.TypeConstraints.Count != 0 || function.GenericArguments.Count == 0 || function.Parameters.Any(x => x.AttributeChain is not null))
             {
                 Fail(function, BindingFailure.Unsupported, true);
@@ -203,7 +204,7 @@ public sealed partial class Binding
             {
                 if (candidate.Declaration is not FunctionKoto { IsSpecialization: false } ordinary ||
                     ordinary.GenericArguments.Count != arguments.Length || ordinary.Parameters.Count != function.Parameters.Count ||
-                    !SameSlotKinds(ordinary, lengths) || candidate.ReceiverIndex >= 0)
+                    !SameSlotKinds(ordinary, lengths) || candidate.ReceiverIndex != symbol.ReceiverIndex)
                 {
                     continue;
                 }
