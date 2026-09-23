@@ -72,13 +72,20 @@ internal static partial class LlvmModuleWriter
         WriteExternals(module, output);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
-        output.Write(MemoryDeclarations);
-        foreach (var aggregate in module.Aggregates)
+        if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime)
         {
-            WriteAggregateDestructor(output, aggregate);
+            output.Write(MemoryDeclarations);
+            foreach (var aggregate in module.Aggregates)
+            {
+                WriteAggregateDestructor(output, aggregate);
+            }
         }
 
-        WriteArrayHelpers(module, output);
+        if (module.NeedsArrayRuntime)
+        {
+            output.Write(ArrayRuntime);
+            WriteArrayHelpers(module, output);
+        }
 
         if (module.NeedsStringComparison)
         {

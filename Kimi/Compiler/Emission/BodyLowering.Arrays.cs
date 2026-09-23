@@ -10,6 +10,7 @@ namespace Kimi.Compiler;
 internal sealed partial class BodyLowering
 {
     private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar), ArrayHelper> arrayHelpers = new();
+    private bool arrayRuntimeUsed;
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
     {
@@ -179,6 +180,7 @@ internal sealed partial class BodyLowering
 
         this.callOperands.Clear();
         this.callOperands.Add(handle);
+        this.arrayRuntimeUsed = true;
         FunctionAbi callee;
         switch (kind)
         {

@@ -34,6 +34,8 @@ internal sealed partial class BodyLowering
             module.ArrayHelpers.Add(helper);
         }
 
+        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.arrayHelpers.Count != 0;
+        this.arrayRuntimeUsed = false;
         this.arrayHelpers.Clear();
         this.aggregateLayouts.Clear(); // No bound Types survive into the physical module.
         this.ownedPatternTypes.Clear();
@@ -377,6 +379,7 @@ internal sealed partial class BodyLowering
                             return Fail("Array literal has an unsupported element Type.", out failure);
                         }
 
+                        this.arrayRuntimeUsed = true;
                         function.AddCall(id, WindowsLowering.ArrayGrow, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.Integer, element.Stride), new(EmissionOperandKind.Integer, plan.PayloadCount), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
                         var placeElement = this.GetArrayHelper(ArrayHelperKind.Place, element).Abi;
                         for (var i = 0; i < plan.PayloadCount; i++)
