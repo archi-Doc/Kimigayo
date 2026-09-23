@@ -4,7 +4,7 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 
 ## Summary
 
-- **Verification baseline (2026-09-23, source `f0fa8f96`):** Debug/Release builds are warning-free; each full managed suite passes 11,481 tests. All 21 milestone harnesses (1–20 and 22) pass 1,011 Release checks. Program 21 builds and runs with the Copy-read spelling only (PLAN G15). Evidence: `bin/verify/20260923-021421-session-p21-session1`.
+- **Verification baseline (2026-09-23, source `a2779d6a`):** Debug/Release builds are warning-free; each full managed suite passes 11,488 tests. All 21 milestone harnesses (1–20 and 22) pass 1,011 Release checks. Program 21 builds and runs with the Copy-read spelling only (PLAN G15); Program 29 is authored and binds up to its Array operations. Evidence: `bin/verify/20260923-023637-session-p29-session2b`.
 - **Generic generation:** the specification's initial profile monomorphizes (§21.3.1). Scalar, Never and length-generic functions, generic struct constructors/field reads, forwarded generic calls inside generic bodies, enum payload constructions and owned result joins are generated as one concrete body per closed substitution; explicit specializations keep their selected body. Every generic shape reaches generation this way; the transitional shared path (writer, entry planning and template walk) is removed, and `BodyLowering` validates each instance under its substitution.
 - **Mods:** the host interface is deferred (Appendix D); `Compilation.Bind` does not execute Mods.
 
