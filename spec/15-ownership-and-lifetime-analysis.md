@@ -145,7 +145,7 @@ Getter results are acquired as results, never by moving hidden storage. An alrea
 | Borrow value | Copy of a shared reference, or shared Reborrow of an exclusive one |
 | Temporary Value, including `x@move` and a call result | Whole-value acquisition by value, materialized without an extra acquisition |
 
-This happens before arm selection, regardless of bindings, Wildcards, or whether any arm succeeds, and optimization cannot change the original Place's Move state, lifetime or Loans. A custom, computed or required `get` subject invokes its getter once; a standard stored `get` uses the permitted Place operation. A borrowed Subject's Loan follows the uses of its bindings: an arm without a live borrowed binding may assign to or transfer the original Place.
+This happens before arm selection, regardless of bindings, Wildcards, or whether any arm succeeds, and optimization cannot change the original Place's Move state, lifetime or Loans. A proven-Copy Place may be implemented by a Copy of its value instead of a shared borrow: the bindings of a Copy Subject are copies, so the two are observationally equivalent and no Loan is required. A custom, computed or required `get` subject invokes its getter once; a standard stored `get` uses the permitted Place operation. A borrowed Subject's Loan follows the uses of its bindings: an arm without a live borrowed binding may assign to or transfer the original Place.
 
 ```kimi
 // Message is Non-Copy.

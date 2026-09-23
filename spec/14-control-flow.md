@@ -312,7 +312,7 @@ repeat:
 clean up iterator on normal exit and ordinary transfers
 ~~~
 
-Each `for` binding is an immutable `let` binding scoped to that iteration's body; there is no implicit `var` form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right, and named slots must be distinct. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
+Each `for` binding is an immutable `let` binding scoped to that iteration's body; there is no implicit `var` form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right, and named slots must be distinct. When the yielded element is a shared reference to a Tuple (`ref{source}/(A, B)`, as bare iteration over an owned array yields), each component is acquired under the [match rules for borrowed Subjects](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): a Copy component is copied and a Non-Copy component binds as `ref{source}/T`. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
 
 The receiver Loan of `next` ends before the loop body. Results may keep existing external dependencies but cannot borrow that exclusive receiver or iterator-owned storage; lending iteration is deferred.
 
