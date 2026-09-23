@@ -35,9 +35,25 @@ public class ArrayBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.True(c.Ownership.Result.UnsupportedCount > 0, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
         Assert.False(c.Emission.WriteIr(output, out _));
         Assert.Empty(output.ToString());
+    }
+
+    // SPEC 4.5: Array is Non-Copy and its Owned classification follows the element Type.
+    [Theory]
+    [InlineData("i32", "n", true)]
+    [InlineData("ref/i32", "n@ref", false)]
+    public void OwnedFollowsTheElementType(string element, string argument, bool owned)
+    {
+        const string Keep = "func keep<T>(value: T) -> isize\n    T is Owned\n    return 1\nlet n: i32 = 1\n";
+        var plain = MinimalEmissionTest.Analyze(Keep + "let result = keep<" + element + ">(" + argument + ")");
+        var array = MinimalEmissionTest.Analyze(Keep + "let values: Array<" + element + "> = []\nlet result = keep<Array<" + element + ">>(values@move)");
+        Assert.Equal(owned, plain.Binding.Result.IsComplete);
+        Assert.Equal(owned, array.Binding.Result.IsComplete);
+        Assert.Equal(plain.Binding.Issues.Select(x => x.Code).Order(), array.Binding.Issues.Select(x => x.Code).Order());
     }
 
     [Theory]

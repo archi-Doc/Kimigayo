@@ -363,6 +363,14 @@ public sealed partial class Binding
             }
         }
 
+        if (work.Type.Kind == BoundTypeKind.Array)
+        {
+            // SPEC 4.5: Array is Non-Copy; its Owned classification follows the element Type.
+            return work.Intrinsic.Intrinsic == IntrinsicKind.Owned
+                ? this.RequestCapability(work.Type.Components[0], work.Intrinsic, work.Scope)
+                : work.Intrinsic.Intrinsic == IntrinsicKind.Copy ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+        }
+
         if (work.Type.Symbol?.Declaration is DeclarationContainerKoto container)
         {
             return this.storageShapes.TryGetValue(container, out var shape) ? this.StoredCapability(work, shape) : ConstraintProof.Unknown;
