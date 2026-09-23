@@ -11,6 +11,13 @@ namespace Kimi.Compiler;
 // ordinary generic storage planner, including user-defined formatters.
 internal sealed class BoundFormatting(Koto root)
 {
+    private readonly List<FormattingKoto> nodes = new();
+    private readonly List<InvocationKoto> calls = new();
+    private int nextNode;
+    private int nextCall;
+
+    internal bool Active { get; set; }
+
     internal Koto Root { get; } = root;
 
     internal InvocationKoto? Acquisition { get; set; }
@@ -38,6 +45,78 @@ internal sealed class BoundFormatting(Koto root)
     internal FormattingKoto Finish { get; set; } = null!;
 
     internal List<InvocationKoto> Writes { get; } = new();
+
+    internal static BoundFormatting Begin(Koto root)
+    {
+        var plan = root.FormattingStorage ??= new(root);
+        plan.Active = true;
+        plan.Acquisition = null;
+        plan.Writes.Clear();
+        plan.nextNode = 0;
+        plan.nextCall = 0;
+        return plan;
+    }
+
+    internal FormattingKoto Node(FormattingOperation operation, BoundType type)
+    {
+        var index = this.nextNode++;
+        if (index == this.nodes.Count)
+        {
+            this.nodes.Add(new(this.Root, operation) { Parent = this.Root, Plan = this });
+        }
+
+        var node = this.nodes[index];
+        if (node.Operation != operation || !node.Span.Equals(this.Root.Span))
+        {
+            this.nodes[index] = node = new(this.Root, operation) { Parent = this.Root, Plan = this };
+        }
+
+        node.Resolve(type);
+        return node;
+    }
+
+    internal InvocationKoto Call(BindingSymbol target, ReadOnlySpan<Koto> arguments, BoundType? declaringType, bool never)
+    {
+        var index = this.nextCall++;
+        if (index == this.calls.Count)
+        {
+            this.calls.Add(Create(arguments.Length));
+        }
+
+        var call = this.calls[index];
+        if (call.ArgumentNodes.Count != arguments.Length || (call.Method is GenericsKoto) != never || !call.Span.Equals(this.Root.Span))
+        {
+            this.calls[index] = call = Create(arguments.Length);
+        }
+
+        var callee = (FormattingKoto)(call.Method is GenericsKoto generic ? generic.Identifier! : call.Method);
+        callee.BoundSymbol = target;
+        callee.BoundMeaning = null;
+        callee.BindingFailure = BindingFailure.None;
+        callee.DeclaringType = declaringType;
+        callee.BindingState = BindingState.Resolved;
+        arguments.CopyTo((Koto[])call.ArgumentNodes);
+        call.BindingState = BindingState.Unvisited;
+        call.BindingFailure = BindingFailure.None;
+        call.BoundMeaning = null;
+        call.BoundSymbol = null;
+        call.ErasedFunctionType = null;
+        return call;
+
+        InvocationKoto Create(int count)
+        {
+            var callee = new FormattingKoto(this.Root, FormattingOperation.Callee) { Parent = this.Root };
+            Koto method = callee;
+            if (never)
+            {
+                var unit = new FormattingKoto(this.Root, FormattingOperation.Callee) { Parent = this.Root };
+                unit.Resolve(BoundType.Unit);
+                method = new GenericsKoto(this.Root, callee, [unit]);
+            }
+
+            return new(this.Root, method, new Koto[count]);
+        }
+    }
 }
 
 public sealed partial class Binding
@@ -63,21 +142,17 @@ public sealed partial class Binding
             return Fail(syntax, BindingFailure.TypeMismatch);
         }
 
-        var plan = new BoundFormatting(syntax);
-        syntax.Formatting = plan;
-        var dummy = new FormattingKoto(syntax, FormattingOperation.Storage) { Parent = syntax, Plan = plan };
-        dummy.Resolve(BoundType.Unit);
+        var plan = BoundFormatting.Begin(syntax);
+        var dummy = plan.Node(FormattingOperation.Storage, BoundType.Unit);
         plan.Acquisition = this.FormattingCall(syntax, KimiDeclarationId.WriterWrite, [source.ArgumentNodes[0], dummy], scope, writerType);
         if (plan.Acquisition.BoundCall is not { } acquired)
         {
-            syntax.Formatting = null;
+            plan.Active = false;
             return Complete(syntax, null);
         }
 
-        plan.Writer = new(syntax, FormattingOperation.Storage) { Parent = syntax, Plan = plan };
-        plan.Writer.Resolve(this.PreparedBorrowType(source.ArgumentNodes[0], acquired.ArgumentOperations[0].ParameterType!));
-        plan.Check = new(syntax, FormattingOperation.Status) { Parent = syntax, Plan = plan };
-        plan.Check.Resolve(BoundType.Boolean);
+        plan.Writer = plan.Node(FormattingOperation.Storage, this.PreparedBorrowType(source.ArgumentNodes[0], acquired.ArgumentOperations[0].ParameterType!));
+        plan.Check = plan.Node(FormattingOperation.Status, BoundType.Boolean);
         var valid = true;
         if (source.ArgumentNodes[1] is InterpolatedStringKoto text)
         {
@@ -86,12 +161,12 @@ public sealed partial class Binding
                 this.BindNode(text.Segments[i], scope);
                 if (text.Segments[i].Literal.Length != 0)
                 {
-                    Add(text.Segments[i]);
+                    valid &= this.FormattingWrite(plan, text.Segments[i], scope, writerType);
                 }
 
                 if (i < text.Expressions.Length)
                 {
-                    Add(text.Expressions[i]);
+                    valid &= this.FormattingWrite(plan, text.Expressions[i], scope, writerType);
                 }
             }
 
@@ -99,36 +174,28 @@ public sealed partial class Binding
         }
         else
         {
-            Add(source.ArgumentNodes[1]);
+            valid &= this.FormattingWrite(plan, source.ArgumentNodes[1], scope, writerType);
         }
 
         plan.Outcome = this.FormattingCall(syntax, KimiDeclarationId.WriterStatus, [plan.Writer], scope, writerType);
         Complete(source.Method, BoundType.Unit);
         Complete(source, plan.Outcome.BoundType);
         return Complete(syntax, valid ? plan.Outcome.BoundType : null);
-
-        void Add(Koto value)
-        {
-            var call = this.FormattingCall(syntax, KimiDeclarationId.WriterWrite, [plan.Writer, value], scope, writerType);
-            plan.Writes.Add(call);
-            valid &= call.BoundCall is not null;
-        }
     }
 
     private BoundType? BindInterpolation(InterpolatedStringKoto syntax, BindingScope scope)
     {
-        var plan = new BoundFormatting(syntax);
-        syntax.Formatting = plan;
-        plan.Capacity = Node(FormattingOperation.Capacity, BoundType.ISize);
+        var plan = BoundFormatting.Begin(syntax);
+        plan.Capacity = plan.Node(FormattingOperation.Capacity, BoundType.ISize);
         plan.Heap = this.FormattingCall(syntax, KimiDeclarationId.TextHeap, [plan.Capacity], scope);
         if (plan.Heap.BoundType is not { } bufferType)
         {
             return Complete(syntax, null);
         }
 
-        plan.BufferOwner = Node(FormattingOperation.Storage, bufferType);
+        plan.BufferOwner = plan.Node(FormattingOperation.Storage, bufferType);
         var bufferBorrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [bufferType], origin: this.OriginAtom(plan.Heap, OriginKind.Projection, 0));
-        plan.Buffer = Node(FormattingOperation.Storage, bufferBorrow);
+        plan.Buffer = plan.Node(FormattingOperation.Storage, bufferBorrow);
         plan.Adapter = this.FormattingCall(syntax, KimiDeclarationId.TextWriter, [plan.Buffer], scope);
         if (plan.Adapter.BoundType is not { } writerType)
         {
@@ -136,65 +203,43 @@ public sealed partial class Binding
         }
 
         var writerBorrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [writerType], origin: this.OriginAtom(plan.Adapter, OriginKind.Projection, 0));
-        plan.Writer = Node(FormattingOperation.Storage, writerBorrow);
-        plan.WriterOwner = Node(FormattingOperation.Storage, writerType);
-        plan.Check = Node(FormattingOperation.Check, BoundType.Unit);
-        plan.Hint = Node(FormattingOperation.Hint, BoundType.Unit);
-        plan.Finish = Node(FormattingOperation.Finish, BoundType.String);
+        plan.Writer = plan.Node(FormattingOperation.Storage, writerBorrow);
+        plan.WriterOwner = plan.Node(FormattingOperation.Storage, writerType);
+        plan.Check = plan.Node(FormattingOperation.Check, BoundType.Unit);
+        plan.Hint = plan.Node(FormattingOperation.Hint, BoundType.Unit);
+        plan.Finish = plan.Node(FormattingOperation.Finish, BoundType.String);
         var valid = true;
         for (var i = 0; i < syntax.Segments.Length; i++)
         {
             this.BindNode(syntax.Segments[i], scope);
             if (syntax.Segments[i].Literal.Length != 0)
             {
-                Add(syntax.Segments[i]);
+                valid &= this.FormattingWrite(plan, syntax.Segments[i], scope, writerType);
             }
 
             if (i < syntax.Expressions.Length)
             {
-                Add(syntax.Expressions[i]);
+                valid &= this.FormattingWrite(plan, syntax.Expressions[i], scope, writerType);
             }
         }
 
         return Complete(syntax, valid ? BoundType.String : null);
-
-        FormattingKoto Node(FormattingOperation operation, BoundType type)
-        {
-            var node = new FormattingKoto(syntax, operation) { Parent = syntax, Plan = plan };
-            node.Resolve(type);
-            return node;
-        }
-
-        void Add(Koto value)
-        {
-            var call = this.FormattingCall(syntax, KimiDeclarationId.WriterWrite, [plan.Writer, value], scope, writerType);
-            plan.Writes.Add(call);
-            valid &= call.BoundCall is not null;
-        }
     }
 
-    private InvocationKoto FormattingCall(Koto root, KimiDeclarationId identity, Koto[] arguments, BindingScope scope, BoundType? declaringType = null)
+    private bool FormattingWrite(BoundFormatting plan, Koto value, BindingScope scope, BoundType writerType)
+    {
+        var call = this.FormattingCall(plan.Root, KimiDeclarationId.WriterWrite, [plan.Writer, value], scope, writerType);
+        plan.Writes.Add(call);
+        return call.BoundCall is not null;
+    }
+
+    private InvocationKoto FormattingCall(Koto root, KimiDeclarationId identity, ReadOnlySpan<Koto> arguments, BindingScope scope, BoundType? declaringType = null)
     {
         var target = this.Library.GetSymbol(identity)!;
-        var callee = new FormattingKoto(root, FormattingOperation.Callee)
-        {
-            Parent = root,
-            BoundSymbol = target,
-            BindingState = BindingState.Resolved,
-            DeclaringType = declaringType,
-        };
-        Koto method = callee;
-        if (identity == KimiDeclarationId.WriterWrite && arguments.Length == 2 && !IsUnfittedLiteral(arguments[1]) &&
-            ReferenceEquals(this.BindNode(arguments[1], scope), BoundType.Never))
-        {
-            // No value reaches this write. A concrete dummy witness lets ordinary
-            // call acquisition check the transfer without inventing a Never formatter.
-            var unit = new FormattingKoto(root, FormattingOperation.Callee) { Parent = root };
-            unit.Resolve(BoundType.Unit);
-            method = new GenericsKoto(root, callee, [unit]);
-        }
-
-        var call = new InvocationKoto(root, method, arguments);
+        // Never needs only an acquisition check; no formatter can run for it.
+        var never = identity == KimiDeclarationId.WriterWrite && arguments.Length == 2 && !IsUnfittedLiteral(arguments[1]) &&
+            ReferenceEquals(this.BindNode(arguments[1], scope), BoundType.Never);
+        var call = root.Formatting!.Call(target, arguments, declaringType, never);
         this.nodes.Add(call);
         this.BindCall(call, scope, null);
         return call;

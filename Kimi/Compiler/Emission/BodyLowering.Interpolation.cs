@@ -15,6 +15,7 @@ internal sealed partial class BodyLowering
     private static readonly FunctionAbi FinishStackFormatting = new("__kimi_format_stack_finish", "void", FinishFormatting.Parameters);
     private static readonly FunctionAbi LiteralFormatting = new("__kimi_format_literal", "void", WindowsLowering.GetCompilerFunction(CompilerFunctionKind.WriterWrite)!.Parameters, resultSlot: true);
     private readonly Dictionary<BoundFormatting, FormattingEstimate> formattingEstimates = new(ReferenceEqualityComparer.Instance);
+    private readonly List<FormattingEstimate> formattingEstimateStorage = new();
 
     private bool LowerFormatting(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
@@ -86,7 +87,19 @@ internal sealed partial class BodyLowering
             return estimate;
         }
 
-        var hints = new long[plan.Writes.Count];
+        var index = this.formattingEstimates.Count;
+        if (index == this.formattingEstimateStorage.Count)
+        {
+            this.formattingEstimateStorage.Add(new());
+        }
+
+        estimate = this.formattingEstimateStorage[index];
+        if (estimate.Hints.Length != plan.Writes.Count)
+        {
+            estimate.Hints = new long[plan.Writes.Count];
+        }
+
+        var hints = estimate.Hints;
         long total = 0;
         var bounded = true;
         for (var i = hints.Length - 1; i >= 0; i--)
@@ -109,7 +122,8 @@ internal sealed partial class BodyLowering
         var stack = bounded && total is >= 0 and <= FormattingStackLimit && plan.Root is InterpolatedStringKoto &&
             plan.Root.Parent is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.WriteLine } console &&
             console.ArgumentNodes.Count == 1 && ReferenceEquals(console.ArgumentNodes[0], plan.Root);
-        estimate = new(bounded && total >= 0 ? total : 0, hints, stack);
+        estimate.Capacity = bounded && total >= 0 ? total : 0;
+        estimate.Stack = stack;
         this.formattingEstimates.Add(plan, estimate);
         return estimate;
     }
@@ -134,5 +148,12 @@ internal sealed partial class BodyLowering
     private bool IsStackFormattingBuffer(OwnershipPlace place)
         => place.Source is InvocationKoto { Parent.Formatting: { } plan } call && ReferenceEquals(call, plan.Heap) && this.EstimateFormatting(plan).Stack;
 
-    private sealed record FormattingEstimate(long Capacity, long[] Hints, bool Stack);
+    private sealed class FormattingEstimate
+    {
+        internal long Capacity { get; set; }
+
+        internal long[] Hints { get; set; } = [];
+
+        internal bool Stack { get; set; }
+    }
 }

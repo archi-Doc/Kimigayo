@@ -495,7 +495,9 @@ public abstract class Koto
 
     internal BoundType? ErasedFunctionType { get; set; }
 
-    internal BoundFormatting? Formatting { get; set; }
+    internal BoundFormatting? FormattingStorage { get; set; }
+
+    internal BoundFormatting? Formatting => this.FormattingStorage is { Active: true } plan ? plan : null;
 
     internal BindingFailure BindingFailure { get; set; }
 
