@@ -130,6 +130,9 @@ $invalid = [ordered]@{
     ElementMove = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let invalid = tasks[0]@move' + "`n" + '    tasks[0] = Task.init(5)')); diagnostic = 'UnsupportedOwnership_Kd' }
     LiveBorrow = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks@ref' + "`n" + '    tasks[0] = Task.init(5)' + "`n" + '    let invalid = view.length')); diagnostic = 'ComparisonLoanConflict_Kd' }
     LiveElement = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks[0]' + "`n" + '    tasks[0] = Task.init(5)' + "`n" + '    let invalid = view.id')); diagnostic = 'ComparisonLoanConflict_Kd' }
+    # Valid forms outside the verified generation boundary: rejected by ownership analysis, never at generation.
+    ZeroSizedElement = @{ source = (Edit-KimiSource $original '    Console.writeLine("Array run finished.")' ('    let units: Array<()> = [()]' + "`n" + '    Console.writeLine("Array run finished.")')); diagnostic = 'UnsupportedOwnership_Kd' }
+    SharedStringIteration = @{ source = (Edit-KimiSource $original '    Console.writeLine("Array run finished.")' ('    let names: Array<string> = ["name"]' + "`n" + '    for name in names => ()' + "`n" + '    Console.writeLine("Array run finished.")')); diagnostic = 'UnsupportedOwnership_Kd' }
     LiveEmptySlice = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks[0..0]' + "`n" + '    tasks@uniq.reserve(0)' + "`n" + '    let invalid = view.length' + "`n" + '    tasks[0] = Task.init(5)')); diagnostic = 'CallActivationConflict_Kd' }
 }
 foreach ($level in @('O0', 'O2')) {
@@ -149,7 +152,7 @@ foreach ($level in @('O0', 'O2')) {
         $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
         $required = $entry.Value.diagnostic
         $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
-        if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $record.status -cne 'incomplete' -or
+        if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $plainDiagnostic -match '\bGenerationFailed_Kd\b' -or $record.status -cne 'incomplete' -or
             (Test-Path "$stem.ll") -or (Test-Path "$stem.$level.exe")) { throw "Invalid input was not diagnosed before emission: $name.$level" }
         $results.Add(@{ name = "$name.$level"; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
     }

@@ -41,6 +41,49 @@ public sealed partial class OwnershipAnalysis
         return true;
     }
 
+    // Storage without bytes: unit, empty or all-zero-sized structs, Tuples and closures, and fixed arrays of
+    // length zero or of a zero-sized element. Call only after SupportsType accepted the Type (no inline cycles).
+    private static bool IsZeroSized(BoundType type)
+    {
+        if (ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never))
+        {
+            return true;
+        }
+
+        if (StructStorage.IsStruct(type))
+        {
+            for (var i = 0; i < StructStorage.Count(type); i++)
+            {
+                if (StructStorage.FieldType(type, i) is not { } field || !IsZeroSized(field))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.FixedArray)
+        {
+            return type.Length == 0 || (type.Components.Count == 1 && IsZeroSized(type.Components[0]));
+        }
+
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!IsZeroSized(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
     // This is a conservative subset gate, not the language's finite-storage validation.
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
@@ -58,8 +101,9 @@ public sealed partial class OwnershipAnalysis
         if (type.Kind == BoundTypeKind.Array)
         {
             // SPEC 4.5: the handle owns its buffer; elements follow T. A nested handle would need element destruction
-            // to release inner buffers (PLAN P29), so it stays an explicit Unsupported form.
-            return type.Components[0].Kind != BoundTypeKind.Array && this.SupportsType(type.Components[0]);
+            // to release inner buffers (PLAN P29), so it stays an explicit Unsupported form. A zero-sized element
+            // has no stride-based storage plan yet and is refused here rather than at generation.
+            return type.Components[0].Kind != BoundTypeKind.Array && this.SupportsType(type.Components[0]) && !IsZeroSized(type.Components[0]);
         }
 
         if (type.Kind == BoundTypeKind.Primitive)

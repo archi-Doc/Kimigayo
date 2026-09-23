@@ -164,6 +164,19 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
+        // A shared string element would bind a ref/string local, which has no reference storage plan yet (issue G14).
+        if (slice)
+        {
+            for (var slot = 0; slot < source.Bindings.Count; slot++)
+            {
+                if (ReferenceTypes.IsString(source.Bindings[slot].BoundType))
+                {
+                    this.Unsupported(source);
+                    return;
+                }
+            }
+        }
+
         int iterable;
         if (shared is not null)
         {
