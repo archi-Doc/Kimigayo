@@ -78,7 +78,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 26 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 27 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 28 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 29 | YES | NOT_RUN | NOT_RUN | Program authored 2026-09-23; the compiler-supplied `Array<T>` catalog entry is not implemented (P29) |
+| 29 | YES | NOT_RUN | NOT_RUN | Program authored 2026-09-23; the mutation operations and element literals run natively (2026-09-23); element reads, indexed replacement, `^n`/`Index` overloads and owning iteration are pending (P29) |
 | 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 32 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
