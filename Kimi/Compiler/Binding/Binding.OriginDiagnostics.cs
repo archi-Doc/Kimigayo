@@ -38,7 +38,9 @@ public sealed partial class Binding
     // change a syntax decision, and require no state on successful uses.
     private string? BorrowOriginHint(Koto node)
     {
-        if (node is TypeSemanticsKoto { IsLegacyBorrowCandidate: true, BoundSymbol.Kind: BindingSymbolKind.SemanticsParameter })
+        if (node is TypeSemanticsKoto { IsLegacyBorrowCandidate: true } legacy &&
+            (legacy.BoundSymbol?.Kind == BindingSymbolKind.SemanticsParameter ||
+            (legacy.BoundSymbol is null && legacy.BindingFailure == BindingFailure.MissingType && CompilerHelper.TryParse(legacy.Identifier, out _))))
         {
             return "This may be a removed brace borrow annotation. Use 's/T during a' in a Type; an adaptation's outer Origin must be inferred with 'x@s/T'.";
         }
@@ -77,7 +79,7 @@ public sealed partial class Binding
 
                 bool IsExcludedInputOrigin(BoundType? actual)
                 {
-                    if (actual is not { Origin.Kind: OriginKind.Parameter, Components.Count: 1 } ||
+                    if (actual is not { Origin.Kind: not OriginKind.Static, Components.Count: 1 } ||
                         actual.Semantics != expected.Semantics || !IsBorrow(actual.Semantics) ||
                         !ReferenceEquals(actual.Components[0], expected.Components[0]))
                     {

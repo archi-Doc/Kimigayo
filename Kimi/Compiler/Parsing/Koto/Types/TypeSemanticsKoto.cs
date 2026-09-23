@@ -163,7 +163,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
             }
 
             var needsParentheses = !this.isTransparentWrapper && (this.Type is FunctionTypeKoto or OptionalTypeKoto ||
-                this.Type is TypeSemanticsKoto { IsTransparentWrapper: false, HasOrigin: true });
+                this.Type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false, HasOrigin: true });
             if (needsParentheses)
             {
                 builder.Append('(');

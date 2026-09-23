@@ -1424,7 +1424,7 @@ CloseParameters:
 
         if (parseOrigin)
         {
-            left = ParseTypeOrigin(ref reader, left);
+            left = ParseTypeOrigin(ref reader, left, reportLegacyBorrow: !disambiguateGenerics);
         }
 
         if (disambiguateGenerics && reader.CurrentTokenKind == TokenKind.Question &&
@@ -1565,7 +1565,7 @@ CloseParameters:
         }
     }
 
-    private static Koto ParseTypeOrigin(ref TokenReader reader, Koto type)
+    private static Koto ParseTypeOrigin(ref TokenReader reader, Koto type, bool reportLegacyBorrow = true)
     {
         if (reader.CurrentTokenKind != TokenKind.OpenBrace)
         {
@@ -1587,7 +1587,7 @@ CloseParameters:
         }
 
         annotated.MarkBindingSet(reader.CurrentTokenKind == TokenKind.Slash);
-        if (annotated.IsLegacyBorrowCandidate && CompilerHelper.TryParse(annotated.Identifier, out _))
+        if (reportLegacyBorrow && annotated.IsLegacyBorrowCandidate && CompilerHelper.TryParse(annotated.Identifier, out _))
         {
             reader.Diagnostic.Add(type.Span, DiagnosticCode.UnexpectedToken_Kd, "brace borrow annotations were removed; use 'Semantics/Type during Origin' in Types, or infer the Origin in adaptations");
         }

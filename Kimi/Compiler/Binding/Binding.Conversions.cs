@@ -161,7 +161,7 @@ public sealed partial class Binding
             return Complete(conversion, transferred);
         }
 
-        if (syntax is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
+        if (syntax is TypeSemanticsKoto { Type: null, HasOrigin: false } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
         {
             // SPEC 10.8: an expected borrow of the same Semantics fits an untyped literal operand to its referent
             // Type. A typed operand keeps its own Type: the borrow or reborrow forms from its Place, never from a read.
@@ -172,8 +172,7 @@ public sealed partial class Binding
                 return Complete(conversion, null);
             }
 
-            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && IsObjectSemantics(operandType.Semantics) &&
-                shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
+            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && IsObjectSemantics(operandType.Semantics))
             {
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
                 if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
@@ -188,8 +187,7 @@ public sealed partial class Binding
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
                 (StructStorage.IsStruct(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array || ReferenceTypes.IsStorage(operandType) ||
-                    ScalarTypes.Supports(operandType) || (ReferenceEquals(operandType, BoundType.String) && IsCallArgument(conversion))) &&
-                shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
+                    ScalarTypes.Supports(operandType) || (ReferenceEquals(operandType, BoundType.String) && IsCallArgument(conversion))))
             {
                 var referent = IsBorrow(operandType.Semantics) ? operandType.Components[0] : operandType;
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent]);
@@ -204,8 +202,7 @@ public sealed partial class Binding
             }
 
             // SPEC 13.5.3: an owning-Semantics spelling that matches the operand's outer Semantics is the transfer.
-            if (semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && operandType.Semantics == semantics &&
-                shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
+            if (semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && operandType.Semantics == semantics)
             {
                 for (var targetNode = conversion.Right; ;)
                 {

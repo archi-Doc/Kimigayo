@@ -23,6 +23,8 @@ public class BorrowOriginSuffixTest
     [InlineData("ref/(uniq/T during b)? during a")]
     [InlineData("unsafe/(ref/T during a)")]
     [InlineData("ref/View<ref/U during c>{v} during a")]
+    [InlineData("ref/View{v} during a")]
+    [InlineData("ref/View{v}? during a")]
     [InlineData("(ref/T during a, [2 of ref/U during b])")]
     [InlineData("ref/((T) -> U) during a")]
     [InlineData("(T) -> ref/U? during b")]
@@ -89,6 +91,7 @@ public class BorrowOriginSuffixTest
     [Theory]
     [InlineData("View<T>{v}")]
     [InlineData("s{a}")]
+    [InlineData("ref{a}")]
     public void ACompletedBindingSetLeavesTheSlashAsDivision(string target)
     {
         var tree = ParseTestHelper.ParseSuccess($"let result = x@{target} / y");
@@ -130,9 +133,11 @@ public class BorrowOriginSuffixTest
     [Theory]
     [InlineData("func f(x: i32) -> ref/i32 during x => x@ref", "declared schema slot")]
     [InlineData("func f<s/T>(x: s/T)\n    s is ref\n    let y = x@s{a}/T", "outer Origin must be inferred")]
+    [InlineData("func f(x: i32) => x@ref{a}/i32", "outer Origin must be inferred")]
     [InlineData("func f<T>(x: ref/i32 during a, y: ref/i32 during b)\n    T is ref/i32 during a and b\n    ()", "intersection requires parentheses")]
     [InlineData("struct View {source}\n    let item: ref/i32 during source\nfunc f<T>(x: ref/i32 during a, view: View{v})\n    T is ref/i32 during a and v.source\n    ()", "intersection requires parentheses")]
     [InlineData("func f(x: ref/i32? during a) -> ref/i32\n    return match x\n        .Some(let value) => value\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
+    [InlineData("struct V {source}\n    let value: ref/i32 during source\nfunc f(view: V, x: ref/i32? during view.source) -> ref/i32\n    return match x\n        .Some(let value) => value\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
     public void InvalidUsesKeepTheirFailureAndExplainTheOriginRule(string source, string hint)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -173,5 +178,19 @@ public class BorrowOriginSuffixTest
         Assert.Equal(2, functions.Length);
         Assert.Equal("first", Assert.IsType<TypeSemanticsKoto>(functions[0].Parameters[0].Type).OriginName);
         Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+    }
+
+    [Fact]
+    public void ATypeNamedLikeSemanticsKeepsItsBindingSetRole()
+    {
+        const string Source = "struct ref {source}\n    let item: ref/i32 during source\nfunc f(x: ref{input})\n    let result = x@ref{output} / 1\n        origin output.source == input.source";
+        var c = MinimalEmissionTest.Analyze(Source);
+        var function = Assert.Single(ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>());
+        var field = Assert.IsType<FieldKoto>(Assert.Single(function.Body!.Items));
+        var division = Assert.IsType<SlashKoto>(field.InitializerKoto);
+        var conversion = Assert.IsType<ConversionKoto>(division.Left);
+        Assert.Equal(BindingSymbolKind.Type, conversion.Right.BoundSymbol?.Kind);
+        c.Binding.ReportDiagnostics();
+        Assert.DoesNotContain(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), d => d.Message.Contains("brace borrow", StringComparison.Ordinal));
     }
 }
