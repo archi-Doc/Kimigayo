@@ -11,6 +11,9 @@ public class ArrayBindingTest
 {
     private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => ()\n";
 
+    private static readonly string TaskOperations = Task.Replace("deinit => ()", "deinit\n        match self.id\n            1 => Console.writeLine(\"Task 1 destroyed.\")\n            2 => Console.writeLine(\"Task 2 destroyed.\")\n            3 => Console.writeLine(\"Task 3 destroyed.\")\n            _ => Console.writeLine(\"Task 4 destroyed.\")", StringComparison.Ordinal) +
+        "var tasks: Array<Task> = []\ntasks@uniq.reserve(additional: 2)\ntasks@uniq.append(Task.init(1))\ntasks@uniq.append(Task.init(3))\ntasks@uniq.insert(1, Task.init(2))\ntasks@uniq.append(Task.init(4))\nrequire tasks.length == 4 and tasks.capacity >= 4 else => $abort(\"growth\")\nlet last = tasks@uniq.remove(3)\nrequire last.id == 4 and tasks.length == 3 else => $abort(\"remove\")\nConsole.writeLine(\"Removed the last task.\")\nmatch tasks@uniq.pop()\n    .Some(let popped)\n        require popped.id == 3 else => $abort(\"pop\")\n        Console.writeLine(\"Popped a task.\")\n    .None => $abort(\"empty\")\ntasks@uniq.shrinkToFit()\nrequire tasks.capacity == 2 else => $abort(\"shrink\")\nConsole.writeLine(\"Clearing.\")\ntasks@uniq.clear()\nrequire tasks.length == 0 and tasks.capacity == 2 else => $abort(\"clear\")\ntasks@uniq.append(Task.init(2))\nConsole.writeLine(\"Done.\")";
+
     // SPEC 4.6.1: a borrowed handle shares access for the metadata operation and is read through the reference.
     [Fact]
     public void BorrowedHandlesReadMetadataThroughTheReference()
@@ -88,7 +91,8 @@ public class ArrayBindingTest
         var ir = writer.ToString();
         Assert.Contains("call void @__kimi_array_init(ptr %", ir);
         Assert.Contains("call void @__kimi_array_free(ptr %", ir);
-        Assert.DoesNotContain("@HeapAlloc(", ir[ir.IndexOf("define internal void @__kimi_array_free", StringComparison.Ordinal)..]);
+        var free = ir.IndexOf("define internal void @__kimi_array_free", StringComparison.Ordinal);
+        Assert.DoesNotContain("@HeapAlloc(", ir[free..ir.IndexOf("\n}\n", free, StringComparison.Ordinal)]);
     }
 
     // SPEC 4.7.2, 4.7.4: the mutation operations are catalog compiler functions of the Array struct with an exclusive receiver.
@@ -104,9 +108,41 @@ public class ArrayBindingTest
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified); // Lowering of the operations follows (PLAN P29).
-        Assert.True(c.Ownership.Result.UnsupportedCount > 0, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        using var writer = new StringWriter();
+        Assert.True(c.Emission.WriteIr(writer, out var error), error);
     }
+
+    // SPEC 4.7.2, 4.7.4: growth, insertion, removal, pop, shrinking and clearing over scalar elements.
+    [Fact]
+    public void MutationOperationsRunNativelyOverScalars()
+        => ScalarEmissionTest.EmitFixture(
+            "ArrayOperationsI32",
+            "var values: Array<i32> = []\nvalues@uniq.reserve(additional: 4)\nrequire values.length == 0 and values.capacity >= 4 else => $abort(\"reserve\")\nvalues@uniq.append(1)\nvalues@uniq.insert(0, 2)\nvalues@uniq.append(3)\nlet removed: i32 = values@uniq.remove(0)\nmatch values@uniq.pop()\n    .Some(let last) => require last == 3 else => $abort(\"pop\")\n    .None => $abort(\"empty\")\nvalues@uniq.shrinkToFit()\nrequire removed == 2 and values.length == 1 and values.capacity == 1 else => $abort(\"ops\")\nvalues@uniq.clear()\nmatch values@uniq.pop()\n    .Some(_) => $abort(\"cleared\")\n    .None => ()\nvar flags: Array<bool> = []\nflags@uniq.append(true)\nflags@uniq.append(false)\nrequire flags@uniq.remove(0) and flags.length == 1 else => $abort(\"bool\")\nif flags@uniq.remove(0) => $abort(\"bool\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    // SPEC 4.7.6: removed and popped elements transfer out; clear and destruction destroy the remaining elements in reverse index order.
+    [Fact]
+    public void MutationOperationsDestroyElementsInReverseOrder()
+        => ScalarEmissionTest.EmitFixture(
+            "ArrayOperationsTasks",
+            TaskOperations,
+            "Removed the last task.\nPopped a task.\nTask 3 destroyed.\nClearing.\nTask 2 destroyed.\nTask 1 destroyed.\nDone.\nTask 4 destroyed.\nTask 2 destroyed.\n");
+
+    [Fact]
+    public void MutationOperationsMoveStringElements()
+        => ScalarEmissionTest.EmitFixture(
+            "ArrayOperationsStrings",
+            "var names: Array<string> = []\nnames@uniq.append(\"alpha\")\nnames@uniq.append(\"gamma\")\nnames@uniq.insert(1, \"beta\")\nlet second = names@uniq.remove(1)\nConsole.writeLine(second)\nmatch names@uniq.pop()\n    .Some(let last) => Console.writeLine(last)\n    .None => $abort(\"empty\")\nrequire names.length == 1 else => $abort(\"length\")\nnames@uniq.clear()\nnames@uniq.append(\"delta\")\nConsole.writeLine(\"ok\")",
+            "beta\ngamma\nok\n");
+
+    // SPEC 4.7.1, 4.7.4: invalid positions and a negative reserve amount Abort before the collection changes.
+    [Theory]
+    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "Hello.kimi:4:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n")]
+    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "Hello.kimi:2:15: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n")]
+    [InlineData("NegativeReserve", "var values: Array<i32> = []\nlet n: isize = -1\nvalues@uniq.reserve(n)\nConsole.writeLine(\"after\")", "", "Hello.kimi:3:1: abort KIMI_E_ARGUMENT: Invalid argument value\n")]
+    public void MutationOperationsAbortOnInvalidPositionsAndAmounts(string name, string source, string stdout, string stderr)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, stderr);
 
     [Fact]
     public void MutationOperationsAreValidatedCatalogDeclarations()

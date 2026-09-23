@@ -19,6 +19,7 @@ internal static partial class WindowsLowering
     internal const int IntegerConversionReason = 9;
     internal const int FloatingConversionReason = 11;
     internal const int IndexBoundsReason = 10;
+    internal const int ArgumentReason = 12;
 
     // Indices are stable internal ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -38,6 +39,7 @@ internal static partial class WindowsLowering
         new(IntegerConversionReason, "conversion", "KIMI_E_INT_CONVERSION: Integer conversion out of range"),
         new(IndexBoundsReason, "index_bounds", "KIMI_E_INDEX_BOUNDS: Index out of bounds"),
         new(FloatingConversionReason, "float_conversion", "KIMI_E_FLOAT_CONVERSION: Floating conversion out of range"),
+        new(ArgumentReason, "argument", "KIMI_E_ARGUMENT: Invalid argument value"),
     ];
 
     internal static string ExpandAbortReasons(string runtime)

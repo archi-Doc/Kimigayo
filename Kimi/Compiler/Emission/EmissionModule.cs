@@ -202,6 +202,9 @@ internal sealed class EmissionModule
 
     internal HashSet<AggregateLayout> Aggregates { get; } = new(ReferenceEqualityComparer.Instance);
 
+    /// <summary>Gets the per-element Array helpers requested by lowered bodies (SPEC 4.7.2).</summary>
+    internal List<ArrayHelper> ArrayHelpers { get; } = new();
+
     /// <summary>Gets the generic call entries whose concrete instance is still to be lowered (SPEC 21.3.1); empty once generation succeeds.</summary>
     internal List<GenericStoragePlan.CallEntry> PendingEntries { get; } = new();
 
@@ -229,6 +232,7 @@ internal sealed class EmissionModule
         this.functionCount = 0;
         this.Constants.Clear();
         this.Aggregates.Clear();
+        this.ArrayHelpers.Clear();
         this.PendingEntries.Clear();
         this.Objects.Clear();
         this.Externals.Clear();
@@ -271,3 +275,16 @@ internal sealed class EmissionModule
 
 /// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.8.2.1).</summary>
 internal readonly record struct ExternalFunction(FunctionAbi Abi, bool DllImport);
+
+internal enum ArrayHelperKind : byte
+{
+    Append,
+    Insert,
+    Pop,
+    Remove,
+    Clear,
+    Drop,
+}
+
+/// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option);

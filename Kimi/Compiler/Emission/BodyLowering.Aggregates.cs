@@ -29,6 +29,12 @@ internal sealed partial class BodyLowering
             }
         }
 
+        foreach (var helper in this.arrayHelpers.Values)
+        {
+            module.ArrayHelpers.Add(helper);
+        }
+
+        this.arrayHelpers.Clear();
         this.aggregateLayouts.Clear(); // No bound Types survive into the physical module.
         this.ownedPatternTypes.Clear();
     }
@@ -484,7 +490,15 @@ internal sealed partial class BodyLowering
             return Fail("Conditional Array destruction is not implemented.", out failure);
         }
 
-        function.AddCall(id, WindowsLowering.ArrayFree, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+        // SPEC 4.7.6: elements with cleanup are destroyed in reverse index order before the buffer is released.
+        var arrayType = body.Places[operation.Place].Type;
+        if (arrayType.Kind != BoundTypeKind.Array || !this.TryGetArrayElement(arrayType.Components[0], out var element))
+        {
+            return Fail("Array destruction has an unsupported element Type.", out failure);
+        }
+
+        var callee = element.NeedsDestruction ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+        function.AddCall(id, callee, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
         return true;
     }
 

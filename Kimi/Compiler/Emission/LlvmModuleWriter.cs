@@ -17,6 +17,9 @@ internal static partial class LlvmModuleWriter
         "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
 
     // Fixed profile vocabulary: no per-module tracking or warm declaration construction.
+    // The runtime Array capacity routines and the aggregate helpers copy bytes through these intrinsics.
+    private const string MemoryDeclarations = "declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\ndeclare void @llvm.memmove.p0.p0.i64(ptr nocapture writeonly, ptr nocapture readonly, i64, i1 immarg)\n";
+
     private const string OverflowDeclarations = """
         declare { i8, i1 } @llvm.sadd.with.overflow.i8(i8, i8)
         declare { i8, i1 } @llvm.ssub.with.overflow.i8(i8, i8)
@@ -69,14 +72,13 @@ internal static partial class LlvmModuleWriter
         WriteExternals(module, output);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
-        if (module.Aggregates.Count != 0 || module.TestRuntime is not null)
+        output.Write(MemoryDeclarations);
+        foreach (var aggregate in module.Aggregates)
         {
-            output.Write("declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\n");
-            foreach (var aggregate in module.Aggregates)
-            {
-                WriteAggregateDestructor(output, aggregate);
-            }
+            WriteAggregateDestructor(output, aggregate);
         }
+
+        WriteArrayHelpers(module, output);
 
         if (module.NeedsStringComparison)
         {
