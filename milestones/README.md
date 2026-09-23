@@ -39,6 +39,7 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone22](Milestone22.kimi) | Concrete generic entries, compound layouts, specialization forwarding and distinct destruction operations |
 | [Milestone23](Milestone23.kimi) | Standard/custom/computed Copy Properties, direct storage and assignment evaluation order |
 | [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
+| [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
 
 ## Program status
 
@@ -77,7 +78,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 26 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 27 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 28 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 29 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 29 | YES | NOT_RUN | NOT_RUN | Program authored 2026-09-23; the compiler-supplied `Array<T>` catalog entry is not implemented (P29) |
 | 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 32 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -1318,6 +1319,52 @@ temporary lifetimes and retained witness identity without hidden copies.
 Focus: [Non-Copy setters](../spec/11-properties.md#1124-non-copy-custom-setters),
 [getter temporaries](../spec/11-properties.md#1123-getter-results-and-temporaries),
 and [standard witnesses](../spec/11-properties.md#1142-standard-operation-witnesses).
+
+## Milestone 29: dynamic Array growth, mutation and owning iteration
+
+A typed empty literal has length and capacity zero and allocates nothing. `reserve`
+takes an additional count and never shrinks. `append` and `insert` add Non-Copy
+elements by transfer; `insert(^0, ...)` appends and `remove(^1)` transfers the last
+element out, preserving capacity. Indexed replacement destroys the old element
+before installing the new one, `pop` returns an Option that owns the element, and
+`clear` destroys every element in reverse index order while keeping capacity. The
+owning iteration consumes the Array; leaving the loop early destroys the current
+binding and then the unyielded elements. `last` is destroyed at scope exit.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+No tasks.
+Many tasks.
+Removed the last task.
+Task 1 destroyed.
+Popped a task.
+Task 3 destroyed.
+Two tasks.
+Task 6 destroyed.
+Cleared the spare tasks.
+Iterating task 5.
+Task 5 destroyed.
+Task 2 destroyed.
+Array run finished.
+Task 4 destroyed.
+```
+
+Separate checks: `pop` and `remove(^1)` on an empty Array (`None` and Abort),
+`remove(^0)` and out-of-range `insert`/`remove` indices (Abort), `reserve` within
+capacity and `reserve(additional: 0)` as no-ops that preserve placement, growth
+beyond capacity, `shrinkToFit`, `clear` of an empty Array, a bare read of a
+Non-Copy element (shared, never a Move), `values[i]@move` on an Array (reject), a
+live element or Slice borrow across a mutation (reject), an exclusive mutation
+through a shared receiver (reject), abandonment of an appended argument when an
+earlier argument transfer fails normally, and Abort inside a destructor during
+`clear`. Count internal allocations: none within capacity, on removal, on
+`clear` or for the empty literal; growth is amortized O(1) per `append`.
+
+Focus: [Array operations](../spec/04-arrays-indexing-and-slices.md#472-array-operations),
+[capacity](../spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation),
+[Loans and effects](../spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects)
+and [commit and destruction order](../spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
 
 ### Programs 22–24 authoring verification (2026-09-22)
 
