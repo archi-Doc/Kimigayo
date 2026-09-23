@@ -96,6 +96,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var result = this.Temporary(plan.Finish);
+        this.body.PlaceStorage[result] = this.body.Places[result] with { Source = plan.Root };
         this.SetValue(this.Value(result), OwnershipValueKind.Formatting, [this.Value(reference)], constant: buffer);
         return result;
     }

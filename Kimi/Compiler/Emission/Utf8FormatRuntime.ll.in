@@ -19,6 +19,16 @@ entry:
   ret void
 }
 
+; The compiler proves this temporary is consumed only by the immediately enclosing
+; Console call. Its stack bytes stay live through that call and never have a free.
+define internal void @__kimi_format_stack_finish(ptr %ret, ptr %buffer, ptr %writer, ptr %location, i64 %location_length) #0 {
+entry:
+  call void @__kimi_format_finish(ptr %ret, ptr %buffer, ptr %writer, ptr %location, i64 %location_length)
+  %kindp = getelementptr i8, ptr %ret, i64 16
+  store i8 0, ptr %kindp, align 1
+  ret void
+}
+
 define internal void @__kimi_format_check(ptr %writer, ptr %location, i64 %location_length) #0 {
 entry:
   %failedp = getelementptr i8, ptr %writer, i64 56

@@ -274,7 +274,7 @@ internal sealed partial class BodyLowering
     private bool IsStringStorage(OwnershipPlace place) => this.arrayIterationPlaces[place.Id] != 0 || this.payloadOwners[place.Id] >= 0 || this.decompositionOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
     {
         OwnershipPlaceKind.Local => place.Source is FieldKoto or PropertyKoto or FunctionKoto { BoundClosure.EnvironmentType: not null },
-        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto or DereferenceKoto or FunctionKoto { BoundClosure.EnvironmentType: not null } or FormattingKoto { Operation: FormattingOperation.Finish } || (place.Source is BinaryKoto element && ElementAccess.IsSyntax(element)),
+        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or InterpolatedStringKoto { Formatting: not null } or IdentifierNameKoto or DereferenceKoto or FunctionKoto { BoundClosure.EnvironmentType: not null } || (place.Source is BinaryKoto element && ElementAccess.IsSyntax(element)),
         OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
         _ => false,
     };
@@ -477,6 +477,11 @@ internal sealed partial class BodyLowering
             (operation.Kind == OwnershipOperationKind.Write && invalidPlacement))
         {
             return Fail("String destruction disagrees with the verified placement state.", out failure);
+        }
+
+        if (this.IsStackFormattingBuffer(body.Places[operation.Place]))
+        {
+            return true; // Private stack storage has no release, including on an escaping transfer.
         }
 
         if (this.DestructionPath(body, operation) >= 0)

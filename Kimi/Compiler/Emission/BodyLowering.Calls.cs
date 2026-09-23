@@ -218,6 +218,11 @@ internal sealed partial class BodyLowering
             return false;
         }
 
+        if (writerKind == 1 && call.Parent?.Formatting is { } adapterPlan && ReferenceEquals(call, adapterPlan.Adapter) && this.EstimateFormatting(adapterPlan).Stack)
+        {
+            writerKind = 0;
+        }
+
         var location = -1;
         for (var i = 0; i < callee.Parameters.Length; i++)
         {
@@ -315,7 +320,17 @@ internal sealed partial class BodyLowering
             return Fail("Call result or argument plan does not match its physical ABI.", out failure);
         }
 
-        function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands));
+        if (call.Parent?.Formatting is { } bufferPlan && ReferenceEquals(call, bufferPlan.Heap) && this.EstimateFormatting(bufferPlan) is { Stack: true } stack)
+        {
+            var region = function.FormattingStacks.Count;
+            function.FormattingStacks.Add((int)stack.Capacity);
+            function.AddCall(id, WindowsLowering.GetCompilerFunction(CompilerFunctionKind.TextFixed)!, [this.callOperands[0], new(EmissionOperandKind.FormattingStack, region), this.callOperands[1]]);
+        }
+        else
+        {
+            function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands));
+        }
+
         this.formattingRuntimeUsed |= formatting;
         if (callee.NoReturn)
         {

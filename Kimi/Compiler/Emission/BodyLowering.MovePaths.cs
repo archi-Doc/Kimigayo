@@ -97,6 +97,12 @@ internal sealed partial class BodyLowering
         {
             this.partStarts[id] = this.partDestructions.Count;
             var operation = body.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.Cleanup && operation.Place >= 0 && this.IsStackFormattingBuffer(body.Places[operation.Place]))
+            {
+                this.continuations[id] = -1;
+                continue;
+            }
+
             var path = this.DestructionPath(body, operation);
             if (path >= 0 && body.IsReachable(id))
             {

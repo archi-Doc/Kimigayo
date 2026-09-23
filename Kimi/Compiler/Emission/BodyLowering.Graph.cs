@@ -362,6 +362,7 @@ internal sealed partial class BodyLowering
         }
 
         function.FunctionAddresses.AddRange(this.validation.FunctionAddresses);
+        function.FormattingStacks.AddRange(this.validation.FormattingStacks);
         function.AddScalar(EmissionOpcode.Branch, -1, [new(EmissionOperandKind.Block, 0)]);
         for (var i = 0; i < count; i++)
         {

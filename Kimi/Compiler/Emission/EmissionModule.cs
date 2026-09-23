@@ -98,6 +98,7 @@ internal enum EmissionOperandKind : byte
     EnvironmentAddress,
     CaptureAddress,
     FunctionAddress,
+    FormattingStack,
 }
 
 // Internal managed storage only: 8-byte packing avoids 16-byte tail padding for the tag.
@@ -154,6 +155,8 @@ internal sealed class EmissionFunction
 
     internal List<FunctionAbi> FunctionAddresses { get; } = new();
 
+    internal List<int> FormattingStacks { get; } = new();
+
     internal ReadOnlySpan<EmissionOperand> GetOperands(in EmissionInstruction instruction)
         => CollectionsMarshal.AsSpan(this.Operands).Slice(instruction.OperandStart, instruction.OperandCount);
 
@@ -170,6 +173,7 @@ internal sealed class EmissionFunction
         this.Instructions.Clear();
         this.Operands.Clear();
         this.FunctionAddresses.Clear();
+        this.FormattingStacks.Clear();
     }
 
     internal void Add(EmissionOpcode opcode, int operation, int place = -1, int constant = -1)

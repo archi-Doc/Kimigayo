@@ -73,7 +73,7 @@ Fixed-array fill `[N of value]` is implemented through parsing, Binding, ownersh
 
 #### UTF-8 formatting
 
-The normative profile is integrated; the following execution paths are unit-verified. Bounded Console stack formatting remains in progress.
+The normative profile is integrated; the following execution paths are unit-verified. The remaining work is the effect/allocation audit, milestone coverage and full-session regression verification.
 
 | Area | Verified behavior | Evidence under `bin/verify/` |
 | --- | --- | --- |
@@ -85,6 +85,7 @@ The normative profile is integrated; the following execution paths are unit-veri
 | Text conversions | toString and tryFormat share encoders and user callbacks. Owning conversion transfers validated storage without a final scan/copy; BufferFull aborts with FORMAT. String copying allocates exactly its byte length once (empty: zero). Fixed conversion allocates nothing, retains the exclusive source Loan and preserves completed bytes on failure. | `20260923-145035-unit-utf8-conversions` |
 | Owning interpolation | Ordinary formatter selection, left-to-right evaluation and writes, original temporary lifetimes and escaping returns. Bounded output preallocates once; suffix hints and pending literals cover the single-unbounded-input allocation bound, including empty/no-reservation formatters. Hidden formatter calls participate in reserve-effect checking. 66 related tests and 248 native O0/O2 executions pass; 29 focused interpolation/effect tests pass. | `20260923-154443-unit-utf8-interpolation`, `20260923-155249-unit-utf8-interpolation-effects` |
 | `$tryWrite` | Immediate exclusive acquisition, once-only writer evaluation, literal-only syntax, sticky failure short-circuiting and retained partial output. Plain/raw literals, builtin/user/generic values, nested roots and hints, and original return/exit/yield targets are verified. Direct write/interpolation warnings are independent of Result discard warnings. 106 related tests and 24 native O0/O2 executions pass. | `20260923-161339-unit-utf8-try-write` |
+| Console stack formatting | Direct bounded interpolation uses an exact stack region up to 1,024 bytes, including concrete generic values. The i64 example uses 33 bytes and no heap allocation. Limit boundaries, repeated/conditional execution, early return without output or stack release, and user temporary destruction pass allocation counters. Interpolated temporary views retain their original lifetime. 34 related tests and 16 native O0/O2 executions pass. | `20260923-162210-unit-utf8-console-stack` |
 
 Library destructors are collected through owned storage types; missing destructor code cannot silently become trivial cleanup. These unit results do not yet certify the complete formatting profile or a new full-session baseline.
 

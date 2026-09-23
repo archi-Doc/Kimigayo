@@ -301,6 +301,14 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
         }
 
+        for (var i = 0; i < function.FormattingStacks.Count; i++)
+        {
+            Name(output, "  %formatBytes", i);
+            output.Write(" = alloca [");
+            WriteNumber(output, function.FormattingStacks[i]);
+            output.Write(" x i8], align 1\n");
+        }
+
         foreach (var path in function.PathFlags)
         {
             Name(output, "  %pathSlot", path);
@@ -574,6 +582,9 @@ internal static partial class LlvmModuleWriter
                 case EmissionOperandKind.FunctionAddress:
                     output.Write('@');
                     output.Write((function ?? throw new InvalidOperationException("Function address without a containing function.")).FunctionAddresses[(int)operand.Value].Name);
+                    break;
+                case EmissionOperandKind.FormattingStack:
+                    Name(output, "%formatBytes", (int)operand.Value);
                     break;
                 case EmissionOperandKind.ConstantLength:
                     WriteNumber(output, constants[(int)operand.Value].ByteLength);

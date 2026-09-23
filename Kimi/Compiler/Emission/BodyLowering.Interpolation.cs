@@ -7,10 +7,12 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    private const int FormattingStackLimit = 1024;
     private static readonly FunctionAbi CheckFormatting = new("__kimi_format_check", "void", [new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
     private static readonly FunctionAbi HintFormatting = new("__kimi_format_hint", "void", [new("ptr", "writer"), new("i64", "hint")]);
     private static readonly FunctionAbi StatusFormatting = new("__kimi_format_healthy", "i1", [new("ptr", "writer")]);
     private static readonly FunctionAbi FinishFormatting = new("__kimi_format_finish", "void", [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
+    private static readonly FunctionAbi FinishStackFormatting = new("__kimi_format_stack_finish", "void", FinishFormatting.Parameters);
     private static readonly FunctionAbi LiteralFormatting = new("__kimi_format_literal", "void", WindowsLowering.GetCompilerFunction(CompilerFunctionKind.WriterWrite)!.Parameters, resultSlot: true);
     private readonly Dictionary<BoundFormatting, FormattingEstimate> formattingEstimates = new(ReferenceEqualityComparer.Instance);
 
@@ -70,7 +72,7 @@ internal sealed partial class BodyLowering
                     return Fail("Formatting completion requires its initialized private buffer.", out failure);
                 }
 
-                function.AddCall(id, FinishFormatting, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.SlotAddress, buffer), this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.ConstantAddress, finishLocation), new(EmissionOperandKind.ConstantLength, finishLocation)]);
+                function.AddCall(id, this.EstimateFormatting(plan).Stack ? FinishStackFormatting : FinishFormatting, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.SlotAddress, buffer), this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.ConstantAddress, finishLocation), new(EmissionOperandKind.ConstantLength, finishLocation)]);
                 return true;
             default:
                 return Fail("Unsupported formatting root operation.", out failure);
@@ -104,7 +106,10 @@ internal sealed partial class BodyLowering
             total += amount;
         }
 
-        estimate = new(bounded && total >= 0 ? total : 0, hints);
+        var stack = bounded && total is >= 0 and <= FormattingStackLimit && plan.Root is InterpolatedStringKoto &&
+            plan.Root.Parent is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.WriteLine } console &&
+            console.ArgumentNodes.Count == 1 && ReferenceEquals(console.ArgumentNodes[0], plan.Root);
+        estimate = new(bounded && total >= 0 ? total : 0, hints, stack);
         this.formattingEstimates.Add(plan, estimate);
         return estimate;
     }
@@ -126,5 +131,8 @@ internal sealed partial class BodyLowering
             ReferenceEquals(type, BoundType.Char) ? 4 : ReferenceEquals(type, BoundType.Boolean) ? 5 : ReferenceEquals(type, BoundType.Unit) ? 2 : -1;
     }
 
-    private sealed record FormattingEstimate(long Capacity, long[] Hints);
+    private bool IsStackFormattingBuffer(OwnershipPlace place)
+        => place.Source is InvocationKoto { Parent.Formatting: { } plan } call && ReferenceEquals(call, plan.Heap) && this.EstimateFormatting(plan).Stack;
+
+    private sealed record FormattingEstimate(long Capacity, long[] Hints, bool Stack);
 }

@@ -304,6 +304,8 @@ Preserve `BufferFull`, explicit Aborts, argument checks and actual-size checks, 
 
 For a directly passed, bounded interpolated literal within an implementation-defined stack limit, lowering may use a fixed stack region of exactly the estimated size. It needs no fill or UTF-8 scan, and cannot overflow, fall back to a heap path or repeat evaluation. Complete all formatting before output; formatting failure emits no body. Expression Aborts/control transfers and subsequent OS partial-output errors retain their normal behavior. Larger or unbounded interpolation uses the owning path.
 
+The Windows x64 profile uses a 1,024-byte limit, including all literal bytes and value maxima. The same rule applies after generic substitution. Stack storage has no release operation, including when an embedded expression leaves the enclosing function or control-flow construct.
+
 ```kimi
 func printNumber(n: i64) -> Result<(), BufferFull>
     var scratch: [64 of u8] = [64 of 0]
