@@ -41,6 +41,12 @@ public sealed partial class Binding
                 schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
             }
 
+            if (node.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer && schema.Origins.Count == 1)
+            {
+                schema.Origins[0].Variance = OriginVariance.Covariant;
+                schema.Origins[0].LoanRequirement = LoanRequirement.Uniq;
+            }
+
             if (!this.originRequirementNodes.TryGetValue(node, out var work))
             {
                 this.originRequirementNodes.Add(node, work = new(node, schema));

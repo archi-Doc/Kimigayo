@@ -155,6 +155,7 @@ public sealed partial class Binding
             this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
             this.scopes[this.Library.Console] = this.Library.ConsoleScope;
             this.scopes[this.Library.Test] = this.Library.TestScope;
+            this.scopes[this.Library.Text] = this.Library.TextScope;
             this.indexer.Scope = this.Library.Scope;
             var libraryRoot = this.Library.Kotonoha.RootKoto;
             for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)

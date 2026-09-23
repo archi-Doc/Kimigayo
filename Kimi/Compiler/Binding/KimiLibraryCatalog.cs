@@ -9,6 +9,11 @@ internal enum KimiLibraryContainer : byte
     Intrinsics,
     Test,
     Array,
+    Text,
+    FixedBuffer,
+    HeapBuffer,
+    WriteWindow,
+    Utf8Writer,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
@@ -19,7 +24,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Copy, "Copy", Intrinsic: IntrinsicKind.Copy),
         new(KimiDeclarationId.Owned, "Owned", Intrinsic: IntrinsicKind.Owned),
         new(KimiDeclarationId.Callable, "Callable", Intrinsic: IntrinsicKind.Callable),
-        new(KimiDeclarationId.WriteLine, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLine),
+        new(KimiDeclarationId.WriteLine, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLine, Overload: 0),
         new(KimiDeclarationId.TestTempDirectory, "tempDirectory", KimiLibraryContainer.Test, Function: CompilerFunctionKind.TestTempDirectory),
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
@@ -29,7 +34,6 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.ResolvedRange, "ResolvedRange", SourceExpected: false),
         new(KimiDeclarationId.Slice, "Slice"),
         new(KimiDeclarationId.Dictionary, "Dictionary", SourceExpected: false),
-        new(KimiDeclarationId.Stringify, "Stringify", SourceExpected: false),
         new(KimiDeclarationId.Equatable, "Equatable", SourceExpected: false),
         new(KimiDeclarationId.Comparable, "Comparable", SourceExpected: false),
         new(KimiDeclarationId.Iterator, "Iterator"),
@@ -57,6 +61,42 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
         new(KimiDeclarationId.ArrayInsertIndex, "insert", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsertIndex, Overload: 1),
         new(KimiDeclarationId.ArrayRemoveIndex, "remove", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemoveIndex, Overload: 1),
+        new(KimiDeclarationId.Utf8Format, "Utf8Format"),
+        new(KimiDeclarationId.BufferWriter, "BufferWriter"),
+        new(KimiDeclarationId.BufferFull, "BufferFull"),
+        new(KimiDeclarationId.WriteWindow, "WriteWindow"),
+        new(KimiDeclarationId.Utf8Writer, "Utf8Writer"),
+        new(KimiDeclarationId.FixedBuffer, "FixedBuffer", KimiLibraryContainer.Text),
+        new(KimiDeclarationId.HeapBuffer, "HeapBuffer", KimiLibraryContainer.Text),
+        new(KimiDeclarationId.Utf8Slice, "Utf8Slice", KimiLibraryContainer.Text),
+        new(KimiDeclarationId.InvalidUtf8, "InvalidUtf8", KimiLibraryContainer.Text),
+        new(KimiDeclarationId.TextFixed, "fixed", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextFixed),
+        new(KimiDeclarationId.TextHeap, "heap", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextHeap),
+        new(KimiDeclarationId.TextWriter, "writer", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextWriter),
+        new(KimiDeclarationId.TextUtf8, "utf8", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextUtf8),
+        new(KimiDeclarationId.TextValidateUtf8, "validateUtf8", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextValidateUtf8),
+        new(KimiDeclarationId.TextToString, "toString", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextToString),
+        new(KimiDeclarationId.TextTryFormat, "tryFormat", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextTryFormat),
+        new(KimiDeclarationId.TextRelease, "release", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextRelease),
+        new(KimiDeclarationId.FixedBufferBytes, "bytes", KimiLibraryContainer.FixedBuffer, Function: CompilerFunctionKind.FixedBufferBytes),
+        new(KimiDeclarationId.FixedBufferText, "text", KimiLibraryContainer.FixedBuffer, Function: CompilerFunctionKind.FixedBufferText),
+        new(KimiDeclarationId.FixedBufferValidate, "validate", KimiLibraryContainer.FixedBuffer, Function: CompilerFunctionKind.FixedBufferValidate),
+        new(KimiDeclarationId.FixedBufferClear, "clear", KimiLibraryContainer.FixedBuffer, Function: CompilerFunctionKind.FixedBufferClear),
+        new(KimiDeclarationId.FixedBufferReserve, "reserve", KimiLibraryContainer.FixedBuffer, Function: CompilerFunctionKind.FixedBufferReserve),
+        new(KimiDeclarationId.FixedBufferIntoText, "intoText", KimiLibraryContainer.FixedBuffer, Function: CompilerFunctionKind.FixedBufferIntoText),
+        new(KimiDeclarationId.HeapBufferBytes, "bytes", KimiLibraryContainer.HeapBuffer, Function: CompilerFunctionKind.HeapBufferBytes),
+        new(KimiDeclarationId.HeapBufferText, "text", KimiLibraryContainer.HeapBuffer, Function: CompilerFunctionKind.HeapBufferText),
+        new(KimiDeclarationId.HeapBufferValidate, "validate", KimiLibraryContainer.HeapBuffer, Function: CompilerFunctionKind.HeapBufferValidate),
+        new(KimiDeclarationId.HeapBufferClear, "clear", KimiLibraryContainer.HeapBuffer, Function: CompilerFunctionKind.HeapBufferClear),
+        new(KimiDeclarationId.HeapBufferReserve, "reserve", KimiLibraryContainer.HeapBuffer, Function: CompilerFunctionKind.HeapBufferReserve),
+        new(KimiDeclarationId.HeapBufferIntoString, "intoString", KimiLibraryContainer.HeapBuffer, Function: CompilerFunctionKind.HeapBufferIntoString),
+        new(KimiDeclarationId.WindowPush, "push", KimiLibraryContainer.WriteWindow, Function: CompilerFunctionKind.WindowPush),
+        new(KimiDeclarationId.WindowAppend, "append", KimiLibraryContainer.WriteWindow, Function: CompilerFunctionKind.WindowAppend),
+        new(KimiDeclarationId.WindowLimit, "limit", KimiLibraryContainer.WriteWindow, Function: CompilerFunctionKind.WindowLimit),
+        new(KimiDeclarationId.WindowCommit, "commit", KimiLibraryContainer.WriteWindow, Function: CompilerFunctionKind.WindowCommit),
+        new(KimiDeclarationId.WriterWrite, "write", KimiLibraryContainer.Utf8Writer, Function: CompilerFunctionKind.WriterWrite),
+        new(KimiDeclarationId.WriterStatus, "status", KimiLibraryContainer.Utf8Writer, Function: CompilerFunctionKind.WriterStatus),
+        new(KimiDeclarationId.WriteLineUtf8, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLineUtf8, Overload: 1),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -87,6 +127,6 @@ internal static class KimiLibraryCatalog
 
     internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1)
     {
-        internal bool IsFunction => this.Container != KimiLibraryContainer.Root;
+        internal bool IsFunction => this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics;
     }
 }

@@ -13,6 +13,7 @@ public sealed partial class KimiLibrary
 {
     private readonly KimiDeclaration[] declarations;
     private readonly BindingSymbol[] registeredSymbols;
+    private readonly Dictionary<KimiLibraryContainer, BindingScope> formattingScopes = new();
 
     internal KimiLibrary(Compilation compilation)
     {
@@ -29,13 +30,25 @@ public sealed partial class KimiLibrary
         this.Test = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Test", TokenKind.Group, context, default);
         this.TestScope = new(this.Test) { Parent = this.Scope };
         this.TestSymbol = new("Test", BindingSymbolKind.Container, this.Test, this.Scope);
+        this.Text = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Text", TokenKind.Group, context, default);
+        this.TextScope = new(this.Text) { Parent = this.Scope };
+        this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
+        this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
+        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.WriteWindow, KimiLibraryContainer.Utf8Writer })
+        {
+            if (this.FormattingContainer(kind) is { } container)
+            {
+                this.formattingScopes.Add(kind, new(container) { Parent = kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer ? this.TextScope : this.Scope });
+            }
+        }
+
         // Array operation signatures are members of the Array struct; recognition finds them through this owner scope,
         // and indexing later gives their symbols the struct's ordinary member scope.
         this.ArrayScope = FindDeclaration(this.Kotonoha.RootKoto, "Array", false) is DeclarationContainerKoto array ? new(array) { Parent = this.Scope } : this.Scope;
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
-        var symbolCount = 3;
+        var symbolCount = 4;
         for (var i = 0; i < entries.Length; i++)
         {
             ref readonly var entry = ref entries[i];
@@ -45,7 +58,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Intrinsics => this.IntrinsicsScope,
                 KimiLibraryContainer.Test => this.TestScope,
                 KimiLibraryContainer.Array => this.ArrayScope,
-                _ => this.Scope,
+                _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
             };
             var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload);
             BindingSymbol? symbol = null;
@@ -55,6 +68,7 @@ public sealed partial class KimiLibrary
                 {
                     Intrinsic = entry.Intrinsic,
                     CompilerFunction = entry.Function,
+                    LibraryDeclaration = entry.Id,
                 };
                 declaration.BoundSymbol = symbol;
                 declaration.BindingState = BindingState.Resolved;
@@ -86,7 +100,8 @@ public sealed partial class KimiLibrary
         this.registeredSymbols[0] = this.ConsoleSymbol;
         this.registeredSymbols[1] = this.IntrinsicsSymbol;
         this.registeredSymbols[2] = this.TestSymbol;
-        var symbolIndex = 3;
+        this.registeredSymbols[3] = this.TextSymbol;
+        var symbolIndex = 4;
         if (this.SliceIterator is { } sliceIterator)
         {
             this.registeredSymbols[symbolIndex++] = sliceIterator;
@@ -177,6 +192,12 @@ public sealed partial class KimiLibrary
 
     internal BindingSymbol ConsoleSymbol { get; }
 
+    internal GroupKoto Text { get; }
+
+    internal BindingScope TextScope { get; }
+
+    internal BindingSymbol TextSymbol { get; }
+
     // A compiler-only call identity, never entered into Kimi or source name lookup.
     internal BindingSymbol Abort { get; }
 
@@ -216,7 +237,7 @@ public sealed partial class KimiLibrary
         // registered. Their source members and all ordinary helpers use normal indexing.
         foreach (var symbol in this.registeredSymbols)
         {
-            if (symbol.Intrinsic != IntrinsicKind.None || symbol.Kind == BindingSymbolKind.Container)
+            if (symbol.Intrinsic != IntrinsicKind.None || (symbol.Kind == BindingSymbolKind.Container && !ReferenceEquals(symbol, this.TextSymbol)))
             {
                 this.Scope.Types.Add(symbol.Name, symbol);
                 symbol.Declaration.BoundSymbol = symbol;
@@ -227,6 +248,7 @@ public sealed partial class KimiLibrary
         this.IntrinsicsScope.Reset();
         this.ConsoleScope.Reset();
         this.TestScope.Reset();
+        this.TextScope.Reset();
         this.Kotonoha.RootKoto.BoundSymbol = this.Module;
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }

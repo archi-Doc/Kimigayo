@@ -64,6 +64,12 @@ public sealed partial class Binding
             return true;
         }
 
+        if (type.Semantics == SemanticsKind.Owner && type.Symbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer)
+        {
+            result = ConstraintProof.Refuted; // Verified raw storage retains an exclusive external dependency.
+            return true;
+        }
+
         if (type.Kind == BoundTypeKind.ResolvedRange || (type.Kind == BoundTypeKind.Slice && kind == IntrinsicKind.Copy))
         {
             result = kind == IntrinsicKind.Copy || type.Kind == BoundTypeKind.ResolvedRange ? ConstraintProof.Proven : ConstraintProof.Refuted;

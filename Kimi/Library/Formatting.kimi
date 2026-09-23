@@ -1,0 +1,56 @@
+// UTF-8 formatting declarations; physical operations are compiler implementations.
+public struct BufferFull
+    Self is Copy
+    public init() => ()
+
+public contract BufferWriter
+    func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+
+public contract Utf8Format
+    func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+
+public struct WriteWindow {source}
+    let state: unsafe/u8
+    let start: isize
+    public let written: isize
+    public let remaining: isize
+
+public struct Utf8Writer {target}
+    let destination: unsafe/u8
+    let dispatch: unsafe/u8
+    let kind: isize
+    let failed: bool
+    let hint: isize
+    let pending: unsafe/u8
+    let pendingLength: isize
+    let logicalLength: isize
+
+public group Text
+    public struct InvalidUtf8
+        Self is Copy
+        public init() => ()
+
+    public struct FixedBuffer {source}
+        Self is BufferWriter
+        let data: unsafe/u8
+        public let capacity: isize
+        public let length: isize
+        let validated: isize
+
+    public struct HeapBuffer
+        Self is BufferWriter
+        let data: unsafe/u8
+        public let capacity: isize
+        public let length: isize
+        let validated: isize
+        deinit => Text.release(self.data)
+
+    public struct Utf8Slice {source}
+        Self is Copy
+        let value: Slice<u8>{bytes}
+            origin bytes.source == source
+        public computed length: isize
+            get() -> isize => self.value.length
+        public func bytes(self: Self) -> Slice<u8>{r}
+            origin r.source == self.source
+            return self.value

@@ -1,0 +1,14 @@
+// Compiler-implemented operations loaded into Kimi.Text.
+public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer
+public func heap(capacity: isize) -> HeapBuffer
+public func writer<W>(destination: uniq/W) -> Utf8Writer
+    W is BufferWriter
+public func utf8(text: ref/string) -> Utf8Slice
+public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice{r}, InvalidUtf8>
+    origin r.source == bytes.source
+public func toString<T>(value: ref/T) -> string
+    T is Utf8Format
+public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice{r}, BufferFull>
+    T is Utf8Format
+    origin r.source == destination
+private func release(data: unsafe/u8)

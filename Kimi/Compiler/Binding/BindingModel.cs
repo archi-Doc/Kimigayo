@@ -152,6 +152,8 @@ public sealed class BindingSymbol
     /// <summary>Gets the instance receiver's parameter slot, or -1 for ordinary/type functions.</summary>
     public int ReceiverIndex { get; internal set; } = -1;
 
+    internal KimiDeclarationId? LibraryDeclaration { get; init; }
+
     internal List<BoundOrigin>? AggregateInputOrigins { get; set; }
 
     internal BoundType? WholeType { get; set; }

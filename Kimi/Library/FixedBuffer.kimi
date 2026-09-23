@@ -1,0 +1,8 @@
+// Compiler-implemented operations loaded into Kimi.Text.FixedBuffer.
+public func bytes(self: ref/Self) -> Slice<u8>
+public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>
+public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>
+public func clear(self: uniq/Self)
+public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+public func intoText(self: owner/Self) -> Result<Text.Utf8Slice{r}, Text.InvalidUtf8>
+    origin r.source == self.source

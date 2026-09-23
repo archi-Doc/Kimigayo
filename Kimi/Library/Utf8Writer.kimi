@@ -1,0 +1,4 @@
+// Compiler-implemented operations loaded into Kimi.Utf8Writer.
+public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>
+    T is Utf8Format
+public func status(self: ref/Self) -> Result<(), BufferFull>

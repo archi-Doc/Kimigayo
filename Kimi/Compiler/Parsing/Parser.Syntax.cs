@@ -210,6 +210,11 @@ public static partial class Parser
             _ = ParseRequiredExpression(ref reader);
         }
 
+        ParseSignatureClauses(ref reader, function);
+    }
+
+    internal static void ParseSignatureClauses(ref TokenReader reader, FunctionKoto function)
+    {
         if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             return;

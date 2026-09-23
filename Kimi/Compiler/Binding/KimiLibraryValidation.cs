@@ -37,6 +37,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Array => this.ValidArray(symbol),
                         KimiDeclarationId.Index => this.ValidIndex(symbol),
                         >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex => this.ValidArrayOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
                 state = matches ? KimiDeclarationState.Validated : KimiDeclarationState.Invalid;

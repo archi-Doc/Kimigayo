@@ -17,6 +17,12 @@ public sealed partial class KimiLibrary
             Read("Iterator.kimi"),
             Read("Slice.kimi"),
             Read("Array.kimi"),
+            Read("Formatting.kimi"),
+            Read("Text.kimi", KimiLibraryContainer.Text, signatures: true),
+            Read("FixedBuffer.kimi", KimiLibraryContainer.FixedBuffer, signatures: true),
+            Read("HeapBuffer.kimi", KimiLibraryContainer.HeapBuffer, signatures: true),
+            Read("WriteWindow.kimi", KimiLibraryContainer.WriteWindow, signatures: true),
+            Read("Utf8Writer.kimi", KimiLibraryContainer.Utf8Writer, signatures: true),
             Read("ArrayOperations.kimi", KimiLibraryContainer.Array, signatures: true),
             Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
             Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),
@@ -71,6 +77,13 @@ public sealed partial class KimiLibrary
         }
     }
 
+    private DeclarationContainerKoto? FormattingContainer(KimiLibraryContainer kind)
+        => kind == KimiLibraryContainer.Text ? this.Text :
+            kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer
+                ? FindDeclaration(this.Text, kind.ToString(), false) as DeclarationContainerKoto :
+            kind is KimiLibraryContainer.WriteWindow or KimiLibraryContainer.Utf8Writer
+                ? FindDeclaration(this.Kotonoha.RootKoto, kind.ToString(), false) as DeclarationContainerKoto : null;
+
     private void LoadSources()
     {
         foreach (var source in Sources.All)
@@ -81,7 +94,8 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Intrinsics => this.Intrinsics,
                 KimiLibraryContainer.Test => this.Test,
                 KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array", false) as DeclarationContainerKoto, // Array.kimi is read first.
-                _ => this.Kotonoha.RootKoto,
+                KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
+                _ => this.FormattingContainer(source.Container),
             };
             if (container is null)
             {
@@ -125,6 +139,12 @@ public sealed partial class KimiLibrary
             if (declaration is null)
             {
                 break;
+            }
+
+            Parser.ParseSignatureClauses(ref reader, declaration);
+            if (container is StructKoto)
+            {
+                Parser.ValidateReceiverParameters(declaration);
             }
 
             container.AddLast(declaration);
