@@ -292,6 +292,8 @@ internal enum ArrayHelperKind : byte
     Place,
     Clear,
     Drop,
+    Take,
+    IteratorDrop,
 }
 
 /// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>

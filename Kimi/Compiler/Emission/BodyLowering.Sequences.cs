@@ -30,7 +30,7 @@ internal sealed partial class BodyLowering
             BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
             // A bare array Place iterates through its implicit Slice, whose temporary is sourced by the loop itself.
             ForKoto { SharedIterable: not null } loop => plan.Kind == SequenceOperation.Slice ? ElementAccess.ValueSource(loop.Iterable) : loop,
-            ForKoto loop when plan.Kind is SequenceOperation.Start or SequenceOperation.End or SequenceOperation.ArrayRead or SequenceOperation.Borrow => ElementAccess.ValueSource(loop.Iterable),
+            ForKoto loop when plan.Kind is SequenceOperation.Start or SequenceOperation.End or SequenceOperation.ArrayRead or SequenceOperation.Borrow or SequenceOperation.ArrayIterator or SequenceOperation.ArrayMoveRead => ElementAccess.ValueSource(loop.Iterable),
             _ => null,
         };
         var receiverPlace = body.Places[plan.Receiver];
@@ -104,6 +104,45 @@ internal sealed partial class BodyLowering
 
             receiver = SignatureType(this, body.Operations[projection.Operation].Source.BoundType)!;
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
+        }
+
+        if (plan.Kind is SequenceOperation.ArrayIterator or SequenceOperation.ArrayMoveRead)
+        {
+            var initialization = this.arrayIterators[plan.Receiver];
+            if (borrowedArray || receiver.Kind != BoundTypeKind.Array || plan.Projection != -1 || plan.End != -1 || plan.Element != -1 ||
+                operation.Source is not ForKoto { SharedIterable: null, IsTupleBinding: false } || initialization < 0 ||
+                !ReferenceEquals(body.Operations[initialization].Source, operation.Source) ||
+                !this.TryGetArrayElement(receiver.Components[0], out var item) ||
+                !this.TryGetLocation(operation.Source, directory, constants, out var iteratorLocation))
+            {
+                return Fail("Array iteration requires its acquired owning handle and element layout.", out failure);
+            }
+
+            this.arrayRuntimeUsed = true;
+            if (plan.Kind == SequenceOperation.ArrayIterator)
+            {
+                if (initialization != id || plan.Index != -1 || !ReferenceEquals(ValueType(body, id), BoundType.Unit))
+                {
+                    return Fail("Array iterator initialization has an invalid result or cursor.", out failure);
+                }
+
+                function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, 0)], op: "ArrayIterator");
+                return true;
+            }
+
+            if (!ReferenceEquals(ValueType(body, id), item.Type) || (uint)plan.Index >= (uint)id ||
+                !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
+                (body.IsReachable(id) && (!this.Dominates(initialization, id) || !this.Dominates(plan.Index, id))))
+            {
+                return Fail("Array iteration must initialize its cursor before taking an element.", out failure);
+            }
+
+            var take = this.GetArrayHelper(ArrayHelperKind.Take, item).Abi;
+            ReadOnlySpan<EmissionOperand> arguments = item.IsScalar
+                ? [address, new(EmissionOperandKind.ConstantAddress, iteratorLocation), new(EmissionOperandKind.ConstantLength, iteratorLocation)]
+                : [address, new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, iteratorLocation), new(EmissionOperandKind.ConstantLength, iteratorLocation)];
+            function.AddCall(id, take, arguments);
+            return true;
         }
 
         if (plan.Kind == SequenceOperation.Borrow)

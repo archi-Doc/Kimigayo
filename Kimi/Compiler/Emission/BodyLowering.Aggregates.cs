@@ -515,7 +515,13 @@ internal sealed partial class BodyLowering
             return Fail("Array destruction has an unsupported element Type.", out failure);
         }
 
-        var callee = element.NeedsDestruction ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+        var iterator = this.arrayIterators[operation.Place];
+        if (iterator >= 0 && body.IsReachable(id) && !this.Dominates(iterator, id))
+        {
+            return Fail("Array iterator cleanup requires its initialized cursor.", out failure);
+        }
+
+        var callee = element.NeedsDestruction ? this.GetArrayHelper(iterator >= 0 ? ArrayHelperKind.IteratorDrop : ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
         function.AddCall(id, callee, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
         return true;
     }

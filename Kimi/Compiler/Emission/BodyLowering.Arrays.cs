@@ -11,6 +11,46 @@ internal sealed partial class BodyLowering
 {
     private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar), ArrayHelper> arrayHelpers = new();
     private bool arrayRuntimeUsed;
+    private int[] arrayIterators = [];
+    private int[] arrayIterationPlaces = [];
+
+    private bool PrepareArrayIterators(OwnershipBody body, out string? failure)
+    {
+        failure = null;
+        Grow(ref this.arrayIterators, body.Places.Count);
+        this.arrayIterators.AsSpan(0, body.Places.Count).Fill(-1);
+        Grow(ref this.arrayIterationPlaces, body.Places.Count);
+        this.arrayIterationPlaces.AsSpan(0, body.Places.Count).Clear();
+        foreach (var sequence in body.Sequences)
+        {
+            if (sequence.Kind == SequenceOperation.ArrayMoveRead && (uint)sequence.Operation < (uint)body.Operations.Count &&
+                body.Operations[sequence.Operation] is { Kind: OwnershipOperationKind.Produce, Source: ForKoto { Bindings.Count: 1 } loop } produce &&
+                (uint)produce.Place < (uint)body.Places.Count)
+            {
+                this.arrayIterationPlaces[produce.Place] = 1;
+                if (loop.Bindings[0].BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var binding))
+                {
+                    this.arrayIterationPlaces[binding] = 1;
+                }
+            }
+
+            if (sequence.Kind != SequenceOperation.ArrayIterator)
+            {
+                continue;
+            }
+
+            if ((uint)sequence.Receiver >= (uint)body.Places.Count || (uint)sequence.Operation >= (uint)body.Operations.Count ||
+                this.arrayIterators[sequence.Receiver] >= 0 || body.Places[sequence.Receiver] is not { Kind: OwnershipPlaceKind.Temporary, Type.Kind: BoundTypeKind.Array } ||
+                body.Operations[sequence.Operation].Source is not ForKoto { SharedIterable: null, IsTupleBinding: false })
+            {
+                return Fail("An owning Array iterator requires a private acquired handle.", out failure);
+            }
+
+            this.arrayIterators[sequence.Receiver] = sequence.Operation;
+        }
+
+        return true;
+    }
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
     {
@@ -76,6 +116,8 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.RemoveIndex => "__kimi_array_remove_index_",
             ArrayHelperKind.Place => "__kimi_array_place_",
             ArrayHelperKind.Clear => "__kimi_array_clear_",
+            ArrayHelperKind.Take => "__kimi_array_take_",
+            ArrayHelperKind.IteratorDrop => "__kimi_array_iterator_drop_",
             _ => "__kimi_array_drop_",
         };
         var name = prefix + suffix;
@@ -91,6 +133,9 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Insert or ArrayHelperKind.InsertIndex => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
             ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.Place => new(name, unit, [handle, new("ptr", "source"), location, length]),
+            ArrayHelperKind.Take => element.IsScalar
+                ? new(name, element.Value.ComputationType, [handle, location, length])
+                : new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
             ArrayHelperKind.Remove or ArrayHelperKind.RemoveIndex => element.IsScalar
                 ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
                 : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),

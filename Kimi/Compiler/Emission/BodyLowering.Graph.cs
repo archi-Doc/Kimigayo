@@ -80,7 +80,7 @@ internal sealed partial class BodyLowering
         }
 
         this.PrepareConversions(body);
-        if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure))
+        if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure) || !this.PrepareArrayIterators(body, out failure))
         {
             return false;
         }

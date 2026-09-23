@@ -129,8 +129,15 @@ public sealed partial class OwnershipAnalysis
     {
         var shared = source.SharedIterable;
         var array = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
+        var dynamicArray = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.Array;
         var slice = shared is not null || source.Iterable.BoundType?.Kind == BoundTypeKind.Slice;
-        var element = slice ? source.Bindings[0].BoundType! : array ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
+        var element = slice ? source.Bindings[0].BoundType! : array || dynamicArray ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
+        if (dynamicArray && (source.IsTupleBinding || !this.SupportsType(element) || this.compilation.Binding.ProveOwned(element, source) != ConstraintProof.Proven))
+        {
+            this.Unsupported(source);
+            return;
+        }
+
         if (array && (!this.SupportsType(element) || this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven))
         {
             this.Unsupported(source);
@@ -158,6 +165,11 @@ public sealed partial class OwnershipAnalysis
         }
 
         var localMark = this.locals.Count;
+        if (dynamicArray)
+        {
+            this.SequenceValue(source, BoundType.Unit, SequenceOperation.ArrayIterator, iterable);
+        }
+
         var cursor = this.Place(source, BoundType.ISize, OwnershipPlaceKind.Local, true);
         this.locals.Add(new(cursor, source, this.registrationSequence++));
         this.Emit(OwnershipOperationKind.Declare, source, cursor);
@@ -177,8 +189,8 @@ public sealed partial class OwnershipAnalysis
         var bindingMark = this.locals.Count;
         this.loops.Add(new(source, head, exit, bindingMark, this.temporaries.Count, Comparisons: this.comparisonDepth));
         // Each slot has the ordinary iteration lifetime, including unnamed slots.
-        // Supported array elements are Copy, so component acquisition needs no
-        // whole-Tuple temporary; the source iterator snapshot still owns the array.
+        // Fixed-array elements are Copy; the owning Array iterator instead transfers
+        // one element before the body and keeps responsibility only for its remaining tail.
         for (var slot = 0; slot < source.Bindings.Count; slot++)
         {
             var name = source.Bindings[slot];
@@ -187,7 +199,11 @@ public sealed partial class OwnershipAnalysis
             this.locals.Add(new(binding, name, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, name, binding);
             int item;
-            if (array)
+            if (dynamicArray)
+            {
+                item = this.SequenceValue(source, slotType, SequenceOperation.ArrayMoveRead, iterable, index: this.Value(current));
+            }
+            else if (array)
             {
                 item = this.SequenceValue(source, slotType, SequenceOperation.ArrayRead, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
             }

@@ -59,7 +59,7 @@ public sealed partial class Binding
         }
 
         var view = source.SharedIterable ?? iterable;
-        var element = view?.Kind == BoundTypeKind.FixedArray ? view.Components[0] : view?.Kind == BoundTypeKind.Slice
+        var element = view?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? view.Components[0] : view?.Kind == BoundTypeKind.Slice
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : BoundType.ISize;
         var result = this.BeginResult(source, scope, BoundType.Unit);
         var duplicate = false;
@@ -83,7 +83,8 @@ public sealed partial class Binding
             return Fail(source, BindingFailure.TypeMismatch);
         }
 
-        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice))
+        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) ||
+            (iterable.Kind == BoundTypeKind.Array && IsBarePlace(source.Iterable)))
         {
             return Fail(source, BindingFailure.Unsupported);
         }

@@ -155,11 +155,14 @@ internal static partial class LlvmModuleWriter
                 case ArrayHelperKind.RemoveIndex:
                     WriteArrayRemove(output, helper);
                     break;
+                case ArrayHelperKind.Take:
+                    WriteArrayRemove(output, helper, iterator: true);
+                    break;
                 case ArrayHelperKind.Place:
                     WriteArrayPlace(output, helper);
                     break;
                 default:
-                    WriteArrayClear(output, helper, helper.Kind == ArrayHelperKind.Drop);
+                    WriteArrayClear(output, helper, helper.Kind is ArrayHelperKind.Drop or ArrayHelperKind.IteratorDrop);
                     break;
             }
 
@@ -212,9 +215,14 @@ internal static partial class LlvmModuleWriter
     }
 
     // Requires 0 <= index < length, moves the element out and shifts the tail down (SPEC 4.7.2).
-    private static void WriteArrayRemove(TextWriter output, ArrayHelper helper)
+    private static void WriteArrayRemove(TextWriter output, ArrayHelper helper, bool iterator = false)
     {
         var scalar = helper.ElementLayout is null && !helper.ElementIsString;
+        if (iterator)
+        {
+            output.Write("  %cursor_ptr = getelementptr i8, ptr %handle, i64 16\n  %index = load i64, ptr %cursor_ptr, align 8\n");
+        }
+
         output.Write("  %negative = icmp slt i64 %index, 0\n  %beyond = icmp sge i64 %index, %length\n  %invalid = or i1 %negative, %beyond\n  br i1 %invalid, label %bounds_failure, label %remove\nremove:\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %index, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
@@ -243,6 +251,15 @@ internal static partial class LlvmModuleWriter
             output.Write(", i1 false)\n");
         }
 
+        if (iterator)
+        {
+            // SPEC 14.6.2: transfer one element without shifting the remaining buffer or allocating storage.
+            output.Write("  %advanced = add i64 %index, 1\n  store i64 %advanced, ptr %cursor_ptr, align 8\n");
+            output.Write(scalar ? "  ret " + helper.Element.ComputationType + " %value\n" : "  ret void\n");
+            WriteArrayBoundsFailure(output);
+            return;
+        }
+
         output.Write("  %next = getelementptr i8, ptr %slot, i64 ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  %last = sub i64 %length, 1\n  %tail_count = sub i64 %last, %index\n  %tail_bytes = mul i64 %tail_count, ");
@@ -267,7 +284,15 @@ internal static partial class LlvmModuleWriter
     {
         if (helper.ElementIsString || helper.ElementLayout?.NeedsDestruction == true)
         {
-            output.Write("  %buffer = load ptr, ptr %handle, align 8\n  br label %test\ntest:\n  %remaining = phi i64 [ %length, %entry ], [ %index, %body ]\n  %done = icmp eq i64 %remaining, 0\n  br i1 %done, label %end, label %body\nbody:\n  %index = sub i64 %remaining, 1\n  %offset = mul i64 %index, ");
+            var iterator = helper.Kind == ArrayHelperKind.IteratorDrop;
+            if (iterator)
+            {
+                output.Write("  %cursor_ptr = getelementptr i8, ptr %handle, i64 16\n  %cursor = load i64, ptr %cursor_ptr, align 8\n");
+            }
+
+            output.Write("  %buffer = load ptr, ptr %handle, align 8\n  br label %test\ntest:\n  %remaining = phi i64 [ %length, %entry ], [ %index, %body ]\n  %done = icmp eq i64 %remaining, ");
+            output.Write(iterator ? "%cursor" : "0");
+            output.Write("\n  br i1 %done, label %end, label %body\nbody:\n  %index = sub i64 %remaining, 1\n  %offset = mul i64 %index, ");
             WriteNumber(output, Stride(helper));
             output.Write("\n  %element = getelementptr i8, ptr %buffer, i64 %offset\n");
             if (helper.ElementIsString)
