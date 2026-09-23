@@ -85,6 +85,8 @@ internal enum BindingFailure : byte
     MissingOrigin,
     InvalidTypeFormation,
     InvalidConstraint,
+    InvalidSelfClause,
+    NotObjectPayload,
     UnprovenConstraint,
     UnsatisfiedConstraint,
     InvalidKimi,
@@ -176,6 +178,9 @@ public sealed class BindingSymbol
 
     /// <summary>Gets or sets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
     internal bool TransferCapture { get; set; }
+
+    /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.4.7.2), or null when the Type may be an object payload.</summary>
+    internal BindingSymbol? ObjectPayloadOptOut { get; set; }
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>

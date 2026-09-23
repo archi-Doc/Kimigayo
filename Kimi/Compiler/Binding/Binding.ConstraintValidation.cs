@@ -6,6 +6,26 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    /// <summary>Tests whether a constraint speaks only about the Semantics of <paramref name="whole"/>; other premises never restrict its admitted set (SPEC 8.7).</summary>
+    private static bool SemanticsPremise(BoundConstraint constraint, BoundType whole)
+        => constraint.Kind switch
+        {
+            ConstraintKind.Semantics => ReferenceEquals(constraint.Subject, whole),
+            ConstraintKind.And or ConstraintKind.Or => SemanticsPremise(constraint.Left!, whole) && SemanticsPremise(constraint.Right!, whole),
+            ConstraintKind.Not => SemanticsPremise(constraint.Left!, whole),
+            _ => false,
+        };
+
+    /// <summary>Computes the Semantics set of a premise accepted by <see cref="SemanticsPremise"/>: and/or/not intersect, unite and complement.</summary>
+    private static SemanticsMask SemanticsSet(BoundConstraint constraint)
+        => constraint.Kind switch
+        {
+            ConstraintKind.Semantics => constraint.Mask,
+            ConstraintKind.And => SemanticsSet(constraint.Left!) & SemanticsSet(constraint.Right!),
+            ConstraintKind.Or => SemanticsSet(constraint.Left!) | SemanticsSet(constraint.Right!),
+            _ => SemanticsMask.All & ~SemanticsSet(constraint.Left!),
+        };
+
     private static bool InvalidConstraintRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && InvalidDeclarationContext(contract.Declaration)) ||
         (constraint.RequiredType is { } required && InvalidConstraintType(required)) ||
@@ -363,52 +383,64 @@ public sealed partial class Binding
         if (obligation.Kind == BindingObligationKind.TypeFormation &&
             obligation.Use is TypeSemanticsKoto { SemanticsParameter: not null, BoundType: { } applied } application && application.BoundSymbol?.Pair?.WholeType is { } whole)
         {
+            // SPEC 8.1.1, 8.1.2: every admitted Semantics of `s` must form a valid Type with `U`;
+            // object-family bindings additionally need `U` to be an Object Target.
+            var admitted = this.AdmittedSemantics(whole, scope);
+            const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
+            if (admitted == SemanticsMask.None)
+            {
+                return false;
+            }
+
             if (application.OriginExpression is not null || application.OriginName is not null)
             {
-                var allowed = applied.Origin?.Kind == OriginKind.Static ? SemanticsMask.Ref | SemanticsMask.ObjRef : SemanticsMask.ValueBorrow | SemanticsMask.ObjRef | SemanticsMask.ObjUniq;
-                return this.HasSemanticsRole(whole, allowed, scope) && (applied.Kind == BoundTypeKind.Parameter || this.HasValueRole(type, scope, false));
+                var allowed = applied.Origin?.Kind == OriginKind.Static ? SemanticsMask.Ref | SemanticsMask.ObjRef : SemanticsMask.Borrow;
+                return (admitted & ~allowed) == 0 && (applied.Kind == BoundTypeKind.Parameter || this.HasValueRole(type, scope, false)) &&
+                    ((admitted & objectFamily) == 0 || this.HasValueRole(type, scope, true));
             }
 
             if (applied.Kind == BoundTypeKind.SemanticsApplication && applied.Origin is not null)
             {
-                // The outer slot activates only for safe-borrow bindings. Object
-                // bindings additionally require the ordinary payload formation proof.
-                return this.HasValueRole(type, scope, false) &&
-                    (this.HasValueRole(type, scope, true) || this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Unsafe, scope));
+                // The outer slot activates only for safe-borrow bindings.
+                return this.HasValueRole(type, scope, false) && ((admitted & objectFamily) == 0 || this.HasValueRole(type, scope, true));
             }
 
-            return this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Unsafe, scope) && this.HasValueRole(type, scope, false);
+            // Without an Origin slot, no borrow binding can be admitted; owning objects need no Origin.
+            return (admitted & SemanticsMask.Borrow) == 0 &&
+                ((admitted & SemanticsMask.Object) == 0 || this.HasValueRole(type, scope, true)) &&
+                ((admitted & (SemanticsMask.Owner | SemanticsMask.Unsafe)) == 0 || this.HasValueRole(type, scope, false));
         }
 
         return false;
     }
 
+    /// <summary>Decides the value-Type role of a generic target, or its Object Target role (SPEC 8.4.7.2).</summary>
     private bool HasValueRole(BoundType type, BindingScope scope, bool objectTarget)
     {
-        if (objectTarget && type.Kind == BoundTypeKind.Parameter && type.Symbol is { Slot: 0 } parameter &&
-            ReferenceEquals(parameter.Scope.Owner, this.Library.MakeObj.Declaration))
+        if (objectTarget)
         {
-            // The intrinsic's declaration carries payload eligibility; each call
-            // must prove this rule for its inferred or explicit actual T.
+            // A determined Core is judged directly and shallowly, even with unbound Type arguments.
+            if (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto or EnumKoto)
+            {
+                return type.Symbol.ObjectPayloadOptOut is null;
+            }
+
+            if (this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven)
+            {
+                return true;
+            }
+
+            // Pair evidence: the caller's valid `s/T` already establishes the target when `s` is object-family.
+            if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } pair && this.HasSemanticsRole(pair, SemanticsMask.Object | SemanticsMask.ObjectBorrow, scope))
+            {
+                return true;
+            }
+        }
+        else if (type.Kind is not (BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection))
+        {
             return true;
         }
-
-        if (!objectTarget && type.Kind is not (BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection))
-        {
-            return true;
-        }
-
-        if (objectTarget && this.RequestCapability(type, this.Library.Sealed, scope) == ConstraintProof.Proven)
-        {
-            return true;
-        }
-
-        if (objectTarget && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto)
-        {
-            return true;
-        }
-
-        if (!objectTarget && type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Unsafe, scope))
+        else if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Unsafe, scope))
         {
             return true;
         }
@@ -422,7 +454,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, type) && fact.RequiredType is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
+                if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, type) && fact.RequiredType is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && required.Symbol.ObjectPayloadOptOut is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
                 {
                     return true;
                 }
@@ -432,8 +464,21 @@ public sealed partial class Binding
         return false;
     }
 
+    /// <summary>Tests whether the admitted set of a Semantics binding is contained in <paramref name="allowed"/> (SPEC 8.7).</summary>
     private bool HasSemanticsRole(BoundType whole, SemanticsMask allowed, BindingScope scope)
     {
+        var admitted = this.AdmittedSemantics(whole, scope);
+        return admitted != SemanticsMask.None && (admitted & ~allowed) == 0;
+    }
+
+    /// <summary>
+    /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.7):
+    /// names and categories contribute their members, and/or/not intersect, unite and complement,
+    /// separate clauses intersect, and no premise admits all nine Semantics.
+    /// </summary>
+    private SemanticsMask AdmittedSemantics(BoundType whole, BindingScope scope)
+    {
+        var admitted = SemanticsMask.All;
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)
@@ -443,13 +488,13 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Semantics && ReferenceEquals(fact.Subject, whole) && (fact.Mask & ~allowed) == 0 && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
+                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
                 {
-                    return true;
+                    admitted &= SemanticsSet(fact);
                 }
             }
         }
 
-        return false;
+        return admitted;
     }
 }

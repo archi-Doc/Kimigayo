@@ -82,6 +82,7 @@ public sealed partial class KimiLibrary
         this.Owned = this.GetSymbol(KimiDeclarationId.Owned)!;
         this.Callable = this.GetSymbol(KimiDeclarationId.Callable)!;
         this.Sealed = this.GetSymbol(KimiDeclarationId.Sealed)!;
+        this.ObjectPayload = this.GetSymbol(KimiDeclarationId.ObjectPayload)!;
         this.Replace = this.GetSymbol(KimiDeclarationId.Replace)!;
         this.Exchange = this.GetSymbol(KimiDeclarationId.Exchange)!;
         this.Swap = this.GetSymbol(KimiDeclarationId.Swap)!;
@@ -142,6 +143,8 @@ public sealed partial class KimiLibrary
     public BindingSymbol WriteLine { get; }
 
     public BindingSymbol Sealed { get; }
+
+    public BindingSymbol ObjectPayload { get; }
 
     public BindingSymbol Replace { get; }
 

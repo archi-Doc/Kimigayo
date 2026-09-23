@@ -10,12 +10,14 @@ public contract Utf8Format
     func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
 
 public struct WriteWindow {source}
+    Self is not ObjectPayload
     let state: unsafe/u8
     let start: isize
     public let written: isize
     public let remaining: isize
 
 public struct Utf8Writer {target}
+    Self is not ObjectPayload
     let destination: unsafe/u8
     let dispatch: unsafe/u8
     let kind: isize
@@ -32,6 +34,7 @@ public group Text
 
     public struct FixedBuffer {source}
         Self is BufferWriter
+        Self is not ObjectPayload
         let data: unsafe/u8
         public let capacity: isize
         public let length: isize

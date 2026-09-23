@@ -193,8 +193,12 @@ public sealed partial class KimiLibrary
 
         var premise = rule.Id is KimiDeclarationId.BufferFull or KimiDeclarationId.InvalidUtf8 or KimiDeclarationId.Utf8Slice ? "Copy" :
             rule.Id is KimiDeclarationId.FixedBuffer or KimiDeclarationId.HeapBuffer ? "BufferWriter" : null;
-        if (premise is null ? container.ConstraintNodes.Count != 0 : container.ConstraintNodes.Count != 1 ||
-            !BareName(container.ConstraintNodes[0].Left, "Self") || !BareName(container.ConstraintNodes[0].Right, premise))
+        // SPEC utf8-formatting 1.1: the Loan-bound adapters opt out of ObjectPayload (SPEC 8.4.7.2).
+        var optOut = rule.Id is KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer or KimiDeclarationId.FixedBuffer;
+        var clauses = container.ConstraintNodes;
+        if (clauses.Count != (premise is null ? 0 : 1) + (optOut ? 1 : 0) ||
+            (premise is not null && (!BareName(clauses[0].Left, "Self") || !BareName(clauses[0].Right, premise))) ||
+            (optOut && (!BareName(clauses[^1].Left, "Self") || clauses[^1].Right is not NotKoto { Operand: { } renounced } || !BareName(renounced, "ObjectPayload"))))
         {
             return false;
         }

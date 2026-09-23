@@ -123,6 +123,7 @@ public sealed partial class Binding
         this.Library.Copy.Contract ??= new(this.Library.Copy) { State = 2 };
         this.Library.Owned.Contract ??= new(this.Library.Owned) { State = 2 };
         this.Library.Sealed.Contract ??= new(this.Library.Sealed) { State = 2 };
+        this.Library.ObjectPayload.Contract ??= new(this.Library.ObjectPayload) { State = 2 };
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not ContractKoto contract)
@@ -331,17 +332,27 @@ public sealed partial class Binding
                 var clause = container.ConstraintNodes[i];
                 if (IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint)
                 {
-                    Register(constraint, container.BoundSymbol!, clause);
+                    Register(constraint, container.BoundSymbol!, clause, true);
                 }
             }
         }
 
-        void Register(BoundConstraint constraint, BindingSymbol type, IsKoto use)
+        // SPEC 8.4.7.2: derived structs inherit the opt-out. Bases are resolved by name here,
+        // before headers bind, so that every later object formation sees the effective state.
+        for (var n = 0; n < this.nodes.Count; n++)
+        {
+            if (this.nodes[n] is StructKoto { Bases.Count: > 0 } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
+            {
+                symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
+            }
+        }
+
+        void Register(BoundConstraint constraint, BindingSymbol type, IsKoto use, bool standalone)
         {
             if (constraint.Kind == ConstraintKind.And)
             {
-                Register(constraint.Left!, type, use);
-                Register(constraint.Right!, type, use);
+                Register(constraint.Left!, type, use, false);
+                Register(constraint.Right!, type, use, false);
             }
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
             {
@@ -351,7 +362,51 @@ public sealed partial class Binding
             {
                 Fail(use, BindingFailure.InvalidConstraint);
             }
+            else if (constraint.Contract?.Intrinsic == IntrinsicKind.ObjectPayload)
+            {
+                Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2: users cannot grant ObjectPayload.
+            }
+            else if (constraint.Kind == ConstraintKind.Not)
+            {
+                // SPEC 8.2, 8.4.7.2: the only negated Self clause is the standalone, unrepeated ObjectPayload opt-out.
+                if (standalone && constraint.Left is { Kind: ConstraintKind.Contract, Contract.Intrinsic: IntrinsicKind.ObjectPayload } && !ReferenceEquals(type.ObjectPayloadOptOut, type))
+                {
+                    type.ObjectPayloadOptOut = type;
+                }
+                else
+                {
+                    Fail(use, BindingFailure.InvalidSelfClause);
+                }
+            }
         }
+    }
+
+    private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)
+    {
+        // The current language has one inline base. The bound limits invalid cycles too.
+        for (var depth = 0; structure.Bases.Count > 0 && depth <= this.nodes.Count; depth++)
+        {
+            var syntax = structure.Bases[0];
+            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], false);
+            if (type is null)
+            {
+                return null;
+            }
+
+            if (type.ObjectPayloadOptOut is not null)
+            {
+                return type.ObjectPayloadOptOut;
+            }
+
+            if (type.Declaration is not StructKoto next)
+            {
+                return null;
+            }
+
+            structure = next;
+        }
+
+        return null;
     }
 
     private void RegisterConformanceDeclaration(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)

@@ -42,7 +42,7 @@ public class WholeValueTest
     [InlineData("arc", "uniq", false)]
     public void GenericPayloadProjectionRequiresCapability(string source, string target, bool expected)
     {
-        var c = Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed\n    return x@{target}/T");
+        var c = Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed and ObjectPayload\n    return x@{target}/T");
         Assert.Equal(expected, c.Bind().IsComplete);
     }
 
@@ -148,10 +148,12 @@ public class WholeValueTest
     }
 
     [Theory]
-    [InlineData("Sealed", true)]
-    [InlineData("Sealed and Copy", true)]
-    [InlineData("Sealed or Copy", false)]
-    [InlineData("not Sealed", false)]
+    [InlineData("Sealed and ObjectPayload", true)]
+    [InlineData("Sealed and Copy and ObjectPayload", true)]
+    [InlineData("Sealed", false)] // SPEC 8.4.7.1: Sealed is not object-formation evidence.
+    [InlineData("ObjectPayload", false)] // SPEC 13.5.5.1: the projection still needs Sealed.
+    [InlineData("Sealed or ObjectPayload", false)]
+    [InlineData("not Sealed and ObjectPayload", false)]
     public void ProjectionUsesDeclaredProofRules(string constraint, bool expected)
     {
         var c = Parse($"func f<T>(x: objref/T) -> ref/T during x\n    T is {constraint}\n    return x@ref/T");

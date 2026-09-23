@@ -1064,11 +1064,6 @@ public sealed partial class Binding
         }
 
         var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType, lengths);
-        if (ReferenceEquals(function, this.Library.MakeObj.Declaration) && (arguments[0] is not { } payload || !this.HasValueRole(payload, scope, true)))
-        {
-            return CandidateApplicability.Inapplicable;
-        }
-
         if (declaringType is not null)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);

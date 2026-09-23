@@ -38,6 +38,27 @@ public sealed partial class Binding
     private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
+        if (kind == IntrinsicKind.ObjectPayload)
+        {
+            if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
+            {
+                result = ConstraintProof.Error;
+                return true;
+            }
+
+            // SPEC 8.4.7.2: symbolic targets and a Contract's Self are decided by their premises.
+            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection ||
+                type.Symbol?.Declaration is ContractKoto)
+            {
+                return false;
+            }
+
+            // The judgment is shallow: outer owner Semantics, a Core other than Never, and no inherited opt-out.
+            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || type.Symbol?.ObjectPayloadOptOut is not null
+                ? ConstraintProof.Refuted : ConstraintProof.Proven;
+            return true;
+        }
+
         if (kind == IntrinsicKind.Sealed)
         {
             if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
@@ -273,8 +294,10 @@ public sealed partial class Binding
             return leaf;
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection ||
+            (work.Intrinsic.Intrinsic == IntrinsicKind.ObjectPayload && type.Symbol?.Declaration is ContractKoto))
         {
+            // A Contract's Self has no structure of its own; its ObjectPayload evidence is the Contract's clause (SPEC 8.4.7.2).
             return this.SymbolicCapability(work);
         }
 
@@ -472,7 +495,7 @@ public sealed partial class Binding
                     {
                         evidence = (fact.Mask & ~copy) == 0 ? ConstraintProof.Proven : (fact.Mask & ~nonCopy) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
                     }
-                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Sealed && (fact.Mask & SemanticsMask.Owner) == 0)
+                    else if (work.Intrinsic.Intrinsic is IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload && (fact.Mask & SemanticsMask.Owner) == 0)
                     {
                         evidence = ConstraintProof.Refuted;
                     }

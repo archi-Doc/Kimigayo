@@ -81,9 +81,6 @@ public enum KotoKind : byte
     /// <summary>An explicit discard statement.</summary>
     Discard,
 
-    /// <summary>A semantics mask.</summary>
-    SemanticsMask,
-
     // Unary
 
     /// <summary>An attribute expression.</summary>

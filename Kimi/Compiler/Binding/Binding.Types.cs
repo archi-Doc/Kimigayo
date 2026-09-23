@@ -10,6 +10,11 @@ public sealed partial class Binding
     // SPEC 5.2: the canonical raw pointer Type of a projected pointee subplace; raw pointers carry no Origin.
     internal BoundType PointerType(BoundType referent) => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Unsafe, [referent]);
 
+    /// <summary>Tests whether a Type name is written directly as the target of an object form such as <c>objref/T</c>.</summary>
+    private static bool IsDirectObjectTarget(Koto syntax)
+        => syntax.Parent is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } application &&
+        ReferenceEquals(application.Type, syntax);
+
     private static Koto UnwrapTypeSyntax(Koto node)
     {
         while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
@@ -527,13 +532,19 @@ public sealed partial class Binding
                     var kind = semantics.SemanticsKind;
                     if (kind is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
                     {
-                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
+                        // SPEC 8.4.7.2: the target must be an Object Target. Generic targets and a Contract's
+                        // Self are proven from their premises at the definition deadline.
+                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection || inner.Symbol?.Declaration is ContractKoto)
                         {
                             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, inner));
                         }
-                        else if (inner.Semantics != SemanticsKind.Owner || ReferenceEquals(inner, BoundType.Never) || inner.Symbol?.Declaration is ContractKoto)
+                        else if (inner.Semantics != SemanticsKind.Owner || ReferenceEquals(inner, BoundType.Never))
                         {
                             return Fail(syntax, BindingFailure.InvalidTypeFormation);
+                        }
+                        else if (inner.Symbol?.ObjectPayloadOptOut is { } renounced)
+                        {
+                            return this.FailObjectPayload(syntax, renounced);
                         }
                     }
 
@@ -617,8 +628,10 @@ public sealed partial class Binding
             return this.bindingConstraintTypes ? projected : this.ContractType(projected, scope);
         }
 
-        if (symbol.Kind == BindingSymbolKind.SemanticsTarget)
+        if (symbol.Kind == BindingSymbolKind.SemanticsTarget && !IsDirectObjectTarget(syntax))
         {
+            // SPEC 8.1.1: a standalone use of the pair target needs the value-Type role. As the direct target
+            // of an object form it needs the Object Target role instead, which that form's obligation proves.
             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, symbol.Type));
         }
 

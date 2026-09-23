@@ -63,6 +63,12 @@ public sealed partial class Binding
             return Fail(test, BindingFailure.InvalidTypeFormation);
         }
 
+        // SPEC 13.6.1: refinement would give the operand an object form of the target, which an opt-out forbids.
+        if (target.Symbol!.ObjectPayloadOptOut is { } renounced)
+        {
+            return this.FailObjectPayload(test, renounced);
+        }
+
         // SPEC 3.8: Never fits a valid operand position, but supplies no value or Boolean exit.
         // Do not invent an object Type for it or skip the target/transfer checks above.
         if (!ReferenceEquals(operand, BoundType.Never))

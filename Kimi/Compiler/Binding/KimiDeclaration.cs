@@ -83,6 +83,7 @@ public enum KimiDeclarationId : byte
     WriterWrite,
     WriterStatus,
     WriteLineUtf8,
+    ObjectPayload,
 }
 
 public enum KimiDeclarationState : byte

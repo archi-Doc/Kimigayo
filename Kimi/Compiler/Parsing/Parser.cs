@@ -2228,16 +2228,14 @@ CloseParameters:
     /// Parses a type constraint in the form <c>subject is condition</c>.
     /// </summary>
     /// <remarks>
-    /// The special subject <c>semantics</c> accepts only named
-    /// <see cref="SemanticsMask"/> values. Other subjects retain their operands as
-    /// <see cref="IdentifierNameKoto"/> instances for later semantic analysis.
+    /// Requirement operands are retained as <see cref="IdentifierNameKoto"/> and Type
+    /// instances for later semantic analysis; there is no special constraint subject.
     /// </remarks>
     /// <param name="reader">The token reader positioned at the constraint subject.</param>
     /// <param name="finishLine">Whether to diagnose and consume trailing tokens on the clause's line.</param>
     /// <returns>The parsed constraint, or <see langword="null"/> when its required prefix is invalid.</returns>
     public static IsKoto? ParseTypeConstraint(ref TokenReader reader, bool finishLine = true)
     {
-        var parsesSemantics = reader.IsCurrentIdentifier(Constants.SemanticsKeyword);
         var subject = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
 
         if (!reader.TryConsume(TokenKind.Is, out var isRange, true))
@@ -2247,7 +2245,7 @@ CloseParameters:
 
         var previousRequirement = reader.ConstraintRequirement;
         reader.ConstraintRequirement = true;
-        var condition = ParseCondition(ref reader, parsesSemantics);
+        var condition = ParseCondition(ref reader);
         reader.ConstraintRequirement = previousRequirement;
         var constraint = new IsKoto(ref reader, SourceSpan.FromBounds(subject.Span.Start, Math.Max(isRange.End, condition.Span.End)), subject, condition);
 
@@ -2258,59 +2256,59 @@ CloseParameters:
 
         return constraint;
 
-        static Koto ParseCondition(ref TokenReader reader, bool parsesSemantics)
+        static Koto ParseCondition(ref TokenReader reader)
         {
             if (reader.CurrentTokenKind == TokenKind.Not)
             {
                 var notToken = reader.Read();
-                return KotoHelper.NewUnaryKoto(ref reader, notToken, ParseOr(ref reader, parsesSemantics));
+                return KotoHelper.NewUnaryKoto(ref reader, notToken, ParseOr(ref reader));
             }
 
-            return ParseOr(ref reader, parsesSemantics);
+            return ParseOr(ref reader);
         }
 
-        static Koto ParseOr(ref TokenReader reader, bool parsesSemantics)
+        static Koto ParseOr(ref TokenReader reader)
         {
-            var left = ParseAnd(ref reader, parsesSemantics);
+            var left = ParseAnd(ref reader);
             while (reader.CurrentTokenKind == TokenKind.Or)
             {
                 var token = reader.Read();
-                left = KotoHelper.NewBinaryKoto(ref reader, token, left, ParseAnd(ref reader, parsesSemantics));
+                left = KotoHelper.NewBinaryKoto(ref reader, token, left, ParseAnd(ref reader));
             }
 
             return left;
         }
 
-        static Koto ParseAnd(ref TokenReader reader, bool parsesSemantics)
+        static Koto ParseAnd(ref TokenReader reader)
         {
-            var left = ParsePrimary(ref reader, parsesSemantics);
+            var left = ParsePrimary(ref reader);
             while (reader.CurrentTokenKind == TokenKind.And)
             {
                 var token = reader.Read();
-                left = KotoHelper.NewBinaryKoto(ref reader, token, left, ParsePrimary(ref reader, parsesSemantics));
+                left = KotoHelper.NewBinaryKoto(ref reader, token, left, ParsePrimary(ref reader));
             }
 
             return left;
         }
 
-        static Koto ParsePrimary(ref TokenReader reader, bool parsesSemantics)
+        static Koto ParsePrimary(ref TokenReader reader)
         {
             if (reader.CurrentTokenKind == TokenKind.Not)
             {
                 var token = reader.Read();
-                return KotoHelper.NewUnaryKoto(ref reader, token, ParsePrimary(ref reader, parsesSemantics));
+                return KotoHelper.NewUnaryKoto(ref reader, token, ParsePrimary(ref reader));
             }
 
             if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
             {
-                if (!parsesSemantics && IsParenthesizedTypeRequirement(ref reader))
+                if (IsParenthesizedTypeRequirement(ref reader))
                 {
                     return ParseDeclarationType(ref reader);
                 }
 
                 var openRange = reader.CurrentTokenRange;
                 reader.Advance();
-                var operand = ParseCondition(ref reader, parsesSemantics);
+                var operand = ParseCondition(ref reader);
                 var range = openRange;
                 if (reader.TryConsume(TokenKind.CloseParenthesis, out var closeRange, true))
                 {
@@ -2328,20 +2326,6 @@ CloseParameters:
             {
                 reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                 return reader.NewErrorKoto();
-            }
-
-            if (parsesSemantics)
-            {
-                var token2 = reader.Read();
-                var text = reader.GetSpan(token2);
-                if (token2.Kind == TokenKind.Identifier &&
-                    SemanticsMaskHelper.TryParse(text, out var mask))
-                {
-                    return new SemanticsMaskKoto(ref reader, token2.Span, mask);
-                }
-
-                reader.Diagnostic.Add(token2.Span, DiagnosticCode.InvalidSemanticsConstraint_Kd, text.ToString());
-                return new ErrorKoto(ref reader, token2.Span);
             }
 
             if (reader.CurrentTokenKind.IsPrimitiveType() || reader.PeekKind(1) is TokenKind.Slash or TokenKind.OpenBrace || reader.CurrentTokenKind is TokenKind.OpenBracket or TokenKind.Self)

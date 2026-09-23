@@ -82,6 +82,10 @@ public sealed partial class Binding
         return subject is IdentifierNameKoto { IdentifierName: "Self" } or TypeSemanticsKoto { Type: null, Identifier: "Self", OriginName: null, OriginExpression: null, OriginArguments: null };
     }
 
+    private static bool IsObjectPayloadRequirement(BoundConstraint constraint)
+        => constraint.Contract?.Intrinsic == IntrinsicKind.ObjectPayload ||
+        (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
+
     private static bool IsDependentConstraint(IsKoto clause)
         => !IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint && DependentConstraint(constraint);
 
@@ -225,15 +229,20 @@ public sealed partial class Binding
 
         if (proposition.Kind == ConstraintKind.Semantics)
         {
-            if (proposition.Subject!.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+            var subject = proposition.Subject!;
+            if (subject.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
             {
-                return ConstraintProof.Unknown;
+                // SPEC 8.7: a requirement on a Semantics binding is decided by containment of its admitted set.
+                var admitted = this.AdmittedSemantics(subject, scope);
+                return admitted == SemanticsMask.None ? ConstraintProof.Error :
+                    (admitted & ~proposition.Mask) == 0 ? ConstraintProof.Proven :
+                    (admitted & proposition.Mask) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
             }
 
-            return proposition.Mask.Contains(proposition.Subject.Semantics) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            return proposition.Mask.Contains(subject.Semantics) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
-        if (proposition.Contract is { Intrinsic: IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed } intrinsic)
+        if (proposition.Contract is { Intrinsic: IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload } intrinsic)
         {
             return this.RequestCapability(proposition.Subject!, intrinsic, scope);
         }
@@ -395,8 +404,12 @@ public sealed partial class Binding
 
         // Only propositions dependent on generic inputs or the conforming Self are premises.
         // Closed propositions are independently checked declaration obligations.
+        // SPEC 8.4.7.2: inside a Contract, `Self is [not] ObjectPayload` is a Self-dependent implementation
+        // requirement: a premise for the Contract's own signatures and an obligation of every conformer.
+        var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && IsObjectPayloadRequirement(requirement);
         var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && (root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection || (scope.Owner is ContractKoto && root?.Symbol?.Declaration is ContractKoto)));
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && DependentConstraint(requirement);
+        input |= contractSelfClause;
         var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null && !DependentType(subject, unresolvedProjection: false);
         var validSubject = subject is not null && (scope.Owner is FunctionKoto ? input && ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
         if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))

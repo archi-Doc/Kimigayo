@@ -11,6 +11,7 @@ public enum IntrinsicKind : byte
     Owned,
     Callable,
     Sealed,
+    ObjectPayload,
 }
 
 /// <summary>Identifies a compiler-provided language function implementation.</summary>

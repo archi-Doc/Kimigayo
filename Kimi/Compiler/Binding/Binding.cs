@@ -132,6 +132,7 @@ public sealed partial class Binding
                 symbol.Resolving = false;
                 symbol.HeaderBound = false;
                 symbol.ReceiverIndex = -1;
+                symbol.ObjectPayloadOptOut = null;
             }
 
             // The indexer resets every semantic field before any header or expression is evaluated.
@@ -314,6 +315,10 @@ public sealed partial class Binding
             else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
             {
                 issue.Node.AddDiagnostic(issue.Code, this.DescribeTryFailure(issue.Node));
+            }
+            else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
+            {
+                issue.Node.AddDiagnostic(issue.Code, this.objectPayloadCauses?.TryGetValue(issue.Node, out var renounced) == true ? renounced.Name : string.Empty);
             }
             else
             {
@@ -538,6 +543,8 @@ public sealed partial class Binding
                     BindingFailure.MissingOrigin => DiagnosticCode.MissingOriginBinding_Kd,
                     BindingFailure.InvalidTypeFormation => DiagnosticCode.InvalidTypeFormation_Kd,
                     BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
+                    BindingFailure.InvalidSelfClause => DiagnosticCode.InvalidSelfClause_Kd,
+                    BindingFailure.NotObjectPayload => DiagnosticCode.NotObjectPayload_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
                     BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
                     BindingFailure.InvalidKimi => DiagnosticCode.InvalidKimiLibrary_Kd,

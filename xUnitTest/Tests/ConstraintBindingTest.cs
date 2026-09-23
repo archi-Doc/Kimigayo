@@ -181,12 +181,20 @@ public class ConstraintBindingTest
     [Fact]
     public void CompletedConcreteConformanceAbsenceCanBeRefuted()
     {
-        var c = Parse("contract C\nstruct S\n    Self is C\nstruct N\n    Self is not C");
+        // SPEC 8.7: absence is Refuted only after the closed conformance judgment completes; the
+        // negative requirement lives at a use, since a Type declaration cannot negate a Self clause (SPEC 8.2).
+        var c = Parse("contract C\nstruct S\n    Self is C\nstruct N\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(N.init())");
         Assert.True(c.Bind().IsComplete);
         var s = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-        var n = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "N");
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].BoundConstraint!, s));
-        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(n.ConstraintNodes[0].BoundConstraint!, n));
+    }
+
+    [Fact]
+    public void ANegatedSelfClauseOtherThanTheOptOutIsRejected()
+    {
+        var c = Parse("contract C\nstruct N\n    Self is not C");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidSelfClause_Kd);
     }
 
     [Fact]

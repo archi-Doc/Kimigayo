@@ -9,7 +9,15 @@ public sealed partial class Binding
     // Keep proof failures intact. Only diagnostic publication follows these recorded
     // missing-name causes; later validators must still see an invalid declaration.
     private Dictionary<Koto, Koto>? constraintDiagnosticCauses;
+    private Dictionary<Koto, BindingSymbol>? objectPayloadCauses;
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
+
+    /// <summary>Rejects an object form, creation, cast or runtime test over a Type that opts out of ObjectPayload, naming the declaring Type (SPEC 8.4.7.2).</summary>
+    private BoundType? FailObjectPayload(Koto use, BindingSymbol renounced)
+    {
+        (this.objectPayloadCauses ??= new(ReferenceEqualityComparer.Instance))[use] = renounced;
+        return Fail(use, BindingFailure.NotObjectPayload);
+    }
 
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
     {

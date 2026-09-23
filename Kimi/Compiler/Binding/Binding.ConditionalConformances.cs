@@ -203,7 +203,8 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    Fail(syntax, BindingFailure.InvalidConstraint);
+                    // SPEC 8.4.7.2: ObjectPayload is never granted, conditionally or otherwise.
+                    Fail(syntax, contract.Intrinsic == IntrinsicKind.ObjectPayload ? BindingFailure.InvalidSelfClause : BindingFailure.InvalidConstraint);
                 }
 
                 continue;
