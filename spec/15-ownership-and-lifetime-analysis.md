@@ -696,7 +696,7 @@ func make(a: ref/A, b: ref/B)
         right => b}
 ```
 
-While the returned `Pair` is live, shared Loans on both `a` and `b` remain active. A dependency requiring `uniq` propagates an exclusive Loan. The spelling `static` alone creates no parameter-root Loan, but it does not erase the storage anchors and conflicts of a borrow into static Field storage.
+While the returned `Pair` is live, shared Loans on both `a` and `b` remain active. A dependency requiring `uniq` propagates an exclusive Loan. An exclusive Loan formed for an argument remains exclusive while a result depends on it, even if the result requires only `ref`; result requirements never downgrade an existing Loan. Origin equalities neither create nor release Loans. For example, `Text.tryFormat` and `FixedBuffer.intoText` retain the original array's exclusive Loan in their shared UTF-8 result ([formatting profile](utf8-formatting.md#2-text-operations)). The spelling `static` alone creates no parameter-root Loan, but it does not erase the storage anchors and conflicts of a borrow into static Field storage.
 
 Receiver and argument protection begins at Borrow/Reborrow formation in evaluation order. Eligible exclusive operations start with the call reservation of §15.6.7; other Loans are immediately active. After activation, call protection lasts through the entire call, including callee cleanup, not merely the callee's last use, and extends for dependent results. Intrinsics and collection methods use the same rules. These checks supply the call-wide attribute proof of §21.5.5.
 

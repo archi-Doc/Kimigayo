@@ -51,7 +51,12 @@ public sealed partial class Binding
 
             if (pattern.Kind == BoundTypeKind.FixedArray && pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, function))
             {
-                var length = this.InternLength(KotoKind.NumberLiteral, array.Elements.Count);
+                var length = array.FillLength is null ? this.InternLength(KotoKind.NumberLiteral, array.Elements.Count) : array.FillCount;
+                if (length is null)
+                {
+                    return false;
+                }
+
                 if (lengths[parameter.Slot] is { } previous && !ReferenceEquals(previous, length))
                 {
                     return false;
@@ -87,14 +92,19 @@ public sealed partial class Binding
         return literal is null || this.Infer(pattern, literal.IsInteger ? BoundType.I32 : BoundType.F64, function, types, lengths: lengths);
     }
 
-    // Obtain a tuple's independent Type without committing candidate-local
-    // numeric defaults to the syntax. Array literals still require a shape.
+    // Obtain independent tuple/fill Types without committing candidate-local numeric defaults.
     private BoundType? IndependentAggregateType(Koto source, bool fitLiterals)
     {
         source = KotoHelper.UnwrapParentheses(source);
         if (source.BoundType is { } actual)
         {
             return actual;
+        }
+
+        if (source is ArrayLiteralKoto { FillCount: { } length } fill &&
+            this.IndependentAggregateType(fill.Elements[0], fitLiterals) is { } elementType)
+        {
+            return this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [elementType], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
         }
 
         if (source is TupleLiteralKoto tuple)
@@ -139,6 +149,11 @@ public sealed partial class Binding
         }
 
         var valid = true;
+        if (source is ArrayLiteralKoto { FillLength: { } length } fill)
+        {
+            valid = (fill.FillCount = this.BindLength(length, scope)) is not null;
+        }
+
         for (var i = 0; i < elements.Count; i++)
         {
             valid &= this.PrepareAggregateArgument(elements[i], scope);
@@ -156,7 +171,9 @@ public sealed partial class Binding
         {
             // SPEC 4.3: a call-argument literal fits the candidate's fixed array of exactly its length, or its owned Array.
             if (expected is not { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } ||
-                (expected.Kind == BoundTypeKind.FixedArray && expected.Length != array.Elements.Count))
+                (array.FillLength is not null && expected.Kind != BoundTypeKind.FixedArray) ||
+                (expected.Kind == BoundTypeKind.FixedArray && (array.FillLength is null ? expected.Length != array.Elements.Count :
+                    array.FillCount is not { } count || (count.IsConstant ? expected.LengthExpression is not null || expected.Length != count.Value : !ReferenceEquals(expected.LengthExpression, count)))))
             {
                 return CandidateApplicability.Inapplicable;
             }

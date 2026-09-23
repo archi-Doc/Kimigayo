@@ -236,6 +236,8 @@ These rules are independent of implementation mechanisms such as a `trap` instru
 
 ## 17.4. Warnings
 
+When an interpolated string literal is passed directly to `Utf8Writer.write`, warn and suggest `$tryWrite` ([formatting profile](utf8-formatting.md#53-short-circuiting-trywrite)). Preserve ordinary evaluation and owning interpolation. This warning is independent of the discard-warning priority below.
+
 A warning is diagnostic information about a condition worth reporting while processing continues and its result remains usable. Examples include deprecated configuration, ignored optional metadata, fallback encoding, and a failed cache update after the primary operation succeeds.
 
 A warning does not itself change control flow or implicitly produce `None`, `Err` or Abort, and it is not a third state of `Result`. Return warnings to callers as ordinary values when needed:

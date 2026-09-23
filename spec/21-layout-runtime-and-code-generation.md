@@ -4,6 +4,8 @@
 
 Physical representation and code sharing must preserve Type identity, ownership, evaluation and cleanup. This chapter separates language-wide requirements, Windows storage contracts and compiler-controlled function passing.
 
+UTF-8 buffers and interpolation additionally follow the [formatting optimization and cost requirements](utf8-formatting.md#6-optimization-and-output). Only the profile's private resource-failure exception permits changes in allocation-failure timing; ordinary user effects and semantic checks remain ordered.
+
 The Windows storage and metadata contracts below are normative for this profile. They keep the capture and call restrictions of §7.6 and the compiler-controlled function passing of §21.4.2. Adoption in this specification does not establish implementation coverage (STATUS.md).
 
 ## 21.1. Structure layout and ABI

@@ -30,12 +30,12 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.CompositePattern or EmissionOpcode.PatternRead or EmissionOpcode.TransferAggregate or EmissionOpcode.DestroyAggregate)
+            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.CompositePattern or EmissionOpcode.PatternRead or EmissionOpcode.TransferAggregate or EmissionOpcode.FillArray or EmissionOpcode.DestroyAggregate)
             {
                 this.UseMatchStorage(function, instruction.Place);
             }
 
-            if (instruction.Opcode == EmissionOpcode.TransferAggregate && instruction.OperandCount == 0)
+            if (instruction.Opcode is EmissionOpcode.TransferAggregate or EmissionOpcode.FillArray && instruction.OperandCount == 0)
             {
                 this.UseMatchStorage(function, instruction.Constant);
             }

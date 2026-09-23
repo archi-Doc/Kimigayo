@@ -65,7 +65,8 @@ internal sealed partial class BodyLowering
     // SPEC 4.3: an Array literal's scalar payloads are stored in their own slots so construction can move their bytes into the buffer.
     private bool IsArrayPayload(OwnershipBody body, int place)
         => body.Places[place].Kind == OwnershipPlaceKind.Payload && this.payloadOwners[place] >= 0 &&
-            body.Places[body.Constructions[this.payloadOwners[place]].Place].Type.Kind == BoundTypeKind.Array;
+            (body.Places[body.Constructions[this.payloadOwners[place]].Place].Type.Kind == BoundTypeKind.Array ||
+             body.Places[body.Constructions[this.payloadOwners[place]].Place].Source is ArrayLiteralKoto { FillLength: not null });
 
     private bool TryGetArrayElement(BoundType type, out ArrayElement element)
     {

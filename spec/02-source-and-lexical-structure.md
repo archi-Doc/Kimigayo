@@ -289,7 +289,7 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | Transfer | `move` immediately after `@`, as the [transfer operation](13-operators-and-assignment.md#1353-defined-adaptations) `E@move`. |
 | Semantics categories | `value`, `valueborrow`, `object`, `objectborrow`, `borrow`, `owning`, `reference` in Semantics requirements; see [category sets](03-types-and-values.md#33-type-semantics). |
 | Contextual bindings and operations | `self`, `value`, `storage` under the receiver and accessor rules (§9.2, Chapter 11); `abort` after `$`. |
-| Fixed arrays and lengths | `of` only between the length and element Type in `[N of T]`; `length` only at the start of a generic parameter declaration, followed by its Name. |
+| Fixed arrays and lengths | `of` between length and element Type in `[N of T]`, or length and value in fill construction `[N of value]`; `length` only at the start of a generic parameter declaration, followed by its Name. |
 
 Further notes on individual keywords:
 
@@ -455,7 +455,7 @@ Second line
 "
 ```
 
-**Interpolation.** `\(expression)` inserts the string representation of a Kimigayo expression; its value follows [interpolation stringification](12-expressions.md#1233-interpolation-stringification).
+**Interpolation.** `\(expression)` inserts the string representation of a Kimigayo expression; its value follows [interpolation formatting](12-expressions.md#1233-interpolation-formatting).
 
 ```kimi
 "Hello, \(name)."

@@ -331,6 +331,7 @@ ConstructionExpression := ConstructionQualifier "." "init"
 InferredCaseExpression := "." Name ("(" TrailingList<Expression> ")")?
 TupleExpression      := "(" Expression "," TrailingList<Expression>? ")"
 ArrayExpression      := "[" TrailingList<Expression>? "]"
+                      | "[" ArrayLength "of" Expression "]"
 DictionaryExpression := "[" ":" "]" | "[" TrailingList<DictionaryEntry> "]"
 DictionaryEntry      := Expression ":" Expression
 FunctionExpression   := "func" CaptureList? "(" TrailingList<AnonymousParameter>? ")"
@@ -341,6 +342,7 @@ CaptureList          := "[" TrailingList<Capture>? "]"
 Capture              := Name ("@" CaptureOperation)? | "var" Name ("@" "move")?
 CaptureOperation     := "move" | "ref" | "uniq"
 CompositionRootExpression := "$" "abort" "(" Expression ")"
+                           | "$" "tryWrite" "(" Expression "," StringLiteral ")"
 ```
 
 Ordinary `is` / `is not` accepts one named struct Core and does not consume outer `and` / `or`. The separate compile-time [requirement expressions](../08-generics-constraints-and-contracts.md#83-requirement-expressions) retain their existing extent in their dedicated contexts. Anonymous parameter/result omission and Capture Lists obey [function-expression rules](../07-functions-and-callable-values.md#76-function-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](../13-operators-and-assignment.md#131-precedence-and-associativity); these boundaries are not alternative parses selected by conversion success.

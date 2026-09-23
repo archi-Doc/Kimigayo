@@ -132,7 +132,8 @@ internal sealed partial class BodyLowering
             };
             // SPEC 4.3, 4.7.4: an Array literal's payloads keep their own slots; construction moves them into the buffer.
             var handle = type.Kind == BoundTypeKind.Array;
-            if ((!handle && layout.Count != plan.PayloadCount) || (elements is not null && elements.Count != plan.PayloadCount))
+            var fill = body.Places[plan.Place].Source is ArrayLiteralKoto { FillLength: not null };
+            if ((!handle && !fill && layout.Count != plan.PayloadCount) || (fill && plan.PayloadCount != 1) || (elements is not null && elements.Count != plan.PayloadCount))
             {
                 return Fail("Aggregate source and payload counts disagree.", out failure);
             }
@@ -148,7 +149,7 @@ internal sealed partial class BodyLowering
                 }
 
                 this.payloadOwners[p] = c;
-                if (!handle && layout.Fields[layout.IsArray ? 0 : i].Layout.Size != 0)
+                if (!handle && !fill && layout.Fields[layout.IsArray ? 0 : i].Layout.Size != 0)
                 {
                     function.SlotAddresses[p] = new(EmissionOperandKind.ProjectedSlot, p);
                     function.Subslots.Add(new(p, plan.Place, offset + layout.Offset(i)));
@@ -364,6 +365,12 @@ internal sealed partial class BodyLowering
                 if (plan.Case is { } activeCase)
                 {
                     function.AddScalar(EmissionOpcode.StoreScalar, id, [new(EmissionOperandKind.Integer, activeCase.Ordinal)], "i32", place: place.Id, representation: WindowsLowering.GetValue(BoundType.I32));
+                }
+
+                if (operation.Source is ArrayLiteralKoto { FillLength: not null } && layout.Value.Layout.Size != 0)
+                {
+                    // One acquired payload, including N == 0; repeat bytes at runtime, never AST/IR nodes.
+                    function.Instructions.Add(new(EmissionOpcode.FillArray, id, place.Id, plan.PayloadStart, Aggregate: layout));
                 }
 
                 if (place.Type.Kind == BoundTypeKind.Array)

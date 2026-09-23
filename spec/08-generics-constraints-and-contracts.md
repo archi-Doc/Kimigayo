@@ -261,7 +261,7 @@ The verified requirement-to-Member Identity mapping and the associated-Type bind
 
 | Requirement shape | Inheritance through this path |
 | --- | --- |
-| `Self` only in a borrowed receiver, as in Stringify | Possible if all other checks and ObjectCallCompatible succeed |
+| `Self` only in a borrowed receiver, as in Utf8Format | Possible if all other checks and ObjectCallCompatible succeed |
 | `other: ref/Self`, as in Equatable/Comparable | Fails: `ref/A` does not match `ref/D` |
 | `func empty() -> Self` | Fails: `A`'s result does not supply `D` |
 | `owner/Self`, as in Iterable | Fails: no owning receiver projection |
@@ -303,6 +303,8 @@ Zero candidates means a missing implementation; multiple candidates mean ambigui
 | Access | Usable throughout the [conformance's effective domain](09-names-signatures-and-access.md#934-conformance-accessibility). |
 | Calling context and Effects | No stronger calling context or effects than the requirement permits. |
 
+`BufferWriter.reserve` has the [formatting profile's effect upper bound](utf8-formatting.md#12-effects-and-erasure). Check its complete transitive summary at conformance, including lazy initialization and destruction. Erased adapter calls use that bound; same-spelled user Contracts receive no special effect guarantee.
+
 Origin contracts use the [common compatibility procedure](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification), preserving ordinary variance and Loan rules, including invariance where required. A requirement that admits a call-local borrow cannot be implemented by a function requiring that input to be `static`. Origin-free identification neither erases dependencies nor relaxes exclusive access.
 
 The existing Safety, ownership, Origin and Access Effect checks apply; no new effect system is defined here. A safe requirement cannot require an unsafe calling context. Result compatibility inserts no numeric or user conversion, Copy, Borrow/Reborrow or erasure. Core inheritance alone does not prove compatibility of complete Types. On a compatibility failure, the conformance error is reported without searching for another implementation. Properties use the corresponding [accessor rules](11-properties.md#114-contract-property-requirements).
@@ -338,7 +340,7 @@ Only the defined proof rules are used, not enumeration of instantiations or arbi
 
 Some Contracts are **compiler-intrinsic**, including `Copy`. Each has only the special acquisition, destruction, layout, concurrency or code-generation effects explicitly defined for it. These effects belong to the compiler-recognized Contract identity; a user Contract with the same name or requirements does not gain them, so `Self is MyCopy` does not make a Type Copy. Compiler-derived conformance exists only where individually specified, and `Self is Copy` must pass its ordinary derivation checks.
 
-The [required Kimi declaration table](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) also fixes the identities and signatures of `Stringify`, `Equatable`, `Comparable`, `Iterable` and `Iterator`. Their source conformance follows the ordinary static Contract rules; their only special effects are the explicitly specified interpolation, comparison and iteration mappings.
+The [required Kimi declaration table](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) also fixes the identities and signatures of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, `Iterable` and `Iterator`. Their source conformance follows ordinary static Contract rules; their special behavior is limited to the specified formatting, buffer effects, comparison and iteration mappings.
 
 Conformance proves only statically specified requirements. Documented laws such as the symmetry or transitivity of equality are not enforced by the type system. Conformance does not prove current initialization, absence of conflicting Loans, storage representation or direct Field access; ordinary usage checks and documented unsafe obligations still apply.
 

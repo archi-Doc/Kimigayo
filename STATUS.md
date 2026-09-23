@@ -69,6 +69,8 @@ ContainerNestingTest covers declaration/rebind/serialization and 64-level nestin
 
 ### Kimi library and whole-value updates
 
+Fixed-array fill `[N of value]` is implemented through parsing, Binding, ownership and native lowering: Copy-only values are acquired once, including at zero length; fixed element expectations, local inference and generic length/type calls are supported. A shared doubling-copy helper keeps generated code independent of N. `FixedArrayFillTest` plus related array suites pass 73 focused tests and four O0/O2 native executions (`bin/verify/20260923-124752-unit-utf8-fill`). The integrated UTF-8 formatting profile is a requirement; buffer APIs, formatting dispatch and interpolation execution are still being implemented and are not established by this fill verification.
+
 The public ownership functions now live in `Kimi.Intrinsics`. `Kimi.replace`,
 `Kimi.exchange`, `Kimi.swap`, and `Kimi.makeObj` are no longer lookup candidates;
 use `Kimi.Intrinsics.*`, `Intrinsics.*` through the default Kimi alias, or an

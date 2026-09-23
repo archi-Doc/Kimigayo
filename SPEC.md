@@ -8,7 +8,7 @@ This is the index of the Kimigayo specification. The chapter files under `spec/`
 
 | Part | Status |
 | --- | --- |
-| Chapters 1–22, the [Documentation Markdown profile](spec/documentation-markdown.md) and the [test execution profile](spec/testing-profile.md) | Normative language rules and implementation contracts. |
+| Chapters 1–22, the [Documentation Markdown profile](spec/documentation-markdown.md), the [UTF-8 formatting profile](spec/utf8-formatting.md) and the [test execution profile](spec/testing-profile.md) | Normative language rules and implementation contracts. |
 | Appendix A | Normative compiler requirements. |
 | Appendix B | Non-normative reference models (optional algorithms). |
 | Appendix C | Pointer to the separate implementation status; not part of the language. |
@@ -68,6 +68,7 @@ Optional Type spelling is defined in [§3.2.3](spec/03-types-and-values.md#323-o
 - [20. Compilation configuration](spec/20-compilation-configuration.md)
 - [21. Layout, runtime metadata, and code generation](spec/21-layout-runtime-and-code-generation.md)
 - [22. Kimi, program execution, and foreign functions](spec/22-core-execution-and-foreign-functions.md)
+  - [UTF-8 formatting profile](spec/utf8-formatting.md): buffers, views, formatting, interpolation and required costs.
   - [Test execution profile](spec/testing-profile.md): solution execution, settings, temporary storage, limits, identities and results.
 
 ### Appendices
@@ -101,8 +102,10 @@ This table indexes the required declarations in [§22.1](spec/22-core-execution-
 | Declaration container | Declarations / functions | Reference |
 | --- | --- | --- |
 | `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees) |
-| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Stringify`, `Equatable`, `Comparable`, `Iterator`, `Iterable` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
-| `Kimi.Console` | `writeLine(text: string) -> ()` | [§22.4](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |
+| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Equatable`, `Comparable`, `Iterator`, `Iterable` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
+| `Kimi` | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` | [Formatting declarations](spec/utf8-formatting.md#1-contracts-and-declarations) |
+| `Kimi.Text` | `FixedBuffer`, `HeapBuffer`, `Utf8Slice`, `InvalidUtf8`; `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](spec/utf8-formatting.md#2-text-operations) |
+| `Kimi.Console` | `writeLine(text: ref/string) -> ()`, `writeLine(text: Text.Utf8Slice) -> ()` | [§22.4](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |
 | `Kimi.Test` | `tempDirectory() -> string`, in test-only bodies | [Test execution profile](spec/testing-profile.md#environment-and-temporary-directory) |
 | `Kimi.Intrinsics` | `replace`, `exchange`, `swap` | [§15.7 whole-value updates](spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
 | `Kimi.Intrinsics` | `makeObj`, `makeRc`, `makeArc`, strong/Weak `clone`, `downgrade`, `upgrade`, `makeRcCyclic`, `makeArcCyclic` | [§13.5.8–9](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) |

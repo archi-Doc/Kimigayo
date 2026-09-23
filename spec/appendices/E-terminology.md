@@ -106,4 +106,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Type | A complete type, including Semantics, its target, and all Origin dependencies. | [Type composition](../03-types-and-values.md#3-types-and-values) |
 | Type-checking continuation | Unreachable-code checking that adds no execution edge. | [Unreachable checking](../14-control-flow.md#14103-type-checking-unreachable-code) |
 | Value Context | An evaluation context that requires an expression's value. | [Evaluation contexts](../14-control-flow.md#142-blocks-and-evaluation-contexts) |
+| Utf8Format / BufferWriter | Static formatting / byte-reservation Contracts. | [Formatting declarations](../utf8-formatting.md#1-contracts-and-declarations) |
+| Utf8Writer / WriteWindow | Borrowed erased adapter with sticky failure / exclusive contiguous uncommitted region. | [Formatting profile](../utf8-formatting.md) |
+| Utf8Slice / FixedBuffer / HeapBuffer | Validated shared UTF-8 view / borrowed fixed buffer / owning growable buffer. | [Text operations](../utf8-formatting.md#2-text-operations) |
 | View Target / Supports | Public object target / concrete-Type relationship to that target | [Object views](../03-types-and-values.md#335-object-views-and-identity) |

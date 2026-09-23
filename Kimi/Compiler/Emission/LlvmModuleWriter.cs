@@ -75,6 +75,7 @@ internal static partial class LlvmModuleWriter
         if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime)
         {
             output.Write(MemoryDeclarations);
+            WriteArrayFillHelper(module, output);
             foreach (var aggregate in module.Aggregates)
             {
                 WriteAggregateDestructor(output, aggregate);
@@ -307,6 +308,7 @@ internal static partial class LlvmModuleWriter
                     WritePartDestruction(output, constants, function, instruction);
                     break;
                 case EmissionOpcode.TransferAggregate:
+                case EmissionOpcode.FillArray:
                 case EmissionOpcode.DestroyAggregate:
                     WriteAggregate(output, constants, function, instruction);
                     break;

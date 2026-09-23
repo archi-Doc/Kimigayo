@@ -25,7 +25,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and `Iterable` with associated Type `Element = isize` under §4.6.3 |
 | `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
 | `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and consuming Iterable conformance |
-| `Stringify` | `func stringify(self: ref/Self) -> string`; returns an independent owned string |
+| UTF-8 formatting declarations | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` at the root, and the `Text` group: exact signatures, shape, intrinsic Origin/Loan/variance metadata and operations in the [formatting profile](utf8-formatting.md#1-contracts-and-declarations) |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
 | `Iterator` | `associate Element`; `func next(self: uniq/Self) -> Option<Self.Element>` |
@@ -33,14 +33,14 @@ This is the minimal set named by language rules, not a promise of a general stan
 | Copy, Owned, Callable, Sealed | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
 | Whole-value update intrinsics | `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts |
-| `Console.writeLine` | `public func writeLine(text: ref/string) -> ()`; standard-output operation under §22.4, borrowing its argument |
+| `Console.writeLine` | Overloads `(text: ref/string) -> ()` and `(text: Text.Utf8Slice) -> ()`; §22.4 and the [formatting profile](utf8-formatting.md#61-console-output) |
 | `Test.tempDirectory` | `public func tempDirectory() -> string`; independently owned case-directory path, restricted to test-only bodies under the [test profile](testing-profile.md#environment-and-temporary-directory) |
 
 Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
 
 Fixed arrays implement Iterable with Element = T. Owning Array/Dictionary iterators retain and destroy unyielded elements in §4.7.6 order. ResolvedRange and Slice use concrete Kimi iterator identities with §4.6’s element Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and both stay exhausted after None. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next’s result extends no lifetime. These requirements add no public iterator constructors or other changes to associated-requirement kinds.
 
-The primitive keyword string denotes the compiler's UTF-8 string Core, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed-array syntax and layout follow [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](04-arrays-indexing-and-slices.md#46-indexing-and-slicing).
+The primitive keyword string denotes the compiler's UTF-8 string Core, not a shadowable alias. It supports literal/interpolation construction, concatenation, comparison and Utf8Format. The [formatting profile](utf8-formatting.md) defines separate mutable buffers, validated views and `Text.toString` for string copying; it adds no character indexer or formatting options. Fixed-array syntax and layout follow [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](04-arrays-indexing-and-slices.md#46-indexing-and-slicing).
 
 For Option/Result Copy conditions, compare atom sets using §8.7's proposition identity and conjunction elimination. T/E denote the corresponding parameter slots and Kimi.Copy the recognized Symbol. Order, transparent grouping, and duplicate atoms do not change the set; missing/unconditional Copy, missing/extra atoms, or different identities are incompatible. Retain all other required-shape checks without general logical-equivalence reasoning. Generated sources may use canonical T, E order, but loaded Kimi definitions cannot be required to use that order.
 
@@ -56,7 +56,8 @@ The following reference collects the public function names. Types are abbreviate
 
 | Fully qualified function | Signature / input and result Types | Owning rules |
 | --- | --- | --- |
-| `Kimi.Console.writeLine` | `(text: ref/string) -> ()` | §22.4 |
+| `Kimi.Console.writeLine` | `(text: ref/string) -> ()`, `(text: Text.Utf8Slice) -> ()` | §22.4 |
+| `Kimi.Text` functions | `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](utf8-formatting.md#2-text-operations) |
 | `Kimi.Test.tempDirectory` | `() -> string` | [Test profile](testing-profile.md#environment-and-temporary-directory) |
 | `Kimi.Intrinsics.replace<T>` | `(target: uniq/T, with => value: T) -> ()` | §15.7 |
 | `Kimi.Intrinsics.exchange<T>` | `(target: uniq/T, with => value: T) -> T` | §15.7 |
@@ -70,7 +71,7 @@ The following reference collects the public function names. Types are abbreviate
 | `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
 
-Container members stay with their owning Types and Contracts: `Iterator.next` and `Iterable.iterate` are listed in §22.1; collection, indexing, range and Slice APIs are defined in §4.6–7; comparison and Stringify requirements are listed in §22.1. `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` (§17.1) are not declarations in these groups.
+Container members stay with their owning Types and Contracts: `Iterator.next` and `Iterable.iterate` are listed in §22.1; collection, indexing, range and Slice APIs are defined in §4.6–7; comparison requirements are listed in §22.1; formatting members are in the [profile](utf8-formatting.md). `Text`, like Console, is not recursively opened by the default alias. `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` and `$tryWrite` are not declarations in these groups.
 
 This reference specifies required APIs, including unimplemented ones. [STATUS.md](../STATUS.md#kimi-library-and-whole-value-updates) records current declaration and runtime coverage separately.
 
@@ -119,7 +120,7 @@ Validate every root-level public main in an Application as a startup signature. 
 public func main() -> ()
     let message = "Hello, world!"
     ::Kimi.Console.writeLine(message)
-    // message has been moved; using it again is an error.
+    // message is borrowed for output and remains usable.
 ```
 
 Adding a top-level `::Kimi.Console.writeLine("Top level")` to this project is an error because it mixes startup forms. Integer-returning main and a safe Kimi.exit API are not initial features; normal termination is 0 and Abort is 1. Runtime.Exit remains internal.
@@ -239,9 +240,9 @@ writeLine("Hello")
 
 There is no `Kimi.writeLine`, old `Core` compatibility reference, or forwarding API. `Core` is an ordinary user name. Console is a group, not a value or special syntax. An intrinsic is a declaration whose Identity has compiler-recognized meaning; no public `Intrinsic` namespace or `Kimi.Intrinsic` group is introduced. Aliases retain that Identity. `$abort`, `$expect`, `$require`, and the Composition Root retain their existing roles.
 
-Kimi provides the public ordinary function `writeLine(text: ref/string) -> ()` as a direct member of its ordinary public `group Console`. The mandatory Kimi default alias makes `Console.writeLine` available. It does not recursively open Console. `::Kimi.Console.writeLine` identifies the required Symbol regardless of local shadowing. It is a safe, nongeneric function with one required shared-borrowed string argument and no receiver, defaults, formatting parameters, or result borrow. The compiler/runtime supplies its implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
+Kimi provides the public ordinary overloads `writeLine(text: ref/string) -> ()` and `writeLine(text: Text.Utf8Slice) -> ()` in its ordinary public `group Console`. The mandatory Kimi default alias makes `Console.writeLine` available. It does not recursively open Console. `::Kimi.Console.writeLine` identifies the required Symbol regardless of local shadowing. Each is safe and nongeneric, with one required argument and no receiver, defaults, formatting parameters or result borrow. The string overload borrows; the view overload copies its borrowed handle. The compiler/runtime supplies its implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
 
-Borrow text for the call under the ordinary argument adaptation rules, so a string Place stays usable and a literal, interpolation or `stringify` result is materialized and borrowed as a temporary, and write all its UTF-8 bytes plus one LF to standard output. NUL is data. Preserve contents without normalization, CRLF conversion, or locale encoding. Failure may leave partial output; no rollback or device atomicity is promised. Return Unit after host acceptance and flushing this call’s runtime buffer, not necessarily display or durable storage. Failure to complete initiates Abort under normal diagnostic/termination rules, even if stdout is unavailable. The call destroys nothing; a temporary argument follows its ordinary lifetime. Diagnose an unsupported target/feature if the backend cannot provide this operation.
+Borrow text for the call under the ordinary argument adaptation rules, so a string Place stays usable and a literal, interpolation or `Text.toString` result is materialized and borrowed as a temporary, and write all its UTF-8 bytes plus one LF to standard output. NUL is data. Preserve contents without normalization, CRLF conversion, or locale encoding. Failure may leave partial output; no rollback or device atomicity is promised. Return Unit after host acceptance and flushing this call’s runtime buffer, not necessarily display or durable storage. Failure to complete initiates Abort under normal diagnostic/termination rules, even if stdout is unavailable. The call destroys nothing; a temporary argument follows its ordinary lifetime. Diagnose an unsupported target/feature if the backend cannot provide this operation.
 
 **Complete application example (implicit startup in one SourceDocument).**
 
@@ -249,7 +250,7 @@ Borrow text for the call under the ordinary argument adaptation rules, so a stri
 ::Kimi.Console.writeLine("Hello, world!")
 ```
 
-The required standard-output bytes are UTF-8 `Hello, world!` followed by LF; normal completion exits with code zero under §22.2. No source main function, user alias, unsafe block, interpolation, or user-declared foreign function is needed. Passing an existing string local borrows it, so `writeLine(name)` leaves `name` usable. Owning output overloads and general I/O error/result APIs remain outside this minimal operation.
+The required standard-output bytes are UTF-8 `Hello, world!` followed by LF; normal completion exits with code zero under §22.2. No source main function, user alias, unsafe block, interpolation, or user-declared foreign function is needed. Passing an existing string local borrows it, so `writeLine(name)` leaves `name` usable. The UTF-8 view overload follows the same output rules. General I/O error/result APIs remain outside this minimal operation.
 
 The initial Windows implementation of this operation is specified in §22.5; output settings, manifest, and manual build steps are in §20.8. The first executable implementation milestone and the distinction between existing and proposed settings are recorded in [STATUS.md](../STATUS.md#4-llvm-generation-coverage). A prototype supporting only that subset must identify itself as partial; the milestone does not relax the Kimi identity/shape or validation requirements of a fully conforming Compilation. Unused executable Kimi bodies need not be emitted, but a same-spelled stub without the required identity and contract is not a compatible Kimi definition.
 
@@ -282,6 +283,8 @@ Free(null) succeeds without work. Otherwise require the original live pointer re
 
 HeapAlloc flags remain zero, without exception generation or disabling process-heap synchronization. HeapAlloc does not supply last-error on failure; do not report a stale GetLastError value for null allocation. Obtain last-error immediately after APIs that provide it, including failed HeapFree/WriteFile.
 
+HeapBuffer completion may use the [optional in-place shrink](utf8-formatting.md#34-optional-in-place-shrinking). This is a non-failing optimization, never a replacement allocation. An implementation using HeapReAlloc must request in-place-only behavior and retain the original allocation on failure.
+
 ### 22.5.3. Synchronous byte output
 
 WriteStdout and TryWriteStderr share a checked byte-write adapter. They add no newline, NUL scan, encoding conversion, buffer, or pointer retention. Length zero succeeds before handle acquisition or pointer access. For positive length, require length <= MaxObjectSize, nonnull data, a readable live range within one allocation, and no unsigned 64-bit overflow in baseAddress + (length - 1). Numeric checks do not prove allocation validity/lifetime.
@@ -304,6 +307,8 @@ Do not compute a next pointer after completion. Partial writes advance by actual
 ### 22.5.4. Abort diagnostics and exit
 
 Fixed diagnostics use an ASCII identifier, English reason, and source location, optionally a valid numeric OS error:
+
+Formatting also defines `KIMI_E_ARG_RANGE: Argument out of range` and `KIMI_E_FORMAT: Formatting failed`; their triggers are in the [formatting profile](utf8-formatting.md).
 
 ```text
 Main.kimi:3:5: abort KIMI_E_STDOUT: Failed to write to stdout (win32=6)
@@ -335,6 +340,8 @@ Establish validity at construction, not by revalidating UTF-8/allocations on eve
 
 The required Kimi.Console.writeLine Symbol (§22.4) receives a reference to a string handle, reads its data and length, calls WriteStdout(data, length), calls WriteStdout on a one-byte LF constant, and returns Unit. It neither releases nor modifies the handle; the caller keeps the string's ownership, and a temporary argument is destroyed by the caller at its ordinary lifetime. An empty string still emits LF. Output failure Aborts; earlier output is not rolled back. No concatenation buffer is required.
 
+The Utf8Slice overload uses the view's data and length directly with the same byte-output path. It creates no string handle and transfers no release responsibility. Its declaration has a distinct Kimi overload Identity; an expected Function Type selects an overload, while an untyped function reference is ambiguous.
+
 Write raw UTF-8 bytes to redirected files/pipes without changing the console code page. Non-ASCII console appearance depends on console configuration; universal Unicode console display is not initially guaranteed. A GetConsoleMode/WriteConsoleW adapter is a future extension, not implicit UTF-16 output.
 
 ### 22.5.6. Windows external symbols
@@ -352,6 +359,8 @@ declare dllimport void @ExitProcess(i32) noreturn
 ```
 
 HANDLE and data pointers use ptr, SIZE_T i64, DWORD/UINT/BOOL i32, and LPDWORD ptr to a 32-bit slot. Windows BOOL is not i1. Empty parameter parentheses mean no parameters, not omitted Types. dllimport specifies reference generation, not automatic linking; use the kernel32 input (§20.8.2).
+
+The Utf8Slice overload needs no additional external symbol. If optional shrinking is emitted, register `declare dllimport ptr @HeapReAlloc(ptr, i32, ptr, i64)` with kernel32 in the same symbol table; otherwise omit it.
 
 ## 22.6. Test execution and reporting
 

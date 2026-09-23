@@ -25,6 +25,27 @@ public sealed partial class Binding
         }
     }
 
+    private BoundType? BindArrayFill(ArrayLiteralKoto fill, BindingScope scope, BoundType? expected)
+    {
+        var length = fill.FillCount = this.BindLength(fill.FillLength!, scope);
+        var element = expected?.Kind == BoundTypeKind.FixedArray
+            ? this.RequireType(fill.Elements[0], scope, expected.Components[0])
+            : this.BindNode(fill.Elements[0], scope);
+        if (length is null || element is null)
+        {
+            return Fail(fill, BindingFailure.InvalidTypeFormation);
+        }
+
+        if (this.ProveCopy(element, fill) != ConstraintProof.Proven)
+        {
+            this.FailConstraint(fill);
+            return null;
+        }
+
+        var type = this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
+        return expected is not null && !FitsType(type, expected) ? Fail(fill, BindingFailure.TypeMismatch) : Complete(fill, type);
+    }
+
     private void InferArrayAnnotation(Koto syntax, Koto initializer, BindingScope scope)
     {
         var hole = ArrayShapeSyntax(syntax);

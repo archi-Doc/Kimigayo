@@ -69,7 +69,13 @@ An independent literal may form an Array with safe-borrow elements. Complete ele
 
 An annotation-only declaration remains Uninitialized: there is no zero fill or default element construction. Initial construction requires a whole-array initializer or one whole-array assignment; element-by-element writes into an unconstructed array are forbidden. After construction has completed and a Partial Move has occurred, missing elements may be reinitialized through eligible static Move Paths with ordinary write permissions. Whole-value reads and borrows require completeness.
 
-**Construction boundary.** Fixed arrays have no fill/repetition, generator or default construction. Construct a literal of exactly `N` elements, or acquire a complete array from an input or result. A declaration `[N of u8]` alone yields no usable buffer, even for a known large `N`. Generic functions may still inspect and mutate supplied initialized arrays. Future fill or generator rules must define evaluation counts, Copy versus repeated construction, zero length and partial cleanup.
+**Fill construction.** `[Length of value]` always constructs a fixed array, with or without an expected Type. An `Array<T>` expectation is a Type mismatch, not a conversion. `Length` follows §4.2, including parentheses around a compound length. The element Type follows ordinary expectation and literal rules and must be Copy. Evaluate and acquire `value` exactly once, even for length zero, then Copy it into all N elements. A bare Place is acquired by Copy. This introduces neither generator/default construction nor borrowing of uninitialized storage. Fill-store elimination follows the [formatting optimization rules](utf8-formatting.md#6-optimization-and-output) and must preserve evaluation and acquisition of the value.
+
+```kimi
+let zeros: [64 of u8] = [64 of 0]
+let flags = [8 of false] // [8 of bool], without a fixed-array expectation.
+let cells: [(W * H) of u8] = [(W * H) of 0]
+```
 
 ```kimi
 let a: [4 of i32] = [1, 2, 3, 4]
@@ -102,8 +108,7 @@ func process<length N>(values: [N of i32])
 
 func keep<length N, T>(values: [N of T]) -> [N of T] => values
 func work<length N>()
-    let buffer: [N of u8] // Formation-only example: Uninitialized, not a usable buffer.
-    // No fill/default construction exists; obtain a whole initialized value to use it.
+    let buffer: [N of u8] = [N of 0]
 
 let a: [4 of i32] = [1, 2, 3, 4]
 process(a)          // N = 4

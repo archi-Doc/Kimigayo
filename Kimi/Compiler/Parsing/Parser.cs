@@ -4149,6 +4149,22 @@ Loop:
 
         var first = ParseLiteralElement(ref reader, allowLabel: false);
         reader.SkipSeparators();
+        if (reader.IsCurrentIdentifier("of"))
+        {
+            // SPEC 4.2: compound lengths must be parenthesized. Binding checks the constant grammar.
+            if (first is not (NumberLiteralKoto { IsInteger: true } or IdentifierNameKoto or MemberAccessKoto or ParenthesizedKoto))
+            {
+                reader.Diagnostic.Add(first.Span, DiagnosticCode.UnexpectedToken_Kd, "array length (parenthesize a compound length)");
+            }
+
+            reader.Advance();
+            reader.SkipSeparators();
+            var value = ParseLiteralElement(ref reader, allowLabel: false);
+            reader.SkipSeparators();
+            reader.TryConsume(TokenKind.CloseBracket, out var close, true);
+            return new ArrayLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(value.Span.End, close.End)), [value], first);
+        }
+
         return reader.CurrentTokenKind == TokenKind.Colon
             ? ParseDictionaryLiteral(ref reader, openRange, first)
             : ParseArrayLiteral(ref reader, openRange, first);

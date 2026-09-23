@@ -68,7 +68,7 @@ Operands are evaluated once, from left to right, unless a construct specifies an
 | `(a(), b())` / `[a(), b()]` | Elements in source order. |
 | `[key(): value(), ...]` | Per entry: key, duplicate check, value, insertion. |
 | `start()..end()` | Start boundary, end boundary. |
-| `"\(a()) / \(b())"` | Each interpolation is evaluated and stringified in source order. |
+| `"\(a()) / \(b())"` | Each interpolation is evaluated and written in source order; failure stops later expressions. |
 
 `and`, `or` and selections evaluate only the required operands or branches. [Simple assignment](13-operators-and-assignment.md#1371-simple-assignment) evaluates and secures its right-hand side before its target, while compound assignment keeps target-first evaluation. Type arguments, length arguments and adaptation-target Type formation are not evaluated at runtime.
 
@@ -104,7 +104,7 @@ For control-flow results, all source constraints, including available constraint
 | --- | --- |
 | `name` | Reference to a visible binding, function or other named entity. |
 | `123`, `0xff`, `1.5`, `true`, `'€'`, `"text"` | Numeric, Boolean, Character and String literals; see [lexical structure](02-source-and-lexical-structure.md#2-source-and-lexical-structure). |
-| `"value = \(value)"` | Interpolated string; the embedded Type must support stringification (§12.3.3). |
+| `"value = \(value)"` | Interpolated string; the embedded Type must support UTF-8 formatting (§12.3.3). |
 | `null` | Contextually typed [raw null pointer](05-raw-pointers-and-unsafe-memory.md#51-null-and-equality). |
 | `()` | Unit value. |
 | `(value)` | Grouped expression; preserves a Place. |
@@ -122,17 +122,11 @@ let names = [1: "one", 2: "two",]
 let message = "first = \(values[0])"
 ```
 
-### 12.3.3. Interpolation stringification
+### 12.3.3. Interpolation formatting
 
-The complete Type of each embedded value must satisfy the required Stringify Contract. Each value is evaluated once, shared-borrowed for the call, and its verified mapping is invoked once; the owned result is appended before the next interpolation is evaluated. Printing does not implicitly Move a Non-Copy source. The call Loan ends when the call completes, and neither returned nor combined strings keep source borrows. Normal temporary cleanup and Abort rules apply. Allocation may be optimized, but the semantics of independent owned strings must remain.
+An interpolated literal produces an owning `string`. Each embedded expression fits the shared input of `Utf8Writer.write` under §10.2 and requires `Utf8Format` for the selected referent Type. Borrow Types do not forward conformance. The [formatting profile](utf8-formatting.md#5-interpolation-and-internal-adapters) defines evaluation, temporary lifetime, failure, representations and capacity planning. No intermediate owning string per value is required, and a bare Place is not Moved.
 
-Scalars, Unit and `string` under `owner` Semantics conform to Stringify:
-
-- integers use decimal, with a minus sign only for negative values;
-- `bool` uses `true`/`false`, `char` its scalar value's UTF-8 bytes, Unit `()`, and `string` its contents;
-- floating-point formatting is locale-independent; the spellings of finite values, NaN and infinities are implementation-defined and must be documented.
-
-Safe shared and exclusive borrows forward through shared access without taking ownership. User Types need `Self is Stringify` and a matching public implementation. There is no implicit formatting of object addresses or raw pointers, and string concatenation (§13.3) accepts only string operands.
+`$tryWrite(writer, literal)` writes directly to an existing adapter, stopping at its first failure without evaluating later substitutions. Its immediate exclusive borrow, literal-only second operand and control-flow boundaries are defined in [the profile](utf8-formatting.md#53-short-circuiting-trywrite). String concatenation (§13.3) still accepts only string operands.
 
 ### 12.3.4. Dictionary construction and duplicate keys
 

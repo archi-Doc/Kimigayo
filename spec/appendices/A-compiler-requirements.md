@@ -1,5 +1,7 @@
 # Appendix A. Compiler implementation requirements
 
+UTF-8 formatting, buffers, interpolation and Console optimization must satisfy the [formatting profile](../utf8-formatting.md), including its required costs and [verification matrix](../utf8-formatting.md#7-conformance-verification). Preserve original exclusive Loans in shared dependent results and check BufferWriter's effect bound before erasure.
+
 [Specification index](../../SPEC.md)
 
 **Normative.** Compiler requirements preserve the language’s information and invariants; they add no source syntax or failure behavior. Appendix B gives optional algorithms. Verification coverage below is required; parsing alone does not establish it.
@@ -187,7 +189,7 @@ Test qualified/ambiguous associated Names, diamonds/independent declarations, in
 
 Conditional conformance checks also cover positive-only syntax, permitted block declarations, Type-use versus conformance premises, condition-scoped signatures, duplicate direct registrations across fragments, cyclic/Unknown evidence, and parent-path agreement. Compare applicability only after committed lookup and substitution; test same-group alternatives, no base fallback, no condition-strength ranking, and no instantiation-time reselection. Verify conditional Copy derivation and Field bridges under their declared premises. Artifacts/cache invalidation preserve conditions, mappings, associated-Type bindings, and proof dependencies independently of environment directives.
 
-Test struct-conformance inheritance under §8.4.4: a compatible Stringify-like mapping succeeds; Self arguments/results and owning receivers fail that path without invalidating the derived declaration. Cover fixed associated-Type normalization, alternative paths, intrinsic exclusions, and Unknown/Error distinctions. Across A -> B -> D, retain A's Member Identity/Self and composed Type/Origin/receiver mapping. Diagnose explicit conformance and constraint-use failures with the failed requirement/cause, without warning on the open base. Generic calls use the retained mapping, not caller-side member lookup.
+Test struct-conformance inheritance under §8.4.4: a compatible Utf8Format-like mapping succeeds; Self arguments/results and owning receivers fail that path without invalidating the derived declaration. Cover fixed associated-Type normalization, alternative paths, intrinsic exclusions, and Unknown/Error distinctions. Across A -> B -> D, retain A's Member Identity/Self and composed Type/Origin/receiver mapping. Diagnose explicit conformance and constraint-use failures with the failed requirement/cause, without warning on the open base. Generic calls use the retained mapping, not caller-side member lookup.
 
 ## A.12. Generic schemas and specialization verification
 

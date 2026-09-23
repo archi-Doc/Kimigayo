@@ -23,6 +23,8 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 
 ## 3. Current position
 
+- **Active user-directed work: UTF-8 formatting.** The finalized proposal is integrated into the normative formatting profile and affected chapters; its draft is frozen. Fixed-array fill is implemented and unit-verified (73 focused tests; four O0/O2 native runs, evidence `bin/verify/20260923-124752-unit-utf8-fill`). Continue with buffer/adapter identities, lifetimes and runtime, Utf8Format dispatch, owning interpolation and short-circuit writes, Console views and performance verification. This work takes priority over P30; no completion claim for formatting yet.
+
 - **Verified source HEAD** `3e963abe`. Debug/Release builds are warning-free; each full suite passes 11,803 tests. Session evidence: `bin/verify/20260923-121325-session-during-final-reviewed`; 48 Optional native O0/O2 executions and all 23 harnesses (1–22 and 29, Release, 1,191 checks) pass. P29 is DONE.
 - **Borrow Origin suffix:** contextual `during`, Optional attachment, grouping and Adaptation boundaries, source output and diagnostics are integrated and implemented. The library, affected milestone programs and tests use the new spelling; the proposal is recorded as integrated and frozen. Existing Origin, ownership and generation boundaries are unchanged.
 - **P20 complete:** the Copy read (§3.3, §10.2, §13.4) reads a `ref/T`/`uniq/T` value as its Copy referent wherever a `T` is expected, omitted call defaults evaluate once per omission (§7.2.3), and Program 20 uses postfix Origin annotations and passes 55 harness checks per configuration. The completion assertion formerly recorded in §6.1 was a cascade from the unsupported call default; an internal invariant is now reported only for a body without an Unsupported issue.
@@ -47,7 +49,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | 4 | P21 | Explicit full specialization | DONE | Length specialization, inherited named/omitted Origin binders, inherited defaults and Constraints, receiver and compound specializations, no diagnostic cascade from an invalid specialization. Unchanged target and 61 checks pass in Debug/Release; Program 21 reads references as Copy referents (G15 resolved 2026-09-23). |
 | 5 | P29 | Dynamic Array | DONE | §4.7 capacity, mutation, Non-Copy elements, owning iteration and mandatory allocation bounds are verified; the Array part of G3 is settled. Unchanged Program 29 and 119 harness checks pass in Debug/Release O0/O2. Shared element/view access and iteration, call-argument literals, whole replacement and conditional destruction are verified; unsupported neighboring forms are ownership-stage `UnsupportedOwnership_Kd` (G17 resolved). |
 | 6 | P30 | Equatable/Comparable Contracts | TODO | Generic requirement calls and composed comparisons. |
-| 7 | P32 | Stringify and interpolation | TODO | Interpolation evaluation order and temporary cleanup; documented float formatting. |
+| 7 | P32 | UTF-8 formatting and interpolation | IN_PROGRESS | Complete the normative formatting profile across library, Binding, ownership, lowering and runtime, including borrowing, failure, numeric representations and required costs. |
 | 8 | P31 | Dictionary | TODO | Equality, mutation, insertion order, iteration, Loans, allocation-free churn. |
 | 9 | P23 | Basic Properties | TODO | Standard/custom/computed accessors over Copy values, permissions, evaluation order. |
 | 10 | P24 | Ownership-bearing Properties | TODO | Non-Copy setters, getter results and temporaries, Contract witnesses. |
@@ -62,7 +64,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | 19 | P37 | Integrated processing application | TODO | Collections, borrows, iteration and closures combined. |
 | 20 | P38 | Integrated core application | TODO | Properties, inheritance, objects and formatting combined. |
 
-P22 (generation migration), P19 (completed first at the user's direction), P20, P21 and P29 are done; the next milestone in order is P30. Collections, comparison and formatting (P29–P32) precede Properties and objects because most later programs use them.
+P22 (generation migration), P19 (completed first at the user's direction), P20, P21 and P29 are done; the active user-directed milestone is P32; P30 follows it. Collections, comparison and formatting (P29–P32) precede Properties and objects because most later programs use them.
 
 ### Toolchain track (after P38, or earlier when instructed)
 
@@ -88,9 +90,10 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. **P30 start:** author or confirm Milestone Program 30 and probe SPEC §13.4.1 Equatable/Comparable declarations, intrinsic witnesses and generic requirement calls; start with NaN-reflexive Contract equality versus built-in IEEE equality, then shared-borrow/Tuple composition.
-2. **P30 harness:** create `test-milestone30.ps1` with the unchanged target, composed comparisons and required rejections (missing conformance, wrong witness signature) with their diagnostic codes.
-3. **Array follow-ups outside P29:** zero-sized Array elements, nested Array handles, aggregates holding handles and shared `ref/string` element iteration (G14) stay explicit `UnsupportedOwnership_Kd`/Binding boundaries; general Slice/Index/Range and user iteration remain P27/P28. G11/G14/G16 remain with their owning milestones.
+1. **Formatting integration:** complete buffers and Origin metadata, erased writer effects, builtin/user formatting, owning interpolation and `$tryWrite`, Console overloads, native/cost/rejection tests, then run Session verification once. Keep unverified boundaries explicit in STATUS.
+2. **P30 start:** author or confirm Milestone Program 30 and probe SPEC §13.4.1 Equatable/Comparable declarations, intrinsic witnesses and generic requirement calls; start with NaN-reflexive Contract equality versus built-in IEEE equality, then shared-borrow/Tuple composition.
+3. **P30 harness:** create `test-milestone30.ps1` with the unchanged target, composed comparisons and required rejections (missing conformance, wrong witness signature) with their diagnostic codes.
+4. **Array follow-ups outside P29:** zero-sized Array elements, nested Array handles, aggregates holding handles and shared `ref/string` element iteration (G14) stay explicit `UnsupportedOwnership_Kd`/Binding boundaries; general Slice/Index/Range and user iteration remain P27/P28. G11/G14/G16 remain with their owning milestones.
 
 ## 7. Open issues
 

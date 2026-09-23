@@ -160,7 +160,7 @@ remain subject to the [explicit deferral](../spec/appendices/D-deferred-features
 | 29 | Dynamic Array | Capacity, insertion/removal/replacement, Non-Copy elements and owning iteration |
 | 30 | Comparison Contracts | Equatable/Comparable, generic requirement calls and composed comparisons before Dictionary |
 | 31 | Dictionary | Key equality, mutation, insertion order, iteration, Loans and allocation/complexity requirements |
-| 32 | Stringify and interpolation | User/generic stringification, evaluation order, temporary cleanup and independent owned results |
+| 32 | Utf8Format and interpolation | User/generic UTF-8 formatting, buffer reuse, short-circuit writes and owning interpolation |
 | 33 | Exclusive objects and views | obj, base views, runtime struct tests/refinement, identity and dynamic destruction |
 | 34 | Shared object ownership | rc/arc creation, explicit clone, Move, shared access and final strong release |
 | 35 | Weak | Downgrade/upgrade, expiration, cyclic construction and final weak-table release |
@@ -181,7 +181,7 @@ target. Remaining changes affect planned scopes only:
 | 22 | 23, 24 | Separate basic access from ownership/borrow/witness behavior |
 | 23–27 | 25–29 | Inheritance, closures, Slice, Iterator, Array |
 | 28 | 31 | Dictionary follows comparison Contracts |
-| 29 | 30, 32 | Separate comparison from Stringify/interpolation |
+| 29 | 30, 32 | Separate comparison from Utf8Format/interpolation |
 | 30 | 33, 34 | Separate exclusive objects/views from shared ownership |
 | 31–34 | 35–38 | Weak, static storage and the two integration targets |
 
@@ -242,7 +242,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 29 / 17–18, 27–28 | Grow, insert, replace and remove Non-Copy Array elements; consume an iterator and stop early. | Empty/pop/clear, directional indices, capacity/no-op paths, live and empty-Slice conflicts, retained borrowed contents, normal argument abandonment and Abort. | Count internal allocations; verify within-capacity/no-op/removal guarantees, reverse current-index cleanup, growth amortization and shrink failure preserving original placement. |
 | 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
 | 31 / 19, 28–30 | Insert/reject/replace/remove Dictionary entries with user-defined equal keys; inspect and iterate insertion order. | Result/Option ownership, duplicate literal diagnostics and runtime duplicates, stored-key preservation, missing-key assignment Abort, lookup/mutation Loans and dependency retention. | Equality effects and invocation order, value-before-key/reverse-insertion cleanup, allocation-free duplicate/lookup/replacement paths, churn reuse and specified management bounds. No public Hash requirement is added. |
-| 32 / 18–19, 26 | Interpolate user/generic values through Stringify, retaining the original Non-Copy values and independent resulting strings. | UTF-8/NUL/empty text, source-order evaluation, once-only stringification, temporary cleanup, missing conformance and Abort before later interpolation. | Verified Stringify calls, ownership of each produced string and cleanup, no retained source Loan in the combined result. Do not invent formatting options or deferred concatenation semantics. |
+| 32 / 18–19, 26 | Interpolate user/generic values through Utf8Format, retaining the original Non-Copy values and independent resulting strings. | UTF-8/NUL/empty text, source-order evaluation, once-only formatting, temporary cleanup, missing conformance and Abort before later interpolation. | Verified Utf8Format writes, buffer ownership and cleanup, no retained source Loan in the combined result. Do not invent formatting options or deferred concatenation semantics. |
 | 33 / 14, 24–25 | Create an obj, use a base object view, perform specified struct `is` tests/refinement, preserve identity and destroy the complete Dynamic Type. | Sealed payload projection, borrow/reborrow, legal whole-payload updates, invalid view/acquisition/escape; test expression effects and refinement invalidation. | Header/view identity, dynamic destruction before original storage release, unchanged identity across updates. No runtime Contract View, checked-cast spelling or deferred ObjectCallCompatible inference. |
 | 34 / 33 | Create rc and arc values, explicitly clone strong handles, Move them and observe final strong release. | Shared-only access even at count one, no implicit clone, moved-handle rejection, external payload dependencies and separate count-overflow failure probes. | Exact retain/release counts, clone without allocation/payload copy, complete payload destruction once; inspect atomic arc ordering with internal tests. No source concurrency or obj/rc/arc conversion is added. |
 | 35 / 26, 34 | Downgrade, upgrade and expire Weak handles; then demonstrate a cyclic factory's Building-to-Alive transition. | Weak clone/Move, upgrade before publication and after final release, payload dependencies, factory Owned/Callable constraints and failed construction. | Separate payload/object/table lifetimes, allocation-free upgrade/clone, final table release; internally test arc upgrade/final-release races without introducing source threading. |
@@ -253,7 +253,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 Owning clauses: [Properties](../spec/11-properties.md),
 [generics and Contracts](../spec/08-generics-constraints-and-contracts.md),
 [sequences and collections](../spec/04-arrays-indexing-and-slices.md),
-[interpolation](../spec/12-expressions.md#1233-interpolation-stringification),
+[interpolation](../spec/12-expressions.md#1233-interpolation-formatting),
 [comparison and objects](../spec/13-operators-and-assignment.md),
 [generation/runtime representation](../spec/21-layout-runtime-and-code-generation.md),
 and [startup/static storage](../spec/22-core-execution-and-foreign-functions.md).

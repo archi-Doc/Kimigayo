@@ -4,9 +4,67 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
+    private static void WriteArrayFillHelper(EmissionModule module, TextWriter output)
+    {
+        for (var f = 0; f < module.FunctionCount; f++)
+        {
+            foreach (var instruction in module.GetFunction(f).Instructions)
+            {
+                if (instruction.Opcode != EmissionOpcode.FillArray)
+                {
+                    continue;
+                }
+
+                // Layout formation already checked count * stride. Doubling copies only initialized
+                // bytes to disjoint storage; one helper serves every Copy element Type and array length.
+                output.Write("""
+                    define internal void @__kimi_fill_array(ptr %destination, ptr %value, i64 %count, i64 %stride) #0 {
+                    entry:
+                      %size = mul i64 %count, %stride
+                      %empty = icmp eq i64 %size, 0
+                      br i1 %empty, label %done, label %first
+                    first:
+                      call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %value, i64 %stride, i1 false)
+                      br label %next
+                    next:
+                      %filled = phi i64 [ %stride, %first ], [ %end, %copy ]
+                      %complete = icmp eq i64 %filled, %size
+                      br i1 %complete, label %done, label %copy
+                    copy:
+                      %remaining = sub i64 %size, %filled
+                      %last = icmp ult i64 %remaining, %filled
+                      %amount = select i1 %last, i64 %remaining, i64 %filled
+                      %target = getelementptr i8, ptr %destination, i64 %filled
+                      call void @llvm.memcpy.p0.p0.i64(ptr %target, ptr %destination, i64 %amount, i1 false)
+                      %end = add i64 %filled, %amount
+                      br label %next
+                    done:
+                      ret void
+                    }
+
+                    """);
+                return;
+            }
+        }
+    }
+
     private static void WriteAggregate(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
     {
         var layout = instruction.Aggregate!;
+        if (instruction.Opcode == EmissionOpcode.FillArray)
+        {
+            output.Write("  call void @__kimi_fill_array(ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", ptr ");
+            WriteSlot(output, function, instruction.Constant);
+            output.Write(", i64 ");
+            WriteNumber(output, layout.Count);
+            output.Write(", i64 ");
+            WriteNumber(output, layout.Fields[0].Layout.Stride);
+            output.Write(")\n");
+            return;
+        }
+
         if (instruction.Opcode == EmissionOpcode.TransferAggregate)
         {
             output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr align ");

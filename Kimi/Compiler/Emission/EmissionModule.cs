@@ -48,6 +48,7 @@ internal enum EmissionOpcode : byte
 
     /// <summary>Memcpy: zero operands use Place/Constant slots; one supplies the source address; two supply source and destination addresses.</summary>
     TransferAggregate,
+    FillArray,
 
     /// <summary>Destroy the exact aggregate Type at Place, or at the sole address operand; only Place supports conditional cleanup.</summary>
     DestroyAggregate,

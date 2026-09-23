@@ -14,14 +14,22 @@ public sealed class ArrayLiteralKoto : ExpressionKoto
     /// <summary>Gets the array elements in source order.</summary>
     public List<Koto> Elements { get; private set; }
 
+    /// <summary>Gets the compile-time length for fill construction, whose sole element is evaluated once.</summary>
+    public Koto? FillLength { get; private set; }
+
+    internal BoundLength? FillCount { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="ArrayLiteralKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete literal span.</param>
     /// <param name="elements">The array elements.</param>
-    public ArrayLiteralKoto(ref TokenReader reader, SourceSpan range, List<Koto> elements)
+    /// <param name="fillLength">The optional fill length; elements then contains exactly one value.</param>
+    public ArrayLiteralKoto(ref TokenReader reader, SourceSpan range, List<Koto> elements, Koto? fillLength = null)
         : base(ref reader, range)
     {
         this.Elements = elements;
+        this.FillLength = fillLength;
+        this.Adopt(fillLength);
         this.Adopt(elements);
     }
 
@@ -29,6 +37,12 @@ public sealed class ArrayLiteralKoto : ExpressionKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.OpenBracketChar);
+        if (this.FillLength is { } length)
+        {
+            length.WriteTo(ref builder);
+            builder.Append(" of ");
+        }
+
         for (var i = 0; i < this.Elements.Count; i++)
         {
             if (i > 0)
@@ -44,14 +58,37 @@ public sealed class ArrayLiteralKoto : ExpressionKoto
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
     {
+        if (this.FillLength is { } length)
+        {
+            visitor.Visit(length);
+        }
+
         visitor.VisitMany(this.Elements);
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
-        => this.Elements;
+    {
+        if (this.FillLength is { } length)
+        {
+            yield return length;
+        }
+
+        foreach (var element in this.Elements)
+        {
+            yield return element;
+        }
+    }
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => ReplaceInList(this.Elements, oldKoto, newKoto);
+    {
+        if (this.FillLength == oldKoto)
+        {
+            this.FillLength = newKoto;
+            return true;
+        }
+
+        return ReplaceInList(this.Elements, oldKoto, newKoto);
+    }
 }
 
 /// <summary>Represents one key-value pair in a dictionary literal.</summary>

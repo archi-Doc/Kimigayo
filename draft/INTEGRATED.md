@@ -40,6 +40,7 @@
 
 | 文書 | 状態 | 取り込み先・証跡 |
 | --- | --- | --- |
+| `2026-09-20 UTF-8 Formatting and String Interpolation.md` | 取り込み済み | `spec/utf8-formatting.md`、第 2、4、7–8、12–13、15、17、21–22 章、付録 A/D/E/F、SPEC 宣言索引。原稿は固定。 |
 | `2026-09-13 Dependencies and Artifacts.md` | 取り込み済み | 第 18 章、§20.8、§21.3（旧 PLAN_HISTORY の記録索引） |
 | `2026-09-13 Testing.md` | 取り込み済み | §6.5.1、§17.5、§18.8、§20（同上） |
 | `2026-09-17 Documentation Comments.md` | 取り込み済み | §2.3.1、§2.3.6、付録 A.21（同上） |
