@@ -103,7 +103,9 @@ public sealed partial class OwnershipAnalysis
             // SPEC 4.5: the handle owns its buffer; elements follow T. A nested handle would need element destruction
             // to release inner buffers (PLAN P29), so it stays an explicit Unsupported form. A zero-sized element
             // has no stride-based storage plan yet and is refused here rather than at generation.
-            return type.Components[0].Kind != BoundTypeKind.Array && this.SupportsType(type.Components[0]) && !IsZeroSized(type.Components[0]);
+            // A generic element is checked again by each instance under its substitution.
+            var element = type.Components[0];
+            return element.Kind == BoundTypeKind.Parameter || (element.Kind != BoundTypeKind.Array && this.SupportsType(element) && !IsZeroSized(element));
         }
 
         if (type.Kind == BoundTypeKind.Primitive)

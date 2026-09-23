@@ -190,11 +190,12 @@ internal sealed partial class BodyLowering
             }
         }
 
-        // A temporary borrowed as a whole (for example an Array literal passed to a ref/ parameter) lives until its
-        // full-expression cleanup, which may be conditional under a short-circuit operand.
+        // A temporary borrowed as a whole or located as a receiver (for example an Array literal passed to a ref/
+        // parameter, or make()[0]) lives until its full-expression cleanup, which may be conditional under a
+        // short-circuit operand.
         for (var id = 0; id < body.Operations.Count; id++)
         {
-            if (body.Operations[id].Kind == OwnershipOperationKind.Borrow)
+            if (body.Operations[id].Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.LocateReceiver)
             {
                 MarkBorrowedTemporary(body, body.Operations[id].Place, marks);
             }

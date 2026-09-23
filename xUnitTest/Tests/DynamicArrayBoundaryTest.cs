@@ -16,6 +16,7 @@ public class DynamicArrayBoundaryTest
     [InlineData("let values: Array<[2 of ()]> = [[(), ()]]")]
     [InlineData("let values: Array<((), ())> = [((), ())]")]
     [InlineData("let values: Array<string> = [\"a\", \"b\"]\nfor value in values[0..1] => ()")]
+    [InlineData("func count<T>(values: Array<T>) -> isize => values.length\nlet n = count<()>([()])")]
     public void UnsupportedNeighboringShapesNeverPublishPartialIr(string source)
     {
         // These are valid specification forms, deliberately outside the verified generation boundary:
