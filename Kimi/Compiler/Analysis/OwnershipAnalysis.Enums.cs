@@ -57,7 +57,9 @@ public sealed partial class OwnershipAnalysis
 
         if (type.Kind == BoundTypeKind.Array)
         {
-            return this.SupportsType(type.Components[0]); // SPEC 4.5: the handle owns its buffer; elements follow T.
+            // SPEC 4.5: the handle owns its buffer; elements follow T. A nested handle would need element destruction
+            // to release inner buffers (PLAN P29), so it stays an explicit Unsupported form.
+            return type.Components[0].Kind != BoundTypeKind.Array && this.SupportsType(type.Components[0]);
         }
 
         if (type.Kind == BoundTypeKind.Primitive)
@@ -213,7 +215,7 @@ public sealed partial class OwnershipAnalysis
         var start = this.body.Places.Count;
         for (var i = 0; i < elements.Count; i++)
         {
-            var component = type.Kind == BoundTypeKind.FixedArray ? type.Components[0] : type.Components[i];
+            var component = type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? type.Components[0] : type.Components[i];
             var payload = this.Place(elements[i], component, OwnershipPlaceKind.Payload, true);
             this.Emit(OwnershipOperationKind.Declare, source, payload);
         }

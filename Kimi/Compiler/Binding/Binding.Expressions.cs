@@ -488,6 +488,8 @@ public sealed partial class Binding
                 }
 
                 return Complete(node, expected);
+            case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):
+                return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
         }

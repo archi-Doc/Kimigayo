@@ -280,7 +280,7 @@ internal sealed partial class BodyLowering
                 }
             }
 
-            if (!ReferenceTypes.IsString(place.Type) && (value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local || IsMaterializedScalar(body, p)))
+            if (!ReferenceTypes.IsString(place.Type) && (value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local || IsMaterializedScalar(body, p) || this.IsArrayPayload(body, p)))
             {
                 function.Slots.Add(new(p, value));
             }

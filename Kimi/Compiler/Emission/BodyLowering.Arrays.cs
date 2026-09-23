@@ -20,6 +20,11 @@ internal sealed partial class BodyLowering
         internal long Stride => this.Value.Layout.Stride;
     }
 
+    // SPEC 4.3: an Array literal's scalar payloads are stored in their own slots so construction can move their bytes into the buffer.
+    private bool IsArrayPayload(OwnershipBody body, int place)
+        => body.Places[place].Kind == OwnershipPlaceKind.Payload && this.payloadOwners[place] >= 0 &&
+            body.Places[body.Constructions[this.payloadOwners[place]].Place].Type.Kind == BoundTypeKind.Array;
+
     private bool TryGetArrayElement(BoundType type, out ArrayElement element)
     {
         element = default;
@@ -66,6 +71,7 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Insert => "__kimi_array_insert_",
             ArrayHelperKind.Pop => "__kimi_array_pop_",
             ArrayHelperKind.Remove => "__kimi_array_remove_",
+            ArrayHelperKind.Place => "__kimi_array_place_",
             ArrayHelperKind.Clear => "__kimi_array_clear_",
             _ => "__kimi_array_drop_",
         };
@@ -80,6 +86,7 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Append => new(name, unit, [handle, new(valueType, "value"), location, length]),
             ArrayHelperKind.Insert => new(name, unit, [handle, new("i64", "index"), new(valueType, "value"), location, length]),
             ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.Place => new(name, unit, [handle, new("ptr", "source"), location, length]),
             ArrayHelperKind.Remove => element.IsScalar
                 ? new(name, element.Value.ComputationType, [handle, new("i64", "index"), location, length])
                 : new(name, unit, [handle, new("i64", "index"), new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),

@@ -124,9 +124,9 @@ internal sealed partial class BodyLowering
                 InvocationKoto call => call.Arguments,
                 _ => null,
             };
-            // SPEC 4.7.4: an Array handle is zeroed by its construction; the typed empty literal has no payloads.
+            // SPEC 4.3, 4.7.4: an Array literal's payloads keep their own slots; construction moves them into the buffer.
             var handle = type.Kind == BoundTypeKind.Array;
-            if ((handle ? plan.PayloadCount != 0 : layout.Count != plan.PayloadCount) || (elements is not null && elements.Count != plan.PayloadCount))
+            if ((!handle && layout.Count != plan.PayloadCount) || (elements is not null && elements.Count != plan.PayloadCount))
             {
                 return Fail("Aggregate source and payload counts disagree.", out failure);
             }
@@ -136,13 +136,13 @@ internal sealed partial class BodyLowering
                 var p = plan.PayloadStart + i;
                 if (this.payloadOwners[p] >= 0 || body.Places[p].Kind != OwnershipPlaceKind.Payload ||
                     (elements is not null && !ReferenceEquals(body.Places[p].Source, elements[i])) ||
-                    !ReferenceEquals(body.Places[p].Type, type.Components[layout.IsArray ? 0 : i]))
+                    !ReferenceEquals(body.Places[p].Type, type.Components[layout.IsArray || handle ? 0 : i]))
                 {
                     return Fail("Aggregate payload ownership or Type does not match its shape.", out failure);
                 }
 
                 this.payloadOwners[p] = c;
-                if (layout.Fields[layout.IsArray ? 0 : i].Layout.Size != 0)
+                if (!handle && layout.Fields[layout.IsArray ? 0 : i].Layout.Size != 0)
                 {
                     function.SlotAddresses[p] = new(EmissionOperandKind.ProjectedSlot, p);
                     function.Subslots.Add(new(p, plan.Place, offset + layout.Offset(i)));
@@ -362,13 +362,28 @@ internal sealed partial class BodyLowering
 
                 if (place.Type.Kind == BoundTypeKind.Array)
                 {
-                    // SPEC 4.7.4: the typed empty literal is a zeroed handle that allocates nothing; element literals wait for the mutation operations.
-                    if (plan.PayloadCount != 0 || !this.TryGetLocation(operation.Source, directory, constants, out var initLocation))
+                    // SPEC 4.3, 4.7.4: the handle is zeroed (the empty literal allocates nothing); an element literal reserves its count
+                    // once and moves each acquired payload into the buffer in source order.
+                    if (!this.TryGetLocation(operation.Source, directory, constants, out var initLocation))
                     {
-                        return Fail("Array construction supports only the typed empty literal.", out failure);
+                        return Fail("Array construction has no diagnostic source location.", out failure);
                     }
 
                     function.AddCall(id, WindowsLowering.ArrayInit, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                    if (plan.PayloadCount != 0)
+                    {
+                        if (!this.TryGetArrayElement(place.Type.Components[0], out var element))
+                        {
+                            return Fail("Array literal has an unsupported element Type.", out failure);
+                        }
+
+                        function.AddCall(id, WindowsLowering.ArrayGrow, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.Integer, element.Stride), new(EmissionOperandKind.Integer, plan.PayloadCount), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                        var placeElement = this.GetArrayHelper(ArrayHelperKind.Place, element).Abi;
+                        for (var i = 0; i < plan.PayloadCount; i++)
+                        {
+                            function.AddCall(id, placeElement, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.SlotAddress, plan.PayloadStart + i), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                        }
+                    }
                 }
 
                 break; // Payload slots already occupy their final byte offsets.

@@ -621,8 +621,8 @@ public sealed partial class OwnershipAnalysis
                 return this.ConstructAggregate(tuple, tuple.Elements);
             case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.FixedArray:
                 return this.ConstructAggregate(array, array.Elements);
-            case ArrayLiteralKoto { Elements.Count: 0 } array when array.BoundType?.Kind == BoundTypeKind.Array:
-                // SPEC 4.7.4: a typed empty literal is a zeroed handle; element literals need the mutation operations (P29).
+            case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.Array:
+                // SPEC 4.3, 4.7.4: an Array literal acquires its elements as payloads that construction moves into the buffer.
                 return this.ConstructAggregate(array, array.Elements);
             case TupleTypeKoto { ElementNodes.Count: 0 }:
                 return this.Temporary(node);

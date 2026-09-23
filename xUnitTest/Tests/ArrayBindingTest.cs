@@ -14,6 +14,9 @@ public class ArrayBindingTest
     private static readonly string TaskOperations = Task.Replace("deinit => ()", "deinit\n        match self.id\n            1 => Console.writeLine(\"Task 1 destroyed.\")\n            2 => Console.writeLine(\"Task 2 destroyed.\")\n            3 => Console.writeLine(\"Task 3 destroyed.\")\n            _ => Console.writeLine(\"Task 4 destroyed.\")", StringComparison.Ordinal) +
         "var tasks: Array<Task> = []\ntasks@uniq.reserve(additional: 2)\ntasks@uniq.append(Task.init(1))\ntasks@uniq.append(Task.init(3))\ntasks@uniq.insert(1, Task.init(2))\ntasks@uniq.append(Task.init(4))\nrequire tasks.length == 4 and tasks.capacity >= 4 else => $abort(\"growth\")\nlet last = tasks@uniq.remove(3)\nrequire last.id == 4 and tasks.length == 3 else => $abort(\"remove\")\nConsole.writeLine(\"Removed the last task.\")\nmatch tasks@uniq.pop()\n    .Some(let popped)\n        require popped.id == 3 else => $abort(\"pop\")\n        Console.writeLine(\"Popped a task.\")\n    .None => $abort(\"empty\")\ntasks@uniq.shrinkToFit()\nrequire tasks.capacity == 2 else => $abort(\"shrink\")\nConsole.writeLine(\"Clearing.\")\ntasks@uniq.clear()\nrequire tasks.length == 0 and tasks.capacity == 2 else => $abort(\"clear\")\ntasks@uniq.append(Task.init(2))\nConsole.writeLine(\"Done.\")";
 
+    private static readonly string TaskLiterals = Task.Replace("deinit => ()", "deinit\n        match self.id\n            1 => Console.writeLine(\"Task 1 destroyed.\")\n            2 => Console.writeLine(\"Task 2 destroyed.\")\n            _ => Console.writeLine(\"Task 3 destroyed.\")", StringComparison.Ordinal) +
+        "var tasks: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nrequire tasks.length == 3 and tasks.capacity >= 3 else => $abort(\"literal\")\nvar values: Array<i32> = [10, 20, 30]\nmatch values@uniq.pop()\n    .Some(let last) => require last == 30 else => $abort(\"pop\")\n    .None => $abort(\"empty\")\nlet names: Array<string> = [\"alpha\", \"beta\"]\nrequire names.length == 2 else => $abort(\"names\")\nlet flags: Array<bool> = [true, false, true]\nrequire flags.length == 3 else => $abort(\"flags\")\nlet dynamic = [1, 2, 3, 4]\nrequire dynamic.length == 4 and dynamic.capacity >= 4 else => $abort(\"dynamic\")\nlet x: u8 = 7\nvar mixed = [x, 1]\nmatch mixed@uniq.pop()\n    .Some(let one) => require one == 1 else => $abort(\"mixed\")\n    .None => $abort(\"mixed empty\")\nConsole.writeLine(\"Done.\")";
+
     // SPEC 4.6.1: a borrowed handle shares access for the metadata operation and is read through the reference.
     [Fact]
     public void BorrowedHandlesReadMetadataThroughTheReference()
@@ -62,15 +65,43 @@ public class ArrayBindingTest
     [Theory]
     [InlineData("let tasks: Array<Task> = [Task.init(1), Task.init(2)]\nlet room: isize = tasks.capacity\nlet all = tasks.indices")]
     [InlineData("let numbers: Array<i32> = [1, 2, 3]\nlet n: isize = numbers.length")]
+    [InlineData("let dynamic = [1, 2, 3]\nlet n: isize = dynamic.length")]
     public void ArrayTypesLiteralsAndMetadataBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(Task + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified); // Array storage is not analyzed or generated yet.
-        Assert.True(c.Ownership.Result.UnsupportedCount > 0, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
+        Assert.True(c.Emission.WriteIr(output, out var error), error);
+    }
+
+    // SPEC 4.3: an element literal reserves its count once and moves each payload into the buffer; without a fixed-array
+    // expectation an independent literal constructs an Array whose element Type its elements establish.
+    [Fact]
+    public void ElementLiteralsConstructArraysNatively()
+        => ScalarEmissionTest.EmitFixture(
+            "ArrayLiteralElements",
+            TaskLiterals,
+            "Done.\nTask 3 destroyed.\nTask 2 destroyed.\nTask 1 destroyed.\n");
+
+    [Theory]
+    [InlineData("let mixed = [1, true]")]
+    [InlineData("let x: u8 = 1\nlet y: i32 = 2\nlet mixed = [x, y]")]
+    public void IndependentLiteralsNeedOneElementType(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+    }
+
+    // A nested independent literal is an Array of handles, which ownership analysis does not support yet (PLAN P29).
+    [Fact]
+    public void NestedIndependentLiteralsAreRejectedByOwnershipAnalysis()
+    {
+        var c = MinimalEmissionTest.Analyze("let nested = [[1], [2]]");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }
 
     // SPEC 4.7.4: the typed empty literal is a zeroed handle that allocates nothing; destruction releases the buffer.

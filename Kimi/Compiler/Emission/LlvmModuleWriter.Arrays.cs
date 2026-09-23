@@ -32,6 +32,9 @@ internal static partial class LlvmModuleWriter
                 case ArrayHelperKind.Remove:
                     WriteArrayRemove(output, helper);
                     break;
+                case ArrayHelperKind.Place:
+                    WriteArrayPlace(output, helper);
+                    break;
                 default:
                     WriteArrayClear(output, helper, helper.Kind == ArrayHelperKind.Drop);
                     break;
@@ -124,6 +127,16 @@ internal static partial class LlvmModuleWriter
         output.Write("\n  call void @llvm.memmove.p0.p0.i64(ptr %slot, ptr %next, i64 %tail_bytes, i1 false)\n  store i64 %last, ptr %length_ptr, align 8\n");
         output.Write(scalar ? "  ret " + helper.Element.ComputationType + " %value\n" : "  ret void\n");
         WriteArrayBoundsFailure(output);
+    }
+
+    // Moves an acquired payload slot into the next element of a literal whose capacity was reserved (SPEC 4.3).
+    private static void WriteArrayPlace(TextWriter output, ArrayHelper helper)
+    {
+        output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
+        WriteNumber(output, Stride(helper));
+        output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n  call void @llvm.memcpy.p0.p0.i64(ptr %slot, ptr %source, i64 ");
+        WriteNumber(output, Stride(helper));
+        output.Write(", i1 false)\n  %next = add i64 %length, 1\n  store i64 %next, ptr %length_ptr, align 8\n  ret void\n");
     }
 
     // Destroys the elements in reverse index order and keeps the capacity; Drop then releases the buffer (SPEC 4.7.6).

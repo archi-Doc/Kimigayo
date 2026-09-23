@@ -55,6 +55,59 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
+    // one complete Type its elements establish; unfitted numeric literals follow ordinary inference. Call arguments keep
+    // candidate-local fitting and never take this default.
+    private BoundType? BindIndependentArrayLiteral(ArrayLiteralKoto literal, BindingScope scope)
+    {
+        BoundType? established = null;
+        BoundType? literalDefault = null;
+        for (var i = 0; i < literal.Elements.Count; i++)
+        {
+            var source = KotoHelper.UnwrapParentheses(literal.Elements[i]);
+            if (IsUnfittedLiteral(source))
+            {
+                var number = source as NumberLiteralKoto ?? (source as UnaryKoto)?.Operand as NumberLiteralKoto;
+                if (number is not null)
+                {
+                    literalDefault ??= DefaultLiteralType(number, null);
+                }
+
+                continue;
+            }
+
+            var actual = this.BindNode(literal.Elements[i], scope);
+            if (actual is null)
+            {
+                return Complete(literal, null);
+            }
+
+            if (ReferenceEquals(actual, BoundType.Never))
+            {
+                continue;
+            }
+
+            if (established is not null && !ReferenceEquals(established, actual))
+            {
+                return Fail(literal, BindingFailure.TypeMismatch);
+            }
+
+            established = actual;
+        }
+
+        if ((established ?? literalDefault) is not { } element)
+        {
+            return Fail(literal, BindingFailure.MissingType, true);
+        }
+
+        for (var i = 0; i < literal.Elements.Count; i++)
+        {
+            this.RequireType(literal.Elements[i], scope, element);
+        }
+
+        return Complete(literal, this.InternType(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element]));
+    }
+
     private bool ArrayElementEvidence(Koto shape, Koto source, BindingScope scope, ref BoundType? established, ref BoundType? literalDefault)
     {
         shape = ArrayShapeSyntax(shape);
