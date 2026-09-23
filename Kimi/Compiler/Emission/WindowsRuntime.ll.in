@@ -245,6 +245,23 @@ done:
   ret void
 }
 
+{{__kimi_array_init}}
+entry:
+  store ptr null, ptr %handle, align 8
+  %length_ptr = getelementptr i8, ptr %handle, i64 8
+  store i64 0, ptr %length_ptr, align 8
+  %capacity_ptr = getelementptr i8, ptr %handle, i64 16
+  store i64 0, ptr %capacity_ptr, align 8
+  ret void
+}
+
+{{__kimi_array_free}}
+entry:
+  %buffer = load ptr, ptr %handle, align 8
+  call void @__kimi_free(ptr %buffer, ptr %location, i64 %location_length)
+  ret void
+}
+
 {{__kimi_write_line}}
 entry:
   %data = load ptr, ptr %text, align 8

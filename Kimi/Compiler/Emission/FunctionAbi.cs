@@ -26,7 +26,7 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
 
     internal static bool SupportsParameter(BoundType? type, AggregateLayoutPool? layouts = null) => Supports(type, layouts) || ReferenceTypes.IsString(type);
 
-    internal static ValueLowering? GetValue(BoundType type, AggregateLayoutPool? layouts) => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.Slice || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type) || ObjectTypes.IsOwner(type)
+    internal static ValueLowering? GetValue(BoundType type, AggregateLayoutPool? layouts) => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Slice || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type) || ObjectTypes.IsOwner(type)
         ? layouts?.Get(type)?.Value : ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceTypes.IsString(type)
             ? WindowsLowering.GetValue(type) : null;
 

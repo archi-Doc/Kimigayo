@@ -419,6 +419,7 @@ internal enum SequenceOperation : byte
     Start,
     End,
     IsEmpty,
+    Capacity,
     Slice,
     Read,
 }

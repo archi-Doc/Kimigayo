@@ -203,11 +203,13 @@ internal sealed partial class BodyLowering
             SequenceOperation.End => "end",
             SequenceOperation.IsEmpty => "isEmpty",
             SequenceOperation.Length => "length",
+            SequenceOperation.Capacity => "capacity",
             _ => null,
         };
         if (name is null || (operation.Source is not ForKoto && operation.Source is not MemberAccessKoto { Right: IdentifierNameKoto }) ||
             (operation.Source is MemberAccessKoto { Right: IdentifierNameKoto member } && member.IdentifierName != name) ||
-            receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice) ||
+            receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array) ||
+            (plan.Kind == SequenceOperation.Capacity && receiver.Kind != BoundTypeKind.Array) ||
             (plan.Kind == SequenceOperation.Indices ? operation.Source is not MemberAccessKoto { Right: IdentifierNameKoto { IdentifierName: "indices" } } ||
                 receiver.Kind == BoundTypeKind.ResolvedRange || !ReferenceEquals(ValueType(body, id), BoundType.ResolvedRange) :
                 plan.Kind == SequenceOperation.IsEmpty ? !ReferenceEquals(ValueType(body, id), BoundType.Boolean) : !ReferenceEquals(ValueType(body, id), BoundType.ISize)))

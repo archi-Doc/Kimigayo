@@ -26,6 +26,27 @@ public class ArrayBindingTest
         Assert.Empty(output.ToString());
     }
 
+    // SPEC 4.7.4: the typed empty literal is a zeroed handle that allocates nothing; destruction releases the buffer.
+    [Fact]
+    public void EmptyHandleLifecycleRunsNatively()
+        => ScalarEmissionTest.EmitFixture(
+            "ArrayEmptyHandle",
+            "var values: Array<i32> = []\nlet empty: Array<bool> = []\nrequire values.length == 0 and values.capacity == 0 and empty.indices.length == 0 else => $abort(\"empty\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    [Fact]
+    public void EmptyHandleIsZeroedAndReleasedThroughTheRuntime()
+    {
+        var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\nrequire values.length == 0 else => $abort(\"empty\")");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        using var writer = new StringWriter();
+        Assert.True(c.Emission.WriteIr(writer, out var error), error);
+        var ir = writer.ToString();
+        Assert.Contains("call void @__kimi_array_init(ptr %", ir);
+        Assert.Contains("call void @__kimi_array_free(ptr %", ir);
+        Assert.DoesNotContain("@HeapAlloc(", ir[ir.IndexOf("define internal void @__kimi_array_free", StringComparison.Ordinal)..]);
+    }
+
     [Theory]
     [InlineData("func take(values: Array<i32>) => ()\nlet values: Array<i32> = []\ntake(values)", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("let values: Array<i32> = []\nlet empty = values.isEmpty", DiagnosticCode.UnresolvedBinding_Kd)]

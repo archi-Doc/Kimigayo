@@ -621,6 +621,9 @@ public sealed partial class OwnershipAnalysis
                 return this.ConstructAggregate(tuple, tuple.Elements);
             case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.FixedArray:
                 return this.ConstructAggregate(array, array.Elements);
+            case ArrayLiteralKoto { Elements.Count: 0 } array when array.BoundType?.Kind == BoundTypeKind.Array:
+                // SPEC 4.7.4: a typed empty literal is a zeroed handle; element literals need the mutation operations (P29).
+                return this.ConstructAggregate(array, array.Elements);
             case TupleTypeKoto { ElementNodes.Count: 0 }:
                 return this.Temporary(node);
             case InvocationKoto call:
@@ -651,7 +654,7 @@ public sealed partial class OwnershipAnalysis
                 return this.ConversionValue(conversion);
             case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
                 return this.ReadPointer(element, use);
-            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice || ReferenceTypes.IsArray(member.Left.BoundType):
+            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsArray(member.Left.BoundType):
                 return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) ||
                 (ReferenceTypes.IsValue(member.BoundType) && ElementAccess.BorrowedPathRoot(member) is not null):

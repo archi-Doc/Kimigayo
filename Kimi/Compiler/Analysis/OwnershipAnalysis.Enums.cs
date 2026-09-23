@@ -55,6 +55,11 @@ public sealed partial class OwnershipAnalysis
             return true;
         }
 
+        if (type.Kind == BoundTypeKind.Array)
+        {
+            return this.SupportsType(type.Components[0]); // SPEC 4.5: the handle owns its buffer; elements follow T.
+        }
+
         if (type.Kind == BoundTypeKind.Primitive)
         {
             return !ReferenceEquals(type, BoundType.Never);

@@ -64,7 +64,7 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && !ObjectTypes.IsOwner(place.Type))
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && !ObjectTypes.IsOwner(place.Type))
             {
                 continue;
             }
@@ -118,7 +118,9 @@ internal sealed partial class BodyLowering
                 InvocationKoto call => call.Arguments,
                 _ => null,
             };
-            if (layout.Count != plan.PayloadCount || (elements is not null && elements.Count != plan.PayloadCount))
+            // SPEC 4.7.4: an Array handle is zeroed by its construction; the typed empty literal has no payloads.
+            var handle = type.Kind == BoundTypeKind.Array;
+            if ((handle ? plan.PayloadCount != 0 : layout.Count != plan.PayloadCount) || (elements is not null && elements.Count != plan.PayloadCount))
             {
                 return Fail("Aggregate source and payload counts disagree.", out failure);
             }
@@ -296,6 +298,9 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
             case OwnershipOperationKind.Read when ObjectTypes.IsOwner(place.Type):
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
+            case OwnershipOperationKind.Read when place.Type.Kind == BoundTypeKind.Array:
+                // SPEC 4.6.1: metadata shares the handle in place; the sequence operation loads its fields.
+                return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Array receiver is not initialized.", out failure);
             case OwnershipOperationKind.Declare:
                 if (place.Kind == OwnershipPlaceKind.Result && this.slotResultDeclarations[id] == 0)
                 {
@@ -347,6 +352,17 @@ internal sealed partial class BodyLowering
                 if (plan.Case is { } activeCase)
                 {
                     function.AddScalar(EmissionOpcode.StoreScalar, id, [new(EmissionOperandKind.Integer, activeCase.Ordinal)], "i32", place: place.Id, representation: WindowsLowering.GetValue(BoundType.I32));
+                }
+
+                if (place.Type.Kind == BoundTypeKind.Array)
+                {
+                    // SPEC 4.7.4: the typed empty literal is a zeroed handle that allocates nothing; element literals wait for the mutation operations.
+                    if (plan.PayloadCount != 0 || !this.TryGetLocation(operation.Source, directory, constants, out var initLocation))
+                    {
+                        return Fail("Array construction supports only the typed empty literal.", out failure);
+                    }
+
+                    function.AddCall(id, WindowsLowering.ArrayInit, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
                 }
 
                 break; // Payload slots already occupy their final byte offsets.
@@ -425,7 +441,9 @@ internal sealed partial class BodyLowering
 
                 break;
             case OwnershipOperationKind.Cleanup:
-                if (!this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
+                if (place.Type.Kind == BoundTypeKind.Array
+                    ? !this.LowerArrayDestruction(body, function, constants, directory, id, marks, out failure)
+                    : !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
                 {
                     return false;
                 }
@@ -436,6 +454,37 @@ internal sealed partial class BodyLowering
         }
 
         this.AddStringFlags(function, operation, id);
+        return true;
+    }
+
+    // SPEC 4.7.6: destroying an Array releases its buffer; elements are destroyed first once element storage exists.
+    private bool LowerArrayDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure)
+    {
+        failure = null;
+        var operation = body.Operations[id];
+        var index = body.OperationSteps[id];
+        if ((uint)index >= (uint)body.CleanupSteps.Count || (marks[id] & CleanupMark) == 0)
+        {
+            return Fail("Array cleanup has no edge cleanup plan.", out failure);
+        }
+
+        var step = body.CleanupSteps[index];
+        if (step.Operation != id || step.Place != operation.Place)
+        {
+            return Fail("Array cleanup does not match its plan.", out failure);
+        }
+
+        if (step.Action == CleanupAction.Skip)
+        {
+            return true;
+        }
+
+        if (step.Action != CleanupAction.Destroy || !this.TryGetLocation(operation.Source, directory, constants, out var location))
+        {
+            return Fail("Conditional Array destruction is not implemented.", out failure);
+        }
+
+        function.AddCall(id, WindowsLowering.ArrayFree, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
         return true;
     }
 

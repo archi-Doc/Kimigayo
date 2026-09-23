@@ -178,6 +178,18 @@ internal static partial class LlvmModuleWriter
             Name(output, "%seqdest", id);
             output.Write(", align 8\n");
         }
+        else if (instruction.ScalarOperator == "capacity")
+        {
+            // SPEC 4.7.4: an Array handle stores its capacity after the buffer and length.
+            Name(output, "  %seqcapptr", id);
+            output.Write(" = getelementptr i8, ptr ");
+            Address();
+            output.Write(", i64 16\n");
+            Name(output, "  %v", id);
+            output.Write(" = load i64, ptr ");
+            Name(output, "%seqcapptr", id);
+            output.Write(", align 8\n");
+        }
         else
         {
             Name(output, "  %v", id);

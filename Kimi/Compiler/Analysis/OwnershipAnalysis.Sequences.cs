@@ -61,6 +61,12 @@ public sealed partial class OwnershipAnalysis
             return projection < 0 ? -1 : this.body.Projections[projection].Root;
         }
 
+        if (source.BoundType?.Kind == BoundTypeKind.Array)
+        {
+            // SPEC 4.6.1: an owned Array shares access for the operation and is never consumed by it.
+            return this.Expression(source, PlaceUseKind.Read);
+        }
+
         if (source.BoundType?.Kind == BoundTypeKind.FixedArray)
         {
             var root = receiver is IdentifierNameKoto ? this.Local(receiver) : this.Expression(source);
@@ -86,6 +92,7 @@ public sealed partial class OwnershipAnalysis
             "start" => SequenceOperation.Start,
             "end" => SequenceOperation.End,
             "isEmpty" => SequenceOperation.IsEmpty,
+            "capacity" => SequenceOperation.Capacity,
             _ => SequenceOperation.Length,
         };
         var result = receiver < 0 ? -1 : this.SequenceValue(source, source.BoundType!, kind, receiver, projection);
