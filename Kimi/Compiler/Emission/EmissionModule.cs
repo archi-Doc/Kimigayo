@@ -285,8 +285,10 @@ internal enum ArrayHelperKind : byte
 {
     Append,
     Insert,
+    InsertIndex,
     Pop,
     Remove,
+    RemoveIndex,
     Place,
     Clear,
     Drop,

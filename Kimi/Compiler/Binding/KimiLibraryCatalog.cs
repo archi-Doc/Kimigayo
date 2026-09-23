@@ -50,18 +50,20 @@ internal static class KimiLibraryCatalog
         // SPEC 4.7.2, 4.7.4: compiler-implemented Array mutation operations declared inside the Array struct.
         new(KimiDeclarationId.ArrayReserve, "reserve", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayReserve),
         new(KimiDeclarationId.ArrayAppend, "append", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayAppend),
-        new(KimiDeclarationId.ArrayInsert, "insert", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsert),
+        new(KimiDeclarationId.ArrayInsert, "insert", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsert, Overload: 0),
         new(KimiDeclarationId.ArrayPop, "pop", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayPop),
-        new(KimiDeclarationId.ArrayRemove, "remove", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemove),
+        new(KimiDeclarationId.ArrayRemove, "remove", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemove, Overload: 0),
         new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayClear),
         new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
+        new(KimiDeclarationId.ArrayInsertIndex, "insert", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsertIndex, Overload: 1),
+        new(KimiDeclarationId.ArrayRemoveIndex, "remove", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemoveIndex, Overload: 1),
     ];
 
     private static readonly int[] Indices = CreateIndices();
 
     internal static ReadOnlySpan<Entry> Entries => Definitions;
 
-    internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArrayShrinkToFit;
+    internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArrayRemoveIndex;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 
@@ -83,7 +85,7 @@ internal static class KimiLibraryCatalog
         return result;
     }
 
-    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true)
+    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1)
     {
         internal bool IsFunction => this.Container != KimiLibraryContainer.Root;
     }

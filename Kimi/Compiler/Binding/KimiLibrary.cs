@@ -47,7 +47,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Array => this.ArrayScope,
                 _ => this.Scope,
             };
-            var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction);
+            var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload);
             BindingSymbol? symbol = null;
             if (declaration is not null)
             {
@@ -231,7 +231,7 @@ public sealed partial class KimiLibrary
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }
 
-    private static Koto? FindDeclaration(DeclarationContainerKoto container, string name, bool function)
+    private static Koto? FindDeclaration(DeclarationContainerKoto container, string name, bool function, int overload = -1)
     {
         Koto? found = null;
         if (function)
@@ -244,6 +244,16 @@ public sealed partial class KimiLibrary
             {
                 if (node is FunctionKoto member && member.Name == name)
                 {
+                    if (overload >= 0)
+                    {
+                        if (overload-- == 0)
+                        {
+                            return member;
+                        }
+
+                        continue;
+                    }
+
                     if (found is not null)
                     {
                         return null;

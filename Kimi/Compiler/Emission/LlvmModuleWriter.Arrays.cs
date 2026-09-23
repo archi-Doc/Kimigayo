@@ -134,18 +134,25 @@ internal static partial class LlvmModuleWriter
         {
             output.Write(helper.Abi.GetDefinition(false));
             output.Write(ArrayHelperPrologue);
+            if (helper.Kind is ArrayHelperKind.InsertIndex or ArrayHelperKind.RemoveIndex)
+            {
+                output.Write("  %index_offset = load i64, ptr %index_value, align 8\n  %direction_ptr = getelementptr i8, ptr %index_value, i64 8\n  %direction = load i8, ptr %direction_ptr, align 1\n  %from_end = icmp ne i8 %direction, 0\n  br i1 %from_end, label %resolve_end, label %resolve_start\nresolve_end:\n  %backward = sub i64 %length, %index_offset\n  br label %resolved\nresolve_start:\n  br label %resolved\nresolved:\n  %index = phi i64 [ %backward, %resolve_end ], [ %index_offset, %resolve_start ]\n");
+            }
+
             switch (helper.Kind)
             {
                 case ArrayHelperKind.Append:
                     WriteArrayAppend(output, helper);
                     break;
                 case ArrayHelperKind.Insert:
+                case ArrayHelperKind.InsertIndex:
                     WriteArrayInsert(output, helper);
                     break;
                 case ArrayHelperKind.Pop:
                     WriteArrayPop(output, helper);
                     break;
                 case ArrayHelperKind.Remove:
+                case ArrayHelperKind.RemoveIndex:
                     WriteArrayRemove(output, helper);
                     break;
                 case ArrayHelperKind.Place:

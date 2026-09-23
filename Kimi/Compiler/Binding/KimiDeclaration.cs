@@ -45,6 +45,8 @@ public enum KimiDeclarationId : byte
     ArrayRemove,
     ArrayClear,
     ArrayShrinkToFit,
+    ArrayInsertIndex,
+    ArrayRemoveIndex,
 }
 
 public enum KimiDeclarationState : byte

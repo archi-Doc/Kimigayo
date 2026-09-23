@@ -31,4 +31,6 @@ public enum CompilerFunctionKind : byte
     ArrayRemove,
     ArrayClear,
     ArrayShrinkToFit,
+    ArrayInsertIndex,
+    ArrayRemoveIndex,
 }

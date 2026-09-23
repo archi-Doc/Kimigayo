@@ -25,7 +25,7 @@ public sealed partial class KimiLibrary
             var state = KimiDeclarationState.Missing;
             if (entry.Symbol is { } symbol)
             {
-                var matches = ReferenceEquals(FindDeclaration((DeclarationContainerKoto)symbol.Scope.Owner, entry.Name, symbol.Kind == BindingSymbolKind.Function), symbol.Declaration) &&
+                var matches = ReferenceEquals(FindDeclaration((DeclarationContainerKoto)symbol.Scope.Owner, entry.Name, symbol.Kind == BindingSymbolKind.Function, rule.Overload), symbol.Declaration) &&
                     (rule.Intrinsic != IntrinsicKind.None ? this.Valid(symbol, rule.Intrinsic) : entry.Id switch
                     {
                         KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap => this.ValidUpdate(symbol, entry.Id),
@@ -36,7 +36,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
                         KimiDeclarationId.Index => this.ValidIndex(symbol),
-                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit => this.ValidArrayOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex => this.ValidArrayOperation(symbol, entry.Id),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
                 state = matches ? KimiDeclarationState.Validated : KimiDeclarationState.Invalid;
@@ -292,7 +292,7 @@ public sealed partial class KimiLibrary
         constructor.Parameters[0] is { InternalName: "offset", ExternalName: "offset", DefaultValue: null, AttributeChain: null } offsetParameter && BareName(offsetParameter.Type, "isize") &&
         constructor.Parameters[1] is { InternalName: "fromEnd", ExternalName: "fromEnd", DefaultValue: BoolLiteralKoto { Value: false }, AttributeChain: null } fromEndParameter && BareName(fromEndParameter.Type, "bool");
 
-    // SPEC 4.7.2, 4.7.4: an exclusive receiver, start-relative isize indices, T inputs and T or Option<T> results.
+    // SPEC 4.7.2, 4.7.4: an exclusive receiver, isize/Index positions, T inputs and T or Option<T> results.
     private bool ValidArrayOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var (kind, name) = id switch
@@ -300,8 +300,10 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.ArrayReserve => (CompilerFunctionKind.ArrayReserve, "reserve"),
             KimiDeclarationId.ArrayAppend => (CompilerFunctionKind.ArrayAppend, "append"),
             KimiDeclarationId.ArrayInsert => (CompilerFunctionKind.ArrayInsert, "insert"),
+            KimiDeclarationId.ArrayInsertIndex => (CompilerFunctionKind.ArrayInsertIndex, "insert"),
             KimiDeclarationId.ArrayPop => (CompilerFunctionKind.ArrayPop, "pop"),
             KimiDeclarationId.ArrayRemove => (CompilerFunctionKind.ArrayRemove, "remove"),
+            KimiDeclarationId.ArrayRemoveIndex => (CompilerFunctionKind.ArrayRemoveIndex, "remove"),
             KimiDeclarationId.ArrayClear => (CompilerFunctionKind.ArrayClear, "clear"),
             _ => (CompilerFunctionKind.ArrayShrinkToFit, "shrinkToFit"),
         };
@@ -322,8 +324,10 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.ArrayReserve => inputs == 1 && Input(function, 1, "additional", "isize") && function.ReturnType is null,
             KimiDeclarationId.ArrayAppend => inputs == 1 && Input(function, 1, "value", "T") && function.ReturnType is null,
             KimiDeclarationId.ArrayInsert => inputs == 2 && Input(function, 1, "index", "isize") && Input(function, 2, "value", "T") && function.ReturnType is null,
+            KimiDeclarationId.ArrayInsertIndex => inputs == 2 && Input(function, 1, "index", "Index") && Input(function, 2, "value", "T") && function.ReturnType is null,
             KimiDeclarationId.ArrayPop => inputs == 0 && BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") && BareName(option.TypeArguments[0], "T"),
             KimiDeclarationId.ArrayRemove => inputs == 1 && Input(function, 1, "index", "isize") && BareName(function.ReturnType, "T"),
+            KimiDeclarationId.ArrayRemoveIndex => inputs == 1 && Input(function, 1, "index", "Index") && BareName(function.ReturnType, "T"),
             _ => inputs == 0 && function.ReturnType is null,
         };
 
