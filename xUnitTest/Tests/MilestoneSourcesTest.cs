@@ -5,12 +5,12 @@ using Xunit;
 
 namespace XunitTest;
 
-// Every authored Milestone Program source binds completely, except the programs whose milestones
-// are still TODO in PLAN 4; a program of a DONE or IN_PROGRESS milestone that stops binding is a
-// regression or an unrecorded SPEC conflict (a G issue), never a silent status change.
+// Every authored Milestone Program source binds completely except the explicit pending set.
+// Successful Binding is a support boundary, not a claim that all milestone conditions are done.
+// A source that stops binding is a regression or an unrecorded SPEC conflict, never a silent status change.
 public class MilestoneSourcesTest
 {
-    private static readonly HashSet<int> Pending = [23, 24, 29];
+    private static readonly HashSet<int> Pending = [23, 24];
 
     [Fact]
     public void AuthoredProgramsBindUnlessTheirMilestoneIsPending()
