@@ -38,9 +38,11 @@ public sealed partial class Binding
     // No per-value effects or runtime checks are introduced by writer erasure.
     private sealed class ReserveEffects(Binding binding) : KotoVisitor
     {
-        private readonly HashSet<Koto> seen = new(ReferenceEqualityComparer.Instance);
+        private readonly HashSet<(Koto Node, int Context)> seen = new();
         private readonly HashSet<BoundType> types = new(ReferenceEqualityComparer.Instance);
-        private readonly List<Koto> pending = new();
+        private readonly List<(Koto Node, int Context)> pending = new();
+        private readonly List<BoundCall?> contexts = new();
+        private int context;
         private bool valid;
 
         public override void Visit(Koto node)
@@ -71,7 +73,7 @@ public sealed partial class Binding
                 this.Queue(local.InitializerKoto);
                 if (local.BoundSymbol?.Type is { } localType)
                 {
-                    this.Destruction(localType, local);
+                    this.Destruction(this.Type(localType), local);
                 }
 
                 return;
@@ -91,10 +93,6 @@ public sealed partial class Binding
                 }
 
                 this.Call(call);
-                for (var i = 0; i < call.DefaultArguments.Length; i++)
-                {
-                    this.Queue(call.DefaultArguments[i].Expression);
-                }
             }
 
             if (node.Formatting is { } formatting)
@@ -129,6 +127,10 @@ public sealed partial class Binding
                     if (read)
                     {
                         this.Accessor(plan.Getter);
+                        if (!plan.Getter.IsStandard && node.BoundType is { } result)
+                        {
+                            this.Destruction(this.Type(result), node);
+                        }
                     }
 
                     if (write)
@@ -138,9 +140,17 @@ public sealed partial class Binding
                 }
             }
 
-            if (node.BoundType is { } type)
+            if (node is BinaryKoto { Akind: KotoKind.Equals, Left.BoundType: { } replaced })
             {
-                this.Destruction(type, node);
+                this.Destruction(this.Type(replaced), node);
+            }
+
+            // A borrowed receiver/field access creates no owned temporary and
+            // does not execute that value's destructor. Calls and explicit Moves
+            // do acquire owned results; local/parameter destruction is checked separately.
+            if (node is InvocationKoto or ConversionKoto { ConversionBinding: ConversionBinding.Transfer } && node.BoundType is { } type)
+            {
+                this.Destruction(this.Type(type), node);
             }
 
             node.VisitChildren(this);
@@ -151,11 +161,15 @@ public sealed partial class Binding
             this.seen.Clear();
             this.types.Clear();
             this.pending.Clear();
+            this.contexts.Clear();
+            this.contexts.Add(null);
+            this.context = 0;
             this.valid = true;
             this.Function(implementation);
             for (var i = 0; this.valid && i < this.pending.Count; i++)
             {
-                this.Visit(this.pending[i]);
+                this.context = this.pending[i].Context;
+                this.Visit(this.pending[i].Node);
             }
 
             return this.valid;
@@ -163,6 +177,46 @@ public sealed partial class Binding
 
         private void Call(BoundCall call)
         {
+            if (this.contexts[this.context] is { } outer)
+            {
+                if (binding.InstantiateForwardedCall(call, outer) is not { } concrete)
+                {
+                    this.valid = false;
+                    return;
+                }
+
+                call = concrete;
+            }
+
+            var caller = this.context;
+            this.context = this.Context(call);
+            for (var i = 0; i < call.DefaultArguments.Length; i++)
+            {
+                this.Queue(call.DefaultArguments[i].Expression);
+            }
+
+            this.context = caller;
+
+            if (call.Target.CompilerFunction is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.Replace)
+            {
+                var receiver = call.ReceiverOperation.ParameterType;
+                for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
+                {
+                    if (call.ArgumentOperations[i].ParameterIndex == 0)
+                    {
+                        receiver = call.ArgumentOperations[i].ParameterType;
+                    }
+                }
+
+                var storage = receiver is null ? null : this.Type(receiver);
+                if (storage is { Semantics: SemanticsKind.Uniq, Components.Count: 1 })
+                {
+                    storage = storage.Components[0];
+                }
+
+                this.Destruction(storage, call.Target.Declaration);
+            }
+
             if (call.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
             {
                 if (call.TypeArguments.Length == 0 || call.TypeArguments[0] is not { } valueType)
@@ -173,7 +227,7 @@ public sealed partial class Binding
                 {
                     if (binding.FormattingImplementation(call, valueType, KimiDeclarationId.Utf8Format) is { } implementation)
                     {
-                        this.Function(implementation.Target);
+                        this.Function(implementation.Target, implementation);
                     }
                     else
                     {
@@ -184,10 +238,10 @@ public sealed partial class Binding
                 return;
             }
 
-            this.Function(call.Target);
+            this.Function(call.Target, call);
         }
 
-        private void Function(BindingSymbol symbol)
+        private void Function(BindingSymbol symbol, BoundCall? call = null)
         {
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
@@ -218,22 +272,32 @@ public sealed partial class Binding
                 return;
             }
 
-            this.Queue(function.Body);
-            this.Queue(function.ExpressionBody);
-            if (function.IsConstructor && StructStorage.ReceiverType(function) is { } receiver)
+            var previous = this.context;
+            this.context = this.Context(call);
+            try
             {
-                for (var i = 0; i < StructStorage.Count(receiver); i++)
+                var selected = (call is null ? null : binding.SelectSpecialization(call)) ?? function;
+                this.Queue(selected.Body);
+                this.Queue(selected.ExpressionBody);
+                if (function.IsConstructor && StructStorage.ReceiverType(function) is { } receiver)
                 {
-                    this.Queue(StructStorage.Field(receiver, i).InitializerKoto);
+                    for (var i = 0; i < StructStorage.Count(receiver); i++)
+                    {
+                        this.Queue(StructStorage.Field(receiver, i).InitializerKoto);
+                    }
+                }
+
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    if (function.Parameters[i].Type.BoundType is { } parameter)
+                    {
+                        this.Destruction(this.Type(parameter), function);
+                    }
                 }
             }
-
-            for (var i = 0; i < function.Parameters.Count; i++)
+            finally
             {
-                if (function.Parameters[i].Type.BoundType is { } parameter)
-                {
-                    this.Destruction(parameter, function);
-                }
+                this.context = previous;
             }
         }
 
@@ -254,8 +318,14 @@ public sealed partial class Binding
             }
         }
 
-        private void Destruction(BoundType type, Koto use)
+        private void Destruction(BoundType? type, Koto use)
         {
+            if (type is null)
+            {
+                this.valid = false;
+                return;
+            }
+
             if (type.Semantics != SemanticsKind.Owner || !this.types.Add(type))
             {
                 return;
@@ -269,7 +339,9 @@ public sealed partial class Binding
             {
                 if (StructStorage.Destructor(type)?.BoundSymbol is { } destructor)
                 {
-                    this.Function(destructor);
+                    var call = new BoundCall();
+                    call.Set(destructor, BoundType.Unit, null, [], [], declaringType: type);
+                    this.Function(destructor, call);
                 }
 
                 for (var i = 0; i < StructStorage.Count(type); i++)
@@ -299,10 +371,40 @@ public sealed partial class Binding
 
         private void Queue(Koto? node)
         {
-            if (node is not null && this.seen.Add(node))
+            if (node is not null && this.seen.Add((node, this.context)))
             {
-                this.pending.Add(node);
+                this.pending.Add((node, this.context));
             }
+        }
+
+        private BoundType? Type(BoundType type)
+            => this.contexts[this.context] is { } call ? binding.InstantiateStorageType(type, call) : type;
+
+        private int Context(BoundCall? call)
+        {
+            if (call is null || (call.TypeArguments.Length == 0 && call.LengthArguments.Length == 0 && call.DeclaringType?.Components.Count is null or 0))
+            {
+                return 0;
+            }
+
+            for (var i = 1; i < this.contexts.Count; i++)
+            {
+                var existing = this.contexts[i]!;
+                if (ReferenceEquals(existing.Target, call.Target) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) &&
+                    existing.TypeArguments.SequenceEqual(call.TypeArguments) && existing.LengthArguments.SequenceEqual(call.LengthArguments))
+                {
+                    return i;
+                }
+            }
+
+            if (this.contexts.Count >= 1024)
+            {
+                this.valid = false; // An unbounded effect expansion cannot prove conformance.
+                return 0;
+            }
+
+            this.contexts.Add(call);
+            return this.contexts.Count - 1;
         }
     }
 }
