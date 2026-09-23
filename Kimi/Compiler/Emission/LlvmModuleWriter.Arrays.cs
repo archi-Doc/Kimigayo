@@ -12,18 +12,23 @@ internal static partial class LlvmModuleWriter
           %enough = icmp sge i64 %capacity, %minimum
           br i1 %enough, label %done, label %grow
         grow:
-          ; SPEC 4.7.7: amortized doubling, never below the requested minimum or four elements.
+          ; SPEC 4.7.4: optional growth rounding cannot reject a representable minimum.
+          %maximum = udiv i64 9223372036854775807, %stride
+          %unrepresentable = icmp ugt i64 %minimum, %maximum
+          br i1 %unrepresentable, label %size_failure, label %prepare
+        prepare:
+          ; SPEC 4.7.7: amortized doubling, clamped to the maximum representable capacity.
           %doubled = shl i64 %capacity, 1
           %wrapped = icmp slt i64 %doubled, %capacity
           %safe_doubled = select i1 %wrapped, i64 9223372036854775807, i64 %doubled
           %small = icmp slt i64 %safe_doubled, 4
           %base = select i1 %small, i64 4, i64 %safe_doubled
           %below = icmp slt i64 %base, %minimum
-          %target = select i1 %below, i64 %minimum, i64 %base
-          %pair = call { i64, i1 } @llvm.smul.with.overflow.i64(i64 %target, i64 %stride)
-          %bytes = extractvalue { i64, i1 } %pair, 0
-          %overflow = extractvalue { i64, i1 } %pair, 1
-          br i1 %overflow, label %size_failure, label %allocate
+          %requested = select i1 %below, i64 %minimum, i64 %base
+          %overshoot = icmp ugt i64 %requested, %maximum
+          %target = select i1 %overshoot, i64 %maximum, i64 %requested
+          %bytes = mul i64 %target, %stride
+          br label %allocate
         allocate:
           %memory = call ptr @__kimi_alloc(i64 %bytes, ptr %location, i64 %location_length)
           %buffer = load ptr, ptr %handle, align 8
@@ -175,7 +180,8 @@ internal static partial class LlvmModuleWriter
     // Grows to hold one more element and places it at buffer + length * stride (SPEC 4.7.2, 4.7.7).
     private static void WriteArrayAppend(TextWriter output, ArrayHelper helper)
     {
-        output.Write("  %needed = add i64 %length, 1\n  call void @__kimi_array_grow(ptr %handle, i64 ");
+        WriteArrayIncrease(output);
+        output.Write("  call void @__kimi_array_grow(ptr %handle, i64 ");
         WriteNumber(output, Stride(helper));
         output.Write(", i64 %needed, ptr %location, i64 %location_length)\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
         WriteNumber(output, Stride(helper));
@@ -187,7 +193,9 @@ internal static partial class LlvmModuleWriter
     // Requires 0 <= index <= length, then shifts the tail up by one element before placing the value.
     private static void WriteArrayInsert(TextWriter output, ArrayHelper helper)
     {
-        output.Write("  %negative = icmp slt i64 %index, 0\n  %beyond = icmp sgt i64 %index, %length\n  %invalid = or i1 %negative, %beyond\n  br i1 %invalid, label %bounds_failure, label %grow\ngrow:\n  %needed = add i64 %length, 1\n  call void @__kimi_array_grow(ptr %handle, i64 ");
+        output.Write("  %negative = icmp slt i64 %index, 0\n  %beyond = icmp sgt i64 %index, %length\n  %invalid = or i1 %negative, %beyond\n  br i1 %invalid, label %bounds_failure, label %increase\nincrease:\n");
+        WriteArrayIncrease(output);
+        output.Write("  call void @__kimi_array_grow(ptr %handle, i64 ");
         WriteNumber(output, Stride(helper));
         output.Write(", i64 %needed, ptr %location, i64 %location_length)\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %index, ");
         WriteNumber(output, Stride(helper));
@@ -345,6 +353,13 @@ internal static partial class LlvmModuleWriter
             WriteNumber(output, Stride(helper));
             output.Write(", i1 false)\n");
         }
+    }
+
+    private static void WriteArrayIncrease(TextWriter output)
+    {
+        output.Write("  %count_pair = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %length, i64 1)\n  %needed = extractvalue { i64, i1 } %count_pair, 0\n  %count_overflow = extractvalue { i64, i1 } %count_pair, 1\n  br i1 %count_overflow, label %count_failure, label %grow\ncount_failure:\n  call void @__kimi_abort(i32 ");
+        WriteNumber(output, WindowsLowering.IntegerOverflowReason);
+        output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\ngrow:\n");
     }
 
     private static void WriteArrayBoundsFailure(TextWriter output)
