@@ -264,6 +264,11 @@ public sealed partial class Binding
             }
         }
 
+        if (this.contractHeadersReady && contract.LibraryDeclaration == KimiDeclarationId.Utf8Format && FormattingTypes.IsBuiltin(type))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+
         if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) || type.Symbol is not { } symbol)
         {
             return ConstraintProof.Unknown;

@@ -6,6 +6,34 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    private int BuiltinFormatKind(BoundCall call)
+    {
+        var logical = call.Target.CompilerFunction == CompilerFunctionKind.BuiltinFormat ? 0 : 1;
+        var required = call.Receiver is not null && call.ReceiverOperation.ParameterIndex == logical ? call.ReceiverOperation.ParameterType : null;
+        for (var i = 0; required is null && i < call.ArgumentOperations.Length; i++)
+        {
+            if (call.ArgumentOperations[i].ParameterIndex == logical)
+            {
+                required = call.ArgumentOperations[i].ParameterType;
+            }
+        }
+
+        if (SignatureType(this, required) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } reference)
+        {
+            return -1;
+        }
+
+        var type = reference.Components[0];
+        var width = ScalarTypes.Width(type);
+        if (width != 0)
+        {
+            return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (ScalarTypes.Signed(type) ? 1 : 2);
+        }
+
+        return ReferenceEquals(type, BoundType.Char) ? 13 : ReferenceEquals(type, BoundType.Boolean) ? 14 : ReferenceEquals(type, BoundType.Unit) ? 15 :
+            ReferenceEquals(type, BoundType.String) ? 16 : FormattingTypes.IsUtf8Slice(type) ? 17 : -1;
+    }
+
     private bool PrepareWriterDispatch(KimiLibrary library, BoundCall call, EmissionFunction function, BoundType result, out long kind, out EmissionOperand dispatch, out string? failure)
     {
         kind = -1;

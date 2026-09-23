@@ -172,7 +172,10 @@ internal static partial class LlvmModuleWriter
         using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8BufferRuntime.ll.in")!;
         using var reader = new StreamReader(stream);
         var text = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
-        for (var kind = CompilerFunctionKind.TextFixed; kind <= CompilerFunctionKind.WriteLineUtf8; kind++)
+        using var formatting = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8FormatRuntime.ll.in")!;
+        using var formatReader = new StreamReader(formatting);
+        text += "\n" + formatReader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+        for (var kind = CompilerFunctionKind.TextFixed; kind <= CompilerFunctionKind.BuiltinFormat; kind++)
         {
             if (WindowsLowering.GetFormattingFunction(kind) is { } function)
             {

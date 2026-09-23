@@ -11,7 +11,7 @@ internal static partial class WindowsLowering
 
     private static FunctionAbi?[] CreateFormattingFunctions()
     {
-        var functions = new FunctionAbi?[(int)CompilerFunctionKind.WriteLineUtf8 + 1];
+        var functions = new FunctionAbi?[(int)CompilerFunctionKind.BuiltinFormat + 1];
         var ret = new AbiParameter("ptr", "ret", AbiParameterKind.ResultSlot);
         var reference = new AbiParameter("ptr", "self", LogicalIndex: 0);
         var owned = new AbiParameter("ptr", "self", AbiParameterKind.OwnedSlot, 0);
@@ -22,6 +22,8 @@ internal static partial class WindowsLowering
         Add(CompilerFunctionKind.TextHeap, "__kimi_text_heap", "void", [ret, new("i64", "capacity", LogicalIndex: 0), location, locationLength], true);
         Add(CompilerFunctionKind.TextWriter, "__kimi_text_writer", "void", [ret, reference, new("i64", "kind", AbiParameterKind.Context), new("ptr", "dispatch", AbiParameterKind.Context)], true);
         Add(CompilerFunctionKind.WriterStatus, "__kimi_writer_status", "void", [ret, reference], true);
+        Add(CompilerFunctionKind.WriterWrite, "__kimi_writer_write_builtin", "void", [ret, reference, new("ptr", "value", LogicalIndex: 1), new("i32", "kind", AbiParameterKind.Context), location, locationLength], true);
+        Add(CompilerFunctionKind.BuiltinFormat, "__kimi_format_builtin", "void", [ret, new("ptr", "value", LogicalIndex: 0), new("ptr", "self", LogicalIndex: 1), new("i32", "kind", AbiParameterKind.Context), location, locationLength], true);
         Add(CompilerFunctionKind.TextRelease, "__kimi_text_release", "void", [reference, location, locationLength]);
         Add(CompilerFunctionKind.TextUtf8, "__kimi_text_utf8", "void", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)], true);
         Add(CompilerFunctionKind.TextValidateUtf8, "__kimi_text_validate_utf8", "void", [ret, owned], true);

@@ -150,7 +150,7 @@ internal sealed partial class BodyLowering
                 // The instantiated parameter Type was matched against the callee's entry above; a
                 // monomorphized instance forwards its ref/T parameter as the substituted string reference.
                 if (!ReferenceTypes.IsString(parameterType) || !this.ValidateReferenceUse(body, entry, id) ||
-                    !ReferenceEquals(acquisition.Source, call.ArgumentNodes[i]) || !ReferenceEquals(acquisition.SourceType, call.ArgumentNodes[i].BoundType))
+                    !ReferenceEquals(acquisition.Source, sourceArgument) || !ReferenceEquals(acquisition.SourceType, sourceArgument.BoundType))
                 {
                     return Fail("Reference argument lacks its call-wide Loan or Origin substitution.", out failure);
                 }
@@ -158,7 +158,7 @@ internal sealed partial class BodyLowering
                 var root = this.referenceRoots[entry];
                 if (acquisition.Kind == ArgumentOperationKind.Borrow
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
-                        !ReferenceEquals(body.Operations[root].Source, OwnershipAnalysis.BorrowedArgumentSource(call.ArgumentNodes[i]))
+                        !ReferenceEquals(body.Operations[root].Source, OwnershipAnalysis.BorrowedArgumentSource(sourceArgument))
                     : (body.Values[root].Kind is not (OwnershipValueKind.Parameter or OwnershipValueKind.Address) && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
                         !ReferenceEquals(ValueType(body, root), SignatureType(this, acquisition.SourceType)))
                 {
@@ -208,6 +208,18 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < callee.Parameters.Length; i++)
         {
             var physical = callee.Parameters[i];
+            if (physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.BuiltinFormat)
+            {
+                var kind = this.BuiltinFormatKind(plan);
+                if (kind < 0)
+                {
+                    return Fail("Formatting requires a selected encoder with a verified representation.", out failure);
+                }
+
+                this.callOperands.Add(new(EmissionOperandKind.Integer, kind));
+                continue;
+            }
+
             if (physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction == CompilerFunctionKind.TextWriter)
             {
                 this.callOperands.Add(physical.Type == "i64" ? new(EmissionOperandKind.Integer, writerKind) : writerDispatch);
@@ -265,7 +277,7 @@ internal sealed partial class BodyLowering
 
                 this.callOperands.Add(this.PhysicalOperand(body, value));
             }
-            else if (physical.Kind == AbiParameterKind.SharedReference && ReferenceTypes.IsString(type))
+            else if (physical.Kind is AbiParameterKind.SharedReference or AbiParameterKind.Value && ReferenceTypes.IsString(type))
             {
                 this.callOperands.Add(this.ReferenceOperand(body, entry));
             }

@@ -59,7 +59,7 @@ public sealed partial class Binding
 
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
-        if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
+        if (!FormattingTypes.IsBuiltin(type) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
         {
             return null;
         }
@@ -74,6 +74,11 @@ public sealed partial class Binding
         group.Self = type;
         group.Active = true;
         group.TypeAccess = typeAccess;
+        if (FormattingTypes.IsBuiltin(type) && this.Library.GetSymbol(KimiDeclarationId.Utf8Format)?.Contract is { } formatting)
+        {
+            Add(formatting);
+        }
+
         if (type.Symbol?.Contract is { } own)
         {
             Add(own);
@@ -95,7 +100,8 @@ public sealed partial class Binding
             }
         }
 
-        return group.Members.Count == 0 ? null : group.Members[0];
+        group.Active = group.Members.Count != 0;
+        return group.Active ? group.Members[0] : null;
 
         void Add(BoundContract shape)
         {

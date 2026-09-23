@@ -35,6 +35,7 @@
     <EmbeddedResource Include="Diagnostics\DiagnosticCode.tinyhand" />
     <EmbeddedResource Include="Compiler\Emission\WindowsRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Emission\Utf8BufferRuntime.ll.in" />
+    <EmbeddedResource Include="Compiler\Emission\Utf8FormatRuntime.ll.in" />
     <EmbeddedResource Include="Testing\TestRuntime.ll" />
     <EmbeddedResource Include="..\backend\windows-x64\profile.json" LogicalName="Kimi.WindowsBackendProfile.json" />
     <EmbeddedResource Include="..\backend\windows-x64\kernel32.def" LogicalName="Kimi.Kernel32.def" />

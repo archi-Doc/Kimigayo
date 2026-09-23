@@ -1042,6 +1042,7 @@ public sealed partial class OwnershipAnalysis
         var borrows = false;
         if (plan.Receiver is { } receiver)
         {
+            borrows |= plan.ReceiverOperation.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(plan.ReceiverOperation.ParameterType);
             this.arguments.Add(this.PrepareCallArgument(call, receiver, plan.ReceiverOperation));
         }
 

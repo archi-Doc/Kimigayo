@@ -226,6 +226,11 @@ internal sealed class GenericStoragePlan
             }
 
             entry.ConcreteCalls[i] = inner;
+            if (inner.Target.CompilerFunction != CompilerFunctionKind.None)
+            {
+                continue; // A verified builtin requirement is lowered through its runtime ABI.
+            }
+
             if (IsGeneric(innerTarget))
             {
                 if (!this.templates.TryGetValue(innerTarget, out var innerTemplate) ||

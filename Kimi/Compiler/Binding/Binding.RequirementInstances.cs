@@ -10,6 +10,14 @@ public sealed partial class Binding
     private BoundCall? InstantiateRequirementCall(BoundCall call, BoundCall outer)
     {
         var requirement = (FunctionKoto)call.Target.Declaration;
+        var builtin = this.FormatTarget(call.Target, call.ConformingType);
+        if (!ReferenceEquals(builtin, call.Target))
+        {
+            var intrinsic = new BoundCall();
+            intrinsic.Set(builtin, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
+            return intrinsic;
+        }
+
         if (call.ConformingType is not { } self || call.Target.Scope.Owner.BoundSymbol is not { } contract ||
             this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
             path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(call.Target, out var witness) ||

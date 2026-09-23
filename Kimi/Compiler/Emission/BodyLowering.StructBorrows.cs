@@ -173,7 +173,7 @@ internal sealed partial class BodyLowering
             else
             {
                 if (value.Count != 0 || !ReferenceEquals(type, output.Components[0]) ||
-                    (this.aggregatePlaces[operation.Place] is null && !(ScalarTypes.Supports(type) && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local)))
+                    (this.aggregatePlaces[operation.Place] is null && !ReferenceEquals(type, BoundType.Unit) && !(ScalarTypes.Supports(type) && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local)))
                 {
                     return Fail("Borrow source has no matching aggregate storage.", out failure);
                 }
