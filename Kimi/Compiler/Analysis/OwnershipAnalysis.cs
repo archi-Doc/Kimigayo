@@ -1030,13 +1030,9 @@ public sealed partial class OwnershipAnalysis
             return this.WholeValueUpdate(call, plan);
         }
 
-        if (plan.Target.Declaration is FunctionKoto libraryBody &&
-            plan.Target.CompilerFunction == CompilerFunctionKind.None &&
-            (libraryBody.Body is not null || libraryBody.ExpressionBody is not null) &&
-            ReferenceEquals(libraryBody.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
-            !this.libraryBodies.Contains(libraryBody))
+        if (plan.Target.Declaration is FunctionKoto libraryBody && plan.Target.CompilerFunction == CompilerFunctionKind.None)
         {
-            this.libraryBodies.Add(libraryBody);
+            this.CollectLibraryBody(libraryBody);
         }
 
         var mark = this.arguments.Count;
@@ -1125,6 +1121,15 @@ public sealed partial class OwnershipAnalysis
         this.comparisonDepth = loanDepth;
 
         return result;
+    }
+
+    private void CollectLibraryBody(FunctionKoto function)
+    {
+        if ((function.Body is not null || function.ExpressionBody is not null) &&
+            ReferenceEquals(function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) && !this.libraryBodies.Contains(function))
+        {
+            this.libraryBodies.Add(function);
+        }
     }
 
     private int Argument(Koto argument, ArgumentOperationKind kind, AcquisitionKind? acquisition = null)

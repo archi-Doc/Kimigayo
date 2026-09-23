@@ -121,6 +121,11 @@ internal sealed class AggregateLayoutPool
         }
 
         var destructor = StructStorage.Destructor(type) is { } body ? this.destructors.GetValueOrDefault(body, -1) : -1;
+        if (destructor < 0 && StructStorage.Destructor(type) is not null)
+        {
+            return this.resolved[type] = null; // An unprepared destructor must never become trivial cleanup.
+        }
+
         try
         {
             for (var i = 0; i < fieldCount; i++)

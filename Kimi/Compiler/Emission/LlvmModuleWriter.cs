@@ -53,6 +53,7 @@ internal static partial class LlvmModuleWriter
         WindowsLowering.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
 
     private static readonly string Runtime = ReadRuntime();
+    private static readonly string FormattingRuntime = ReadFormattingRuntime();
 
     private static readonly string TestRuntimeBase = Runtime
         .Replace(WindowsLowering.Abort.GetDefinition(false) + "entry:\n", WindowsLowering.Abort.GetDefinition(false) + "entry:\n  call void @__kimi_test_aborted()\n", StringComparison.Ordinal)
@@ -72,7 +73,7 @@ internal static partial class LlvmModuleWriter
         WriteExternals(module, output);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
-        if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime)
+        if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime || module.NeedsFormattingRuntime)
         {
             output.Write(MemoryDeclarations);
             WriteArrayFillHelper(module, output);
@@ -86,6 +87,11 @@ internal static partial class LlvmModuleWriter
         {
             output.Write(ArrayRuntime);
             WriteArrayHelpers(module, output);
+        }
+
+        if (module.NeedsFormattingRuntime)
+        {
+            output.Write(FormattingRuntime);
         }
 
         if (module.NeedsStringComparison)
@@ -159,6 +165,23 @@ internal static partial class LlvmModuleWriter
         }
 
         return Encoding.UTF8.GetString(bytes, 0, count);
+    }
+
+    private static string ReadFormattingRuntime()
+    {
+        using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8BufferRuntime.ll.in")!;
+        using var reader = new StreamReader(stream);
+        var text = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+        for (var kind = CompilerFunctionKind.TextFixed; kind <= CompilerFunctionKind.WriteLineUtf8; kind++)
+        {
+            if (WindowsLowering.GetFormattingFunction(kind) is { } function)
+            {
+                text = text.Replace("{{" + function.Name + "}}\n", function.GetDefinition(false), StringComparison.Ordinal);
+            }
+        }
+
+        return text.Replace("{{reason_argument_range}}", Reason(WindowsLowering.ArgumentRangeReason), StringComparison.Ordinal)
+            .Replace("{{reason_size}}", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal);
     }
 
     // SPEC 22.3: one declaration per foreign symbol. A kernel32 import that the written runtime already

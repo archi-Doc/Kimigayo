@@ -120,6 +120,11 @@ public sealed partial class OwnershipAnalysis
 
         if (StructStorage.Declaration(type) is { } structure)
         {
+            if (StructStorage.Destructor(type) is { } destructor)
+            {
+                this.CollectLibraryBody(destructor);
+            }
+
             // Reserve the key before following fields to reject recursive inline storage.
             this.supportedTypes[type] = false;
             supported = structure.Bases.Count == 0 &&

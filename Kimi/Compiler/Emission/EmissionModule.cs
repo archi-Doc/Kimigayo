@@ -210,6 +210,8 @@ internal sealed class EmissionModule
     /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.7.4).</summary>
     internal bool NeedsArrayRuntime { get; set; }
 
+    internal bool NeedsFormattingRuntime { get; set; }
+
     /// <summary>Gets the generic call entries whose concrete instance is still to be lowered (SPEC 21.3.1); empty once generation succeeds.</summary>
     internal List<GenericStoragePlan.CallEntry> PendingEntries { get; } = new();
 
@@ -239,6 +241,7 @@ internal sealed class EmissionModule
         this.Aggregates.Clear();
         this.ArrayHelpers.Clear();
         this.NeedsArrayRuntime = false;
+        this.NeedsFormattingRuntime = false;
         this.PendingEntries.Clear();
         this.Objects.Clear();
         this.Externals.Clear();

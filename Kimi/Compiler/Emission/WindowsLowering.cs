@@ -81,7 +81,7 @@ internal static partial class WindowsLowering
     /// <param name="kind">The compiler function identity.</param>
     /// <returns>The implementation ABI, or null when no body is generated.</returns>
     internal static FunctionAbi? GetCompilerFunction(CompilerFunctionKind kind)
-        => kind switch { CompilerFunctionKind.WriteLine => WriteLine, CompilerFunctionKind.Abort => AbortMessage, CompilerFunctionKind.TestTempDirectory => TestTempDirectory, _ => null };
+        => kind switch { CompilerFunctionKind.WriteLine => WriteLine, CompilerFunctionKind.Abort => AbortMessage, CompilerFunctionKind.TestTempDirectory => TestTempDirectory, _ => GetFormattingFunction(kind) };
 
     private static Dictionary<BoundType, ValueLowering> CreateValues()
     {

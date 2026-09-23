@@ -59,17 +59,18 @@ internal sealed partial class BodyLowering
         var original = (operation.Source as InvocationKoto)?.BoundCall;
         var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
         var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;
+        var formatting = resolved?.Target.CompilerFunction >= CompilerFunctionKind.TextFixed;
         if (operation.Source is not InvocationKoto { AttributeChain: null } call || resolved is not { } plan ||
-            (generic is null && creation is null && plan.TypeArguments.Length != 0) ||
+            (!formatting && generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
             !ReferenceEquals(SignatureType(this, call.BoundType), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
-            !ReferenceTypes.StorageMatches(generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
+            !ReferenceTypes.StorageMatches(formatting ? SignatureType(this, plan.ReturnType) : generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
 
-        var runtime = ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
+        var runtime = formatting || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
         var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
         if (callee is null)
@@ -97,7 +98,7 @@ internal sealed partial class BodyLowering
                 (isDefault && (parameter <= previousDefault || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
                     !ReferenceEquals(omitted.Parameter.Scope.Owner, target) || !ScalarDefaults.SupportsValue(omitted.ParameterType))) ||
                 acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection) || acquisition.ParameterIndex != parameter ||
-                !ReferenceTypes.StorageMatches(generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, parameterType) ||
+                !ReferenceTypes.StorageMatches(formatting ? parameterType : generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, parameterType) ||
                 (acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead) && !ReferenceTypes.IsString(parameterType) && !ReferenceTypes.IsBorrow(parameterType)))
             {
                 return Fail("Invalid call argument mapping or acquisition.", out failure);
@@ -199,6 +200,18 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < callee.Parameters.Length; i++)
         {
             var physical = callee.Parameters[i];
+            if (formatting && physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction == CompilerFunctionKind.TextFixed)
+            {
+                if (SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Components.Count: 1 } borrowed ||
+                    borrowed.Components[0] is not { Kind: BoundTypeKind.FixedArray, Length: >= 0 } array)
+                {
+                    return Fail("Fixed buffer requires a concrete initialized byte array.", out failure);
+                }
+
+                this.callOperands.Add(new(EmissionOperandKind.Integer, array.Length));
+                continue;
+            }
+
             if (physical.Kind == AbiParameterKind.ResultSlot)
             {
                 if (!target.IsConstructor && !FunctionAbi.HasResultSlot(returnType, this.aggregateLayouts))
@@ -227,7 +240,7 @@ internal sealed partial class BodyLowering
             }
 
             var entry = this.parameterArguments[physical.LogicalIndex];
-            var type = generic?.Parameters[physical.LogicalIndex] ?? creation?.Payload ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
+            var type = formatting ? body.Places[body.Operations[entry].Place].Type : generic?.Parameters[physical.LogicalIndex] ?? creation?.Payload ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
             if (physical.Kind == AbiParameterKind.Value && IsScalar(type))
             {
                 var value = Input(body, entry, 0);
@@ -262,6 +275,7 @@ internal sealed partial class BodyLowering
         }
 
         function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands));
+        this.formattingRuntimeUsed |= formatting;
         if (callee.NoReturn)
         {
             function.Add(EmissionOpcode.Unreachable, id);

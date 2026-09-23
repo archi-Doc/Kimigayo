@@ -8,6 +8,7 @@ internal sealed partial class BodyLowering
 {
     private readonly AggregateLayoutPool aggregateLayouts = new();
     private readonly Dictionary<BoundType, bool> ownedPatternTypes = new(ReferenceEqualityComparer.Instance);
+    private bool formattingRuntimeUsed;
 
     private AggregateLayout?[] aggregatePlaces = [];
     private int[] payloadOwners = [];
@@ -40,6 +41,8 @@ internal sealed partial class BodyLowering
 
         module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.arrayHelpers.Count != 0;
         this.arrayRuntimeUsed = false;
+        module.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
+        this.formattingRuntimeUsed = false;
         this.arrayHelpers.Clear();
         this.aggregateLayouts.Clear(); // No bound Types survive into the physical module.
         this.ownedPatternTypes.Clear();

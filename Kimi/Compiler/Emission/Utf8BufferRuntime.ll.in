@@ -1,0 +1,410 @@
+; Checked buffer runtime: {data, capacity, length, validated}, Window: {state, start, written, remaining}.
+; Result has i32 tag (Ok=0, Err=1), with nonempty aligned payload at byte 8.
+
+{{__kimi_write_line_utf8}}
+entry:
+  %data = load ptr, ptr %self, align 8
+  %len = getelementptr i8, ptr %self, i64 8
+  %length = load i64, ptr %len, align 8
+  call void @__kimi_stdout(ptr %data, i64 %length, ptr %location, i64 %location_length)
+  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr %location, i64 %location_length)
+  ret void
+}
+
+{{__kimi_text_fixed}}
+entry:
+  store ptr %self, ptr %ret, align 8
+  %cap = getelementptr i8, ptr %ret, i64 8
+  %len = getelementptr i8, ptr %ret, i64 16
+  %valid = getelementptr i8, ptr %ret, i64 24
+  store i64 %capacity, ptr %cap, align 8
+  store i64 0, ptr %len, align 8
+  store i64 0, ptr %valid, align 8
+  ret void
+}
+
+{{__kimi_text_heap}}
+entry:
+  %negative = icmp slt i64 %capacity, 0
+  br i1 %negative, label %invalid, label %check
+check:
+  %empty = icmp eq i64 %capacity, 0
+  br i1 %empty, label %done, label %allocate
+allocate:
+  %allocated = call ptr @__kimi_alloc(i64 %capacity, ptr %location, i64 %location_length)
+  br label %done
+done:
+  %data = phi ptr [ null, %check ], [ %allocated, %allocate ]
+  call void @__kimi_text_fixed(ptr %ret, ptr %data, i64 %capacity)
+  ret void
+invalid:
+  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+}
+
+{{__kimi_text_release}}
+entry:
+  call void @__kimi_free(ptr %self, ptr %location, i64 %location_length)
+  ret void
+}
+
+{{__kimi_buffer_bytes}}
+entry:
+  %data = load ptr, ptr %self, align 8
+  %len = getelementptr i8, ptr %self, i64 16
+  %length = load i64, ptr %len, align 8
+  store ptr %data, ptr %ret, align 8
+  %outlen = getelementptr i8, ptr %ret, i64 8
+  store i64 %length, ptr %outlen, align 8
+  ret void
+}
+
+{{__kimi_text_utf8}}
+entry:
+  call void @llvm.memcpy.p0.p0.i64(ptr %ret, ptr %self, i64 16, i1 false)
+  ret void
+}
+
+{{__kimi_buffer_clear}}
+entry:
+  %len = getelementptr i8, ptr %self, i64 16
+  %valid = getelementptr i8, ptr %self, i64 24
+  store i64 0, ptr %len, align 8
+  store i64 0, ptr %valid, align 8
+  ret void
+}
+
+; Strict Unicode Scalar Value validation; NUL is ordinary ASCII. Bounds precede each sequence.
+define internal i1 @__kimi_utf8_valid(ptr %data, i64 %length) #0 {
+entry:
+  br label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %ascii ], [ %end, %scalar ]
+  %done = icmp eq i64 %index, %length
+  br i1 %done, label %yes, label %read
+read:
+  %at = getelementptr i8, ptr %data, i64 %index
+  %lead8 = load i8, ptr %at, align 1
+  %lead = zext i8 %lead8 to i32
+  %simple = icmp ult i32 %lead, 128
+  br i1 %simple, label %ascii, label %classify
+ascii:
+  %next = add i64 %index, 1
+  br label %loop
+classify:
+  %low = icmp ult i32 %lead, 194
+  %high = icmp ugt i32 %lead, 244
+  %badlead = or i1 %low, %high
+  br i1 %badlead, label %no, label %width
+width:
+  %two = icmp ult i32 %lead, 224
+  %three = icmp ult i32 %lead, 240
+  %wide = select i1 %three, i64 3, i64 4
+  %count = select i1 %two, i64 2, i64 %wide
+  %mask3 = select i1 %three, i32 15, i32 7
+  %mask = select i1 %two, i32 31, i32 %mask3
+  %min3 = select i1 %three, i32 2048, i32 65536
+  %minimum = select i1 %two, i32 128, i32 %min3
+  %initial = and i32 %lead, %mask
+  %remaining = sub i64 %length, %index
+  %short = icmp ult i64 %remaining, %count
+  br i1 %short, label %no, label %prepare
+prepare:
+  %end = add i64 %index, %count
+  %first = add i64 %index, 1
+  br label %continuation
+continuation:
+  %cursor = phi i64 [ %first, %prepare ], [ %advance, %accumulate ]
+  %prefix = phi i32 [ %initial, %prepare ], [ %codepoint, %accumulate ]
+  %address = getelementptr i8, ptr %data, i64 %cursor
+  %byte = load i8, ptr %address, align 1
+  %top = and i8 %byte, -64
+  %valid = icmp eq i8 %top, -128
+  br i1 %valid, label %accumulate, label %no
+accumulate:
+  %bits8 = and i8 %byte, 63
+  %bits = zext i8 %bits8 to i32
+  %shifted = shl i32 %prefix, 6
+  %codepoint = or i32 %shifted, %bits
+  %advance = add i64 %cursor, 1
+  %last = icmp eq i64 %advance, %end
+  br i1 %last, label %scalar, label %continuation
+scalar:
+  %overlong = icmp ult i32 %codepoint, %minimum
+  %excess = icmp ugt i32 %codepoint, 1114111
+  %surrogate_offset = sub i32 %codepoint, 55296
+  %surrogate = icmp ult i32 %surrogate_offset, 2048
+  %bad_range = or i1 %overlong, %excess
+  %bad_scalar = or i1 %bad_range, %surrogate
+  br i1 %bad_scalar, label %no, label %loop
+yes:
+  ret i1 true
+no:
+  ret i1 false
+}
+
+define internal i1 @__kimi_buffer_valid(ptr %self) #0 {
+entry:
+  %len = getelementptr i8, ptr %self, i64 16
+  %valid = getelementptr i8, ptr %self, i64 24
+  %length = load i64, ptr %len, align 8
+  %validated = load i64, ptr %valid, align 8
+  %known = icmp eq i64 %length, %validated
+  br i1 %known, label %yes, label %scan
+scan:
+  %data = load ptr, ptr %self, align 8
+  %suffix = getelementptr i8, ptr %data, i64 %validated
+  %remaining = sub i64 %length, %validated
+  %ok = call i1 @__kimi_utf8_valid(ptr %suffix, i64 %remaining)
+  ret i1 %ok
+yes:
+  ret i1 true
+}
+
+{{__kimi_text_validate_utf8}}
+entry:
+  %data = load ptr, ptr %self, align 8
+  %len = getelementptr i8, ptr %self, i64 8
+  %length = load i64, ptr %len, align 8
+  %ok = call i1 @__kimi_utf8_valid(ptr %data, i64 %length)
+  br i1 %ok, label %success, label %failure
+success:
+  store i32 0, ptr %ret, align 4
+  %payload = getelementptr i8, ptr %ret, i64 8
+  call void @llvm.memcpy.p0.p0.i64(ptr %payload, ptr %self, i64 16, i1 false)
+  ret void
+failure:
+  store i32 1, ptr %ret, align 4
+  ret void
+}
+
+{{__kimi_buffer_text}}
+entry:
+  %ok = call i1 @__kimi_buffer_valid(ptr %self)
+  br i1 %ok, label %success, label %failure
+success:
+  store i32 0, ptr %ret, align 4
+  %payload = getelementptr i8, ptr %ret, i64 8
+  call void @__kimi_buffer_bytes(ptr %payload, ptr %self)
+  ret void
+failure:
+  store i32 1, ptr %ret, align 4
+  ret void
+}
+
+{{__kimi_buffer_validate}}
+entry:
+  %ok = call i1 @__kimi_buffer_valid(ptr %self)
+  br i1 %ok, label %success, label %failure
+success:
+  %len = getelementptr i8, ptr %self, i64 16
+  %valid = getelementptr i8, ptr %self, i64 24
+  %length = load i64, ptr %len, align 8
+  store i64 %length, ptr %valid, align 8
+  store i32 0, ptr %ret, align 4
+  ret void
+failure:
+  store i32 1, ptr %ret, align 4
+  ret void
+}
+
+; Consumes on success or failure; an allocated empty buffer retains its pointer and Heap release kind.
+{{__kimi_buffer_into_string}}
+entry:
+  %ok = call i1 @__kimi_buffer_valid(ptr %self)
+  %data = load ptr, ptr %self, align 8
+  br i1 %ok, label %success, label %failure
+success:
+  store i32 0, ptr %ret, align 4
+  %payload = getelementptr i8, ptr %ret, i64 8
+  call void @__kimi_buffer_bytes(ptr %payload, ptr %self)
+  %kindptr = getelementptr i8, ptr %payload, i64 16
+  %heap = icmp ne ptr %data, null
+  %kind = zext i1 %heap to i8
+  store i8 %kind, ptr %kindptr, align 1
+  ret void
+failure:
+  call void @__kimi_free(ptr %data, ptr %location, i64 %location_length)
+  store i32 1, ptr %ret, align 4
+  ret void
+}
+
+; Hints affect growth only. Fixed buffers fail without changing committed bytes or length.
+define internal void @__kimi_buffer_reserve(ptr %ret, ptr %self, i64 %amount, i1 %heap, i64 %hint, ptr %location, i64 %location_length) #0 {
+entry:
+  %negative = icmp slt i64 %amount, 0
+  br i1 %negative, label %invalid, label %check
+check:
+  %capptr = getelementptr i8, ptr %self, i64 8
+  %lenptr = getelementptr i8, ptr %self, i64 16
+  %capacity = load i64, ptr %capptr, align 8
+  %length = load i64, ptr %lenptr, align 8
+  %room = sub i64 %capacity, %length
+  %fits = icmp ule i64 %amount, %room
+  br i1 %fits, label %success, label %growcheck
+growcheck:
+  br i1 %heap, label %check_size, label %full
+check_size:
+  %maximum = sub i64 9223372036854775807, %length
+  %overflow = icmp ugt i64 %amount, %maximum
+  br i1 %overflow, label %size_failure, label %target
+target:
+  %required = add i64 %length, %amount
+  %hintroom = sub i64 9223372036854775807, %required
+  %badhint = icmp ugt i64 %hint, %hintroom
+  %safehint = select i1 %badhint, i64 0, i64 %hint
+  %hinted = add i64 %required, %safehint
+  %doublefits = icmp ule i64 %capacity, 4611686018427387903
+  %doubled = shl i64 %capacity, 1
+  %safe = select i1 %doublefits, i64 %doubled, i64 %hinted
+  %large = icmp ugt i64 %safe, %hinted
+  %newcapacity = select i1 %large, i64 %safe, i64 %hinted
+  %memory = call ptr @__kimi_alloc(i64 %newcapacity, ptr %location, i64 %location_length)
+  %old = load ptr, ptr %self, align 8
+  %empty = icmp eq i64 %length, 0
+  br i1 %empty, label %replace, label %copy
+copy:
+  call void @llvm.memcpy.p0.p0.i64(ptr %memory, ptr %old, i64 %length, i1 false)
+  br label %replace
+replace:
+  call void @__kimi_free(ptr %old, ptr %location, i64 %location_length)
+  store ptr %memory, ptr %self, align 8
+  store i64 %newcapacity, ptr %capptr, align 8
+  br label %success
+success:
+  %actual = load i64, ptr %capptr, align 8
+  %remaining = sub i64 %actual, %length
+  store i32 0, ptr %ret, align 4
+  %window = getelementptr i8, ptr %ret, i64 8
+  %start = getelementptr i8, ptr %window, i64 8
+  %written = getelementptr i8, ptr %window, i64 16
+  %rest = getelementptr i8, ptr %window, i64 24
+  store ptr %self, ptr %window, align 8
+  store i64 %length, ptr %start, align 8
+  store i64 0, ptr %written, align 8
+  store i64 %remaining, ptr %rest, align 8
+  ret void
+full:
+  store i32 1, ptr %ret, align 4
+  ret void
+invalid:
+  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+size_failure:
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+}
+
+{{__kimi_fixed_reserve}}
+entry:
+  call void @__kimi_buffer_reserve(ptr %ret, ptr %self, i64 %amount, i1 false, i64 0, ptr %location, i64 %location_length)
+  ret void
+}
+
+{{__kimi_heap_reserve}}
+entry:
+  call void @__kimi_buffer_reserve(ptr %ret, ptr %self, i64 %amount, i1 true, i64 0, ptr %location, i64 %location_length)
+  ret void
+}
+
+define internal ptr @__kimi_window_address(ptr %self) #0 {
+entry:
+  %state = load ptr, ptr %self, align 8
+  %data = load ptr, ptr %state, align 8
+  %startptr = getelementptr i8, ptr %self, i64 8
+  %writtenptr = getelementptr i8, ptr %self, i64 16
+  %start = load i64, ptr %startptr, align 8
+  %written = load i64, ptr %writtenptr, align 8
+  %offset = add i64 %start, %written
+  %address = getelementptr i8, ptr %data, i64 %offset
+  ret ptr %address
+}
+
+define internal void @__kimi_window_advance(ptr %self, i64 %amount) #0 {
+entry:
+  %writtenptr = getelementptr i8, ptr %self, i64 16
+  %restptr = getelementptr i8, ptr %self, i64 24
+  %written = load i64, ptr %writtenptr, align 8
+  %rest = load i64, ptr %restptr, align 8
+  %newwritten = add i64 %written, %amount
+  %newrest = sub i64 %rest, %amount
+  store i64 %newwritten, ptr %writtenptr, align 8
+  store i64 %newrest, ptr %restptr, align 8
+  ret void
+}
+
+{{__kimi_window_push}}
+entry:
+  %restptr = getelementptr i8, ptr %self, i64 24
+  %rest = load i64, ptr %restptr, align 8
+  %full = icmp eq i64 %rest, 0
+  br i1 %full, label %failure, label %success
+success:
+  %address = call ptr @__kimi_window_address(ptr %self)
+  store i8 %byte, ptr %address, align 1
+  call void @__kimi_window_advance(ptr %self, i64 1)
+  store i32 0, ptr %ret, align 4
+  ret void
+failure:
+  store i32 1, ptr %ret, align 4
+  ret void
+}
+
+{{__kimi_window_append}}
+entry:
+  %restptr = getelementptr i8, ptr %self, i64 24
+  %rest = load i64, ptr %restptr, align 8
+  %lenptr = getelementptr i8, ptr %bytes, i64 8
+  %length = load i64, ptr %lenptr, align 8
+  %fits = icmp ule i64 %length, %rest
+  br i1 %fits, label %check, label %failure
+check:
+  %empty = icmp eq i64 %length, 0
+  br i1 %empty, label %success, label %copy
+copy:
+  %address = call ptr @__kimi_window_address(ptr %self)
+  %source = load ptr, ptr %bytes, align 8
+  call void @llvm.memmove.p0.p0.i64(ptr %address, ptr %source, i64 %length, i1 false)
+  call void @__kimi_window_advance(ptr %self, i64 %length)
+  br label %success
+success:
+  store i32 0, ptr %ret, align 4
+  ret void
+failure:
+  store i32 1, ptr %ret, align 4
+  ret void
+}
+
+{{__kimi_window_limit}}
+entry:
+  %writtenptr = getelementptr i8, ptr %self, i64 16
+  %restptr = getelementptr i8, ptr %self, i64 24
+  %written = load i64, ptr %writtenptr, align 8
+  %rest = load i64, ptr %restptr, align 8
+  %invalid = icmp slt i64 %amount, %written
+  br i1 %invalid, label %failure, label %success
+success:
+  %room = sub i64 %amount, %written
+  %less = icmp ult i64 %room, %rest
+  %limited = select i1 %less, i64 %room, i64 %rest
+  call void @llvm.memcpy.p0.p0.i64(ptr %ret, ptr %self, i64 32, i1 false)
+  %outrest = getelementptr i8, ptr %ret, i64 24
+  store i64 %limited, ptr %outrest, align 8
+  ret void
+failure:
+  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+}
+
+{{__kimi_window_commit}}
+entry:
+  %state = load ptr, ptr %self, align 8
+  %startptr = getelementptr i8, ptr %self, i64 8
+  %writtenptr = getelementptr i8, ptr %self, i64 16
+  %start = load i64, ptr %startptr, align 8
+  %written = load i64, ptr %writtenptr, align 8
+  %length = add i64 %start, %written
+  %lenptr = getelementptr i8, ptr %state, i64 16
+  store i64 %length, ptr %lenptr, align 8
+  ret i64 %written
+}
