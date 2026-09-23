@@ -19,6 +19,27 @@ public class ArrayBindingTest
             Task + "func describe(tasks: ref/Array<Task>) -> isize => tasks.length\nfunc room(tasks: ref/Array<Task>) -> isize => tasks.capacity\nlet tasks: Array<Task> = []\nrequire describe(tasks@ref) == 0 and room(tasks@ref) == 0 and describe(tasks@ref) == 0 else => $abort(\"borrowed\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    // SPEC 4.5: a handle transfers as a value; the callee releases an owned parameter and a result is secured by its caller.
+    [Fact]
+    public void HandlesTransferAsParametersAndResults()
+        => ScalarEmissionTest.EmitFixture(
+            "ArrayValues",
+            "func make() -> Array<i32> => []\nfunc take(values: Array<i32>) -> isize => values.length\nlet a = make()\nrequire a.length == 0 else => $abort(\"make\")\nlet b: Array<i32> = []\nrequire take(b@move) == 0 and take(make()) == 0 else => $abort(\"take\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    // An aggregate holding an Array would have to release the buffer during its own destruction (PLAN P29).
+    [Theory]
+    [InlineData("struct Bag\n    var items: Array<i32> = []\nlet bag = Bag.init()")]
+    [InlineData("let pair: (Array<i32>, i32) = ([], 1)")]
+    public void AggregatesHoldingHandlesAreNotGeneratedYet(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.Empty(output.ToString());
+    }
+
     [Theory]
     [InlineData("let tasks: Array<Task> = [Task.init(1), Task.init(2)]\nlet room: isize = tasks.capacity\nlet all = tasks.indices")]
     [InlineData("let numbers: Array<i32> = [1, 2, 3]\nlet n: isize = numbers.length")]
