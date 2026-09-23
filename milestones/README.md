@@ -78,7 +78,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 26 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 27 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 28 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged source and native O0/O2 variants/rejections pass through `test-milestone29.ps1`; P29 remains IN_PROGRESS for allocation/cost evidence and neighboring support boundaries |
+| 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged source, shared-view/cleanup variants and required rejections pass through `test-milestone29.ps1`; allocation/cost probes pass, but P29 remains IN_PROGRESS for the G17 ownership-stage diagnostic guards |
 | 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 32 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -1360,6 +1360,14 @@ through a shared receiver (reject), abandonment of an appended argument when an
 earlier argument transfer fails normally, and Abort inside a destructor during
 `clear`. Count internal allocations: none within capacity, on removal, on
 `clear` or for the empty literal; growth is amortized O(1) per `append`.
+
+These runtime and rejection checks pass through `test-milestone29.ps1` and the
+`DynamicArray*` native fixtures. Instrumented native probes verify allocation and
+growth-transfer bounds, failed shrink preservation and representable capacity
+limits; repeated shared views allocate no storage, and warm Binding, ownership,
+validation, emission and whole-pipeline probes allocate zero bytes. P29 remains
+IN_PROGRESS because zero-sized elements and shared string iteration still need
+ownership-stage Unsupported diagnostics (PLAN G17); neither publishes partial IR.
 
 Focus: [Array operations](../spec/04-arrays-indexing-and-slices.md#472-array-operations),
 [capacity](../spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation),
