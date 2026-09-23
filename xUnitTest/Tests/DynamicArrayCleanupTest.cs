@@ -24,6 +24,21 @@ public class DynamicArrayCleanupTest
             Task + "let completed = work: do\n    let values: Array<Task> = [Task.init(1), (exit to work: false), Task.init(3)]\n    exit to work: true\nrequire not completed else => $abort(\"literal\")\nConsole.writeLine(\"done\")",
             "drop 1\ndone\n");
 
+    [Theory]
+    [InlineData("Copy", "func count(values: ref/Array<i32>) -> isize => values.length\nfunc no() -> bool\n    Console.writeLine(\"no\")\n    return false\nrequire not (no() and count([1]) == 1) else => $abort(\"skip\")\nrequire true and count([1, 2]) == 2 else => $abort(\"run\")\nConsole.writeLine(\"done\")", "no\ndone\n")]
+    [InlineData("NonCopy", Task + "func has(values: ref/Array<Task>) -> bool => values.length == 1\nrequire false or has([Task.init(1)]) else => $abort(\"run\")\nrequire true or has([Task.init(2)]) else => $abort(\"skip\")\nConsole.writeLine(\"done\")", "drop 1\ndone\n")]
+    [InlineData("Local", Task + "func pick(flag: bool) -> isize\n    let values: Array<Task>\n    if flag => values = [Task.init(2)]\n    return 0\nrequire pick(true) == 0 and pick(false) == 0 else => $abort(\"pick\")\nConsole.writeLine(\"done\")", "drop 2\ndone\n")]
+    [InlineData("Replacement", Task + "func pick(flag: bool)\n    var values: Array<Task>\n    if flag => values = [Task.init(1)]\n    values = [Task.init(2)]\npick(true)\npick(false)\nConsole.writeLine(\"done\")", "drop 1\ndrop 2\ndrop 2\ndone\n")]
+    public void AConditionallyConstructedArrayIsDestroyedOnlyWhenLive(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("DynamicArrayCleanupConditional" + name, source, stdout);
+
+    [Theory]
+    [InlineData("Local", "var values: Array<Task> = [Task.init(1)]\nvalues = [Task.init(2)]\nConsole.writeLine(\"replaced\")", "drop 1\nreplaced\ndrop 2\n")]
+    [InlineData("Parameter", "func reset(values: Array<Task>)\n    var owned = values@move\n    owned = [Task.init(2)]\n    Console.writeLine(\"replaced\")\nreset([Task.init(1)])", "drop 1\nreplaced\ndrop 2\n")]
+    [InlineData("Copy", "var values: Array<i32> = [1]\nvalues = [2, 3]\nrequire values.length == 2 and values[1] == 3 else => $abort(\"copy\")\nConsole.writeLine(\"replaced\")", "replaced\n")]
+    public void WholeReplacementDestroysTheOldArrayFirst(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("DynamicArrayCleanupReplace" + name, (name == "Copy" ? string.Empty : Task) + source, stdout);
+
     [Fact]
     public void ClearAbortSkipsRemainingDestructionAndContinuation()
         => ScalarEmissionTest.EmitFixture(

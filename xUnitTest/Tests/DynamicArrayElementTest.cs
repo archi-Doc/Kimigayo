@@ -16,6 +16,13 @@ public class DynamicArrayElementTest
         => ScalarEmissionTest.EmitFixture("DynamicArrayRead" + name, source, string.Empty);
 
     [Theory]
+    [InlineData("Copy", "func sum(values: Array<i32>) -> i32\n    var total = 0\n    for i in values.indices => total += values[i]\n    return total\nrequire sum([10, 20, 12]) == 42 and sum([]) == 0 else => $abort(\"sum\")\nConsole.writeLine(\"done\")", "done\n")]
+    [InlineData("NonCopy", "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"drop\")\nfunc last(values: Array<Task>) -> i32 => values[1].id\nrequire last([Task.init(1), Task.init(42)]) == 42 else => $abort(\"last\")\nConsole.writeLine(\"done\")", "drop\ndrop\ndone\n")]
+    [InlineData("Shared", "func count<T>(values: ref/Array<T>) -> isize => values.length\nrequire count([1, 2, 3]) == 3 and count([\"a\"]) == 1 else => $abort(\"count\")\nConsole.writeLine(\"done\")", "done\n")]
+    public void ACallArgumentLiteralConstructsTheParameterArray(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("DynamicArrayArgumentLiteral" + name, source, stdout);
+
+    [Theory]
     [InlineData("Negative", "-1")]
     [InlineData("Length", "1")]
     [InlineData("Maximum", "9223372036854775807")]

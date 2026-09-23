@@ -29,9 +29,13 @@ internal sealed partial class BodyLowering
             }
         }
 
+        // Bodies register separately; a helper used by several bodies is defined once per module.
         foreach (var helper in this.arrayHelpers.Values)
         {
-            module.ArrayHelpers.Add(helper);
+            if (!module.ArrayHelpers.Contains(helper))
+            {
+                module.ArrayHelpers.Add(helper);
+            }
         }
 
         module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.arrayHelpers.Count != 0;
@@ -503,26 +507,50 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (step.Action != CleanupAction.Destroy || !this.TryGetLocation(operation.Source, directory, constants, out var location))
+        if (step.Action is not (CleanupAction.Destroy or CleanupAction.Conditional) || !this.TryGetLocation(operation.Source, directory, constants, out var location))
         {
-            return Fail("Conditional Array destruction is not implemented.", out failure);
+            return Fail("Array cleanup has an unknown action.", out failure);
         }
 
+        return this.LowerArrayRelease(body, function, id, location, step.Action == CleanupAction.Conditional, out failure);
+    }
+
+    // Releases the Array in the operation's Place at a cleanup or a whole-value replacement. A possibly
+    // initialized Array (for example a short-circuit operand's temporary) is destroyed only when its live flag is set.
+    private bool LowerArrayRelease(OwnershipBody body, EmissionFunction function, int id, int location, bool conditional, out string? failure)
+    {
+        failure = null;
+        var place = body.Operations[id].Place;
+
         // SPEC 4.7.6: elements with cleanup are destroyed in reverse index order before the buffer is released.
-        var arrayType = body.Places[operation.Place].Type;
+        var arrayType = body.Places[place].Type;
         if (arrayType.Kind != BoundTypeKind.Array || !this.TryGetArrayElement(arrayType.Components[0], out var element))
         {
             return Fail("Array destruction has an unsupported element Type.", out failure);
         }
 
-        var iterator = this.arrayIterators[operation.Place];
+        var iterator = this.arrayIterators[place];
         if (iterator >= 0 && body.IsReachable(id) && !this.Dominates(iterator, id))
         {
             return Fail("Array iterator cleanup requires its initialized cursor.", out failure);
         }
 
         var callee = element.NeedsDestruction ? this.GetArrayHelper(iterator >= 0 ? ArrayHelperKind.IteratorDrop : ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
-        function.AddCall(id, callee, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+        if (conditional)
+        {
+            // An owning iterator always has a dominating unconditional cursor.
+            if (iterator >= 0 || this.continuations[id] < 0 || this.liveFlags[place] == 0)
+            {
+                return Fail("Conditional Array destruction requires a live flag and one split.", out failure);
+            }
+
+            var start = function.Operands.Count;
+            function.Operands.Add(new(EmissionOperandKind.Block, this.continuations[id]));
+            function.Instructions.Add(new(EmissionOpcode.DestroyStringIfLive, id, place, location, callee, start, 1));
+            return true;
+        }
+
+        function.AddCall(id, callee, [new(EmissionOperandKind.SlotAddress, place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
         return true;
     }
 

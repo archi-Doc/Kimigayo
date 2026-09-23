@@ -154,7 +154,8 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (ReferenceEquals(type, BoundType.String))
+        // SPEC 4.7.6: an Array handle owns its buffer even when its elements are Copy.
+        if (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Array)
         {
             return true;
         }
@@ -186,6 +187,16 @@ internal sealed partial class BodyLowering
             if (loan.Call is not null)
             {
                 MarkBorrowedTemporary(body, loan.Place, marks);
+            }
+        }
+
+        // A temporary borrowed as a whole (for example an Array literal passed to a ref/ parameter) lives until its
+        // full-expression cleanup, which may be conditional under a short-circuit operand.
+        for (var id = 0; id < body.Operations.Count; id++)
+        {
+            if (body.Operations[id].Kind == OwnershipOperationKind.Borrow)
+            {
+                MarkBorrowedTemporary(body, body.Operations[id].Place, marks);
             }
         }
     }
@@ -472,7 +483,14 @@ internal sealed partial class BodyLowering
             return this.LowerPartDestruction(body, function, constants, directory, id, out failure);
         }
 
-        if (expected == CleanupAction.Skip || aggregate is { NeedsDestruction: false })
+        if (expected == CleanupAction.Skip)
+        {
+            return true;
+        }
+
+        // SPEC 4.7.6: replacing a whole Array destroys the old elements and releases its buffer first.
+        var array = body.Places[operation.Place].Type.Kind == BoundTypeKind.Array;
+        if (!array && aggregate is { NeedsDestruction: false })
         {
             return true;
         }
@@ -480,6 +498,11 @@ internal sealed partial class BodyLowering
         if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
         {
             return Fail("String destruction has no source location.", out failure);
+        }
+
+        if (array)
+        {
+            return this.LowerArrayRelease(body, function, id, location, expected == CleanupAction.Conditional, out failure);
         }
 
         if (expected != CleanupAction.Conditional)

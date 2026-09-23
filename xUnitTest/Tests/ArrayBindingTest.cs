@@ -203,6 +203,34 @@ public class ArrayBindingTest
     }
 
     [Theory]
+    [InlineData("func count(values: Array<i32>) -> isize => values.length\nlet n = count([1, 2])")]
+    [InlineData("func count(values: Array<i32>) -> isize => values.length\nlet n = count([])")]
+    [InlineData("func count(values: Array<i64>) -> isize => values.length\nlet n = count([1, -2])")]
+    [InlineData("func count(values: Array<string>) -> isize => values.length\nlet n = count([\"a\", \"b\"])")]
+    [InlineData("func count(values: Array<(i32, bool)>) -> isize => values.length\nlet n = count([(1, true)])")]
+    [InlineData("func count(values: ref/Array<i32>) -> isize => values.length\nlet n = count([1])")]
+    [InlineData("func count<T>(values: ref/Array<T>) -> isize => values.length\nlet n = count([1, 2])")]
+    public void ACallArgumentLiteralFitsAnArrayParameter(string source)
+    {
+        // SPEC 4.3: the literal is fitted to the candidate's Array, not first defaulted.
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Theory]
+    [InlineData("func count(values: Array<i32>) -> isize => values.length\nlet n = count([1, true])", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func count(values: Array<i32>) -> isize => values.length\nlet n = count([\"a\"])", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func count(values: uniq/Array<i32>) -> isize => values.length\nlet n = count([1])", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func count(values: Array<i8>) -> isize => values.length\nlet n = count([300])", DiagnosticCode.NoApplicableOverload_Kd)]
+    public void ACallArgumentLiteralMustFitTheArrayElement(string source, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
+    }
+
+    [Theory]
     [InlineData("func take(values: Array<i32>) => ()\nlet values: Array<i32> = []\ntake(values)", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("let values: Array<i32> = []\nlet empty = values.isEmpty", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("let values: Array<i32> = [1, true]", DiagnosticCode.TypeMismatch_Kd)]

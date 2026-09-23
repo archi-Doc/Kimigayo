@@ -44,12 +44,12 @@ public sealed partial class Binding
 
         if (source is ArrayLiteralKoto array)
         {
-            if (pattern.Kind != BoundTypeKind.FixedArray)
+            if (pattern.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Array))
             {
                 return true; // Existing candidate-specific probing diagnoses other shapes.
             }
 
-            if (pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, function))
+            if (pattern.Kind == BoundTypeKind.FixedArray && pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, function))
             {
                 var length = this.InternLength(KotoKind.NumberLiteral, array.Elements.Count);
                 if (lengths[parameter.Slot] is { } previous && !ReferenceEquals(previous, length))
@@ -154,7 +154,9 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         if (source is ArrayLiteralKoto array)
         {
-            if (expected is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } || expected.Length != array.Elements.Count)
+            // SPEC 4.3: a call-argument literal fits the candidate's fixed array of exactly its length, or its owned Array.
+            if (expected is not { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } ||
+                (expected.Kind == BoundTypeKind.FixedArray && expected.Length != array.Elements.Count))
             {
                 return CandidateApplicability.Inapplicable;
             }
