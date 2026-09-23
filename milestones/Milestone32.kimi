@@ -1,0 +1,42 @@
+struct Reading
+    Self is Utf8Format
+    public let number: i64
+
+    public init(number: i64) => self.number = number
+    deinit => Console.writeLine("reading destroyed")
+
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return $tryWrite(writer, "Reading(\(self.number))")
+
+func describe<T>(value: ref/T) -> string
+    T is Utf8Format
+    return "value=\(value)"
+
+public func main()
+    var text = ""
+    do
+        let reading = Reading.init(42)
+        text = describe(reading)
+        require reading.number == 42 else => $abort("source changed")
+        Console.writeLine("source retained")
+    Console.writeLine(text)
+
+    var bytes = [64 of 0@u8]
+    var buffer = Text.fixed(bytes@uniq)
+    var writer = Text.writer(buffer@uniq)
+    match $tryWrite(writer@uniq, "君: \(text)")
+        .Ok(_) => ()
+        .Err(_) => $abort("buffer full")
+    match buffer.text()
+        .Ok(let view) => Console.writeLine(view)
+        .Err(_) => $abort("invalid UTF-8")
+
+    buffer@uniq.clear()
+    var reused = Text.writer(buffer@uniq)
+    match $tryWrite(reused@uniq, "done=\(true)")
+        .Ok(_) => ()
+        .Err(_) => $abort("buffer full")
+    match buffer.text()
+        .Ok(let view) => Console.writeLine(view)
+        .Err(_) => $abort("invalid UTF-8")
+    Console.writeLine("My number is \(42@i64)")

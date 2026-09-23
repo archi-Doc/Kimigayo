@@ -23,7 +23,7 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 
 ## 3. Current position
 
-- **Active user-directed work: UTF-8 formatting.** The proposal is integrated into the normative profile and affected chapters; its draft is frozen. Fixed fill, buffers/Windows/views, retained exclusive authority, reserve effects, erased Writers, builtin/user/generic formatting, Text conversions, owning interpolation with capacity hints, `$tryWrite` and Console stack formatting are unit-verified. Floating-point encoders pass 15,104 exact-rational oracle cases at O0/O2. Evidence and boundaries are in STATUS. Next: effect and allocation audits, examples/milestone coverage, then Session verification once. This work takes priority over P30; P32 is not complete.
+- **Active user-directed work: UTF-8 formatting.** The proposal is integrated into the normative profile and affected chapters; its draft is frozen. The implementation, effect/allocation audits, example and Program 32 are unit-verified, including 41 Debug harness checks. Floating-point encoders pass 15,104 exact-rational oracle cases at O0/O2. Evidence and boundaries are in STATUS. Next: Session verification once. This work takes priority over P30; P32 is not complete.
 
 - **Verified source HEAD** `3e963abe`. Debug/Release builds are warning-free; each full suite passes 11,803 tests. Session evidence: `bin/verify/20260923-121325-session-during-final-reviewed`; 48 Optional native O0/O2 executions and all 23 harnesses (1–22 and 29, Release, 1,191 checks) pass. P29 is DONE.
 - **Borrow Origin suffix:** contextual `during`, Optional attachment, grouping and Adaptation boundaries, source output and diagnostics are integrated and implemented. The library, affected milestone programs and tests use the new spelling; the proposal is recorded as integrated and frozen. Existing Origin, ownership and generation boundaries are unchanged.
@@ -90,7 +90,7 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. **Formatting integration:** complete buffers and Origin metadata, erased writer effects, builtin/user formatting, owning interpolation and `$tryWrite`, Console overloads, native/cost/rejection tests, then run Session verification once. Keep unverified boundaries explicit in STATUS.
+1. **Formatting integration:** run Session verification for the complete implementation and Programs 1–22, 29 and 32; record the verified support boundary and completion evidence.
 2. **P30 start:** author or confirm Milestone Program 30 and probe SPEC §13.4.1 Equatable/Comparable declarations, intrinsic witnesses and generic requirement calls; start with NaN-reflexive Contract equality versus built-in IEEE equality, then shared-borrow/Tuple composition.
 3. **P30 harness:** create `test-milestone30.ps1` with the unchanged target, composed comparisons and required rejections (missing conformance, wrong witness signature) with their diagnostic codes.
 4. **Array follow-ups outside P29:** zero-sized Array elements, nested Array handles, aggregates holding handles and shared `ref/string` element iteration (G14) stay explicit `UnsupportedOwnership_Kd`/Binding boundaries; general Slice/Index/Range and user iteration remain P27/P28. G11/G14/G16 remain with their owning milestones.

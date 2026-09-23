@@ -78,7 +78,7 @@ The `tryFormat` result retains the original exclusive Loan, although the returne
 var bytes: [3 of u8] = [3 of 0]
 let result = Text.tryFormat(123, bytes@uniq)
 // let first = bytes[0]  // Error: result still retains the exclusive Loan.
-match result
+match result@move
     .Ok(let text) => Console.writeLine(text)
     .Err(_) => Console.writeLine("too small")
 ```

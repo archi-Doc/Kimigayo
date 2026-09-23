@@ -1,0 +1,37 @@
+struct Point
+    Self is Utf8Format
+    let x: i32
+    let y: i32
+
+    public init(x: i32, y: i32)
+        self.x = x
+        self.y = y
+
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return $tryWrite(writer, "(\(self.x), \(self.y))")
+
+let point = Point.init(3, 7)
+let message = "point=\(point)"
+Console.writeLine(message)
+
+var bytes = [32 of 0@u8]
+var buffer = Text.fixed(bytes@uniq)
+var writer = Text.writer(buffer@uniq)
+match $tryWrite(writer@uniq, "君: \(point)")
+    .Ok(_) => ()
+    .Err(_) => $abort("buffer full")
+match buffer.text()
+    .Ok(let text) => Console.writeLine(text)
+    .Err(_) => $abort("invalid UTF-8")
+
+buffer@uniq.clear()
+var reused = Text.writer(buffer@uniq)
+_ = $tryWrite(reused@uniq, "ready=\(true)")
+match buffer.text()
+    .Ok(let text) => Console.writeLine(text)
+    .Err(_) => $abort("invalid UTF-8")
+
+var exact = [3 of 0@u8]
+match Text.tryFormat(123, exact@uniq)
+    .Ok(let text) => Console.writeLine(text)
+    .Err(_) => $abort("buffer full")

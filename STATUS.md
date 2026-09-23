@@ -73,7 +73,7 @@ Fixed-array fill `[N of value]` is implemented through parsing, Binding, ownersh
 
 #### UTF-8 formatting
 
-The normative profile is integrated; the following execution paths are unit-verified. The remaining work is the effect/allocation audit, milestone coverage and full-session regression verification.
+The normative profile, effect/allocation audits, example and Program 32 are unit-verified. Full-session regression verification remains.
 
 | Area | Verified behavior | Evidence under `bin/verify/` |
 | --- | --- | --- |
@@ -88,6 +88,7 @@ The normative profile is integrated; the following execution paths are unit-veri
 | Console stack formatting | Direct bounded interpolation uses an exact stack region up to 1,024 bytes, including concrete generic values. The i64 example uses 33 bytes and no heap allocation. Limit boundaries, repeated/conditional execution, early return without output or stack release, and user temporary destruction pass allocation counters. Interpolated temporary views retain their original lifetime. 34 related tests and 16 native O0/O2 executions pass. | `20260923-162210-unit-utf8-console-stack` |
 | Reserve-effect audit | Concrete generic calls/defaults, hidden formatting roots and destruction triggered by borrowed Array.clear or replacement are checked transitively. Merely borrowing a field does not execute its destructor. 87 related tests and all 288 UTF-8 native O0/O2 executions pass. | `20260923-163100-unit-utf8-effects-audit` |
 | Compilation costs | Formatting syntax/call storage and capacity arrays are reused, with fresh semantic checks. A representative builtin owning/Console/tryWrite pipeline measures zero warm Binding/ownership allocations and 216 bytes per validation/emission pass; the regression budget is 256 bytes per complete pass. Reload recomputes Types, selection and bounds. 74 focused tests and 290 native executions pass. | `20260923-164403-unit-utf8-reuse-plans` |
+| Integration | The unchanged example and Program 32 execute. Generic fixed formatting preserves Type/length/Origin forwarding; failure stops later evaluation and Console output while all expressions remain statically checked. Six focused tests, eight native executions and 41 P32 Debug harness checks pass. | `20260923-165026-unit-utf8-milestone32`, `20260923-165231-unit-utf8-milestone32-harness` |
 
 Library destructors are collected through owned storage types; missing destructor code cannot silently become trivial cleanup. These unit results do not yet certify the complete formatting profile or a new full-session baseline.
 

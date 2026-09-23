@@ -13,6 +13,8 @@ Run `restore <project.kimiproj>` before checking a project with dependencies. Re
 
 See the [transitive source dependency example](examples/SourceDependencies/README.md).
 
+The [UTF-8 formatting example](examples/Utf8Formatting/README.md) covers owning interpolation, user formatters, short-circuit writes and allocation-free fixed buffers.
+
 ### Toolchain (Windows x64)
 
 Use LLVM **22.1.8**, as specified in [profile.json](backend/windows-x64/profile.json).

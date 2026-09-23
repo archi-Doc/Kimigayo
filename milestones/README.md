@@ -1,7 +1,7 @@
 # Language milestones
 
 Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md).
-Programs 1–24 and 29 have source files; programs 25–28 and 30–38 have design and verification scopes.
+Programs 1–24, 29 and 32 have source files; programs 25–28, 30–31 and 33–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
 not an execution claim. Milestones 23–24 are authored targets beyond current
@@ -40,6 +40,7 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone23](Milestone23.kimi) | Standard/custom/computed Copy Properties, direct storage and assignment evaluation order |
 | [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
+| [Milestone32](Milestone32.kimi) | User/generic UTF-8 formatting, independent owning strings, short-circuit writes, fixed-buffer reuse and bounded Console interpolation |
 
 ## Program status
 
@@ -84,7 +85,7 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
 | 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 32 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 32 | YES | PASS (Debug) | PASS (Debug) | Unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; full-session verification remains. |
 | 33 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 34 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 35 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -96,11 +97,9 @@ An unchanged target run compiles the checked-in program without test-specific ed
 identities and exact commands: Release compiler/test-project build PASS with zero
 warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
 program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
-The current syntax-catalog test includes all 24 milestone sources. That audit's
-failed program-15/16/17/18/19 probes are superseded by their completions. Programs 20–21
-retain failed build probes; their expected output remains specification-derived.
-Programs 22–24 have source files and failing build probes; see the authoring record below. Programs 25–38 have no source files or executed tests yet. Debug, full managed
-regressions and NativeAOT were not run for this restructuring.
+That historical audit covered the 24 sources then present. Later completions
+supersede its failed probes; the table above records current support. Debug,
+full managed regressions and NativeAOT were not run for that restructuring.
 
 Earlier [program 14 regressions](../PLAN_HISTORY.md#program14-completion),
 [units 62–67 audit](../PLAN_HISTORY.md#units62-67-verification) and
@@ -242,7 +241,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 29 / 17–18, 27–28 | Grow, insert, replace and remove Non-Copy Array elements; consume an iterator and stop early. | Empty/pop/clear, directional indices, capacity/no-op paths, live and empty-Slice conflicts, retained borrowed contents, normal argument abandonment and Abort. | Count internal allocations; verify within-capacity/no-op/removal guarantees, reverse current-index cleanup, growth amortization and shrink failure preserving original placement. |
 | 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
 | 31 / 19, 28–30 | Insert/reject/replace/remove Dictionary entries with user-defined equal keys; inspect and iterate insertion order. | Result/Option ownership, duplicate literal diagnostics and runtime duplicates, stored-key preservation, missing-key assignment Abort, lookup/mutation Loans and dependency retention. | Equality effects and invocation order, value-before-key/reverse-insertion cleanup, allocation-free duplicate/lookup/replacement paths, churn reuse and specified management bounds. No public Hash requirement is added. |
-| 32 / 18–19, 26 | Interpolate user/generic values through Utf8Format, retaining the original Non-Copy values and independent resulting strings. | UTF-8/NUL/empty text, source-order evaluation, once-only formatting, temporary cleanup, missing conformance and Abort before later interpolation. | Verified Utf8Format writes, buffer ownership and cleanup, no retained source Loan in the combined result. Do not invent formatting options or deferred concatenation semantics. |
+| 32 / 18–19 | Interpolate user/generic values through Utf8Format, retaining the original Non-Copy values and independent resulting strings; reuse a fixed buffer through `$tryWrite`. | UTF-8/NUL/empty text, source-order evaluation, once-only formatting, temporary cleanup, missing conformance, exclusive root acquisition and Abort before later interpolation. | Verified Utf8Format writes, buffer ownership and cleanup, no retained source Loan in the combined result; required allocation bounds and the bounded Console stack path. |
 | 33 / 14, 24–25 | Create an obj, use a base object view, perform specified struct `is` tests/refinement, preserve identity and destroy the complete Dynamic Type. | Sealed payload projection, borrow/reborrow, legal whole-payload updates, invalid view/acquisition/escape; test expression effects and refinement invalidation. | Header/view identity, dynamic destruction before original storage release, unchanged identity across updates. No runtime Contract View, checked-cast spelling or deferred ObjectCallCompatible inference. |
 | 34 / 33 | Create rc and arc values, explicitly clone strong handles, Move them and observe final strong release. | Shared-only access even at count one, no implicit clone, moved-handle rejection, external payload dependencies and separate count-overflow failure probes. | Exact retain/release counts, clone without allocation/payload copy, complete payload destruction once; inspect atomic arc ordering with internal tests. No source concurrency or obj/rc/arc conversion is added. |
 | 35 / 26, 34 | Downgrade, upgrade and expire Weak handles; then demonstrate a cyclic factory's Building-to-Alive transition. | Weak clone/Move, upgrade before publication and after final release, payload dependencies, factory Owned/Callable constraints and failed construction. | Separate payload/object/table lifetimes, allocation-free upgrade/clone, final table release; internally test arc upgrade/final-release races without introducing source threading. |
