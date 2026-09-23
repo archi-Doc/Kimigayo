@@ -1027,6 +1027,12 @@ public sealed partial class OwnershipAnalysis
             return this.WholeValueUpdate(call, plan);
         }
 
+        if (KimiLibraryCatalog.IsArrayOperation(plan.Target.CompilerFunction))
+        {
+            this.Unsupported(call); // SPEC 4.7.2: the Array mutation operations are not lowered yet (PLAN P29).
+            return -1;
+        }
+
         if (plan.Target.Declaration is FunctionKoto libraryBody &&
             plan.Target.CompilerFunction == CompilerFunctionKind.None &&
             (libraryBody.Body is not null || libraryBody.ExpressionBody is not null) &&

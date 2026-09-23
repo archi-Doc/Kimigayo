@@ -38,6 +38,13 @@ public enum KimiDeclarationId : byte
     MakeArcCyclic,
     Weak,
     TestTempDirectory,
+    ArrayReserve,
+    ArrayAppend,
+    ArrayInsert,
+    ArrayPop,
+    ArrayRemove,
+    ArrayClear,
+    ArrayShrinkToFit,
 }
 
 public enum KimiDeclarationState : byte

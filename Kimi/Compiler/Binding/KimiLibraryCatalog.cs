@@ -8,6 +8,7 @@ internal enum KimiLibraryContainer : byte
     Console,
     Intrinsics,
     Test,
+    Array,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
@@ -46,11 +47,21 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.MakeRcCyclic, "makeRcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.MakeArcCyclic, "makeArcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.Weak, "Weak", SourceExpected: false),
+        // SPEC 4.7.2, 4.7.4: compiler-implemented Array mutation operations declared inside the Array struct.
+        new(KimiDeclarationId.ArrayReserve, "reserve", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayReserve),
+        new(KimiDeclarationId.ArrayAppend, "append", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayAppend),
+        new(KimiDeclarationId.ArrayInsert, "insert", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsert),
+        new(KimiDeclarationId.ArrayPop, "pop", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayPop),
+        new(KimiDeclarationId.ArrayRemove, "remove", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemove),
+        new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayClear),
+        new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
     ];
 
     private static readonly int[] Indices = CreateIndices();
 
     internal static ReadOnlySpan<Entry> Entries => Definitions;
+
+    internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArrayShrinkToFit;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

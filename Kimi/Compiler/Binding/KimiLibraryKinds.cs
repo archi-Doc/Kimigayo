@@ -24,4 +24,11 @@ public enum CompilerFunctionKind : byte
     Swap,
     MakeObj,
     TestTempDirectory,
+    ArrayReserve,
+    ArrayAppend,
+    ArrayInsert,
+    ArrayPop,
+    ArrayRemove,
+    ArrayClear,
+    ArrayShrinkToFit,
 }

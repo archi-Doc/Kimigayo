@@ -35,6 +35,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
+                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit => this.ValidArrayOperation(symbol, entry.Id),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
                 state = matches ? KimiDeclarationState.Validated : KimiDeclarationState.Invalid;
@@ -259,13 +260,60 @@ public sealed partial class KimiLibrary
 
         for (var i = 0; i < array.Members.Count; i++)
         {
-            if (array.Members[i] is not FunctionKoto)
+            if (array.Members[i] is not FunctionKoto member)
             {
                 return false; // Array storage is compiler-managed; helpers cannot add fields.
+            }
+
+            // A signature without a body is a catalog operation the compiler implements; helpers keep their bodies.
+            if (member.Body is null && member.ExpressionBody is null &&
+                (member.BoundSymbol is not { CompilerFunction: not CompilerFunctionKind.None } operation || !ReferenceEquals(operation.Declaration, member) || Array.IndexOf(this.registeredSymbols, operation) < 0))
+            {
+                this.InvalidDeclaration ??= member;
+                return false;
             }
         }
 
         return true;
+    }
+
+    // SPEC 4.7.2, 4.7.4: an exclusive receiver, start-relative isize indices, T inputs and T or Option<T> results.
+    private bool ValidArrayOperation(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var (kind, name) = id switch
+        {
+            KimiDeclarationId.ArrayReserve => (CompilerFunctionKind.ArrayReserve, "reserve"),
+            KimiDeclarationId.ArrayAppend => (CompilerFunctionKind.ArrayAppend, "append"),
+            KimiDeclarationId.ArrayInsert => (CompilerFunctionKind.ArrayInsert, "insert"),
+            KimiDeclarationId.ArrayPop => (CompilerFunctionKind.ArrayPop, "pop"),
+            KimiDeclarationId.ArrayRemove => (CompilerFunctionKind.ArrayRemove, "remove"),
+            KimiDeclarationId.ArrayClear => (CompilerFunctionKind.ArrayClear, "clear"),
+            _ => (CompilerFunctionKind.ArrayShrinkToFit, "shrinkToFit"),
+        };
+        if (symbol.CompilerFunction != kind || symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.ArrayScope.Owner) ||
+            function.NameBoundaryIndex >= 0 || function.Name != name || function.Modifier != ModifierKind.Public ||
+            function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0 ||
+            function.Body is not null || function.ExpressionBody is not null || function.AttributeChain is not null ||
+            function.IsRequirement || function.IsGenerated || function.IsSpecialization || function.Parameters.Count == 0 ||
+            function.Parameters[0] is not { ExternalName: "self", InternalName: "self", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } receiver } ||
+            !BareName(receiver.Type, "Self"))
+        {
+            return false;
+        }
+
+        var inputs = function.Parameters.Count - 1;
+        return id switch
+        {
+            KimiDeclarationId.ArrayReserve => inputs == 1 && Input(function, 1, "additional", "isize") && function.ReturnType is null,
+            KimiDeclarationId.ArrayAppend => inputs == 1 && Input(function, 1, "value", "T") && function.ReturnType is null,
+            KimiDeclarationId.ArrayInsert => inputs == 2 && Input(function, 1, "index", "isize") && Input(function, 2, "value", "T") && function.ReturnType is null,
+            KimiDeclarationId.ArrayPop => inputs == 0 && BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") && BareName(option.TypeArguments[0], "T"),
+            KimiDeclarationId.ArrayRemove => inputs == 1 && Input(function, 1, "index", "isize") && BareName(function.ReturnType, "T"),
+            _ => inputs == 0 && function.ReturnType is null,
+        };
+
+        static bool Input(FunctionKoto function, int index, string name, string type)
+            => function.Parameters[index] is { DefaultValue: null, AttributeChain: null } parameter && parameter.ExternalName == name && parameter.InternalName == name && BareName(parameter.Type, type);
     }
 
     private bool ValidCompilerGroup(GroupKoto group, BindingSymbol identity, BindingScope scope)

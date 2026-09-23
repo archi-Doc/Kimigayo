@@ -17,6 +17,7 @@ public sealed partial class KimiLibrary
             Read("Iterator.kimi"),
             Read("Slice.kimi"),
             Read("Array.kimi"),
+            Read("ArrayOperations.kimi", KimiLibraryContainer.Array, signatures: true),
             Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
             Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),
             Read("Test.kimi", KimiLibraryContainer.Test, signatures: true),
@@ -79,8 +80,14 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Console => this.Console,
                 KimiLibraryContainer.Intrinsics => this.Intrinsics,
                 KimiLibraryContainer.Test => this.Test,
+                KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array", false) as DeclarationContainerKoto, // Array.kimi is read first.
                 _ => this.Kotonoha.RootKoto,
             };
+            if (container is null)
+            {
+                continue; // The missing Array struct is reported by validation (SourceExpected).
+            }
+
             this.ParseSource(source, container);
         }
     }

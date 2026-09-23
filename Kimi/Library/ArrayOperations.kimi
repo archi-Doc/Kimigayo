@@ -1,0 +1,10 @@
+// Signatures implemented by the compiler; loaded into Kimi.Array<T> (SPEC 4.7.2, 4.7.4).
+// The receiver is reserved exclusively before later arguments (SPEC 4.7.5); index arguments are
+// start-relative here, and the Index overloads follow with the Index Type.
+public func reserve(self: uniq/Self, additional: isize)
+public func append(self: uniq/Self, value: T)
+public func insert(self: uniq/Self, index: isize, value: T)
+public func pop(self: uniq/Self) -> Option<T>
+public func remove(self: uniq/Self, index: isize) -> T
+public func clear(self: uniq/Self)
+public func shrinkToFit(self: uniq/Self)

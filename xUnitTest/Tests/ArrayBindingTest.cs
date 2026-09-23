@@ -91,6 +91,50 @@ public class ArrayBindingTest
         Assert.DoesNotContain("@HeapAlloc(", ir[ir.IndexOf("define internal void @__kimi_array_free", StringComparison.Ordinal)..]);
     }
 
+    // SPEC 4.7.2, 4.7.4: the mutation operations are catalog compiler functions of the Array struct with an exclusive receiver.
+    [Theory]
+    [InlineData("values@uniq.reserve(additional: 4)")]
+    [InlineData("values@uniq.append(1)")]
+    [InlineData("values@uniq.insert(0, 2)")]
+    [InlineData("let removed: i32 = values@uniq.remove(0)")]
+    [InlineData("match values@uniq.pop()\n    .Some(let last) => require last == 1 else => $abort(\"pop\")\n    .None => $abort(\"empty\")")]
+    [InlineData("values@uniq.clear()")]
+    [InlineData("values@uniq.shrinkToFit()")]
+    public void MutationOperationsBindThroughAnExclusiveReceiver(string statement)
+    {
+        var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified); // Lowering of the operations follows (PLAN P29).
+        Assert.True(c.Ownership.Result.UnsupportedCount > 0, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Fact]
+    public void MutationOperationsAreValidatedCatalogDeclarations()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        foreach (var id in new[] { KimiDeclarationId.ArrayReserve, KimiDeclarationId.ArrayAppend, KimiDeclarationId.ArrayInsert, KimiDeclarationId.ArrayPop, KimiDeclarationId.ArrayRemove, KimiDeclarationId.ArrayClear, KimiDeclarationId.ArrayShrinkToFit })
+        {
+            Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(id));
+            var symbol = c.Library.GetSymbol(id)!;
+            Assert.NotEqual(CompilerFunctionKind.None, symbol.CompilerFunction);
+            Assert.Same(c.Library.DynamicArray.Declaration, symbol.Declaration.Parent);
+        }
+    }
+
+    [Theory]
+    [InlineData("values.append(1)", DiagnosticCode.ExclusiveBorrowRequired_Kd)]
+    [InlineData("values@ref.append(1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("values@uniq.append(true)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("values@uniq.reserve(4, 5)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("let index: i32 = 0\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    public void MutationOperationsRejectWrongReceiversAndArguments(string statement, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
+    }
+
     [Theory]
     [InlineData("func take(values: Array<i32>) => ()\nlet values: Array<i32> = []\ntake(values)", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("let values: Array<i32> = []\nlet empty = values.isEmpty", DiagnosticCode.UnresolvedBinding_Kd)]
