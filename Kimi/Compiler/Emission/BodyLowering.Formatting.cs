@@ -30,7 +30,7 @@ internal sealed partial class BodyLowering
             return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (ScalarTypes.Signed(type) ? 1 : 2);
         }
 
-        return ReferenceEquals(type, BoundType.Char) ? 13 : ReferenceEquals(type, BoundType.Boolean) ? 14 : ReferenceEquals(type, BoundType.Unit) ? 15 :
+        return ReferenceEquals(type, BoundType.F32) ? 11 : ReferenceEquals(type, BoundType.F64) ? 12 : ReferenceEquals(type, BoundType.Char) ? 13 : ReferenceEquals(type, BoundType.Boolean) ? 14 : ReferenceEquals(type, BoundType.Unit) ? 15 :
             ReferenceEquals(type, BoundType.String) ? 16 : FormattingTypes.IsUtf8Slice(type) ? 17 : -1;
     }
 

@@ -405,6 +405,8 @@ entry:
     i32 8, label %integer8
     i32 9, label %integer9
     i32 10, label %integer10
+    i32 11, label %floating
+    i32 12, label %floating
     i32 13, label %character
     i32 14, label %boolean
     i32 15, label %unit
@@ -458,6 +460,10 @@ integer9:
 integer10:
   %n10 = load i128, ptr %value, align 8
   call void @__kimi_format_integer(ptr %ret, ptr %self, i128 %n10, i1 false, ptr %location, i64 %location_length)
+  ret void
+floating:
+  %narrow = icmp eq i32 %kind, 11
+  call void @__kimi_format_float(ptr %ret, ptr %value, ptr %self, i1 %narrow, ptr %location, i64 %location_length)
   ret void
 character:
   %c = load i32, ptr %value, align 4

@@ -1,0 +1,217 @@
+; Exact shortest decimal conversion uses the original binary width; notation is independent of locale.
+@__kimi_float_nan = private unnamed_addr constant [3 x i8] c"NaN", align 1
+@__kimi_float_infinity = private unnamed_addr constant [9 x i8] c"-Infinity", align 1
+@__kimi_float_zero = private unnamed_addr constant [2 x i8] c"-0", align 1
+
+define internal void @__kimi_decimal_store(ptr %start, i64 %number, i64 %count) #0 {
+entry:
+  br label %loop
+loop:
+  %value = phi i64 [ %number, %entry ], [ %quotient, %loop ]
+  %left = phi i64 [ %count, %entry ], [ %index, %loop ]
+  %index = sub i64 %left, 1
+  %quotient = udiv i64 %value, 10
+  %remainder = urem i64 %value, 10
+  %digit = trunc i64 %remainder to i8
+  %ascii = add i8 %digit, 48
+  %address = getelementptr i8, ptr %start, i64 %index
+  store i8 %ascii, ptr %address, align 1
+  %more = icmp ne i64 %index, 0
+  br i1 %more, label %loop, label %done
+done:
+  ret void
+}
+
+define internal void @__kimi_format_float(ptr %ret, ptr %value, ptr %writer, i1 %narrow, ptr %location, i64 %location_length) #0 {
+entry:
+  %mantissa_slot = alloca i64, align 8
+  %power_slot = alloca i32, align 4
+  %reservation = alloca [40 x i8], align 8
+  br i1 %narrow, label %read32, label %read64
+read32:
+  %bits32 = load i32, ptr %value, align 4
+  %fraction32 = and i32 %bits32, 8388607
+  %fraction32_wide = zext i32 %fraction32 to i64
+  %shift32 = lshr i32 %bits32, 23
+  %exponent32 = and i32 %shift32, 255
+  %negative32 = icmp slt i32 %bits32, 0
+  %special32 = icmp eq i32 %exponent32, 255
+  br label %classify
+read64:
+  %bits64 = load i64, ptr %value, align 8
+  %fraction64 = and i64 %bits64, 4503599627370495
+  %shift64 = lshr i64 %bits64, 52
+  %exponent64_wide = and i64 %shift64, 2047
+  %exponent64 = trunc i64 %exponent64_wide to i32
+  %negative64 = icmp slt i64 %bits64, 0
+  %special64 = icmp eq i32 %exponent64, 2047
+  br label %classify
+classify:
+  %fraction = phi i64 [ %fraction32_wide, %read32 ], [ %fraction64, %read64 ]
+  %exponent = phi i32 [ %exponent32, %read32 ], [ %exponent64, %read64 ]
+  %negative = phi i1 [ %negative32, %read32 ], [ %negative64, %read64 ]
+  %special = phi i1 [ %special32, %read32 ], [ %special64, %read64 ]
+  %sign = zext i1 %negative to i64
+  %empty_fraction = icmp eq i64 %fraction, 0
+  br i1 %special, label %special_value, label %check_zero
+special_value:
+  br i1 %empty_fraction, label %infinity, label %nan
+nan:
+  call void @__kimi_format_bytes(ptr %ret, ptr %writer, ptr @__kimi_float_nan, i64 3, ptr %location, i64 %location_length)
+  ret void
+infinity:
+  %inf_offset = sub i64 1, %sign
+  %inf_data = getelementptr i8, ptr @__kimi_float_infinity, i64 %inf_offset
+  %inf_length = add i64 8, %sign
+  call void @__kimi_format_bytes(ptr %ret, ptr %writer, ptr %inf_data, i64 %inf_length, ptr %location, i64 %location_length)
+  ret void
+check_zero:
+  %zero_exponent = icmp eq i32 %exponent, 0
+  %zero = and i1 %zero_exponent, %empty_fraction
+  br i1 %zero, label %zero_value, label %convert
+zero_value:
+  %zero_offset = sub i64 1, %sign
+  %zero_data = getelementptr i8, ptr @__kimi_float_zero, i64 %zero_offset
+  %zero_length = add i64 1, %sign
+  call void @__kimi_format_bytes(ptr %ret, ptr %writer, ptr %zero_data, i64 %zero_length, ptr %location, i64 %location_length)
+  ret void
+convert:
+  br i1 %narrow, label %convert32, label %convert64
+convert32:
+  call void @__kimi_ryu32(i64 %fraction, i32 %exponent, ptr %mantissa_slot, ptr %power_slot)
+  br label %converted
+convert64:
+  call void @__kimi_ryu64(i64 %fraction, i32 %exponent, ptr %mantissa_slot, ptr %power_slot)
+  br label %converted
+converted:
+  %raw_mantissa = load i64, ptr %mantissa_slot, align 8
+  %raw_power = load i32, ptr %power_slot, align 4
+  br label %trim
+trim:
+  %mantissa = phi i64 [ %raw_mantissa, %converted ], [ %trimmed, %trim_more ]
+  %power = phi i32 [ %raw_power, %converted ], [ %next_power, %trim_more ]
+  %last = urem i64 %mantissa, 10
+  %trailing_zero = icmp eq i64 %last, 0
+  br i1 %trailing_zero, label %trim_more, label %count
+trim_more:
+  %trimmed = udiv i64 %mantissa, 10
+  %next_power = add i32 %power, 1
+  br label %trim
+count:
+  %count_value = phi i64 [ %mantissa, %trim ], [ %count_quotient, %count ]
+  %digits_before = phi i64 [ 0, %trim ], [ %digits, %count ]
+  %digits = add i64 %digits_before, 1
+  %count_quotient = udiv i64 %count_value, 10
+  %count_more = icmp ne i64 %count_quotient, 0
+  br i1 %count_more, label %count, label %size
+size:
+  %power64 = sext i32 %power to i64
+  %point = add i64 %power64, %digits
+  %e = sub i64 %point, 1
+  %lower = icmp sge i64 %e, -4
+  %upper = icmp slt i64 %e, 16
+  %fixed = and i1 %lower, %upper
+  %below_one = icmp slt i64 %e, 0
+  %fractional = icmp sgt i64 %digits, %point
+  %fractional_size = add i64 %digits, 1
+  %positive_size = select i1 %fractional, i64 %fractional_size, i64 %point
+  %leading_size = sub i64 %fractional_size, %e
+  %fixed_size = select i1 %below_one, i64 %leading_size, i64 %positive_size
+  %neg_e = sub i64 0, %e
+  %abs_e = select i1 %below_one, i64 %neg_e, i64 %e
+  %hundreds = icmp uge i64 %abs_e, 100
+  %tens = icmp uge i64 %abs_e, 10
+  %small_e_digits = select i1 %tens, i64 2, i64 1
+  %e_digits = select i1 %hundreds, i64 3, i64 %small_e_digits
+  %e_sign = zext i1 %below_one to i64
+  %has_fraction = icmp ugt i64 %digits, 1
+  %dot_size = zext i1 %has_fraction to i64
+  %e_offset = add i64 %digits, %dot_size
+  %e_prefix = add i64 %e_offset, 1
+  %e_start = add i64 %e_prefix, %e_sign
+  %science_size = add i64 %e_start, %e_digits
+  %unsigned_size = select i1 %fixed, i64 %fixed_size, i64 %science_size
+  %amount = add i64 %unsigned_size, %sign
+  call void @__kimi_writer_reserve(ptr %reservation, ptr %writer, i64 %amount, ptr %location, i64 %location_length)
+  %tag = load i32, ptr %reservation, align 4
+  %ok = icmp eq i32 %tag, 0
+  br i1 %ok, label %encode, label %failure
+encode:
+  %window = getelementptr i8, ptr %reservation, i64 8
+  %destination = call ptr @__kimi_window_address(ptr %window)
+  %start = getelementptr i8, ptr %destination, i64 %sign
+  br i1 %negative, label %minus, label %notation
+minus:
+  store i8 45, ptr %destination, align 1
+  br label %notation
+notation:
+  br i1 %fixed, label %fixed_notation, label %scientific
+fixed_notation:
+  br i1 %below_one, label %leading, label %positive
+leading:
+  store i8 48, ptr %start, align 1
+  %leading_dot = getelementptr i8, ptr %start, i64 1
+  store i8 46, ptr %leading_dot, align 1
+  %zeros = sub i64 -1, %e
+  %leading_zeros = getelementptr i8, ptr %start, i64 2
+  call void @llvm.memset.p0.i64(ptr %leading_zeros, i8 48, i64 %zeros, i1 false)
+  %leading_digits = getelementptr i8, ptr %leading_zeros, i64 %zeros
+  br label %encode_digits
+positive:
+  br i1 %fractional, label %fixed_dot, label %fixed_zeros
+fixed_dot:
+  %fixed_dot_address = getelementptr i8, ptr %start, i64 %point
+  store i8 46, ptr %fixed_dot_address, align 1
+  br label %positive_done
+fixed_zeros:
+  %trailing_count = sub i64 %point, %digits
+  %trailing_address = getelementptr i8, ptr %start, i64 %digits
+  call void @llvm.memset.p0.i64(ptr %trailing_address, i8 48, i64 %trailing_count, i1 false)
+  br label %positive_done
+positive_done:
+  br label %encode_digits
+scientific:
+  br i1 %has_fraction, label %scientific_dot, label %scientific_exponent
+scientific_dot:
+  %scientific_dot_address = getelementptr i8, ptr %start, i64 1
+  store i8 46, ptr %scientific_dot_address, align 1
+  br label %scientific_exponent
+scientific_exponent:
+  %exponent_address = getelementptr i8, ptr %start, i64 %e_offset
+  store i8 101, ptr %exponent_address, align 1
+  br i1 %below_one, label %exponent_minus, label %exponent_digits
+exponent_minus:
+  %exponent_sign_address = getelementptr i8, ptr %start, i64 %e_prefix
+  store i8 45, ptr %exponent_sign_address, align 1
+  br label %exponent_digits
+exponent_digits:
+  %exponent_digit_address = getelementptr i8, ptr %start, i64 %e_start
+  call void @__kimi_decimal_store(ptr %exponent_digit_address, i64 %abs_e, i64 %e_digits)
+  br label %encode_digits
+encode_digits:
+  %digits_start = phi ptr [ %leading_digits, %leading ], [ %start, %positive_done ], [ %start, %exponent_digits ]
+  %split = phi i64 [ %digits, %leading ], [ %point, %positive_done ], [ 1, %exponent_digits ]
+  br label %digit_loop
+digit_loop:
+  %current = phi i64 [ %mantissa, %encode_digits ], [ %quotient, %digit_loop ]
+  %left = phi i64 [ %digits, %encode_digits ], [ %index, %digit_loop ]
+  %index = sub i64 %left, 1
+  %quotient = udiv i64 %current, 10
+  %digit = urem i64 %current, 10
+  %digit8 = trunc i64 %digit to i8
+  %ascii = add i8 %digit8, 48
+  %after_point = icmp uge i64 %index, %split
+  %skip_dot = zext i1 %after_point to i64
+  %offset = add i64 %index, %skip_dot
+  %address = getelementptr i8, ptr %digits_start, i64 %offset
+  store i8 %ascii, ptr %address, align 1
+  %more = icmp ne i64 %index, 0
+  br i1 %more, label %digit_loop, label %commit
+commit:
+  call void @__kimi_utf8_commit(ptr %window, i64 %amount)
+  store i32 0, ptr %ret, align 4
+  ret void
+failure:
+  store i32 1, ptr %ret, align 4
+  ret void
+}
