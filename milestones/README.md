@@ -44,7 +44,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-23**, programs 1–22 and 29 pass their Release harnesses after the Borrow Origin suffix integration; older results retain their original verification scope. Build means a native
+As of **2026-09-24**, programs 1–22, 29 and 32 pass their Release harnesses after the UTF-8 formatting integration; older results retain their original verification scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -85,7 +85,7 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
 | 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 32 | YES | PASS (Debug) | PASS (Debug) | Unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; full-session verification remains. |
+| 32 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
 | 33 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 34 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 35 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |

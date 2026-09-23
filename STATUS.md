@@ -4,13 +4,14 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 
 ## Summary
 
-- **Verification baseline (2026-09-23, source `3e963abe`):** Debug/Release builds are warning-free; each full managed suite passes 11,803 tests. All 23 milestone harnesses (1–22 and 29) pass 1,191 Release checks, and 48 Optional native O0/O2 executions pass (`bin/verify/20260923-121325-session-during-final-reviewed`). Program 29 is unchanged and passes 119 checks per configuration (P29 DONE); Array allocation/transfer bounds and five-stage warm zero-allocation compilation are verified.
+- **Verification baseline (2026-09-24, source `1960f3af`):** Debug/Release builds are warning-free; each full managed suite passes 12,062 tests. All 24 milestone harnesses (1–22, 29 and 32) pass 1,232 Release checks, and 298 UTF-8 native O0/O2 executions pass (`bin/verify/20260923-170502-session-utf8-formatting-final`). P32 is DONE, with 41 checks in both Debug and Release. NativeAOT was not run.
 - **Generic generation:** the specification's initial profile monomorphizes (§21.3.1). Scalar, Never and length-generic functions, generic struct constructors/field reads, forwarded generic calls inside generic bodies, enum payload constructions and owned result joins are generated as one concrete body per closed substitution; explicit specializations keep their selected body. Every generic shape reaches generation this way; the transitional shared path (writer, entry planning and template walk) is removed, and `BodyLowering` validates each instance under its substitution.
 - **Mods:** the host interface is deferred (Appendix D); `Compilation.Bind` does not execute Mods.
 - **Diagnosis policy:** a program form outside the implemented subset is rejected by Binding or ownership analysis with a diagnostic code (`UnsupportedBinding_Kd`, `UnsupportedOwnership_Kd` or a specific code). A generation failure without a diagnostic is an internal invariant violation to fix, never a documented support boundary; harness rejections name the required code.
 
 ## Feature boundaries added most recently
 
+- **UTF-8 formatting ([profile](spec/utf8-formatting.md), P32):** fixed/heap buffers, checked Windows, validated views, erased Writers and reserve-effect checking; builtin/user/generic formatters, Text conversions, owning interpolation, `$tryWrite` and bounded Console stack output. Runtime allocation counters verify the required costs. Detailed evidence and inherited limits are below.
 - **Borrow Origin suffix (SPEC §3.3.6, §13.5.1, §15.3.1):** contextual `during` replaces prefix brace annotations. `ref/T? during a` keeps `a` on the reference inside Option; grouping blocks attachment. Adaptation accepts delimited internal contracts and rejects explicit Origins on its outer borrow chain. Parse/write/reload, source ranges, old-syntax and result-elision diagnostics are verified. Existing Origin, ownership and generation boundaries remain unchanged; the Parser no longer scans ahead for brace borrow annotations.
 - **Explicit transfer and exclusive borrow (SPEC §3.5, §13.5.3, §15.1.5 lending rule):** a bare Place is never Moved or lent exclusively. `x@move` transfers a Movable Place (a Copy one too), `x@uniq`/`x@objuniq` lend a directly owned Place, a Place reached through an exclusive reference reborrows implicitly, and a Temporary Value transfers freely. Bare `match`/`for` subjects are shared-borrowed (a proven-Copy `match` subject is copied), `try` transfers its extracted payloads, and `Console.writeLine(text: ref/string)` borrows. `try` binds below `@` (`try pending@move`). Diagnostics: `TransferRequired_Kd`, `ExclusiveBorrowRequired_Kd`. Limits: a shared-borrowed `string` subject, structural or literal patterns through a borrowed subject, tuple bindings over a shared iteration and `ref/string` locals are not supported (`UnsupportedBinding_Kd`); write `match x@move` or `for (a, b) in values@move`. String borrows form only as call arguments.
 - **Optional Types, try and explicit discard:** `T?` normalizes to Kimi Option, `try` uses ordinary match/return acquisition and cleanup, and `_ = expression` explicitly discards one result. Warning priority and unnamed `for` slots are implemented; see §3.1 for verified combinations and inherited limits.
@@ -73,7 +74,7 @@ Fixed-array fill `[N of value]` is implemented through parsing, Binding, ownersh
 
 #### UTF-8 formatting
 
-The normative profile, effect/allocation audits, example and Program 32 are unit-verified. Full-session regression verification remains.
+The normative profile, effect/allocation audits, example and Program 32 pass focused and full-session verification. The baseline above covers the complete final source; the following unit records identify each support boundary.
 
 | Area | Verified behavior | Evidence under `bin/verify/` |
 | --- | --- | --- |
@@ -91,7 +92,7 @@ The normative profile, effect/allocation audits, example and Program 32 are unit
 | Integration | The unchanged example and Program 32 execute. Generic fixed formatting preserves Type/length/Origin forwarding; failure stops later evaluation and Console output while all expressions remain statically checked. Six focused tests, eight native executions and 41 P32 Debug harness checks pass. | `20260923-165026-unit-utf8-milestone32`, `20260923-165231-unit-utf8-milestone32-harness` |
 | Console function references | Expected common Function Types select the matching concrete overload, preserving access, safety and complete Origin contracts across rebinding/reload. An aggregate-view input still needs its existing fixed Origin contract; an untyped reference cannot choose an overload. This is Binding coverage, not general Function Item generation (P26). The two new Abort reasons are covered by the stable runtime-table test. 189 focused tests and 16 native Console executions pass. | `20260923-170351-unit-utf8-console-overload-regression` |
 
-Library destructors are collected through owned storage types; missing destructor code cannot silently become trivial cleanup. These unit results do not yet certify the complete formatting profile or a new full-session baseline.
+Library destructors are collected through owned storage types; missing destructor code cannot silently become trivial cleanup.
 
 The public ownership functions now live in `Kimi.Intrinsics`. `Kimi.replace`,
 `Kimi.exchange`, `Kimi.swap`, and `Kimi.makeObj` are no longer lookup candidates;
