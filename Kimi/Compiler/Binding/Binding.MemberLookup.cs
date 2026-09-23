@@ -124,6 +124,7 @@ public sealed partial class Binding
             return default;
         }
 
+        BindingSymbol? hidden = null;
         if ((typeRole ? scope.Types : scope.Values).TryGetValue(name, out var member))
         {
             for (var candidate = member; candidate is not null; candidate = candidate.Next)
@@ -132,12 +133,15 @@ public sealed partial class Binding
                 {
                     return new(candidate, type, path);
                 }
+
+                // An existing but inaccessible Property is an access fault, not an unresolved Name (SPEC 20.4).
+                hidden ??= candidate.Kind == BindingSymbolKind.Property ? candidate : null;
             }
         }
 
         if (symbol.Declaration is not StructKoto structure)
         {
-            return default;
+            return new(null, type, path, Hidden: hidden);
         }
 
         if (!this.memberLookupVisiting.Add(symbol))
@@ -171,6 +175,7 @@ public sealed partial class Binding
 
                 if (candidate.Member is null)
                 {
+                    hidden ??= candidate.Hidden;
                     continue;
                 }
 
@@ -182,7 +187,7 @@ public sealed partial class Binding
                 result = candidate;
             }
 
-            return result;
+            return result.Member is null ? result with { Hidden = result.Hidden ?? hidden } : result;
         }
         finally
         {
@@ -190,5 +195,5 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false);
+    private readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false, BindingSymbol? Hidden = null);
 }

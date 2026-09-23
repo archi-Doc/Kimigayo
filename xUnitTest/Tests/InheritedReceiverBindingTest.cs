@@ -145,6 +145,17 @@ public class InheritedReceiverBindingTest
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
     }
 
+    [Theory]
+    [InlineData("struct Box\n    let secret: i32\n    public init(value: i32) => self.secret = value\nlet b = Box.init(1)\nlet n = b.secret")]
+    [InlineData("open struct Base\n    protected var item: i32\nstruct Sibling: Base\nstruct D: Base\n    func use(x: ref/Sibling) -> i32 => x.item")]
+    public void AnInaccessibleStoredPropertyIsAnAccessFault(string source)
+    {
+        // The Name resolves; only its access fails (PLAN G16: formerly UnresolvedBinding_Kd).
+        var c = Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InaccessibleBinding_Kd);
+    }
+
     [Fact]
     public void AccessorFailureCannotFallBackToAnotherProperty()
     {

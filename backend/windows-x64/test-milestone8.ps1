@@ -121,7 +121,7 @@ $invalid = [ordered]@{
     MovedNumbers = @{ source = (Edit-KimiSource $original 'var total: i32 = 0' "let again = numbers@move.take()`n    var total: i32 = 0"); diagnostic = 'MovedPlace_Kd' }
     UnprovenCopy = @{ source = (Edit-KimiSource $original 'return if useFirst' "let firstCopy = first`n            return if useFirst"); diagnostic = 'TransferRequired_Kd' }
     DeinitExtraction = @{ source = (Edit-KimiSource $original 'public func take(self: Self)' "deinit => ()`n`n            public func take(self: Self)"); diagnostic = 'UnsupportedOwnership_Kd' }
-    PrivateField = @{ source = (Edit-KimiSource $original 'selected@move.take()' 'selected.value'); diagnostic = 'UnresolvedBinding_Kd' }
+    PrivateField = @{ source = (Edit-KimiSource $original 'selected@move.take()' 'selected.value'); diagnostic = 'InaccessibleBinding_Kd' }
     BareReceiver = @{ source = (Edit-KimiSource $original 'selected@move.take()' 'selected.take()'); diagnostic = 'TransferRequired_Kd' }
     PrivateGroup = @{ source = (Edit-KimiSource $original 'public group Storage' 'group Storage'); diagnostic = 'UnresolvedBinding_Kd' }
     ImmutableElement = @{ source = (Edit-KimiSource $original 'total = total + value' 'value = 1'); diagnostic = 'TypeMismatch_Kd' }

@@ -187,7 +187,7 @@ public sealed partial class Binding
                 // A nominal member takes priority over a requirement member of the same receiver.
                 valueMember = this.RequirementMember(member, scope, receiverType, false);
                 valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName, scope, receiverType);
-                valueMember = valueSelection.Member ?? valueMember;
+                valueMember = valueSelection.Member ?? valueMember ?? valueSelection.Hidden;
             }
         }
 
