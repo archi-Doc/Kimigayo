@@ -17,10 +17,11 @@
 - **呼び出し**: メソッド、custom・computed・required accessor、closure と関数値の直接呼び出し（§7.6.3）をいう。
 - **受信者 place**（Receiver Place）: 呼び出しの受信者として取得される式をいう。place と一時値のどちらでもよい。受信者までの経路には、ユーザーコードを呼ばない標準 field・Tuple 要素・配列要素の射影を含めてよい。非束縛呼び出し `Type.method(x, ...)` の `self` は引数であり、受信者 place ではない。
 - **代入先**: 代入・複合代入・インクリメント・デクリメントの書き込み先は、受信者 place ではない。書き込み権限で取得し、印を要しない。評価順序は §13.7 のとおりである。代入先を探す途中で呼ぶ getter と custom `set` は呼び出しなので、その受信者は受信者 place である。
-- **値の種類**: 取得元を次の三つに分ける。経路（直接・排他参照経由・共有参照経由）は、権限の判定と Movable Place の判定にだけ用いる。
-  - **所有値・handle を保持する place**
-  - **借用値**: `uniq`・`ref` などの参照。`var r = x@uniq` の `r` や field `link: uniq/T` のように、place に格納されたものを含む。
-  - **一時値**
+- **値の種類**: 取得元を次の順に判定して、三つに分ける。経路（直接・排他参照経由・共有参照経由）は、権限の判定と Movable Place の判定にだけ用いる。
+  1. **借用値**: `ref`・`uniq`・`objref`・`objuniq` の値をいう。place に格納されたもの（`var r = x@uniq` の `r`、field `link: uniq/T`）と、呼び出しが返した参照を含む。
+  2. **所有 place**: 所有値または所有 handle（`obj`・`rc`・`arc`）を保持する place をいう。
+  3. **所有一時値**: 1 と 2 のどちらにも当たらない一時値をいう。
+- **オブジェクト系の入力**: 所有 handle と、`objref`・`objuniq` の値をいう。それ以外を値型の入力という。
 - **主語**（Subject Place）は `match`・`for` の用語として現行どおり用い、受信者 place とは区別する。
 
 ## 3. 規則
@@ -29,20 +30,21 @@
 
 > 転送は常に `@move` で書く。新たな排他貸与は、受信者 place を除いて `@uniq`／`@objuniq` で書く。借用値は自身のモードで再借用し、印を要しない。
 
-| 値の種類 | 受信者 place | その他の位置 |
-| --- | --- | --- |
-| 所有値・handle を保持する place | 暗黙に取得する（§3.2） | 共有は裸で借用する。排他は `@uniq`／`@objuniq` を要する。所有は、Copy なら Copy し、そうでなければ `@move` を要する |
-| 借用値 | 要求されるモードで再借用する。自身のモードと経路の権限を超えない | 同左 |
-| 一時値 | 暗黙に取得する（§3.2） | 所有権を渡す。借用位置では実体化して共有借用する。排他借用は `@uniq` を要する |
+受信者 place は、値の種類によらず §3.2 で取得する。その他の位置では次のとおり取得する。
 
-**排他取得の条件.** 所有値・handle を排他取得するには、その所有 storage が排他的に書き込み可能でなければならない。これは次の場合をいう。
+| 値の種類 | その他の位置での取得 |
+| --- | --- |
+| 借用値 | 要求されるモードで再借用するか、Copy read（§10.2）をする。自身のモードと経路の権限を超えない。印は要らない |
+| 所有 place | 共有は裸で借用する。排他は `@uniq`／`@objuniq` を要する。所有は、Copy なら Copy し、そうでなければ `@move` を要する |
+| 所有一時値 | 所有はそのまま渡す。共有借用は実体化して行う。排他借用は `@uniq` を要する |
+
+**排他取得の条件.** 所有 place を排他取得するには、その所有 storage が排他的に書き込み可能でなければならない。これは次の場合をいう。
 
 - `var` ローカル
 - 書き込み権限のある経路の field（§11.1）
 - 可変 static（§15.2.3）
-- 一時値
 
-`let` 束縛と所有型の引数の storage は、排他取得できない。借用値は自身のモードに従う。`let` や引数に保持された `uniq` 値は再借用できる。
+`let` 束縛と所有型の引数の storage は、排他取得できない。所有一時値は排他取得できる。ただし所有された getter 結果は除く（§11.2.3）。借用値は自身のモードに従うので、`let` や引数に保持された `uniq` 値も再借用できる。
 
 ```kimi
 // describe は ref/Array<Task>、consume は Array<Task>、modify は uniq/Resource を受け取る。
@@ -57,6 +59,7 @@ public func main()
     Kimi.Intrinsics.swap(first@uniq, second@uniq)    // 引数の排他借用には印が要る
     var r = first@uniq                               // r は借用値
     modify(r)                                        // 再借用：印は不要
+    modify(getExclusive())                           // uniq/Resource を返す呼び出し：借用値として再借用
     consume(tasks@move)                              // 転送には印が要る
 
 func touch(target: uniq/Resource)
@@ -67,20 +70,24 @@ func touch(target: uniq/Resource)
 
 > 受信者 place `p` の暗黙の取得は、受信者の要求に応じた明示の取得を `p` に補ったものと同じである。補った操作が不正なら、その呼び出しはエラーとする。
 
-| 受信者の要求 | 補う操作 |
-| --- | --- |
-| `ref/Self`・`uniq/Self` | `p@ref`・`p@uniq`（借用値なら同じモードの再借用） |
-| `objref/Self`・`objuniq/Self` | `p@objref`・`p@objuniq` |
-| handle の place に対する `ref/Self`・`uniq/Self` | View Target がちょうど同じ完全な Sealed 型なら、完全な payload 投影（`p@ref/T`・`p@uniq/T`、§13.5.5.1）。そうでなければ `p@objref`・`p@objuniq` で、ObjectCallCompatible Proven を要する（§12.4.4）。共有と排他で共通 |
-| 基底 `B` の宣言 | §9.5.1 の射影 |
-| 所有 `Self` | Copy なら Copy する。そうでなければ補わない（`x@move.m()` と書く） |
+| 受信者の要求 | 値型の入力 | オブジェクト系の入力 |
+| --- | --- | --- |
+| `ref/Self`・`uniq/Self` | `p@ref`・`p@uniq`（借用値なら、そのモードでの再借用） | View Target がちょうど同じ完全な Sealed 型なら、完全な payload 投影 `p@ref/T`・`p@uniq/T`（§13.5.5.1）。そうでなければ `p@objref`・`p@objuniq` とし、ObjectCallCompatible Proven を要する（§12.4.4） |
+| `objref/Self`・`objuniq/Self` | 該当しない | `p@objref`・`p@objuniq` |
+| 基底 `B` の宣言 | §9.5.1 の射影 | 同左 |
+| 所有 `Self`（オブジェクト Semantics の所有形を含む） | 所有一時値はそのまま渡す。所有 place は、Copy なら Copy し、そうでなければ補わない（`p@move.m()` と書く）。借用値は、referent が Copy なら Copy read する | 同左 |
 
 この定義から、次のことが導かれる。
 
 - **代替はない.** 補った操作が不正なら、Copy read・一時値の実体化・その他の取得には切り替えない。Copy した値を書き換えて更新を捨てる解釈は起こらない。
-- **既存規則がそのまま効く.** static（§15.2.3）、総称 Semantics の値（§8.9）、`rc`／`arc`（共有のみ、§13.5.5.2）、所有された getter 結果（§11.2.3）は、それぞれの明示規則に従う。
-- **明示してもよい.** 受信者が排他を要求する場合、`p@uniq.m()` は §15.6.7 の準備経路により `p.m()` と同じ意味になる。それ以外の明示は、書いたとおりの別の操作である。
-- **連鎖では最初の受信者だけを取得する.** 以降の受信者は前の呼び出しの結果である。
+- **既存規則がそのまま効く.** 次のものは、それぞれの明示規則に従う。
+  - static（§15.2.3）
+  - 総称 Semantics の値（§8.9）
+  - `rc`／`arc`（共有のみ、§13.5.5.2）
+  - Property の権限（§11.1）
+  - 所有された getter 結果（§11.2.3）
+- **明示との関係.** 暗黙の取得は、表の操作を明示で書いたものと同じである。値型の入力で排他を要求する受信者なら、`p@uniq.m()` は §15.6.7 の準備経路により `p.m()` と同じになる。表と異なる明示は、書いたとおりの別の操作である（例：`tasks@uniq.length`）。
+- **連鎖.** 各呼び出しは、直前の結果を受信者としてこの表で取得する。取得は前の呼び出しを越えて遡らない。予約も呼び出しごとに区切られる（§15.6.7）。
 
 ```kimi
 struct Meter
@@ -93,11 +100,22 @@ struct Meter
 group Registry
     public var meter: Meter = Meter.init()
 
+struct Builder
+    func add(self: uniq/Self, value: i32) -> uniq/Self   // 排他参照を返す
+    func with(self: Self, value: i32) -> Self            // 所有値を返す
+    func view(self) -> ref/Self                          // 共有参照を返す
+    func finish(self: uniq/Self)
+
 var meter = Meter.init()
 let seen = meter.reading              // meter@uniq を補う
 holder.items.append(1)                // holder.items@uniq を補う
-makeBuilder().add(1).add(2)           // 一時値。最初の受信者だけを取得する
 let shared = Registry.meter.reading   // 可変 static：Registry.meter@uniq を補う
+makeResource().consume()              // 所有一時値をそのまま渡す
+
+var builder = makeBuilder()
+builder.add(1).add(2)                 // 2 回目の受信者は uniq の結果を再借用する
+makeBuilder().with(1).finish()        // with の所有結果（一時値）を finish のために排他借用する
+// builder.view().finish()            // エラー：ref の結果からは排他取得できない
 
 let count = 0
 var next = func [var count] () -> i32
@@ -141,9 +159,9 @@ makePoint().normalize()   // 合法：最初から一時値
 
 ### 3.3. 受信者以外の位置
 
-期待型が排他を要求する位置では、所有値・handle を保持する place からの排他借用に、経路にかかわらず `@uniq`／`@objuniq` を要する。対象の位置は、引数・注釈付き初期化子・代入の右辺・戻り値・default 値・要素と payload の位置である。現行の §10.2 は排他参照経由の place を暗黙に排他借用していたが、これを受信者 place に限る。
+期待型が排他を要求する位置では、所有 place からの排他借用に、経路にかかわらず `@uniq`／`@objuniq` を要する。対象の位置は、引数・注釈付き初期化子・代入の右辺・戻り値・default 値・要素と payload の位置である。現行の §10.2 は排他参照経由の place を暗黙に排他借用していたが、これを受信者 place に限る。
 
-このため、裸の place が `uniq`／`objuniq` の引数候補に合うことはなくなる。§10.4 の曖昧さは生じず、Copy 能力によって選択が変わることもない。
+このため、裸の所有 place が `uniq`／`objuniq` の引数候補に合うことはなくなる。§10.4 の曖昧さは生じず、Copy 能力によって選択が変わることもない。借用値の再借用と Copy read はこれまでどおりである。
 
 ```kimi
 func bump(score: Score) -> Score     // 引数による overload は従来どおり可
@@ -220,7 +238,7 @@ func advance(self: uniq/Self)        // その場で進める
 cursor.advance()   // Copy なら by-value 版（更新は捨てられる）。Self is Copy を外すと uniq 版
 ```
 
-順位規則を足しても解決しない。ref を優先すると、`uniq` 値との食い違いと Copy 依存が残る。uniq を優先すると、`let`／`var` で本体が変わり、§10.4 に例外が入る。受信者の形を揃えれば、受信者の取得は名前だけで決まる。
+順位規則を足しても解決しない。ref を優先すると、`uniq` 値との食い違いと Copy 依存が残る。uniq を優先すると、`let`／`var` で本体が変わり、§10.4 に例外が入る。受信者の形を揃えれば、受信者の取得計画（§6）は名前だけで決まる。
 
 ### 3.5. 貸与点と呼び出し予約
 
@@ -259,24 +277,38 @@ inspect(item)
 ## 5. 診断
 
 - **受信者以外で印がない場合**: 既存の排他借用必須の診断で `@uniq`／`@objuniq` を提示する。排他参照経由の place もこの対象に含める。
-- **受信者 place を取得できない場合**: 原因を三つの型に分けて案内する。
+- **受信者 place を取得できない場合**: 補った操作（§3.2）のうち、失敗した検査から診断を作る。原因を固定の分類に当てはめることはしない。主な原因と提示は次のとおりで、これで全部ではない。
 
-| 原因の型 | 該当 | 提示 |
-| --- | --- | --- |
-| 不変な所有 storage | `let` 束縛、所有型の引数、`let` の closure | `var` にする。引数なら `var local = p@move`（Copy なら `var local = p`） |
-| 共有権限しかない | `ref` 値、`objref`、`rc`／`arc`、共有経路 | 上流を `uniq`／`objuniq` にする（例：外側のメソッドを `self: uniq/Self` にする） |
-| 所有された getter 結果 | getter が返した所有一時値 | ローカルに受けて変更し、`set` で書き戻す |
+| 失敗した検査 | 提示 |
+| --- | --- |
+| 不変な所有 storage（`let` 束縛、所有型の引数、`let` の closure） | `var` にする。引数なら `var local = p@move`（Copy なら `var local = p`） |
+| 共有権限しかない（`ref`・`objref` 値、`rc`／`arc`、共有経路） | 上流を `uniq`／`objuniq` にする（例：外側のメソッドを `self: uniq/Self` にする） |
+| Property の権限（custom `set` を持つ stored Property の直接の排他借用、setter へのアクセス） | ローカルに受けて変更し、`set` で書き戻す |
+| 所有された getter 結果（§11.2.3） | 同上 |
+| 受信者が不完全、ObjectCallCompatible が Proven でない | 既存の診断をそのまま用いる |
 
-- **Loan の競合**: 暗黙の貸与点に「`tasks` を `append` の受信者として暗黙に排他借用」という note を付ける。結果が Loan を保持している場合は、その結果も示す。二つの暗黙取得が重なる場合は、両方の貸与点を示し、先に `let` で受けるよう提示する。
+- **Loan の競合**: 暗黙の貸与点に「`tasks` を `append` の受信者として暗黙に排他借用」という note を付ける。結果が Loan を保持している場合は、その結果も示す。二つの暗黙取得が重なる場合は、両方の貸与点を示す。別のローカルで先に受けるよう提示するのは、受けた値の依存関係がその呼び出しを許す場合だけとする（§15.6.7 と同じ）。
 - **§3.4 の違反**: 形が揃わない宣言または要件を、すべて示す。
 
 ## 6. 実装と性能
 
 - **束縛**: 暗黙の取得は、明示の借用ノードに「暗黙」ビットを 1 つ付けて表す。所有権解析・予約・lowering は明示の場合と同じノードを処理する。暗黙ビットを読むのは §5 の診断と KimiCode（LSP）の inlay hint・semantic token だけにする。
-- **受信者の形**: 宣言の束縛時に、関数群ごとの受信者の形を 1 バイトで記録する。検査は群の要素数に比例する一回だけで済む。制約から集まる群は、初めて使った時点で一度だけ計算してキャッシュする。受信者の取得は overload 解決の前に一度だけ行い、§10.4 の比較は明示引数だけで行う。
-- **候補の早期除外**: 裸の place を `uniq`／`objuniq` の引数へ、非 Copy の裸の place を by-value の引数へ、という組み合わせは、引数の Semantics だけで型推論の前に除外する。除外の理由は診断にもそのまま使う。
-- **生成コード**: 変わらない。排他の受信者はアドレスで渡す。§3.2 により、受信者のための一時的な Copy は作らない。
-- **検証**: 裸の受信者を拒否していたハーネスの検査は受理ケースに変える。§5 の三つの原因の型、受信者以外の裸の排他参照経由 place、§3.4 の違反を、必須の診断つきの拒否ケースとして加える。
+- **受信者の取得計画**: 受信者の形は、宣言の束縛時に関数群ごとに 1 バイトで記録する。検査は群の要素数に比例する一回だけで済む。overload 解決の前には、群で共通の取得計画だけを作る。取得計画は、受信者の経路の解析、基本のモード、射影の共通部分からなり、1 バイトの記録はその索引に使う。
+  - 候補ごとの検査は、既存の適用可能性の判定（§10.1）で行う。対象は Origin 条件、引数や結果との依存関係、ObjectCallCompatible の状態である。
+  - Loan と取得は、選択の後に確定させる（§15.6.7）。
+  - 受信者の適応の分類は群で共通なので、§10.4 の比較は明示引数だけで行う。
+  - 制約から集まる群はキャッシュしてよい。キャッシュの鍵には、束縛された制約・型・Origin の環境を含める。
+- **候補の早期判定**: 型推論の前に、各引数と候補の組を「適用可能／不適用／未確定」に分け、確実に不適用な候補だけを除外する。確実に不適用なのは次の二つである。型が未確定なら未確定とし、除外しない。
+  - 裸の所有 place と `uniq`／`objuniq` の引数（新たな排他借用が要るため）
+  - 非 Copy が確定した裸の所有 place と by-value の引数
+
+  借用値は、再借用も Copy read（`uniq/i32` から `i32` への読み取りなど）もありうるので、除外しない。除外の理由は診断にそのまま使う。
+- **生成コード**: 暗黙化そのものによって、Copy・ヒープ確保・参照カウント操作が増えることはない。排他の受信者を成り立たせるための代わりの Copy はしない（§3.2）。所有受信者のための Copy と一時値の実体化は現行どおりで、実体化は追加のヒープ確保を意味しない。
+- **検証**: 文字列が残っていないかではなく、意味ごとのケースで確かめる。
+  - 裸の排他受信者を受理する。現行ハーネスで裸の受信者を拒否している検査は、受理ケースに変える。
+  - 受信者以外での新たな排他借用には印が要る。排他参照経由の place も含む。
+  - 明示の取得は、指定した効果を保つ（例：`tasks@uniq.length`）。冗長な明示も受理する。
+  - §5 の主な原因と §3.4 の違反は、必須の診断つきの拒否ケースにする。
 
 ## 7. SPEC.md への影響
 
@@ -302,7 +334,7 @@ inspect(item)
   - 付録 A・F、documentation-markdown・testing-profile・utf8-formatting の例
   - milestones と examples（受信者の `@uniq` を外す。受信者以外で排他参照経由の place を使う箇所に `@uniq` を付ける）
 
-**完了条件**: 統合後の SPEC 全体を検索し、受信者位置の `@uniq.`・`@objuniq.` と、「through an exclusive reference」「lent exclusively」「without a spelling」を用いた古い規則が残っていないことを確認する。
+**完了条件**: 旧規則が必須としていた印と説明を、すべて更新する。候補の箇所は、受信者位置の `@uniq.`・`@objuniq.` と、「through an exclusive reference」「lent exclusively」「without a spelling」の検索で洗い出す。ただし一律には消さず、一つずつ意味を確かめる。効果の違う明示（`tasks@uniq.length`）と冗長な明示の受理例は残してよい。
 
 ## 8. 決定
 
