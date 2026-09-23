@@ -100,6 +100,27 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 9.5: requirements gathered from constraints must share one receiver shape; a mismatch is an error at the use.
+        SemanticsKind? expected = null;
+        for (var i = 0; i < group.Members.Count; i++)
+        {
+            if (ReceiverShape(group.Members[i]) is not { } current)
+            {
+                continue;
+            }
+
+            if (expected is null)
+            {
+                expected = current;
+            }
+            else if (expected != current)
+            {
+                Fail(member, BindingFailure.ReceiverShapeMismatch);
+                group.Active = false;
+                return null;
+            }
+        }
+
         group.Active = group.Members.Count != 0;
         return group.Active ? group.Members[0] : null;
 

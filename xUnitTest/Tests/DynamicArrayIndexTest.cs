@@ -57,12 +57,11 @@ public class DynamicArrayIndexTest
     public void ReceiverReservationAllowsTemporarySharedInspection()
         => ScalarEmissionTest.EmitFixture(
             "DynamicArrayIndexReservation",
-            "var values: Array<isize> = [1]\nvalues@uniq.insert(^0, values.length)\nrequire values.length == 2 and values[1] == 1 else => $abort(\"reservation\")",
+            "var values: Array<isize> = [1]\nvalues.insert(^0, values.length)\nrequire values.length == 2 and values[1] == 1 else => $abort(\"reservation\")",
             string.Empty);
 
     [Theory]
     [InlineData("values@ref.insert(^0, 1)")]
-    [InlineData("values.insert(^0, 1)")]
     [InlineData("values@uniq.insert(true, 1)")]
     [InlineData("values@uniq.remove(true)")]
     public void RejectsWrongReceiversAndIndices(string statement)

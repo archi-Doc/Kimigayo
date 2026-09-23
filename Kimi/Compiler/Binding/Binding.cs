@@ -88,6 +88,7 @@ public sealed partial class Binding
             this.issues.Clear();
             this.libraryImports.Clear();
             this.constraintDiagnosticCauses?.Clear();
+            this.objectPayloadCauses?.Clear();
             this.ResetMatches();
             this.resultContexts.Clear();
             this.resultCursor = 0;
@@ -394,6 +395,11 @@ public sealed partial class Binding
         return false;
     }
 
+    /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>
+    private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
+        => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
+            function.Parameters[symbol.ReceiverIndex].Type.BoundType is { } receiver ? receiver.Semantics : null;
+
     private static BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
         if (node.BindingFailure != BindingFailure.None)
@@ -557,6 +563,7 @@ public sealed partial class Binding
                     BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
+                    BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
@@ -699,6 +706,19 @@ public sealed partial class Binding
                         continue;
                     }
 
+                    // SPEC 7.3: every function with a receiver in one member group shares one receiver shape.
+                    if (ReceiverShape(a) is { } shape)
+                    {
+                        for (var b = a.Next; b is not null; b = b.Next)
+                        {
+                            if (ReceiverShape(b) is { } other && other != shape)
+                            {
+                                Fail(fa, BindingFailure.ReceiverShapeMismatch);
+                                Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
+                            }
+                        }
+                    }
+
                     for (var b = a.Next; b is not null; b = b.Next)
                     {
                         if (b.Declaration is not FunctionKoto fb || fb.IsSpecialization || fa.GenericArguments.Count != fb.GenericArguments.Count || fa.Parameters.Count != fb.Parameters.Count)
@@ -722,6 +742,40 @@ public sealed partial class Binding
                         {
                             Fail(fa, BindingFailure.Duplicate);
                             Fail(fb, BindingFailure.Duplicate);
+                        }
+                    }
+                }
+            }
+        }
+
+        // SPEC 8.4.1: a Contract's same-name requirements, including those inherited by refinement, share one receiver shape.
+        for (var n = 0; n < this.nodes.Count; n++)
+        {
+            if (this.nodes[n] is not ContractKoto { BoundSymbol.Contract: { } shape } contract)
+            {
+                continue;
+            }
+
+            foreach (var members in shape.MembersByName.Values)
+            {
+                SemanticsKind? expected = null;
+                for (var i = 0; i < members.Count; i++)
+                {
+                    if (ReceiverShape(members[i]) is not { } current)
+                    {
+                        continue;
+                    }
+
+                    if (expected is null)
+                    {
+                        expected = current;
+                    }
+                    else if (expected != current)
+                    {
+                        Fail(contract, BindingFailure.ReceiverShapeMismatch);
+                        if (ReferenceEquals(members[i].Declaration.Parent, contract))
+                        {
+                            Fail(members[i].Declaration, BindingFailure.ReceiverShapeMismatch);
                         }
                     }
                 }

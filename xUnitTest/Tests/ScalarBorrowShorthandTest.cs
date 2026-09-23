@@ -19,7 +19,7 @@ public class ScalarBorrowShorthandTest
     [InlineData("CallTemporary", "func read(n: ref/i32) -> bool => true\nfunc one() -> i32 => 41\nrequire read(one()@ref) else => $abort(\"value\")")]
     [InlineData("ExclusiveTemporary", "func bump(n: uniq/i32)\n    ()\nfunc one() -> i32 => 41\nbump(1@uniq)\nbump(one()@uniq)")]
     [InlineData("Statement", "1.25@ref")]
-    [InlineData("BorrowedBase", P + "func f(p: uniq/P)\n    bump(p.tag@uniq)\n    bump(p.tag)\n    let t = p.tag@uniq\n    p.flag = false\n    bump(t)\nvar o = P.init()\nf(o@uniq)\nrequire not o.flag and o.tag == 7 else => $abort(\"value\")")]
+    [InlineData("BorrowedBase", P + "func f(p: uniq/P)\n    bump(p.tag@uniq)\n    bump(p.tag@uniq)\n    let t = p.tag@uniq\n    p.flag = false\n    bump(t)\nvar o = P.init()\nf(o@uniq)\nrequire not o.flag and o.tag == 7 else => $abort(\"value\")")]
     [InlineData("SharedBase", P + "func f(p: ref/P) -> bool => read(p.tag)\nlet o = P.init()\nrequire f(o@ref) else => $abort(\"value\")")]
     [InlineData("TupleElement", P + "var t: (i32, bool) = (1, true)\nbump(t.0@uniq)\nbump(t.0@uniq)\nrequire t.1 else => $abort(\"value\")")]
     public void ExecutesScalarShorthandBorrows(string name, string source)

@@ -158,11 +158,11 @@ public sealed partial class Binding
                 return Fail(call, BindingFailure.InvalidAssignment);
             }
 
-            // SPEC 7.6.3: a directly owned closure is lent exclusively only by c@uniq(); a closure reached
-            // through an exclusive reference is reborrowed without a spelling.
-            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && PathAuthority(call.Method) != SemanticsKind.Uniq)
+            // SPEC 7.3, 7.6.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
+            // its lending point is exclusively writable; a let-bound closure Place is never Copied instead.
+            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.BorrowablePlace(call.Method, scope, true))
             {
-                return Fail(call, BindingFailure.ExclusiveBorrowRequired);
+                return Fail(call, BindingFailure.InvalidAssignment);
             }
         }
 

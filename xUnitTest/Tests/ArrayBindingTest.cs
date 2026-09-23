@@ -190,7 +190,6 @@ public class ArrayBindingTest
     }
 
     [Theory]
-    [InlineData("values.append(1)", DiagnosticCode.ExclusiveBorrowRequired_Kd)]
     [InlineData("values@ref.append(1)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.append(true)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.reserve(4, 5)", DiagnosticCode.NoApplicableOverload_Kd)]

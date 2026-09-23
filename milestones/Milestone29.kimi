@@ -21,19 +21,19 @@ func describe(tasks: ref/Array<Task>)
 public func main()
     var tasks: Array<Task> = [] // Length and capacity zero; nothing is allocated.
     describe(tasks@ref)
-    tasks@uniq.reserve(additional: 4)
+    tasks.reserve(additional: 4)
     require tasks.length == 0 and tasks.capacity >= 4 else => $abort("Reserve failed")
-    tasks@uniq.append(Task.init(1))
-    tasks@uniq.append(Task.init(3))
-    tasks@uniq.insert(1, Task.init(2))  // Before position 1: [1, 2, 3].
-    tasks@uniq.insert(^0, Task.init(4)) // From the end, ^0 appends: [1, 2, 3, 4].
+    tasks.append(Task.init(1))
+    tasks.append(Task.init(3))
+    tasks.insert(1, Task.init(2))  // Before position 1: [1, 2, 3].
+    tasks.insert(^0, Task.init(4)) // From the end, ^0 appends: [1, 2, 3, 4].
     require tasks.length == 4 and tasks.capacity >= 4 else => $abort("Growth failed")
     describe(tasks@ref)
-    let last = tasks@uniq.remove(^1) // Transfers Task 4 out; [1, 2, 3]; capacity is unchanged.
+    let last = tasks.remove(^1) // Transfers Task 4 out; [1, 2, 3]; capacity is unchanged.
     require last.id == 4 and tasks.length == 3 else => $abort("Removal failed")
     Console.writeLine("Removed the last task.")
     tasks[0] = Task.init(5) // Indexed replacement destroys Task 1 first: [5, 2, 3].
-    match tasks@uniq.pop()
+    match tasks.pop()
         .Some(let popped)
             require popped.id == 3 else => $abort("Pop failed")
             Console.writeLine("Popped a task.")
@@ -41,7 +41,7 @@ public func main()
         .None => $abort("Unexpected empty pop")
     describe(tasks@ref)
     var spare: Array<Task> = [Task.init(6)] // An independent literal constructs an Array.
-    spare@uniq.clear() // Destroys every element in reverse index order; capacity is preserved.
+    spare.clear() // Destroys every element in reverse index order; capacity is preserved.
     require spare.length == 0 and spare.capacity >= 1 else => $abort("Clear failed")
     Console.writeLine("Cleared the spare tasks.")
     for task in tasks@move // Owning iteration consumes the Array: Task 5, then Task 2.

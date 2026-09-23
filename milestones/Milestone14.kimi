@@ -18,7 +18,7 @@ group Pipeline
         var accepted: isize = 0
         loop
             require accepted < limit else => exit
-            match iterator@uniq.next()
+            match iterator.next()
                 .Some(let item)
                     if visit(item)
                         accepted = accepted + 1

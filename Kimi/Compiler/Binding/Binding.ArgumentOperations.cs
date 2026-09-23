@@ -211,7 +211,12 @@ public sealed partial class Binding
         return source is IdentifierNameKoto && source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture && (!exclusive || Writable(source));
     }
 
-    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false)
+    /// <summary>
+    /// Adapts an input to a parameter Type. <paramref name="receiver"/> marks a Receiver Expression, which SPEC 7.3
+    /// acquires implicitly: a new exclusive borrow of an owned Place or temporary needs no spelling there, whereas
+    /// every other position requires <c>@uniq</c>/<c>@objuniq</c> whatever the access path (SPEC 15.1.5).
+    /// </summary>
+    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false)
     {
         actual = this.ContractType(actual, scope);
         adapted = actual;
@@ -225,7 +230,7 @@ public sealed partial class Binding
         var projected = path is not null;
         if (ObjectTypes.IsBorrow(pattern))
         {
-            return !projected && this.AdaptObjectBorrow(source, pattern, actual, scope, explicitBorrow, out adapted, out quality, out kind);
+            return !projected && this.AdaptObjectBorrow(source, pattern, actual, scope, explicitBorrow, out adapted, out quality, out kind, receiver);
         }
 
         if (pattern.Kind != BoundTypeKind.Semantics || pattern.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq))
@@ -290,16 +295,16 @@ public sealed partial class Binding
             var unwrapped = KotoHelper.UnwrapParentheses(source);
             if (this.BorrowablePlace(source, scope, exclusive))
             {
-                // SPEC 15.1.5 lending rule: a directly owned Place is lent exclusively only by @uniq; a Place
-                // reached through an exclusive reference is reborrowed within the parent's authority.
-                if (exclusive && !explicitBorrow && PathAuthority(source) != SemanticsKind.Uniq)
+                // SPEC 15.1.5 lending rule: an owned Place is lent exclusively by @uniq at every position other
+                // than a Receiver Expression, whatever its access path; a receiver is acquired implicitly (SPEC 7.3).
+                if (exclusive && !explicitBorrow && !receiver)
                 {
                     this.lendingRequired = true;
                     return false;
                 }
             }
             else if (!((source.BoundSymbol is null || unwrapped is InvocationKoto) &&
-                (!exclusive || (explicitBorrow && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
+                (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
                 !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
                 unwrapped is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) &&
                 !(target == SemanticsKind.Ref && IsUnfittedLiteral(source)))
@@ -307,8 +312,9 @@ public sealed partial class Binding
                 return false;
             }
 
-            // SPEC 10.2: an owner temporary, including a defaulted literal, may be shared-borrowed;
-            // its exclusive borrow is explicit only (SPEC 3.6.2).
+            // SPEC 10.2: an owner temporary, including a defaulted literal, may be shared-borrowed; its
+            // exclusive borrow is explicit or implicit for a receiver (SPEC 3.6.2, 7.3). A getter result
+            // is a MemberAccessKoto with a Symbol and is never exclusively acquired (SPEC 11.2.3).
             referent = actual;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;
@@ -333,7 +339,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool AdaptObjectBorrow(Koto source, BoundType pattern, BoundType actual, BindingScope scope, bool explicitOwner, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind)
+    private bool AdaptObjectBorrow(Koto source, BoundType pattern, BoundType actual, BindingScope scope, bool explicitOwner, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool receiver = false)
     {
         adapted = actual;
         quality = ArgumentAdaptation.Exact;
@@ -357,9 +363,9 @@ public sealed partial class Binding
         else if ((actual.Semantics == SemanticsKind.Obj || (explicitOwner && !exclusive && actual.Semantics is SemanticsKind.Rc or SemanticsKind.Arc)) &&
             this.BorrowablePlace(source, scope, exclusive))
         {
-            if (exclusive && !explicitOwner && PathAuthority(source) != SemanticsKind.Uniq)
+            if (exclusive && !explicitOwner && !receiver)
             {
-                // SPEC 15.1.5 lending rule: an owned handle is lent exclusively only by @objuniq.
+                // SPEC 15.1.5 lending rule: an owned handle is lent exclusively by @objuniq except as a receiver (SPEC 7.3).
                 this.lendingRequired = true;
                 return false;
             }

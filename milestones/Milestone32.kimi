@@ -31,7 +31,7 @@ public func main()
         .Ok(let view) => Console.writeLine(view)
         .Err(_) => $abort("invalid UTF-8")
 
-    buffer@uniq.clear()
+    buffer.clear()
     var reused = Text.writer(buffer@uniq)
     match $tryWrite(reused@uniq, "done=\(true)")
         .Ok(_) => ()

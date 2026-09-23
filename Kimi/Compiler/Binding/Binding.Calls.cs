@@ -812,7 +812,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Pending;
             }
 
-            if (!InferInput(parameterType, receiverType, receiver, receiverPath))
+            if (!InferInput(parameterType, receiverType, receiver, receiverPath, true))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -897,7 +897,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Pending;
             }
 
-            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind) || !this.FitsTypeAt(adaptedReceiver, requiredReceiver, call))
+            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind, receiver: true) || !this.FitsTypeAt(adaptedReceiver, requiredReceiver, call))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1122,7 +1122,7 @@ public sealed partial class Binding
             return true;
         }
 
-        bool InferInput(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null)
+        bool InferInput(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null, bool receiver = false)
         {
             if (this.MemberType(pattern, declaringType) is not { } memberPattern)
             {
@@ -1130,7 +1130,7 @@ public sealed partial class Binding
             }
 
             pattern = this.ContractType(memberPattern, scope, self);
-            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _))
+            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver))
             {
                 return false;
             }

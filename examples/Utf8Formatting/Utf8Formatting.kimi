@@ -24,7 +24,7 @@ match buffer.text()
     .Ok(let text) => Console.writeLine(text)
     .Err(_) => $abort("invalid UTF-8")
 
-buffer@uniq.clear()
+buffer.clear()
 var reused = Text.writer(buffer@uniq)
 _ = $tryWrite(reused@uniq, "ready=\(true)")
 match buffer.text()

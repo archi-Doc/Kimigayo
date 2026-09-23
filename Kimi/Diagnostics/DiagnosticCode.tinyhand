@@ -366,7 +366,10 @@
     Message="A bare Place is never moved; write @move to transfer it, or borrow it with @ref or @uniq"
 
   + Name="ExclusiveBorrowRequired_Kd"
-    Message="A directly owned Place is not lent exclusively without @uniq or @objuniq"
+    Message="An owned Place is not lent exclusively without @uniq or @objuniq, except as the receiver of a call"
+
+  + Name="ReceiverShapeMismatch_Kd"
+    Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
 
   + Name="MissingSpecializationTarget_Kd"
     Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"

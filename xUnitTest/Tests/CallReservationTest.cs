@@ -45,6 +45,7 @@ public class CallReservationTest
     [InlineData("ObjectTyped", "func put(o: objuniq/Cell, n: i32) => set(o@uniq/Cell, n)\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nput((o@objuniq/Cell), read(o@ref/Cell) + 1)")]
     [InlineData("ObjectReceiver", "struct ObjCell\n    public var value: i32 = 1\n    public func put(self: objuniq/Self, n: i32)\n        let p = self@uniq/Self\n        p.value = n\nvar o = Kimi.Intrinsics.makeObj(ObjCell.init())\nlet n = (o@ref/ObjCell).value\no@objuniq.put(n + 1)\nrequire (o@ref/ObjCell).value == 2 else => $abort(\"object receiver\")")]
     [InlineData("LoopTransfer", "var c = Cell.init()\nvar n: i32 = 0\nwhile n < 2\n    n += 1\n    set(c@uniq, (if n == 1 => continue else => read(c)))\nrequire n == 2 else => $abort(\"continue\")")]
+    [InlineData("ImplicitReceiver", "var c = Cell.init()\nc.set(read(c) + 1)\nrequire c.value == 2 else => $abort(\"implicit receiver\")")]
     public void AcceptsPreparedReads(string name, string body)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
@@ -54,11 +55,10 @@ public class CallReservationTest
         ScalarEmissionTest.EmitFixture("CallReservation" + name, Cell + body, string.Empty);
     }
 
-    // SPEC 15.1.5: a directly owned Place is never lent exclusively without @uniq/@objuniq, so the
-    // implicit spellings that used to reserve the receiver or argument are rejected at Binding.
+    // SPEC 15.1.5, 7.3: an owned Place is never lent exclusively at an argument position without
+    // @uniq/@objuniq; only a Receiver Expression is acquired implicitly.
     [Theory]
     [InlineData("var c = Cell.init()\nset(c, c.value + 1)")]
-    [InlineData("var c = Cell.init()\nc.set(read(c))")]
     [InlineData("func run(c: uniq/Cell) => set(c, read(c))\nvar c = Cell.init()\nrun(c)")]
     [InlineData("var p: i32 = 1\nKimi.Intrinsics.replace(p, with: p + 1)")]
     [InlineData("func put(o: objuniq/Cell, n: i32) => set(o@uniq/Cell, n)\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nput(o, read(o@ref/Cell) + 1)")]

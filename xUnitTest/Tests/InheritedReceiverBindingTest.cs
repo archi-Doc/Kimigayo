@@ -186,17 +186,30 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void AdaptationAdvantagesAcrossSourceArgumentsAreIncomparable()
     {
-        var c = Parse("struct S\n    public func f(self: uniq/Self, x: ref/i32) -> i32 => 1\n    public func f(self: ref/Self, x: uniq/i32) -> i32 => 2\nfunc use(s: uniq/S, x: uniq/i32) -> i32 => s.f(x)");
+        // SPEC 7.3: the receiver shape is common to the group, so only the explicit arguments are compared.
+        var c = Parse("struct S\n    public func f(self: uniq/Self, x: ref/i32, y: uniq/i32) -> i32 => 1\n    public func f(self: uniq/Self, x: uniq/i32, y: ref/i32) -> i32 => 2\nfunc use(s: uniq/S, x: uniq/i32, y: uniq/i32) -> i32 => s.f(x, y)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, Call(c)) && x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
-    [Fact]
-    public void ReceiverAdaptationPrecedesGenericPreference()
+    [Theory]
+    [InlineData("struct S\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: ref/Self, x: i32) -> i32 => 2")]
+    [InlineData("struct S\n    public func f(self: uniq/Self, x: ref/i32) -> i32 => 1\n    public func f(self: ref/Self, x: uniq/i32) -> i32 => 2")]
+    [InlineData("struct S\n    public func f(self) -> i32 => 1\n    public func f(self: Self, x: i32) -> i32 => x")]
+    public void FunctionsOfOneNameShareOneReceiverShape(string source)
     {
-        var c = Parse("struct S\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: ref/Self, x: i32) -> i32 => 2\nfunc use(s: uniq/S, x: i32) -> i32 => s.f(x)");
+        // SPEC 7.3: differing receiver shapes within one member group are a declaration error.
+        var c = Parse(source + "\nfunc use(s: uniq/S, x: i32) -> i32 => s.f(x)");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(2, c.Binding.Issues.Count(x => x.Code == DiagnosticCode.ReceiverShapeMismatch_Kd));
+    }
+
+    [Fact]
+    public void GenericPreferenceAppliesAfterTheCommonReceiverAcquisition()
+    {
+        var c = Parse("struct S\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: uniq/Self, x: i32) -> i32 => 2\nfunc use(s: uniq/S, x: i32) -> i32 => s.f(x)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Single(Call(c).BoundCall!.TypeArguments.ToArray());
+        Assert.Empty(Call(c).BoundCall!.TypeArguments.ToArray());
     }
 
     [Fact]
@@ -273,13 +286,14 @@ public class InheritedReceiverBindingTest
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void CandidateOrderDoesNotChangeReceiverRanking(bool reversed)
+    public void CandidateOrderDoesNotChangeReceiverShapeDiagnostics(bool reversed)
     {
+        // SPEC 7.3: overloads that differ only in receiver shape are a declaration error, whatever their order.
         const string Shared = "    public func f(self: ref/Self) -> i32 => 1\n";
         const string Exclusive = "    public func f(self: uniq/Self) -> i32 => 2\n";
         var c = Parse("struct S\n" + (reversed ? Exclusive + Shared : Shared + Exclusive) + "func use(x: uniq/S) -> i32 => x.f()");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Equal(SemanticsKind.Uniq, Call(c).BoundCall!.ReceiverOperation.ParameterType!.Semantics);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(2, c.Binding.Issues.Count(x => x.Code == DiagnosticCode.ReceiverShapeMismatch_Kd));
     }
 
     [Fact]
@@ -310,7 +324,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void ASelectedProjectedMethodDoesNotRetryAfterItsEffectProofFails()
     {
-        var c = Parse("open struct Base\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: ref/Self, x: i32) -> i32 => 2\nstruct D: Base\nfunc use(s: uniq/D, x: i32) -> i32 => s.f(x)");
+        var c = Parse("open struct Base\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: uniq/Self, x: i32) -> i32 => 2\nstruct D: Base\nfunc use(s: uniq/D, x: i32) -> i32 => s.f(x)");
         Assert.False(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetReceiverOperation(Call(c), out var plan));
         Assert.Equal(SemanticsKind.Uniq, plan.ParameterType!.Semantics);

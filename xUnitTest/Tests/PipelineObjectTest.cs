@@ -41,7 +41,6 @@ public class PipelineObjectTest
     [InlineData("var owner = Kimi.Intrinsics.makeObj(Counter.init())\nlet target = owner@uniq/Counter\nvar visit = func [target@move] () => target.add(1)\nowner.read()\nvisit@uniq()")]
     [InlineData("var owner = Kimi.Intrinsics.makeObj(Counter.init())\nlet target = owner@uniq/Counter\nlet visit = func [target@move] () => target.add(1)\nvisit@uniq()")]
     [InlineData("var owner = Kimi.Intrinsics.makeObj(Counter.init())\nlet target = owner@uniq/Counter\nvar visit = func [target] () => target.add(1)\nvisit@uniq()")]
-    [InlineData("var owner = Kimi.Intrinsics.makeObj(Counter.init())\nlet target = owner@uniq/Counter\nvar visit = func [target@move] () => target.add(1)\nvisit()")]
     [InlineData("func take(value: obj/Counter) => ()\nlet owner = Kimi.Intrinsics.makeObj(Counter.init())\nlet complete = func [owner@move] () => take(owner@move)\ncomplete@move()\ncomplete@move()")]
     [InlineData("func take(value: obj/Counter) => ()\nlet owner = Kimi.Intrinsics.makeObj(Counter.init())\nlet complete = func [owner@move] () => take(owner@move)\ncomplete()")]
     [InlineData("let owner = Kimi.Intrinsics.makeObj(Counter.init())\nlet complete = func [owner@move] () => ()\nowner.read()")]

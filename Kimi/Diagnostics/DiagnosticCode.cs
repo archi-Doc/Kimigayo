@@ -117,6 +117,7 @@ public enum DiagnosticCode
     DefaultArgumentMove_Kd,
     TransferRequired_Kd,
     ExclusiveBorrowRequired_Kd,
+    ReceiverShapeMismatch_Kd,
     MissingSpecializationTarget_Kd,
     SpecializationInputMismatch_Kd,
 

@@ -752,8 +752,8 @@ public sealed partial class Binding
                 if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) &&
                     (pathSelection.Path is not null || IsObjectSemantics(sourceType.Semantics)) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
                 {
-                    // SPEC 7.3: assignment syntax already shows the write, so the setter's exclusive receiver needs no @uniq.
-                    if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update))
+                    // SPEC 7.3, 13.7: an accessor receiver is a Receiver Expression and is acquired implicitly.
+                    if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
                     {
                         return Fail(node, BindingFailure.TypeMismatch);
                     }

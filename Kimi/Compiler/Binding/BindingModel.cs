@@ -113,6 +113,9 @@ internal enum BindingFailure : byte
     // SPEC 15.1.5 lending rule: a bare Non-Copy Place needs @move, and a directly owned Place needs @uniq.
     TransferRequired,
     ExclusiveBorrowRequired,
+
+    // SPEC 7.3: one receiver shape per function group fixed by member lookup.
+    ReceiverShapeMismatch,
     MissingSpecializationTarget,
     SpecializationInputMismatch,
 }
