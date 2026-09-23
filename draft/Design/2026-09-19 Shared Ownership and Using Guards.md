@@ -1,412 +1,568 @@
-# Shared Ownership, Guards, and using — Final Specification Change Proposal
+# 共有所有・ガード・using
 
-- Date: 2026-09-19
-- Status: Final design proposal pending SPEC integration; not implemented support or a verified ABI.
-- Scope: local/sync, guards, using, thread capabilities, Weak, object creation and ownership transfer.
+- 日付: 2026-09-19（2026-09-24 改訂）
+- 状態: 仕様への取り込み前の設計案。実装済みの機能や検証済みの ABI を示すものではない。
+- 範囲: `local`・`sync` Semantics、ガード、`@` による生成と移管、参照カウントと Weak、循環構築、`using`、スレッド能力。
 
-Except for the changes stated here, [SPEC.md](../../SPEC.md) and its chapters apply. “Current §” denotes that specification; other section references are local. Sections 1–6 define proposed language requirements, §7 implementation goals and profile obligations, and §9 deferred work. Examples use proposed syntax and are not compiler test results. Snippets are independent; Item and inspectName are defined in §8.1.
+## 1. 位置付け
 
-## 1. Types and Semantics
+本書で定める事項は `SPEC.md` とその参照先より優先する。それ以外は現行仕様を適用する。言語は pre-alpha であり、言語バージョンの変更と移行文書は伴わない。
 
-### 1.1. Roles and targets
+本書は、取り込み予定の次の二つの変更案を前提とする。「本書 §」は本書の節、略称付きの「IER §」「OP §」はそれぞれの文書の節、それ以外の「§」は現行仕様の節を指す。
 
-Ownership, payload access, and acquisition lifetime are separate:
-
-| Role | Type or syntax | Meaning |
+| 略称 | 文書 | 本書で使う内容 |
 | --- | --- | --- |
-| Exclusive ownership | `obj/T` | One ownership responsibility |
-| Shared read-only ownership | `rc/T`, `arc/T` | Non-atomic/atomic reference counting and shared payload access |
-| Guarded shared ownership | `local/T` | Non-atomic reference counting and runtime borrow checking |
-| Guarded shared ownership | `sync/T` | Atomic reference counting and a non-reentrant Mutex |
-| Object borrow | `objref/T`, `objuniq/T` | Shared/exclusive access to a T view; no ownership |
-| Acquisition lifetime | `ReadGuard<S>`, `WriteGuard<S>` | Owned values responsible for releasing a borrow or lock; S is the complete source handle Type |
-| Scope management | `using name = expression Body` | Sugar for a scoped var binding and do expression |
+| IER | `draft/Changes/2026-09-23 Implicit Exclusive Receiver.md` | 受信者式の暗黙の取得、受信者の形の統一、命名規約 |
+| OP | `draft/Changes/2026-09-23 Object Payload.md` | `ObjectPayload`、Semantics の許容集合、オブジェクト対象 |
 
-local/sync are built-in Semantics, not library aliases. They participate in `<s/T>` decomposition and Semantics constraints. T must be a supported object View Target; sync additionally requires §5.2. This proposal does not enable runtime Contract Views or other unintroduced object targets.
+目的は次の三つである。
 
-`ref/local/T` borrows handle storage; `objref/T` borrows the payload view. Complete-value borrows (`ref/T`, `uniq/T`) remain distinct from object borrows that may refer to a derived object.
+- 共有したオブジェクトを、実行時の借用検査（`local`）またはロック（`sync`）を通して安全に変更できるようにする。
+- オブジェクトの生成と所有モードの移管を、`@` の一つの綴りにまとめる。
+- ガードの解放を通常の所有権と寿命の規則だけで扱い、専用の保護規則を作らない。
 
-### 1.2. Contextual keywords and categories
+本書 §3〜§8 を段階 A、§9〜§10（`sync` とスレッド能力）を段階 B として取り込む（本書 §12.1）。
 
-local/sync/async are recognized only as Semantics prefixes, Semantics constraints, and explicit adaptation targets. `let local = 1`, `func sync() => ()`, `x.async`, and ordinary division `local / count` follow normal name rules. async is reserved only in Semantics contexts and is rejected as unsupported.
+```kimi
+var shared = Item.init("initial")@local        // 生成
+var other = Kimi.Intrinsics.clone(shared@ref)  // 強参照の複製
+using writer = shared.write()                  // 排他の取得。本体の終わりで解放する
+    writer.valueUniq.name = "changed"
+```
 
-| Category | Members |
+## 2. 用語
+
+- **ハンドル**: `obj`・`rc`・`arc`・`local`・`sync` の値。オブジェクトを所有する。
+- **スロット**: ハンドルを保持する storage。`ref/local/T` はスロットの借用であり、ペイロードの借用ではない。
+- **ガード**: `ReadGuard`・`WriteGuard` の値。一つの取得を解放する責任を持つ。
+- **取得**: ハンドル操作（本書 §5.2）が、実行時の借用またはロックを得ること。成功したときだけガードができる。
+- **生成**: 完全な値から新しいオブジェクトを作る `@` の操作（本書 §4.2）。
+- **移管**: `obj` の所有を、同じオブジェクトのまま counted のモードへ移す `@` の操作（本書 §4.2）。
+- **表記の規約**: Semantics は常に `local/T` または「local ハンドル」と書き、束縛は「ローカル変数」と書く。`local` はスタック確保もスレッドローカル記憶域も意味しない。
+
+## 3. Semantics と区分
+
+### 3.1. 役割
+
+| 役割 | 型・構文 | 意味 |
+| --- | --- | --- |
+| 排他所有 | `obj/T` | 所有の責任を一つ持つ。ペイロードに共有・排他でアクセスできる |
+| 共有所有 | `rc/T`・`arc/T` | 非アトミック／アトミックの参照カウント。ペイロードは共有アクセスだけ |
+| ガード付き共有所有 | `local/T` | 非アトミックの参照カウントと実行時の借用検査。競合したら待たずに Abort する |
+| ガード付き共有所有 | `sync/T` | アトミックの参照カウントと再入不可の Mutex。競合したら待つ（段階 B） |
+| オブジェクト借用 | `objref/T`・`objuniq/T` | View への共有／排他アクセス。所有しない |
+| 取得の寿命 | `ReadGuard<s/T>`・`WriteGuard<s/T>` | 取得を解放する責任を持つ所有値 |
+| スコープ | `using x = e Body` | 束縛で始まる `do`（本書 §7） |
+
+- `local`・`sync` は組み込みの Semantics であり、ライブラリの別名ではない。`<s/T>` の分解と Semantics の要件に参加する。
+- `T` はオブジェクト対象でなければならない（OP §5）。本書は実行時 Contract View を有効にしない。
+- `local`・`sync`・`async` は、待ち方で区別する系列である。`local` は待たない、`sync` はスレッド間で待つ、`async` は将来 await で待つ（本書 §14）。
+
+### 3.2. 文脈キーワード
+
+`local`・`sync`・`async` は、Semantics の前置、Semantics の要件、`@` の指定の位置でだけ認識する。`let local = 1`、`func sync() => ()`、`x.async`、`local / count` は通常の名前として扱う。`async` は Semantics の文脈で予約し、`async/T`・`x@async`・`s is async` を拒否する。
+
+### 3.3. 区分
+
+| 区分 | 要素 |
 | --- | --- |
 | `value` | owner |
 | `valueborrow` | ref, uniq |
-| `object` | obj, rc, arc |
-| `guarded` | local, sync |
-| `counted` | rc, arc, local, sync |
 | `objectborrow` | objref, objuniq |
 | `borrow` | ref, uniq, objref, objuniq |
+| `object` | obj, rc, arc, local, sync |
+| `guarded` | local, sync |
+| `counted` | rc, arc, local, sync |
 | `owning` | owner, obj, rc, arc, local, sync |
-| `reference` | ref, uniq, obj, rc, arc, local, sync, objref, objuniq, unsafe |
+| `reference` | owner 以外のすべて（unsafe を含む） |
 
-The new guarded/counted names are contextual only in Semantics constraints. object retains direct shared payload borrowing. guarded supplies the common `write`/`tryWrite` API (§3.2), not direct payload access. counted supplies strong clone and Weak operations, not common payload borrowing. Weak itself has owner Semantics and is not counted. async belongs to none of these sets.
+- `object` はハンドル全体を表す。ペイロードを直接借用できるハンドルは `object and not guarded` と書き、新しい区分名は作らない。
+- `guarded` は共通の `write`・`tryWrite` を与える。`read`・`tryRead` は `local` だけが持つ。
+- `counted` は強参照の複製と Weak を与える。Weak 自体は owner であり、counted ではない。
+- OP の許容集合の全体は 11 種（owner, ref, uniq, obj, rc, arc, local, sync, objref, objuniq, unsafe）になる。OP のオブジェクト系（`object` ∪ `objectborrow`）は `local`・`sync` を含む。
+- 現行 §3.3 の「`counted` という区分はない」を削る。`object`・`owning`・`reference` が広がるので、`s is object` の本体でペイロードを直接借用しているコードは `and not guarded` を加える。
 
-This replaces current §3.3's exclusion of counted. Generic bodies constrained by owning/reference must be checked for the expanded sets; compatibility effects are listed in §10.2.
+### 3.4. 複製
 
-### 1.3. Acquisition and duplication
+すべてのハンドルとガードは Non-Copy である。通常の取得は Move であり、カウントを変えない。強参照を複製できるのは counted だけで、`Kimi.Intrinsics.clone` を使う（本書 §6.1）。`obj` とガードは複製できない。
 
-obj/rc/arc/local/sync handles and all guards are Non-Copy. Ordinary acquisition Moves without incrementing counts. `Kimi.Intrinsics.clone(handle@ref)` duplicates a counted strong responsibility. obj and guards have no clone; Weak operations follow §6.
+ハンドルに `.clone()` のようなメンバーは置かない。`rc`・`arc` のメンバー検索はペイロードに進むので、名前が衝突するからである。
 
-No handle `.clone()` or `.share()` member is registered, so rc/arc payload member lookup is unchanged. Omitting `@ref` from clone calls would require a general design for implicit handle-slot argument borrowing, not a clone-specific exception (current §10.2 and §10.9).
+## 4. `@` による生成と移管
 
-## 2. Explicit adaptation with @
+### 4.1. 取得の共通規則
 
-### 2.1. Operations and heap allocation
+> 所有 Semantics を指定する `@` は、オペランドを転送で取得してから、一つの操作を行う。
 
-`@` selects an operation from the operand's static Type and explicit target. **Some adaptations perform heap allocation.** It remains a built-in operation with no user-defined conversions, user-code calls by the operation itself, or search for conversion chains. Failure never selects a different operation. No adaptation implicitly clones a strong owner.
-
-M denotes obj/rc/arc/local/sync, C denotes a counted Semantics, and T/V denote object View Targets where applicable. Existing numeric, borrow, pointer, and upcast eligibility rules remain in force.
-
-| Input and target | Operation | Heap allocation by the adaptation |
-| --- | --- | --- |
-| Same normalized complete Type, including `M/T @M` or `@M/T` | Ordinary Copy/Move; applicable Borrow/Reborrow takes precedence | None |
-| Numeric value to an admitted numeric target | Numeric conversion or direct-literal fitting | None |
-| Value/reference to an admitted `ref`/`uniq` target | Borrow/Reborrow or storage borrow | None |
-| Eligible object to `objref`/`objuniq` | Object Borrow/Reborrow | None |
-| Proven complete Sealed object payload to `@ref/T` or `@uniq/T` | Payload projection | None |
-| Owning object handle or object borrow to an admitted different view | Same-mode Move or object Borrow/Copy/Reborrow under §2.3 | None |
-| Raw pointer to an admitted pointer/integer target, or the reverse | Raw pointer conversion | None |
-| `null` to a raw pointer Type | Typed null formation | None |
-| Complete owner/T with a valid payload Core to `@M` or `@M/T` | Acquire once by Copy/Move and create a new object | May allocate object and management storage |
-| `obj/T` to `@C` or `@C/T` | Move ownership of the same object to C | May allocate management storage; never a replacement payload |
-
-The column excludes allocation while evaluating the operand, receivers, or getters. Materialization for borrowing adds no heap allocation (current §3.6). Creation establishes a new object even when storage allocation can be elided; §7 defines allocation goals, not universal counts. Required allocation failure Aborts before publishing a result. Non-allocating operations can still Abort, for example numeric conversion. Completed effects and Moves are not rolled back.
-
-Different counted modes cannot convert to each other or to obj, even at strong count one. Borrowed values cannot create or transfer owning object handles. No other adaptation is added; in particular, the existing implicit common-function conversion is not made an `@` operation.
-
-Creation and ownership transfer retain T. A single adaptation cannot combine either operation with a view change; write separate operations. `@M` infers T from the input. Access, initialization, Origins, Loans, payload-erasure Owned proofs, and sync formation remain mandatory. Generic bodies prove operation selection for every admitted input and target eligibility under §5.2.2; an unknown Type is not assumed to be an owner Core.
-
-### 2.2. Creation and transfer
-
-Normal creation Moves the acquired complete value into a new payload without repeating constructors, accessors, or deinit. A Copy source remains usable. `value@local` has the ownership meaning of `(value@obj)@local`, but requires neither an intermediate object nor two allocations. Normal creation adds no blanket Owned requirement; external dependencies are retained.
-
-Transfer from obj consumes the handle and preserves Dynamic Type, object identity, payload address, and external dependencies. It neither copies nor relocates the payload. Initialize destination management state before publication; reject the Move if a conflicting Loan exists. Moving a handle is not moving its payload.
-
-**Remove `Kimi.Intrinsics.makeObj`, `makeRc`, and `makeArc`; do not introduce `makeLocal` or `makeSync`.** Complete-value creation and ownership-mode transfer use only `@`. Cyclic builders (§6.2) are a separate callback protocol, not adaptations of complete payload values.
+- **対象の指定**: `@owner`・`@obj`・`@rc`・`@arc`・`@local`・`@sync`。`/T` 付きの形と、総称の `@s` を含む。
+- **取得**: place は Copy 型でも Moved になり、一時値はそのまま渡る（§13.5.3 の転送）。
+- **操作**: オペランドの静的な型と指定から、本書 §4.2 の表の一つを選ぶ。失敗しても別の操作は選ばない。
+- Copy の元を残したいときは、先に Copy を明示する（`n@i32@rc`）。
 
 ```kimi
-var original = Item.init("initial")@obj
-var first = original@local // original is Moved; identity and payload address are unchanged.
-var second = Kimi.Intrinsics.clone(first@ref)
-var independent = Item.init("other")@local // A new object.
+var count = 1
+let kept = count@i32@rc    // Copy してから生成する。count は使える
+let taken = count@rc       // count は Moved
 ```
 
-### 2.3. Views and complete payloads
+### 4.2. 操作
 
-local/sync use the existing Supports, type-test, checked-cast, and payload-erasure rules within the currently supported target boundary. Same-mode owning view changes Move without changing counts; object-borrow view changes Copy/Reborrow and preserve their Loans. All views keep the same object and management state. A sync destination must also satisfy §5.2.
+M は `object` の要素、C は `counted` の要素とする。
 
-For the added modes, view-changing adaptations apply to `local/T` and `sync/T` owning handles and to guard-derived `objref/T`/`objuniq/T`. The latter use the existing object-borrow upcast rows. They do not authorize a direct payload borrow from local/sync. **Handle-slot borrows, including `ref/local/T`, `uniq/local/T`, `ref/sync/T`, and `uniq/sync/T`, have no payload upcast.** In particular, `uniq/local/Dog` cannot become `uniq/local/Animal`. No container covariance is introduced.
-
-```kimi
-// Dog derives from Animal; required Supports and Owned proofs hold.
-var dog = Dog.init()@local
-var animal = dog@local/Animal // Same object; dog is Moved.
-```
-
-Exclusive access does not prove that a viewed object is exactly T. `objuniq/Animal` does not implicitly become `uniq/Animal`; methods retain ObjectCallCompatible checking. Explicit `@ref/T`/`@uniq/T` payload projection requires the same complete, proven Sealed T under current §13.5.5.1. Its child Loan remains guard-dependent. Payload replacement gives no access to guard management fields. local/sync targets are not generally restricted to Sealed Types.
-
-## 3. Guarded access
-
-### 3.1. Acquisition and failure
-
-local operates on one thread; its name implies neither stack allocation nor thread-local storage. sync uses an atomic count and a non-reentrant Mutex. Both provide exclusive `write`; sync also uses it for read-only payload work.
-
-| Mode and state | read / tryRead | write / tryWrite |
-| --- | --- | --- |
-| local, unborrowed | Available | Available |
-| local, shared borrow active | Another shared borrow available | Conflict |
-| local, exclusive borrow active | Conflict | Conflict |
-| sync, unlocked | Unsupported | Available |
-| sync, locked | Unsupported | Conflict |
-
-| Condition | Ordinary API | try API |
-| --- | --- | --- |
-| local conflict | Abort without waiting | None |
-| sync conflict | Wait | None without waiting |
-| Shared-borrow count overflow | Abort before publishing a result | Same; not None |
-
-Only success creates a guard with one release responsibility; a conflict creates neither an acquisition nor a release responsibility. An increment attempted at or above a strong/weak/borrow count limit Aborts before publishing its result. Counts never wrap or saturate into success. Preserve existing rc/arc limits; profiles define limits for added state. Check timing follows §7.3's runtime policy. try results report acquisition conflicts, not recovery from overflow or required runtime-resource failure.
-
-sync release has release ordering; successful write/tryWrite has acquire ordering. Failed tryWrite supplies no acquisition synchronization. Reacquisition of the same object and inconsistent lock order can deadlock; no reentrancy, detection, FIFO fairness, or bounded waiting is promised. Ordinary Abort terminates the process without unwinding, so poisoning is not introduced (current §17.3).
-
-### 3.2. Acquisition API and lookup
-
-The functions belong to Kimi.Intrinsics, use argument label `value`, and have function Origin parameter `source`. S is one valid complete handle Type, decomposable as s/T. Both guard families retain S's target and dependencies and borrow its slot; they do not own S. The allowed modes below constrain both the functions and guard Type formation.
-
-| Function / dot form | Allowed S | Input | Result | Destruction |
-| --- | --- | --- | --- | --- |
-| `read<S>` / `x.read()` | `local/T` | `ref/S from source` | `ReadGuard<S> from source` | End shared runtime borrow |
-| `tryRead<S>` / `x.tryRead()` | `local/T` | Same | `Option<ReadGuard<S> from source>` | Some carries that responsibility |
-| `write<S>` / `x.write()` | `local/T`, `sync/T` | Same | `WriteGuard<S> from source` | End local exclusive borrow or unlock sync |
-| `tryWrite<S>` / `x.tryWrite()` | `local/T`, `sync/T` | Same | `Option<WriteGuard<S> from source>` | Some carries that responsibility |
-
-These four names are the only registered dot operations; lock/tryLock and LockGuard are not introduced. A handle Place or a ref/uniq to its slot supplies the input by ordinary shared Borrow/Reborrow, including immutable bindings and §3.5 element results. Acquisition does not Move the handle.
-
-A generic `s is guarded` body may use write/tryWrite on a valid s/T; read/tryRead additionally require `s is local`. Target-role evidence follows §5.2.2. The body cannot assume that write never blocks or that its guard has a capability not common to both modes.
-
-Resolution uses standard declaration identity, not matching user-defined names or Contracts. Failure does not retry against a payload member. local/sync payload access always requires a guard; member forwarding, implicit receiver adaptation, casts, and refinement cannot bypass it. Metadata-only tests and view changes grant no payload access.
-
-### 3.3. Guard Types and accessors
-
-ReadGuard<S> and WriteGuard<S> are compiler-managed Non-Copy struct Cores with Origin parameter `source`. S is a complete source handle Type, not a standalone Semantics argument. Valid instantiations are `ReadGuard<local/T>`, `WriteGuard<local/T>`, and `WriteGuard<sync/T>`; `ReadGuard<sync/T>` is currently rejected, even without an acquisition call. Unknown modes retain these constraints. `ReadGuard<S> origin source` is declaration notation and `ReadGuard<S> from source` is a Type use.
-
-Only acquisition functions construct guards. There are no public constructors, mutable management fields, user deinit additions, clone, or manual unlock/release APIs. Ordinary destruction releases the currently owned acquisition once.
-
-Both accessors have no set and keep T's View Target. Each has a fixed get Type, with no receiver-based get overloading. In the table, S decomposes as s/T:
-
-| Guard | Accessor | Receiver | Result |
+| オペランド | 指定 | 操作 | 操作によるヒープ確保 |
 | --- | --- | --- | --- |
-| ReadGuard<S> | value, readValue | `ref/(ReadGuard<S> from source) from guard` | `objref/T from guard` |
-| WriteGuard<S> | readValue | `ref/(WriteGuard<S> from source) from guard` | `objref/T from guard` |
-| WriteGuard<S> | value | `uniq/(WriteGuard<S> from source) from guard` | `objuniq/T from guard` |
+| 同じ正規化済みの完全型 | オペランドと同じ Semantics の指定（`@owner` を含む） | 転送だけ（現行） | なし |
+| `M/S` の所有ハンドル | `@M/V` | 同じモードの upcast（§13.5.7 に `local`・`sync` の行を加える） | なし |
+| 完全な owner 値 `T` | `@M`・`@M/T` | **生成**: 新しいオブジェクトを作る | オブジェクトと管理領域を確保しうる |
+| `obj/T` | `@C`・`@C/T` | **移管**: 同じオブジェクトの所有を C へ移す | 管理領域を確保しうる。ペイロードは作り直さない |
 
-guard is the Origin of the accessor's borrow of the guard itself. Accessors do not update management state; they lend payload access. Ordinary Loans prevent conflicting shared/exclusive children and simultaneous exclusive children. Ending a child Loan permits another borrow but does not itself release the acquisition.
+**生成**
 
-### 3.4. Lifetimes and destruction
+- `T is ObjectPayload` を要する（OP §4）。具体型は直接判定し、型が未確定なら宣言された前提を要する。open な型も生成できる。
+- 取得した値をペイロードへ Move する。構築子・accessor・`deinit` は繰り返さない。一律の Owned 要件はなく、外部の依存は保たれる。
+- `value@local` の所有の意味は `(value@obj)@local` と同じだが、中間のオブジェクトも二回の確保も要らない。
+
+**移管**
+
+- ハンドルを消費し、Dynamic Type・同一性・ペイロードのアドレス・外部の依存を保つ。ペイロードを複製も再配置もしない。
+- 管理状態は公開の前に初期化する。競合する Loan があれば、通常の Move の規則で拒否する。
+- 既存のハンドルの操作なので、`ObjectPayload` を再証明しない（OP §5.2）。移管先に固有の条件だけを加える（`sync` なら TT(T)、本書 §9.3）。
+
+**共通**
+
+- 生成と移管は `T` を保つ。View の変更と一つの `@` では組み合わせない（`dog@local@local/Animal` と書く）。
+- counted のモードの間、および counted から `obj` への変換はない。強参照が一つでも同じである。借用からは所有ハンドルを作らない。
+- `@` は利用者のコードを呼ばず、変換の連鎖を探さず、強参照を暗黙に複製しない。
+- 必要な確保に失敗したら、結果を公開する前に Abort する。完了した効果と Move は戻さない。確保の時点は本書 §8.4 に従う。
+- 現行 §13.5 の「`@` は資源を取得しない」を、「生成と移管だけが確保しうる」に改める。
+- `Kimi.Intrinsics.makeObj`・`makeRc`・`makeArc` を削除する。`makeLocal`・`makeSync` は設けない。関数値が要るときは closure で包む（`func (value: Item) => value@rc`）。
+
+### 4.3. 総称の Semantics 指定
+
+> 総称の `@s` は、許容集合のすべての要素で同じ種類の操作を選ばなければならない。
+
+- 種類は、転送だけ・upcast・生成・移管の四つである。種類が混ざる場合は定義エラーとする。
+- 生成には、許容集合 ⊆ `object` と `T is ObjectPayload` を要する。
+- これにより、ヒープ確保の有無を署名から読める。
+
+### 4.4. View
+
+- `local`・`sync` のハンドルは、Supports、upcast、実行時の `is`、checked cast（`Result<s/B, s/A>`）、ペイロードの消去（Owned）に参加する。対象の形成は OP §5 に従う。
+- ガードから得た `objref`・`objuniq` は、既存のオブジェクト借用の upcast を使う。
+- スロットの借用（`ref/local/T`・`uniq/local/T` など）には、ペイロードの upcast もコンテナの共変もない。
+- 排他アクセスは、実体が正確に T であることを証明しない。完全なペイロードへの `@ref/T`・`@uniq/T` の投影は、現行 §13.5.5.1 のとおり Sealed を要する。
+- 型テストと View の変更は、ペイロードへのアクセスを与えない。
+
+```kimi
+// Dog は Animal の派生とする。
+var original = Item.init("initial")@obj
+var first = original@local        // 移管：original は Moved。同一性とアドレスは変わらない
+var dog = Dog.init()@local        // 生成
+var animal = dog@local/Animal     // upcast：同じオブジェクト。dog は Moved
+```
+
+## 5. ガード付きアクセス
+
+### 5.1. 取得の状態と失敗
+
+| モードと状態 | `read`・`tryRead` | `write`・`tryWrite` |
+| --- | --- | --- |
+| `local`、未借用 | 成功 | 成功 |
+| `local`、共有借用中 | 成功（共有を追加） | 競合 |
+| `local`、排他借用中 | 競合 | 競合 |
+| `sync`、未ロック | — | 成功 |
+| `sync`、ロック中 | — | 競合 |
+
+| 状況 | 通常の操作 | try の操作 |
+| --- | --- | --- |
+| `local` の競合 | 待たずに Abort | `None` |
+| `sync` の競合 | 待つ | 待たずに `None` |
+| 共有借用数の上限超過 | 結果を公開する前に Abort | 同じ（`None` ではない） |
+
+- 成功だけがガードを作る。競合は、取得も解放の責任も作らない。
+- try の操作が報告するのは取得の競合だけである。上限超過や必要な資源の不足からは回復しない。
+- 上限と検査の時点は本書 §8.3 に従う。カウントは折り返さず、飽和して成功することもない。
+
+### 5.2. ハンドル操作
+
+`local/T`・`sync/T` のハンドル型は、組み込みのメンバーを四つだけ持つ。Self はハンドルの完全型 `s/T` である。
+
+```kimi
+func read(self: ref/Self) -> ReadGuard<s/T>                // s is local
+func tryRead(self: ref/Self) -> Option<ReadGuard<s/T>>     // s is local
+func write(self: ref/Self) -> WriteGuard<s/T>              // s is guarded
+func tryWrite(self: ref/Self) -> Option<WriteGuard<s/T>>   // s is guarded
+```
+
+- **Origin**: 結果の `source` は受信者の Origin になる（§15.4.3 の規則 1）。ガードはスロットの共有 Loan を保つ。
+- **受信者の取得**（IER §3.2 との接続）
+  - IER の値の種類の「所有 handle」に `local`・`sync` を含める。
+  - 受信者の経路は、選ばれた宣言の Self で決まる。Self が入力の View Target（ペイロードのメンバー）ならオブジェクト系の経路をとる。Self が入力の完全型（ハンドル操作）なら値型の経路をとり、`p@ref` でスロットを共有借用する。
+  - `obj`・`rc`・`arc` はハンドル操作を持たないので、既存の意味は変わらない。
+  - ハンドルの place（`let` を含む）、`ref/s/T`、`uniq/s/T` から取得できる。取得はハンドルを Move しない。
+- **メンバー検索**
+  - guarded のハンドルでは、この四つだけが見つかる。ペイロードのメンバーは見つからず、失敗してもペイロードを検索し直さない。
+  - 解決は標準の宣言の同一性で行う。同名のユーザー宣言は特権を得ない。
+  - `@objref`、ペイロードの投影、メンバーの転送、cast、絞り込みは、ガードを迂回できない。ペイロードへのアクセスには常にガードが要る。
+- **綴り**: メンバーの形だけとし、関数形（`Kimi.Intrinsics.read` など）は設けない。`lock`・`tryLock`・`LockGuard` は導入しない。
+- **総称**: `s is guarded` の本体では `write`・`tryWrite` を、`s is local` の本体ではさらに `read`・`tryRead` を使える。`write` が待たないことは仮定できない。
+
+### 5.3. ガード型
+
+```kimi
+// 組み込み宣言の概形。compiler-managed の Non-Copy struct
+struct ReadGuard<s/T> {source}
+    s is local
+    Self is not ObjectPayload
+    public computed value: objref/T
+        get(self: ref/Self) -> objref/T during self
+
+struct WriteGuard<s/T> {source}
+    s is guarded
+    Self is not ObjectPayload
+    public computed value: objref/T
+        get(self: ref/Self) -> objref/T during self
+    public computed valueUniq: objuniq/T
+        get(self: uniq/Self) -> objuniq/T during self
+```
+
+- **`source`**: 安全な参照を格納しない phantom slot（§15.3.5）である。組み込みのメタデータとして、共変、Loan 要件は `ref`（ソースのスロットへの共有 Loan）とする。
+- **T の変性**: `ReadGuard` は共変、`WriteGuard` は不変とする。
+- **命名**: 共有版を `value`、排他版を `valueUniq` とする（IER §4）。IER により `writer.valueUniq` は受信者に `writer@uniq` を補うので、ガードの束縛は書き込み可能（`var` または一時値）でなければならない。
+- **形成**: 型の制約により、`ReadGuard<sync/T>` は形成できない。OP §9.2 の Loan に縛られたアダプターと同じく、オブジェクト化を禁止する。
+- **構築と解放**: ガードを作るのはハンドル操作だけである。公開の構築子、可変の管理フィールド、`deinit` の追加、複製、手動の解放 API はない。通常の破棄が、そのとき持っている取得を一度だけ解放する。
+- **子の借用**: アクセサは管理状態を変えず、ペイロードへのアクセスを貸すだけである。子の Loan が終わっても取得は解放されない。
+
+### 5.4. 寿命と解放
 
 ```text
-source handle slot -> guard -> payload child borrow -> fields, reborrows, captures
+ソースのスロット -> ガード -> ペイロードの子借用 -> フィールド・再借用・捕捉
 ```
 
-A guard borrows its source slot and adds no strong owner. source must outlive the guard. Preserve payload dependencies and actual Loan provenance through acquisition, view changes, casts, returns, storage, and captures. Another strong handle keeping the object alive does not make a released guard's child reference valid.
+- ガードはソースのスロットを借用し、強参照を追加しない。ガードの生存中、ソースは Move も置き換えもできない。
+- 依存と Loan の由来は、View の変更・cast・戻り値・保存・捕捉を通して保たれる。別の強参照がオブジェクトを生かしていても、解放済みのガードの子の参照は有効にならない。
+- ガードは通常の Move・保存・戻り値・Origin・Loan の規則に従う。スレッドの規則は本書 §9 のとおりである。
+- 解放は、責任を持つガードの通常の破棄で起こる（合法な置き換えを含む）。最後の使用で解放が早まることはない（§16.2.1）。Abort と発散は通常のスコープ終了に従う。
+- 一時値のソースは通常の一時値の寿命に従い、ガードはそれより長く生きられない。`upgrade` の結果などは、先に束縛してから取得する。
+- 一時値のガードは式の終わりまで生きる。
 
-Guards use ordinary Move, storage, return, Origin, Loan, and thread rules, including inside using. Temporary sources keep normal temporary lifetimes (§4.2). Release occurs at ordinary destruction of the responsible guard, including a legal replacement. Last use alone cannot advance an observable release. Abort and divergence follow ordinary Scope Exit (§4.3).
+```kimi
+inspectName(first.read().value.name)   // 一時値のガードは、この文の終わりで解放される
+```
 
-### 3.5. Element acquisition
+### 5.5. 要素の読み取り
 
-Extend SharedReadResult for arrays, Slice, and other existing users of that rule:
+現行 §4.6.6 の SharedReadResult を、次の原則で定義し直す。
 
-| Complete element Type | SharedReadResult |
+| 要素の完全型 | 結果 |
 | --- | --- |
-| `local/T` | `ref/local/T from source` |
-| `sync/T` | `ref/sync/T from source` |
+| Copy 型 | 値の Copy |
+| `uniq/T`・`objuniq/T` | 共有の再借用（`ref/T`・`objref/T`） |
+| `object and not guarded` のハンドル | `objref/T`（カウントは変えない） |
+| それ以外の Non-Copy | 要素のスロットの共有借用 `ref/E` |
 
-object elements retain their existing objref payload result; guarded elements return a handle-slot borrow. The latter performs no payload borrowing, count increment, or guard acquisition and preserves storage and element dependencies. Generic checking includes both forms. Existing slot-borrow operations such as `@ref` and `tryGet()` are not replaced by SharedReadResult.
+- 現行の表と同じ結果を与える。guarded のハンドルは最後の行に入り（`ref/local/T`）、専用の行は要らない。
+- guarded の要素の読み取りは、ペイロードの借用も、カウントの増加も、取得もしない。
+- 総称の本体では、すべての場合を検証する。
 
 ```kimi
 // items: Slice<local/Item>
-let handle = items[0]
+let handle = items[0]          // ref/local/Item
 using guard = handle.read()
-    inspectName(guard.readValue.name@ref)
+    inspectName(guard.value.name)
 ```
 
-## 4. using as scoped-binding sugar
+## 6. 参照カウントと Weak
 
-### 4.1. Syntax
+### 6.1. 操作
 
-```text
-UsingExpression := [ Label : ] using Name [ : Type ] = Expression Body
-```
+S は counted の完全なハンドル型とする。現行 §13.5.8〜§13.5.9 の操作を、`rc`・`arc` から counted 全体に広げる。
 
-using introduces one ordinary mutable local and a do-style body. There is no var/let modifier, bodyless form, comma-separated binding list, or same-indent header concatenation. Multiple acquisitions use ordinary nesting. Body, indentation, continuation, and grouping follow current §2.2 and §14.2; body-bearing initializers require parentheses.
-
-At an expression start, including after a label, recognize using when followed on the same physical line by a Name and then `=` or `:`; ignore comments for this lookahead. Commit before checking the Type, initializer, or body, without fallback on error. `using = 1`, `using(x)`, and `x.using()` remain ordinary name uses.
-
-### 4.2. Semantic expansion
-
-`L: using x: T = e Body` is a do expression with the ordinary local initialization `var x: T = e` as its entry operation. Omitted labels and annotations remain omitted. Expansion preserves these source boundaries:
-
-1. Resolve the annotation and initializer in the outer environment. Evaluate e once with ordinary var acquisition and inference. Neither the new x, label L, nor declarations inside Body are visible in e. Initializer temporaries end as for an ordinary local initializer; using adds no lifetime extension.
-2. Introduce x at the beginning of the body's local scope, before its statements and defers. It follows ordinary local duplicate/shadowing rules and is visible throughout Body after successful initialization. The label is active only in Body, under current §14.4.
-3. Apply do's result and transfer rules to the **original Body form and evaluation context**. Expansion is semantic, not a textual rewrite that changes a single-item expression into a discarded block item. Any internal result target is unnameable in source and changes no source transfer lookup.
-
-An initializer may transfer to a valid outer target; failed or abandoned initialization creates no completed binding. Nested initializers can use already initialized outer bindings. This requires no new binding kind, ownership effect, or call-summary contract.
-
-### 4.3. Results and ordinary ownership
-
-Results, named exit, bare-exit transparency, function/defer barriers, and Scope Exit follow do and ordinary locals (current §14.2, §14.3.2, §14.5.2, §14.9, and §16.2). A value-used single-item expression supplies its value; an indented body reaching its end supplies Unit. A non-Unit block result requires a named exit. In Discard Context, named exits must fit Unit. using is not a yield/continue/return target or a lookup barrier.
-
-The binding permits ordinary Move, assignment, Partial Move, borrowing, replace/exchange/swap, and any otherwise legal destruction; no using-specific protection applies. Scope Exit destroys only the initialized contents whose responsibility remains in that scope, in the ordinary reverse order. A moved-out guard is released by its destination owner. Neither initial-value identity nor release of that initial value at the end of using is guaranteed.
-
-Normal result acquisition precedes cleanup. Reject references that depend on a guard destroyed before result delivery; allow independently valid values and transferred guards whose source dependencies survive. Option is not implicitly unwrapped. Abort, divergence, and incomplete-value cleanup retain the existing rules. Optional warnings for whole-binding Move or assignment may flag likely mistakes, but must not change acceptance or add interprocedural preservation analysis.
-
-## 5. Thread capabilities
-
-### 5.1. Complete-Type rules
-
-Kimi.ThreadTransferable (TT) permits transferring a value's ownership to another thread; Kimi.ThreadShareable (TS) permits shared access from another thread. They are independent built-in guarantees. Owned proves neither, and none waives lifetime obligations.
-
-| Complete Type | TT condition | TS condition |
+| 操作 | 入力 | 結果 |
 | --- | --- | --- |
-| Built-in Scalars, Unit, immutable string | True | True |
-| Common Function Types, such as `(i32) -> i32` | Not established after environment erasure | Same |
-| Other owner Cores | §5.2's structural/public guarantee | Same, for TS |
-| `ref/T` | TS(T) | TS(T) |
-| `uniq/T` | TT(T) | TS(T) |
-| `obj/T` | TT(T) | TS(T) |
-| `objref/T` | TS(T) | TS(T) |
-| `objuniq/T` | TT(T) | TS(T) |
-| `arc/T` | TT(T) and TS(T) | Same |
-| `sync/T` | True if well-formed | Same; payload TS is not required |
-| `rc/T`, `local/T` | False | False |
-| `Weak<S>` | TT(S) | TS(S) |
-| `ReadGuard<local/T>`, `WriteGuard<local/T>` | False | False |
-| `WriteGuard<sync/T>` | False | TS(T) |
+| 強参照の `clone` | `ref/S` | `S` |
+| `downgrade` | `ref/S` | `Weak<S>` |
+| `upgrade` | `ref/Weak<S>` | `Option<S>` |
+| Weak の `clone` | `ref/Weak<S>` | `Weak<S>` |
 
-These are intrinsic rules: guards do not inherit S's capabilities, and analysis of hidden fields cannot override their rows. Ordinary structural validation checks stored components and captures plus destruction, static-state access, and external-resource contracts; inherited base parts follow §5.2.1. Raw pointers and erased environments require validated contracts, not inference from their physical fields. Unknown Types need declared constraints; same-spelled user Contracts and empty conformances prove nothing.
+- **スロットの借用**: ハンドルの place への `@ref` は、スロットの共有借用 `ref/s/T` を作る（§13.5.5.2 の所有 place の行。`@ref/local/T` と同じ）。実引数ではハンドルの外側に層を足す借用を暗黙に行わないので、明示する（§10.2）。
+- **Weak の形成**: `Weak<S>` は、S の外側の Semantics が counted であることを要する。総称では許容集合 ⊆ `counted` とする（OP §5.3 の `rc`・`arc` を counted に広げる）。
+- `clone` はペイロードを複製せず、利用者のコードを呼ばず、取得もしない。`upgrade` の成功で得られるのは強参照だけで、guarded ではガードが別に要る。
+- `clone`・`upgrade` は管理領域を確保しない。最初の `downgrade` は side table を確保しうる。
+- 最後の強参照との競合、ゼロからの復活の禁止、動的型全体の破棄、元の領域の解放、Weak の表の寿命は、現行 §13.5.8〜9 と §21.2.3 に従う。
 
-Function Items and concrete Closures retain evidence for structural validation. A common Function Type carries no TT/TS contract, even when its source callable has one; Shared invocation and an Owned environment do not supply it. Capability-qualified erased callable Types are deferred (§9.1). For now, retain the concrete Type as a generic F with `Callable<owner, (i32) -> i32>` and ThreadTransferable, or the required Callable receiver/signature and TT/TS constraints. Generic storage must also retain F instead of erasing it.
-
-All guards are non-transferable. A sync write guard must release on its acquisition thread; a shared reference to it exposes readValue, not exclusive value. OS primitive choices cannot change its public capabilities.
-
-### 5.2. Open Types, inheritance, and sync formation
-
-#### 5.2.1. Public guarantees and base parts
-
-For owner Cores, automatic structural derivation is restricted to Sealed Types. An open Core has TT/TS only through an explicit, validated public guarantee, declared on itself or inherited from a base. The corresponding requirement means the same guarantee in declarations and generic constraints; there is no separate ViewTT/ViewTS predicate.
-
-`Self is ThreadTransferable` and `Self is ThreadShareable` require verification of the declaring Type and every derived Type, including added fields and effects. A derived Type cannot revoke the guarantee and need not repeat its declaration. A declaration is an obligation, not self-justifying proof. Conditional guarantees retain their conditions and substituted arguments throughout the hierarchy and are checked for every admitted binding. This inheritance rule is specific to these capabilities, not general Contracts or Copy.
-
-In structural validation, expand each inherited base part's fields and effects into the complete derived object; do not require that base Type to have its own public capability. Include base destruction and external-resource/static-state effects, not just field layout. Inherited guarantee obligations still apply; unavailable evidence is not success. Record dependencies for separate compilation and revalidation. This proof grants no source access to private base members.
-
-Thus a Sealed Dog may satisfy TT/TS even when its open base Animal has no guarantee. This exception concerns inheritance parts only: an independent owner/Animal field, or a handle/borrow targeting Animal, uses Animal's public capability under §5.1. A view change to Animal loses capabilities not guaranteed by Animal.
+### 6.2. 循環構築
 
 ```kimi
-public open struct Animal
-    Self is ThreadTransferable
+func makeCyclic<c/T, F>(build: F) -> c/T
+    c is counted
+    T is Owned and ObjectPayload
+    F is Callable<owner, (Weak<c/T>) -> T>
+```
+
+- `makeRcCyclic`・`makeArcCyclic` を置き換える。`c/T` は、`build` の引数型 `Weak<c/T>` から推論する。
+- **手順**
+  1. 公開前のオブジェクト領域と side table を確保する。表は構築ガードと、ビルダーに渡す Weak を一つ持つ。モードの管理状態を初期化する。
+  2. `build` を呼び出し元のスレッドで一度だけ呼び、Weak を値で渡す。Building の間、`upgrade` は `None` を返し、強参照・ペイロード・取得は得られない。
+  3. ビルダーの正常な結果と呼び出しの後始末が終わってから、完全な `T` をペイロードへ Move する。
+  4. Alive と強参照一つを一度だけ公開する。`local` は未借用、`sync` は未ロックで始まる。`arc`・`sync` の公開の順序付けは現行どおりである。
+- `F` は通常どおり取得し、Copy・Owned・TT を要さない。`T is Owned` は、ビルダーが得た依存が公開済みの Weak を通して逃げることを防ぐ。
+- 確保の失敗とカウントの上限超過は、公開の前に Abort する。ビルダーが Abort または発散すると公開されず、巻き戻しと後始末は保証しない。
+- 強参照の循環は回収しないので、Weak で断つ。可変の Optional フィールドは、通常の生成の後に `write` を通して設定できる。必須の自己 Weak や不変のフィールドには循環構築を使う。
+
+## 7. using
+
+### 7.1. 構文
+
+```text
+DoExpression := [Label ":"] "do" Body
+              | [Label ":"] "using" Name [":" Type] "=" Expression Body
+```
+
+- `using` は `do` の一形態である。`do` を参照する規則（Completion、Body の結果、ラベル、§14.5.2 の遷移の表）を、そのまま `using` に適用する。
+- `var` のローカル変数を一つだけ導入する。`let`／`var` の指定、本体のない形、複数の束縛、同じ字下げでの連結はない。複数の取得は入れ子で書く。
+- **認識**: 式の先頭（ラベルの後を含む）で、`using` の後に同じ物理行で Name と `=` または `:` が続くときに認識する。コメントは読み飛ばす。認識したら確定し、エラーになっても別の解釈に戻らない。`using = 1`、`using(x)`、`x.using()` は通常の名前である。
+- 本体を持つ式を初期化子に書くときは、括弧で囲む。
+- 束縛が `var` なのは、排他の受信者（`valueUniq`）や `replace` が書き込み可能な storage を要するからである（IER §3.1）。
+
+### 7.2. 意味
+
+`L: using x: T = e Body` は、本体のスコープが `var x: T = e` で始まる `do` と同じである。ただし次の点を保つ。
+
+1. `T` と `e` は外側の環境で解決・評価する。`x`、`L`、本体の宣言は `e` から見えない。初期化子の一時値は通常のローカル変数の初期化子と同じ時点で終わり、寿命は延びない。
+2. `x` は本体のスコープの先頭、文と `defer` の前に入る。重複と隠蔽は通常の規則に従う。`L` は本体の中だけで有効である（§14.4）。
+3. 結果の規則は元の本体の形に適用し、単項目の本体は値を返す。展開は字句の書き換えではない。
+
+初期化子から外側の有効な目標へ遷移できる。初期化が完了しなければ、束縛はできない。
+
+### 7.3. 結果と所有
+
+- 結果の規則は `do` と同じである。値を使う単項目の本体は値を返し、字下げした本体は終わりに達すると Unit を返す。Unit 以外の結果は名前付き `exit` で返す。`using` は `return`・`yield`・`continue` の目標にも、探索の障壁にもならない。
+- 束縛は通常の `var` であり、Move、代入、部分 Move、借用、`replace`・`exchange`・`swap` を許す。`using` に固有の保護はなく、最初の値を最後に解放する保証もない。
+- 結果の受け渡しより前に破棄されるガードに依存する参照は拒否する。独立した値と、転送したガード（`=> guard@move`）は許す。
+- 束縛全体の Move や代入への警告は任意とし、受理の可否を変えない。
+
+## 8. 実装と性能
+
+### 8.1. 管理状態と最適化
+
+- オブジェクトごとに論理的な管理状態を一つ持ち、複製と View の間で共有する。カウント、借用状態、ロック、解放の責任は区別する。`using` は実行時の状態を加えない。
+- ガードは、ヘッダーを指す非 null のポインター一つで表すことを目標とする。強参照も、ガードごとのヒープ確保も要らない。ソースの Loan は静的なもので、実行時にはたどらない。
+  - `Option<ReadGuard>`・`Option<WriteGuard>` は、niche を使って 1 ワードにすることを目標とする。
+- `local` の検査と状態の更新は、省いても観測できないときだけ省ける。観測の対象は、競合の Abort、try の結果、上限超過、入れ子と再入の取得、呼び出し、後始末、表への移行である。
+  - `clone`・`downgrade` がないことだけでは足りない。一つのハンドルからガードが重なりうる。
+  - 取得と解放は一貫して省き、論理的な Loan と寿命の検査は保つ。
+  - 証明できる競合には任意で警告してよい。ただし新しいコンパイルエラーにも、評価されない経路での早い Abort にもしない。
+- ハンドルのスロット、ガード、ペイロード、管理領域は別物である。現行 §21.5.5 の `ref`・`uniq` の属性は直接の storage に関するもので、証明なしに、読み込んだハンドルを通してペイロードやヘッダーへ `readonly`・`noalias` を広げない。
+
+### 8.2. local の表現（Windows x64）
+
+現行のヘッダー（+0 記述子、+8 control、+16 ペイロード）とペイロードの位置を保ち、control と side table を再利用する。
+
+| 移行 | 目標 |
+| --- | --- |
+| `obj` から `rc`・`arc` | 公開の前に control = 2（強参照 1）を書く。追加の確保はしない |
+| `obj` から `local` | 状態を control に詰める。確保はしない |
+| `local` の最初の `downgrade` | カウントと借用状態を、公開する一つの表へ移す。生きているガードは、そのときの表現に対して解放する |
+
+- **control の候補**
+  - 下位ビットは `rc` と同じタグにする。
+  - 借用状態は一つのフィールドで表す。0 は未借用、全ビット 1 は排他、それ以外は共有数とする。
+  - 排他の取得は `(control & (TAG | BORROW_MASK)) == 0` の 1 回の比較で判定できる。
+- 移管は生きている `obj` からだけ行い、破棄済みのオブジェクトを復活させない。
+- `rc` と `local` の間（段階 B では `arc` と `sync` の間）で、カウント・Weak・解放の仕組みを共有する。
+- ビット配置、上限、表の配置は、プロファイルで検証し測定する。本書は固定 ABI を変えない。
+
+### 8.3. カウントの上限
+
+- 現行の `rc`・`arc` のインライン表現（u64 の `strong << 1`）は、上限までの余裕がない。移行との競合のためにもともと CAS を使うので、更新前の検査を保つ。
+- 表のカウントでは、`fetch_add` の後で上限を検査し、結果を公開する前に Abort してよい。
+- **条件**: 上限と表現の最大値の差は、プロファイルの最大スレッド数より大きくなければならない。1 スレッドが同時に持つ未検査の増分は一つだからである。
+  - Windows x64 では最大スレッド数を 2^32 未満とする。上限 2^63 − 1 の u64 には約 2^63 の余裕がある。
+- 検査に失敗したら、利用者のコードを呼ばず、巻き戻しもせず、直ちに Abort する。現行 §21.2.3 の更新前の検査は、インライン表現に限る。
+- 追加する状態（`local` の借用数など）の上限は、詰めたフィールドの幅に合わせ、表への移行の前後で変えない。
+- 表現の競合と、ゼロからの `upgrade` の禁止は、この仮定とは別の正しさの要件である。
+
+### 8.4. 確保
+
+- 通常の生成では、`obj`・`rc`・`arc`・`local` について、オブジェクトの確保を一つにすることを目標とする。`downgrade`、循環構築、待機の仕組みの費用は別に数える。全体で確保が一つだという保証はしない。
+- **その場での構築**: 生成の確保と、確保の失敗による Abort は、オペランドの評価の前後どちらで起きてもよい。
+  - これにより、`Item.init(...)@local` をオブジェクトの領域に直接構築し、Move による複製を省ける。
+  - オペランドの効果、取得の順序と回数は変わらない。オペランドが正常に完了しなければ、先に確保した領域は観測されないまま解放する。
+
+## 9. スレッド能力（段階 B）
+
+### 9.1. 完全型の規則
+
+`Kimi.ThreadTransferable`（TT）は、値の所有を別のスレッドへ移せることを表す。`Kimi.ThreadShareable`（TS）は、別のスレッドから共有アクセスできることを表す。両者は独立した組み込みの保証である。Owned はどちらも導かず、どちらも寿命の義務を免除しない。
+
+| 完全型 | TT | TS |
+| --- | --- | --- |
+| 組み込みの Scalar、Unit、`string` | 真 | 真 |
+| Kimi 提供型 | 本書 §9.6 | 本書 §9.6 |
+| ほかの owner Core | 本書 §9.2 の構造導出または公開保証 | 同左 |
+| 共通 Function Type | 成り立たない（環境が消去される） | 同左 |
+| `ref/T`・`objref/T` | TS(T) | TS(T) |
+| `uniq/T`・`obj/T`・`objuniq/T` | TT(T) | TS(T) |
+| `arc/T` | TT(T) かつ TS(T) | 同左 |
+| `sync/T` | 形成できれば真 | 同左（TS(T) は要らない） |
+| `rc/T`・`local/T` | 偽 | 偽 |
+| `Weak<S>` | TT(S) | TS(S) |
+| `ReadGuard<local/T>`・`WriteGuard<local/T>` | 偽 | 偽 |
+| `WriteGuard<sync/T>` | 偽 | TS(T) |
+
+- これらは組み込みの規則である。ガードは S の能力を受け継がず、隠れたフィールドの解析でこの表を上書きできない。
+- **構造の検証**: 格納された成分と捕捉に加え、破棄、static 状態へのアクセス、外部資源の契約を検査する。生ポインターと消去された環境は、検証済みの契約を要する（手動の unsafe 適合は保留）。
+- **型が未確定の場合**: 宣言された制約を要する。同名のユーザー Contract や空の適合は何も証明しない。
+- **callable**: Function Item と具体 Closure は、構造の検証の根拠を保つ。共通 Function Type は、元の callable に能力があっても TT・TS を持たない。能力が要るときは `F is Callable<owner, (i32) -> i32> and ThreadTransferable` のように具体型を総称の `F` のまま保ち、保存するときも消去しない。
+- **ガード**: すべてのガードは移せず、取得したスレッドで解放する。`sync` の書き込みガードへの共有参照から使えるのは `value` だけで、`valueUniq` は使えない。
+
+### 9.2. 継承される宣言
+
+> 組み込み要件のうち、型の宣言での表明が、その型とすべての派生型に及ぶものを「継承される宣言」という。
+
+| 宣言 | 効果 |
+| --- | --- |
+| `Self is ThreadTransferable`・`Self is ThreadShareable` | 宣言した型と、すべての派生型に検証の義務を課す。派生型が追加したフィールドと効果も検証する |
+| `Self is not ObjectPayload`（OP §7） | 宣言した型と、すべての派生型が `ObjectPayload` を満たさない |
+
+- 派生型は宣言を撤回できず、書き直す必要もない。条件付きの保証は、条件と置換を階層全体で保つ。
+- 表明は義務であり、それ自体は証明にならない。
+- 通常の Contract と Copy の適合は、従来どおり継承しない（§8.4.4）。将来、実行時 Contract View が能力を要求するときもこの仕組みを使う。
+
+```kimi
+public open struct Shape
+    Self is ThreadTransferable      // Shape とすべての派生型に検証の義務を課す
+    public var id: i32
+```
+
+**導出の範囲**
+
+- 自動の構造導出は Sealed な型に限る。open な Core は、自身の、または継承した公開保証によってだけ TT・TS を持つ。
+- 構造の検証では、継承した基底の部分のフィールドと効果（破棄、外部資源、static 状態を含む）を、派生の完全なオブジェクトへ展開する。基底型自身の能力は要さない。
+- 分割コンパイルと再検証のために依存を記録する。この証明は、基底の private メンバーへのアクセスを与えない。
+- この扱いは継承の部分だけに適用する。独立した `Animal` のフィールドや、`Animal` を対象とするハンドル・借用は、`Animal` の公開の能力に従う。`Animal` への View の変更は、`Animal` が保証しない能力を失う。
+
+```kimi
+open struct Animal
     public var age: i32
 
     public init(age: i32)
         self.age = age
+
+struct Dog : Animal
+    public init(age: i32) : base(age)
+        ()
+
+var dog = Dog.init(2)@sync              // Dog は Sealed。継承した i32 は構造上安全
+// let invalid = dog@sync/Animal        // エラー：Animal に TT の公開保証がない
+var exclusive = Dog.init(3)@obj
+var baseView = exclusive@obj/Animal     // 合法。Dog の TT/TS の根拠は失われる
 ```
 
-#### 5.2.2. Target eligibility and generic evidence
+### 9.3. sync の形成と総称の根拠
 
-For a valid object View Target T, the only additional capability required to form `sync/T` is TT(T). TT alone proves neither owner Semantics nor target eligibility: reference and handle Types can themselves satisfy TT. Distinguish these cases at definition checking:
+オブジェクト対象 `T` について、`sync/T` の形成に追加で要るのは TT(T) だけである。
 
-| Situation | Required evidence |
+| 状況 | 根拠 |
 | --- | --- |
-| New object from an otherwise unknown complete Type parameter T | Prove `T is Sealed` for payload/target eligibility; sync additionally requires TT(T). No general open-Core constraint is introduced |
-| Known supported Core, including a known open Type or a valid named generic Core application | Check its declaration and ordinary formation conditions; an open sync target additionally needs a validated TT guarantee |
-| Operations on an already valid complete handle Type S decomposed as s/T | Retain its target role and dependencies under current §8.1.1. `s is guarded` admits write; `s is local` admits read. Open targets do not additionally require Sealed |
+| 型が未確定の値からの生成 | `T is ObjectPayload and ThreadTransferable` |
+| 既知の Core からの生成 | OP §4.2 の直接の判定と TT(T)。open な型では TT の公開保証 |
+| 有効なハンドル `s/T` からの移管・View の変更 | 組の根拠（OP §5.1）。`sync` への移管では TT(T) を加える。View の変更では V の対象の形成と Supports、`sync` なら TT(V) を要する |
 
-Target eligibility carried by a valid object handle is independent of ownership mode. An admitted transfer retaining T reuses that evidence; only destination-specific conditions need additional proof, notably TT(T) for sync. Thus a valid generic obj/T can transfer to local/T without proving Sealed. This does not add conversions beyond §2.1, prove a complete Sealed payload, or authorize arbitrary use of T as an owner value.
+- カウント、既知の現在のオブジェクト、最適化の推測で公開保証を強めることはできない。正しい絞り込みと checked cast は、通常の規則で新しい根拠を与えうる。
+- View を変えると能力を失いうる。以後は新しい静的な型に従う。
 
-For a view change from s/T to s/V, prove V's target eligibility and Supports(T, V) under the ordinary view rules; eligibility of T alone is not evidence for an unrelated V. No separate per-mode target-eligibility proof is needed, but destination-specific capabilities, payload-erasure Owned proofs, and Loans still apply. Signature-derived obligations remain public under current §8.10; neither a private-body assumption nor a favorable instantiation supplies missing evidence. §8.6 gives examples; additional constraints for creating unknown open Cores remain deferred (§9.1).
+```kimi
+func createSynchronized<T>(value: T) -> sync/T
+    T is ObjectPayload and ThreadTransferable
+    return value@sync
+```
 
-obj/arc and object borrows may lose capabilities by changing views; subsequent use relies on the new static Type. Counts, known current objects, or optimizer guesses cannot strengthen a public guarantee. Valid type refinement or checked casts may supply new evidence under their usual rules.
+### 9.4. 再帰的な証明
 
-A future runtime Contract View must require the capability in its public Contract and preserve it for every implementation; runtime Contract Views remain deferred. Publish capability guarantees, conditions, and proof dependencies, and revalidate after relevant changes.
+- TT・TS の構造上の義務と、それに依存する型の形成は、正で有限な依存の最大不動点としてまとめて解く。例: `Node -> Weak<sync/Node> -> sync/Node の形成 -> TT(Node)` は一つの有限な群になる。
+- 先に群を作って外部の前提を確定させ、それから違反（`local`・`rc`、証明されない外部資源など）を伝播させる。
+- open な型の保証は、検証の義務に展開する。この展開は open な完全値と View に対して要求し、継承した基底の部分の展開には要求しない。
+- 通常の Contract の適合の循環は認めず、暫定の結果も公開しない。無限のインライン配置と、型引数の際限ない増大は、既存の規則でエラーとする。完了した証明はキャッシュする。
 
-### 5.3. Recursive proof
+### 9.5. 借用の受け渡し
 
-Resolve intrinsic TT/TS structural obligations and dependent Type formation together using the greatest fixed point of positive, finite dependencies. For example, `Node -> Weak<sync/Node> -> sync/Node formation -> TT(Node)` can form one finite group.
+- ガードから得た子の借用は、本書 §9.1 の通常の行に従う（`objref/T`・`objuniq/T`、および許された完全なペイロードの投影）。
+- ガードと `local` の管理操作は、取得したスレッドにとどまる。
+- 子の借用を別のスレッドへ渡せるのは、能力に加えて、競合するアクセスとガードの破棄より前に使用が終わると証明できるときだけである。そのためには scoped thread など、完了を証明できる実行の仕組みが要る（D.2）。本書は spawn・join の API を導入しない。
 
-Construct the group first; establish external premises and propagate violations such as local/rc or unproven external-resource requirements. Expand open guarantees into their validation obligations; require them for open complete values/views, not for inherited base-part expansion (§5.2.1). Do not admit ordinary Contract-conformance cycles or publish provisional capability results. Infinite inline layout and unbounded growth of Type arguments remain errors under existing rules. Cache completed proofs.
+### 9.6. Kimi 提供型
 
-### 5.4. Borrow transfer and execution facilities
+> Kimi 提供型の TT・TS は、§22.1 のカタログで組み込みの保証として公開する。内部表現からは導出しない。
 
-Guard-derived child borrows use the ordinary §5.1 rows, including `objref/T`, `objuniq/T`, and permitted complete-payload projections. Preserve their full guard/source/external dependencies. The guards themselves stay on their acquisition thread; local counting and borrow-state operations also stay there. Cross-thread use of a sync guard reference requires its TS rule and never permits remote destruction or exclusive access through that shared reference.
-
-A child borrow can cross threads only when its capabilities and end-of-use before conflicting access or guard destruction are proven. Moving or copying a child reference does not operate on the guard's management state. This proposal introduces no spawn/join/scheduler API; practical use depends on execution facilities that prove completion, such as scoped threads.
-
-## 6. Reference counting, Weak, and cyclic construction
-
-### 6.1. Operations and dependencies
-
-S is a valid complete counted handle Type. Extend the existing Kimi.Intrinsics declarations; argument label is `value` and function Origin parameter is `input`:
-
-| Operation | Input | Result |
+| 型 | TT | TS |
 | --- | --- | --- |
-| Strong clone | `ref/S from input` | S |
-| downgrade | `ref/S from input` | Weak<S> |
-| upgrade | `ref/Weak<S> from input` | Option<S> |
-| Weak clone | `ref/Weak<S> from input` | Weak<S> |
+| `Array<T>` | TT(T) | TS(T) |
+| `Dictionary<K,V>` | TT(K) かつ TT(V) | TS(K) かつ TS(V) |
+| `Slice<T>`・`Text.Utf8Slice` | `ref/T` と同じ | 同左 |
+| 所有するイテレーター | 残っている要素に従う | 同左 |
 
-Keep strong and Weak clone as separate declarations, with S naming the handle Type in both. Borrow the input slot only for the call; results retain S's view, mode, Type arguments, and external dependencies, not the operation's temporary slot Loan.
+`Option`・`Result`・Tuple・固定長配列は Sealed なので、構造導出で足りる。
 
-clone adds responsibility without payload copying, user calls, or guard acquisition. Successful upgrade secures a strong owner; payload access still needs a guard for local/sync. clone/upgrade allocate no new management storage; the first downgrade may allocate a side table.
+## 10. sync（段階 B）
 
-The final-strong race, non-resurrection from strong zero, complete dynamic destruction, original-allocation release, and Weak table lifetime follow current §13.5.8–9 and §21.2.3. Weak does not keep the payload alive, and expiration erases no Type, Origin, or Loan dependency. Weak destruction touches management storage only. obj, object borrows, guards, and async are not valid Weak ownership modes.
+### 10.1. 意味
 
-### 6.2. Cyclic construction
+- `sync` はアトミックの参照カウントと、再入不可の Mutex を持つ。取得は `write`・`tryWrite` だけで、読み取りだけの処理にも `write` を使う。
+- `sync` は Mutex に固定し、`read` は追加しない。並列の読み取りが要るなら、別の Semantics または型として設計する。
+- **順序付け**: 解放は release、成功した取得は acquire の順序付けを持つ。失敗した `tryWrite` は同期を与えない。
+- **デッドロック**: 同じオブジェクトの再取得や、一貫しないロックの順序でデッドロックしうる。再入、検出、FIFO の公平性、有限の待ち時間は保証しない。
+- **poisoning**: Abort は巻き戻さずにプロセスを終えるので、poisoning は導入しない（§17.3）。
 
-Complete-value creation uses `@`; cyclic construction remains a function protocol because it supplies self-Weak to a callback before the payload exists.
+```kimi
+// Item は TT を満たすとする。スレッドは作らない。
+var first = Item.init("first")@sync
+var second = Item.init("second")@sync
+var finished = false
 
-Strong cycles are not automatically collected; use Weak to break them. Mutable optional fields can be populated after normal construction under write. Required self-Weak or immutable fields instead use the cyclic builder protocol.
+loop
+    work: using left = first.write()
+        using right = second.write()
+            if finished
+                exit                        // 両方のガードを破棄し、loop を抜ける
+            left.valueUniq.name = "updated"
+            finished = true
+            exit to work                    // 両方のガードを破棄し、次の反復へ進む
+```
 
-Retain `makeRcCyclic<T, F>` and `makeArcCyclic<T, F>` and add `makeLocalCyclic<T, F>` and `makeSyncCyclic<T, F>` in Kimi.Intrinsics. All use argument label `build`, return C/T, and follow one shared contract below, with C fixed by the function name. No generic Semantics-only parameter or new `@` callback conversion is introduced.
+### 10.2. 表現と待機（実装候補）
 
-T must be a valid complete owner payload Core with `T is Owned`; C/T must be well-formed, including TT(T) for sync. Require `F is Callable<owner, (Weak<C/T>) -> T>`. Acquire F normally and invoke it once on the calling thread; F itself need not be Copy, Owned, or TT. Owned(T) prevents dependencies first obtained by the builder from escaping through an already published Weak.
+- **待機の鍵**: 元のヘッダーのアドレスを使い、外部の parking table で待つ。View で調整したアドレスや、移動しうる表のアドレスは使わない。
+- **フラグ**: `LOCKED`・`HAS_WAITERS` を、インラインでも表でも同じ下位ビットに置く。
+  - 下位 3 ビットをタグとフラグに使うので、表の整列は 8 以上とする（現行の確保は 16）。ポインターを復元するときは 3 ビットを消し、上位ビットを保つ。
+  - これは候補固有の要件である。`rc`・`arc` の 1 ビットのタグや、固定の ABI は変えない。
+- **カウント**
+  - 表への移行は制御語全体の CAS で行い、最新のカウントとフラグを保つ。
+  - インラインのカウントを更新するときは表現を再確認する。無条件の `fetch_add` は、並行して公開された表のポインターを壊しうる。
+  - 安定した表のカウントには `fetch_add`・`fetch_sub` を使ってよい（本書 §8.3）。
+  - `upgrade` はゼロから復活しない条件付きの retain であり、`clone` の速い経路では代えられない。
+- **ロックの速い経路の候補**（CAS 版と比較して評価する。性能も命令も保証しない）
 
-1. Allocate unpublished object storage and a side table with the construction guard and one builder Weak. Initialize the mode's management state before it can be observed.
-2. Pass the Weak by value. During Building, upgrade returns None; there is no strong handle, payload access, or guard acquisition for this object. Other completed objects are unaffected.
-3. Finish the builder's normal result and call cleanup, then Move the complete T into the payload. Do not repeat its constructor or expose partially initialized data.
-4. Publish Alive and strong one exactly once, with local initially unborrowed and sync initially unlocked. Retain the existing atomic publication ordering for arc/sync.
+  | 操作 | 候補 | 解釈 |
+  | --- | --- | --- |
+  | 取得 | `fetch_or(LOCKED, Acquire)` | 戻り値の `LOCKED` が 0 なら成功。そうでなければ競合の経路へ進む |
+  | 解放 | `fetch_and(~LOCKED, Release)` | 戻り値に `HAS_WAITERS` があれば、parking の遅い経路へ進む |
 
-After publication, the ordinary guard/Weak rules apply. Required allocation or count-overflow failure Aborts before publishing a result. Builder Abort or divergence prevents publication and subsequent work, with no Abort rollback/cleanup guarantee. Ordinary transfers during argument evaluation retain normal cleanup. Cyclic construction starts with a side table and has no one-allocation guarantee.
+  どちらも、カウント・タグ・ほかのフラグを保つ。カウントだけが変わったことによる CAS の再試行は避けられるが、同じキャッシュラインでの競合は残る。[parking_lot 0.12.5 の Mutex](https://docs.rs/parking_lot/0.12.5/src/parking_lot/raw_mutex.rs.html) は通常の経路で CAS を使っており、この候補が検証済みである根拠にはならない。
+- **待機の義務**
+  - カウント・タグ・フラグの同時の遷移、待機の登録と解放、表への移行をまたぐ release/acquire、最後の解放を検証する。起こし損ないがないことも確かめる。
+  - `HAS_WAITERS` の更新、状態の検証、キューへの登録は、キューのプロトコルの下で調整する。競合を見ただけで眠ってはならず、起きたら正本の状態を確認し直す（[parking_lot_core の `park` の契約](https://docs.rs/parking_lot_core/0.9.12/parking_lot_core/fn.park.html)を参照）。
+  - 待っている呼び出し元は、ソースの Loan でオブジェクトを生かす。ヘッダーを再利用する前に待機の記録を外し、別の寿命のオブジェクトとアドレスを取り違えることを防ぐ。
+  - キューの記憶域、初期化、競合、OS 資源、失敗は別に数える。
+- **代替**: ヘッダーを使うプロトコルを経済的に検証できなければ、生成時に安定した表のロックを用意してよい。生成と移管での確保は本書 §4.2 が許している。
+- **確保の目標**: 優先する候補では、Weak も競合もなければ、生成時の確保を一つにする。
+- **測定**: カウントとロックが同じ語にあるので、複製の多い負荷でのロックの遅延を測る。
+- 共有して公開した後は、`arc`・`sync` の管理領域にアトミックと非アトミックのアクセスを混ぜない。現行の初期化と解放の順序付けに、Mutex の順序付けを加える。
 
-## 7. Implementation and performance goals
+## 11. 例
 
-### 7.1. Management and optimization
-
-Each object has one logical management state, shared across clones and views. Count, borrowing, lock state, and release responsibility remain distinct. using adds no runtime state or acquisition permission.
-
-Guards should need neither an extra strong owner nor a per-guard heap allocation. The source-slot Loan is static and need not be followed at runtime. Prefer compact access to management state without stale pointers after guard Moves or state migration. Waiting infrastructure may require separate resources (§7.2).
-
-For local, an implementation may omit checks and state updates only when their absence is unobservable, including conflict Abort, try results, overflow, nested/reentrant acquisition, calls, cleanup, and migration. Absence of clone/downgrade alone is not sufficient proof: one handle may have overlapping guards. Elide acquisition and release effects consistently, preserving logical Loan/lifetime checks. A provable conflict may produce an optional warning, not a new compile-time error or an earlier Abort on an unevaluated path. This optimization and warning are not mandatory analyses.
-
-Handle slots, guards, payloads, and management storage are distinct. Current §21.5.5's ref/uniq attributes concern the immediate storage; do not extend readonly/noalias through a loaded handle to its payload/header without proof, especially with interior mutation and concurrency.
-
-### 7.2. Control word and waiting
-
-The current Windows x64 layout has descriptor at +0, control at +8, and payload at +16; obj control is zero. Preserve payload position and reuse control plus side tables:
-
-| Mode | Implementation goal |
-| --- | --- |
-| obj to rc/arc | Initialize control=2 (strong one) before publication, with no extra management allocation under the current header profile |
-| obj to local | Pack strong count, shared-borrow count, exclusive state, and representation tag into non-atomic control; avoid allocation at initial transfer |
-| sync | Prefer a stable header-address waiting key with an external parking table; retain inline counting initially if the combined protocol is verified |
-
-Transfer is from a live obj, not resurrection of a destroyed counted object. After shared publication, arc/sync must not mix atomic and non-atomic management accesses. Maintain the current runtime initialization/release ordering and the additional Mutex ordering.
-
-On local's first downgrade, move counts and borrow state into one published table. Existing guards release against the current representation; count limits follow §7.3.1.
-
-#### 7.2.1. sync representation candidate
-
-Use the original header address as the waiting key, never an adjusted view address or a movable side-table lock address. Keep locked/has-waiters flags at fixed bit positions in the header across inline/table representations. Reserving the low three bits for tag and flags requires table alignment of at least 8 and pointer recovery that clears all three bits while preserving high bits. This is a candidate-specific requirement, not a change to rc/arc's one-bit tag or a fixed sync ABI.
-
-Migration still uses a whole-word CAS and preserves the latest count and flags. Inline count updates must recheck the representation, as in current §21.2.3: an unconditional fetch_add after observing an inline count could instead modify a concurrently published table pointer. Stable table counts may use fetch_add/fetch_sub where §7.3 and the lifetime/order rules permit. upgrade still requires a conditional retain that cannot resurrect zero; clone's fast path cannot replace it.
-
-#### 7.2.2. Bitwise lock fast-path candidate
-
-Evaluate the following operations against a CAS implementation:
-
-| Operation | Candidate | Required interpretation |
-| --- | --- | --- |
-| Acquire | `fetch_or(LOCKED, Acquire)` | Acquire only if the returned word had LOCKED clear; otherwise take the conflict path |
-| Release | `fetch_and(~LOCKED, Release)` | Clear only LOCKED; enter the parking slow path if the returned word had HAS_WAITERS set |
-
-These operations preserve counts, tags, and unrelated flags in either representation. They avoid software CAS retries caused by count-only changes, but still contend on the same cache line and may cause migration/count CAS retries. Neither their performance nor a particular machine instruction is guaranteed. Do not mandate fetch_add for inline counts or describe the whole protocol as CAS-free.
-
-The [parking_lot 0.12.5 Mutex implementation](https://docs.rs/parking_lot/0.12.5/src/parking_lot/raw_mutex.rs.html) uses CAS for its ordinary lock/unlock fast paths; it is not evidence that this proposed bitwise protocol is already verified.
-
-#### 7.2.3. Waiting and lifetime obligations
-
-Verify joint count/tag/flag transitions, waiter registration versus unlock, no lost wakeups, release/acquire synchronization across migration, and final release. Coordinate HAS_WAITERS updates, state validation, and enqueueing under the queue protocol; observing contention alone never permits sleeping. Wakeup must recheck authoritative state. The [parking_lot_core park contract](https://docs.rs/parking_lot_core/0.9.12/parking_lot_core/fn.park.html) illustrates the required coordination between validation and enqueueing.
-
-Waiting callers keep the object alive through source-handle Loans. Detach wait records before header reuse to prevent cross-lifetime address aliasing. Queue storage, initialization, contention, OS resources, and failures require separate accounting. If the combined header protocol cannot be validated economically, a stable side-table lock initialized at creation remains an alternative; §2 permits management allocation during transfer.
-
-### 7.3. Profile obligations and allocation goals
-
-#### 7.3.1. Count limits and check timing
-
-Prefer simple, fast normal paths. For stable table counts, allow fetch_add followed by a limit check and Abort before result publication, subject to §7.2.1's operation-specific conditions. Reserve a substantial fixed margin between the limit and representation overflow; an unshifted u64 with limit `2^63 - 1` provides such a margin. Profiles may assume that simultaneously pending increments cannot exhaust this margin before termination. Document this practical execution assumption; no formal bound covering arbitrarily many stalled overflowing operations is required. Do not add a CAS loop solely to eliminate that theoretical case. A failing check proceeds directly to process Abort, without user calls or unwinding.
-
-Current §21.2.3 requires pre-update checking. Retain it for the existing rc/arc inline encoding (`strong << 1` in u64): this representation has no headroom at its limit and already needs a checked update protocol for table migration. Permit post-update checks for suitable table counts without changing existing rc/arc limits. New local/sync limits must account for packed state and remain unchanged across migration. Representation races and upgrade from zero remain correctness requirements, independent of the practical overflow assumption.
-
-#### 7.3.2. Allocation and measurement
-
-For normal creation, obj/rc/arc/local target one object allocation; the preferred sync candidate targets the same before Weak creation or contention. Later downgrade, external waiting infrastructure, and cyclic builders are separate costs. No total one-allocation guarantee is made. A sync implementation using a separate table may require another allocation during creation or transfer.
-
-Share count/Weak/release machinery between rc/local and arc/sync where their contracts permit it. Bit assignments, limits, table layouts, compact guard representation, queue protocols, and resource cleanup need profile validation and measurement. This proposal alone does not change the fixed ABI or prove that OS resources need no cleanup.
-
-## 8. Examples
-
-### 8.1. local sharing, mutation, and conflicts
+### 11.1. local の共有・変更・競合
 
 ```kimi
 struct Item
@@ -421,43 +577,21 @@ var first = Item.init("initial")@local
 var second = Kimi.Intrinsics.clone(first@ref)
 
 using reader = first.read()
-    inspectName(reader.readValue.name@ref)
+    inspectName(reader.value.name)
     match second.tryWrite()
-        .None => () // The same object still has a shared acquisition.
+        .None => ()                          // 同じオブジェクトに共有の取得がある
         .Some(var writer)
-            writer.value.name = "unexpected"
+            writer.valueUniq.name = "unexpected"
 
 using writer = second.write()
-    writer.value.name = "changed"
-    inspectName(writer.readValue.name@ref)
-
-using reader = first.read()
-    inspectName(reader.readValue.name@ref)
+    writer.valueUniq.name = "changed"        // 受信者：writer@uniq を補う（IER）
+    inspectName(writer.value.name)
 ```
 
-reader remains acquired until destruction even after its last use. Replacing tryWrite with write would Abort on conflict. string is Non-Copy and is borrowed for inspection. A Pattern-bound guard already receives ordinary arm-scope cleanup; no nested using is needed.
+- `reader` は、最後の使用の後も、破棄されるまで取得を保つ。`tryWrite` を `write` に替えると、競合して Abort する。
+- Pattern の束縛は腕のスコープで通常どおり破棄されるので、`using` は要らない。
 
-### 8.2. sync, nesting, and exit
-
-Assume Item satisfies TT. This example creates no threads.
-
-```kimi
-var first = Item.init("first")@sync
-var second = Item.init("second")@sync
-var finished = false
-
-loop
-    work: using left = first.write()
-        using right = second.write()
-            if finished
-                exit // Destroy both guards and exit the loop.
-
-            left.value.name = "updated"
-            finished = true
-            exit to work // Destroy both guards; the loop proceeds to its next iteration.
-```
-
-### 8.3. Payload and guard replacement
+### 11.2. ペイロードとガードの置き換え
 
 ```kimi
 func replaceItem(target: uniq/Item)
@@ -465,38 +599,35 @@ func replaceItem(target: uniq/Item)
 
 var shared = Item.init("initial")@local
 using guard = shared.write()
-    replaceItem(guard.value@uniq/Item) // Item is Sealed; replace the complete payload.
-    inspectName(guard.readValue.name@ref)
+    replaceItem(guard.valueUniq@uniq/Item)   // Item は Sealed。ペイロード全体を置き換える
+    inspectName(guard.value.name)
 
 using guard = shared.read()
     Kimi.Intrinsics.replace(guard@uniq, with: shared.read())
-    // Legal: install another read guard and release the old acquisition.
-    inspectName(guard.readValue.name@ref)
-
-    guard = shared.read() // Ordinary assignment is also legal.
-    let taken = guard    // Ordinary Move; guard is now Moved.
-    inspectName(taken.readValue.name@ref)
-// taken is destroyed; the moved-from guard binding has no remaining responsibility.
+    guard = shared.read()                    // 代入も合法
+    let taken = guard@move                   // guard は Moved
+    inspectName(taken.value.name)
 ```
 
-All acquisitions in the second using depend on the same valid source, with no surviving child Loan at an update. A helper has the same permission. Assignment and replace evaluate/acquire the replacement before destroying the old guard. Read acquisitions can coexist; reacquiring the same object's exclusive guard before releasing it Aborts for local and self-deadlocks for sync. Neither operation means “release, then reacquire.” replace returns Unit; exchange instead returns the old value without destroying it. Their usual evaluation and Loan rules remain distinct.
+- 二つ目の `using` の取得は、どれも同じ有効なソースに依存し、更新の時点で子の Loan はない。
+- 代入と `replace` は、新しい取得を終えてから古いガードを破棄する。「解放してから取り直す」という意味ではない。
+  - 読み取りの取得は共存できる。同じオブジェクトの排他のガードを、解放の前に取り直すと、`local` では Abort、`sync` では自己デッドロックになる。
+- `replace` は Unit を返し、`exchange` は古い値を破棄せずに返す。
 
-### 8.4. Weak migration with a live guard
+### 11.3. ガードの生存中の Weak と、循環構築
 
 ```kimi
 var strong = Item.init("initial")@local
 using reader = strong.read()
-    let weak = Kimi.Intrinsics.downgrade(strong@ref)
-    match Kimi.Intrinsics.upgrade(weak@ref)
+    let weak = Kimi.Intrinsics.downgrade(strong@ref)   // 表へ移行する。reader の取得は保たれる
+    match Kimi.Intrinsics.upgrade(weak)
         .Some(let restored)
-            using another = restored.read()
-                inspectName(another.readValue.name@ref)
+            using another = restored.read()            // 束縛したハンドルから取得する
+                inspectName(another.value.name)
         .None => ()
 ```
 
-Migration preserves reader's acquisition and release responsibility. In this example strong remains live, so upgrade succeeds; in general it may lose a final-release race. Success never acquires a guard automatically. Bind the successful handle before acquiring a guard, as restored does here: a guard borrowing a temporary handle cannot survive that temporary's ordinary lifetime (§3.4). using does not extend it, and upgrade's Option is not implicitly unwrapped.
-
-A required immutable self-Weak can be initialized by a cyclic builder:
+この例では `strong` が生きているので `upgrade` は成功する。一般には、最後の解放との競合に負けることがある。
 
 ```kimi
 struct Node
@@ -506,13 +637,13 @@ struct Node
         self.selfWeak = selfWeak
 
 func buildNode(weak: Weak<local/Node>) -> Node
-    let unavailable = Kimi.Intrinsics.upgrade(weak@ref) // None during Building.
-    return Node.init(weak)
+    let unavailable = Kimi.Intrinsics.upgrade(weak)    // Building 中は None
+    return Node.init(weak@move)
 
-var node = Kimi.Intrinsics.makeLocalCyclic(buildNode)
+var node = Kimi.Intrinsics.makeCyclic(buildNode)       // c/T = local/Node を推論する
 ```
 
-### 8.5. Expression results
+### 11.4. 式の結果
 
 ```kimi
 struct Counter
@@ -527,152 +658,143 @@ let next = using guard = shared.read() => guard.value.count + 1
 let answer = work: using guard = shared.read()
     exit to work: guard.value.count + 1
 
-let kept = using guard = shared.read() => guard
-// Legal: responsibility moves to kept; shared must outlive kept.
+let kept = using guard = shared.read() => guard@move
+// 責任は kept へ移る。shared は kept より長く生きなければならない。
 
-// Error: the result borrows a guard that is destroyed before delivery.
 // let escaped = using guard = shared.read() => guard.value
+// エラー：結果は、受け渡しの前に破棄されるガードを借用している。
 ```
 
-next and answer are independent scalar results; kept retains a guard and releases it at kept's ordinary destruction. Merely writing a scalar as the last item of the indented body would supply Unit, as with do. Semantic expansion must preserve the single-item result rather than turn it into such a discarded item.
+字下げした本体の最後にスカラーを書いても、`do` と同じく結果は Unit になる。
 
-### 8.6. Generic evidence and function-value migration
+### 11.5. 総称の根拠と関数値
 
 ```kimi
 func createShared<T>(value: T) -> rc/T
-    T is Sealed
+    T is ObjectPayload
     return value@rc
-
-func createSynchronized<T>(value: T) -> sync/T
-    T is Sealed and ThreadTransferable
-    return value@sync
 
 func share<s/T>(value: s/T) -> local/T
     s is obj
-    return value@local // Reuse target eligibility; no Sealed requirement.
+    return value@local              // 移管：組の根拠を使うので ObjectPayload は要らない
 
-func acquireWrite<s/T> origin source(value: ref/s/T from source)
-    -> WriteGuard<s/T> from source
+func acquireWrite<s/T>(value: ref/s/T) -> WriteGuard<s/T>
     s is guarded
-    return Kimi.Intrinsics.write(value)
+    return value.write()            // 結果の source は value（§15.4.3）
 
-func acquireRead<s/T> origin source(value: ref/s/T from source)
-    -> ReadGuard<s/T> from source
+func acquireRead<s/T>(value: ref/s/T) -> ReadGuard<s/T>
     s is local
-    return Kimi.Intrinsics.read(value)
+    return value.read()
 
-let createRc = func (value: Item) => value@rc
+let createRc = func (value: Item) => value@rc   // 削除した makeRc の代わり
 ```
 
-The creation helpers use Sealed as evidence for an otherwise unknown payload Type. share and the acquisition helpers preserve a valid input handle's target, including open targets, without requiring Sealed. Transferring to sync would additionally require TT(T). The closure replaces a factory function value using existing `func` syntax.
+## 12. 統合
 
-### 8.7. Sealed derivation through an open base
+### 12.1. 段階
 
-```kimi
-open struct Animal
-    public var age: i32
+| 段階 | 内容 | 時期 |
+| --- | --- | --- |
+| A | 本書 §3〜§8（`sync` に固有の部分を除く）と §11 | IER と OP の取り込みの後 |
+| B | `sync`（本書 §10）、スレッド能力（本書 §9）、待機のランタイム | Appendix D.2 のスレッド設計と同時 |
 
-    public init(age: i32)
-        self.age = age
+- 段階 A の間、`sync` は `async` と同じく Semantics の文脈で予約して拒否する。`guarded` の要素は `local` だけとし、許容集合の全体から `sync` を除く。
+- 段階 B で `guarded` の範囲が広がるので、`s is guarded` の本体を再検証する。
+- 分ける理由: TT・TS は、別のスレッドへ渡す手段がなければ観測できない。捕捉の能力や完了の証明と一緒に決めないと、手戻りが出る。
 
-struct Dog : Animal
-    public init(age: i32) : base(age)
-        ()
+### 12.2. ほかの draft との関係
 
-var dog = Dog.init(2)@sync // Dog is Sealed; its inherited i32 field is structurally safe.
-// let invalid = dog@sync/Animal // Error: Animal has no public TT guarantee.
+統合するときに、IER・OP の記述へ次を反映する。
 
-var exclusive = Dog.init(3)@obj
-var baseView = exclusive@obj/Animal // Legal view change; loses Dog's TT/TS evidence.
-```
+- **IER**: 値の種類の「所有 handle」と、受信者の経路（本書 §5.2）。
+- **OP**
+  - オブジェクト系と `Self is not ObjectPayload` の対象に `local`・`sync` が入る（本書 §3.3）。Weak の組の条件は ⊆ `counted` になる（本書 §6.1）。
+  - `makeObj`・`makeRc`・`makeArc` への制約は `@` による生成の要件に（本書 §4.2）、`makeRcCyclic`・`makeArcCyclic` への制約は `makeCyclic` に移る（本書 §6.2）。
+  - 例を書き換える。`makeObj(value@move)` は `value@obj` に、`s is object` の下でペイロードを直接借用するものは `s is object and not guarded` にする。
+- **Sealed**: 用途は、ペイロードの投影と、TT・TS の構造導出（派生型がないこと）に限られる。
 
-This snippet defines its own Animal without a guarantee, independently of §5.2.1. An independent field of complete Type Animal would still need Animal's public capability; it does not receive the inherited-base exception.
+### 12.3. SPEC.md への影響
 
-## 9. Boundaries and future work
+正式仕様は、本書に依存しない形で更新する。STATUS は、実装と検証が済むまで、本書の機能を対応済みとして扱わない。
 
-### 9.1. Excluded features
+- **型と区分**
+  - §2: 文脈キーワード、`using` の認識
+  - §3.2.2、§3.3（Semantics の表、区分、`counted` を否定する記述の削除）、§3.3.3、§3.3.5（Object Semantics）、§3.4（guarded には直接の経路がない）
+  - §8.3・§8.7（許容集合 11 種、区分）
+  - 付録 E（ハンドル、スロット、ガード、生成、移管、`local` の表記規約）
+- **`@` とオブジェクト**
+  - §13.5（原則の改訂）、§13.5.3（転送の共通規則、生成、移管、総称の `@s`）、§13.5.7（`local`・`sync` の upcast）
+  - §13.5.8（make API の削除、counted への拡大、`makeCyclic`、`@ref` によるスロットの借用の説明の統一）、§13.5.9、§13.6.1〜13.6.2
+- **ガード**
+  - §4.6.6（SharedReadResult）、§7.3・§12.4（ハンドル操作、受信者の経路）、§11（ガードのアクセサ）
+  - §22.1 と SPEC.md の索引（ガード型、ハンドル操作、`makeCyclic`）
+- **using**: §14.2〜14.5（`DoExpression`）、§9（名前の可視性）、付録 F
+- **ランタイム**: §21.2.3（`local` の表現、ハンドルの行、上限の検査の規則）、§21.5.5（属性）
+- **段階 B**: §3.3、§8.4.7（TT・TS、継承される宣言）、§6.2.2、§18（証明の依存）、§22.1（Kimi 提供型の能力）、§21.2.3（`sync`）、付録 D.2
 
-| Item | Boundary |
+## 13. 検証
+
+以下は受け入れの義務であり、実行済みの結果ではない。診断は、該当する操作・束縛・Loan・呼び出しの経路・不足している証明を示す。
+
+- **名前と区分**: 文脈キーワードを通常の名前として使えること、`async` の拒否、広げた区分と許容集合、総称の全範囲の検査、特殊化の選択。
+- **`@`**
+  - 表のすべての行と、確保の有無
+  - 転送の共通規則（Copy 型の place も Moved になること、`n@i32@rc` では元が残ること）
+  - 生成・移管・Move の区別、同一性・アドレス・依存が保たれること
+  - 生成と View の変更を一つの `@` で組み合わせないこと、`ObjectPayload` の要否（生成は要し、移管は要さない）
+  - 総称の `@s` で操作の種類が混ざる場合の定義エラー、make API の削除と closure による代替
+- **ガード**
+  - 形成（`ReadGuard<sync/T>` とオブジェクト化の拒否）、受信者の経路（スロットの共有借用、`let` からの取得）、ペイロードのメンバーが見つからないこと
+  - 同名のユーザー宣言に特権がないこと、`valueUniq` の暗黙の排他の受信者と、`let` の束縛での拒否
+  - phantom な `source` の変性と Loan 要件
+- **寿命**
+  - ソースのスロットへの依存、一時値のソースより長く生きるガードの拒否、一時値のガード
+  - 通常の Move・代入・部分 Move と、残った部分の後始末
+  - ガードを返す合法な戻り値と、ぶら下がる子の結果の拒否
+  - 置き換え（新しい取得の後で古い取得を解放すること、`local` の Abort）、`replace` と `exchange`
+- **要素**: SharedReadResult の原則が現行の表と一致すること、guarded の要素がスロットの借用になること。
+- **Weak と循環構築**: counted の四つのモード、`makeCyclic` の推論、Owned・ObjectPayload、Building 中の `None`、一度だけの公開、ビルダーから逃げた Weak と最後の解放。
+- **using**
+  - 認識と確定、本体が必須であること、入れ子
+  - 注釈と初期化子を外側の環境で解決すること、本体の宣言が見えないこと、ラベルの範囲
+  - 単項目と字下げの本体の結果、Discard Context、Never、名前付き `exit`、外への遷移
+- **ランタイム**
+  - `local` の共有・排他の競合、try の結果、上限超過の Abort（結果を公開する前）、折り返しや飽和による成功がないこと
+  - 生きているガードがある状態での表への移行、正本の状態が一つであること
+  - 上限の余裕の条件と、インライン表現での更新前の検査
+  - 省略の最適化が観測できる挙動を保つこと、確保を保証とは別に測ること、属性の検証
+- **段階 B**
+  - TT・TS の表、継承される宣言、基底の部分の展開、公開保証のない open な型の独立したフィールドの拒否、失敗の再帰的な伝播、Kimi 提供型の行
+  - `sync` の排他と try、順序付け、待機の鍵、3 ビットの予算、フラグを保つビット演算、移行の CAS、登録・解放・移行の競合、アドレスの再利用後の誤った起こし
+
+## 14. 範囲外と将来
+
+| 項目 | 扱い |
 | --- | --- |
-| async Semantics | Reserve only in Semantics contexts; reject `async/T`, `x@async`, and `s is async` |
-| sync read/tryRead and RwLock | Deferred, including `ReadGuard<sync/T>` formation. Parallel readers need a TS policy and guard/thread rules beyond sync's TT requirement; write currently means exclusive Mutex acquisition |
-| Automatic reentrancy/deadlock detection | No mandatory thread-ID field or detection; non-reentrancy and possible deadlock are explicit |
-| Guards owning a strong handle | Initial APIs borrow the source slot only. A future owning guard could support retained acquisitions from temporary handles, including successful Weak upgrades (§8.4) |
-| Counted-mode conversion, recovery to obj, strong-cycle collection | Not introduced; cyclic builders do not collect cycles |
-| Manual unsafe capability conformance | Deferred pending a specific safety contract |
-| Additional generic open-Core constraints | Deferred for unknown payload creation; known Core applications and operations on valid generic handles remain covered by §5.2.2 |
-| Capability-qualified erased callable Types | TT/TS contracts and their syntax are deferred; retain a generic concrete callable under §5.1. Resolve capability preservation for erased callbacks when designing spawn APIs (Appendix D.2) |
-| Payload relocation during ownership transfer | Forbidden; handle Move must preserve object identity and external registrations/pointers |
-| Same-indent using header concatenation | Deferred; ordinary nesting has no extra layout or comment rules |
-| using syntax on match Pattern bindings | No syntax added. Ordinary Pattern bindings already have scoped cleanup; revisit in Appendix D.1 only if a distinct convenience justifies it |
+| `async` | Semantics の文脈で予約する。将来の `await source.write()` と非同期のガードは別に設計する。取得前のキャンセルでは待機の登録を外し、取得後のタスクの破棄では通常の後始末を行う。`ReadGuard` と同期の `WriteGuard` は await をまたがない |
+| 強参照を所有するガード | 将来の課題。一時値のハンドル（`upgrade` の結果など）から、保持できる取得を得られるようにする |
+| counted の間の変換、`obj` への復帰、循環の回収 | 導入しない |
+| 再入とデッドロックの検出 | 導入しない。スレッド ID のフィールドも必須にしない |
+| 手動の unsafe 能力の適合 | 具体的な安全の契約ができるまで保留する |
+| 能力を持つ消去された callable 型 | spawn の設計（D.2）で決める |
+| 移管でのペイロードの再配置 | 禁止する。同一性と外部の登録を保つためである |
+| 実行時 Contract View | OP §10 に従う |
 
-### 9.2. Async direction
+## 15. 決定
 
-A future `await source.write()` and an async write guard may provide objuniq access. Cancellation before acquisition must unregister the waiter; task destruction after acquisition must perform ordinary local/guard cleanup. Release is not rollback of payload changes.
+採用する。本文で理由を述べた選択（ハンドルにメンバーの `clone` を置かないこと、ガードの命名、総称の `@s`、`using` の形、Pattern の束縛、段階の分割）は再掲しない。ほかに不採用とした案は次のとおりである。
 
-ReadGuard and both synchronous WriteGuard instantiations should not cross await suspension; a future async guard needs a separate policy. Storage in aggregates or closures must not bypass it. Suspension capability is distinct from TT/TS.
-
-Task Types, state machines, await Loans, cancellation/acquisition races, and async guard capabilities remain undesigned. Waiting for acquisition and awaiting asynchronous destruction are separate features; neither is enabled here.
-
-## 10. Integration, compatibility, and verification
-
-### 10.1. Integration targets
-
-| Current specification | Required integration |
-| --- | --- |
-| [§2 Source](../../spec/02-source-and-lexical-structure.md), [§3 Types](../../spec/03-types-and-values.md) | Contextual names, categories, remove the no-counted statement, guards and complete-Type capability rules |
-| [§4 Elements](../../spec/04-arrays-indexing-and-slices.md) | guarded SharedReadResult as a slot borrow |
-| [§6 Declarations](../../spec/06-declarations-and-containers.md), [§8 Constraints](../../spec/08-generics-constraints-and-contracts.md) | Guarded decomposition, validated/inherited capabilities, base-part expansion, recursive proofs, target-role evidence and formation |
-| [§7 Functions](../../spec/07-functions-and-callable-values.md), [§10 Adaptation](../../spec/10-overload-resolution-and-inference.md), [§11 Properties](../../spec/11-properties.md) | Four acquisition names, ReadGuard<S>/WriteGuard<S>, accessor receivers and Origin contracts |
-| [§9 Names](../../spec/09-names-signatures-and-access.md) | Outer initializer/annotation lookup, body-local var binding and label scope during using expansion |
-| [§12 Object calls](../../spec/12-expressions.md), [§15 Ownership](../../spec/15-ownership-and-lifetime-analysis.md) | Existing ObjectCallCompatible and Loan checks apply; no using-specific binding or root-preservation rule |
-| [§13 Adaptation/ownership](../../spec/13-operators-and-assignment.md) | Allocation table; revise §13.5's no-resource-acquisition statement, §13.5.3's same-Semantics-only restriction, §13.5.6's failure table, and §13.5.7's obj-to-rc/arc exclusion; retire ordinary make APIs; extend clone/Weak and cyclic builders |
-| [§14 Control](../../spec/14-control-flow.md), [§16 Destruction](../../spec/16-scope-exit-and-destruction.md) | using grammar/expansion; include using as do sugar in Completion, Body/result, label and §14.5.2 exit tables; reuse ordinary ownership and cleanup |
-| [§18 Artifacts](../../spec/18-modules-and-dependencies.md) | Capability/structural/effect proof dependencies and guard Types/Origins; no using-specific effect summary |
-| [§21 Runtime](../../spec/21-layout-runtime-and-code-generation.md), [§22 Kimi](../../spec/22-core-execution-and-foreign-functions.md) | Management/synchronization protocols and profile requirements; qualify §21.2.3's pre-update overflow rule under §7.3.1, documenting its practical execution assumption and retaining current inline checks/limits; standard identities and declaration catalog changes |
-| [Appendix D](../../spec/appendices/D-deferred-features.md), [Appendix F](../../spec/appendices/F-syntax-summary.md), [SPEC index](../../SPEC.md) | Deferred boundaries, including capability-qualified erased callables alongside D.2's spawn design; using grammar, Semantics constraints, allocation-capable @, factory removal and new APIs |
-
-Update related Type-test, cast, member-adaptation, and acquisition tables so guarded access has no bypass. Current SPEC/STATUS must not report the proposal as integrated or implemented before separate integration and verification.
-
-### 10.2. Compatibility and migration
-
-| Change | Effect and migration |
-| --- | --- |
-| Ordinary make API removal | Source-breaking: replace complete-value calls with @obj/@rc/@arc. Function references, aliases, and higher-order uses require a closure or named wrapper; @ is not a function value. §8.6 uses the existing `func` syntax and inference rules. makeLocal/makeSync are not introduced; cyclic names remain |
-| owning/reference expansion | Revalidate generic bodies, specialization applicability, public proofs, and caches over the larger domains. A body assuming direct object payload access may fail. object membership is unchanged; guarded/counted are new |
-| SharedReadResult | Concrete object elements keep objref payload results; guarded elements yield handle-slot ref. Expanded generic domains cannot assume one result shape |
-| Thread capabilities | Open complete values/views require explicit or inherited TT/TS guarantees; failure propagates through dependent fields and borrows. Inherited base parts use §5.2.1's structural rule. This is proposed capability design, not existing cross-thread implementation support |
-| Earlier draft spellings | Both guards take complete handle Types; sync uses write/tryWrite. using has one nested binding and ordinary var ownership, with no retention guarantee or direct-operation errors. Update old guard annotations, lock calls, header concatenation, and examples accordingly |
-
-### 10.3. Required verification
-
-These are acceptance obligations, not executed test results. Diagnostics identify the relevant operation, binding, Loan, call path, or missing proof.
-
-#### 10.3.1. Types and APIs
-
-| Area | Representative checks |
-| --- | --- |
-| Names and generic domains | Ordinary contextual-name uses, async rejection, expanded categories, full-domain checking and specialization selection |
-| Adaptation | All operation/allocation rows; creation/transfer/Move distinction; old factory calls, aliases and function-value uses; preserved identity/address/dependencies; no combined creation/upcast |
-| Target evidence and views | Sealed generic creation, valid-handle eligibility reused across admitted transfers without Sealed, additional sync TT, destination-view eligibility/Supports/Owned proofs, no unsupported open-Core constraint, slot covariance, or direct guarded payload access |
-| Guards | ReadGuard<local/T> and both WriteGuard modes, reject ReadGuard<sync/T>, mode-constrained generic calls, fixed accessor receivers, same-named user declarations supply no privilege |
-| Capabilities | Sealed derivation through an undeclared open base, required base effects, independent open fields rejected without guarantees, inherited/conditional obligations, recursive failure propagation, child transfer; concrete generic callables retain evidence, common Function Types do not |
-
-#### 10.3.2. Ownership and control flow
-
-| Area | Representative checks |
-| --- | --- |
-| using expansion | Expression recognition, required Body, normal nesting, no concatenation; outer annotation/initializer lookup, body-local function invisibility there, x shadowing/duplicates, label inactivity in its initializer |
-| Results and transfers | Single-item versus block results, Value/Discard Context, Never, valued named exit, bare-exit transparency, function/defer barriers and outward return/continue/yield |
-| Acquisition and lifetime | Source-slot dependencies; bind upgraded handles before retained acquisition, reject guards outliving temporary sources; ordinary Move, assignment, Partial Move and remaining-part cleanup; valid guard return versus dangling child result; storage/capture/helper dependencies |
-| Replacement and cleanup | Child Loan conflicts, new acquisition before old release, local Abort/sync self-deadlock on same-object exclusive replacement, replace versus exchange results, reverse cleanup, initializer abandonment, Abort/divergence |
-| Cyclic builders | Four modes; Owned payload, sync TT, one callback and completed call cleanup, None during Building, no partial-object guards, one publication, escaped Weak and final release |
-
-#### 10.3.3. Runtime and implementation boundaries
-
-| Area | Representative checks |
-| --- | --- |
-| Acquisition state | local shared/exclusive conflicts, sync exclusive read use, nonblocking try outcomes, overflow Abort before result publication, no wrap/saturating success or hidden strong clone |
-| Count protocols | Fixed headroom and documented practical execution assumption; limit-boundary checks and direct Abort without result publication; preserve limits/encoding and current inline checks; table fast paths; upgrade never resurrects zero |
-| Migration and waiting | Guard-live downgrade, one authoritative state, stable wait key, three-bit budget/alignment >= 8 and pointer mask for the sync candidate, flag-preserving bitwise operations and whole-word migration CAS, registration/unlock/migration races, atomic ordering, no stale updates or wakeups after address reuse |
-| Optimization and artifacts | Preserve observable checks/releases/try outcomes and reentrancy behavior; optional warnings do not change acceptance; measure allocations separately from guarantees; validate alias attributes and cross-module proof invalidation |
+- **名前と綴り**
+  - **`local` を `cell` などに改名する案**: `local`・`sync`・`async` の、待ち方による系列が崩れる。用語の衝突は表記の規約（本書 §2）で避ける。
+  - **ハンドル操作の関数形を併存させる案**: 同じ操作の綴りが二つになる。
+  - **実引数でスロットを暗黙に借用する案（`clone(first)`）**: 外側に層を足す借用は、綴りで見せる（§10.2）。
+- **意味**
+  - **生成で Copy の元を残す案**: 「所有 Semantics の指定は転送」という規則に例外が入る。
+  - **`object` を `obj`・`rc`・`arc` のままにする案**: OP のオブジェクト系と一致せず、`local`・`sync` だけが別扱いになる。
+  - **make API を残す案、`makeLocal`・`makeSync` を加える案**: 生成の綴りが二つになる。
+  - **モードごとに循環構築の関数を置く案**: counted を増やすたびに API が増える。
+  - **`sync` に `read` や RwLock を加える案**: Mutex の表現と両立しない。
+  - **TT・TS の継承を Contract 一般に広げる案**: §8.4.4 の方針を変える必要がある。名前のある種類（継承される宣言）に限る。
+  - **`using` の束縛の保持を保証する案（Move や代入の禁止）**: 通常の `var` の規則に例外が入る。
+- **ランタイム**
+  - **表のカウントも CAS による更新前の検査に限る案**: 本書 §8.3 の余裕の条件で足り、速い経路が遅くなるだけである。
