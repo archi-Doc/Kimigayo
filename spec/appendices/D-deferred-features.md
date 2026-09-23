@@ -70,6 +70,7 @@ The initial [enum](../06-declarations-and-containers.md#63-enums) and [match](..
 | Other binding constructs | Specify permitted refutability, failure control flow and scopes for each construct. |
 | Guard candidate capture | Define explicit read-value acquisition syntax and timing and Origin/Loan escape checks; no `@copy` form exists. |
 | Pattern binding acquisition selection | Define how to borrow a Copy-capable payload from its original Place, including syntax, result Type, Origins/Loans and acquisition timing. No such selector exists; this is distinct from guard candidate capture. |
+| Shared Iterable requirement for user Types | Define a Contract through which a user Type yields shared element references when iterated as a bare Place (§14.6.2), including its receiver, element Type and Origin rules. Until then, user Types offer shared iteration through a member that returns an Iterable view such as a Slice. |
 
 Object-Semantics enum construction and matching, empty enums, and representation/ABI guarantees also remain outside the [initial enum rules](../06-declarations-and-containers.md#631-cases-and-payloads).
 

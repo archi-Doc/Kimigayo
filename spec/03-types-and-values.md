@@ -372,6 +372,16 @@ Access Designator -> operation-specific resolution
 
 These are alternative outcomes, not fallback stages: a failed direct Move cannot become a borrow or a getter call. Standard Property `get` exposes the permitted Place operations; custom, computed and required `get` produce their declared result (Chapter 11). Permitted function references produce function values. Classification follows the resolved operation, not the spelling, and parentheses preserve it.
 
+**Access paths.** A Place is reached through an access path, which is classified independently of the Place's Type:
+
+| Path | Definition |
+| --- | --- |
+| Direct | Resolves no reference: a local or parameter, its inline parts, static storage, or a payload reached through an owned `obj` handle |
+| Through an exclusive reference | Resolves a `uniq` or `objuniq` reference, including the result of a getter that returns one |
+| Through a shared reference | Resolves a `ref`, `objref`, `rc` or `arc` reference |
+
+A **borrow value** is an expression whose outer Semantics belongs to the `borrow` category (§3.3); a stored reference is both a borrow value and, through its path, a Place. The path's authority bounds every borrow of the Place ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-movable-places), [§13.5.5](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow)); a temporary is not a Place and has no path.
+
 **Initialization** places a value in an empty Place. **Destruction** ends a value's lifetime and its responsibility; if the storage remains, that Place becomes Uninitialized after normal completion. Nothing can access storage after the storage's own lifetime ends.
 
 Value lifetime separates three steps: acquisition (Copy or Move), placement (Initialization or Replacement) and Destruction. One assignment may contain both a Move and a Replacement.
@@ -386,17 +396,19 @@ The [initialization-state rules](15-ownership-and-lifetime-analysis.md#1511-stor
 
 **Move** transfers the value and its destruction responsibility, or a borrow value's access capability, and marks the source Moved. It invokes no user code and need not clear the source memory.
 
-Ordinary value acquisition selects Copy for a Copy Type and Move otherwise, and rejects an unavailable operation. This applies to initialization, assignment sources, by-value arguments and result transfers. A Non-Copy owned value Moves in a consuming context, and a value can be Moved only out of a Movable Place (§15.1.5). Borrow creation and Reborrowing are separate operations. No explicit operator forces a Copy value to Move.
+**Bare acquisition** is the acquisition of an expression written without an explicit `@` operation. From a Place it selects Copy for a Copy Type and otherwise rejects the acquisition: a bare Place never Moves. A Move is requested by the [transfer operation](13-operators-and-assignment.md#1353-defined-adaptations) `@move` or one of its owning-Semantics spellings, only out of a Movable Place (§15.1.5), and then transfers the value even when its Type is Copy. A Temporary Value transfers its ownership without any spelling. These rules apply to initialization, assignment sources, by-value arguments, aggregate elements, payloads and result transfers. Borrow creation and Reborrowing are separate operations; the [lending rule](15-ownership-and-lifetime-analysis.md#1515-movable-places) states where a spelling is required.
 
-Copy capability is independent of `let`/`var` and of flow-dependent Loans. At a use site, Copy obeys read restrictions, and Move must not conflict with overlapping active Loans. Both preserve Origin dependencies without extending referent lifetimes. Reborrowing does not make exclusive references Copy.
+Copy capability is independent of `let`/`var` and of flow-dependent Loans. At a use site, Copy obeys read restrictions, and a transfer must not conflict with overlapping active Loans. Both preserve Origin dependencies without extending referent lifetimes. Reborrowing does not make exclusive references Copy.
 
 ```kimi
 let a: i32 = 10
 let b = a                 // Copy; a stays Initialized.
 var node: obj/Node = makeNode()
-let owned = node          // Move; node becomes Moved.
+let owned = node@move     // Transfer; node becomes Moved.
+// let bad = node         // Error: a bare Non-Copy Place never Moves.
 // use(node)              // Error until reinitialized.
 node = makeNode()
+let gone = a@move         // Transfer of a Copy value; a becomes Moved.
 ```
 
 ### 3.5.1. Copy capability and explicit duplication
@@ -497,10 +509,10 @@ Each `if`, `else if`, `while`, `require` and match-guard test is a temporary-lif
 A new borrow of an owned temporary depends on its Temporary Place and cannot outlive it. Exclusive capability permits the applicable explicit exclusive borrow; it does not bypass the [Borrow table](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow).
 
 ```kimi
-inspect(makeResource()@ref)
-modify(makeResource()@uniq)
-let taken = resource // Non-Copy Resource moves to taken.
-inspect(taken@ref) // Borrow the destination; resource remains Moved.
+inspect(makeResource())       // Shared borrow of the temporary (§10.2).
+modify(makeResource()@uniq)   // Exclusive borrow of a temporary is explicit.
+let taken = resource@move     // Non-Copy Resource transfers to taken.
+inspect(taken)                // Borrow the destination; resource remains Moved.
 
 let view = makeResource()@ref
 // inspect(view) // Error: borrowed temporary expired after the initializer.
@@ -558,6 +570,6 @@ Here `A <: B` covers normalized identity and the explicitly defined subtype rule
 | Numeric conversion | An established numeric Type and a target admitted by the [explicit numeric conversion table](13-operators-and-assignment.md#1354-numeric-conversions-and-literals). | A value conversion with the specified rounding, range checks and failure behavior. `i32` is not a subtype of `i64`; representable literal fitting is separate. |
 | Acquisition legality | An expression, the selected access operation, and the current initialization, access, ownership and Loan state. Apply the ordinary Copy, Move, Borrow or Consume requirements. | Type compatibility does not prove legality: an exact Type match can still fail because storage is Moved, access is unavailable or a Loan conflicts. Such a failure does not reopen committed lookup or overload selection. |
 
-For example, `ref{longer}/T <: ref{shorter}/T` may hold when `longer : shorter`, without a new Loan. In contrast, `uniq/T` to `ref/T` needs a Reborrow, and an object view change needs its explicit upcast. The same normalized Type does not force an identity operation: explicit same-Type exclusive adaptation still selects Reborrow, and ordinary by-value acquisition may Copy or Move.
+For example, `ref{longer}/T <: ref{shorter}/T` may hold when `longer : shorter`, without a new Loan. In contrast, `uniq/T` to `ref/T` needs a Reborrow, and an object view change needs its explicit upcast. The same normalized Type does not force an identity operation: explicit same-Type exclusive adaptation still selects Reborrow, and by-value acquisition Copies when bare and transfers under `@move`.
 
 Candidate analysis may record operation choices and unresolved obligations but must not commit source-state changes while testing candidates. After selection, the chosen acquisition and adaptation are enforced in the specified evaluation order, and static result fitting is applied without replacing that operation. The [implementation correspondence](appendices/B-reference-models.md#b5-type-relation-and-operation-plans) is informative; no particular internal API is required.

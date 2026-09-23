@@ -33,7 +33,7 @@ A final selection, loop or do expression in an indented body is still discarded;
 
 ## 7.2. Parameters and defaults
 
-Explicit parameters are initialized, immutable `let`-like bindings, including anonymous-function, constructor and receiver parameters; a setter's `value` is also immutable. A Non-Copy parameter may be Moved once, but reassignment, reinitialization and new exclusive borrows of parameter storage are forbidden; use a `var` local for mutable work. An existing `uniq/T` or `objuniq/T` parameter still permits exclusive access to, and Reborrow of, its referent, because binding immutability does not restrict the referent. Construction and destruction receivers keep their special privileges. There is no `var` parameter syntax.
+Explicit parameters are initialized, immutable `let`-like bindings, including anonymous-function, constructor and receiver parameters; a setter's `value` is also immutable. A parameter may be transferred once with `@move`, but reassignment, reinitialization and new exclusive borrows of parameter storage are forbidden; use a `var` local for mutable work. An existing `uniq/T` or `objuniq/T` parameter still permits exclusive access to, and Reborrow of, its referent, because binding immutability does not restrict the referent. Construction and destruction receivers keep their special privileges. There is no `var` parameter syntax.
 
 ### 7.2.1. Argument-name boundary
 
@@ -119,9 +119,13 @@ struct Meter
     func read(self) -> i32 => self.measured
     func update(self: uniq/Self, value: i32) => self.measured = value
     func constant() -> i32 => 0 // Type function: no receiver.
+
+var meter = Meter.init(0)
+let shown = meter.read()   // Shared receiver: implicit borrow.
+meter@uniq.update(5)       // Exclusive receiver: the owned Place is lent explicitly.
 ```
 
-**Method calls.** For `receiver.method(arguments)`, the receiver is evaluated and adapted first, regardless of its parameter position, and recorded at the declared position of `self`. The explicit positional and named arguments are matched against the remaining parameters in their written order; `self` cannot also be supplied by an argument label. Defaults then follow the ordinary order. Exclusive preparation follows [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). Cleanup inside the callee still uses the full written parameter order.
+**Method calls.** For `receiver.method(arguments)`, the receiver is evaluated and adapted first, regardless of its parameter position, and recorded at the declared position of `self`. The receiver expression is adapted to the declared receiver Type under the [argument adaptation rules](10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals): a shared receiver is borrowed implicitly; an exclusive receiver requires `@uniq`/`@objuniq` on a directly owned Place and is reborrowed implicitly from a borrow value or a Place reached through an exclusive reference; an owning receiver Copies a Copy Place and otherwise requires `@move`. A chain such as `builder@uniq.add(1).add(2)` lends once; each later receiver is the previous exclusive result. The explicit positional and named arguments are matched against the remaining parameters in their written order; `self` cannot also be supplied by an argument label. Defaults then follow the ordinary order. Exclusive preparation follows [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). Cleanup inside the callee still uses the full written parameter order.
 
 **Unbound references.** A Type-qualified instance function reference is unbound: a call through `Type.method` supplies all parameters explicitly in their written positions, including `self` at its declared position, with the ordinary argument order and receiver compatibility checks. The receiver accepts either positional supply at its declared position or a named `self:` argument, regardless of the written boundary. Ordinary parameters keep their declared name contracts; no positional skipping or positional supply after named arguments is allowed. An unbound function value likewise keeps `self` as an ordinary position of its callable signature, captures no receiver and remains subject to the unsafe-function restrictions. `value.method` without invocation does not form a bound-method value in this revision. None of this introduces extension functions, implicit `self` lookup, or a conversion for an otherwise incompatible object receiver.
 
@@ -198,11 +202,12 @@ Creation evaluates the captures, not the body; capture acquisition occurs in the
 | No list | Infer the needed outer runtime bindings; Copy only when each complete Type is Copy |
 | `[]` | Prohibit runtime captures |
 | `[x, y]` | Acquire exactly the listed bindings; unlisted outer runtime bindings are unavailable |
-| `x` | Ordinary Copy if Copy, otherwise Move |
+| `x` | Bare acquisition: Copy; a Non-Copy binding is an error |
+| `x@move` | Transfer, even for a Copy binding |
 | `x@ref` / `x@uniq` | The existing value Borrow, Copy or Reborrow operation for that Semantics |
-| `var x` | Ordinary acquisition into a mutable environment binding |
+| `var x` / `var x@move` | Copy / transfer into a mutable environment binding |
 
-Captures are resolved by Binding Identity. An omitted list never infers a Move, a new external Borrow or Reborrow, or a partial capture: a Non-Copy root is rejected even when only a Copy Field is read. An existing `ref/T` may be copied with its dependencies. Generic implicit capture requires declared Copy evidence at definition checking; unknown Copy is an error, not deferred checking, an inferred Move or a hidden Constraint. An explicit `[x]` can admit Copy or Move when the body and later source uses are valid for both.
+Captures are resolved by Binding Identity. An omitted list never infers a Move, a new external Borrow or Reborrow, or a partial capture: a Non-Copy root is rejected even when only a Copy Field is read. An existing `ref/T` may be copied with its dependencies. Generic capture of a bare binding requires declared Copy evidence at definition checking; unknown Copy is an error, not deferred checking, an inferred Move or a hidden Constraint. `x@move` transfers under every binding.
 
 Type names and accessible static function declarations are not runtime captures. Contextual `self` and a setter's `value` are never implicitly captured, and explicit captures of them obey all receiver, accessor, construction and destruction restrictions. The contextual `storage` binding cannot be captured by name; ordinary bindings named `storage` elsewhere follow the normal capture rules. No runtime receiver is implicitly bound into a function reference.
 
@@ -213,15 +218,15 @@ let number: i32 = 10
 let copied = func () => number             // Copy capture.
 let text = makeText()                      // Assume string.
 let invalid = func () => text              // Error: explicit list required.
-let holder = func [text] () => ()      // Move executes even if unused.
+let holder = func [text@move] () => ()     // Transfer executes even if unused.
 ```
 
-Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` form or additional object-borrow capture syntax. `var` combines only with ordinary acquisition, not with `@ref` or `@uniq`. Capturing an existing reference follows ordinary adaptation:
+Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` form or additional object-borrow capture syntax. `var` combines only with bare Copy or `@move`, not with `@ref` or `@uniq`. Capturing an existing reference follows ordinary adaptation:
 
-| Source | `[x]` | `[x@ref]` | `[x@uniq]` |
-| --- | --- | --- | --- |
-| `ref/T` | Copy the reference | Copy the reference, without adding a reference layer | Error |
-| `uniq/T` | Move the reference | Shared Reborrow | Exclusive Reborrow |
+| Source | `[x]` | `[x@move]` | `[x@ref]` | `[x@uniq]` |
+| --- | --- | --- | --- | --- |
+| `ref/T` | Copy the reference | Transfer the reference | Copy the reference, without adding a reference layer | Error |
+| `uniq/T` | Exclusive Reborrow | Transfer the reference | Shared Reborrow | Exclusive Reborrow |
 
 Captures without `var` create `let`-like environment bindings, regardless of the source's mutability or of the binding holding the Closure. Value capture takes a snapshot; no shared heap box is created automatically. A captured exclusive reference can mutate its referent given adequate call access, but assignment to the capture name is not rewritten as assignment to the referent. `var` changes binding mutability only, not deep copying, Copy classification or Origin dependencies.
 
@@ -255,18 +260,31 @@ Each concrete Closure has one minimum **Call Receiver Requirement**, inferred fr
 
 These are the access requirements of one body, not three independently selected implementations. A Move on any possible body path requires a Consuming call. Legitimate generic effects are resolved before the requirement is finalized. Overload resolution is not rerun per receiver, `let` and Property permissions are not relaxed, and ownership cannot rescue an otherwise invalid body. The internal `call` and receiver notation introduce no source member or hidden `self` name.
 
-Direct calls acquire the minimum receiver under the normal evaluation, access, initialization and Loan rules. An Exclusive call requires a writable owner, an existing exclusive borrow or a writable temporary; a captured `uniq` alone does not grant exclusive access to a `let`-owned Closure. A Consuming call ordinarily Copies a Copy Closure or Moves a Non-Copy one; no special forced Move is inserted. Borrowed access cannot Move an unowned environment, although a permitted Copy may provide a separate owned call value.
+A direct call acquires the minimum receiver as a method receiver (§7.3, §10.2): the callee expression is the receiver and the receiver requirement is its declared Type.
+
+| Requirement | Directly owned closure | `uniq/F` value | `ref/F` value | Temporary |
+| --- | --- | --- | --- | --- |
+| Shared | `c()` | `c()` | `c()` | `f()()` |
+| Exclusive | `c@uniq()` | `c()` (exclusive Reborrow) | Error | `f()@uniq()` |
+| Consuming | `c()` if `F` is Copy, otherwise `c@move()` | Copy read if `F` is Copy, otherwise error | Same | `f()()` |
+
+A captured `uniq` alone does not grant exclusive access to a `let`-owned Closure. Borrowed access cannot Move an unowned environment, although a permitted Copy may provide a separate owned call value. A closure reached through an exclusive reference, such as a captured or stored `uniq` environment, is reborrowed without a spelling.
 
 ```kimi
 let text = makeText()
-let reader = func [text] () => inspectText(text@ref)
+let reader = func [text@move] () => inspectText(text)
 reader()
-reader() // Shared call; Move capture does not imply consuming call.
+reader() // Shared call; a transferred capture does not imply a consuming call.
+
+var next = func [var count] () -> i32
+    count += 1
+    return count
+let first = next@uniq() // Exclusive call: the owned closure is lent explicitly.
 
 let item = makeResource() // Non-Copy.
-let take = func [item] () => item
-let first = take() // Moves item{the} consuming closure.
-take()             // Error: the non-Copy closure was consumed.
+let take = func [item@move] () => item@move
+let taken = take@move() // Transfers item out of the consumed closure.
+// take()               // Error: the Non-Copy closure was consumed.
 ```
 
 The internal call signature keeps the complete receiver, parameter and result Types, per-call Origins, fixed captured Origins and result Loan dependencies. Receiver protection starts before later arguments; eligible exclusive receivers use §15.6.7 reservation and activation, including indirect and Callable calls. The required Loans last through uses of dependent results. Generic calls follow the declared [Callable receiver](08-generics-constraints-and-contracts.md#86-callable-constraints), even when instantiation reveals a weaker body requirement.
@@ -290,7 +308,7 @@ func makeAdder(offset: i32) -> (i32) -> i32
     return func [offset] (value) => value + offset
 
 let callback = makeAdder(10)
-let next = callback        // Move the common value.
+let next = callback@move   // Transfer the common value.
 callback(5)               // Error: Moved.
 let result = next(5)      // 15.
 ```

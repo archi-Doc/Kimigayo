@@ -285,13 +285,14 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | Unavailable declaration modifiers | `virtual`, `override`, `abstract`; recognized only in a declaration's leading modifier sequence, and rejected there with the unavailable-feature diagnostic. |
 | Parameters, Origins and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `static` as the distinguished Origin in Origin expressions; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance. |
 | Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe` in Semantics positions, including requirements. `unsafe` is also recognized before `func` and before a Body that introduces an Unsafe Statement. |
+| Transfer | `move` immediately after `@`, as the [transfer operation](13-operators-and-assignment.md#1353-defined-adaptations) `E@move`. |
 | Semantics categories | `value`, `valueborrow`, `object`, `objectborrow`, `borrow`, `owning`, `reference` in Semantics requirements; see [category sets](03-types-and-values.md#33-type-semantics). |
 | Contextual bindings and operations | `self`, `value`, `storage` under the receiver and accessor rules (§9.2, Chapter 11); `abort` after `$`. |
 | Fixed arrays and lengths | `of` only between the length and element Type in `[N of T]`; `length` only at the start of a generic parameter declaration, followed by its Name. |
 
 Further notes on individual keywords:
 
-- `Self` is reserved. There is no explicit Move operator; after `@`, built-in Semantics names select shorthand targets, while `move` has no special meaning and uses ordinary Name lookup.
+- `Self` is reserved. After `@`, the built-in Semantics names select shorthand targets and `move` selects the transfer operation; elsewhere `move` is an ordinary Name. There is no prefix `move` operator.
 - The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](09-names-signatures-and-access.md#93-accessibility-and-reachability).
 - `init`, `deinit` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors) and destruction. They introduce no ordinary callable Names and no implicit base receiver.
 - `require` and `do` are reserved for the [require statement](14-control-flow.md#1411-require-statement) and the [do expression](14-control-flow.md#1432-do-expressions).

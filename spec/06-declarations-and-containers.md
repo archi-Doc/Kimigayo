@@ -210,12 +210,12 @@ A constructor is a dedicated structure declaration: an optional access specifica
 public open struct Named
     public let name: string
     protected init(name: string)
-        self.name = name
+        self.name = name@move // Transfer the Non-Copy parameter into the Field.
 
 public struct Entry : Named
     public let number: i32
-    public init(name: string, number: i32) : base(name)
-        self.number = number
+    public init(name: string, number: i32) : base(name@move)
+        self.number = number  // Copy.
 
 let entry = Entry.init("item", 1)
 ```
@@ -355,7 +355,7 @@ let missing: Option<i32> = .Some  // Error: payload argument required.
 let extra: Option<i32> = .None()  // Error: payload-free Case takes no parentheses.
 ```
 
-Arguments are evaluated once each, left to right, and payloads are initialized by ordinary argument adaptation, literal fitting and Copy/Move. A complete enum value is committed only after the Case and all payloads are initialized. On an ordinary transfer out of construction, the transfer result is secured and initialized payloads are destroyed in reverse order; Abort does not unwind. Cleanup of abandoned aggregate construction follows §16.2.1.
+Arguments are evaluated once each, left to right, and payloads are initialized by ordinary argument adaptation, literal fitting, bare acquisition or transfer (`.Some(value@move)` for a Non-Copy Place). A complete enum value is committed only after the Case and all payloads are initialized. On an ordinary transfer out of construction, the transfer result is secured and initialized payloads are destroyed in reverse order; Abort does not unwind. Cleanup of abandoned aggregate construction follows §16.2.1.
 
 ## 6.4. Bindings
 

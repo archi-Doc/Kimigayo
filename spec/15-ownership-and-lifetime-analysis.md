@@ -77,7 +77,7 @@ A Move Path defines tracking granularity, not access permission:
 
 ```kimi
 var pair: (string, i32) = ("Alice", 30)
-let name = pair.0  // Partial Move; pair is incomplete.
+let name = pair.0@move  // Partial Move; pair is incomplete.
 let age = pair.1   // Remaining initialized part is usable.
 // let all = pair  // Error: incomplete.
 pair.0 = "Bob"
@@ -123,31 +123,45 @@ A **Movable Place** permits transferring ownership or capability out of its curr
 
 Borrowed referents, object fields, static storage, unsupported indices and hidden Property storage cannot supply safe extraction. Generic owned arguments may be Moved as whole values without an extra Contract. Raw dereference keeps its Unsafe obligations.
 
-Ordinary acquisition Copies Copy Types and otherwise Moves. A Move marks the source Moved and transfers its complete Type, dependencies and destruction responsibility; moving a reference transfers capability, not ownership of the referent. A `let` binding may supply a Move but cannot be reinitialized, and restoring a `var` needs write permission. There is no forced Move of Copy Types.
+**Lending rule.** A spelling is required exactly where a directly owned Place is first lent exclusively (`@uniq`, `@objuniq`) or given away (`@move`); reborrowing through an existing exclusive reference and transferring a Temporary Value need none. Bare acquisition Copies a Copy Type and never Moves. `@move` transfers from a Movable Place even when its Type is Copy: it marks the source Moved and transfers its complete Type, dependencies and destruction responsibility; transferring a reference transfers capability, not ownership of the referent. A bare borrow value is reborrowed in the mode its position requires, never stronger than its own mode or its path's authority, and a Place reached through an exclusive reference is lent exclusively where a `uniq` is required (§10.2). A `let` binding may supply a transfer but cannot be reinitialized, and restoring a `var` needs write permission.
 
 ```kimi
 let number: i32 = 10
-let copied = number // Copy; number remains initialized.
+let copied = number       // Copy; number remains initialized.
 let resource = makeResource()
-let taken = resource // Non-Copy Move; resource is now Moved.
+let taken = resource@move // Transfer; resource is now Moved.
+// let bad = resource     // Error: a bare Non-Copy Place never Moves.
 ```
 
 Getter results are acquired as results, never by moving hidden storage. An already owned temporary transfers to its destination under §3.6; borrowing the destination does not restore the original source.
 
 ### 15.1.6. Match acquisition and lifetime
 
-`match E` evaluates `E` once and initializes an internal **Subject Place** by ordinary whole-value acquisition: Copy for a Copy Type, Move otherwise. An existing Temporary Value is materialized without an extra acquisition. This happens before arm selection, regardless of bindings, Wildcards, or whether any arm succeeds, and optimization cannot change the original Place's Move state, lifetime or Loans. A custom, computed or required `get` subject invokes its getter once; a standard stored `get` uses the permitted Place acquisition.
+`match E` evaluates `E` once and initializes an internal **Subject Place** under the **subject rule**, which `for` shares for its iterable (§14.6.2):
+
+| Subject `E` | Acquisition |
+| --- | --- |
+| Owned Place, including a Copy one | Shared borrow; the Subject holds a `ref` |
+| Borrow value | Copy of a shared reference, or shared Reborrow of an exclusive one |
+| Temporary Value, including `x@move` and a call result | Whole-value acquisition by value, materialized without an extra acquisition |
+
+This happens before arm selection, regardless of bindings, Wildcards, or whether any arm succeeds, and optimization cannot change the original Place's Move state, lifetime or Loans. A custom, computed or required `get` subject invokes its getter once; a standard stored `get` uses the permitted Place operation. A borrowed Subject's Loan follows the uses of its bindings: an arm without a live borrowed binding may assign to or transfer the original Place.
 
 ```kimi
 // Message is Non-Copy.
-match message
-    _ => ()
-// use(message)                    // Error: the whole value was Moved.
-
-match anotherMessage@ref
+match message                       // Shared borrow.
     .Write(let text) => inspect(text) // text: ref/string
     _ => ()
-use(anotherMessage)                // Valid after required Loans end.
+use(message)                        // Valid after required Loans end.
+
+match state                         // Arms without borrowed bindings may replace the Place.
+    .Idle => state = .Running
+    _ => ()
+
+match message@move                  // Owned Subject: payloads Move.
+    .Write(let text) => store(text@move)
+    _ => ()
+// use(message)                     // Error: the whole value was transferred.
 ```
 
 Once an arm is selected, its body locals are initialized left to right from the [Candidate Places](14-control-flow.md#1483-guards). An unguarded arm is selected immediately on Pattern success; a guarded arm additionally requires successful guard cleanup.
@@ -596,7 +610,7 @@ A Loan is active at program point `P` exactly when `P` belongs to its region. Re
 ```kimi
 let r = x@ref
 use(r)
-x.mutate()       // Allowed: r is no longer live.
+x@uniq.mutate()  // Allowed: r is no longer live.
 ```
 
 ### 15.6.1. Constraints
@@ -644,7 +658,7 @@ This enforces shared aliasing or mutation, never both at once.
 
 ### 15.6.3. Reborrowing
 
-Borrowing through an exclusive borrow creates a child Loan. While the child is live, the parent remains live but access through it is suspended; overlapping access is rejected by the normal conflict rules.
+Borrowing through an exclusive borrow creates a child Loan anchored on the referent Place, with a region contained in the parent's Origin. While the child is live, the parent Loan remains live but access through the parent reference is suspended; overlapping access is rejected by the normal conflict rules. The child does not depend on the lifetime of the variable that holds the parent reference, so a Reborrow of a parameter may be returned or stored like a copied reference.
 
 ```kimi
 func bump(n: uniq/i32)
@@ -724,7 +738,7 @@ Here `observe` accepts `ref/Writer`, and reading `self.out` shares the stored ca
 
 A **call reservation** delays exclusive access, not evaluation or lifetime protection. It belongs to one invocation's preparation and is not a value, Type, Semantics or Origin. No runtime lock, allocation or fallible activation is required.
 
-**Eligibility.** A final exclusive Borrow/Reborrow that directly prepares a receiver or parameter starts a reservation of its target. This includes implicit adaptation, explicit `@uniq`/`@uniq/T`, `objuniq`, permitted exclusive object projections, and generic adaptations with that resolved effect. Parentheses are transparent. Direct, indirect, Callable, generic, constructor and intrinsic invocations follow the same rule. Resolve the operation and overload first; reservation legality never changes candidate ranking or retries selection.
+**Eligibility.** A final exclusive Borrow/Reborrow that directly prepares a receiver or parameter starts a reservation of its target. This includes explicit `@uniq`/`@uniq/T` and `@objuniq`, the implicit exclusive Reborrow of a borrow value or of a Place reached through an exclusive reference (§10.2), permitted exclusive object projections, and generic adaptations with that resolved effect. Parentheses are transparent. A lending point followed by standard field or element projections that call no user code, up to the invocation, is one preparation: `holder@uniq.items.append(holder.items.length)` reads its argument during reservation and equals `holder.items@uniq.append(...)`. A getter or another invocation on that path activates at its own call. Direct, indirect, Callable, generic, constructor and intrinsic invocations follow the same rule. Resolve the operation and overload first; reservation legality never changes candidate ranking or retries selection.
 
 The directly written adaptation and its call-only Reborrow form one preparation chain. They must not first activate an intermediate exclusive Loan. Other operand operations keep their own evaluation and Loans. Reservations do not pass through local or aggregate storage, Closure captures, nested invocations, or results of `if`, `match`, `do` or other control-flow expressions. Such expressions use ordinary Borrow/Reborrow rules internally; a subsequent call adaptation cannot demote their already active Loans. An inner invocation activates its own reservations before entry. Ordinary exclusive borrows outside eligible preparation remain immediately active. Compound assignment and indexing keep their own evaluation rules; lowering them to helper calls grants no new reservation permission.
 
@@ -741,8 +755,8 @@ After all inputs are prepared, verify that every reservation can be active simul
 ```kimi
 var p: i32 = 1
 Kimi.Intrinsics.replace(p@uniq, with: p + 1) // Read during reservation.
-Kimi.Intrinsics.exchange(p, with: p + 1)     // Same implicit preparation.
-// Kimi.Intrinsics.swap(p, p)                // Error: overlapping targets.
+Kimi.Intrinsics.exchange(p@uniq, with: p + 1)
+// Kimi.Intrinsics.swap(p@uniq, p@uniq)      // Error: overlapping targets.
 ```
 
 Diagnostics distinguish reservation, activation and the conflicting use or retained Loan. Suggest a separate local only when its acquired value's dependencies allow the call.
@@ -767,7 +781,7 @@ Each target must be fully Initialized, exclusively writable and permitted to und
 | `Kimi.Intrinsics.exchange` | Transferred without destruction | The acquired value is installed | The old value and its responsibilities |
 | `Kimi.Intrinsics.swap` | Both transferred without destruction | Contents and responsibilities exchanged | Unit |
 
-Owner Places use ordinary implicit exclusive borrowing, and existing value borrows use ordinary Reborrow. Object payloads require an explicit projection at ordinary argument positions. Reference or handle *storage* is borrowed with a fully specified target. If `T` is a borrow Type, the operations transfer its reference value and capability, not ownership of its referent. Property access and hidden-storage permissions still apply.
+Directly owned Places are lent with `@uniq`; existing value borrows and Places reached through exclusive references use ordinary Reborrow. Object payloads require an explicit projection at ordinary argument positions. Reference or handle *storage* is borrowed with a fully specified target. If `T` is a borrow Type, the operations transfer its reference value and capability, not ownership of its referent. Property access and hidden-storage permissions still apply.
 
 These operations cannot repair Uninitialized, Moved or partially moved storage; `=` keeps its existing repair rules. They permit no incomplete MoveOut through a borrow, no unrestricted construction or destruction receivers, and no assignment to the immutable `self` binding. Whole-content replacement may replace values containing `let` fields without granting individual writes to those fields.
 
@@ -779,15 +793,15 @@ Argument evaluation, target reservation and activation follow §15.6.7, includin
 
 ```kimi
 var p: i32 = 0
-Kimi.Intrinsics.replace(p, with: p + 1) // Copy the input before activation.
-let old = Kimi.Intrinsics.exchange(p, with: 5)
+Kimi.Intrinsics.replace(p@uniq, with: p + 1) // Copy the input before activation.
+let old = Kimi.Intrinsics.exchange(p@uniq, with: 5)
 p = p + 1                     // Valid: assignment evaluates its RHS first.
 var q: i32 = 9
-Kimi.Intrinsics.swap(p, q)
-// Kimi.Intrinsics.swap(p, p)             // Error: overlapping exclusive targets.
+Kimi.Intrinsics.swap(p@uniq, q@uniq)
+// Kimi.Intrinsics.swap(p@uniq, p@uniq)   // Error: overlapping exclusive targets.
 ```
 
-For a Non-Copy `x`, `x = x` can Move and reinitialize, whereas `Kimi.Intrinsics.exchange(x, with: x)` attempts to Move reserved storage and is rejected.
+For a Non-Copy `x`, `x = x@move` can transfer and reinitialize, whereas `Kimi.Intrinsics.exchange(x@uniq, with: x@move)` attempts to transfer reserved storage and is rejected.
 
 ### 15.7.2. Static non-overlap
 
@@ -840,14 +854,14 @@ When the whole result Type is omitted and inferred from the body, its Origin and
 
 ```kimi
 let text = makeText()
-let get = func [text] () => text@ref
+let get = func [text@move] () => text@ref
 // Internal signature: call(self: ref/Self) -> ref{self}/string.
 let view = get()
-let moved = get // Error if view is still used below.
+let moved = get@move // Error if view is still used below.
 inspectText(view)
 
 let other = makeText()
-let invalid = func [other] () -> ref/string => other@ref
+let invalid = func [other@move] () -> ref/string => other@ref
 // Error: annotated omitted result Origin is static, not the environment borrow.
 ```
 

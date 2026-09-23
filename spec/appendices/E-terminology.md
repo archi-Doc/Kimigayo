@@ -67,7 +67,11 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Kimi Kotonoha | The compiler-compatible foundation module referenced as `Kimi`. | [Required declarations](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
 | Loan | A borrowed place, access mode, and validity region. | [Borrow checking](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |
-| Move | Transfer of a value and responsibility or capability, marking its source Moved. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
+| Move | Transfer of a value and responsibility or capability, marking its source Moved; requested by `@move` and its owning-Semantics spellings. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
+| Bare acquisition | Acquisition of an expression without an explicit `@` operation: Copy, shared borrow or Reborrow, never a Move of a Place. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
+| Lending rule | A spelling is required exactly where a directly owned Place is first lent exclusively or given away. | [Movable Places](../15-ownership-and-lifetime-analysis.md#1515-movable-places) |
+| Access path | How a Place is reached: directly, or through an exclusive or shared reference; it bounds the borrows of the Place. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
+| Borrow value | An expression whose outer Semantics is in the `borrow` category. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
 | Move Path | A statically tracked path with independent initialization state and destruction responsibility. | [Move Paths](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) |
 | ObjectCallCompatible | Public receiver-preservation guarantee for calls through object borrows or base-subobject projections, per call operation | [Object calls](../12-expressions.md#1244-object-receiver-compatibility) |
 | ObjectViewCompatible | Contract eligibility as an Object View Target with fixed associated Types, within the runtime Contract extension | [Runtime contracts](../08-generics-constraints-and-contracts.md#85-runtime-contracts) |

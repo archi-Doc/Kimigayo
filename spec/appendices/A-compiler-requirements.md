@@ -100,7 +100,7 @@ Persist §15.6.4’s static effects and returned Loan anchors in artifacts/calla
 
 Represent let/var storage, standard operations, custom/computed accessor signatures, and Contract requirements explicitly. Preserve storage/base identities, complete Types/Origins, accessor access, function boundaries, and witness mappings. Standard get is not a synthesized source function; Copy does not change its result Type.
 
-Validate direct/child Place permissions, implicit receiver adaptations, generic Copy proof and conditional Move states, first-placement history, construction-call bans, getter temporary restrictions, and normal cleanup before lowering. Preserve Contract result restrictions through witness optimization. Update parser, writer, grammar, serialization, diagnostics, and artifact invalidation for accessor syntax and removal of explicit Move.
+Validate direct/child Place permissions, receiver adaptations under the lending rule (§15.1.5), generic Copy proof, the transfer operation `@move` on Copy and Non-Copy Places, first-placement history, construction-call bans, getter temporary restrictions, and normal cleanup before lowering. Preserve Contract result restrictions through witness optimization. Update parser, writer, grammar, serialization, diagnostics, and artifact invalidation for accessor syntax and the transfer operation.
 
 Cover private-set Move rejection; custom-get result versus storage borrowing; non-Copy custom setters and self-assignment; construction branch joins; partial inherited access and ancestor deinit; reference-result Origins; static accessor effects; and Contract by-value versus shared-slot witnesses.
 
@@ -234,7 +234,7 @@ Preserve one-time receiver/argument evaluation, index-evaluation protection, exc
 | --- | --- |
 | Index and Range | Lengths 0/1, ^0/^1, negative offsets, excessive distances, saved values, half-open/inclusive/reversed ranges, operand evaluation before construction checks |
 | ResolvedRange | Maximum-isize end, finite and permanently exhausted iteration, rejection of direct Range iteration, reuse against shorter/resized targets |
-| Place acquisition | Copy versus ordinary/explicit Move, literal-only eligibility, runtime/Index shared reading, nested writes without intermediate Copy, reinitialization after Partial Move |
+| Place acquisition | Bare Copy versus `@move` transfer (including Copy elements), rejection of a bare Non-Copy element in an owned position, literal-only eligibility, runtime/Index shared reading, nested writes without intermediate Copy, reinitialization after Partial Move |
 | Slice boundaries | Zero-based reslicing, split endpoints, None from each try-prefixed API, failure inside arguments remaining Abort |
 | Lifetime and storage | Borrowed Array/Slice retention, temporary/local escape, copied references versus slot borrows, nested Origins, whole-array Loans including empty/split views, rejection of mutable-static borrows at Owned boundaries |
 | Metadata and iteration | Receiver effects, completeness checks, no result Loan for metadata, stable saved indices, reference iteration independent of element Copy, no iterator-owned borrowed results |

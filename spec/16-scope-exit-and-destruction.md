@@ -162,7 +162,7 @@ func answer() -> i32
 func take() -> Resource
     let resource = makeResource()
     defer => inspect(resource) // inspect borrows; Resource is non-Copy.
-    return resource // Error: cleanup would access the moved source.
+    return resource@move // Error: cleanup would access the transferred source.
 ```
 
 Only scopes actually left are cleaned up. `continue` cleans the current iteration's departing scopes and keeps the outer scopes needed for continuation. Named transfers clean all intervening scopes they leave. Exiting a Deferred Block completes its nested cleanup and then resumes the pending outer cleanup.

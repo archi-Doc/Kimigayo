@@ -296,15 +296,16 @@ BitXor               := BitAnd ("^" BitAnd)*
 BitAnd               := Shift ("&" Shift)*
 Shift                := Additive (("<<" | ">>") Additive)*
 Additive             := Multiplicative (("+" | "-") Multiplicative)*
-Multiplicative       := Adapted (("*" | "/" | "%") Adapted)*
-Adapted              := Prefix ("@" OperationTarget)*
-OperationTarget      := Semantics | AdaptationType
+Multiplicative       := Try (("*" | "/" | "%") Try)*
+Try                  := "try" Try | Adapted
+Adapted              := Prefix ("@" OperationTarget PostfixSuffix*)*
+OperationTarget      := "move" | Semantics | AdaptationType
 AdaptationType       := AdaptationCore ("?")*
 AdaptationCore       := Semantics BorrowOrigin? "/" AdaptationCore | AdaptationAtom
 AdaptationAtom       := ContainerPath | UnitType | "(" Type ")"
                       | "(" Type "," TrailingList<Type>? ")"
                       | "[" ArrayLength "of" Type "]"
-Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--" | "try") Prefix
+Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--") Prefix
                       | Postfix
 Postfix              := Primary PostfixSuffix*
 PostfixSuffix        := "." (Name | DecimalTupleIndex)
@@ -337,8 +338,8 @@ FunctionExpression   := "func" CaptureList? "(" TrailingList<AnonymousParameter>
 AnonymousParameter   := Name (":" Type)?
 AnonymousBody        := ExecutableBody
 CaptureList          := "[" TrailingList<Capture>? "]"
-Capture              := Name ("@" CaptureOperation)? | "var" Name
-CaptureOperation     := "ref" | "uniq"
+Capture              := Name ("@" CaptureOperation)? | "var" Name ("@" "move")?
+CaptureOperation     := "move" | "ref" | "uniq"
 CompositionRootExpression := "$" "abort" "(" Expression ")"
 ```
 

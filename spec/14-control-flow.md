@@ -69,7 +69,7 @@ Statements in single-item bodies supply Unit only if they structurally complete 
 The Target Result Type is fixed as Unit for `for`, `while`, `defer`, `set`, `init`, `deinit`, and discarded `if`/`match`/`do`/`loop` expressions. Explicit transfers must still fit it: `return 123` in a Unit function and `loop => exit 1` in Discard Context are errors. A value-used loop takes its result from self-targeted exits, never from its body end. Receiving a transfer does not additionally supply an implicit body result.
 
 ```kimi
-if ready => visited.insert(id)   // A bool result may be discarded.
+if ready => visited@uniq.insert(id)   // A bool result may be discarded.
 let bad: i32 = if ready
     compute()                   // Discarded; implicit Unit does not fit i32.
 else => 0
@@ -134,14 +134,15 @@ To acquire a new local on every test, use `loop` with a declaration and `require
 
 `_ = Expression` is a dedicated executable statement, recognized by reserved `_` followed by `=`. It is not assignment, permits no compound form, and cannot be nested as an expression. Normal completion supplies Unit. Existing Body and continuation rules apply.
 
-Check the right side in Value Context without an expected Type, as for an unannotated initializer, but introduce no local or lifetime extension. Evaluate once, acquire by ordinary Copy/Move and destroy the result at statement temporary cleanup. A non-completing operand supplies no result to discard. Changing `expr` to `_ = expr` changes Context and may require a common branch Type.
+Check the right side in Value Context without an expected Type, as for an unannotated initializer, but introduce no local or lifetime extension. Evaluate once, acquire by bare acquisition or transfer, and destroy the result at statement temporary cleanup: `_ = x@move` destroys a Non-Copy Place early, a bare Non-Copy Place is an error, and `_ = x@ref` discards a borrow without effect. A non-completing operand supplies no result to discard. Changing `expr` to `_ = expr` changes Context and may require a common branch Type.
 
 Explicit discard suppresses only warnings for discarding that result (§17.4), not internal discards, unintended Unit inference inside the operand, Type/ownership errors or unrelated diagnostics.
 
 ```kimi
 _ = prepare()     // Ignore the entire Result, including Err.
 _ = try prepare() // Propagate failure; explicitly discard success.
-_ = resource      // Move and destroy a Non-Copy value.
+_ = resource@move // Transfer and destroy a Non-Copy value early.
+// _ = resource   // Error: a bare Non-Copy Place is not transferred.
 _ = .None         // Error without enough Type information.
 _ = loop => exit  // Valid Unit result.
 _ = do
@@ -297,7 +298,7 @@ while ready => process()
 
 ### 14.6.2. Iteration protocol and acquisition
 
-The recognized Kimi Iterable and Iterator Contracts define `for` iteration. The iterable expression `E` is evaluated once and acquired by ordinary Copy/Move into a hidden iterable local. Its consuming `iterate` mapping is invoked once to obtain a hidden iterator local. `Iterator.next` is then invoked repeatedly with a short exclusive reborrow of that iterator; a `Some` payload supplies the next element, and `None` terminates the loop. Missing or ambiguous conformances are errors; there is no method-name duck typing or fallback protocol.
+The recognized Kimi Iterable and Iterator Contracts define `for` iteration. The iterable expression `E` is evaluated once and acquired into a hidden iterable local under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): an owned Place is shared-borrowed, even when its Type is Copy; a borrow value is copied or shared-reborrowed; a Temporary Value, including the result of `E@move`, is acquired by value. Its consuming `iterate` mapping is invoked once on that local, consuming a borrowed local's Copy reference, to obtain a hidden iterator local. `Iterator.next` is then invoked repeatedly with a short exclusive reborrow of that iterator; a `Some` payload supplies the next element, and `None` terminates the loop. Missing or ambiguous conformances are errors; there is no method-name duck typing or fallback protocol.
 
 ~~~text
 iterable := acquire(E)
@@ -317,12 +318,22 @@ The receiver Loan of `next` ends before the loop body. Results may keep existing
 
 | Iterable | Yielded value and acquisition |
 | --- | --- |
+| `ref/Array<T>`, `ref/[N of T]` | `ref{source}/T`, as the Slice iteration of `values[..]` |
+| `ref/Dictionary<K, V>` | `(ref{source}/K, ref{source}/V)` pairs in insertion order, through the Kimi shared pair iterator |
+| `ref/Slice<T>`, `ref/ResolvedRange` | The Copy value is read and iterated as below; the local keeps no Loan of its own |
 | Array or fixed array under `owner` Semantics | Elements consumed as `T` |
 | `ResolvedRange` | `isize`; an unresolved `Range` is not Iterable |
 | `Slice` | `ref{source}/T`, even for Copy elements |
 | Dictionary under `owner` Semantics | `(K, V)` pairs consumed in insertion order |
 
-Direct iteration consumes a Non-Copy owning collection; use `for item in values[..]` for shared iteration. A consumed source remains unavailable until validly reinitialized. Source Loans are kept while the iterator or escaped yielded references need them; overlapping mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. See [ranges](04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [Slice iteration](04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
+Bare iteration over an owned collection Place therefore borrows it and yields shared references, while `for item in values@move` consumes the collection and yields owned elements. A consumed source remains unavailable until validly reinitialized. A user Type offers shared iteration through a member that returns an Iterable view, such as a Slice; a shared Iterable requirement is a design boundary ([Appendix D](appendices/D-deferred-features.md#d1-enum-and-pattern-extensions)).
+
+```kimi
+for item in items        // Shared iteration; items remains usable.
+    inspect(item)
+for item in items@move   // Consuming iteration.
+    store(item@move)
+``` Source Loans are kept while the iterator or escaped yielded references need them; overlapping mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. See [ranges](04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [Slice iteration](04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
 
 Body fall-through and `continue` clean up the current bindings before calling `next` again; `exit`, `return` and outer transfers also clean up the iterator and its unyielded owned elements. The protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
 
@@ -364,9 +375,9 @@ let value = if ready
     yield 1
 else => 0
 
-match command
-    .Put(let key, let value) => table.insert(key, value) // Discard Option<V>.
-    .Clear => table.clear()                           // Unit.
+match command@move
+    .Put(let key, let value) => table@uniq.insert(key@move, value@move) // Discard Option<V>.
+    .Clear => table@uniq.clear()                                        // Unit.
     _ => ()
 ```
 
@@ -502,10 +513,10 @@ A guarded arm proceeds as follows:
 Cleanup must finish normally before either continuation.
 
 ```kimi
-// Packet.Data stores Non-Copy Data; accepts takes ref/Data.
-match packet
-    .Data(let data) if accepts(data) => consume(data)
-    .Data(let data) => recover(data)
+// Packet.Data stores Non-Copy Data; accepts takes ref/Data, consume and recover take Data.
+match packet@move
+    .Data(let data) if accepts(data) => consume(data@move)
+    .Data(let data) => recover(data@move)
     .End => ()
 ```
 

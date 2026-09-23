@@ -550,8 +550,8 @@ func applyBorrowed<T, U, F>(value: ref/T, transform: ref/F) -> U
 **Constraint-based calls.** A call first acquires the receiver required by `r` and then adapts to the implementation's minimum requirement:
 
 - `ref`: call through shared access.
-- `uniq`: keep exclusive access for the call, reborrowing exclusively or sharing for the actual body.
-- `owner`: acquire by ordinary Copy or Move; borrow the acquired value for a Shared or Exclusive body, or transfer it to a Consuming body. Remaining acquired storage is destroyed when the call completes. This owned temporary has normal writable, exclusive access even when copied or moved from a `let` binding.
+- `uniq`: keep exclusive access for the call, reborrowing exclusively or sharing for the actual body. A directly owned callable Place is lent with `@uniq`; a `uniq/F` value is reborrowed implicitly (§7.6.3).
+- `owner`: acquire by bare Copy or `@move`; borrow the acquired value for a Shared or Exclusive body, or transfer it to a Consuming body. Remaining acquired storage is destroyed when the call completes. This owned temporary has normal writable, exclusive access even when copied or transferred from a `let` binding.
 
 Instantiation cannot turn an `owner` acquisition into a borrow merely because the body is Shared. Conversely, copying a Consuming callable does not satisfy a `ref` or `uniq` constraint. One public signature is selected; when several available constraints have that signature, the weakest declared receiver is preferred, in the order `ref`, `uniq`, `owner`. A later initialization, access or Loan failure cannot select another receiver. Constraint strength is not an overload-ranking rule.
 
@@ -723,7 +723,7 @@ Generic analysis
                             -> determine effect -> finalize ownership and cleanup
 ```
 
-Unresolved Copy capability is never treated as proof of Non-Copy, and the effect is never fixed to Move. At definition checking, legality is proven for every effect admitted by the declared Constraints. The exact effect may remain symbolic until instantiation only if every admitted case is legal, including subsequent uses, Loans and cleanup. This is delayed effect determination, not delayed discovery of a required capability. Environment-changing directives still obey their earlier [selection deadlines](19-compile-time-directives.md#194-name-resolution-boundary).
+A by-value acquisition's effect follows its spelling: a bare Place Copies and requires Copy evidence at definition checking, where unproven Copy is an error rather than deferred checking or an inferred Move; `@move` transfers; `@s` follows the binding of `s` and transfers for every owning binding. Unresolved Copy capability is never treated as proof of Non-Copy. Borrow effects and shared element reads may remain symbolic until instantiation only if every admitted case is legal, including subsequent uses, Loans and cleanup. This is delayed effect determination, not delayed discovery of a required capability. Environment-changing directives still obey their earlier [selection deadlines](19-compile-time-directives.md#194-name-resolution-boundary).
 
 Instantiations may have different effects. The already-verified effect plan is substituted and each concrete body's cleanup derived from it; an analysis for a different effect is never reused without validation. Compile-time directives neither test Types nor select Access Effects. The [generic verification principle](#810-generic-body-checking-and-deferred-obligations) requires the ordinary body to be valid independently of explicit specializations.
 
@@ -733,7 +733,7 @@ value@s
 use(value)
 ```
 
-For `s = ref`, discarding the first result ends its shared Loan; `s = uniq` also requires exclusive writability. The later use is checked after that Loan ends. If the Constraints admit a Non-Copy `s = owner`, the first use Moves the source and makes the definition invalid, even if all current callers pass Copy values; require Copy evidence, or restrict the Semantics and prove borrow permissions. If the result is retained, subsequent uses are checked throughout its Loan lifetime.
+For `s = ref`, discarding the first result ends its shared Loan; `s = uniq` also requires exclusive writability. The later use is checked after that Loan ends. If the Constraints admit `s = owner`, the first use transfers the source even for a Copy `T`, and the later use makes the definition invalid regardless of Copy evidence; restrict the Semantics to borrows, or make the transfer the last use. If the result is retained, subsequent uses are checked throughout its Loan lifetime.
 
 ## 8.10. Generic body checking and deferred obligations
 

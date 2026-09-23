@@ -56,6 +56,7 @@ Optional Type spelling is defined in [§3.2.3](spec/03-types-and-values.md#323-o
 ### Part V. Ownership, cleanup, and failure
 
 - [15. Ownership and lifetime analysis](spec/15-ownership-and-lifetime-analysis.md)
+  - [Lending rule](spec/15-ownership-and-lifetime-analysis.md#1515-movable-places): a bare Place never Moves or lends exclusively; `@move` transfers and `@uniq` lends a directly owned Place.
   - [Call borrow reservations](spec/15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations): preparation, activation and non-escaping explicit borrows.
 - [16. Scope exit and destruction](spec/16-scope-exit-and-destruction.md)
 - [17. Failure handling](spec/17-failure-handling.md)

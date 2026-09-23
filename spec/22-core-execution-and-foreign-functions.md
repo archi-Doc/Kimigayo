@@ -33,7 +33,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 | Copy, Owned, Callable, Sealed | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
 | Whole-value update intrinsics | `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts |
-| `Console.writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
+| `Console.writeLine` | `public func writeLine(text: ref/string) -> ()`; standard-output operation under §22.4, borrowing its argument |
 | `Test.tempDirectory` | `public func tempDirectory() -> string`; independently owned case-directory path, restricted to test-only bodies under the [test profile](testing-profile.md#environment-and-temporary-directory) |
 
 Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
@@ -56,7 +56,7 @@ The following reference collects the public function names. Types are abbreviate
 
 | Fully qualified function | Signature / input and result Types | Owning rules |
 | --- | --- | --- |
-| `Kimi.Console.writeLine` | `(text: string) -> ()` | §22.4 |
+| `Kimi.Console.writeLine` | `(text: ref/string) -> ()` | §22.4 |
 | `Kimi.Test.tempDirectory` | `() -> string` | [Test profile](testing-profile.md#environment-and-temporary-directory) |
 | `Kimi.Intrinsics.replace<T>` | `(target: uniq/T, with => value: T) -> ()` | §15.7 |
 | `Kimi.Intrinsics.exchange<T>` | `(target: uniq/T, with => value: T) -> T` | §15.7 |
@@ -239,9 +239,9 @@ writeLine("Hello")
 
 There is no `Kimi.writeLine`, old `Core` compatibility reference, or forwarding API. `Core` is an ordinary user name. Console is a group, not a value or special syntax. An intrinsic is a declaration whose Identity has compiler-recognized meaning; no public `Intrinsic` namespace or `Kimi.Intrinsic` group is introduced. Aliases retain that Identity. `$abort`, `$expect`, `$require`, and the Composition Root retain their existing roles.
 
-Kimi provides the public ordinary function `writeLine(text: string) -> ()` as a direct member of its ordinary public `group Console`. The mandatory Kimi default alias makes `Console.writeLine` available. It does not recursively open Console. `::Kimi.Console.writeLine` identifies the required Symbol regardless of local shadowing. It is a safe, nongeneric function with one required owned string argument and no receiver, defaults, formatting parameters, or result borrow. The compiler/runtime supplies its implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
+Kimi provides the public ordinary function `writeLine(text: ref/string) -> ()` as a direct member of its ordinary public `group Console`. The mandatory Kimi default alias makes `Console.writeLine` available. It does not recursively open Console. `::Kimi.Console.writeLine` identifies the required Symbol regardless of local shadowing. It is a safe, nongeneric function with one required shared-borrowed string argument and no receiver, defaults, formatting parameters, or result borrow. The compiler/runtime supplies its implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
 
-Acquire text once under Copy/Move rules and write all its UTF-8 bytes plus one LF to standard output. NUL is data. Preserve contents without normalization, CRLF conversion, or locale encoding. Failure may leave partial output; no rollback or device atomicity is promised. Return Unit after host acceptance and flushing this call’s runtime buffer, not necessarily display or durable storage. Failure to complete initiates Abort under normal diagnostic/termination rules, even if stdout is unavailable. Destroy the acquired argument on normal return. Diagnose an unsupported target/feature if the backend cannot provide this operation.
+Borrow text for the call under the ordinary argument adaptation rules, so a string Place stays usable and a literal, interpolation or `stringify` result is materialized and borrowed as a temporary, and write all its UTF-8 bytes plus one LF to standard output. NUL is data. Preserve contents without normalization, CRLF conversion, or locale encoding. Failure may leave partial output; no rollback or device atomicity is promised. Return Unit after host acceptance and flushing this call’s runtime buffer, not necessarily display or durable storage. Failure to complete initiates Abort under normal diagnostic/termination rules, even if stdout is unavailable. The call destroys nothing; a temporary argument follows its ordinary lifetime. Diagnose an unsupported target/feature if the backend cannot provide this operation.
 
 **Complete application example (implicit startup in one SourceDocument).**
 
@@ -249,7 +249,7 @@ Acquire text once under Copy/Move rules and write all its UTF-8 bytes plus one L
 ::Kimi.Console.writeLine("Hello, world!")
 ```
 
-The required standard-output bytes are UTF-8 `Hello, world!` followed by LF; normal completion exits with code zero under §22.2. No source main function, user alias, unsafe block, interpolation, or user-declared foreign function is needed. Passing an existing string local Moves it; use its Stringify mapping to obtain an independent owned string when reuse is needed. Borrowed output overloads and general I/O error/result APIs remain outside this minimal operation.
+The required standard-output bytes are UTF-8 `Hello, world!` followed by LF; normal completion exits with code zero under §22.2. No source main function, user alias, unsafe block, interpolation, or user-declared foreign function is needed. Passing an existing string local borrows it, so `writeLine(name)` leaves `name` usable. Owning output overloads and general I/O error/result APIs remain outside this minimal operation.
 
 The initial Windows implementation of this operation is specified in §22.5; output settings, manifest, and manual build steps are in §20.8. The first executable implementation milestone and the distinction between existing and proposed settings are recorded in [STATUS.md](../STATUS.md#4-llvm-generation-coverage). A prototype supporting only that subset must identify itself as partial; the milestone does not relax the Kimi identity/shape or validation requirements of a fully conforming Compilation. Unused executable Kimi bodies need not be emitted, but a same-spelled stub without the required identity and contract is not a compatible Kimi definition.
 
@@ -333,7 +333,7 @@ The initial internal string storage representation is `{ ptr, i64, i8 }`: data, 
 
 Establish validity at construction, not by revalidating UTF-8/allocations on every use; corruption detection is not guaranteed. Literal backing may be shared without granting Copy to string. Hello world needs no heap allocation.
 
-The required Kimi.Console.writeLine Symbol (§22.4) acquires its owned argument once, calls WriteStdout(data, length), calls WriteStdout on a one-byte LF constant, then normally destroys the argument and returns Unit. Static release does nothing; Heap release calls Free. An empty string still emits LF. Output failure Aborts without normal argument destruction; earlier output is not rolled back. No concatenation buffer is required.
+The required Kimi.Console.writeLine Symbol (§22.4) receives a reference to a string handle, reads its data and length, calls WriteStdout(data, length), calls WriteStdout on a one-byte LF constant, and returns Unit. It neither releases nor modifies the handle; the caller keeps the string's ownership, and a temporary argument is destroyed by the caller at its ordinary lifetime. An empty string still emits LF. Output failure Aborts; earlier output is not rolled back. No concatenation buffer is required.
 
 Write raw UTF-8 bytes to redirected files/pipes without changing the console code page. Non-ASCII console appearance depends on console configuration; universal Unicode console display is not initially guaranteed. A GetConsoleMode/WriteConsoleW adapter is a future extension, not implicit UTF-16 output.
 

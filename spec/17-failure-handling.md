@@ -94,7 +94,7 @@ Recoverable failures are ordinary values: they neither throw exceptions nor prop
 func loadSize(path: string) -> Result<usize, FileError>
     return match readFile(path)
         .Ok(let data) => .Ok(data.count)
-        .Err(let error) => .Err(error)
+        .Err(let error) => .Err(error@move)
 ```
 
 The return Type describes contractual absence or recoverable failure; a function returning `Result` may still Abort on an invariant violation or unrecoverable condition.
@@ -105,19 +105,20 @@ Returning a recoverable failure follows the normal [Scope Exit](16-scope-exit-an
 
 ### 17.2.4. Try propagation
 
-`try expression` is a right-associative prefix expression at ordinary prefix precedence. Calls, selection and indexing bind more tightly; @ binds less tightly. Its operand is required and need not be a call.
+`try expression` is a right-associative prefix expression that binds below `@` and above the multiplicative operators (§13.1). Calls, selection, indexing and `@` bind more tightly. Its operand is required and need not be a call.
 
 ```kimi
 try prepare() + 1     // (try prepare()) + 1
 try prepare().count   // try (prepare().count)
 (try prepare()).count // Select from the success payload.
-try (expr@Target)     // Adapt before extracting.
+try pending@move      // try (pending@move): transfer the stored Result, then extract.
+(try prepare())@i64   // Extract before converting.
 try try nested       // Extract twice; check each propagation separately.
 ```
 
 The normalized outer operand Type must be an owned compiler-recognized Kimi Option or Result. Aliases and redundant owner prefixes normalize normally. Names or structurally similar user enums grant no support. `Option<ref/T>` is valid; `ref/Option<T>`, `uniq/Result<T,E>` and `obj/Option<T>` are not automatically dereferenced. Generic definitions require proof of the actual enum structure.
 
-**Evaluation.** Evaluate and acquire the operand once in Value Context without an expected Type, using ordinary whole-value match acquisition (§15.1.6). Copy a Copy Place, Move a Non-Copy Place, and transfer an existing temporary without extra acquisition. Inspect its Case:
+**Evaluation.** Evaluate and acquire the operand once in Value Context without an expected Type, as an owned position: Copy a Copy Place, require `@move` for a Non-Copy Place, and transfer an existing temporary without extra acquisition. Inspect its Case:
 
 | Operand | Normal value | Failure return | Required return target |
 | --- | --- | --- | --- |
@@ -137,7 +138,7 @@ Secure the successful payload or return value before ordinary temporary and Scop
 let bad: i64 = try parse()   // Error: the annotation cannot infer T.
 let value = try parse<i64>() // Valid in a compatible return target.
 let pending: Result<i64, ParseError> = parse()
-let other = try pending
+let other = try pending@move // The stored Non-Copy Result is transferred.
 ```
 
 `try .None` and `try .Err(error)` lack an enum expectation and fail. An anonymous function's implicit failure returns are expectation-dependent result sources like written Case returns; they cannot invent a return Type. Obtain it from an annotation, a fixed expected signature or other independently typed sources, without source-order dependence or instantiation-time body reinterpretation.

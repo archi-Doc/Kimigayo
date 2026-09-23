@@ -61,7 +61,7 @@ Constant accessibility is checked at the definition. A private constant need not
 
 ## 4.3. Initialization and inference
 
-With an expected fixed-array Type, an array literal constructs that Type and must contain exactly `N` elements; there is no padding or truncation. Elements are acquired in source order by ordinary Copy or Move. A local binding annotation may use `[N of _]`, recursively for nested arrays, to infer only the element Type from its initializer; a unique Type is required at the declaration. The placeholder is forbidden in lengths, signatures and explicit generic arguments.
+With an expected fixed-array Type, an array literal constructs that Type and must contain exactly `N` elements; there is no padding or truncation. Elements are acquired in source order by bare acquisition or transfer (§3.5). A local binding annotation may use `[N of _]`, recursively for nested arrays, to infer only the element Type from its initializer; a unique Type is required at the declaration. The placeholder is forbidden in lengths, signatures and explicit generic arguments.
 
 Without a fixed-array expectation, an independent array literal constructs an Array. A literal in a call argument remains subject to candidate-local fitting under [length-argument inference](#44-function-length-parameters) and is not first defaulted to Array. An empty literal requires an expected element Type. Numeric element defaults follow ordinary inference.
 
@@ -195,17 +195,17 @@ The returned integers, Booleans and `ResolvedRange` values acquire no receiver o
 | --- | --- |
 | `values[i] = value` | Ordinary initialization or replacement, with write permissions and Loan checks |
 | `values[i]@ref` / `@uniq` | Shared or exclusive borrow of that Place; exclusive access requires write permission |
-| Non-Copy element acquisition | Move only through an eligible static Move Path of an owned fixed array |
-| Ordinary value read | Copy or Move on an eligible owned fixed-array static Move Path; otherwise a shared read |
+| `values[i]@move` | Transfer, only through an eligible static Move Path of an owned fixed array |
+| Bare value read | Copy for a Copy element; otherwise a shared read. A bare read never Moves |
 
-Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, `Index` values and paths through borrows never become movable. Ordinary reads Copy when allowed, and eligible Non-Copy static elements Move. All other reads follow the [shared result rules](#466-slice-operations-and-element-results), including Object Semantics and Reborrow, rather than always producing `ref/T`. `@ref` borrows the element Place regardless of the index form. Slice Places are shared-only.
+Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, `Index` values and paths through borrows never become movable. Bare reads Copy when allowed, and `@move` transfers an eligible static element. All other reads follow the [shared result rules](#466-slice-operations-and-element-results), including Object Semantics and Reborrow, rather than always producing `ref/T`. `@ref` borrows the element Place regardless of the index form. Slice Places are shared-only.
 
 ```kimi
 // resources is an owned fixed array of Non-Copy value Type Resource.
 let i: isize = 0
 let view = resources[i]   // ref/Resource; the element remains.
-// End all required uses of view before the following Move.
-let taken = resources[0] // Ordinary Move; resources[0] becomes Moved.
+// End all required uses of view before the following transfer.
+let taken = resources[0]@move // Transfer; resources[0] becomes Moved.
 
 var numbers: [2 of i32] = [10, 20]
 let copied = numbers[0]     // Copy; the element remains Initialized.
@@ -465,7 +465,7 @@ Checks may be eliminated, shared or hoisted out of loops only when safety is pro
 
 `Array<T>` and `Dictionary<K, V>` are Non-Copy owning collections. They accept valid complete stored Types without blanket Copy or Owned constraints. Dictionary requires `K is Equatable` and the key stability of §12.3.4, not a public Hash constraint. Types and Origins are fixed at the declaration; mutation never restarts inference.
 
-The operations below are public instance APIs. Mutations use `self: uniq/Self` unless stated otherwise. Value parameters are acquired once by ordinary Copy or Move, without deep cloning or implicit count increments. A rejected Move is not restored; returned inputs can be recovered from a `Result`. Removal transfers the stored responsibility, even for Copy elements. Owning a reference value neither owns nor extends its referent's lifetime.
+The operations below are public instance APIs. Mutations use `self: uniq/Self` unless stated otherwise, so a directly owned collection is lent with `@uniq` (`values@uniq.append(...)`) and a collection reached through an exclusive reference is reborrowed implicitly. Value parameters are acquired once by bare acquisition or transfer, without deep cloning or implicit count increments. A rejected Move is not restored; returned inputs can be recovered from a `Result`. Removal transfers the stored responsibility, even for Copy elements. Owning a reference value neither owns nor extends its referent's lifetime.
 
 Precondition failures Abort. Ordinary absence uses `Option`, and recoverable rejection that returns its inputs uses `Result`. A try-prefixed API name promises only its specified recoverable outcome, not propagation by a try expression (§17.2.4); a corresponding Abort API need not exist. A discarded `Result` follows the normal warning rule.
 
@@ -498,14 +498,14 @@ The index is resolved once in the body against the entry length `L`. For a from-
 
 ```kimi
 var values: Array<i32> = []
-values.reserve(additional: 3)
-values.append(10)
-values.insert(^0, 30)
-values.insert(^1, 20) // [10, 20, 30]
-let last = values.remove(^1) // 30; capacity is unchanged.
+values@uniq.reserve(additional: 3)
+values@uniq.append(10)
+values@uniq.insert(^0, 30)
+values@uniq.insert(^1, 20) // [10, 20, 30]
+let last = values@uniq.remove(^1) // 30; capacity is unchanged.
 let first = values[0]
-values.append(first)
-values.append(values[0]) // The element Copy finishes before receiver activation.
+values@uniq.append(first)
+values@uniq.append(values[0]) // The element Copy finishes before receiver activation.
 ```
 
 ### 4.7.3. Dictionary operations and indexed replacement
@@ -533,11 +533,11 @@ From receiver identification through placement, structural mutation, Move and de
 
 ```kimi
 var names: Dictionary<i32, string> = [:]
-match names.tryInsert(1, "first")
+match names@uniq.tryInsert(1, "first")
     .Ok(()) => ()
     .Err(let entry) => Kimi.Console.writeLine(entry.1)
 names[1] = "replacement" // Existing-key replacement, not insertion.
-let removed = names.remove(1) // A temporary key is borrowed under §10.2.
+let removed = names@uniq.remove(1) // A temporary key is borrowed under §10.2.
 ```
 
 ### 4.7.4. Capacity and allocation

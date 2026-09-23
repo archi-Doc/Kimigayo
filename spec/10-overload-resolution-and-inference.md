@@ -47,24 +47,24 @@ Adaptations are compared in this order, best first:
 | Same-Semantics reborrow | A reborrow that preserves the input Type Semantics |
 | Cross-Semantics borrow/reborrow | Any other permitted borrow or reborrow |
 
-Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies or Moves under [Copy and Move](03-types-and-values.md#35-copy-and-move), and Copy versus Move adds no ranking preference. Origin subtyping that needs no value operation remains permitted.
+Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies when bare or transfers under `@move` ([Copy and Move](03-types-and-values.md#35-copy-and-move)), and Copy versus transfer adds no ranking preference. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value parameter: overload selection never transfers a bare Place. Origin subtyping that needs no value operation remains permitted.
 
-The initial borrow adaptations are listed below. In the owner-Place and owner-temporary rows `T` has `owner` Semantics; in the value-reborrow rows it is the complete immediate Referent Type. Adding a layer around an existing reference or object handle requires a fully specified explicit [storage-borrow target](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow); it is not an implicit argument adaptation.
+The initial borrow adaptations are listed below. In the owner-Place and owner-temporary rows `T` has `owner` Semantics; in the value-reborrow rows it is the complete immediate Referent Type. A Place "through an exclusive reference" is one whose [access path](03-types-and-values.md#34-values-places-and-storage) resolves a `uniq` or `objuniq` reference; its child borrow stays within the parent's authority. Adding a layer around an existing reference or object handle requires a fully specified explicit [storage-borrow target](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow); it is not an implicit argument adaptation.
 
 | Input | Expected | Operation / class |
 | --- | --- | --- |
 | Readable `T` Place | `ref/T` | Shared borrow / cross |
 | Owner `T` temporary | `ref/T` | Materialize once and shared-borrow / cross |
-| Exclusively writable `T` Place | `uniq/T` | Exclusive borrow / cross |
+| `T` Place through an exclusive reference | `uniq/T` | Child exclusive borrow / cross |
 | `uniq/T` | `uniq/T` | Call reborrow / same |
 | `uniq/T` | `ref/T` | Shared reborrow / cross |
 | Accessible `obj/T` Place | `objref/T` | Shared object borrow / cross |
-| Exclusively writable `obj/T` Place | `objuniq/T` | Exclusive object borrow / cross |
+| `obj/T` Place through an exclusive reference | `objuniq/T` | Child exclusive object borrow / cross |
 | `objuniq/T` | `objuniq/T` | Object call reborrow / same |
 | `objuniq/T` | `objref/T` | Shared object reborrow / cross |
 | `ref/T` or `uniq/T`, Copy `T` | `T` | Copy read / cross |
 
-The Copy read is the [read through a reference](03-types-and-values.md#33-type-semantics) of §3.3 applied at an argument: it copies the referent, removes one reference layer and never extracts a Non-Copy referent. A required exclusive reborrow is not Exact even when the written Types match. Type and declaration permissions and the Place-versus-temporary form are checked during applicability; flow-dependent initialization and active Loan conflicts are checked after selection. Borrow adaptations neither extend lifetimes nor duplicate ownership. Selected exclusive adaptations use [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations); these checks do not change applicability or ranking. No further `rc`/`arc`, exclusive-temporary or outer-layer borrow adaptations are inferred from this table.
+The Copy read is the [read through a reference](03-types-and-values.md#33-type-semantics) of §3.3 applied at an argument: it copies the referent, removes one reference layer and never extracts a Non-Copy referent. A required exclusive reborrow is not Exact even when the written Types match. Type and declaration permissions and the Place-versus-temporary form are checked during applicability; flow-dependent initialization and active Loan conflicts are checked after selection. Borrow adaptations neither extend lifetimes nor duplicate ownership. Selected exclusive adaptations use [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations); these checks do not change applicability or ranking. A directly owned Place is never exclusively borrowed implicitly: write `x@uniq` or `x@objuniq` ([lending rule](15-ownership-and-lifetime-analysis.md#1515-movable-places)). No further `rc`/`arc`, exclusive-temporary or outer-layer borrow adaptations are inferred from this table.
 
 [Inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) defines its member-only operations and rankings separately; they do not apply to ordinary arguments or unbound calls. Same-complete-Type Sealed payload receiver projection (§12.4.4) ranks as a cross-Semantics Borrow/Reborrow: ordinary lookup, applicability, comparison and access checking run first, and the selected receiver is evaluated and applied once. It adds no implicit projection to ordinary arguments and grants no inherited-base completeness.
 
@@ -131,7 +131,7 @@ Numeric Types are not ranked by width, Constraints not by strength or clause cou
 func inspect(value: ref/i32) -> () => ()
 func inspect(value: uniq/i32) -> () => ()
 var x: i32 = 0
-inspect(x)      // Error: both cross-semantics borrows; Types incomparable.
+inspect(x)      // Shared candidate only: a directly owned Place is not lent exclusively without @uniq.
 inspect(x@ref)  // Shared candidate: Exact.
 inspect(x@uniq) // Exclusive candidate: same-semantics beats cross-semantics.
 let action: (uniq/i32) -> () = inspect
@@ -139,7 +139,7 @@ let action: (uniq/i32) -> () = inspect
 
 The exclusive candidate wins for an exclusive input because its Semantics match, not because exclusivity is stronger. Candidates `(i32, ref/i32)` and `(ref/i32, i32)` are incomparable for two `i32` locals. Likewise, `f<T>(T)` and `f<U>(Box<U>)` remain tied for `Box<i32>` when substitution makes both parameter Types equal and the later steps tie.
 
-These rules deliberately leave owner-to-`ref`/`uniq` overloads ambiguous; any preference would require a language revision. Field Move eligibility and its generic limits follow [Field Move](11-properties.md#1112-move-paths-and-inherited-fields).
+A Place reached through an exclusive reference remains ambiguous between `ref/T` and `uniq/T` candidates, since both are cross-Semantics borrows; write `@ref` or `@uniq`. Field Move eligibility and its generic limits follow [Field Move](11-properties.md#1112-move-paths-and-inherited-fields).
 
 ## 10.5. Inference boundaries and specialization
 

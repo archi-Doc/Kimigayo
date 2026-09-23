@@ -75,7 +75,7 @@ A Move is destructive access, not assignment. Moving out of a `var` requires an 
 ```kimi
 // Outside the declaring struct; holder is owned and complete.
 // resource has public standard get and private standard set.
-let r = holder.resource       // Error: set is inaccessible for var Move.
+let r = holder.resource@move  // Error: set is inaccessible for a var transfer.
 let view = holder.resource@ref // OK: shared storage borrow.
 ```
 
@@ -87,7 +87,7 @@ A safe storage Move requires an owned struct Place, an eligible static Move Path
 
 Inherited lookup selects a Field identity and a unique base path, substituting Type and Origin arguments. Following the path acquires no intermediate bases and implies no `ref/Derived`-to-`ref/Base` conversion. The original receiver category is preserved, and inheritance grants no private access. State and Loans are tracked by base path and Field identity. A base subobject itself cannot be independently Moved, replaced or reconstructed.
 
-Every storage projection checks the permissions of the enclosing Properties. Child writes, borrows and consumes, including implicit method-receiver or operator adaptations, cannot bypass an ancestor's custom or inaccessible setter. References that reach separate referents follow their own capabilities. A path crossing a custom getter continues from its result under §11.2.3, never from its hidden storage.
+Every storage projection checks the permissions of the enclosing Properties. Child writes, borrows and consumes, including method-receiver and operator adaptations, cannot bypass an ancestor's custom or inaccessible setter. References that reach separate referents follow their own capabilities. A path crossing a custom getter continues from its result under §11.2.3, never from its hidden storage.
 
 ```kimi
 // position: Point is Copy, with standard get and custom set.
@@ -102,7 +102,7 @@ Standard access may use a complete remaining Place after a sibling Move. A custo
 
 ```kimi
 // Both fields have standard accessors; partial Move/deinit conditions hold.
-let item = object.resource
+let item = object.resource@move
 let count = object.count       // OK: complete remaining storage.
 let shown = object.displayCount // Error if this getter borrows incomplete object.
 object.resource = makeResource() // Restore through accessible standard set.
@@ -126,18 +126,18 @@ func readCopy<T>(box: ref/Box<T>) -> T
 struct AssignedBox<T>
     public var item: T
         set(self: uniq/Self, value: T) -> ()
-            storage = value
+            storage = value@move
 ```
 
 `AssignedBox` cannot supply an unconstrained `T` by value through standard `get`, because its Non-Copy case would require a forbidden storage Move; shared borrowing remains available.
 
-When Copy is unproven, the conditional Copy/Move state is verified under §8.10. Runtime Copy values still Copy, and the result Type remains `T`. A later use must be valid in both cases; reinitialization or explicit borrowing may establish valid continued use. Overload selection is not retried after a Move or Loan failure.
+When Copy is unproven, a bare read of the slot is an error (§8.9): constrain `T is Copy`, borrow the slot, or transfer it with `@move`, which leaves the aggregate incomplete for every `T`. The result Type remains `T`. Overload selection is not retried after a Move or Loan failure.
 
 ```kimi
 func test<T>(box: Box<T>) -> ()
-    let x = box.item
-    inspect(box@ref) // Error: box may be incomplete after non-Copy Move.
-// Adding T is Copy makes this subsequent shared use valid.
+    let x = box.item       // Error: T is not proven Copy, and a bare Place never Moves.
+    let y = box.item@move  // Transfer; box is incomplete afterwards for every T.
+    // inspect(box@ref)    // Error: box is incomplete.
 ```
 
 ## 11.2. Accessor functions
@@ -193,16 +193,16 @@ struct Holder
             return self.item@ref/Resource
     public computed result: Resource
         get(self: Self) -> Resource
-            return self.item // Only with valid partial Move/deinit conditions.
+            return self.item@move // Only with valid partial Move/deinit conditions.
 ```
 
-Non-Copy results must be legally created or acquired; a shared receiver cannot supply an owned Non-Copy field by extraction. An owning getter may consume the complete receiver, and a later setter cannot reuse it. No hidden duplication, restoration or get/set round-trip equality is promised.
+Non-Copy results must be legally created or acquired; a shared receiver cannot supply an owned Non-Copy field by extraction. An owning getter consumes the complete receiver, which is therefore written `holder@move.result` (§7.3); a later setter cannot reuse it. An owning setter's receiver is likewise written `holder@move.item = value` unless `Self` is Copy. No hidden duplication, restoration or get/set round-trip equality is promised.
 
 ### 11.2.3. Getter results and temporaries
 
 Stored custom `get`, computed `get` and Contract `get` produce function results; adaptations apply to that result, not to backing storage.
 
-**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and implicit exclusive receiver adaptation preserve this restriction. Updating the Property itself through `set` is separate and remains allowed (§13.7).
+**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and exclusive receiver adaptation preserve this restriction; a reference returned by a getter keeps its referent's own capabilities (`holder.view@uniq` reborrows a returned `uniq/T`). Updating the Property itself through `set` is separate and remains allowed (§13.7).
 
 ```kimi
 // position: Point is Copy, with custom get and standard set.
@@ -243,11 +243,11 @@ A custom setter receives ownership of a Non-Copy `value` and may replace the sto
 struct Holder
     public var item: Resource
         set(self: uniq/Self, value: Resource) -> ()
-            storage = normalize(value)
+            storage = normalize(value@move)
 
 holder.item = makeResource()
 inspect(holder.item@ref/Resource) // OK: standard shared access.
-let item = holder.item            // Error: custom set blocks direct Move.
+let item = holder.item@move       // Error: custom set blocks a direct transfer.
 let edit = holder.item@uniq/Resource // Error: direct exclusive access.
 ```
 
