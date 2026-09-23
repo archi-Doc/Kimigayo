@@ -76,6 +76,7 @@ public sealed partial class KimiLibrary
         this.Iterator = this.GetSymbol(KimiDeclarationId.Iterator)!;
         this.Slice = this.GetSymbol(KimiDeclarationId.Slice)!;
         this.DynamicArray = this.GetSymbol(KimiDeclarationId.Array)!;
+        this.Index = this.GetSymbol(KimiDeclarationId.Index)!;
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
         var iterator = FindDeclaration(this.Kotonoha.RootKoto, "SliceIterator", false);
@@ -145,6 +146,9 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the recognized owning dynamic Array Type declaration (SPEC 4.5, 4.7).</summary>
     public BindingSymbol DynamicArray { get; }
+
+    /// <summary>Gets the designated storable sequence Index Type (SPEC 4.6.2).</summary>
+    public BindingSymbol Index { get; }
 
     /// <summary>Gets the implemented concrete object factory, independently of the incomplete ownership family.</summary>
     public BindingSymbol MakeObj { get; }

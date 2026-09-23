@@ -600,6 +600,9 @@ public sealed partial class OwnershipAnalysis
 
         switch (node)
         {
+            case FromEndIndexKoto fromEnd:
+                var offset = this.Expression(fromEnd.Operand);
+                return offset < 0 ? -1 : this.SequenceValue(fromEnd, fromEnd.BoundType!, SequenceOperation.FromEnd, offset, index: this.Value(offset));
             case FunctionKoto { BoundClosure: { } } closure:
                 return this.CreateClosure(closure);
             case ParenthesizedKoto parentheses:

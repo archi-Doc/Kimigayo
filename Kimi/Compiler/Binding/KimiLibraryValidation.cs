@@ -35,6 +35,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
+                        KimiDeclarationId.Index => this.ValidIndex(symbol),
                         >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit => this.ValidArrayOperation(symbol, entry.Id),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -276,6 +277,20 @@ public sealed partial class KimiLibrary
 
         return true;
     }
+
+    // Prefix ^ writes this ordinary Copy struct's two fields directly, so its shape is a compiler contract.
+    private bool ValidIndex(BindingSymbol symbol)
+        => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
+        symbol.Declaration is StructKoto { Name: "Index", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 1, Members.Count: 3, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
+        BareName(declaration.ConstraintNodes[0].Left, "Self") && BareName(declaration.ConstraintNodes[0].Right, "Copy") &&
+        declaration.Members[0] is VariableKoto { VariableKind: VariableKind.Let, Modifier: ModifierKind.Public, InitializerKoto: null, AttributeChain: null } offset &&
+        offset.NameKoto.IdentifierName == "offset" && BareName(offset.TypeKoto, "isize") &&
+        declaration.Members[1] is VariableKoto { VariableKind: VariableKind.Let, Modifier: ModifierKind.Public, InitializerKoto: null, AttributeChain: null } fromEnd &&
+        fromEnd.NameKoto.IdentifierName == "isFromEnd" && BareName(fromEnd.TypeKoto, "bool") &&
+        declaration.Members[2] is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, Parameters.Count: 2, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, ReturnType: null, Body: not null, ExpressionBody: null, AttributeChain: null } constructor &&
+        constructor.Parameters[0] is { InternalName: "offset", ExternalName: "offset", DefaultValue: null, AttributeChain: null } offsetParameter && BareName(offsetParameter.Type, "isize") &&
+        constructor.Parameters[1] is { InternalName: "fromEnd", ExternalName: "fromEnd", DefaultValue: BoolLiteralKoto { Value: false }, AttributeChain: null } fromEndParameter && BareName(fromEndParameter.Type, "bool");
 
     // SPEC 4.7.2, 4.7.4: an exclusive receiver, start-relative isize indices, T inputs and T or Option<T> results.
     private bool ValidArrayOperation(BindingSymbol symbol, KimiDeclarationId id)

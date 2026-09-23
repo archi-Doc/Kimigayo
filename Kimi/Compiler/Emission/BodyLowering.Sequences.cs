@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private bool LowerSequence(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerSequence(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -26,6 +26,7 @@ internal sealed partial class BodyLowering
         var receiver = body.Places[plan.Receiver].Type;
         var syntaxReceiver = operation.Source switch
         {
+            FromEndIndexKoto fromEnd => ElementAccess.ValueSource(fromEnd.Operand),
             BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
             // A bare array Place iterates through its implicit Slice, whose temporary is sourced by the loop itself.
             ForKoto { SharedIterable: not null } loop => plan.Kind == SequenceOperation.Slice ? ElementAccess.ValueSource(loop.Iterable) : loop,
@@ -38,6 +39,26 @@ internal sealed partial class BodyLowering
                 !(syntaxReceiver.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var local) && local == plan.Receiver)))
         {
             return Fail("Sequence receiver does not match its evaluated source.", out failure);
+        }
+
+        if (plan.Kind == SequenceOperation.FromEnd)
+        {
+            var result = ValueType(body, id);
+            if (operation.Source is not FromEndIndexKoto || !ReferenceEquals(receiver, BoundType.ISize) ||
+                !ReferenceEquals(result, SignatureType(this, operation.Source.BoundType)) ||
+                result is null || !ReferenceEquals(result.Symbol, library.Index) ||
+                value.Count != 0 || plan.Projection != -1 || plan.End != -1 || plan.Element != -1 ||
+                (uint)plan.Index >= (uint)id || ValuePlace(body.Operations[plan.Index]) != plan.Receiver ||
+                !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
+                (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
+                this.aggregateLayouts.Get(result) is not { Fields.Length: 2 } indexLayout ||
+                !this.TryGetLocation(operation.Source, directory, constants, out var indexLocation))
+            {
+                return Fail("From-end Index construction requires its evaluated isize offset and designated layout.", out failure);
+            }
+
+            function.AddScalar(EmissionOpcode.Sequence, id, [new(EmissionOperandKind.SlotAddress, operation.Place), this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, indexLayout.Offset(1))], place: body.Operations.Count + id, location: indexLocation, op: "FromEnd", check: ArithmeticCheckKind.Argument);
+            return true;
         }
 
         if (plan.Kind == SequenceOperation.Length && plan.Index != -1)

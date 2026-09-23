@@ -30,7 +30,8 @@ public sealed partial class Binding
         try
         {
             operations[0] = new(argument, actual, BoundType.String, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: 0);
-            (call.CallStorage ??= new()).Set(target, BoundType.Never, null, [0], [], operations: operations.AsSpan(0, 1));
+            ReadOnlySpan<int> mapping = stackalloc int[] { 0 };
+            (call.CallStorage ??= new()).Set(target, BoundType.Never, null, mapping, ReadOnlySpan<BoundType?>.Empty, operations: operations.AsSpan(0, 1));
         }
         finally
         {

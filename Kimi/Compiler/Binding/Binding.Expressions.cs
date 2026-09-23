@@ -791,6 +791,12 @@ public sealed partial class Binding
 
     private BoundType? BindUnary(UnaryKoto unary, BindingScope scope, BoundType? expected)
     {
+        if (unary is FromEndIndexKoto)
+        {
+            var offset = this.RequireType(unary.Operand, scope, BoundType.ISize);
+            return offset is null ? Complete(unary, null) : Complete(unary, ReferenceEquals(offset, BoundType.Never) ? BoundType.Never : this.InternType(BoundTypeKind.Nominal, this.Library.Index, SemanticsKind.Owner, []));
+        }
+
         if (unary is MacroKoto)
         {
             return this.BindAbort(unary, scope);

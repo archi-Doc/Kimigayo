@@ -277,7 +277,7 @@ internal sealed partial class BodyLowering
 
         if (body.Values[index].Kind == OwnershipValueKind.Sequence)
         {
-            return this.LowerSequence(body, function, constants, projectDirectory, index, out failure);
+            return this.LowerSequence(library, body, function, constants, projectDirectory, index, out failure);
         }
 
         if (body.Values[index].Kind is OwnershipValueKind.Address or OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite)

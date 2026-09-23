@@ -412,6 +412,7 @@ internal enum OwnershipValueKind : byte
 
 internal enum SequenceOperation : byte
 {
+    FromEnd,
     Borrow,
     ArrayRead,
     Indices,

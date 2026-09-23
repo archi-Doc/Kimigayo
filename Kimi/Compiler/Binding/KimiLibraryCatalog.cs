@@ -24,7 +24,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
         new(KimiDeclarationId.Array, "Array"),
-        new(KimiDeclarationId.Index, "Index", SourceExpected: false),
+        new(KimiDeclarationId.Index, "Index"),
         new(KimiDeclarationId.Range, "Range", SourceExpected: false),
         new(KimiDeclarationId.ResolvedRange, "ResolvedRange", SourceExpected: false),
         new(KimiDeclarationId.Slice, "Slice"),

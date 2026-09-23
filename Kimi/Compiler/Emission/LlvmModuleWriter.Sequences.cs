@@ -11,6 +11,22 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
         var range = instruction.Representation == WindowsLowering.Unit;
+        if (instruction.ScalarOperator == "FromEnd")
+        {
+            output.Write($"  %invalid{id} = icmp slt i64 ");
+            WriteOperand(output, operands[1]);
+            output.Write(", 0\n");
+            WriteArithmeticFailure(output, constants, instruction, "%invalid");
+            output.Write("  store i64 ");
+            WriteOperand(output, operands[1]);
+            output.Write(", ptr ");
+            Address();
+            output.Write($", align 8\n  %direction{id} = getelementptr i8, ptr ");
+            Address();
+            output.Write($", i64 {operands[2].Value}\n  store i8 1, ptr %direction{id}, align 1\n");
+            return;
+        }
+
         if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceAddress" or "ArrayAddress")
         {
             // A fixed array's bounds are static; a Slice loads its handle's length.

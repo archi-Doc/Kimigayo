@@ -116,6 +116,7 @@ internal enum ArithmeticCheckKind : byte
     Shift,
     Conversion,
     Bounds,
+    Argument,
     FloatingConversion,
 }
 

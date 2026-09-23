@@ -92,7 +92,7 @@ internal sealed partial class BodyLowering
 
         foreach (var sequence in body.Sequences)
         {
-            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead or SequenceOperation.Borrow or SequenceOperation.Slice && (uint)sequence.Operation < (uint)count)
+            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead or SequenceOperation.Borrow or SequenceOperation.Slice or SequenceOperation.FromEnd && (uint)sequence.Operation < (uint)count)
             {
                 this.continuations[sequence.Operation] = count + sequence.Operation;
             }

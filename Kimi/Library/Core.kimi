@@ -11,3 +11,12 @@ public enum Option<T>
 public enum Result<T, E>
     Ok(T)
     Err(E)
+
+public struct Index
+    Self is Copy
+    public let offset: isize
+    public let isFromEnd: bool
+    public init(offset: isize, fromEnd: bool = false)
+        require offset >= 0 else => $abort("Negative Index offset")
+        self.offset = offset
+        self.isFromEnd = fromEnd
