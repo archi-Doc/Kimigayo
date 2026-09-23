@@ -1,11 +1,32 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
 
 public class Utf8ConsoleTest
 {
+    [Theory]
+    [InlineData("ref/string", "", KimiDeclarationId.WriteLine)]
+    [InlineData("Text.Utf8Slice{r}", "\n    origin r.source == static", KimiDeclarationId.WriteLineUtf8)]
+    public void ExpectedFunctionTypeSelectsTheConsoleOverload(string parameter, string origins, KimiDeclarationId selected)
+    {
+        var c = MinimalEmissionTest.Analyze("alias Output => Kimi.Console\nlet print: (" + parameter + ") -> () = Output.writeLine" + origins);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
+            var visitor = new SelectionVisitor();
+            visitor.Visit(c.Kotonoha.RootKoto);
+            Assert.Equal(selected, visitor.Selected);
+        }
+    }
+
+    [Fact]
+    public void AnUntypedConsoleFunctionReferenceCannotChooseAnOverload()
+        => Assert.False(MinimalEmissionTest.Analyze("let print = Console.writeLine").Binding.Result.IsComplete);
+
     [Fact]
     public void BoundedConsoleInterpolationUsesExactlyThirtyThreeStackBytes()
     {
@@ -84,5 +105,20 @@ public class Utf8ConsoleTest
         var c = MinimalEmissionTest.Analyze("let text = Text.utf8(\"\\(42)\")\nConsole.writeLine(text)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == Kimi.Compiler.OwnershipFailure.ComparisonLoanConflict);
+    }
+
+    private sealed class SelectionVisitor : KotoVisitor
+    {
+        internal KimiDeclarationId? Selected { get; private set; }
+
+        public override void Visit(Koto node)
+        {
+            if (node is MemberAccessKoto && node.BoundSymbol?.Name == "writeLine")
+            {
+                this.Selected = node.BoundSymbol.LibraryDeclaration;
+            }
+
+            base.Visit(node);
+        }
     }
 }

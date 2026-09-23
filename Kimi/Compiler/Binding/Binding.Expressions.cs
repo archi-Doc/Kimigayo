@@ -199,7 +199,7 @@ public sealed partial class Binding
         if (actual is null && expected?.Kind == BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
             node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsAcquisitionPosition(node))
         {
-            return this.BindFunctionReference(node, symbol, expected);
+            return this.BindFunctionReference(node, symbol, expected, scope);
         }
 
         if (expected?.Kind == BoundTypeKind.Function && actual?.Kind == BoundTypeKind.Closure &&

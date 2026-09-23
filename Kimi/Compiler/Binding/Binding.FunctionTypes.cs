@@ -60,19 +60,57 @@ public sealed partial class Binding
         return true;
     }
 
-    private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required)
+    private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope)
     {
-        if (symbol.Declaration is not FunctionKoto function || symbol.Next is not null ||
-            function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || symbol.ReceiverIndex >= 0 ||
-            symbol.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+        BindingSymbol? selected = null;
+        for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
         {
-            return Fail(use, BindingFailure.Unsupported, true);
+            this.BindHeader(candidate);
+            if (candidate.Declaration is not FunctionKoto function ||
+                function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || candidate.ReceiverIndex >= 0 ||
+                candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+            {
+                return Fail(use, BindingFailure.Unsupported, true);
+            }
+
+            if (!this.Accessible(candidate, scope) || !this.FunctionReferenceFits(use, candidate, function, required))
+            {
+                continue;
+            }
+
+            if ((function.Modifier & ModifierKind.Unsafe) != 0)
+            {
+                return Fail(use, BindingFailure.UnsafeFunctionValue);
+            }
+
+            if (selected is not null)
+            {
+                return Fail(use, BindingFailure.Ambiguous, true);
+            }
+
+            selected = candidate;
         }
 
+        if (selected is null)
+        {
+            return Fail(use, BindingFailure.TypeMismatch);
+        }
+
+        use.BoundSymbol = selected;
+        if (use is MemberAccessKoto member)
+        {
+            member.Right.BoundSymbol = selected;
+        }
+
+        return Complete(use, required);
+    }
+
+    private bool FunctionReferenceFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required)
+    {
         var parameters = required.Components[0];
         if (parameters.Components.Count != function.Parameters.Count)
         {
-            return Fail(use, BindingFailure.TypeMismatch);
+            return false;
         }
 
         var origins = this.originScratch.Rent(function.Origins.Count);
@@ -87,7 +125,7 @@ public sealed partial class Binding
             {
                 if (function.Parameters[i].Type.BoundType is not { } parameter)
                 {
-                    return Fail(use, BindingFailure.TypeMismatch);
+                    return false;
                 }
 
                 // Only the implementation's per-call binders are inferred; the
@@ -103,7 +141,7 @@ public sealed partial class Binding
 
             if (!this.SolveOriginInference(inference, origins, inputs, use))
             {
-                return Fail(use, BindingFailure.TypeMismatch);
+                return false;
             }
 
             for (var i = 0; i < function.Parameters.Count; i++)
@@ -111,17 +149,17 @@ public sealed partial class Binding
                 var parameter = Substitute(function.Parameters[i].Type.BoundType!);
                 if (HasUnsubstitutedOrigin(parameter, function) || !this.FitsTypeAt(parameters.Components[i], parameter, use))
                 {
-                    return Fail(use, BindingFailure.TypeMismatch);
+                    return false;
                 }
             }
 
             if (!this.CheckCallOriginRelations(function, origins, inputs, use, null) ||
                 symbol.Type is not { } result || HasUnsubstitutedOrigin(result = Substitute(result), function) || !this.FitsTypeAt(result, required.Components[1], use))
             {
-                return Fail(use, BindingFailure.TypeMismatch);
+                return false;
             }
 
-            return Complete(use, required);
+            return true;
         }
         finally
         {
