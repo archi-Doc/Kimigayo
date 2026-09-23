@@ -1,10 +1,10 @@
 # Language milestones
 
 Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md).
-Programs 1–24 have source files; programs 25–38 have design and verification scopes.
+Programs 1–24 and 29 have source files; programs 25–28 and 30–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 20–24 are specification targets beyond current
+not an execution claim. Milestones 23–24 are authored targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -19,7 +19,7 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone2](Milestone2.kimi) | `let`/`var`, `i32`, arithmetic, `while`, `if`/`else`, `$abort` |
 | [Milestone3](Milestone3.kimi) | Explicit `main`, function calls, arguments/results, `return`, `defer` |
 | [Milestone4](Milestone4.kimi) | `struct`, `init`, fields, whole-value Move, owned parameters, `deinit` |
-| [Milestone5](Milestone5.kimi) | `uniq`/`ref`, returned borrow, `origin`/`from`, scope and destruction lifetimes |
+| [Milestone5](Milestone5.kimi) | `uniq`/`ref`, returned borrow, `during`, scope and destruction lifetimes |
 | [Milestone6](Milestone6.kimi) | Value-producing `loop`, guarded `match`, `continue`, named `exit`, `yield`, `require` |
 | [Milestone7](Milestone7.kimi) | Two-dimensional fixed arrays, nested `for`, cross-loop transfers, Slice reads |
 | [Milestone8](Milestone8.kimi) | Groups nested in a struct, generic struct/function, generic Copy/Move acquisition |
@@ -43,10 +43,13 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-23**, after program 20 completion (with the program 13 and 20 harnesses) and authoring programs 23–24; older results retain their original verification scope. Build means a native
+As of **2026-09-23**, programs 1–22 and 29 pass their Release harnesses after the Borrow Origin suffix integration; older results retain their original verification scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
+
+Affected programs now use postfix `during` annotations with the same intended behavior.
+An unchanged target run compiles the checked-in program without test-specific edits.
 
 | Program | Created | Build | Tests | Evidence / boundary |
 | --- | --- | --- | --- | --- |
