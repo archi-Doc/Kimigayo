@@ -78,7 +78,7 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 | 26 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 27 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 28 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 29 | YES | NOT_RUN | NOT_RUN | Program authored 2026-09-23; the mutation operations and element literals run natively (2026-09-23); element reads, indexed replacement, `^n`/`Index` overloads and owning iteration are pending (P29) |
+| 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged source and native O0/O2 variants/rejections pass through `test-milestone29.ps1`; P29 remains IN_PROGRESS for allocation/cost evidence and neighboring support boundaries |
 | 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 32 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -1331,7 +1331,7 @@ before installing the new one, `pop` returns an Option that owns the element, an
 owning iteration consumes the Array; leaving the loop early destroys the current
 binding and then the unyielded elements. `last` is destroyed at scope exit.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (verified in Debug/Release at O0/O2):
 
 ```text
 No tasks.

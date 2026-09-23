@@ -6,6 +6,7 @@ A few lines per session. Evidence lives in commits and `bin/verify/` (earlier ru
 
 | Date | Summary |
 | --- | --- |
+| 2026-09-23 | **P29 session 5 (first requested 60-minute run):** unit window 14:47:39–15:47:39 JST; the current cleanup unit finished at 15:52, then session verification finished at 16:02:47. Seven units add scalar reads, replacement, Index/`^n`, Index mutation overloads, owning iteration, the immutable Program 29 harness and transfer/Abort cleanup (`0d5dc46a`..`58196c74`). The old pending-Binding expectation was updated (`716692f9`). Recovery session `bin/verify/20260923-065604-session-p29-session5-recovery`: 11,600 tests per configuration, 80 native executions, all 23 harnesses (1–22 and 29; 1,153 Release checks). Program 29 passes 81 checks per configuration; P29 remains IN_PROGRESS for allocation/cost evidence and neighboring boundaries. No draft/source-program edits or NativeAOT. |
 | 2026-09-09 – 09-16 | Parser, Koto syntax and reload; Binding foundations; scalar, string, aggregate, match and cleanup execution (examples); Programs 1–5. |
 | 2026-09-17 | Completion plan with M1–M15 / I1–I34 (units 1–32); default-expression and ownership continuations; Kimi library organization; Programs 6–11. |
 | 2026-09-18 | Ownership joins and terminal guards (units 33–67); Programs 12–15; 38-program roadmap. |
