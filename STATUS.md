@@ -4,7 +4,7 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 
 ## Summary
 
-- **Verification baseline (2026-09-23, source `a2779d6a`):** Debug/Release builds are warning-free; each full managed suite passes 11,488 tests. All 21 milestone harnesses (1–20 and 22) pass 1,011 Release checks. Program 21 builds and runs with the Copy-read spelling only (PLAN G15); Program 29 is authored and binds up to its Array operations. Evidence: `bin/verify/20260923-023637-session-p29-session2b`.
+- **Verification baseline (2026-09-23, source `9038c638`):** Debug/Release builds are warning-free; each full managed suite passes 11,493 tests. All 21 milestone harnesses (1–20 and 22) pass 1,011 Release checks. Program 21 builds and runs with the Copy-read spelling only (PLAN G15); Program 29 binds up to its Array operations. Evidence: `bin/verify/20260923-030335-session-p29-session3`.
 - **Generic generation:** the specification's initial profile monomorphizes (§21.3.1). Scalar, Never and length-generic functions, generic struct constructors/field reads, forwarded generic calls inside generic bodies, enum payload constructions and owned result joins are generated as one concrete body per closed substitution; explicit specializations keep their selected body. Every generic shape reaches generation this way; the transitional shared path (writer, entry planning and template walk) is removed, and `BodyLowering` validates each instance under its substitution.
 - **Mods:** the host interface is deferred (Appendix D); `Compilation.Bind` does not execute Mods.
 
@@ -77,7 +77,7 @@ identities and rebind invalidation are preserved.
 | --- | --- |
 | `Kimi.Copy`, `Owned`, `Callable`, `Sealed` | Intrinsic Contract identities; existing proof rules unchanged. |
 | `Kimi.Option<T>`, `Result<T,E>`, `Iterator`, `Slice<T>` | Existing enum/Contract/view declarations; bounded generation and protocol support below. |
-| `Kimi.Array<T>` | Compiler-managed owning dynamic sequence declaration (SPEC §4.5): `Array<T>` Types form, are Non-Copy, expose `length`, `capacity` and `indices`, and accept typed literals; storage, mutation operations and generation are not implemented (PLAN P29), so Array values are rejected by ownership analysis as unsupported. |
+| `Kimi.Array<T>` | Compiler-managed owning dynamic sequence (SPEC §4.5, §4.7.4): `Array<T>` Types form and are Non-Copy; the typed empty literal is a zeroed `{buffer, length, capacity}` handle that allocates nothing; `length`, `capacity` and `indices` read through owned and borrowed (`ref`/`uniq`) handles; handles pass as owned parameters and results and are released at scope exit (`__kimi_array_init`/`__kimi_array_free`). Element literals and the mutation operations (`reserve`, `append`, `insert`, `pop`, `remove`, `clear`, `shrinkToFit`), indexing, iteration and aggregates holding a handle are not implemented (PLAN P29): element literals are rejected by ownership analysis and nested handles fail generation with a diagnostic. |
 | `Kimi.SliceIterator<T>` | Compiler-supplied concrete helper with init/next; Slice.iterate uses it. This does not finalize a general public iterator-constructor API. |
 | `Kimi.Console.writeLine(text: ref/string) -> ()` | Borrowed-string UTF-8 output; the argument Place stays usable. |
 | `Kimi.Intrinsics.replace<T>`, `exchange<T>`, `swap<T>` | Existing whole-value updates, with the storage limits below. |
