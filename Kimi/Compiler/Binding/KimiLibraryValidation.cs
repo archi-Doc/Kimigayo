@@ -34,6 +34,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.MakeObj => this.ValidMakeObj(),
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
+                        KimiDeclarationId.Array => this.ValidArray(symbol),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
                 state = matches ? KimiDeclarationState.Validated : KimiDeclarationState.Invalid;
@@ -240,6 +241,27 @@ public sealed partial class KimiLibrary
             if (slice.Members[i] is not FunctionKoto)
             {
                 return false; // Slice storage is compiler-managed; helpers cannot add fields.
+            }
+        }
+
+        return true;
+    }
+
+    private bool ValidArray(BindingSymbol symbol)
+    {
+        if (symbol.Intrinsic != IntrinsicKind.None || !ReferenceEquals(symbol.Scope, this.Scope) ||
+            symbol.Declaration is not StructKoto { Name: "Array", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } array ||
+            !ReferenceEquals(array.Parent, this.Kotonoha.RootKoto) ||
+            array.GenericParameterNodes[0] is not GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null })
+        {
+            return false;
+        }
+
+        for (var i = 0; i < array.Members.Count; i++)
+        {
+            if (array.Members[i] is not FunctionKoto)
+            {
+                return false; // Array storage is compiler-managed; helpers cannot add fields.
             }
         }
 

@@ -62,6 +62,7 @@ public enum BoundTypeKind : byte
     Slice,
     Range,
     Closure,
+    Array,
 }
 
 internal enum BindingFailure : byte

@@ -159,12 +159,12 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Library.IsCompleteLibrary);
-        Assert.Equal(14, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(15, c.Library.ValidatedDeclarationCount);
         Assert.Equal(31, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];
-            if ((int)entry.Id < 6 || entry.Id is KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.Slice or KimiDeclarationId.TestTempDirectory)
+            if ((int)entry.Id < 6 || entry.Id is KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.Slice or KimiDeclarationId.Array or KimiDeclarationId.TestTempDirectory)
             {
                 Assert.Equal(KimiDeclarationState.Validated, entry.State);
                 Assert.Same(entry.Symbol, c.Library.GetSymbol(entry.Id));
@@ -199,9 +199,9 @@ public class CoreCatalogTest
     public void MissingCatalogEntriesDoNotCreateLookupCandidates()
     {
         var c = Compilation.CreateForTest();
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: ::Kimi.Array<i32>) => ()");
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: ::Kimi.Dictionary<i32, i32>) => ()");
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Array));
+        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Dictionary));
     }
 
     [Fact]

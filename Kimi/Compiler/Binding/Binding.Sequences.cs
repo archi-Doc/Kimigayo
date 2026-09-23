@@ -9,28 +9,30 @@ public sealed partial class Binding
     private bool BindSequenceMember(MemberAccessKoto source, BindingScope scope, out BoundType? result)
     {
         result = null;
-        if (source.Right is not IdentifierNameKoto name || name.IdentifierName is not ("indices" or "length" or "isEmpty" or "start" or "end"))
+        if (source.Right is not IdentifierNameKoto name || name.IdentifierName is not ("indices" or "length" or "isEmpty" or "capacity" or "start" or "end"))
         {
             return false;
         }
 
         var receiver = this.BindNode(source.Left, scope);
-        if (ReferenceTypes.IsArray(receiver))
+        if (ReferenceTypes.IsArray(receiver) || receiver is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Array }] })
         {
-            receiver = receiver!.Components[0];
+            receiver = receiver!.Components[0]; // SPEC 4.6.1: metadata shares access through a reference to the sequence.
         }
 
-        if (receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice))
+        if (receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array))
         {
             return false;
         }
 
+        // SPEC 4.6.1 and 4.7.4: fixed arrays and Array expose length and indices, Slice adds isEmpty, Array adds capacity.
         var range = receiver.Kind == BoundTypeKind.ResolvedRange;
         var valid = name.IdentifierName switch
         {
             "indices" => !range,
             "length" => true,
-            "isEmpty" => receiver.Kind != BoundTypeKind.FixedArray,
+            "isEmpty" => receiver.Kind is BoundTypeKind.Slice or BoundTypeKind.ResolvedRange,
+            "capacity" => receiver.Kind == BoundTypeKind.Array,
             _ => range,
         };
         if (!valid)

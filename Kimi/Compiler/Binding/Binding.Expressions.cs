@@ -480,6 +480,14 @@ public sealed partial class Binding
                 }
 
                 return array.Elements.Count == expected.Length ? Complete(node, expected) : Fail(node, BindingFailure.TypeMismatch);
+            case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.Array }:
+                // SPEC 4.3: an Array literal acquires each element as T; an empty literal needs only the expectation.
+                for (var i = 0; i < array.Elements.Count; i++)
+                {
+                    this.RequireType(array.Elements[i], scope, expected.Components[0]);
+                }
+
+                return Complete(node, expected);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
         }

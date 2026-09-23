@@ -58,6 +58,12 @@ public sealed partial class Binding
             return true;
         }
 
+        if (type.Kind == BoundTypeKind.Array && kind == IntrinsicKind.Copy)
+        {
+            result = ConstraintProof.Refuted; // SPEC 4.5: Array is Non-Copy for every element Type.
+            return true;
+        }
+
         if (type.Kind == BoundTypeKind.ResolvedRange || (type.Kind == BoundTypeKind.Slice && kind == IntrinsicKind.Copy))
         {
             result = kind == IntrinsicKind.Copy || type.Kind == BoundTypeKind.ResolvedRange ? ConstraintProof.Proven : ConstraintProof.Refuted;

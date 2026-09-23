@@ -187,7 +187,7 @@ public sealed partial class Binding
             }
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
-                (StructStorage.IsStruct(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure || ReferenceTypes.IsStorage(operandType) ||
+                (StructStorage.IsStruct(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array || ReferenceTypes.IsStorage(operandType) ||
                     ScalarTypes.Supports(operandType) || (ReferenceEquals(operandType, BoundType.String) && IsCallArgument(conversion))) &&
                 shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
             {

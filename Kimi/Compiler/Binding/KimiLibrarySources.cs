@@ -16,6 +16,7 @@ public sealed partial class KimiLibrary
             Read("Core.kimi"),
             Read("Iterator.kimi"),
             Read("Slice.kimi"),
+            Read("Array.kimi"),
             Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
             Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),
             Read("Test.kimi", KimiLibraryContainer.Test, signatures: true),

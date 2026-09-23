@@ -680,6 +680,13 @@ public sealed partial class Binding
 
     private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null)
     {
+        // SPEC 4.5: Array<T> is the compiler-managed owning dynamic sequence behind the library declaration.
+        if (kind == BoundTypeKind.Array || (symbol is not null && ReferenceEquals(symbol.Declaration, this.Library.DynamicArray.Declaration)))
+        {
+            kind = BoundTypeKind.Array;
+            symbol = this.Library.DynamicArray.Declaration.BoundSymbol ?? this.Library.DynamicArray;
+        }
+
         if (kind == BoundTypeKind.Slice || (symbol is not null && ReferenceEquals(symbol.Declaration, this.Library.Slice.Declaration)))
         {
             kind = BoundTypeKind.Slice;

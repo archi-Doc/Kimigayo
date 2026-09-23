@@ -8,6 +8,8 @@ SPEC Chapter 22 and its references remain authoritative.
   files to `KimiLibrarySources.Sources.All`; the project embeds `Library/*.kimi`.
   Root-level functions follow ordinary startup parsing, so library helper
   functions belong inside declaration containers such as groups or structs.
+- `Slice.kimi` and `Array.kimi` declare the compiler-managed sequence Types; their storage,
+  metadata and built-in operations are supplied by the compiler and they may only add functions.
 - `Intrinsics.kimi` and `Console.kimi` contain signatures without source bodies.
   Their private loader supplies the owning group. Only catalog-registered compiler
   implementations are allowed in these groups; this is not public syntax for

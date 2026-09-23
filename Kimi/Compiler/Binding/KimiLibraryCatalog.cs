@@ -22,7 +22,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.TestTempDirectory, "tempDirectory", KimiLibraryContainer.Test, Function: CompilerFunctionKind.TestTempDirectory),
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
-        new(KimiDeclarationId.Array, "Array", SourceExpected: false),
+        new(KimiDeclarationId.Array, "Array"),
         new(KimiDeclarationId.Index, "Index", SourceExpected: false),
         new(KimiDeclarationId.Range, "Range", SourceExpected: false),
         new(KimiDeclarationId.ResolvedRange, "ResolvedRange", SourceExpected: false),

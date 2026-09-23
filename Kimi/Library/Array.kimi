@@ -1,0 +1,3 @@
+// Compiler-managed dynamic Array (SPEC 4.5, 4.7): storage, length/capacity metadata and the mutation
+// operations are supplied by the compiler; helpers may be added here as functions only.
+public struct Array<T>
