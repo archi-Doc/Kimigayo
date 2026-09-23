@@ -544,6 +544,8 @@ public sealed partial class Binding
                     BindingFailure.InvalidPattern => DiagnosticCode.InvalidPattern_Kd,
                     BindingFailure.NonExhaustiveMatch => DiagnosticCode.NonExhaustiveMatch_Kd,
                     BindingFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
+                    BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
+                    BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };

@@ -365,6 +365,12 @@
   + Name="ExclusiveBorrowRequired_Kd"
     Message="A directly owned Place is not lent exclusively without @uniq or @objuniq"
 
+  + Name="MissingSpecializationTarget_Kd"
+    Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"
+
+  + Name="SpecializationInputMismatch_Kd"
+    Message="No same-Name generic function matches the specialization's receiver and parameter structure after substitution"
+
   + Name="ComparisonLoanConflict_Kd"
     Message="This operation conflicts with an active inspection, argument, or element access loan"
 

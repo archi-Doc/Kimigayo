@@ -201,13 +201,19 @@ public sealed partial class Binding
 
             BindingSymbol? original = null;
             var matches = 0;
+            var candidates = 0; // SPEC 8.8.1: same Name, kind and generic slots; input structure is matched below.
             for (var candidate = symbol.Scope.Values.GetValueOrDefault(function.Name); candidate is not null; candidate = candidate.Next)
             {
                 if (candidate.Declaration is not FunctionKoto { IsSpecialization: false } ordinary ||
-                    ordinary.GenericArguments.Count != arguments.Length || ordinary.Parameters.Count != function.Parameters.Count ||
-                    !SameSlotKinds(ordinary, lengths) || candidate.ReceiverIndex != symbol.ReceiverIndex)
+                    ordinary.GenericArguments.Count != arguments.Length || !SameSlotKinds(ordinary, lengths) || candidate.ReceiverIndex != symbol.ReceiverIndex)
                 {
                     continue;
+                }
+
+                candidates++;
+                if (ordinary.Parameters.Count != function.Parameters.Count)
+                {
+                    continue; // An input-structure mismatch, not a missing target.
                 }
 
                 var equal = true;
@@ -227,7 +233,8 @@ public sealed partial class Binding
 
             if (matches != 1)
             {
-                Fail(function, matches == 0 ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous);
+                // SPEC 8.8.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
+                Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
                 continue;
             }
 

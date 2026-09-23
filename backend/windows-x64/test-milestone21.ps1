@@ -134,7 +134,7 @@ $invalid = [ordered]@{
     StaticResult = @{ source = $original.Replace($signature, '    values: ref{source}/[3 of i32], index: isize) -> ref{static}/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
     WrongResult = @{ source = $original.Replace($signature, '    values: ref{source}/[3 of i32], index: isize) -> i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
     WrongLabel = @{ source = $original.Replace($signature, '    items: ref{source}/[3 of i32], index: isize) -> ref{source}/i32').Replace('return values[2 - index]@ref/i32', 'return items[2 - index]@ref/i32'); diagnostic = 'IncompatibleContractImplementation_Kd' }
-    WrongStructure = @{ source = $original.Replace($signature, '    values: ref{source}/[3 of i32]) -> ref{source}/i32').Replace('require index >= 0 and index < 3', 'let index: isize = 0').Replace('return values[2 - index]@ref/i32', 'return values[2]@ref/i32'); diagnostic = 'MissingContractImplementation_Kd' }
+    WrongStructure = @{ source = $original.Replace($signature, '    values: ref{source}/[3 of i32]) -> ref{source}/i32').Replace('require index >= 0 and index < 3', 'let index: isize = 0').Replace('return values[2 - index]@ref/i32', 'return values[2]@ref/i32'); diagnostic = 'SpecializationInputMismatch_Kd' }
     Partial = @{ source = $original.Replace('specialize func pick<3, i32>(', 'specialize func pick<3, T>('); diagnostic = 'InvalidTypeFormation_Kd' }
     Duplicate = @{ source = $original.Replace($specialization, $specialization + $specialization); diagnostic = 'DuplicateBinding_Kd' }
     Ambiguous = @{ source = $original.Replace($specialization, $ambiguous + $specialization); diagnostic = 'AmbiguousBinding_Kd' }

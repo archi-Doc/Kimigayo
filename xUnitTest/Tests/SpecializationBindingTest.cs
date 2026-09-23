@@ -173,6 +173,21 @@ public class SpecializationBindingTest
         Assert.All(c.Binding.Issues, x => Assert.Equal(Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd, x.Code));
     }
 
+    // SPEC 8.8.1: diagnostics distinguish no target, an input-structure mismatch, multiple targets and a contract mismatch.
+    [Theory]
+    [InlineData("specialize func missing<i32>(value: ref/i32) -> i32 => 2", Kimi.DiagnosticCode.MissingSpecializationTarget_Kd)]
+    [InlineData("specialize func weight<i32, i64>(value: ref/i32) -> i32 => 2", Kimi.DiagnosticCode.MissingSpecializationTarget_Kd)]
+    [InlineData("specialize func weight<i32>(value: ref/i64) -> i32 => 2", Kimi.DiagnosticCode.SpecializationInputMismatch_Kd)]
+    [InlineData("specialize func weight<i32>(value: ref/i32, other: i32) -> i32 => 2", Kimi.DiagnosticCode.SpecializationInputMismatch_Kd)]
+    [InlineData("func weight<T>(other: ref/i32) -> i32 => 3\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2", Kimi.DiagnosticCode.AmbiguousBinding_Kd)]
+    [InlineData("specialize func weight<i32>(value: ref/i32) -> i64 => 2", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    public void TargetIdentificationDiagnosticsAreDistinct(string specialization, Kimi.DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(Ordinary + specialization);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
+    }
+
     [Fact]
     public void StillChecksOrdinaryBody()
     {

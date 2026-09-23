@@ -111,6 +111,8 @@ internal enum BindingFailure : byte
     // SPEC 15.1.5 lending rule: a bare Non-Copy Place needs @move, and a directly owned Place needs @uniq.
     TransferRequired,
     ExclusiveBorrowRequired,
+    MissingSpecializationTarget,
+    SpecializationInputMismatch,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
