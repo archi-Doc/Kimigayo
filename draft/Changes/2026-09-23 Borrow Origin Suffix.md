@@ -1,4 +1,4 @@
-# 借用 Origin の後置表記
+# 借用 Origin の後置表記 — 最終仕様変更案
 
 ## 1. 位置付け
 
@@ -40,7 +40,7 @@ OriginAtom       := Name ("." Name)? | "static" | "(" OriginExpression ")"
 
 `FunctionParameters`、`CoreType`、`Semantics`、`Name` は既存の構文・役割を引き継ぐ。タプル要素、配列要素、型引数などに含まれる型式にも `Type` を用いる。文法上解析できても、注釈先や使用位置が不適切ならエラーとする。
 
-`during` は借用注釈の位置だけで認識する文脈依存キーワードとし、それ以外では通常の名前として使用できる。空白によって解釈を変えず、専用の改行継続規則も追加しない。長い型は、既存の区切り内の継続規則に従って改行する。
+`during` は `AnnotatedType` の型本体と後置 `?` の列に続く位置で認識する文脈依存キーワードとし、それ以外では通常の名前として使用できる。認識は名前解決や注釈先の適格性に依存しない。空白によって解釈を変えず、専用の改行継続規則も追加しない。
 
 ```text
 ref/T? during a            // 可
@@ -49,19 +49,32 @@ ref/T during a?            // 不可
 ref/T during (a and b)?     // 不可
 ```
 
+長いシグネチャは、既存の行頭 `->` によるヘッダー継続を使う。
+
 ```kimi
-func borrow<T>(x: ref/Long<T>) -> (ref/Long<T>
-    during x)
+func borrow<T>(x: ref/Long<T>)
+    -> ref/Long<T> during x
     return x
 ```
 
-この例の `during` は型を囲む括弧の内側にある。閉じた型の次の行から注釈を続ける規則は追加しない。
+結果型と注釈も分ける場合は、括弧内の継続を使う。`->` の行で開いた括弧の内容はさらに一段深くする。本体はヘッダー開始行の一段下に置く。
+
+```kimi
+func borrow<T>(x: ref/Long<T>)
+    -> (ref/Long<T>
+        during x)
+    return x
+```
+
+区切りが閉じた型の次の行から、`during` だけで継続することはできない。
 
 ### 3.2. 注釈先の決定
 
 `during` は、**同じ `AnnotatedType` の `SemanticsType` が `Semantics "/" …` で始まる場合、その先頭の Semantics** に付く。`TypeAtom` で始まる場合は「対象なし」のエラーとする。Optional の展開、名前解決、別名展開、冗長な `owner` の除去によって対象を探し直さない。
 
 型の後置構文（`{v}`・`?`・`during`）は、括弧の内側を注釈先として探索しない。`?` は直前の型全体を包む。名前付き型、型引数、タプル、配列、関数型などの内部も、外から注釈先として探索しない。
+
+同じ `AnnotatedType` では、記述順は **本体 → `?` → `during`**、適用順は **本体 → `during` → `?`** である。`during` は Optional 化される前の先頭 Semantics に付く。
 
 対象にできるのは `ref`・`uniq`・`objref`・`objuniq` と、安全な借用であることが宣言の条件から証明される Semantics パラメーターだけである。`owner`・`obj`・`rc`・`arc`・`unsafe` は対象にできない。構文で対象を固定し、その適格性を意味検査で確認する。
 
@@ -109,7 +122,7 @@ origin a and b outlives c
 
 ### 4.1. Optional と多層借用
 
-`?` は Semantics 列全体より弱く、関数型の `->` より強く結合する既存規則を維持する。注釈先と Origin 指定を確定した後に `?` を展開し、一つの `?` ごとにその型全体を `::Kimi.Option` で包む。名前解決に依存せず、二重の Option も平坦化しない。
+`?` は Semantics 列全体より弱く、関数型の `->` より強く結合する。§3.2 の順序で、一つの `?` ごとに型全体を `::Kimi.Option` で包む。名前解決に依存せず、二重の Option も平坦化しない。
 
 | 表記 | 意味・同値な型表記 |
 | --- | --- |
@@ -149,6 +162,8 @@ ref/View<ref/U during c>{v} during a
 この例では `a` は外側の借用、`c` は型引数内の借用、`v` は `View` のスキーマに対する binding set の名前であり、互いに異なる役割を持つ。`v` 自体を scalar Origin として使用できず、必要なスロットは `v.source` のように射影する。
 
 `{v}` は名前付き型に付ける。`View<T>{v}?` と `(View<T>{v})` は許可するが、`View<T>?{v}` と `(View<T>){v}` は許可しない。型宣言のスキーマヘッダー、集合の命名条件・有効範囲・末尾カンマの規則は維持する。
+
+例えば結果の `View<T>{result}` と関係句 `origin result.source == value` は、結果のスロットを入力の Origin に関係付ける。`View<T>{value}` で既存の入力 Origin を適用する省略形はない。直接の結果借用は `ref/T during value` と書く。
 
 ## 5. 意味と適用境界
 
@@ -192,6 +207,8 @@ AdaptationCore := Semantics "/" AdaptationCore | AdaptationAtom
 
 注釈を含む型に続くメンバー選択・呼び出し・添字は、その型を閉じる区切りの外に書く。関数型全体のグルーピング、型引数と比較の区別、空白・隣接規則は既存どおりとし、外側の `->` は消費しない。Semantics 省略形と `@move` に注釈は追加しない。
 
+型の先頭で識別子形の名前の次のトークンが `/` なら、再帰的に Semantics 接頭辞として読む。一方、型引数・binding set・グルーピングなどで型の先頭構文が完結した後の `/` は割り算である。空白ではこの区別を変えず、`Name{…}/` を旧借用注釈として読み直さない。
+
 構文を確定してから注釈先を固定し、Optional 展開後の位置で使用可否を検査する。
 
 - 対象型の外側 Semantics 列に書かれた借用 Origin は禁止し、操作・被演算子・制約から推論する。グルーピングではこの禁止を回避できない。
@@ -202,8 +219,12 @@ AdaptationCore := Semantics "/" AdaptationCore | AdaptationAtom
 | `saved@(ref/T? during a)`、`saved@Option<ref/T during a>` | 対象型は `Option<ref/T during a>` |
 | `saved@(ref/T? during value.source).count` | `)` で対象型が終わり、`.count` は結果へのメンバー選択 |
 | `saved@ref/T? during a`、`value@ref/T during a` | 構文エラー：最上位の `during` は不可 |
+| `saved@(ref/T during a)?` | 対象型は `Option<ref/T during a>`。内部の注釈として保持可能 |
 | `value@(ref/T during a)` | 外側借用への明示 Origin のため不可 |
 | `value@ref during a` | 不可：Semantics 省略形には注釈を追加しない |
+| `x@T / y` | 対象型を `T/y` として解析。T には Semantics としての適格性が必要 |
+| `x@View<T>{v} / y` | `(x@View<T>{v}) / y`。binding set 付きの型が完結しているため割り算 |
+| `x@s{a}/T` | `(x@s{a}) / T`。s が Semantics だけなら型として不適格。旧表記の補足診断は §6.2 |
 
 `saved` が同じ完全な Option 型なら通常の取得が可能である。メンバー選択などの後続操作には、それ自体の適格性も必要である。借用してから Some で包む暗黙操作や、新しい型変換は追加しない。適合性の検査結果によって別の構文へ読み直さない。実行時 `is` など、一般の型構文を許可していない位置は拡張しない。
 
@@ -223,7 +244,10 @@ AdaptationCore := Semantics "/" AdaptationCore | AdaptationAtom
 
 | 状況 | 診断・修正候補 |
 | --- | --- |
-| 旧借用注釈 | 対象層を保つ新表記。例：`ref{a}/uniq{b}/T` → `ref/(uniq/T during b) during a` |
+| 型位置の旧借用注釈 | 対象層を保つ新表記。例：`ref{a}/uniq{b}/T` → `ref/(uniq/T during b) during a` |
+| Adaptation の `Name{…}/…` が構文・型解決エラーとなり、Name の Semantics としての役割を確認できる | 通常のエラーに旧借用注釈の可能性を補足。外側 Origin を指定する Adaptation は不可であり、借用操作なら `x@s/T` で推論させる |
+| 型だけを要求する位置で、型の直後の `from a` が構文エラーになる | 借用注釈は `during a` と案内。注釈先の適格性は別途検査 |
+| `during x` の x が、外側に安全な借用を持たない値 | x の名前だけでは Origin を指定できない。宣言済みスキーマのスロットがあれば `x.slot`、ローカルの格納領域を借りる意図なら Borrow と推論を案内 |
 | `(ref/T)? during a`、`(ref/T?) during a` | 対象なし。`ref/T? during a` を案内 |
 | 同じ階層での `during` の繰り返し・括弧外からの再注釈 | 余分な後置注釈。括弧の外なら「対象なし」とし、最初の注釈を上書きしない |
 | `x@ref/T? during a` | 最上位の注釈は不可。`x@(ref/T? during a)` を案内し、使用可否は別途検査 |
@@ -233,7 +257,9 @@ AdaptationCore := Semantics "/" AdaptationCore | AdaptationAtom
 
 連言の右項が型・Contract と Origin の両方として有効な場合は、正しい連言の可能性があるため、注意は任意の lint とする。`T is (ref/U during a) and B` のように型を括弧で区切れば、その注意の対象外とする。Origin としての補足検索では新しい名前を導入せず、通常の名前解決や受理結果を変えない。
 
-行頭の `during` が通常の名前として成立するコードには、改行の診断を出さない。結果 Origin の省略に関する補足は §5.2 に従う。
+旧表記の補足は構文エラー時だけでなく名前解決の失敗時にも行うが、正常な binding set と割り算を旧表記として警告しない。`x@(s/T during a)` は型表記の説明には使えても、外側借用注釈を許す修正候補にはしない。補足検索は受理結果や束縛を変えない。
+
+Borrow の案内は、例えばローカルの `let r = x@ref` で Origin を推論する方法を示す。`during (x@ref)` は Origin 式ではなく、Borrow しても寿命は延びない。通常の名前として成立する `during`・`from` には、改行や旧注釈の診断を出さない。結果 Origin の省略の補足は §5.2 に従う。
 
 ### 6.3. 検証範囲
 
@@ -241,8 +267,8 @@ AdaptationCore := Semantics "/" AdaptationCore | AdaptationAtom
 
 - 型の各組合せ、括弧の境界、記述順序、複数注釈、全安全借用 Semantics と総称 Semantics の証明。
 - 名前導入・省略・再構成・量化・既存の借用検査の意味保存。
-- Adaptation のグルーピングと内部の型引数・要素、後続の演算子・メンバー選択・呼び出しの境界。
-- 改行、空白、通常の名前としての `during`・`from`、誤記の診断と正常なコードへの誤警告の防止。
+- Adaptation の括弧内外の `?`、内部の型引数・要素、後続操作と割り算の境界、旧表記の解析結果と名前解決時の診断。
+- 行頭 `->` と括弧内の改行、空白、通常の名前としての `during`・`from`、旧 `from` と所有値の Origin 誤記、正常なコードへの誤警告の防止。
 - 標準表記での再解析、注釈と対象のソース位置、不正な多重注釈や深い入力からの回復。
 
 受理例には既存の意味条件も必要であり、解析できるだけでは実装完了としない。
@@ -262,6 +288,8 @@ AdaptationCore := Semantics "/" AdaptationCore | AdaptationAtom
 
 注釈のソース情報は明示注釈がある箇所だけに追加し、構文出現ごとの情報を共有された解決済み型に書き込まない。効果はコンパイル時間とメモリについて測定し、実行時の高速化とは区別する。
 
+旧表記の診断のために先読み走査を戻さない。`Name{…}` は binding set と共通の区切り解析・エラー回復で一度だけ読み、閉じた直後の一トークンが `/` かを確認する。追加の形状判定だけが O(1) であり、括弧内の解析や必要な名前解決まで O(1) とするものではない。この情報は補足診断にだけ使い、構文選択を変えない。
+
 ### 7.2. 欠点と記述場所による負担
 
 `during` によって単層の記述が長くなり、多層借用・複合 Origin・Adaptation の末尾注釈では括弧が増える。型と注釈の距離も長くなり得るため、長い型では §3.1 の改行を利用する。推論やジェネリックで常に負担を解消できるわけではない。
@@ -277,12 +305,14 @@ AdaptationCore := Semantics "/" AdaptationCore | AdaptationAtom
 | `SPEC.md` の Origin 案内、第1章 §1.2 | 前置注釈への案内と `{}` の借用用途を後置 `during` に更新 |
 | 第2章 §2.4・§2.5.1 | `{}` の役割から借用式を除き、`during` の文脈依存の用途を追加。`from` に Origin の役割がない点は維持 |
 | 第3章の型の基本形、§3.2.3・§3.3・§3.3.6 | `Semantics{Origin}/Core`、前置注釈の説明・例を本書 §3–4 に置換。括弧が注釈先を移さない原則と Optional の展開規則は維持 |
+| 第6章 §6.3.1 の enum の例と説明 | payload と直接借用を `during` に更新。結果の `{result}` は命名、`origin result.source == value` は関係指定と説明し、既存 Origin を適用する single-Origin shorthand の記述を削除 |
 | 第15章 §15.3.1 | `/` の前の借用注釈、借用式の末尾カンマ、`Name{…}/` による brace の役割判定を削除。安全借用だけに許可する条件、型全体の括弧への注釈禁止、旧 `origin`・`from` 注釈の拒否は維持 |
 | 第13章 §13.5.1・§13.5.5 | 「どの層にも書けない」「grouped and generic inner Types を含めて禁止」を、本書 §5.3 の外側 Semantics 列と aggregate 内部の区別へ統一。runtime `is` の制限は維持 |
 | 付録 F.2・F.4・F.7 | 型・借用注釈・Adaptation の文法と Origin の用途説明を本書 §3・§5.3 に合わせる |
 | 付録 A.12 | brace の借用用途と前置注釈の保持を、`during` の結合・出力・位置保持の検証に置換。契約保持の要件は維持 |
+| 付録 A.22 | Semantics 接頭辞・関数矢印の結合検証を維持し、`?` と後置 `during` の順序、括弧の境界、Adaptation の Optional 展開後の検査を明記 |
 
-第8章の総称型再構成を含む各章の旧表記も、対象層を保って書き換える。過去の `from` 廃止は Origin 表記を `{}` に統一する設計の一部だったが、今回はスキーマ・binding set と借用注釈の役割を分離し、`during` を借用だけに限定する。
+第8章の総称型再構成を含む各章の旧表記も、対象層を保って書き換える。
 
 この変更は借用層と Origin の意味を保存する。寿命・借用・推論の能力、既存コードが表す型の表現力を狭めず、ABI、ランタイムの寿命情報、実行時処理や割り当ての追加を要求しない。実装済みの対応範囲を拡大したとみなすものでもない。
 
