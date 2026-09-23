@@ -138,7 +138,8 @@ public sealed partial class Binding
                 binder = owner.Parent!;
             }
 
-            if ((binder is FunctionKoto function && (function.IsAnonymous || function.IsSpecialization || !IsSignature(annotation, function))) ||
+            // SPEC 8.8.2: a specialization's written binder names are preliminary; CompleteSpecializationOrigins maps them to the original's.
+            if ((binder is FunctionKoto function && (function.IsAnonymous || !IsSignature(annotation, function))) ||
                 binder is not (FunctionKoto or PropertyAccessorKoto or StructKoto or EnumKoto))
             {
                 continue;

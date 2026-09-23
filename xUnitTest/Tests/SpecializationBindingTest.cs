@@ -18,6 +18,29 @@ public class SpecializationBindingTest
             Lengths + "specialize func pick<3, i32>(values: ref/[3 of i32]) -> i32 => 1\nfunc forward<length N, T>(values: ref/[N of T]) -> i32 => pick<N, T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [2 of i32] = [1, 2]\nrequire pick<3, i32>(a@ref) == 1 and pick<2, i32>(b@ref) == 0 and forward<3, i32>(a@ref) == 1 and forward<2, i32>(b@ref) == 0 else => $abort(\"selection\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    // SPEC 8.8.2: written binder names are inherited from the original; the body serves every admitted binding.
+    private const string Named = "func first<T>(values: ref{source}/[3 of T]) -> ref{source}/T => values[0]@ref/T\n";
+
+    [Fact]
+    public void InheritedBindersKeepTheOriginalContract()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationInheritedBinders",
+            Named + "specialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{source}/i32 => values[2]@ref/i32\nfunc forward<T>(values: ref{source}/[3 of T]) -> ref{source}/T => first<T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [3 of bool] = [true, false, false]\ndo\n    let local: [3 of i32] = [7, 8, 9]\n    require first<i32>(local@ref) == 9 else => $abort(\"local\")\nrequire first<i32>(a@ref) == 3 and forward<i32>(a@ref) == 3 and first<bool>(b@ref) == true else => $abort(\"first\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    [Theory]
+    [InlineData("specialize func first<i32>(values: ref{other}/[3 of i32]) -> ref{other}/i32 => values[2]@ref/i32")]
+    [InlineData("specialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{static}/i32 => values[2]@ref/i32")]
+    [InlineData("specialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{source}/i32 => values[2]@ref/i32\nspecialize func first<i32>(values: ref{source}/[3 of i32]) -> ref{source}/i32 => values[1]@ref/i32")]
+    public void RejectsRenamedNarrowedOrDuplicateBinders(string specialization)
+    {
+        var c = MinimalEmissionTest.Analyze(Named + specialization);
+        Assert.False(c.Binding.Result.IsComplete);
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.Empty(output.ToString());
+    }
+
     [Theory]
     [InlineData("specialize func pick<2, i32>(values: ref/[3 of i32]) -> i32 => 1")]
     [InlineData("specialize func pick<i32, 3>(values: ref/[3 of i32]) -> i32 => 1")]

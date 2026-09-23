@@ -155,10 +155,11 @@ public sealed partial class Binding
                 continue;
             }
 
-            // Receiver/length/constraint specializations require their own inherited contract
-            // certificates. Do not accept their syntax by merely erasing the generic header.
+            // Receiver/constraint specializations require their own inherited contract certificates.
+            // Do not accept their syntax by merely erasing the generic header. Written binder names
+            // are inherited by CompleteSpecializationOrigins (SPEC 8.8.2).
             if (symbol.ReceiverIndex >= 0 || function.Modifier != ModifierKind.NoModifier || function.AttributeChain is not null ||
-                function.NameBoundaryIndex >= 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0 || function.GenericArguments.Count == 0 ||
+                function.NameBoundaryIndex >= 0 || function.TypeConstraints.Count != 0 || function.GenericArguments.Count == 0 ||
                 function.Parameters.Any(x => x.DefaultValue is not null || x.AttributeChain is not null))
             {
                 Fail(function, BindingFailure.Unsupported, true);
@@ -223,7 +224,7 @@ public sealed partial class Binding
             }
 
             var definition = (FunctionKoto)original!.Declaration;
-            if (definition.Origins.Count != 0 || definition.TypeConstraints.Count != 0 || definition.AttributeChain is not null ||
+            if (definition.TypeConstraints.Count != 0 || definition.AttributeChain is not null ||
                 definition.Parameters.Any(x => x.AttributeChain is not null))
             {
                 Fail(function, BindingFailure.Unsupported, true);

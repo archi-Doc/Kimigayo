@@ -101,6 +101,44 @@ public sealed partial class Binding
                 }
             }
 
+            // SPEC 8.8.2: named Origin binders are inherited by name; a specialization neither adds nor renames one.
+            var definitionOrigins = definition.BoundSymbol.Schema?.Origins ?? [];
+            var written = function.BoundSymbol!.Schema?.Origins ?? [];
+            var binders = definitionOrigins.Count == 0 ? Array.Empty<BoundOrigin>() : new BoundOrigin[definitionOrigins.Count];
+            for (var i = 0; i < definitionOrigins.Count; i++)
+            {
+                BoundOrigin? inherited = null;
+                for (var j = 0; j < written.Count; j++)
+                {
+                    if (written[j].Name == definitionOrigins[i].Name)
+                    {
+                        inherited = written[j].Origin;
+                        break;
+                    }
+                }
+
+                if (inherited is null)
+                {
+                    return false; // An omitted named binder is not inherited yet.
+                }
+
+                binders[definitionOrigins[i].Slot] = inherited;
+            }
+
+            for (var j = 0; j < written.Count; j++)
+            {
+                var known = false;
+                for (var i = 0; i < definitionOrigins.Count; i++)
+                {
+                    known |= definitionOrigins[i].Name == written[j].Name;
+                }
+
+                if (!known)
+                {
+                    return false; // A specialization cannot add an Origin parameter.
+                }
+            }
+
             var scope = this.scopes[function];
             var valid = true;
             for (var i = 0; i < definition.Parameters.Count; i++)
@@ -111,7 +149,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                pattern = this.SubstituteStoredOrigins(pattern, definition, [], inputs.AsSpan(0, count));
+                pattern = this.SubstituteStoredOrigins(pattern, definition, binders, inputs.AsSpan(0, count));
                 var syntax = function.Parameters[i].Type;
                 this.InheritOriginContract(syntax, pattern);
                 Reset(syntax);
@@ -125,7 +163,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            result = this.SubstituteStoredOrigins(result, definition, [], inputs.AsSpan(0, count));
+            result = this.SubstituteStoredOrigins(result, definition, binders, inputs.AsSpan(0, count));
             var actualResult = BoundType.Unit;
             if (function.ReturnType is { } returnSyntax)
             {
