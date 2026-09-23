@@ -16,7 +16,13 @@
 
 - **呼び出し**: メソッド、custom・computed・required accessor、closure と関数値の直接呼び出し（§7.6.3）をいう。
 - **受信者式**（Receiver Expression）: 呼び出しの受信者の位置にある式をいう。place と一時値のどちらでもよい。非束縛呼び出し `Type.method(x, ...)` の `self` は引数であり、受信者式ではない。
-- **貸与点**: 受信者式から実際に借用する storage をいう。ユーザーコードを呼ばない標準 field・Tuple 要素・配列要素の射影を最長までたどった place である。
+- **貸与点**: §3.2 で確定した借用・再借用・射影の対象となる storage をいう。取得元ごとに次のとおりである。
+  - 所有 place: ユーザーコードを呼ばない標準射影（field・Tuple 要素・配列要素）を最長までたどった place
+  - 借用値: その referent
+  - オブジェクト借用: 対象の object。payload 投影では payload
+  - 基底射影: 選択された基底 subobject
+
+  対象の有効性を保つために参照 slot や所有者を保護することは、既存の依存関係の規則（§15.6.7）に従う。これは貸与点には含めない。
 - **代入先**: 代入・複合代入・インクリメント・デクリメントの書き込み先は、受信者式ではない。書き込み権限で取得し、印を要しない。評価順序は §13.7 のとおりである。代入先を探す途中で呼ぶ getter と custom `set` は呼び出しなので、それらの受信者は受信者式である。
 - **値の種類**: 取得元を次の順に判定して、三つに分ける。経路（直接・排他参照経由・共有参照経由）は、権限の判定と Movable Place の判定にだけ用いる。
   1. **借用値**: `ref`・`uniq`・`objref`・`objuniq` の値をいう。place に格納されたもの（`var r = x@uniq` の `r`、field `link: uniq/T`）と、呼び出しが返した参照を含む。
@@ -39,13 +45,15 @@
 | 所有 place | 共有は裸で借用する。排他は `@uniq`／`@objuniq` を要する。所有は、Copy なら Copy し、そうでなければ `@move` を要する |
 | 所有一時値 | 所有はそのまま渡す。共有借用は実体化して行う。排他借用は `@uniq` を要する |
 
-**排他取得の条件.** 所有 place を排他取得するには、その所有 storage が排他的に書き込み可能でなければならない。これは次の場合をいう。
+**排他取得の条件.** 所有 place と所有一時値を排他取得するには、借用する storage が排他的に書き込み可能でなければならない。
 
-- `var` ローカル
-- 書き込み権限のある経路の field（§11.1）
-- 可変 static（§15.2.3）
+- root が `var` ローカル・可変 static（§15.2.3）・所有一時値であれば、書き込み可能である。
+- 標準射影（field・Tuple 要素・配列要素）は root の権限を引き継ぎ、Property の権限（§11.1）や Loan の制限を加える。例：`values[i].update()`（§4.6）。
+- 次の storage は排他取得できない。
+  - `let` 束縛や所有型の引数を root とする storage
+  - getter が返した所有一時値の storage と、そのインライン部分（§11.2.3）
 
-`let` 束縛と所有型の引数の storage は、排他取得できない。所有一時値は排他取得できる。ただし、getter が返した所有一時値の storage とそのインライン部分は除く（§11.2.3）。返された参照や handle が指す別の実体は、その実体の権限に従う。可否は、どの式から来たかではなく、借用する storage で判定する。借用値は自身のモードに従うので、`let` や引数に保持された `uniq` 値も再借用できる。
+返された参照や handle が指す別の実体は、その実体の権限に従う。可否は、どの式から来たかではなく、借用する storage で判定する。借用値は自身のモードに従うので、`let` や引数に保持された `uniq` 値も再借用できる。
 
 ```kimi
 // describe は ref/Array<Task>、consume は Array<Task>、modify は uniq/Resource を受け取る。
@@ -69,14 +77,14 @@ func touch(target: uniq/Resource)
 
 ### 3.2. 暗黙の取得
 
-> 受信者式 `p` の暗黙の取得は、受信者の要求に応じた明示の取得を `p` に補ったものと同じである。補った操作が不正なら、その呼び出しはエラーとする。
+> 受信者式 `p` の暗黙の取得は、受信者の要求に応じて次の表の操作を `p` に補ったものと同じである。補った操作の結果の完全型は、要求型に適合しなければならない。補った操作が不正であるか、結果の型が適合しなければ、その呼び出しはエラーとする。
 
 | 受信者の要求 | 値型の入力 | オブジェクト系の入力 |
 | --- | --- | --- |
 | `ref/Self`・`uniq/Self` | `p@ref`・`p@uniq`（借用値なら、そのモードでの再借用） | View Target がちょうど同じ完全な Sealed 型なら、完全な payload 投影 `p@ref/T`・`p@uniq/T`（§13.5.5.1）。そうでなければ `p@objref`・`p@objuniq` |
 | `objref/Self`・`objuniq/Self` | 該当しない | `p@objref`・`p@objuniq` |
 | 基底 `B` の宣言 | §9.5.1 の射影 | 同左 |
-| 所有受信者（`Self`、オブジェクト Semantics の所有形） | まず、完全な要求型に適合するかを確かめる。適合するなら、所有一時値はそのまま渡し、所有 place は、Copy なら Copy し、そうでなければ補わない（`p@move.m()` と書く）。`ref/T`・`uniq/T` の値は、referent が Copy なら Copy read する（§10.2） | まず、完全な要求型に適合するかを確かめる。適合するなら、所有一時値はそのまま渡し、所有 place は `p@move` を要する。オブジェクト借用からの Copy read はない |
+| 所有受信者（`Self`、オブジェクト Semantics の所有形） | 次の操作に限る。所有一時値はそのまま渡す。所有 place は、Copy なら Copy し、そうでなければ補わない（`p@move.m()` と書く）。`ref/T`・`uniq/T` の値は、referent が Copy なら Copy read する（§10.2） | 所有一時値をそのまま渡すことに限る。所有 place は `p@move` を要する。オブジェクト借用からの Copy read はない |
 
 この定義から、次のことが導かれる。
 
@@ -87,7 +95,7 @@ func touch(target: uniq/Resource)
   - `rc`／`arc`（共有のみ、§13.5.5.2）
   - Property の権限（§11.1）
   - getter 結果の storage（§11.2.3）
-- **ObjectCallCompatible は選択の後に検査する.** オブジェクト借用や基底射影を経る呼び出しでは、通常の overload 選択の後に、選ばれた候補について Proven を要求する（§12.4.4.1、§9.5.1）。候補の除外には使わず、Proven でなくても別の候補を選び直さない。
+- **ObjectCallCompatible は選択の後に検査する.** 取得経路として保護されたオブジェクト借用や基底射影を選んだ場合は、通常の overload 選択の後に、選ばれた候補について Proven を要求する（§12.4.4.1、§9.5.1）。完全な Sealed payload 投影は通常の完全値への呼び出しなので、Proven を要しない（§12.4.4）。Proven は候補の除外に使わず、不足しても別の候補を選び直さない。
 - **明示との関係.** 暗黙の取得は、表の操作を明示で書いたものと同じである。値型の入力で排他を要求する受信者なら、`p@uniq.m()` は §15.6.7 の準備経路により `p.m()` と同じになる。表と異なる明示は、書いたとおりの別の操作である（例：`tasks@uniq.length`）。
 - **連鎖.** 各呼び出しは、直前の結果を受信者としてこの表で取得する。取得は前の呼び出しを越えて遡らない。予約も呼び出しごとに区切られる（§15.6.7）。
 
@@ -119,12 +127,12 @@ builder.add(1).add(2)                 // 2 回目の受信者は uniq の結果�
 makeBuilder().with(1).finish()        // with の所有結果（一時値）を finish のために排他借用する
 // builder.view().finish()            // エラー：ref の結果からは排他取得できない
 
-let count = 0
-var next = func [var count] () -> i32
+let count: i32 = 0
+var next = func [var count] (value: i32) -> i32
     count += 1
-    return count
-let a = next()                        // Exclusive 呼び出し：next@uniq を補う
-let b = applyTwice(10, next@uniq)     // 引数なので印が要る
+    return value + count
+let a = next(1)                       // 2。Exclusive 呼び出し：next@uniq を補う
+let b = applyTwice(10, next@uniq)     // 15。§8.6 の applyTwice。引数なので印が要る
 
 holder@uniq.items.append(1)           // holder.items.append(1) と同じ
 tasks@uniq.length                     // 別の操作：tasks を排他貸与してから共有で読む
@@ -251,6 +259,7 @@ cursor.advance()   // Copy なら by-value 版（更新は捨てられる）。S
 ```kimi
 tasks.insert(tasks.length, Task.init(9))    // 予約中の共有読み取り
 holder.items.append(holder.items.length)    // 貸与点は holder.items
+holder.link.update()                        // link: uniq/T。貸与点は referent。link の slot は保護されるだけ
 // tasks.append(tasks.remove(0))            // エラー：二つの排他取得が重なる
 let moved = tasks.remove(0)
 tasks.append(moved@move)
