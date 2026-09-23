@@ -270,6 +270,7 @@ public sealed partial class Binding
             }
 
             this.ClearCapabilityResults();
+            this.ValidateReserveEffects();
             this.ValidateExpressionProjectionInputs(mode);
             this.CompleteEnumAcquisitions();
             this.CompletePatternAcquisitions();
