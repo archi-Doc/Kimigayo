@@ -37,9 +37,21 @@ public class DynamicArrayIterationTest
             "drop 3\ndrop 2\ndone\ndrop 1\n");
 
     [Theory]
+    [InlineData("Conditional", "if true => tasks@move else => tasks@move")]
+    [InlineData("Scope", "selection: do\n    exit to selection: tasks@move\n")]
+    [InlineData("Match", "match true\n    true => tasks@move\n    false => tasks@move\n")]
+    [InlineData("Loop", "selection: loop\n    exit to selection: tasks@move\n")]
+    public void OwnsTheResultHandleAcrossControlFlow(string name, string expression)
+        => ScalarEmissionTest.EmitFixture(
+            "DynamicArrayIterationResult" + name,
+            Task + "let tasks: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nfor task in (" + expression + ")\n    require task.id == 1 else => $abort(\"first\")\n    exit\nConsole.writeLine(\"done\")",
+            "drop 1\ndrop 3\ndrop 2\ndone\n");
+
+    [Theory]
     [InlineData("let values: Array<i32> = [1]\nfor value in values@move => ()\nlet n = values.length")]
     [InlineData("var values: Array<i32> = [1]\nlet borrow = values@ref\nfor value in values@move => ()\nlet n = borrow.length")]
     [InlineData("let values: Array<i32> = [1]\nfor value in values@move => value = 2")]
+    [InlineData("let values: Array<i32> = [1]\nfor value in (if true => values@move else => values@move) => ()\nlet n = values.length")]
     [InlineData("let values: Array<(i32, i32)> = [(1, 2)]\nfor (first, second) in values@move => ()")]
     public void RejectsInvalidConsumption(string source)
     {

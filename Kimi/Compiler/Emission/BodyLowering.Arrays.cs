@@ -41,7 +41,7 @@ internal sealed partial class BodyLowering
             }
 
             if ((uint)sequence.Receiver >= (uint)body.Places.Count || (uint)sequence.Operation >= (uint)body.Operations.Count ||
-                this.arrayIterators[sequence.Receiver] >= 0 || body.Places[sequence.Receiver] is not { Kind: OwnershipPlaceKind.Temporary, Type.Kind: BoundTypeKind.Array } ||
+                this.arrayIterators[sequence.Receiver] >= 0 || body.Places[sequence.Receiver] is not { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result, Type.Kind: BoundTypeKind.Array } ||
                 body.Operations[sequence.Operation].Source is not ForKoto { SharedIterable: null, IsTupleBinding: false })
             {
                 return Fail("An owning Array iterator requires a private acquired handle.", out failure);
