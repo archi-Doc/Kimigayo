@@ -193,7 +193,7 @@ public sealed partial class OwnershipAnalysis
         var root = -1;
         var loan = -1;
         var receiver = KotoHelper.UnwrapParentheses(source.Left);
-        if (receiver is BinaryKoto nested && ElementAccess.IsSyntax(nested))
+        if (receiver is BinaryKoto nested && !Binding.IsGetterResult(nested) && ElementAccess.IsSyntax(nested))
         {
             parent = this.LocateElement(nested);
             if (parent >= 0)

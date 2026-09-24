@@ -58,7 +58,7 @@ internal static class ElementAccess
                     source = conversion.Left;
                     break;
                 default:
-                    return source;
+                    return source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
             }
         }
     }
@@ -118,6 +118,11 @@ internal static class ElementAccess
     {
         for (var depth = 0; depth < 64; depth++)
         {
+            if (Binding.IsGetterResult(field))
+            {
+                return null;
+            }
+
             if (ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType) || ObjectTypes.IsBorrow(field.Left.BoundType))
             {
                 return field.Left;
@@ -140,7 +145,7 @@ internal static class ElementAccess
     {
         for (var depth = 0; depth < 64; depth++)
         {
-            if (!IsSyntax(field) || StaticSelector(field) < 0)
+            if (Binding.IsGetterResult(field) || !IsSyntax(field) || StaticSelector(field) < 0)
             {
                 return null;
             }

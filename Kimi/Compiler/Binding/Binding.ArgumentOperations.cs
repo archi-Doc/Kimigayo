@@ -67,7 +67,8 @@ public sealed partial class Binding
         return source;
     }
 
-    internal static Koto PlaceOriginBinder(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
+    internal static Koto PlaceOriginBinder(Koto source) => source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) is { } getter ? getter
+        : source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
         ? CandidateOriginBinder(candidate)
         : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage } symbol ? symbol.Declaration : source;
 

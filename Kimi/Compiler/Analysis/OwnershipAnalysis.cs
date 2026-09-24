@@ -1141,7 +1141,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var result = this.Temporary(plan.Target.Declaration is FunctionKoto { Accessor.Kind: PropertyAccessorKind.Get } ? call.Parent! : call);
+        var result = this.Temporary(call);
         var scalar = ScalarResult(this.body.Places[result].Type);
         if (scalar || SlotTypes.IsResult(this.body.Places[result].Type))
         {

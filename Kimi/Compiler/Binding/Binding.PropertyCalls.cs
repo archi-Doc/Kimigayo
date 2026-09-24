@@ -11,10 +11,12 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, MemberAccessKoto> propertyUpdateStorage = new(ReferenceEqualityComparer.Instance);
 
     internal static bool IsGetterResult(Koto node)
-        => KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
+        => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
+            KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
 
     internal MemberAccessKoto? PropertyUpdateStorage(Koto node)
-        => this.propertyUpdateStorage.GetValueOrDefault(KotoHelper.UnwrapParentheses(node));
+        => KotoHelper.UnwrapParentheses(node) is { BindingState: BindingState.Resolved, BoundSymbol.Property: { } property } target &&
+            (!property.Getter.IsStandard || !property.Setter.IsStandard) ? this.propertyUpdateStorage.GetValueOrDefault(target) : null;
 
     internal FunctionKoto AccessorFunction(BoundAccessor accessor)
     {
@@ -87,7 +89,7 @@ public sealed partial class Binding
         this.receiverOperations[node] = new(node.Left, owner, adapted, kind, quality, ParameterIndex: 0);
         if (!this.propertyUpdateStorage.TryGetValue(node, out var storage))
         {
-            storage = new(node, new IdentifierNameKoto(node.Left, "self"), node.Right);
+            storage = new(node, new IdentifierNameKoto(node.Left, "self"), node.Right) { IsDirectStorage = true };
             this.propertyUpdateStorage.Add(node, storage);
         }
 
@@ -107,7 +109,7 @@ public sealed partial class Binding
         if (!this.storageProjections.TryGetValue(node, out var projection))
         {
             var receiver = new IdentifierNameKoto(node, "self");
-            projection = new(node, receiver, accessor.Property.Declaration.NameKoto);
+            projection = new(node, receiver, accessor.Property.Declaration.NameKoto) { IsDirectStorage = true };
             this.storageProjections.Add(node, projection);
         }
 

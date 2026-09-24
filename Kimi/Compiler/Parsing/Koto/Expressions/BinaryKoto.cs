@@ -136,6 +136,8 @@ public abstract class BinaryKoto : ExpressionKoto
 /// <summary>Represents a member-access expression.</summary>
 public sealed class MemberAccessKoto : BinaryKoto
 {
+    internal bool IsDirectStorage { get; set; }
+
     internal MemberAccessKoto(Koto source, Koto left, Koto right)
         : base(source, left, right)
     {

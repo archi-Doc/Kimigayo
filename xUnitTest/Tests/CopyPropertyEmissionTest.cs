@@ -9,6 +9,44 @@ public class CopyPropertyEmissionTest
 {
     internal const string Meter = "struct Meter\n    public var raw: i32 = 2\n    public var level: i32\n        get() -> i32\n            Console.writeLine(\"get\")\n            return storage\n        set(value: i32) -> ()\n            Console.writeLine(\"set\")\n            storage = value\n    public computed doubled: i32\n        get() -> i32 => self.raw * 2\n        set(value: i32) -> () => self.raw = value / 2\n    public init() => self.level = 3\n";
 
+    [Theory]
+    [InlineData("Owned", "var s = S.init()\nrequire s.point.x == 9 else => $abort(\"result\")")]
+    [InlineData("Borrowed", "func inspect(s: ref/S)\n    require s.point.x == 9 else => $abort(\"result\")\nlet s = S.init()\ninspect(s@ref)")]
+    [InlineData("Saved", "let s = S.init()\nvar saved = s.point\nsaved.x = 7\nrequire saved.x == 7 else => $abort(\"result\")")]
+    public void GetterAggregateProjectionUsesTheReturnedCopy(string name, string body)
+        => ScalarEmissionTest.EmitFixture("CopyPropertyProjection" + name, "struct Point\n    Self is Copy\n    public var x: i32 = 1\nstruct S\n    public var point: Point = Point.init()\n        get() -> Point\n            Console.writeLine(\"get\")\n            var result = storage\n            result.x = 9\n            return result\n" + body, "get\n");
+
+    [Fact]
+    public void CompoundRightSideCanInspectReceiverAfterGetterReturns()
+        => ScalarEmissionTest.EmitFixture("CopyPropertyCompoundInspect", Meter + "var m = Meter.init()\nm.level += m.level\nrequire m.level == 6 else => $abort(\"value\")", "get\nget\nset\nget\n");
+
+    [Fact]
+    public void WarmCopyAccessorPipelineAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(Meter + "var m = Meter.init()\nm.level += 2\n_ = m.doubled");
+        for (var i = 0; i < 100; i++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            c.Binding.CheckStartup(OutputKind.Application);
+            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Emission.Validate(out var error), error);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("Accessor Binding failed.");
+            }
+
+            c.Binding.CheckStartup(OutputKind.Application);
+            if (!c.Ownership.Analyze().IsVerified || !c.Emission.Validate(out _))
+            {
+                throw new InvalidOperationException("Accessor generation failed.");
+            }
+        }));
+    }
+
     [Fact]
     public void CallsCopyAccessorsAfterDirectConstruction()
         => ScalarEmissionTest.EmitFixture("CopyPropertyBasic", Meter + "var m = Meter.init()\nm.level = 8\nrequire m.level == 8 else => $abort(\"level\")\nm.doubled = 12\nrequire m.doubled == 12 and m.raw == 6 else => $abort(\"computed\")", "set\nget\n");
