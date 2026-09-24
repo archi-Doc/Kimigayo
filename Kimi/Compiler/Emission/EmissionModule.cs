@@ -250,8 +250,6 @@ internal sealed class EmissionModule
 
     internal FunctionAbi? DictionaryClear { get; set; }
 
-    internal FunctionAbi? DictionaryCompact { get; set; }
-
     internal FunctionAbi? DictionaryShrink { get; set; }
 
     internal bool NeedsFormattingRuntime { get; set; }
@@ -299,7 +297,6 @@ internal sealed class EmissionModule
         this.DictionaryClearLinks = null;
         this.DictionaryFind = null;
         this.DictionaryClear = null;
-        this.DictionaryCompact = null;
         this.DictionaryShrink = null;
         this.NeedsFormattingRuntime = false;
         this.FormattingWrites.Clear();

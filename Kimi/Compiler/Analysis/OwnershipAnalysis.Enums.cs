@@ -101,7 +101,6 @@ public sealed partial class OwnershipAnalysis
             this.CollectLibraryBody(this.compilation.Library.DictionaryClearLinks);
             this.CollectLibraryBody(this.compilation.Library.DictionaryFind);
             this.CollectLibraryBody(this.compilation.Library.DictionaryClear);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryCompact);
             this.CollectLibraryBody(this.compilation.Library.DictionaryShrink);
         }
 

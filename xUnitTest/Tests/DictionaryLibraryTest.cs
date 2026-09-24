@@ -9,6 +9,18 @@ namespace XunitTest;
 public class DictionaryLibraryTest
 {
     [Fact]
+    public void PrivateHandleUsesTheExpectedPlatformLayout()
+    {
+        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
+        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.BoundType!;
+        var layout = Assert.IsType<AggregateLayout>(new AggregateLayoutPool().Get(pointer.Components[0]));
+        Assert.True(layout.CLayout);
+        Assert.Equal(56, layout.Value.Layout.Size);
+        Assert.Equal(8, layout.Value.Layout.Alignment);
+        Assert.Equal(new[] { 0, 8, 16, 24, 32, 40, 48 }, layout.Value.Layout.FieldOffsets.ToArray());
+    }
+
+    [Fact]
     public void PointerReturningCallbacksUseOrdinaryCallAbi()
     {
         const string Source = """
