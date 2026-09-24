@@ -250,7 +250,8 @@ public sealed partial class OwnershipAnalysis
             }
             else if (slice)
             {
-                item = this.SequenceValue(source, slotType, SequenceOperation.Borrow, iterable, index: this.Value(current));
+                var copied = source.IsTupleBinding && ReferenceEquals(slotType, this.body.Places[iterable].Type.Components[0].Components[slot]);
+                item = this.SequenceValue(source, slotType, copied ? SequenceOperation.Read : SequenceOperation.Borrow, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
             }
             else
             {

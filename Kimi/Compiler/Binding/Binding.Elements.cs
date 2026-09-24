@@ -6,6 +6,24 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 4.6.6 / 15.1.6: Copy preserves the complete stored Type and its Origins;
+    // a shared read of a Non-Copy owned value borrows that storage.
+    private BoundType? SharedReadType(BoundType element, BoundOrigin origin, Koto source)
+    {
+        var proof = this.ProveCopy(element, source);
+        if (proof == ConstraintProof.Proven)
+        {
+            return element;
+        }
+
+        if (proof == ConstraintProof.Refuted && element.Semantics == SemanticsKind.Owner)
+        {
+            return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [element], origin: origin);
+        }
+
+        return Fail(source, BindingFailure.Unsupported);
+    }
+
     private BoundType? BindElement(BinaryKoto source, BindingScope scope)
     {
         var receiver = this.BindNode(source.Left, scope);

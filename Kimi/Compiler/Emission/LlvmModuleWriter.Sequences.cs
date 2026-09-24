@@ -44,7 +44,7 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
-        if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceAddress" or "ArrayAddress")
+        if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceStorageRead" or "SliceAddress" or "ArrayAddress")
         {
             // A fixed array's bounds are static; a Slice loads its handle's length.
             var arrayRead = instruction.ScalarOperator is "ArrayRead" or "ArrayStorageRead" or "ArrayAddress";
@@ -109,7 +109,7 @@ internal static partial class LlvmModuleWriter
                 Name(output, " = getelementptr i8, ptr %element", id);
                 output.Write(", i64 0\n");
             }
-            else if (instruction.ScalarOperator != "ArrayStorageRead")
+            else if (instruction.ScalarOperator is not ("ArrayStorageRead" or "SliceStorageRead"))
             {
                 WriteScalar(output, constants, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation!.ComputationType }, []);
             }
