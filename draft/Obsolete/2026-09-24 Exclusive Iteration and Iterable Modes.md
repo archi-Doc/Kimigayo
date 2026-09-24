@@ -116,6 +116,8 @@ match state@uniq
 
 ### 2.6. 三つの Iterable Contract
 
+> 本節（2.6.1–2.6.4 を含む）は、`2026-09-24 Semantics-Qualified Conformance.md` で置き換えを提案している。
+
 `Kimi` に二つの Contract を加える。既存の `Iterable` は消費モードとして残す。
 
 ```kimi
