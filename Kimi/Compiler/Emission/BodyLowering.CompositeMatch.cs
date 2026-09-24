@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 internal sealed partial class BodyLowering
 {
     private readonly List<PatternTestStep> compositeTests = new();
+    private int[] patternProjectionRoots = [];
 
     private bool IsCompositeSubject(BoundType type) => (type.Semantics == SemanticsKind.Ref && ReferenceTypes.IsStorage(type)) ||
         ((type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type)) &&
@@ -17,18 +18,59 @@ internal sealed partial class BodyLowering
 
     private int PatternOffset(BoundMatch match, int position)
     {
-        long offset = 0;
+        Span<int> dereferences = stackalloc int[64];
+        return this.PatternPath(match, position, -1, dereferences, out var offset) < 0 ? -1 : offset;
+    }
+
+    // Follow the retained positional tree. Each implicit reference read starts a new
+    // address segment; enum tag tests dominate any payload dereferences at runtime.
+    private int PatternPath(BoundMatch match, int position, int root, Span<int> dereferences, out int finalOffset)
+    {
+        Span<int> ancestors = stackalloc int[64];
+        finalOffset = -1;
         var depth = 0;
-        while (match.Positions[position].Parent >= 0)
+        for (var current = position; current >= 0; current = match.Positions[current].Parent)
         {
-            var child = match.Positions[position];
-            if (++depth > 64 || child.Parent >= position)
+            if (depth == ancestors.Length || (uint)current >= (uint)match.Positions.Count || match.Positions[current].Parent >= current)
             {
                 return -1;
             }
 
-            var parent = match.Positions[child.Parent];
-            var type = this.Matched(parent.MatchedType);
+            ancestors[depth++] = current;
+            if (current == root)
+            {
+                break;
+            }
+        }
+
+        if (root >= 0 && ancestors[depth - 1] != root)
+        {
+            return -1;
+        }
+
+        long offset = 0;
+        var count = 0;
+        for (var level = depth - 1; level >= 0; level--)
+        {
+            var parent = match.Positions[ancestors[level]];
+            if (parent.ImplicitDeref == PatternImplicitDeref.SharedOnce)
+            {
+                if (offset > int.MaxValue || count == dereferences.Length)
+                {
+                    return -1;
+                }
+
+                dereferences[count++] = (int)offset;
+                offset = 0;
+            }
+
+            if (level == 0)
+            {
+                break;
+            }
+
+            var child = match.Positions[ancestors[level - 1]];
+            var type = this.PatternType(parent);
             var shape = this.aggregateLayouts.Get(type);
             if (shape is null)
             {
@@ -57,10 +99,22 @@ internal sealed partial class BodyLowering
             }
 
             offset += shape.Offset(child.Element);
-            position = child.Parent;
         }
 
-        return offset <= int.MaxValue ? (int)offset : -1;
+        if (offset > int.MaxValue)
+        {
+            return -1;
+        }
+
+        finalOffset = (int)offset;
+        return count;
+    }
+
+    private PatternTestStep PatternStep(BoundMatch match, int position, ValueLowering representation, Int128 expected, int text = -2, int root = -1)
+    {
+        Span<int> dereferences = stackalloc int[64];
+        var count = this.PatternPath(match, position, root, dereferences, out var offset);
+        return new(offset, representation, expected, text, count > 0 ? dereferences[..count].ToArray() : null);
     }
 
     private bool ValidateCompositePattern(BoundMatch match, int root)
@@ -75,6 +129,7 @@ internal sealed partial class BodyLowering
         {
             var node = match.Positions[i];
             if (node.End <= i || node.End > end ||
+                (node.AccessMode == PatternAccessMode.Shared) != (node.ImplicitDeref == PatternImplicitDeref.SharedOnce || (node.Parent >= 0 && match.Positions[node.Parent].AccessMode == PatternAccessMode.Shared)) ||
                 (node.ImplicitDeref == PatternImplicitDeref.SharedOnce && node.MatchedType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 }) ||
                 node.Source.BindingState != BindingState.Resolved || node.Source.AttributeChain is not null || this.PatternOffset(match, i) < 0)
             {
@@ -83,9 +138,9 @@ internal sealed partial class BodyLowering
 
             if (node.Kind is BoundPatternKind.Case or BoundPatternKind.Tuple)
             {
-                var count = node.Kind == BoundPatternKind.Case ? node.Case?.Payload.Length ?? -1 : this.Matched(node.MatchedType).Components.Count;
-                if ((node.Kind == BoundPatternKind.Tuple && this.Matched(node.MatchedType).Kind != BoundTypeKind.Tuple) ||
-                    (node.Kind == BoundPatternKind.Case && !ReferenceEquals(EnumStorage.Case(this.Matched(node.MatchedType), node.Case!.Ordinal), node.Case)))
+                var count = node.Kind == BoundPatternKind.Case ? node.Case?.Payload.Length ?? -1 : this.PatternType(node).Components.Count;
+                if ((node.Kind == BoundPatternKind.Tuple && this.PatternType(node).Kind != BoundTypeKind.Tuple) ||
+                    (node.Kind == BoundPatternKind.Case && !ReferenceEquals(EnumStorage.Case(this.PatternType(node), node.Case!.Ordinal), node.Case)))
                 {
                     return false;
                 }
@@ -154,6 +209,43 @@ internal sealed partial class BodyLowering
 
         if (!needed)
         {
+            return true;
+        }
+
+        if (pattern.AccessMode == PatternAccessMode.Shared)
+        {
+            for (var i = index; i < pattern.End; i++)
+            {
+                var binding = plan.Positions[i];
+                if (binding.Kind != BoundPatternKind.Binding)
+                {
+                    continue;
+                }
+
+                if (binding.BodySymbol?.Type is not { } result || !body.SymbolPlaces.TryGetValue(binding.BodySymbol, out var local) ||
+                    (uint)cursor >= (uint)body.Operations.Count || body.Operations[cursor] is not { Kind: OwnershipOperationKind.Declare } declaration || declaration.Place != local ||
+                    !ReferenceEquals(body.Places[local].Type, this.Matched(result)))
+                {
+                    return false;
+                }
+
+                cursor = this.NextPatternOperation(body, cursor);
+                if ((uint)cursor >= (uint)body.Operations.Count || body.Operations[cursor] is not { Kind: OwnershipOperationKind.AcquirePattern, Acquisition: AcquisitionKind.Copy } acquire ||
+                    acquire.Place != input || acquire.Input != local || !ReferenceEquals(acquire.Source, binding.Source) || this.patternAcquisitions[cursor] != 0 ||
+                    body.Values[cursor] is not { Kind: OwnershipValueKind.PatternProjection } projection || projection.Constant != i ||
+                    (binding.Acquisition == PatternAcquisition.Copy ? !ReferenceEquals(this.Matched(binding.MatchedType), body.Places[local].Type) :
+                        binding.Acquisition != PatternAcquisition.Borrow || !ReferenceTypes.IsStorage(body.Places[local].Type) ||
+                        !ReferenceEquals(body.Places[local].Type.Components[0], this.Matched(binding.MatchedType))))
+                {
+                    return false;
+                }
+
+                this.patternAcquisitions[cursor] = input + 1;
+                this.patternProjectionRoots[cursor] = index;
+                this.matchPlaces[input] = 1;
+                cursor = this.NextPatternOperation(body, cursor);
+            }
+
             return true;
         }
 
@@ -244,6 +336,11 @@ internal sealed partial class BodyLowering
                 return Fail("Composite binding has no checked acquisition.", out failure);
             }
 
+            if (body.Values[id].Kind == OwnershipValueKind.PatternProjection)
+            {
+                return this.LowerSharedPatternAcquisition(body, function, id, out failure);
+            }
+
             var type = body.Places[operation.Place].Type;
             if (IsScalar(type))
             {
@@ -316,15 +413,14 @@ internal sealed partial class BodyLowering
             var node = binding.Positions[i];
             if (node.Kind == BoundPatternKind.Case)
             {
-                this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.GetValue(BoundType.I32)!, node.Case!.Ordinal));
+                this.compositeTests.Add(this.PatternStep(binding, i, WindowsLowering.GetValue(BoundType.I32)!, node.Case!.Ordinal));
             }
             else if (node.Kind == BoundPatternKind.Literal)
             {
-                var dereferences = node.ImplicitDeref == PatternImplicitDeref.SharedOnce ? new[] { 0 } : null;
                 if (ReferenceEquals(this.PatternType(node), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is { } text)
                 {
                     var constant = text.Length == 0 ? -1 : constants.Intern(text, LlvmConstantKind.Text);
-                    this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.String, 0, constant, dereferences));
+                    this.compositeTests.Add(this.PatternStep(binding, i, WindowsLowering.String, 0, constant));
                     continue;
                 }
 
@@ -334,11 +430,49 @@ internal sealed partial class BodyLowering
                     return Fail("Unsupported composite literal.", out failure);
                 }
 
-                this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.GetValue(this.PatternType(node))!, bits, DereferenceOffsets: dereferences));
+                this.compositeTests.Add(this.PatternStep(binding, i, WindowsLowering.GetValue(this.PatternType(node))!, bits));
             }
         }
 
         function.Instructions.Add(new(EmissionOpcode.CompositePattern, id, operation.Place, Pattern: this.compositeTests.ToArray()));
+        return true;
+    }
+
+    private bool LowerSharedPatternAcquisition(OwnershipBody body, EmissionFunction function, int id, out string? failure)
+    {
+        failure = null;
+        var operation = body.Operations[id];
+        var armIndex = body.OperationSteps[id];
+        if ((uint)armIndex >= (uint)body.MatchArms.Count)
+        {
+            return Fail("Shared Pattern acquisition has no selected arm.", out failure);
+        }
+
+        var arm = body.MatchArms[armIndex];
+        var plan = body.Matches[arm.Match].Binding;
+        var position = (int)body.Values[id].Constant;
+        if (position < arm.Pattern || position >= plan.Positions[arm.Pattern].End ||
+            (body.IsReachable(id) && !this.Dominates(arm.BodyEntry, id)))
+        {
+            return Fail("Shared Pattern acquisition is outside its selected body.", out failure);
+        }
+
+        var pattern = plan.Positions[position];
+        var type = body.Places[operation.Input].Type;
+        var representation = WindowsLowering.GetValue(type);
+        var scalarCopy = pattern.Acquisition == PatternAcquisition.Copy && IsScalar(type);
+        var step = this.PatternStep(plan, position, representation ?? WindowsLowering.GetValue(BoundType.I32)!, 0, root: this.patternProjectionRoots[id]);
+        function.AddScalar(EmissionOpcode.PatternRead, id, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.Integer, step.Offset)], scalarCopy ? representation!.ComputationType : "ptr", scalarCopy ? null : "address", place: operation.Place, representation: representation);
+        function.Instructions[^1] = function.Instructions[^1] with { Pattern = [step] };
+        if (IsScalar(type))
+        {
+            function.AddScalar(EmissionOpcode.StoreScalar, id, [new(EmissionOperandKind.Value, id)], representation!.ComputationType, place: operation.Input, representation: representation);
+        }
+        else if (this.aggregateLayouts.Get(type) is { } layout && layout.Value.Layout.Size != 0)
+        {
+            Transfer(function, id, layout, [new(EmissionOperandKind.Value, id)], operation.Input);
+        }
+
         return true;
     }
 

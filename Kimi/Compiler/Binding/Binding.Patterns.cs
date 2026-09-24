@@ -170,7 +170,7 @@ public sealed partial class Binding
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
-            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, false);
+            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, null);
             plan.ArmStorage.Add(new(arm, root));
             this.MarkPatternTree(arm.Pattern);
         }
@@ -245,11 +245,11 @@ public sealed partial class Binding
         return plan.ResultType;
     }
 
-    private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, bool shared)
+    private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, BoundOrigin? sharedOrigin)
     {
         if (syntax is ParenthesizedKoto grouping)
         {
-            var grouped = this.BindPattern(grouping.Operand, matched, outer, plan, parent, element, shared);
+            var grouped = this.BindPattern(grouping.Operand, matched, outer, plan, parent, element, sharedOrigin);
             Complete(grouping, matched);
             return grouped;
         }
@@ -270,8 +270,7 @@ public sealed partial class Binding
         if (structural && type.Semantics == SemanticsKind.Ref && type.Kind == BoundTypeKind.Semantics)
         {
             type = type.Components[0];
-            shared = true;
-            unsupported = !ScalarTypes.Supports(type) && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.String);
+            sharedOrigin = matched.Origin;
             implicitDeref = PatternImplicitDeref.SharedOnce;
         }
 
@@ -288,7 +287,7 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Wildcard, WholePosition = true };
                 break;
             case SyntaxFormKoto { Akind: KotoKind.BindingPattern, BoundSymbol: { } symbol } binding:
-                symbol.Type = shared ? null : matched;
+                symbol.Type = sharedOrigin is null ? matched : this.SharedReadType(matched, sharedOrigin, binding);
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };
@@ -300,7 +299,7 @@ public sealed partial class Binding
                     position = position with { CandidateSymbol = candidate };
                 }
 
-                unsupported |= shared;
+                unsupported |= symbol.Type is null;
                 break;
             case UnitLiteralKoto when ReferenceEquals(type, BoundType.Unit):
                 position = position with { Kind = BoundPatternKind.Unit, WholePosition = true };
@@ -309,7 +308,7 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Tuple, WholePosition = true };
                 for (var i = 0; i < tuple.Operands.Length; i++)
                 {
-                    var child = this.BindPattern(tuple.Operands[i], type.Components[i], outer, plan, index, i, shared);
+                    var child = this.BindPattern(tuple.Operands[i], type.Components[i], outer, plan, index, i, sharedOrigin);
                     position = position with { WholePosition = position.WholePosition && plan.PositionStorage[child].WholePosition };
                 }
 
@@ -335,7 +334,7 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        this.BindPattern(children[i], payload, outer, plan, index, i, shared);
+                        this.BindPattern(children[i], payload, outer, plan, index, i, sharedOrigin);
                     }
                 }
 
@@ -352,7 +351,7 @@ public sealed partial class Binding
         position = position with
         {
             End = plan.PositionStorage.Count,
-            AccessMode = shared ? PatternAccessMode.Shared : PatternAccessMode.Owned,
+            AccessMode = sharedOrigin is not null ? PatternAccessMode.Shared : PatternAccessMode.Owned,
             ImplicitDeref = implicitDeref,
         };
         plan.PositionStorage[index] = position;
@@ -478,13 +477,15 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (position.Kind != BoundPatternKind.Binding || position.AccessMode == PatternAccessMode.Shared)
+                if (position.Kind != BoundPatternKind.Binding)
                 {
                     continue;
                 }
 
                 var proof = this.ProveCopy(position.MatchedType, position.Source);
-                var acquisition = proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
+                var acquisition = proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted
+                    ? position.AccessMode == PatternAccessMode.Shared ? PatternAcquisition.Borrow : PatternAcquisition.Move
+                    : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
                 plan.PositionStorage[i] = position with { Acquisition = acquisition };
                 if (proof == ConstraintProof.Error)
                 {

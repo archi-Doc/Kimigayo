@@ -132,6 +132,8 @@ internal sealed partial class BodyLowering
         Grow(ref this.subjectInitializers, body.Places.Count);
         Grow(ref this.matchTests, body.Operations.Count);
         Grow(ref this.patternAcquisitions, body.Operations.Count);
+        Grow(ref this.patternProjectionRoots, body.Operations.Count);
+        this.patternProjectionRoots.AsSpan(0, body.Operations.Count).Fill(-1);
         Grow(ref this.patternDecompositions, body.Operations.Count);
         this.patternDecompositions.AsSpan(0, body.Operations.Count).Clear();
         this.patternAcquisitions.AsSpan(0, body.Operations.Count).Clear();
@@ -406,7 +408,7 @@ internal sealed partial class BodyLowering
             {
                 if ((uint)operation.Place >= (uint)body.Places.Count || this.matchPlaces[operation.Place] != 1 || this.patternAcquisitions[id] != operation.Place + 1 || (uint)operation.Input >= (uint)body.Places.Count ||
                     body.Places[operation.Input].Kind != OwnershipPlaceKind.Local || !ReferenceEquals(body.Places[operation.Input].Source, operation.Source) ||
-                    !ReferenceEquals(body.Places[operation.Input].Type, body.Places[operation.Place].Type))
+                    (body.Values[id].Kind != OwnershipValueKind.PatternProjection && !ReferenceEquals(body.Places[operation.Input].Type, body.Places[operation.Place].Type)))
                 {
                     return Fail("Invalid selected pattern binding.", out failure);
                 }

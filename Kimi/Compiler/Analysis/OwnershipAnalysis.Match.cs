@@ -14,7 +14,7 @@ public sealed partial class OwnershipAnalysis
 
     private static AcquisitionKind PatternAcquisitionKind(BoundPattern pattern) => pattern.Acquisition switch
     {
-        PatternAcquisition.Copy => AcquisitionKind.Copy,
+        PatternAcquisition.Copy or PatternAcquisition.Borrow => AcquisitionKind.Copy,
         PatternAcquisition.Move => AcquisitionKind.Move,
         PatternAcquisition.CopyOrMove => AcquisitionKind.CopyOrMove,
         _ => throw new InvalidOperationException("Pattern acquisition must be committed before ownership construction."),
@@ -45,7 +45,7 @@ public sealed partial class OwnershipAnalysis
             var position = plan.Positions[i];
             if ((position.Parent < 0 && position.MatchedType.Kind == BoundTypeKind.Parameter) ||
                 position.Acquisition == PatternAcquisition.Deferred || (position.MatchedType.Kind != BoundTypeKind.Parameter && !this.SupportsType(position.MatchedType)) ||
-                (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Move or PatternAcquisition.CopyOrMove)))
+                (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Borrow or PatternAcquisition.Move or PatternAcquisition.CopyOrMove)))
             {
                 return false;
             }
@@ -280,7 +280,7 @@ public sealed partial class OwnershipAnalysis
             this.Connect(arm.Syntax.Guard is null ? test : guardBranch, bodyEntry, OwnershipEdgeKind.True);
             this.EnterCheckingBranch(bodyEntry, checkingBody ? null : armFork);
             var decompositionStart = this.body.DecompositionStorage.Count;
-            this.AcquirePattern(plan, arm.Pattern, subject, neededStart);
+            this.AcquirePattern(plan, arm.Pattern, subject, neededStart, armStart + i);
             this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, decompositionStart, this.body.DecompositionStorage.Count - decompositionStart, guardEntry, guardBranch, bodyEntry, guardValue, guardCleanupStart, guardLoan);
 
             var secured = -1;
@@ -458,7 +458,7 @@ public sealed partial class OwnershipAnalysis
         this.current = -1;
     }
 
-    private void AcquirePattern(BoundMatch plan, int index, int input, int neededStart)
+    private void AcquirePattern(BoundMatch plan, int index, int input, int neededStart, int arm)
     {
         if (!this.patternStorageNeeded[neededStart + index])
         {
@@ -466,6 +466,27 @@ public sealed partial class OwnershipAnalysis
         }
 
         var pattern = plan.Positions[index];
+        if (pattern.AccessMode == PatternAccessMode.Shared)
+        {
+            for (var i = index; i < pattern.End; i++)
+            {
+                var binding = plan.Positions[i];
+                if (binding.Kind != BoundPatternKind.Binding)
+                {
+                    continue;
+                }
+
+                var local = this.LocalPlace(binding.BodySymbol, binding.Source, binding.BodySymbol!.Type, binding.Source is SyntaxFormKoto { IsMutablePattern: true }, AcquisitionKind.Copy);
+                this.Emit(OwnershipOperationKind.Declare, binding.Source, local);
+                this.locals.Add(new(local, binding.Source, this.registrationSequence++));
+                var acquire = this.Emit(OwnershipOperationKind.AcquirePattern, binding.Source, input, local, AcquisitionKind.Copy);
+                this.body.OperationSteps[acquire] = arm;
+                this.SetValue(acquire, OwnershipValueKind.PatternProjection, [], constant: i);
+            }
+
+            return;
+        }
+
         if (pattern.Kind == BoundPatternKind.Binding)
         {
             var acquisition = PatternAcquisitionKind(pattern);
@@ -503,7 +524,7 @@ public sealed partial class OwnershipAnalysis
         var element = 0;
         for (var child = index + 1; child < pattern.End; child = plan.Positions[child].End)
         {
-            this.AcquirePattern(plan, child, payloadStart + element++, neededStart);
+            this.AcquirePattern(plan, child, payloadStart + element++, neededStart, arm);
         }
     }
 

@@ -23,30 +23,7 @@ internal static partial class LlvmModuleWriter
             var step = steps[i];
             Name(output, "test", i);
             output.Write(":\n");
-            var dereferences = step.DereferenceOffsets;
-            if (dereferences is not null)
-            {
-                for (var d = 0; d < dereferences.Length; d++)
-                {
-                    Name(output, "  %derefAddress", i);
-                    Name(output, "_", d);
-                    output.Write(" = getelementptr i8, ptr ");
-                    WritePatternBase(output, i, d);
-                    Name(output, ", i64 ", dereferences[d]);
-                    output.Write('\n');
-                    Name(output, "  %deref", i);
-                    Name(output, "_", d);
-                    Name(output, " = load ptr, ptr %derefAddress", i);
-                    Name(output, "_", d);
-                    output.Write(", align 8\n");
-                }
-            }
-
-            Name(output, "  %address", i);
-            output.Write(" = getelementptr i8, ptr ");
-            WritePatternBase(output, i, dereferences?.Length ?? 0);
-            Name(output, ", i64 ", step.Offset);
-            output.Write('\n');
+            WritePatternAddress(output, null, default, i, step.DereferenceOffsets, step.Offset, "  %address");
             if (step.Text >= -1)
             {
                 WriteCompositeStringTest(output, constants, step, i);
@@ -87,11 +64,45 @@ internal static partial class LlvmModuleWriter
         }
     }
 
-    private static void WritePatternBase(TextWriter output, int test, int dereferences)
+    private static void WritePatternAddress(TextWriter output, EmissionFunction? function, EmissionOperand root, int id, int[]? dereferences, int offset, string name)
+    {
+        if (dereferences is not null)
+        {
+            for (var d = 0; d < dereferences.Length; d++)
+            {
+                Name(output, "  %derefAddress", id);
+                Name(output, "_", d);
+                output.Write(" = getelementptr i8, ptr ");
+                WritePatternBase(output, id, d, function, root);
+                Name(output, ", i64 ", dereferences[d]);
+                output.Write('\n');
+                Name(output, "  %deref", id);
+                Name(output, "_", d);
+                Name(output, " = load ptr, ptr %derefAddress", id);
+                Name(output, "_", d);
+                output.Write(", align 8\n");
+            }
+        }
+
+        Name(output, name, id);
+        output.Write(" = getelementptr i8, ptr ");
+        WritePatternBase(output, id, dereferences?.Length ?? 0, function, root);
+        Name(output, ", i64 ", offset);
+        output.Write('\n');
+    }
+
+    private static void WritePatternBase(TextWriter output, int test, int dereferences, EmissionFunction? function, EmissionOperand root)
     {
         if (dereferences == 0)
         {
-            output.Write("%subject");
+            if (function is null)
+            {
+                output.Write("%subject");
+            }
+            else
+            {
+                WriteStorageAddress(output, function, root);
+            }
         }
         else
         {
@@ -138,13 +149,14 @@ internal static partial class LlvmModuleWriter
     {
         var id = instruction.Operation;
         var operands = function.GetOperands(instruction);
+        var address = instruction.ScalarOperator == "address";
+        WritePatternAddress(output, function, operands[0], id, instruction.Pattern?[0].DereferenceOffsets, (int)operands[1].Value, address ? "  %v" : "  %patternAddress");
+        if (address)
+        {
+            return;
+        }
+
         var representation = instruction.Representation!;
-        Name(output, "  %patternAddress", id);
-        output.Write(" = getelementptr i8, ptr ");
-        WriteStorageAddress(output, function, operands[0]);
-        output.Write(", i64 ");
-        WriteNumber(output, operands[1].Value);
-        output.Write('\n');
         Name(output, representation.ComputationType == "i1" ? "  %patternStorage" : "  %v", id);
         output.Write(" = load ");
         output.Write(representation.Layout.StorageType);

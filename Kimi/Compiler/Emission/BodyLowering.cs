@@ -316,7 +316,7 @@ internal sealed partial class BodyLowering
             return this.ValidateElementBorrow(body, index, index) || Fail("Element borrowing requires an initialized, protected source address.", out failure);
         }
 
-        if (body.Values[index].Kind == OwnershipValueKind.PatternProjection)
+        if (body.Values[index].Kind == OwnershipValueKind.PatternProjection && operation.Kind != OwnershipOperationKind.AcquirePattern)
         {
             return this.LowerPatternProjection(body, function, index, out failure);
         }
