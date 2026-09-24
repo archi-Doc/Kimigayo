@@ -21,8 +21,8 @@ internal sealed partial class BodyLowering
 
     private void PruneMatchStorage(OwnershipBody body, EmissionFunction function, ReadOnlySpan<byte> marks)
     {
-        Grow(ref this.slotUses, body.Places.Count);
-        this.slotUses.AsSpan(0, body.Places.Count).Clear();
+        Grow(ref this.slotUses, function.SlotAddresses.Count);
+        this.slotUses.AsSpan(0, function.SlotAddresses.Count).Clear();
         foreach (var instruction in this.validation.Instructions)
         {
             if ((marks[instruction.Operation] & NormalMark) == 0)

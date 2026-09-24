@@ -136,7 +136,34 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if (ReferenceTypes.IsStorage(type))
+            if (ReferenceTypes.IsBorrow(type) && ReferenceTypes.StorageMatches(type, output.Components[0]))
+            {
+                // Borrow reference-value storage, not its referent. Locals already have a slot;
+                // immutable by-value parameters/temporaries materialize their prepared pointer once.
+                var input = value.Count == 1 ? Input(body, id, 0) : -1;
+                if (input < 0 || !ReferenceTypes.StorageMatches(ValueType(body, input), type) ||
+                    (body.IsReachable(id) && !this.Dominates(input, id)))
+                {
+                    return Fail("Reference-value borrow requires its prepared pointer.", out failure);
+                }
+
+                var slot = operation.Place;
+                if (body.Places[slot].Kind != OwnershipPlaceKind.Local)
+                {
+                    if (output.Semantics != SemanticsKind.Ref)
+                    {
+                        return Fail("Only immutable shared inspection may materialize a reference parameter.", out failure);
+                    }
+
+                    slot = function.SlotAddresses.Count;
+                    function.SlotAddresses.Add(new(EmissionOperandKind.SlotAddress, slot));
+                    function.Slots.Add(new(slot, WindowsLowering.StringReference));
+                    function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, input)], "ptr", place: slot, representation: WindowsLowering.StringReference);
+                }
+
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, slot)]);
+            }
+            else if (ReferenceTypes.IsStorage(type))
             {
                 if (value.Count != 1 || (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)) ||
                     !ReferenceTypes.StorageMatches(type.Components[0], output.Components[0]) || (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq))

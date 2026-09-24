@@ -288,6 +288,7 @@ internal sealed partial class BodyLowering
 
         // Validate even unexecuted operations. The retained scratch function is never serialized.
         this.validation.Reset(function.Abi, false);
+        this.validation.SlotAddresses.AddRange(function.SlotAddresses);
         this.validation.LiveFlags.AddRange(function.LiveFlags);
         this.validation.PathFlags.AddRange(function.PathFlags);
         this.arguments.Clear();
@@ -324,6 +325,14 @@ internal sealed partial class BodyLowering
         if (this.arguments.Count != 0)
         {
             return Fail("Incomplete call argument plan.", out failure);
+        }
+
+        // Validated implicit acquisitions may materialize pointer-valued parameters.
+        // Their physical slots follow the logical Places and participate in ordinary pruning.
+        function.Slots.AddRange(this.validation.Slots);
+        for (var p = function.SlotAddresses.Count; p < this.validation.SlotAddresses.Count; p++)
+        {
+            function.SlotAddresses.Add(this.validation.SlotAddresses[p]);
         }
 
         if (this.hasMatches)

@@ -183,11 +183,11 @@ internal sealed partial class GenericStoragePlan
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(target.Parameters[i].Type.BoundType!, call);
-            var borrowedStorage = (ReferenceTypes.IsStorage(type) || ReferenceTypes.IsString(type)) && type!.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ReferenceTypes.IsStorage(target.Parameters[i].Type.BoundType);
-            if (type is null || FunctionAbi.GetValue(type, layouts) is null || ((ReferenceTypes.IsString(type) || ReferenceTypes.IsStorage(type)) && !borrowedStorage) ||
+            var borrowedStorage = ReferenceTypes.IsStorage(type) || ReferenceTypes.IsString(type);
+            if (type is null || FunctionAbi.GetValue(type, layouts) is null ||
                 (borrowedStorage && FunctionAbi.GetValue(type.Components[0], layouts) is null))
             {
-                return Fail("Generic entry parameter requires a concrete owned storage representation.", out failure);
+                return Fail("Generic entry parameter requires a concrete storage representation.", out failure);
             }
 
             parameters[i] = type;

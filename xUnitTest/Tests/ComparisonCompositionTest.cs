@@ -42,4 +42,26 @@ public class ComparisonCompositionTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReferenceValuesComposeThroughByValueGenericParameters(bool match)
+    {
+        const string Source = """
+            struct Key
+                Self is Equatable
+                public let number: i32
+                public init(number: i32) => self.number = number
+                public func equals(self: ref/Self, other: ref/Self) -> bool => self.number == other.number
+            func equal<T>(left: T, right: T) -> bool
+                T is Copy and Equatable
+                return left == right
+            let first = Key.init(1)
+            let last = Key.init(1)
+            require equal(first@ref, last@ref) else => $abort("reference witness")
+            """;
+        var source = match ? Source.Replace("return left == right", "return match true\n        true => left == right\n        false => false", StringComparison.Ordinal) : Source;
+        NativeAllocationAudit.WriteFixture("ComparisonCompositionReferenceValues" + match, source, 0, 0, 0);
+    }
 }
