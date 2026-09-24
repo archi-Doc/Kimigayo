@@ -96,6 +96,9 @@ public sealed partial class OwnershipAnalysis
         if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))
         {
             this.CollectLibraryBody(this.compilation.Library.DictionaryUnlink);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryAppendSlot);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryInitialize);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryClearLinks);
         }
 
         if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) || ObjectTypes.IsOwner(type))

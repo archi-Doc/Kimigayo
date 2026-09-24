@@ -240,6 +240,12 @@ internal sealed class EmissionModule
 
     internal FunctionAbi? DictionaryUnlink { get; set; }
 
+    internal FunctionAbi? DictionaryAppendSlot { get; set; }
+
+    internal FunctionAbi? DictionaryInitialize { get; set; }
+
+    internal FunctionAbi? DictionaryClearLinks { get; set; }
+
     internal bool NeedsFormattingRuntime { get; set; }
 
     internal List<(FunctionAbi Wrapper, FunctionAbi Implementation)> FormattingWrites { get; } = new();
@@ -280,6 +286,9 @@ internal sealed class EmissionModule
         this.NeedsArrayRuntime = false;
         this.NeedsDictionaryRuntime = false;
         this.DictionaryUnlink = null;
+        this.DictionaryAppendSlot = null;
+        this.DictionaryInitialize = null;
+        this.DictionaryClearLinks = null;
         this.NeedsFormattingRuntime = false;
         this.FormattingWrites.Clear();
         this.FormattingConversions.Clear();

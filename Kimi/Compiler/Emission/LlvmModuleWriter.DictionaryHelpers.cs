@@ -16,7 +16,7 @@ internal static partial class LlvmModuleWriter
                     WriteDictionaryFind(output, helper);
                     break;
                 case DictionaryHelperKind.Clear:
-                    WriteDictionaryClear(output, helper);
+                    WriteDictionaryClear(output, helper, module.DictionaryClearLinks!);
                     break;
                 case DictionaryHelperKind.Drop:
                     output.Write("  call void @");
@@ -65,7 +65,7 @@ internal static partial class LlvmModuleWriter
         output.Write("  %next = load i64, ptr %next_ptr, align 8\n  br label %test\nfound:\n  ret i64 %link\nabsent:\n  ret i64 0\n");
     }
 
-    private static void WriteDictionaryClear(TextWriter output, DictionaryHelper helper)
+    private static void WriteDictionaryClear(TextWriter output, DictionaryHelper helper, FunctionAbi clearLinks)
     {
         var destroy = helper.KeyIsString || helper.KeyLayout?.NeedsDestruction == true || helper.ValueIsString || helper.ValueLayout?.NeedsDestruction == true;
         if (destroy)
@@ -80,13 +80,9 @@ internal static partial class LlvmModuleWriter
             output.Write("  br label %test\nend:\n");
         }
 
-        // Clear retains the allocation and makes all slots available without a scan.
-        DictionaryAddress(output, "%used_ptr", "%handle", 8);
-        DictionaryAddress(output, "%length_ptr", "%handle", 24);
-        DictionaryAddress(output, "%head_reset", "%handle", 32);
-        DictionaryAddress(output, "%tail_reset", "%handle", 40);
-        DictionaryAddress(output, "%free_reset", "%handle", 48);
-        output.Write("  store i64 0, ptr %used_ptr, align 8\n  store i64 0, ptr %length_ptr, align 8\n  store i64 0, ptr %head_reset, align 8\n  store i64 0, ptr %tail_reset, align 8\n  store i64 0, ptr %free_reset, align 8\n  ret void\n");
+        output.Write("  call void @");
+        output.Write(clearLinks.Name);
+        output.Write("(ptr %handle)\n  ret void\n");
     }
 
     private static void WriteDictionarySearchOperation(TextWriter output, DictionaryHelper helper)

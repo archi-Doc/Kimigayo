@@ -35,6 +35,10 @@ public sealed partial class KimiLibrary
         this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
         this.DictionaryUnlink = (FunctionKoto)FindDeclaration((DeclarationContainerKoto)FindDeclaration(this.Kotonoha.RootKoto, "DictionaryStorage", false)!, "unlink", true)!;
+        var dictionaryStorage = (DeclarationContainerKoto)this.DictionaryUnlink.Parent!;
+        this.DictionaryAppendSlot = (FunctionKoto)FindDeclaration(dictionaryStorage, "appendSlot", true)!;
+        this.DictionaryInitialize = (FunctionKoto)FindDeclaration(dictionaryStorage, "initialize", true)!;
+        this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
         foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.WriteWindow, KimiLibraryContainer.Utf8Writer })
         {
@@ -181,6 +185,12 @@ public sealed partial class KimiLibrary
     internal BindingScope DictionaryScope { get; }
 
     internal FunctionKoto DictionaryUnlink { get; }
+
+    internal FunctionKoto DictionaryAppendSlot { get; }
+
+    internal FunctionKoto DictionaryInitialize { get; }
+
+    internal FunctionKoto DictionaryClearLinks { get; }
 
     internal GroupKoto Console { get; }
 

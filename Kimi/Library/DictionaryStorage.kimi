@@ -1,6 +1,50 @@
 // Private ordered-storage algorithms. The compiler supplies allocation and typed
 // acquisition/destruction; this source owns slot links and free-slot reuse.
 group DictionaryStorage
+    // Handle words: buffer, used, capacity, length, head, tail, free.
+    // Links are slot index + 1; zero denotes no slot. The caller has already
+    // secured capacity for needed entries before appendSlot changes any links.
+    unsafe func appendSlot(handle: unsafe/isize, stride: isize, needed: isize) -> unsafe/u8
+        unsafe
+            let buffer = *(handle@unsafe/unsafe/u8)
+            let free = handle[6]
+            var index: isize = 0
+            if free == 0
+                index = handle[1]
+                handle[1] = index + 1
+            else
+                index = free - 1
+                let recycled = (buffer + index * stride)@unsafe/isize
+                handle[6] = recycled[1]
+            let link = index + 1
+            let slot = buffer + index * stride
+            let links = slot@unsafe/isize
+            let tail = handle[5]
+            links[0] = tail
+            links[1] = 0
+            if tail == 0
+                handle[4] = link
+            else
+                let previous = (buffer + (tail - 1) * stride)@unsafe/isize
+                previous[1] = link
+            handle[5] = link
+            handle[3] = needed
+            return slot
+
+    unsafe func clearLinks(handle: unsafe/isize)
+        unsafe
+            handle[1] = 0
+            handle[3] = 0
+            handle[4] = 0
+            handle[5] = 0
+            handle[6] = 0
+
+    unsafe func initialize(handle: unsafe/isize)
+        unsafe
+            *(handle@unsafe/unsafe/u8) = null
+            handle[2] = 0
+            clearLinks(handle)
+
     unsafe func unlink(handle: unsafe/isize, stride: isize, link: isize)
         unsafe
             let buffer = *(handle@unsafe/unsafe/u8)
