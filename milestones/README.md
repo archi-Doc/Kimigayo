@@ -49,7 +49,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-24**, programs 1–22, 29 and 32 pass their Release harnesses after the UTF-8 formatting integration; older results retain their original verification scope. Build means a native
+As of **2026-09-24**, programs 1–22, 29 and 32 pass their Release harnesses in the [P30 session](../PLAN_HISTORY.md#p30-session1); older Debug results retain their original verification scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -88,7 +88,7 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 27 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Range resolution/general Slice operations report `UnsupportedBinding_Kd` with unresolved/Type/result cascades; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
 | 28 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | User Iterable is unresolved; associated-Type/Constraint and generic iterator-state operations fail Binding; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
 | 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
-| 30 | YES | FAIL (Debug, O0/O2) | NOT_RUN (target); PASS (Debug rejections) | Tuple/shared-borrow composition fails Binding (`NoApplicableOverload_Kd` / `UnprovenConstraint_Kd`). All 16 independent rejection checks pass. Companion scalar/user Contract tests do not certify this target. |
+| 30 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN (target); PASS (Debug/Release rejections) | Tuple/shared-borrow composition fails Binding (`NoApplicableOverload_Kd` / `UnprovenConstraint_Kd`). All 16 independent rejection checks pass in each configuration. Companion scalar/user Contract tests do not certify this target. [Evidence](../PLAN_HISTORY.md#p30-session1). |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 32 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
 | 33 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -130,7 +130,7 @@ Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 ## Roadmap from program 15 to core completion
 
 The current plan has **38 programs**, including **24 programs numbered 15–38**.
-Programs 15–29 and 32 are concrete below; 30–31 and 33–38 are future source targets.
+Programs 15–30 and 32 are concrete below; 31 and 33–38 are future source targets.
 Source creation is not implemented capability. This count is a decomposition of scope, not an effort or delivery
 estimate. Passing programs 13/14 does not
 establish general Slice, Iterator, callable, or object support.
@@ -1571,6 +1571,11 @@ Move conflicting with the left operand's Loan. `-Cases Rejections` checks those
 cases without certifying the pending canonical target. Companion managed/native
 tests cover primitive boundaries, evaluation/destruction order and NaN mapping.
 Tuple/shared-borrow Contract composition and its cost evidence remain P30 work.
+The final session passes 12,169 managed tests per configuration, 48 Comparison
+native O0/O2 executions and all 24 completed Release harnesses (1,232 checks).
+Program 30 itself fails all four Debug/Release O0/O2 build probes at Binding;
+its runtime tests are NOT_RUN, while 16 independent rejection checks pass in each
+configuration. See [P30 session evidence](../PLAN_HISTORY.md#p30-session1).
 
 Focus: [comparison mapping](../spec/13-operators-and-assignment.md#1341-contract-comparison-mapping),
 [floating key equality](../spec/12-expressions.md#1234-dictionary-literals),

@@ -11,6 +11,9 @@ SPEC Chapter 22 and its references remain authoritative.
   functions belong inside declaration containers such as groups or structs.
 - `Slice.kimi` and `Array.kimi` declare the compiler-managed sequence Types; their storage,
   metadata and built-in operations are supplied by the compiler and they may only add functions.
+- `Comparison.kimi` declares Equatable and Comparable as ordinary Contracts with
+  validated recognized identities. Primitive witnesses use compiler lowering;
+  user witnesses use ordinary calls with the same ownership and effect checks.
 - `Intrinsics.kimi`, `Console.kimi`, `Test.kimi` and `ArrayOperations.kimi` contain signatures without source bodies.
   Their private loader supplies the owning container (a group, or the `Array` struct for its mutation operations). Only catalog-registered compiler
   implementations are allowed in these groups; this is not public syntax for
