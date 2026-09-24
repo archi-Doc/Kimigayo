@@ -483,21 +483,8 @@ public sealed partial class Binding
                 return this.BindTuple(tuple, scope, expected);
             case ArrayLiteralKoto { FillLength: not null } fill:
                 return this.BindArrayFill(fill, scope, expected);
-            case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.FixedArray }:
-                for (var i = 0; i < array.Elements.Count; i++)
-                {
-                    this.RequireType(array.Elements[i], scope, expected.Components[0]);
-                }
-
-                return array.Elements.Count == expected.Length ? Complete(node, expected) : Fail(node, BindingFailure.TypeMismatch);
-            case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.Array }:
-                // SPEC 4.3: an Array literal acquires each element as T; an empty literal needs only the expectation.
-                for (var i = 0; i < array.Elements.Count; i++)
-                {
-                    this.RequireType(array.Elements[i], scope, expected.Components[0]);
-                }
-
-                return Complete(node, expected);
+            case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array }:
+                return this.BindContextualArrayLiteral(array, scope, expected);
             case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:

@@ -28,9 +28,7 @@ public sealed partial class Binding
     private BoundType? BindArrayFill(ArrayLiteralKoto fill, BindingScope scope, BoundType? expected)
     {
         var length = fill.FillCount = this.BindLength(fill.FillLength!, scope);
-        var element = expected?.Kind == BoundTypeKind.FixedArray
-            ? this.RequireType(fill.Elements[0], scope, expected.Components[0])
-            : this.BindNode(fill.Elements[0], scope);
+        var element = this.BindNode(fill.Elements[0], scope, expected?.Kind == BoundTypeKind.FixedArray ? expected.Components[0] : null);
         if (length is null || element is null)
         {
             return Fail(fill, BindingFailure.InvalidTypeFormation);
@@ -43,7 +41,44 @@ public sealed partial class Binding
         }
 
         var type = this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
-        return expected is not null && !FitsType(type, expected) ? Fail(fill, BindingFailure.TypeMismatch) : Complete(fill, type);
+        return Complete(fill, type);
+    }
+
+    // As for Tuple literals, retain the acquired element Type until the enclosing
+    // declaration has inferred omitted Origins. Replacing it with the expectation
+    // here would erase the very evidence needed by InferLocalOrigins.
+    private BoundType? BindContextualArrayLiteral(ArrayLiteralKoto literal, BindingScope scope, BoundType expected)
+    {
+        BoundType? element = null;
+        var complete = true;
+        for (var i = 0; i < literal.Elements.Count; i++)
+        {
+            var actual = this.BindNode(literal.Elements[i], scope, expected.Components[0]);
+            if (actual is null)
+            {
+                complete = false;
+            }
+            else if (!ReferenceEquals(actual, BoundType.Never))
+            {
+                var common = element is null ? actual : this.CommonOriginType(element, actual);
+                if (common is null)
+                {
+                    Fail(literal.Elements[i], BindingFailure.TypeMismatch);
+                    complete = false;
+                }
+                else
+                {
+                    element = common;
+                }
+            }
+        }
+
+        if (expected.Kind == BoundTypeKind.FixedArray && (expected.LengthExpression is not null || expected.Length != literal.Elements.Count))
+        {
+            return Fail(literal, BindingFailure.TypeMismatch);
+        }
+
+        return Complete(literal, complete ? this.InternType(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Length) : null);
     }
 
     private void InferArrayAnnotation(Koto syntax, Koto initializer, BindingScope scope)
@@ -108,12 +143,13 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (established is not null && !ReferenceEquals(established, actual))
+            var common = established is null ? actual : this.CommonOriginType(established, actual);
+            if (common is null)
             {
                 return Fail(literal, BindingFailure.TypeMismatch);
             }
 
-            established = actual;
+            established = common;
         }
 
         if ((established ?? literalDefault) is not { } element)

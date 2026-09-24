@@ -217,11 +217,10 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // An Origin weakening changes the lifetime contract, never the pointer representation.
-    // Keep all other scalar transfers exact, and require the complete semantic proof.
+    // Origin restriction changes lifetime contracts, never storage, including nested
+    // reference components. Require both physical agreement and the semantic proof.
     private static bool FitsValue(BoundType? source, BoundType? target)
-        => ReferenceEquals(source, target) || (ReferenceTypes.IsStorage(source) && ReferenceTypes.IsStorage(target) &&
-            ReferenceEquals(source!.Components[0], target!.Components[0]) && Binding.FitsType(source, target));
+        => ReferenceEquals(source, target) || (ReferenceTypes.StorageMatches(source, target) && Binding.FitsType(source!, target!));
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :

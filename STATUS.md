@@ -77,6 +77,8 @@ ContainerNestingTest covers declaration/rebind/serialization and 64-level nestin
 
 Fixed-array fill `[N of value]` is implemented through parsing, Binding, ownership and native lowering: Copy-only values are acquired once, including at zero length; fixed element expectations, local inference and generic length/type calls are supported. A shared doubling-copy helper keeps generated code independent of N. `FixedArrayFillTest` plus related array suites pass 73 focused tests and four O0/O2 native executions (`bin/verify/20260923-124752-unit-utf8-fill`).
 
+Array literals and fixed-array fill retain actual nested reference Origins while inferring omitted local annotations. Independent literals combine only permitted Origin restrictions of the same Core; transfers check both complete semantic compatibility and identical physical storage. Fixed/dynamic Tuple elements execute natively, and retained element references reject owner invalidation. Evidence: 210 related tests and 16 O0/O2 executions (`bin/verify/20260924-035409-908-unit-array-literal-origins-verified`), including the existing zero-allocation warm inference check.
+
 #### UTF-8 formatting
 
 The normative profile, effect/allocation audits, example and Program 32 pass focused and full-session verification. The baseline above covers the complete final source; the following unit records identify each support boundary.

@@ -8,6 +8,30 @@ namespace XunitTest;
 public class SharedIterationTest
 {
     [Theory]
+    [InlineData("Fixed", "[2 of (ref/i32, i32)]", "[(first@ref, 1), (second@ref, 2)]")]
+    [InlineData("Dynamic", "Array<(ref/i32, i32)>", "[(first@ref, 1), (second@ref, 2)]")]
+    [InlineData("Fill", "[2 of (ref/i32, i32)]", "[2 of (first@ref, 1)]")]
+    [InlineData("Independent", "", "[(first@ref, 1), (second@ref, 2)]")]
+    public void ArrayElementsInferAndRetainNestedOrigins(string name, string annotation, string initializer)
+    {
+        var declaration = annotation.Length == 0 ? string.Empty : ": " + annotation;
+        var source = "let first: i32 = 40\nlet second: i32 = 40\nlet values" + declaration + " = " + initializer + "\nfor (reference, number) in values\n    require reference == 40 and number > 0 else => $abort(\"origin\")";
+        ScalarEmissionTest.EmitFixture("SharedIterationOrigins" + name, source, string.Empty);
+    }
+
+    [Theory]
+    [InlineData("[2 of ref/i32]", "[first@ref, second@ref]")]
+    [InlineData("Array<ref/i32>", "[first@ref, second@ref]")]
+    [InlineData("[2 of ref/i32]", "[2 of first@ref]")]
+    public void InferredElementOriginsKeepEachOwnerProtected(string annotation, string initializer)
+    {
+        var c = MinimalEmissionTest.Analyze("var first: i32 = 40\nvar second: i32 = 41\nlet values: " + annotation + " = " + initializer + "\nfirst = 42\nlet value: ref/i32 = values[0]\nrequire value == 40 else => $abort(\"owner\")");
+        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void TupleComponentsCopyValuesAndBorrowNonCopyStorage(bool dynamic)
