@@ -69,6 +69,12 @@ Invoke-MilestoneVariants $variants $expected
 
 $setup = 'var entries: Dictionary<i32, i32> = [:]' + [char]10 + '_ = entries.tryInsert(1, 1)' + [char]10
 $invalid = [ordered]@{
+    DuplicateIntegerLiteral = @{ source = 'let entries: Dictionary<i32, i32> = [1_000: 1, (+1000): 2]'; diagnostic = 'DuplicateDictionaryKey_Kd' }
+    DuplicateBooleanLiteral = @{ source = 'let entries: Dictionary<bool, i32> = [true: 1, (true): 2]'; diagnostic = 'DuplicateDictionaryKey_Kd' }
+    DuplicateCharacterLiteral = @{ source = "let entries: Dictionary<char, i32> = ['a': 1, '\u(61)': 2]"; diagnostic = 'DuplicateDictionaryKey_Kd' }
+    DuplicateStringLiteral = @{ source = 'let entries: Dictionary<string, i32> = ["a": 1, "\u(61)": 2]'; diagnostic = 'DuplicateDictionaryKey_Kd' }
+    DuplicateUnitLiteral = @{ source = 'let entries: Dictionary<(), i32> = [(): 1, (()): 2]'; diagnostic = 'DuplicateDictionaryKey_Kd' }
+    DuplicateAcrossRuntimeKey = @{ source = 'func unused(key: i32)' + [char]10 + '    if false' + [char]10 + '        let entries: Dictionary<i32, i32> = [1: 1, key: 2, (1): 3]'; diagnostic = 'DuplicateDictionaryKey_Kd' }
     MissingEquality = @{ source = 'struct Key' + [char]10 + '    public init() => ()' + [char]10 + 'var entries: Dictionary<Key, i32> = [:]'; diagnostic = 'UnsatisfiedConstraint_Kd' }
     MovedDictionary = @{ source = $setup + '_ = entries@move' + [char]10 + '_ = entries.length'; diagnostic = 'MovedPlace_Kd' }
     ImplicitTransfer = @{ source = $setup + 'let other = entries'; diagnostic = 'TransferRequired_Kd' }

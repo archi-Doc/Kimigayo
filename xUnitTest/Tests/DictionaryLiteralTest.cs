@@ -41,12 +41,15 @@ public class DictionaryLiteralTest
     [InlineData("i32", "1", "2")]
     [InlineData("i32", "-1", "1")]
     [InlineData("i32", "1", "1 + 0")]
-    [InlineData("i32", "1", "1 as i32")]
+    [InlineData("i32", "1", "1@i32")]
+    [InlineData("i32", "1", "+(1)")]
+    [InlineData("i32", "-1", "-(1)")]
     [InlineData("f64", "1.0", "1.0")]
     [InlineData("(i32, i32)", "(1, 2)", "(1, 2)")]
     public void StaticCheckingDoesNotExpandIntoOtherExpressions(string type, string first, string later)
     {
         var c = MinimalEmissionTest.Analyze("let entries: Dictionary<" + type + ", i32> = [" + first + ": 1, " + later + ": 2]");
+        Assert.False(c.Kotonoha.HasSourceErrors);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
