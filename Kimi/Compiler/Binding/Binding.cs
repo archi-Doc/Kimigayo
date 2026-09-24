@@ -541,6 +541,7 @@ public sealed partial class Binding
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,
                     BindingFailure.Duplicate => DiagnosticCode.DuplicateBinding_Kd,
+                    BindingFailure.DuplicateDictionaryKey => DiagnosticCode.DuplicateDictionaryKey_Kd,
                     BindingFailure.TypeMismatch => DiagnosticCode.TypeMismatch_Kd,
                     BindingFailure.NotCallable => DiagnosticCode.NotCallable_Kd,
                     BindingFailure.NoApplicableCandidate => DiagnosticCode.NoApplicableOverload_Kd,

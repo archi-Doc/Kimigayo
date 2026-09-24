@@ -119,6 +119,7 @@ internal enum BindingFailure : byte
     ReceiverShapeMismatch,
     MissingSpecializationTarget,
     SpecializationInputMismatch,
+    DuplicateDictionaryKey,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

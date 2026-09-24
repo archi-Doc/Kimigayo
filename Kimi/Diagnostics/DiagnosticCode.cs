@@ -13,6 +13,7 @@ public enum DiagnosticCode
     UnresolvedBinding_Kd,
     AmbiguousBinding_Kd,
     DuplicateBinding_Kd,
+    DuplicateDictionaryKey_Kd,
     NotCallable_Kd,
     NoApplicableOverload_Kd,
     CyclicBinding_Kd,

@@ -23,6 +23,9 @@
   + Name="DuplicateBinding_Kd"
     Message="A declaration with the same Name or normalized Signature already exists in this scope"
 
+  + Name="DuplicateDictionaryKey_Kd"
+    Message="This Dictionary literal key duplicates an earlier literal key"
+
   + Name="NotCallable_Kd"
     Message="The selected value is not callable; lookup does not fall back to an outer function"
 

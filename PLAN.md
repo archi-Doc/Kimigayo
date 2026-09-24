@@ -23,6 +23,7 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 
 ## 3. Current position
 
+- **Active P31 session:** started 2026-09-24 08:50:04 UTC (17:50:04 JST); start no new unit after 09:50:04 UTC. Program 31 remains immutable; harness additions are permitted.
 - **Review remediation (2026-09-24):** 38 verified units through `98e62c71` implement common Copy/shared acquisition, recursive comparison witnesses, callback effects, Dictionary storage/iteration/costs, object identity/base views and layered destruction; they also correct specification wording, causal/resource diagnostics and isolated verification. The cited G7/G11/G14/G16/G18/G19 cases are resolved. General language features outside these verified shapes remain scoped below.
 - **Verified implementation HEAD `98e62c71`:** warning-free Debug/Release builds, 12,372 tests each, 7,082 fresh O0/O2 executions and 26 Release harnesses (1,338 checks) in `bin/verify/20260924-083312-114-session-review-remediation-complete`. Program sources are unchanged. No NativeAOT; unrelated draft edits preserved.
 - **P30 DONE:** the unchanged target, all 43 Debug/Release harness checks, recursive witness/effect/NaN regressions and allocation probes pass.
