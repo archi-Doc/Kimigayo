@@ -17,37 +17,36 @@ struct Box<V>
         return self.value
 ```
 
-これにより、ユーザー定義のHashtableなどが内部の要素を取り出さずに公開し、呼び出し側が共有借用・格納参照のコピー・Copy値の取得を選べる。
+主な用途は、Hashtableの `Get` やField風アクセサが、内部の要素を移譲せずに公開することである。正常完了時には実在する場所を返し、呼び出し側はArrayと同じ共有読み出し、または明示的なスロット借用を選べる。不在時にAbortする `Get` を表現できるが、不在を値として返す `TryGet` は§6.2の対象外とする。
 
 ### 1.1. この方式を選ぶ理由
 
 | 方式 | 判断 |
 | --- | --- |
-| 要素型から別の読み出し型を計算する | Copy能力やsemanticsに応じた公開型・取得操作・寿命の対応規則が必要になる。今回は導入しない。 |
+| 公開の型演算で読み出し型を計算する | 型だけでなく取得操作・寿命の対応も必要になる。新しいsemantics・Core・型演算は導入せず、既存の内部規則 `SharedReadResult` を再利用する。 |
 | 普通の値を返し、Moveだけ禁止する | Non-Copy値を元の場所に残したまま返す方法が定まらない。非所有性・寿命・更新権限も必要になる。 |
 | 共有Placeを返す | 元の格納場所を公開し、既存の共有参照と取得規則を利用できる。本書で採用する。 |
 
-`ref/V` を返す既存APIでもスロット借用は可能であり、固定の参照結果で十分ならその方式を使える。Place返却の追加価値は、呼び出し側が**スロットそのものを借りるか、格納された値を共有アクセスするか**を選べる点にある。
+`ref/V` を返す既存APIでもスロット借用は可能であり、固定の参照結果で十分ならその方式を使える。Place返却では、格納型Vを公開したまま、Arrayと同じ取得操作を利用者側で選べる。
 
 ### 1.2. 記法
 
 推奨記法は `-> place(W) during source` とする。`W` はsemanticsと内部Originsを含む完全型で、`place(s/V)` とも書ける。
 
 ```text
-ResultClause := '->' Type
-              | '->' 'place' '(' Type ')' [ 'during' OriginAtom ]
+FunctionResult := Type
+                | 'place' '(' Type ')' [ 'during' OriginAtom ]
+ResultClause   := '->' FunctionResult
+FunctionType   := '(' ParameterTypes ')' '->' FunctionResult
 ```
 
-`place` は結果位置の文脈キーワードであり、新しいsemantics・Core・値Typeではない。括弧内は公開する格納型、括弧外の `during` は格納場所の寿命を表す。
+関数宣言・匿名関数・Function Type・Callableの署名・Contract関数要求で同じ `FunctionResult` を使う。上記は結果部分の文法であり、引数などの既存文法は変更しない。
 
-| 候補 | 評価 |
-| --- | --- |
-| `place(W)` | 既存のPlaceという概念と対応し、型と格納場所のOriginを区別できる。採用する。 |
-| `place W` | 内側の借用型に付く `during` との境界が分かりにくい。 |
-| `borrow(W)` | 取得済みの参照値を返すように見える。 |
-| `nomove W` / `moveback W` | 所在・非所有性・共有権限を表さず、後者はMove後の復元も連想させる。 |
+結果の開始位置で、非修飾名 `place` の次のトークンが `(` の場合だけ文脈キーワードとする。空白の有無で判定を変えず、構文確定後に型名として再解釈しない。`-> place` 単独は通常の型名、`-> place (T)` はPlace結果として解析する。
 
-`place` は常に共有アクセスを意味する。将来の書き込み可能なPlaceは、既存の意味を変えず別の明示契約として検討する。
+`place(W)` 直後の `during` は必ずそのPlace結果に結合し、囲むFunction Type全体への注釈にはしない。W内のOriginsとは区別し、各位置の既存の注釈制限は§4.1に従う。
+
+`place` は共有アクセス専用の結果モードであり、semantics・Core・値Typeではない。`place W` よりOriginの境界が明確で、`borrow(W)` のような参照値や、`moveback` のようなMove後の復元も意味しない。書き込み可能なPlaceは別の明示契約として将来検討する。
 
 ## 2. 共通の意味と検査規則
 
@@ -59,6 +58,8 @@ ResultClause := '->' Type
 - 呼び出し元が使い終わるまで関数を停止する仕組みではない。関数のcleanupを完了してから制御を戻す。
 - Placeを指す情報と、そこから取得する値を区別する。値を取得した後は、その値に通常の規則を適用する。
 - この結果モード自体を、ローカル変数・引数・集約・クロージャの格納型にはできない。
+
+参照との共通化は表現・ABI・保護の基準を共有する意味であり、値Typeとして同一視する意味ではない。Placeの返却検査と呼び出し側の取得を区別し、関数型間の暗黙変換は追加しない（§5.2）。
 
 既存のPropertyアクセス権、初期化、構築完了、静的ストレージ、Unsafeの条件を迂回できない。
 
@@ -82,9 +83,6 @@ ResultClause := '->' Type
 func Forward<V>(box: ref/Box<V>) -> place(V) during box
     return box.Get()
 
-func BorrowSlot<V>(box: ref/Box<V>) -> ref/V during box
-    return box.Get()@ref/V
-
 func Missing() -> place(i32)
     => $abort("missing") // 正常完了しないので、場所を返す必要はない。
 ```
@@ -94,7 +92,6 @@ func Missing() -> place(i32)
 | 取得元 | 判定 |
 | --- | --- |
 | 呼び出し先で終了するローカル・値引数のスロット | 返却先の寿命を満たせないので不可。 |
-| 呼び出し元の一時receiver内のストレージ | 通常の一時寿命内でのみ使用可能。返却による寿命延長はない。 |
 | ローカル参照変数から到達する外部ストレージ | 外部ストレージの契約を満たせば可能。ローカル参照変数自身のスロットとは区別する。 |
 | 標準Field・Tuple・配列要素・適法な参照経路 | 型・アクセス・初期化・寿命の検査を満たせば可能。 |
 | 普通の値返却やcomputed getterの値結果 | Place返却を成立させるための暗黙の実体化は行わない。 |
@@ -105,52 +102,55 @@ func Missing() -> place(i32)
 
 ## 3. 呼び出し側の取得と制約
 
-### 3.1. 通常の共有Placeとして使う
+### 3.1. Arrayと同じ共有読み出しを使う
 
-旧案の「使用前に必ず `@ref` 等を記述する」という制限は設けない。Placeそのものの保存と、Placeから通常の値を取得することを区別する。
+Place結果を通常の値文脈で読む場合は、既存の `SharedReadResult(W, source)` を適用する。sourceは公開された格納場所と§4の依存を表す。結果型・取得操作・Originsを一組として扱い、格納値をMoveしない。initializer・値引数・通常の値返却・集約要素では、この結果を取得してから既存の期待型適合を行う。
+
+```kimi
+// tableの格納型はNon-CopyのResource。inspectはref/Resourceを受け取る。
+let view = table.Get(key)        // ref/Resource。
+inspect(table.Get(key))          // 同じ共有読み出し。
+let snapshot = numbers.Get(key) // 格納型がi32ならi32のCopy。
+```
+
+未知のWでは、Arrayと同じ内部の結果型・効果・Originの族を保持し、後続の使用を含め全束縛について定義時に検査する。Copy不明をNon-Copyと見なさず、公開の型演算も追加しない。Copy能力の変更に左右されずスロットを借りたい場合は、`@ref/W` を使う。
+
+Placeを直接扱う文脈では、先に値を取得しない。
 
 | 使用文脈 | 規則 |
 | --- | --- |
-| 共有参照引数・共有receiver | 既存仕様でその型・文脈に許された暗黙の借用・Reborrow・参照Copyを使用できる。 |
-| Copyな型の値取得 | 通常のCopyを許可する。格納値は消費しない。 |
-| Non-Copyな値の取得 | 暗黙Moveを行わず、既存の借用適合がなければエラー。 |
-| `@ref` / `@objref` / 完全型を指定した共有借用 | §3.2の共通規則を適用する。 |
-| Field・Tuple・添字projection | 通常の場所特定を行い、取得元の共有権限と依存を維持する。 |
-| `match` / `for` | 既存のSubject取得規則を適用する。排他的なSubjectを新設しない。 |
-| 破棄文脈 | 呼び出しとその副作用を一度実行する。未取得のPlaceが指す値は破棄しない。 |
+| Place返却の `return` / 単一式本体 | §2に従って場所を転送する。 |
+| 明示的な `@` 操作 | 解決したPlaceへ直接適用する。共有取得は§3.2、消費・更新の禁止は§3.3に従う。 |
+| receiver・Field・Tuple・添字projection | 既存の場所特定と適合を使い、共有権限と依存を維持する。取得する末端の操作の規則に従う（Fieldは§6.2）。 |
+| `match` / `for` | 既存のSubject取得規則を適用し、排他的なSubjectを新設しない。 |
+| 破棄文脈 | 呼び出しと副作用を一度実行する。未取得のPlaceが指す値は破棄しない。 |
 
-格納型がNon-Copyの `Resource`、`inspect` が `ref/Resource` を受け取る例:
-
-```kimi
-inspect(table.Get(key))            // 既存の共有借用適合。
-table.Get(key).inspect()           // 共有receiverなら可能。
-let view = table.Get(key)@ref      // ref/Resourceを保存。
-let bad = table.Get(key)           // ResourceのCopyを証明できないためエラー。
-```
-
-格納型が `i32` なら `let x = table.Get(key)` は整数のCopyであり、Placeの別名を保存する意味にはならない。未知のVについては、値Copyに `V is Copy` の証明が必要になる。
-
-格納された参照値についても既存の規則を使う。共有参照はCopyできるが、格納された `uniq` を期待型なしで排他的にReborrowするなど、共有経路を超える取得は許可しない。
-
-これにより、引数・initializer・集約要素などの位置ごとに新しい禁止一覧を作らず、共通の取得規則と共有権限で判定する。
+したがって、`numbers.Get(key)@ref/i32` はスロットを借りるが、裸の読み出しから得た整数を後で借りても元スロットへの借用にはならない。
 
 ### 3.2. スロット借用と内容への共有アクセス
 
-以下の `p` はPlace式の説明用記号であり、Place型の変数宣言ではない。
+`p` はPlace式の説明用記号とする。値読み出し列は `SharedReadResult` の適用箇所、明示借用列はFieldを含む既存Placeでも使う。
 
-| 公開される格納型W | 操作 | 結果 |
-| --- | --- | --- |
-| `owner/T` | `p@ref` | 格納値を借りる `ref/T`。Copy能力によらない。 |
-| `ref/T` | `p@ref` | 格納された `ref/T` のCopy。 |
-| `uniq/T` | `p@ref` | 共有Reborrowによる `ref/T`。 |
-| `obj/T`・`rc/T`・`arc/T` | `p@objref` | 対象objectを借りる `objref/T`。参照カウントを増やさない。 |
-| `objref/T` | `p@objref` | 格納された `objref/T` のCopy。 |
-| `objuniq/T` | `p@objref` | 共有Reborrowによる `objref/T`。 |
-| 有効な完全型W | `p@ref/W` | 完全なスロットを借りる `ref/W`。 |
+| 正規化した格納型W | 値読み出し（SharedReadResult） | `p@ref` | `p@objref` |
+| --- | --- | --- | --- |
+| Copy `owner/T` | `T` をCopy | `ref/T` をBorrow | エラー |
+| Non-Copy `owner/T` | `ref/T` をBorrow | `ref/T` をBorrow | エラー |
+| `obj/T`・`rc/T`・`arc/T` | `objref/T` をBorrow | エラー | `objref/T` をBorrow |
+| `ref/T` | 同型をCopy | 同型をCopy | エラー |
+| `objref/T` | 同型をCopy | エラー | 同型をCopy |
+| `unsafe/T` | 同型をCopy | エラー | エラー |
+| `uniq/T` | `ref/T` をReborrow | `ref/T` をReborrow | エラー |
+| `objuniq/T` | `objref/T` をReborrow | エラー | `objref/T` をReborrow |
+
+全行で、完全型を指定した `p@ref/W` はスロットへの `ref/W` を取得する。表のエラーを別のsemanticsへの暗黙変換で補わない。object借用に参照カウント更新はなく、`unsafe/T` のCopyやスロット借用から安全な参照先アクセスは得られない。
 
 `W = ref/T` なら、`@ref` と `@ref/ref/T` は別の操作になる。型引数が完全型Vなら `Get()@ref/V`、pairが `s/V` なら `Get()@ref/s/V` でスロットを借りられる。
 
-既存の同型Copy・Reborrowの優先順位、明示的なobject upcast、Sealed payloadの共有投影条件は維持する。`@ref` を自動的に `@objref` へ変える規則は追加しない。`unsafe/T` のスロット借用はできるが、指す先への安全な参照は生成しない。
+省略形は、許される全束縛で操作が合法で、結果の型構造を一意に表せることを既存の制約規則で証明できる場合に使える。効果とOriginsは `spec/08` §8.9に従って相関を保ち、後続の使用も全束縛で検査する。証明できなければ制約か完全型指定を要求し、格納スロットの借用には `@ref/W` を案内する。
+
+「外側semanticsが一つ」「表の1行だけ」という制限は採用しない。例えばCopy不明のowner型でも `@ref` の結果は一定であり、`owner`・`ref`・`uniq` のいずれでも同じ `ref/T` を得るpairも、各場合の借用条件を証明できれば扱える。無制約の完全型Wへの `@ref` は全場合で成立しないので使えない。
+
+既存の同型Copy・Reborrowの優先順位、明示的なobject upcast、Sealed payloadの共有投影条件は維持する。完全型指定も、その操作の成立条件を免除しない。
 
 ### 3.3. 消費・更新の禁止と通常値への復帰
 
@@ -171,6 +171,17 @@ let direct = numbers.Get(key)              // i32の通常Copy。
 参照経路の追跡やSliceハンドルの読み取りなど、場所の特定に必要な処理と、利用者へ値を渡す取得を区別する。前者だけを理由にprojectionを禁止しない。
 
 receiver・引数・添字・getterは既存の順序で一度だけ評価する。値引数などを取得する場面では、PlaceからのCopyまたは借用まで終えてから、後続のoperandを評価する。場所の特定後は、後続の添字計算やcleanupを含め、取得に必要なストレージを連続して保護する。custom getterやメソッドを通る場合は通常の関数境界と共有receiver検査を適用し、隠れた格納場所を直接公開したことにはしない。
+
+独立したCopy値の取得が終われば、取得だけに必要だったPlace保護はその時点で終わる。call予約の活性化では、§4.2に従って残る依存と通常のcleanupを検査する。Copy型でも参照や依存を含む場合は保護が残り得る。一時値を早く破棄して活性化を通す規則は追加しない。
+
+```kimi
+// numbers.Get: -> place(i32) during self。kとjはnumbersに依存しない。
+// Set: 排他receiverとi32引数、SetFrom: 排他receiverとref/i32引数を取る。
+numbers.Set(k, numbers.Get(j))               // 独立したCopyを取得し、引数準備後に活性化できる。
+numbers.SetFrom(k, numbers.Get(j)@ref/i32)    // 同じnumbersへの共有Loanが残り、競合。
+```
+
+`@ref` を書いたことだけで失敗が決まるわけではない。最終的な引数取得が独立した値へのCopy readなら保護を残さず、参照を引数として保持する場合に競合する。
 
 ## 4. Origin・Loan・cleanup
 
@@ -238,7 +249,7 @@ let view = makeTable().Get(key)@ref/Resource
 // 一時tableがinitializer末尾で終了する場合、その後viewは使用できない。
 ```
 
-一時receiverは既存の文脈別の一時寿命に従う。Place返却自体による延長はない。独立したCopy値や、receiverに依存しない外部共有参照のCopyは、それぞれの通常の寿命に従う。
+receiverが一時値かどうかは呼び出し側で検査する。一時receiver内のストレージは既存の文脈別の一時寿命に従い、Place返却自体では延長しない。独立したCopy値や、receiverに依存しない外部共有参照のCopyは、それぞれの通常の寿命に従う。
 
 ## 5. 型推論・関数境界
 
@@ -248,7 +259,7 @@ let view = makeTable().Get(key)@ref/Resource
 
 - Placeを返す `return` 文脈では、期待される結果モードと公開型を使える。
 - Place結果の公開型Wは、receiver・引数・明示型引数・期待されるPlace契約から確定させる。通常の期待値Typeから、借用変換を逆算して未知のWやsemanticsを選ぶことはしない。
-- Wが確定したPlace候補は、通常の値文脈で許される共有取得またはCopyによって期待型を満たせるかを検査する。これは候補の適用可能性の検査であり、戻り値の取得方法による順位は付けない。
+- Wが確定したPlace候補は、その文脈の取得規則で期待型を満たせるかを検査する。通常の値文脈では `SharedReadResult` の結果を使う。これは候補の適用可能性の検査であり、戻り値の取得方法による順位は付けない。
 - 普通の値結果には従来の期待結果適合を適用する。値結果をPlace候補として扱うための実体化や、従来禁止された結果変換は追加しない。
 - 外側に `@ref` があるだけでPlace返却を優先しない。結果モードを変換する隠れた処理も挿入しない。
 - 明示適応の型情報は既存の推論境界内だけで使用する。候補ごとの本体解析や変換経路の探索は行わない。
@@ -271,12 +282,29 @@ let x = Select(1)@ref // ほかに選択根拠がなければ曖昧。Place版�
 関数・メソッド・明示結果を持つ匿名関数・Function Type・Contract関数要求で結果モードを保持する。未注釈の匿名関数からPlaceモードを推論しない。
 
 ```kimi
+// Function Type。結果の外側Originは直接の入力借用から補完する。
 (ref/Box<V>) -> place(V)
+
+// aが外側で束縛済みの場合。末尾のduringはPlace結果だけに付く。
+(ref/Box<V> during a) -> place(V) during a
+
+func ApplyPlace<V, F>(box: ref/Box<V>, f: ref/F) -> place(V) during box
+    F is Callable<(ref/Box<V>) -> place(V)>
+    return f(box)
 ```
 
-関数契約の適合には、同じ結果モードと§2.2の共有アクセス適合を要求する。入力の反変性・Origin量化・既存のhidden environment制限は維持する。普通の型引数Rに `place(V)` を束縛できず、Placeを転送するgeneric callableはそのモードを明示する。
+`Callable<ref, (ref/Box<V>) -> place(V)>` も同じ署名を表す。`uniq`・`owner` のCallable receiverも既存の意味を保つ。Callable内では、Placeの外側Originにも直接の借用注釈の記述禁止を適用し、省略規則で補完する。文法が共通でも、位置ごとの注釈制限は解除しない。
 
-Contractの実装、特殊化、関数参照、間接呼び出し、別コンパイルで、モード・Origins・Loan契約を落としてはならない。通常の参照結果へ変える場合は、明示的なラッパー関数で取得する。
+関数契約の適合には、同じ結果モードと§2.2の共有アクセス適合を要求する。入力の反変性・Origin量化・Unsafe関数やhidden environmentの既存制限は維持する。
+
+普通の型引数Rに `place(V)` は束縛できない。そのため既存の `map`・`apply` のような値結果Rを扱うAPIへ、そのままPlace関数を渡せるとは限らない。Placeを保持する高階APIは上例のようにモードを明示し、値結果APIへ渡す場合は次の参照結果ラッパーを使う。ラッパーの参照も、受け手のOrigin・Owned等の条件を満たす必要がある。
+
+```kimi
+func GetRef<V>(box: ref/Box<V>) -> ref/V during box
+    return box.Get()@ref/V
+```
+
+Contractの実装、特殊化、関数参照、間接呼び出し、別コンパイルで、モード・Origins・Loan契約を落としてはならない。
 
 ## 6. Arrayと周辺機能
 
@@ -284,7 +312,7 @@ Contractの実装、特殊化、関数参照、間接呼び出し、別コンパ
 
 固定長配列・Array・Sliceの添字Placeにも、Fieldおよび関数が返すPlaceと同じ明示的借用規則を適用する。添字の `@ref` / `@uniq` が常に要素スロットを借りる特別扱いを廃止する。
 
-型とアクセス権限に応じて、共有・排他のBorrow/Reborrowを選ぶ。返却PlaceとSliceは共有権限しか持たないため、排他的操作は引き続きできない。スロット自体を借りるときは完全型を指定する。
+型とアクセス権限に応じて、共有・排他のBorrow/Reborrowを選ぶ。共有省略形のジェネリック検査は§3.2に従う。返却PlaceとSliceは共有権限しか持たないため、排他的操作は引き続きできない。スロット自体を借りるときは完全型を指定する。
 
 ```kimi
 // refs: Array<ref/Node>
@@ -296,11 +324,29 @@ let objectView = nodes[0]@objref     // objref/Node。
 let handleSlot = nodes[0]@ref/obj/Node // ハンドルのスロットを借りる。
 ```
 
-明示的な `@` は通常読み出しの後処理ではなく、解決したPlaceに直接適用する。完全型を指定した排他スロット借用も、通常の権限検査に従う。
+完全型を指定した排他スロット借用も、通常の権限検査に従う。
 
-### 6.2. 変更しない読み出しと対象外の機能
+置き換える既存規則は次のとおり。
 
-裸のArray添字に適用する既存の `SharedReadResult` と、`match`・ガード・Tuple分解の取得規則は変更しない。したがって、裸の `array[i]` と `Get()` の通常値取得が全面的に同じになるわけではない。本書で統一するのは明示的借用と共有Placeの権限である。
+- `spec/04` §4.6.1の添字操作表と、添字形式にかかわらず `@ref` が要素Placeを借りる保証。
+- 同§4.6.6の `s[index]@ref` が常に要素スロットを借りる規則、およびそれに依存する例。
+- §4.6.6の `firstRef` は完全型指定を必須とする。`head` は外側semanticsがownerと分かるため省略形も有効だが、スロット借用の意図を明示する例へ揃える。
+
+```kimi
+func firstRef<T>(s: Slice<T>) -> ref/T during s.source
+    return s[0]@ref/T
+
+func head<T, E>(s: Slice<Result<T, E>>) -> ref/Result<T, E> during s.source
+    return s[0]@ref/Result<T, E>
+```
+
+この変更を含めてArrayとユーザー定義アクセサの明示取得を揃える。裸のArray読み出しの結果表、添字の評価・境界検査・Move Pathは変更しない。
+
+### 6.2. 共通化の範囲と対象外
+
+`SharedReadResult` はArray等の共有要素読み出しとPlace結果の通常値取得で共用する。既存の `match`・ガード・Tuple分解からの利用も同じ表を参照し、それぞれのSubject・取得時点・権限は維持する。
+
+**全Fieldの値取得を `SharedReadResult` に変える案は採用しない。** `spec/11` と `spec/08` §8.10は、標準Fieldの取得型とcustom/computed/required getterの結果型を宣言型に固定している。全Fieldへの拡張は、この型契約とgetter間の互換性を変えるためである。FieldとPlace結果は借用・権限検査を共用するが、値取得の契約は区別する。返却PlaceからのField投影にも、この既存のField規則を使う。
 
 次は今回の対象外とする。
 
@@ -308,21 +354,25 @@ let handleSlot = nodes[0]@ref/obj/Node // ハンドルのスロットを借り�
 - ユーザー定義indexer、Placeを返すcomputed Property。
 - 任意のsemantics変換、未定義のraw pointerから安全な参照を生成する操作。
 
-`Get()` は正常完了するなら場所を返す。不在を扱うAPIには既存の `Option<ref/V>` などを使用できる。`Contains()` の成功は将来の場所を予約しない。
+不在を扱う `TryGet` は、既存の `Option<ref/V>` などを返す。`Option<place(V)>` は、任意のType引数に結果モードを入れることになるため認めない。任意取得をPlaceとして扱う仕組みは将来の拡張とし、`Contains()` の成功から場所や借用を予約する推論も追加しない。
 
-通常のcustom/computed getterは値返却のままである。Place返却関数がprivateな標準Fieldを公開する場合も、本体で合法なアクセスと公開型の可視性を要求する。
+Place返却関数がprivateな標準Fieldを公開する場合も、本体で合法なアクセスと公開型の可視性を要求する。
 
 ## 7. 性能と実装上の契約
 
-Place返却の基準は、**相当する共有スロット参照の返却と、通常の参照操作**とする。
+同じ生成方式・型束縛・残りの関数契約の下で、**`place(W) during r` の表現と結果ABIは `ref/W during r` の返却と同一**とする。定義・直接呼び出し・関数値・Callable・Contract実装・間接呼び出しのentryとadapterは、この共通ABIに従う。
 
-- Placeの形成・一段の転送自体は、格納値のサイズや要素数に依存しないO(1)とする。検索・projection経路・ユーザー処理の費用は別に数える。
+既存の `spec/21` §21.4.2も呼び出し側と定義側のABI一致を要求しており、「ABI未固定」だけで不整合になるわけではない。本書では参照結果のloweringを共用し、追加の表現や変換を不要にする。ターゲットや生成方式を越えるABI固定はせず、内部最適化で変更する場合は全利用箇所の整合性を保つ。
+
+ゼロサイズ値の場所も `ref/W` と同じ初期化状態・Loan・寿命・論理的同一性を持つ。同じ代替アドレスを使っても場所を同一視せず、追加の実行時IDや異なる物理アドレスは要求しない。ABI属性も既存の証明条件に従い、Placeモードから `noalias` 等を無条件に付与しない。
+
+- Placeの形成・一段の転送自体は、格納値のサイズや要素数に依存しないO(1)とする。検索・projection・値取得・ユーザー処理の費用は別に数える。
 - この機能だけを理由とするヒープ確保、Wのコピー、一時W領域、参照カウント更新を要求しない。
 - 結果モード・権限・Origin・Loanの検査情報は静的に扱い、専用の実行時Loan台帳や寿命タグを追加しない。参照表現に本来必要な情報は維持する。
-- 転送ラッパーは参照の転送として生成できる。明示取得後のCopy readでも、不要な参照の保存・再読み取りを除去できる。
+- 転送ラッパーは参照の転送として生成できる。cleanupやフレーム寿命が許す場合に末尾転送へ最適化し、無条件の末尾呼び出しは保証しない。取得後の不要な参照保存・再読み取りも除去できる。
 - 最適化の有無で合法性・借用期間・評価回数・観測可能な副作用を変えない。
 
-一律の一語ABIは要求しない。型情報・別コンパイル成果物にはモードと公開契約を保持し、通常の依存無効化を行う。
+型情報・別コンパイル成果物にはモードと公開契約を保持する。解析では既存の参照契約・取得計画を共用し、結果モードと依存の違いをキャッシュ識別に含め、変更時は既存の依存無効化を行う。
 
 複数回アクセスするときは検索を一度にする。
 
@@ -340,22 +390,22 @@ inspectAgain(item) // Getを再実行せず、通常の参照を再利用。
 | --- | --- |
 | 返却元 | Field・配列要素・外部参照先・staticを返せる。終了するローカルへの参照を返せない。 |
 | 結果検査 | 複数return、Never、cleanup後の非完了、`place(())` のfallthroughを区別する。 |
-| 型とOrigin | 外側と内部Origins、共変位置の短縮、不変位置、名前導入、Callableの境界を保持する。 |
-| 取得 | 共有引数・receiver、Copy値取得、参照Copy、Reborrow、完全型スロット借用が同じ規則で動く。 |
+| 構文とOrigin | `place` 型名との区別、空白、`during` の結合、外側と内部Origins、変性、Callableの注釈制限を確認する（§1.2・4.1・5.2）。 |
+| 取得 | §3.2の全行・エラー、ArrayとGetの結果一致、Copy不明の全束縛検査、完全型スロット借用、既存Fieldとの境界を確認する。 |
 | 権限 | Move・書き込み・排他的操作と、格納uniq経由の権限回復を拒否する。 |
 | 依存 | 格納共有参照のCopyでは不要なスロット保護を残さず、実際の既存依存は保持する。 |
-| 評価順序 | 添字やgetterの副作用、call予約、cleanup、破棄文脈を含めて一度だけ評価する。 |
-| 関数境界 | 転送・Contract・特殊化・間接呼び出しで契約を維持し、返却モードだけのoverloadを拒否する。 |
-| Array | 新しい省略借用規則と、変更しない裸の読み出し・Pattern規則を分けて検証する。 |
-| 性能 | 追加確保・Wの不要なコピー・カウント更新がなく、ゼロサイズ値でも論理的な場所を区別する。 |
+| 評価順序 | 一度だけの評価、独立したCopy後の予約活性化、参照引数との競合、一時receiver、cleanupと破棄を確認する（§3.4・4）。 |
+| 関数境界 | 転送・Callable・Contract・特殊化・間接呼び出しで契約を維持し、モードだけのoverloadと暗黙の関数型変換を拒否する（§5）。 |
+| Array | 完全型のfirstRef・head、省略形の参照Copy、object・unsafe要素、既存の裸読み出しとPatternを確認する（§6）。 |
+| 表現・性能 | §7の参照結果ABI、ゼロサイズの論理的同一性、追加確保・不要なCopy・カウント更新の不在を確認する。 |
 
 ### 8.2. 正式仕様への反映先
 
 | 章 | 主な変更 |
 | --- | --- |
 | [3 型と値](../../spec/03-types-and-values.md)、[7 関数](../../spec/07-functions-and-callable-values.md) | 結果モード、共有Place、関数構文、返却文脈。 |
-| [8 ジェネリクス](../../spec/08-generics-constraints-and-contracts.md)、[9 シグネチャ](../../spec/09-names-signatures-and-access.md)、[10 推論](../../spec/10-overload-resolution-and-inference.md) | 定義検査、Origin適合、候補選択、Callable・Contract・特殊化。 |
-| [4 配列](../../spec/04-arrays-indexing-and-slices.md)、[11 Property](../../spec/11-properties.md)、[12 式](../../spec/12-expressions.md)、[13 操作](../../spec/13-operators-and-assignment.md) | 借用省略形の統一、通常取得、projection、既存getterとの区別。 |
+| [8 ジェネリクス](../../spec/08-generics-constraints-and-contracts.md)、[9 シグネチャ](../../spec/09-names-signatures-and-access.md)、[10 推論](../../spec/10-overload-resolution-and-inference.md) | 定義検査、相関した共有読み出しの適用範囲、Origin適合、候補選択、Callable・Contract・特殊化。 |
+| [4 配列](../../spec/04-arrays-indexing-and-slices.md)、[11 Property](../../spec/11-properties.md)、[12 式](../../spec/12-expressions.md)、[13 操作](../../spec/13-operators-and-assignment.md) | §6.1の保証・例の置換、借用省略形の統一、通常取得、projection、Fieldの固定型契約との区別。 |
 | [14 制御フロー](../../spec/14-control-flow.md)、[15 所有権](../../spec/15-ownership-and-lifetime-analysis.md)、[16 cleanup](../../spec/16-scope-exit-and-destruction.md) | Never・正常完了、Origin束縛、依存の分離、返却前後の連続保護。 |
 | [18 成果物](../../spec/18-modules-and-dependencies.md)、[21 コード生成](../../spec/21-layout-runtime-and-code-generation.md)、付録A・E・F | 契約の保存、表現と性能、検証項目・用語・構文。 |
 
