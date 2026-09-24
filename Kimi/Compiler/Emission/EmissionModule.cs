@@ -229,6 +229,8 @@ internal sealed class EmissionModule
     /// <summary>Gets the per-element Array helpers requested by lowered bodies (SPEC 4.7.2).</summary>
     internal List<ArrayHelper> ArrayHelpers { get; } = new();
 
+    internal List<DictionaryHelper> DictionaryHelpers { get; } = new();
+
     /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.7.4).</summary>
     internal bool NeedsArrayRuntime { get; set; }
 
@@ -268,6 +270,7 @@ internal sealed class EmissionModule
         this.Constants.Clear();
         this.Aggregates.Clear();
         this.ArrayHelpers.Clear();
+        this.DictionaryHelpers.Clear();
         this.NeedsArrayRuntime = false;
         this.NeedsDictionaryRuntime = false;
         this.NeedsFormattingRuntime = false;
@@ -333,3 +336,17 @@ internal enum ArrayHelperKind : byte
 
 /// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>
 internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option);
+
+internal enum DictionaryHelperKind : byte
+{
+    Find,
+    TryInsert,
+    InsertOrReplace,
+    Remove,
+    TryGet,
+    Clear,
+    Drop,
+}
+
+/// <summary>Physical Dictionary entry helper; bound Types and Origins never escape lowering.</summary>
+internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, AggregateLayout? Result, FunctionAbi? Related);

@@ -14,8 +14,8 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareComparison(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
     {
         failure = null;
-        if (site.Target.CompilerFunction is not (CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) ||
-            !ComparisonTypes.IsComposite(site.ConformingType) || this.comparisonCalls.ContainsKey(site))
+        if ((!Binding.HasDictionarySearch(site) && (site.Target.CompilerFunction is not (CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) ||
+            !ComparisonTypes.IsComposite(site.ConformingType))) || this.comparisonCalls.ContainsKey(site))
         {
             return true;
         }

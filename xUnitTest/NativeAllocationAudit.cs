@@ -14,11 +14,13 @@ internal static class NativeAllocationAudit
         Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
         var ir = writer.ToString()
             .Replace("call ptr @HeapAlloc(", "call ptr @audit_alloc(", StringComparison.Ordinal)
-            .Replace("call i32 @HeapFree(", "call i32 @audit_free(", StringComparison.Ordinal);
+            .Replace("call i32 @HeapFree(", "call i32 @audit_free(", StringComparison.Ordinal)
+            .Replace("call void @__kimi_exit(", "call void @__kimi_audit_exit(", StringComparison.Ordinal);
+        // Keep the real startup and cleanup path, including explicitly declared main.
+        // Audit at process exit instead of assuming an implicit entry-body symbol.
         var start = $$"""
-            define void @__kimi_start() noreturn #0 {
+            define internal void @__kimi_audit_exit(i32 %exit) noreturn #0 {
             entry:
-              call void @__kimi_entry_body()
               %alloc = load i64, ptr @audit_allocations
               %free = load i64, ptr @audit_frees
               %size = load i64, ptr @audit_bytes
@@ -29,14 +31,14 @@ internal static class NativeAllocationAudit
               %ok = and i1 %ab, %c
               br i1 %ok, label %passed, label %failed
             passed:
-              call void @__kimi_exit(i32 0)
+              call void @__kimi_exit(i32 %exit)
               unreachable
             failed:
               call void @__kimi_exit(i32 93)
               unreachable
             }
             """;
-        ir = DynamicArrayCapacityLimitTest.ReplaceDefinition(ir, "__kimi_start", start);
+        ir += "\n" + start + "\n";
         ir += """
 
             @audit_allocations = private global i64 0

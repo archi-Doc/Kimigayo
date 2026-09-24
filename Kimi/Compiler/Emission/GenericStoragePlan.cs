@@ -128,7 +128,7 @@ internal sealed partial class GenericStoragePlan
         foreach (var operation in body.Operations)
         {
             if (operation.Kind == OwnershipOperationKind.Call && operation.Source is InvocationKoto { BoundCall: { } call } &&
-                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) && !calls.Contains(call))
+                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || KimiLibraryCatalog.IsDictionaryOperation(call.Target.CompilerFunction) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) && !calls.Contains(call))
             {
                 calls.Add(call);
             }

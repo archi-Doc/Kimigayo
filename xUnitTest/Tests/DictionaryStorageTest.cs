@@ -30,7 +30,7 @@ public class DictionaryStorageTest
     [Theory]
     [InlineData("let values: Array<Dictionary<i32, i32>> = [[:]]")]
     [InlineData("let entries: Dictionary<i32, i32> = [1: 2]")]
-    [InlineData("var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)")]
+    [InlineData("var entries: Dictionary<i32, i32> = [:]\nentries.shrinkToFit()")]
     public void UnimplementedStorageOperationsRefuseGeneration(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

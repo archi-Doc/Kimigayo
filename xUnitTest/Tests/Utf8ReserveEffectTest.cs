@@ -142,6 +142,28 @@ public class Utf8ReserveEffectTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    [Theory]
+    [InlineData("_ = values.tryGet(Key.init())", false)]
+    [InlineData("_ = values.remove(Key.init())", false)]
+    [InlineData("_ = values.tryInsert(Key.init(), 1)", false)]
+    [InlineData("_ = values.insertOrReplace(Key.init(), 1)", false)]
+    [InlineData("values.clear()", true)]
+    [InlineData("_ = values.insertOrReplace(Key.init(), 1)", true)]
+    public void DictionaryImplicitEqualityAndDestructionEffectsAreChecked(string operation, bool destruction)
+    {
+        var key = "struct Key\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n        " +
+            (destruction ? "return true\n    deinit => State.value += 1\n" : "_ = State.value\n        return true\n");
+        var c = Analyze(State + key, "var values: Dictionary<Key, i32> = [:]\n        " + operation);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
+    [Fact]
+    public void PureDictionaryCallbacksAndCapacityOperationsAreAllowed()
+    {
+        var c = Analyze(string.Empty, "var values: Dictionary<i32, i32> = [:]\n        values.reserve(3)\n        _ = values.tryInsert(1, 2)\n        _ = values.tryGet(1)\n        _ = values.insertOrReplace(1, 3)\n        _ = values.remove(1)\n        values.clear()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
     [Fact]
     public void GenericFormattingChecksTheSelectedConcreteEffects()
     {

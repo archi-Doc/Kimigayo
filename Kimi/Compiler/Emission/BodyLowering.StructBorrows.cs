@@ -119,7 +119,7 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if (operation.Source is MemberAccessKoto projected && !ReferenceTypes.IsStorage(SignatureType(this, projected.BoundType)) &&
+            if (operation.Source is MemberAccessKoto projected && !ReceiverField(body, operation.Place) && !ReferenceTypes.IsStorage(SignatureType(this, projected.BoundType)) &&
                 ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
             {
                 if (!this.TryBorrowedPathOffset(projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
@@ -173,7 +173,7 @@ internal sealed partial class BodyLowering
 
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
             }
-            else if (operation.Source is BinaryKoto path && ElementAccess.OwnedPathRoot(path) is { } owner)
+            else if (operation.Source is BinaryKoto path && !ReceiverField(body, operation.Place) && ElementAccess.OwnedPathRoot(path) is { } owner)
             {
                 if (value.Count != 0 || this.aggregatePlaces[operation.Place] is null || !ReferenceEquals(SignatureType(this, owner.BoundType), type) ||
                     !ReferenceEquals(SignatureType(this, path.BoundType), output.Components[0]) || !this.TryBorrowedPathOffset(path, owner, out var pathOffset))

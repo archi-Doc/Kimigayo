@@ -202,7 +202,7 @@ public sealed partial class Binding
 
             this.context = caller;
 
-            if (call.Target.CompilerFunction is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.Replace)
+            if (call.Target.CompilerFunction is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.DictionaryClear or CompilerFunctionKind.Replace)
             {
                 var receiver = call.ReceiverOperation.ParameterType;
                 for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
@@ -236,9 +236,14 @@ public sealed partial class Binding
                 return;
             }
 
-            if (call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare && ComparisonTypes.IsComposite(call.ConformingType))
+            if (Binding.HasDictionarySearch(call) || (call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare && ComparisonTypes.IsComposite(call.ConformingType)))
             {
                 this.Comparison(binding.ComparisonPlan(call));
+                if (call.Target.CompilerFunction == CompilerFunctionKind.DictionaryInsertOrReplace && call.DeclaringType is { Components.Count: 2 } dictionary)
+                {
+                    this.Destruction(dictionary.Components[0], call.Target.Declaration);
+                }
+
                 return;
             }
 
@@ -275,7 +280,8 @@ public sealed partial class Binding
                     >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
                     CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
                     >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
-                    CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare;
+                    CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
+                    CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryClear or CompilerFunctionKind.DictionaryShrinkToFit;
                 return;
             }
 

@@ -6,10 +6,15 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, bool Operators), (ulong Version, BoundComparison Plan)> comparisonPlans = new();
 
+    internal static bool HasDictionarySearch(BoundCall site)
+        => site.Target.CompilerFunction is CompilerFunctionKind.DictionaryTryInsert or CompilerFunctionKind.DictionaryInsertOrReplace or CompilerFunctionKind.DictionaryRemove or CompilerFunctionKind.DictionaryTryGet;
+
     // One verified tree supplies both effect traversal and generation. Selection of a leaf uses
     // the conformance witness map, exactly like an explicit requirement invocation.
     internal BoundComparison? ComparisonPlan(BoundCall site)
-        => site.ConformingType is { } self ? this.ComparisonPlan(site, self, site.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable, site.TupleOperator) : null;
+        => HasDictionarySearch(site) && site.DeclaringType is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } dictionary
+            ? this.ComparisonPlan(site, dictionary.Components[0], KimiDeclarationId.Equatable, false)
+            : site.ConformingType is { } self ? this.ComparisonPlan(site, self, site.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable, site.TupleOperator) : null;
 
     private BoundComparison? ComparisonPlan(BoundCall site, BoundType self, KimiDeclarationId identity, bool operators)
     {

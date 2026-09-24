@@ -22,7 +22,7 @@ public sealed partial class OwnershipAnalysis
     {
         var stringElement = BorrowedArgumentSource(source) is IndexKoto index &&
             (index.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(index.Left.BoundType));
-        if (argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType) && !stringElement)
+        if (argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType) && !stringElement && !this.SpecialField(BorrowedArgumentSource(source)))
         {
             // Preserve the call-wide inspection plan for implicit string arguments.
             // Stored references use the same Origin-based liveness as all other borrows.

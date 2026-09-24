@@ -42,8 +42,17 @@ internal sealed partial class BodyLowering
 
         module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed || this.arrayHelpers.Count != 0;
         this.arrayRuntimeUsed = false;
+        foreach (var helper in this.dictionaryHelpers.Values)
+        {
+            if (!module.DictionaryHelpers.Contains(helper))
+            {
+                module.DictionaryHelpers.Add(helper);
+            }
+        }
+
         module.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;
         this.dictionaryRuntimeUsed = false;
+        this.dictionaryHelpers.Clear();
         module.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
         this.formattingRuntimeUsed = false;
         this.arrayHelpers.Clear();
@@ -581,8 +590,22 @@ internal sealed partial class BodyLowering
             return Fail("Array iterator cleanup requires its initialized cursor.", out failure);
         }
 
-        // Only empty Dictionary construction/capacity operations are admitted until entry helpers are available.
-        var callee = !dictionary && element.NeedsDestruction ? this.GetArrayHelper(iterator >= 0 ? ArrayHelperKind.IteratorDrop : ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+        FunctionAbi callee;
+        if (dictionary)
+        {
+            if (!this.TryGetArrayElement(arrayType.Components[0], out var key) || !this.TryGetArrayElement(arrayType.Components[1], out var item))
+            {
+                return Fail("Dictionary destruction requires concrete entry storage.", out failure);
+            }
+
+            callee = this.GetDictionaryHelper(DictionaryHelperKind.Drop, key, item).Abi;
+            this.dictionaryRuntimeUsed = true;
+        }
+        else
+        {
+            callee = element.NeedsDestruction ? this.GetArrayHelper(iterator >= 0 ? ArrayHelperKind.IteratorDrop : ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+        }
+
         if (conditional)
         {
             // An owning iterator always has a dominating unconditional cursor.
