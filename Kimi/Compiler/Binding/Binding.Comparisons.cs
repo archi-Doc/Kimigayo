@@ -44,6 +44,7 @@ public sealed partial class Binding
         call.BindingFailure = BindingFailure.None;
         call.BoundMeaning = null;
         call.BoundSymbol = null;
+        call.CallStorage = callee.RequirementStorage;
         this.nodes.Add(call);
         this.BindCall(call, scope, null);
         if (call.BoundCall is not { } selected)
@@ -51,15 +52,17 @@ public sealed partial class Binding
             return Complete(binary, null);
         }
 
+        callee.RequirementStorage = selected;
         if (!DependentType(self))
         {
-            var resolved = this.InstantiateRequirementCall(selected, selected);
+            var resolved = this.InstantiateRequirementCall(selected, selected, callee.ImplementationStorage);
             if (resolved is null)
             {
                 return Fail(binary, BindingFailure.Unsupported, true);
             }
 
             call.CallStorage = resolved;
+            callee.ImplementationStorage = resolved;
         }
 
         binary.ComparisonActive = true;

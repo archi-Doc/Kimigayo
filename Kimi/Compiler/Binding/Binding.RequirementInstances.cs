@@ -7,13 +7,13 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
-    private BoundCall? InstantiateRequirementCall(BoundCall call, BoundCall outer)
+    private BoundCall? InstantiateRequirementCall(BoundCall call, BoundCall outer, BoundCall? destination = null)
     {
         var requirement = (FunctionKoto)call.Target.Declaration;
         var builtin = this.FormatTarget(call.Target, call.ConformingType);
         if (!ReferenceEquals(builtin, call.Target))
         {
-            var intrinsic = new BoundCall();
+            var intrinsic = destination ?? new BoundCall();
             intrinsic.Set(builtin, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
             return intrinsic;
         }
@@ -27,21 +27,28 @@ public sealed partial class Binding
             return null;
         }
 
-        var origins = Translate(function.Origins);
-        var inputs = Translate(function.InputOrigins);
-        var resolved = new BoundCall();
-        resolved.Set(witness.Implementation, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: declaring, origins: origins, inputOrigins: inputs, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments, defaults: call.DefaultArguments);
-        return resolved;
-
-        BoundOrigin[] Translate(ReadOnlySpan<BoundOrigin> source)
+        var origins = this.originScratch.Rent(function.Origins.Length);
+        var inputs = this.originScratch.Rent(function.InputOrigins.Length);
+        try
         {
-            var result = new BoundOrigin[source.Length];
+            Translate(function.Origins, origins);
+            Translate(function.InputOrigins, inputs);
+            var resolved = destination ?? new BoundCall();
+            resolved.Set(witness.Implementation, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: declaring, origins: origins.AsSpan(0, function.Origins.Length), inputOrigins: inputs.AsSpan(0, function.InputOrigins.Length), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments, defaults: call.DefaultArguments);
+            return resolved;
+        }
+        finally
+        {
+            this.originScratch.Return(inputs, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
+        }
+
+        void Translate(ReadOnlySpan<BoundOrigin> source, Span<BoundOrigin> result)
+        {
             for (var i = 0; i < source.Length; i++)
             {
                 result[i] = this.SubstituteStoredOrigin(source[i], requirement, call.Origins, call.InputOrigins);
             }
-
-            return result;
         }
     }
 }

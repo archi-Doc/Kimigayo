@@ -9,5 +9,9 @@ internal sealed class ComparisonCalleeKoto(BinaryKoto root) : ExpressionKoto(roo
 
     internal BoundType Self { get; set; } = null!;
 
+    internal BoundCall? RequirementStorage { get; set; }
+
+    internal BoundCall? ImplementationStorage { get; set; }
+
     public override void WriteTo(ref IndentedStringBuilder builder) => builder.Append("<comparison>");
 }
