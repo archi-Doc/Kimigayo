@@ -23,6 +23,14 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
+        if (instruction.ScalarOperator == "DictionaryLocate")
+        {
+            output.Write($"  %invalid{id} = icmp eq i64 ");
+            WriteOperand(output, operands[1]);
+            output.Write(", 0\n");
+            WriteArithmeticFailure(output, constants, instruction, "%invalid");
+        }
+
         output.Write($"  %seqbase{id} = load ptr, ptr ");
         Address();
         output.Write($", align 8\n  %slotindex{id} = sub i64 ");
@@ -45,6 +53,11 @@ internal static partial class LlvmModuleWriter
         }
 
         output.Write($"  %element{id} = getelementptr i8, ptr %slot{id}, i64 {operands[3].Value}\n");
+        if (instruction.ScalarOperator == "DictionaryLocate")
+        {
+            return;
+        }
+
         if (instruction.ScalarOperator == "DictionaryAddress")
         {
             output.Write($"  %v{id} = getelementptr i8, ptr %element{id}, i64 0\n");

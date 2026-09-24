@@ -42,6 +42,27 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (unwrapped is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } dictionaryIndex && type.Semantics == SemanticsKind.Ref)
+        {
+            var depth = this.comparisonDepth++;
+            var projection = this.LocateElement(dictionaryIndex);
+            if (projection < 0)
+            {
+                this.EndComparisonLoans(depth, source);
+                this.comparisonDepth = depth;
+                return -1;
+            }
+
+            var plan = this.body.Projections[projection];
+            var elementReference = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+            var borrow = this.Emit(OwnershipOperationKind.Borrow, source, plan.Root, elementReference, loanMode: LoanRequirement.Ref, projection: projection);
+            this.SetValue(borrow, OwnershipValueKind.Address, [], constant: plan.Root);
+            this.body.Projections[projection] = plan with { Borrow = borrow };
+            this.EndComparisonLoans(depth, source);
+            this.comparisonDepth = depth;
+            return this.RegisterTemporary(elementReference);
+        }
+
         if (unwrapped is IndexKoto slice && type.Semantics == SemanticsKind.Ref &&
             (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType)))
         {

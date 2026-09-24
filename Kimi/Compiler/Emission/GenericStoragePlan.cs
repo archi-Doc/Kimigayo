@@ -84,6 +84,11 @@ internal sealed partial class GenericStoragePlan
                 continue; // Dependent calls receive a concrete context from their caller's entry.
             }
 
+            if (!this.PrepareDictionaryProjections(compilation, module, layouts, body, null, out failure))
+            {
+                return false;
+            }
+
             for (var i = 0; i < body.Operations.Count; i++)
             {
                 var operation = body.Operations[i];
@@ -242,6 +247,11 @@ internal sealed partial class GenericStoragePlan
         }
 
         module.PendingEntries.Add(entry);
+        if (!this.PrepareDictionaryProjections(compilation, module, layouts, template.Body, call, out failure, depth + 1))
+        {
+            return false;
+        }
+
         for (var i = 0; i < template.DirectCalls.Length; i++)
         {
             var inner = binding.InstantiateForwardedCall(template.DirectCalls[i], call);

@@ -168,6 +168,8 @@ public sealed class IndexKoto : BinaryKoto
     /// <summary>Gets a value indicating whether this subscript produces a slice.</summary>
     public bool IsSlice => this.Right is RangeKoto;
 
+    internal BoundType? DictionaryKeyReference { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="IndexKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

@@ -100,6 +100,11 @@ public sealed partial class Binding
                 this.Call(comparison);
             }
 
+            if (node is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } index)
+            {
+                this.Comparison(binding.DictionaryComparison(this.Type(index.Left.BoundType)!));
+            }
+
             if (node.Formatting is { } formatting)
             {
                 foreach (var write in formatting.Writes)

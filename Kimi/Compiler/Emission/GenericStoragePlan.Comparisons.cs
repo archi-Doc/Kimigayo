@@ -11,6 +11,29 @@ internal sealed partial class GenericStoragePlan
 
     internal IReadOnlyDictionary<BoundCall, FunctionAbi> ComparisonCalls => this.comparisonCalls;
 
+    internal IReadOnlyDictionary<BoundComparison, FunctionAbi> ComparisonHelpers => this.comparisonHelpers;
+
+    private bool PrepareDictionaryProjections(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? context, out string? failure, int depth = 0)
+    {
+        failure = null;
+        foreach (var projection in body.Projections)
+        {
+            if (body.Operations[projection.Operation].Source is not IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } index)
+            {
+                continue;
+            }
+
+            var dictionary = context is null ? index.Left.BoundType : compilation.Binding.InstantiateStorageType(index.Left.BoundType, context);
+            if (dictionary is null || compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
+                !this.PrepareComparisonHelper(compilation, module, layouts, comparison, out _, out failure, depth))
+            {
+                return Fail(failure ?? "Dictionary indexing requires a finalized equality witness.", out failure);
+            }
+        }
+
+        return true;
+    }
+
     private bool PrepareComparison(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
     {
         failure = null;

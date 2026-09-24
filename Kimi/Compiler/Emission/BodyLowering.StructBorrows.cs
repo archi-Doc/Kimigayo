@@ -42,6 +42,18 @@ internal sealed partial class BodyLowering
 
             var type = body.Places[operation.Place].Type;
             var output = ValueType(body, id)!;
+            if (operation.Projection >= 0)
+            {
+                if (!this.ValidateElementBorrow(body, id, id) || output.Semantics != SemanticsKind.Ref || value.Count != 0 ||
+                    !ReferenceEquals(SignatureType(this, operation.Source.BoundType), output.Components[0]))
+                {
+                    return Fail("Stored element borrow requires its protected projection and complete stored Type.", out failure);
+                }
+
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.ElementAddress, body.Projections[operation.Projection].Operation)]);
+                return true;
+            }
+
             if (ObjectTypes.IsBorrow(output))
             {
                 if (!(ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type)) || !ReferenceEquals(type.Components[0], output.Components[0]) ||

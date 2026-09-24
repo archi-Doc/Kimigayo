@@ -13,12 +13,15 @@ public sealed partial class Binding
     // the conformance witness map, exactly like an explicit requirement invocation.
     internal BoundComparison? ComparisonPlan(BoundCall site)
         => HasDictionarySearch(site) && site.DeclaringType is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } dictionary
-            ? this.ComparisonPlan(site, dictionary.Components[0], KimiDeclarationId.Equatable, false)
-            : site.ConformingType is { } self ? this.ComparisonPlan(site, self, site.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable, site.TupleOperator) : null;
+            ? this.ComparisonPlan(site.Target, dictionary.Components[0], KimiDeclarationId.Equatable, false)
+            : site.ConformingType is { } self ? this.ComparisonPlan(site.Target, self, site.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable, site.TupleOperator) : null;
 
-    private BoundComparison? ComparisonPlan(BoundCall site, BoundType self, KimiDeclarationId identity, bool operators)
+    internal BoundComparison? DictionaryComparison(BoundType dictionary)
+        => this.ComparisonPlan(this.Library.GetSymbol(KimiDeclarationId.Dictionary)!, dictionary.Components[0], KimiDeclarationId.Equatable, false);
+
+    private BoundComparison? ComparisonPlan(BindingSymbol site, BoundType self, KimiDeclarationId identity, bool operators)
     {
-        var key = (site.Target, self, identity, operators);
+        var key = (site, self, identity, operators);
         if (this.comparisonPlans.TryGetValue(key, out var cached) && cached.Version == this.storageVersion)
         {
             return cached.Plan;

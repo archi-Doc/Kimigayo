@@ -55,15 +55,18 @@ public sealed partial class Binding
     // Compiler-created calls use the same verified witness and storage substitution as source calls.
     // Their input Origins remain the implementation's external inputs; no borrowed value is captured.
     internal BoundCall? RequirementImplementation(BoundCall site, BoundType self, KimiDeclarationId identity, string? name = null)
+        => this.RequirementImplementation(site.Target, self, identity, name);
+
+    private BoundCall? RequirementImplementation(BindingSymbol site, BoundType self, KimiDeclarationId identity, string? name = null)
     {
-        var key = (site.Target, self, identity, name);
+        var key = (site, self, identity, name);
         if (this.requirementCalls.TryGetValue(key, out var cached) && cached.Version == this.storageVersion)
         {
             return cached.Call;
         }
 
         if (this.compilation.Library.GetSymbol(identity) is not { } contract ||
-            this.ResolveConformance(self, contract, site.Target.Declaration, out var path) != ConstraintProof.Proven ||
+            this.ResolveConformance(self, contract, site.Declaration, out var path) != ConstraintProof.Proven ||
             path is not { IsVerified: true } ||
             (name is null ? path.Witnesses.Count == 1 ? path.Witnesses[0] : null : this.FindRequirementWitness(path, contract, name)) is not { Implementation: { Declaration: FunctionKoto function } implementation, Function.BasePath: null } witness ||
             this.StoredType(witness.Function!.DeclaringType, self) is not { } declaring)

@@ -22,6 +22,7 @@ internal static partial class WindowsLowering
     internal const int ArgumentReason = 12;
     internal const int ArgumentRangeReason = 13;
     internal const int FormatReason = 14;
+    internal const int MissingKeyReason = 15;
 
     // Indices are stable internal ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -44,6 +45,7 @@ internal static partial class WindowsLowering
         new(ArgumentReason, "argument", "KIMI_E_ARGUMENT: Invalid argument value"),
         new(ArgumentRangeReason, "argument_range", "KIMI_E_ARG_RANGE: Argument out of range"),
         new(FormatReason, "format", "KIMI_E_FORMAT: Formatting failed"),
+        new(MissingKeyReason, "missing_key", "KIMI_E_MISSING_KEY: Dictionary key was not found"),
     ];
 
     internal static string ExpandAbortReasons(string runtime)

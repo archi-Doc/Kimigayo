@@ -30,6 +30,28 @@ public sealed partial class Binding
         var receiver = this.BindNode(source.Left, scope);
         if (source is IndexKoto)
         {
+            if (receiver?.Kind == BoundTypeKind.Dictionary)
+            {
+                var key = receiver.Components[0];
+                var actual = this.BindNode(source.Right, scope, key);
+                // A lookup borrows K itself, including when K is a reference value.
+                // An existing ref/K is reborrowed; it is never read into a key snapshot.
+                var written = source.Right.BoundType;
+                if (written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && !FitsType(written, key) && FitsType(written.Components[0], key))
+                {
+                    this.referentReads.Remove(source.Right);
+                    actual = written.Components[0];
+                }
+
+                if (actual is null || !this.CheckTypeUse(actual, key, source.Right))
+                {
+                    return Fail(source, BindingFailure.TypeMismatch);
+                }
+
+                ((IndexKoto)source).DictionaryKeyReference = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: this.PlaceOrigin(source.Right));
+                return Complete(source, receiver.Components[1]);
+            }
+
             if (ReferenceTypes.IsPointer(receiver))
             {
                 // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form.

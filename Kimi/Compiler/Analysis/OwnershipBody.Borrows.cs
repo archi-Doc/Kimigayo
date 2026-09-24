@@ -331,6 +331,16 @@ public sealed partial class OwnershipBody
         bool Uses(int id, int place)
         {
             var operation = this.Operations[id];
+            // A Dictionary lookup's key is borrowed through replacement, including old-value
+            // destruction. Its final equality use alone cannot end that operation's Loan.
+            if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement &&
+                this.Projections[operation.Projection] is { Index: >= 0 } projection &&
+                this.Operations[projection.Operation].Source is IndexKoto { DictionaryKeyReference: not null } &&
+                ValuePlaceForBorrow(this.Operations[projection.Index]) == place)
+            {
+                return true;
+            }
+
             if (this.Values[id] is { Kind: OwnershipValueKind.Formatting, Count: 1 } formatting &&
                 ValuePlaceForBorrow(this.Operations[this.ValueOperands[formatting.Start]]) == place)
             {

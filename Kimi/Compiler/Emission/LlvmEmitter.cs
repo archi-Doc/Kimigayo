@@ -111,6 +111,7 @@ public sealed class LlvmEmitter
             this.lowering.GenericCalls = this.generics.Calls;
             this.lowering.FormattingCalls = this.generics.FormattingCalls;
             this.lowering.ComparisonCalls = this.generics.ComparisonCalls;
+            this.lowering.ComparisonHelpers = this.generics.ComparisonHelpers;
             if (!this.objects.Prepare(c, module, this.lowering.AggregateLayouts, out failure))
             {
                 return false;

@@ -147,6 +147,8 @@ public class Utf8ReserveEffectTest
     [InlineData("_ = values.remove(Key.init())", false)]
     [InlineData("_ = values.tryInsert(Key.init(), 1)", false)]
     [InlineData("_ = values.insertOrReplace(Key.init(), 1)", false)]
+    [InlineData("values[Key.init()] = 1", false)]
+    [InlineData("_ = values[Key.init()]", false)]
     [InlineData("values.clear()", true)]
     [InlineData("_ = values.insertOrReplace(Key.init(), 1)", true)]
     public void DictionaryImplicitEqualityAndDestructionEffectsAreChecked(string operation, bool destruction)
