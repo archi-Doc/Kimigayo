@@ -56,6 +56,15 @@ Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 
+This table is the source/native status record. `MilestoneSourcesTest` checks the exact
+authored source set against it, requires complete Binding for passed programs, and
+checks each pending program's stage, first diagnostic and source anchor against
+[binding-baselines.json](binding-baselines.json). It also binds the recorded supported
+declaration prefix independently. A changed failure or a newly successful stage requires
+review and fresh evidence; neither is accepted as an arbitrary pending failure. These
+checks supplement the focused feature tests and native harnesses; they do not certify
+unreached parts of a pending program.
+
 Affected programs now use postfix `during` annotations with the same intended behavior.
 An unchanged target run compiles the checked-in program without test-specific edits.
 

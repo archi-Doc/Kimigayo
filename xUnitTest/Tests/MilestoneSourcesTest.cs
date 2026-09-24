@@ -1,38 +1,81 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
 
-// Every authored Milestone Program source binds completely except the explicit pending set.
-// Successful Binding is a support boundary, not a claim that all milestone conditions are done.
-// A source that stops binding is a regression or an unrecorded SPEC conflict, never a silent status change.
+// README is the source/native status record. A failed target must retain its recorded failure stage
+// and diagnostic anchor; it cannot pass merely because some Binding error still exists.
 public class MilestoneSourcesTest
 {
-    private static readonly HashSet<int> Pending = [23, 24, 25, 26, 27, 28, 30, 31, 33];
+    private static readonly string DirectoryPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../milestones"));
 
     [Fact]
-    public void AuthoredProgramsBindUnlessTheirMilestoneIsPending()
+    public void AuthoredProgramsMatchTheirRecordedStageAndDiagnostic()
     {
-        var directory = Path.Combine(AppContext.BaseDirectory, "../../../../milestones");
-        var failures = new List<string>();
-        var count = 0;
-        foreach (var path in Directory.GetFiles(directory, "Milestone*.kimi").OrderBy(x => x, StringComparer.Ordinal))
+        var readme = File.ReadAllText(Path.Combine(DirectoryPath, "README.md"));
+        var rows = Regex.Matches(readme, @"^\| (\d+) \| (YES|NO \(planned\)) \| ([^|]+) \|", RegexOptions.Multiline);
+        Assert.Equal(Enumerable.Range(1, 38), rows.Select(x => int.Parse(x.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)));
+        var baselines = JsonSerializer.Deserialize<Baseline[]>(File.ReadAllText(Path.Combine(DirectoryPath, "binding-baselines.json")))!;
+        Assert.Equal(baselines.Length, baselines.Select(x => x.Program).Distinct().Count());
+        var pending = baselines.ToDictionary(x => x.Program);
+        var authored = new List<int>();
+        foreach (Match row in rows)
         {
-            var number = int.Parse(Path.GetFileNameWithoutExtension(path)["Milestone".Length..], System.Globalization.CultureInfo.InvariantCulture);
-            var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
-            c.Kotonoha.AddSource(new SourceDocument(Path.GetFileName(path), File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal)));
-            var complete = c.Bind().IsComplete;
-            count++;
-            if (complete == Pending.Contains(number))
+            var number = int.Parse(row.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            var path = Path.Combine(DirectoryPath, $"Milestone{number}.kimi");
+            var created = row.Groups[2].Value == "YES";
+            Assert.Equal(created, File.Exists(path));
+            if (!created)
             {
-                failures.Add($"Milestone{number}: binding {(complete ? "complete" : "incomplete")} ({string.Join("; ", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"))})");
+                Assert.False(pending.ContainsKey(number));
+                continue;
             }
+
+            authored.Add(number);
+            var source = File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal);
+            var c = Bind(source, Path.GetFileName(path));
+            if (!pending.Remove(number, out var expected))
+            {
+                Assert.StartsWith("PASS", row.Groups[3].Value.Trim());
+                Assert.True(c.Binding.Result.IsComplete, $"Milestone{number}: {string.Join("\n", c.Binding.Issues)}");
+                continue;
+            }
+
+            Assert.StartsWith("FAIL", row.Groups[3].Value.Trim());
+            Assert.Equal("Binding", expected.Stage);
+            Assert.False(c.Binding.Result.IsComplete, $"Milestone{number} advanced: update its verified stage and README.");
+            Assert.NotEmpty(c.Binding.Issues);
+            var primary = c.Binding.Issues[0];
+            Assert.Equal((number, expected.Diagnostic, expected.Anchor), (number, primary.Code.ToString(), primary.Node.ToString().Split('\n')[0]));
+
+            // Verify the already-supported declaration subset independently. A pending target must
+            // not hide regressions in declarations before its first unsupported feature.
+            var end = source.IndexOf(expected.SupportedPrefixEnd, StringComparison.Ordinal);
+            Assert.True(end > 0, $"Milestone{number}: missing subset anchor {expected.SupportedPrefixEnd}");
+            Assert.Equal(end, source.LastIndexOf(expected.SupportedPrefixEnd, StringComparison.Ordinal));
+            var subset = Bind(source[..end], Path.GetFileName(path));
+            Assert.True(subset.Binding.Result.IsComplete, $"Milestone{number} supported subset: {string.Join("\n", subset.Binding.Issues)}");
         }
 
-        Assert.True(count >= 33, $"Only {count} program sources found.");
-        Assert.Empty(failures);
+        Assert.Empty(pending);
+        var files = Directory.GetFiles(DirectoryPath, "Milestone*.kimi")
+            .Select(x => int.Parse(Path.GetFileNameWithoutExtension(x)["Milestone".Length..], System.Globalization.CultureInfo.InvariantCulture)).Order();
+        Assert.Equal(authored, files); // A removed, renamed or unrecorded source is never accepted by a minimum count.
     }
+
+    private static Compilation Bind(string source, string path)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(path, source));
+        Assert.False(c.Kotonoha.DiagnosticCollection.HasErrors);
+        c.Bind();
+        return c;
+    }
+
+    private sealed record Baseline(int Program, string Stage, string Diagnostic, string Anchor, string SupportedPrefixEnd);
 }
