@@ -8,6 +8,23 @@ namespace XunitTest;
 
 public class DictionaryLiteralTest
 {
+    [Fact]
+    public void EntriesRunInSourceOrderAndOwnTheirStorage()
+    {
+        const string Source = "func mark(value: i32) -> i32\n    $print(value)\n    return value\nlet entries: Dictionary<i32, i32> = [mark(1): mark(10), mark(2): mark(20)]\nfor (key, value) in entries@move\n    $print(key)\n    $print(value)";
+        NativeAllocationAudit.WriteFixture("DictionaryLiteralOrder", Source, 1, 1, 96, "1\n10\n2\n20\n1\n10\n2\n20\n");
+    }
+
+    [Fact]
+    public void RuntimeDuplicateAbortsBeforeItsValueAndLaterEntries()
+    {
+        const string Source = "func key() -> i32 => 1\nfunc value() -> i32\n    $print(10)\n    return 10\nlet entries: Dictionary<i32, i32> = [key(): value(), key(): value(), 2: value()]";
+        var c = MinimalEmissionTest.Analyze(Source);
+        using var output = new StringWriter();
+        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        ScalarEmissionTest.WriteFixture("DictionaryLiteralDuplicate", output.ToString(), "10\n", 1, "Hello.kimi:5:51: abort KIMI_E_DUPLICATE_KEY: Duplicate Dictionary key\n");
+    }
+
     [Theory]
     [InlineData("i32", "1", "(+1)")]
     [InlineData("i32", "1_000", "1000")]
