@@ -95,6 +95,11 @@ public sealed partial class Binding
                 this.Call(call);
             }
 
+            if (node is BinaryKoto { ComparisonCall.BoundCall: { } comparison })
+            {
+                this.Call(comparison);
+            }
+
             if (node.Formatting is { } formatting)
             {
                 foreach (var write in formatting.Writes)
@@ -251,7 +256,8 @@ public sealed partial class Binding
                     CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or
                     >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
                     CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
-                    >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat;
+                    >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
+                    CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare;
                 return;
             }
 

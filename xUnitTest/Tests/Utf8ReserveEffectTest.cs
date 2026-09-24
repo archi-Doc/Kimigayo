@@ -8,6 +8,48 @@ namespace XunitTest;
 
 public class Utf8ReserveEffectTest
 {
+    [Theory]
+    [InlineData("==", false)]
+    [InlineData("!=", false)]
+    [InlineData("<", false)]
+    [InlineData(">=", false)]
+    [InlineData("==", true)]
+    [InlineData("<", true)]
+    public void ComparisonWitnessEffectsAreCheckedThroughOperators(string operation, bool generic)
+    {
+        var equality = operation is "==" or "!=";
+        var prefix = State + $$"""
+            struct Compared
+                Self is Comparable
+                public func equals(self: ref/Self, other: ref/Self) -> bool
+                    {{(equality ? "_ = State.value" : "_ = true")}}
+                    return true
+                public func compare(self: ref/Self, other: ref/Self) -> i32
+                    {{(equality ? "_ = true" : "_ = State.value")}}
+                    return 0
+            group Helpers
+                public func compareValues<T>(left: ref/T, right: ref/T) -> bool
+                    T is Comparable
+                    return left {{operation}} right
+
+            """;
+        var expression = generic ? "Helpers.compareValues(left@ref, right@ref)" : "left " + operation + " right";
+        var c = Analyze(prefix, "let left = Compared.init()\n        let right = Compared.init()\n        _ = " + expression);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
+    [Theory]
+    [InlineData("first.equals(last@ref)")]
+    [InlineData("first.compare(last@ref)")]
+    [InlineData("Helpers.equal(first@ref, last@ref)")]
+    public void IntrinsicComparisonWitnessesHaveOnlyInputEffects(string expression)
+    {
+        const string Prefix = "group Helpers\n    public func equal<T>(left: ref/T, right: ref/T) -> bool\n        T is Equatable\n        return left == right\n";
+        var c = Analyze(Prefix, "let first: i32 = 1\n        let last: i32 = 2\n        _ = " + expression);
+        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
+    }
+
     private const string State = "group State\n    public var value: i32 = 0\n";
     private const string Writer = "struct Writer\n    Self is BufferWriter\n    public var local: i32 = 1\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n";
     private const string Formatter = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        ";
