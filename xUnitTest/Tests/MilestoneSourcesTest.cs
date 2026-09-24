@@ -10,7 +10,7 @@ namespace XunitTest;
 // A source that stops binding is a regression or an unrecorded SPEC conflict, never a silent status change.
 public class MilestoneSourcesTest
 {
-    private static readonly HashSet<int> Pending = [23, 24, 25, 26, 27, 28];
+    private static readonly HashSet<int> Pending = [23, 24, 25, 26, 27, 28, 30];
 
     [Fact]
     public void AuthoredProgramsBindUnlessTheirMilestoneIsPending()

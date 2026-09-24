@@ -1,10 +1,10 @@
 # Language milestones
 
 Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md).
-Programs 1–29 and 32 have source files; programs 30–31 and 33–38 have design and verification scopes.
+Programs 1–30 and 32 have source files; programs 31 and 33–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 23–28 are authored targets beyond current
+not an execution claim. Milestones 23–28 and 30 are authored targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -44,6 +44,7 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone27](Milestone27.kimi) | Saved Index/Range resolution, nested/sub-Slice views, splitting, empty views and backing/element Origins |
 | [Milestone28](Milestone28.kimi) | User Iterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
+| [Milestone30](Milestone30.kimi) | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
 | [Milestone32](Milestone32.kimi) | User/generic UTF-8 formatting, independent owning strings, short-circuit writes, fixed-buffer reuse and bounded Console interpolation |
 
 ## Program status
@@ -87,7 +88,7 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 27 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Range resolution/general Slice operations report `UnsupportedBinding_Kd` with unresolved/Type/result cascades; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
 | 28 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | User Iterable is unresolved; associated-Type/Constraint and generic iterator-state operations fail Binding; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
 | 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
-| 30 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 30 | YES | FAIL (Debug, O0/O2) | NOT_RUN (target); PASS (Debug rejections) | Tuple/shared-borrow composition fails Binding (`NoApplicableOverload_Kd` / `UnprovenConstraint_Kd`). All 16 independent rejection checks pass. Companion scalar/user Contract tests do not certify this target. |
 | 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 32 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
 | 33 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -1539,6 +1540,42 @@ Focus: [Array operations](../spec/04-arrays-indexing-and-slices.md#472-array-ope
 [capacity](../spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation),
 [Loans and effects](../spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects)
 and [commit and destruction order](../spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
+
+## Milestone 30: comparison Contracts and composed mappings
+
+`Key` explicitly implements Comparable and its inherited Equatable requirement.
+Its `compare` returns -7, 0 or 9, so expressions must inspect the sign rather than
+assume -1/1. Generic equality, forwarding and an explicit `f64` specialization
+retain the selected mapping. Owner and borrowed operands remain usable after
+comparison. Tuples compose user mappings through shared-borrow elements.
+
+Floating Contract equality treats all NaNs as equal and both signed zeros as
+equal; ordinary floating and Tuple comparison expressions retain IEEE equality.
+The source deliberately exercises both rules without replacing the pending
+composition with an implementation-specific workaround.
+
+Expected stdout (target, not an execution claim):
+
+```text
+User comparisons keep their operands.
+Tuple comparisons compose witnesses.
+Floating Contract equality is NaN-reflexive.
+Comparison contracts finished.
+```
+
+`backend/windows-x64/test-milestone30.ps1` checks the unchanged target, renamed
+declarations, changed values and an `f32` variant at O0/O2. Its independent
+rejections cover missing conformance/premises, incompatible or missing witnesses,
+an exclusive equality receiver, mixed operand Types, floating Comparable and a
+Move conflicting with the left operand's Loan. `-Cases Rejections` checks those
+cases without certifying the pending canonical target. Companion managed/native
+tests cover primitive boundaries, evaluation/destruction order and NaN mapping.
+Tuple/shared-borrow Contract composition and its cost evidence remain P30 work.
+
+Focus: [comparison mapping](../spec/13-operators-and-assignment.md#1341-contract-comparison-mapping),
+[floating key equality](../spec/12-expressions.md#1234-dictionary-literals),
+[Contracts](../spec/08-generics-constraints-and-contracts.md), and
+[required declarations](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations).
 
 ### Programs 22–24 authoring verification (2026-09-22)
 

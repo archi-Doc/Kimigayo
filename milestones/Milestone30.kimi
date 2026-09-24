@@ -1,0 +1,58 @@
+// Milestone 30: comparison expressions and Contract mappings retain their distinct meanings.
+struct Key
+    Self is Comparable
+    public let value: i32
+    public init(value: i32) => self.value = value
+    public func equals(self: ref/Self, other: ref/Self) -> bool => self.value == other.value
+    public func compare(self: ref/Self, other: ref/Self) -> i32
+        if self.value < other.value => return -7
+        if self.value > other.value => return 9
+        return 0
+
+func equivalent<T>(left: ref/T, right: ref/T) -> bool
+    T is Equatable
+    return left == right
+
+// An explicit specialization must preserve the Contract's NaN-reflexive equality.
+specialize func equivalent<f64>(left: ref/f64, right: ref/f64) -> bool
+    return left.equals(right)
+
+func forwardEquality<T>(left: ref/T, right: ref/T) -> bool
+    T is Equatable
+    return equivalent<T>(left, right)
+
+func order<T>(left: ref/T, right: ref/T) -> i32
+    T is Comparable
+    return left.compare(right)
+
+public func main()
+    let first = Key.init(2)
+    let same = Key.init(2)
+    let last = Key.init(5)
+    require first == same and first != last else => $abort("Key equality failed")
+    require first < last and first <= same and last > first and last >= same else => $abort("Key ordering failed")
+    require forwardEquality(first@ref, same@ref) and order(first@ref, last@ref) == -7 else => $abort("Witness selection failed")
+    require first@ref == same@ref and first == same@ref else => $abort("Borrow inspection failed")
+    require first.value == 2 and last.value == 5 else => $abort("Comparison consumed a Key")
+    Console.writeLine("User comparisons keep their operands.")
+
+    // Tuple equality/order compose the user Contract mappings through shared borrows.
+    let pair = (first@ref, 1)
+    let samePair = (same@ref, 1)
+    let laterPair = (same@ref, 2)
+    require forwardEquality(pair@ref, samePair@ref) else => $abort("Tuple Contract equality failed")
+    require order(pair@ref, laterPair@ref) < 0 and pair < laterPair else => $abort("Tuple ordering failed")
+    Console.writeLine("Tuple comparisons compose witnesses.")
+
+    let nan: f64 = 0.0 / 0.0
+    let zero: f64 = 0.0
+    let negativeZero: f64 = -0.0
+    require not (nan == nan) and nan != nan else => $abort("IEEE comparison changed")
+    require forwardEquality(nan@ref, nan@ref) and not forwardEquality(nan@ref, zero@ref) else => $abort("NaN Contract equality failed")
+    require forwardEquality(zero@ref, negativeZero@ref) else => $abort("Signed zero equality failed")
+    let floatingPair = (nan, zero)
+    let anotherFloatingPair = (nan, negativeZero)
+    require forwardEquality(floatingPair@ref, anotherFloatingPair@ref) else => $abort("Tuple NaN mapping failed")
+    require not (floatingPair == anotherFloatingPair) else => $abort("Tuple IEEE comparison changed")
+    Console.writeLine("Floating Contract equality is NaN-reflexive.")
+    Console.writeLine("Comparison contracts finished.")
