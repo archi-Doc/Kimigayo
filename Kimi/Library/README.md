@@ -14,11 +14,8 @@ SPEC Chapter 22 and its references remain authoritative.
 - `Comparison.kimi` declares Equatable and Comparable as ordinary Contracts with
   validated recognized identities. Primitive witnesses use compiler lowering;
   user witnesses use ordinary calls with the same ownership and effect checks.
-- Dictionary algorithms belong in Kimigayo sources. `DictionaryStorage.kimi`
-  currently supplies ordered search, cleanup and shrink-to-fit, initialization, append/unlink and free-slot bookkeeping through ordinary
-  compilation; the remaining hand-written Dictionary IR is being migrated.
-  Compiler support supplies physical layout, allocation, and typed ownership
-  operations. Private storage functions are not public library APIs.
+- Dictionary algorithms belong in Kimigayo sources; see the implementation
+  boundary below. Private storage functions are not public library APIs.
 - `Intrinsics.kimi`, `Console.kimi`, `Test.kimi` and `ArrayOperations.kimi` contain signatures without source bodies.
   Their private loader supplies the owning container (a group, or the `Array` struct for its mutation operations). Only catalog-registered compiler
   implementations are allowed in these groups; this is not public syntax for
@@ -41,6 +38,33 @@ Catalog validation does not prove runtime support. Missing API entries do not
 create placeholder declarations. Use `GetSymbol` / `GetDeclarationState` for ID
 lookup; the `Declarations` sequence is not indexed by the numeric ID. The old
 ObjectOwnership ID is reserved; ownership-family completeness is a separate query.
+
+## Dictionary implementation policy
+
+[DictionaryStorage.kimi](DictionaryStorage.kimi) is compiled through ordinary
+Binding, ownership analysis and generation. It implements initialization, ordered
+search, insertion links, free-slot reuse, unlinking, reverse cleanup, compaction
+and shrink-to-fit decisions. Its private `Handle` and `Links` records use explicit
+C layout to agree with the backend; they do not define a public collection ABI.
+Callbacks use the ordinary Function Type ABI with stack handles, without heap
+allocation. The compiler passes the selected equality witness and typed entry
+destruction, preserving comparison direction and value-before-key cleanup.
+
+The migration is incomplete. [DictionaryOperations.kimi](DictionaryOperations.kimi)
+still contains compiler-recognized public signatures. Generic mutation/result
+dispatch, reserve/growth and typed index/iteration access remain compiler code.
+Move the remaining operation bodies into Kimigayo over common memory/ownership
+primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
+Platform allocation/release, byte transfer, physical representation and verified
+typed ownership operations remain compiler responsibilities. Keep the original
+operation's Abort location when bridging platform failures.
+
+`DictionaryLibraryTest` checks ordinary source compilation, private access,
+symbol identity, record layout and omission from programs that do not use
+Dictionary. The Dictionary operation, order, shrink and cost suites exercise the
+source implementation at O0/O2, including allocation failure and warm compiler
+allocation checks. These checks establish behavior and allocation bounds, not
+an unmeasured runtime speed improvement.
 
 ## Text implementation policy
 
