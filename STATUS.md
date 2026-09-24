@@ -185,8 +185,8 @@ and duplicate conformances reject before artifacts are published.
 This does not establish arbitrary bound/refinement composition, inherited receiver
 adjustments, specialization of this new Contract generation path or Property
 witness execution. Whole Copy aggregate-field acquisition through a shared
-receiver still reports `UnsupportedOwnership_Kd`; the focused test retains that
-boundary. The isolated associated-projection/proof warm Binding test allocates
+receiver now uses the common snapshot plan and passes the compound associated-result
+fixture. The isolated associated-projection/proof warm Binding test allocates
 zero bytes, not a whole-program allocation guarantee. General generation migration
 and resource diagnostics remain P22 work.
 

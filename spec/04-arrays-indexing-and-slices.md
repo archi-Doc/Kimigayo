@@ -523,6 +523,8 @@ values.append(values[0])       // The element Copy finishes before receiver acti
 
 ### 4.7.3. Dictionary operations and indexed replacement
 
+All searches use the equality mapping, argument orientation and unspecified candidate order/count defined in [§12.3.4](12-expressions.md#1234-dictionary-construction-and-duplicate-keys). These search choices do not change insertion order or the specified iteration and destruction order.
+
 | Operation | Absent key | Equal stored key |
 | --- | --- | --- |
 | `tryInsert(key: K, value: V) -> Result<(), (K, V)>` | Append; `Ok(())` | Unchanged; `Err((input key, input value))` |

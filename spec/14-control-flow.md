@@ -783,7 +783,7 @@ func handle(value: objref/Animal) -> ()
     alias.bark()          // Error: alias has no Dog guarantee.
 ```
 
-The new `dog` binding uses ordinary typing and acquisition of the right-hand side's Effective Type, not transferred flow facts; an owning Non-Copy source would Move on such acquisition. A binding's declaration Type never changes.
+The new `dog` binding uses ordinary typing and acquisition of the right-hand side's Effective Type, not transferred flow facts. The acquisition rules of §3.5 still apply: a bare owning Non-Copy Place requires an explicit transfer such as `@move`; refinement never introduces an implicit Move. A binding's declaration Type never changes.
 
 The [inherited-Name rule](06-declarations-and-containers.md#622-inheritance-and-open-structures) keeps the declaration layer of an existing member unchanged by refinement when that member is accessible both to the derived author and at the relevant uses. For a public `Animal.speak`, `Dog` cannot add the same Name, so a parameter or `let` before refinement, inside it and after a join, an unrefined `var`, and `Dog`/`Animal` views all select `Animal`'s layer. Refinement can add access to a differently named `Dog.bark`. This does not freeze overload choice based on argument Types or promise identical lookup across access boundaries.
 

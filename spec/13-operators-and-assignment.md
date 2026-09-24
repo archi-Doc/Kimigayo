@@ -105,8 +105,9 @@ Comparisons may borrow their operands and never Move Non-Copy owned values solel
 
 On normal completion, comparison-only Loans end after the comparison, and the `bool` result keeps no operand Loan. They also end if a control transfer abandons the comparison. Existing Loans keep their own lifetimes, and temporary operands keep their [normal temporary lifetimes](03-types-and-values.md#362-lifetime-and-borrowing); ending an inspection Loan does not destroy a temporary early. Abort follows §17.3.
 
+<!-- verified-example: comparison-inspection (positive; commented line is a rejection) -->
 ```kimi
-func take(text: string) -> string => text
+func take(text: string) -> string => text@move
 
 let text = "a"
 let same = text == "a" // Shared inspection; text is not Moved.
