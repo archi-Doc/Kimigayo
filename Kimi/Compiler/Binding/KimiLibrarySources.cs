@@ -19,6 +19,7 @@ public sealed partial class KimiLibrary
             Read("Slice.kimi"),
             Read("Array.kimi"),
             Read("Dictionary.kimi"),
+            Read("DictionaryStorage.kimi"),
             Read("Formatting.kimi"),
             Read("Text.kimi", KimiLibraryContainer.Text, signatures: true),
             Read("FixedBuffer.kimi", KimiLibraryContainer.FixedBuffer, signatures: true),

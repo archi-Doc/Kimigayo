@@ -68,52 +68,13 @@ internal static partial class LlvmModuleWriter
           ret ptr %slot
         }
 
-        define internal void @__kimi_dictionary_unlink(ptr %handle, i64 %stride, i64 %link) #0 {
-        entry:
-          %buffer = load ptr, ptr %handle, align 8
-          %index = sub i64 %link, 1
-          %offset = mul i64 %index, %stride
-          %slot = getelementptr i8, ptr %buffer, i64 %offset
-          %next_ptr = getelementptr i8, ptr %slot, i64 8
-          %previous = load i64, ptr %slot, align 8
-          %next = load i64, ptr %next_ptr, align 8
-          %first = icmp eq i64 %previous, 0
-          br i1 %first, label %head, label %left
-        head:
-          %head_ptr = getelementptr i8, ptr %handle, i64 32
-          store i64 %next, ptr %head_ptr, align 8
-          br label %successor
-        left:
-          %left_index = sub i64 %previous, 1
-          %left_offset = mul i64 %left_index, %stride
-          %left_slot = getelementptr i8, ptr %buffer, i64 %left_offset
-          %left_next = getelementptr i8, ptr %left_slot, i64 8
-          store i64 %next, ptr %left_next, align 8
-          br label %successor
-        successor:
-          %last = icmp eq i64 %next, 0
-          br i1 %last, label %tail, label %right
-        tail:
-          %tail_ptr = getelementptr i8, ptr %handle, i64 40
-          store i64 %previous, ptr %tail_ptr, align 8
-          br label %release
-        right:
-          %right_index = sub i64 %next, 1
-          %right_offset = mul i64 %right_index, %stride
-          %right_slot = getelementptr i8, ptr %buffer, i64 %right_offset
-          store i64 %previous, ptr %right_slot, align 8
-          br label %release
-        release:
-          %free_ptr = getelementptr i8, ptr %handle, i64 48
-          %free = load i64, ptr %free_ptr, align 8
-          store i64 %free, ptr %next_ptr, align 8
-          store i64 %link, ptr %free_ptr, align 8
-          %length_ptr = getelementptr i8, ptr %handle, i64 24
-          %length = load i64, ptr %length_ptr, align 8
-          %remaining = sub i64 %length, 1
-          store i64 %remaining, ptr %length_ptr, align 8
-          ret void
-        }
-
         """.Replace("REASON_OVERFLOW", Reason(WindowsLowering.IntegerOverflowReason), StringComparison.Ordinal);
+
+    private static void WriteDictionaryUnlink(EmissionModule module, TextWriter output)
+    {
+        var implementation = module.DictionaryUnlink ?? throw new InvalidOperationException("Dictionary unlink source was not compiled.");
+        output.Write("define internal void @__kimi_dictionary_unlink(ptr %handle, i64 %stride, i64 %link) #0 {\nentry:\n  call void @");
+        output.Write(implementation.Name);
+        output.Write("(ptr %handle, i64 %stride, i64 %link)\n  ret void\n}\n\n");
+    }
 }

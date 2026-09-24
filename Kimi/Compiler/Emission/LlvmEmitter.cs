@@ -102,6 +102,8 @@ public sealed class LlvmEmitter
                 return false;
             }
 
+            module.DictionaryUnlink = this.functions.GetValueOrDefault(c.Library.DictionaryUnlink);
+
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {
                 this.resourceLimit = this.generics.ResourceLimitExceeded;

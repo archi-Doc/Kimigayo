@@ -14,6 +14,11 @@ SPEC Chapter 22 and its references remain authoritative.
 - `Comparison.kimi` declares Equatable and Comparable as ordinary Contracts with
   validated recognized identities. Primitive witnesses use compiler lowering;
   user witnesses use ordinary calls with the same ownership and effect checks.
+- Dictionary algorithms belong in Kimigayo sources. `DictionaryStorage.kimi`
+  currently supplies unlinking and free-slot bookkeeping through ordinary
+  compilation; the remaining hand-written Dictionary IR is being migrated.
+  Compiler support supplies physical layout, allocation, and typed ownership
+  operations. Private storage functions are not public library APIs.
 - `Intrinsics.kimi`, `Console.kimi`, `Test.kimi` and `ArrayOperations.kimi` contain signatures without source bodies.
   Their private loader supplies the owning container (a group, or the `Array` struct for its mutation operations). Only catalog-registered compiler
   implementations are allowed in these groups; this is not public syntax for

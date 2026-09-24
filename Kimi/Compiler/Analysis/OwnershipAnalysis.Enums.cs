@@ -93,6 +93,11 @@ public sealed partial class OwnershipAnalysis
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
+        if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))
+        {
+            this.CollectLibraryBody(this.compilation.Library.DictionaryUnlink);
+        }
+
         if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) || ObjectTypes.IsOwner(type))
         {
             return true;

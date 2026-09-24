@@ -1,0 +1,22 @@
+// Private ordered-storage algorithms. The compiler supplies allocation and typed
+// acquisition/destruction; this source owns slot links and free-slot reuse.
+group DictionaryStorage
+    unsafe func unlink(handle: unsafe/isize, stride: isize, link: isize)
+        unsafe
+            let buffer = *(handle@unsafe/unsafe/u8)
+            let slot = (buffer + (link - 1) * stride)@unsafe/isize
+            let previous = slot[0]
+            let next = slot[1]
+            if previous == 0
+                handle[4] = next
+            else
+                let left = (buffer + (previous - 1) * stride)@unsafe/isize
+                left[1] = next
+            if next == 0
+                handle[5] = previous
+            else
+                let right = (buffer + (next - 1) * stride)@unsafe/isize
+                right[0] = previous
+            slot[1] = handle[6]
+            handle[6] = link
+            handle[3] = handle[3] - 1

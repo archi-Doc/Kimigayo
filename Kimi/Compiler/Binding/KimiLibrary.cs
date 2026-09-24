@@ -34,6 +34,7 @@ public sealed partial class KimiLibrary
         this.TextScope = new(this.Text) { Parent = this.Scope };
         this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
+        this.DictionaryUnlink = (FunctionKoto)FindDeclaration((DeclarationContainerKoto)FindDeclaration(this.Kotonoha.RootKoto, "DictionaryStorage", false)!, "unlink", true)!;
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
         foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.WriteWindow, KimiLibraryContainer.Utf8Writer })
         {
@@ -178,6 +179,8 @@ public sealed partial class KimiLibrary
     internal BindingScope Scope { get; }
 
     internal BindingScope DictionaryScope { get; }
+
+    internal FunctionKoto DictionaryUnlink { get; }
 
     internal GroupKoto Console { get; }
 

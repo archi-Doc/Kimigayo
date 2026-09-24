@@ -99,6 +99,7 @@ internal static partial class LlvmModuleWriter
         {
             output.Write(DictionaryRuntime);
             output.Write(DictionaryStorageRuntime);
+            WriteDictionaryUnlink(module, output);
             WriteDictionaryHelpers(module, output);
         }
 
