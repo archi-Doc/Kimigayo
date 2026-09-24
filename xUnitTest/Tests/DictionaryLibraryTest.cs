@@ -9,6 +9,38 @@ namespace XunitTest;
 public class DictionaryLibraryTest
 {
     [Fact]
+    public void UserHelperNamesDoNotReplaceTheLibraryAlgorithms()
+    {
+        const string Source = """
+            group DictionaryStorage
+                public func initialize() => $abort("user initialize")
+                public func find() => $abort("user find")
+                public func unlink() => $abort("user unlink")
+                public func compact() => $abort("user compact")
+            var entries: Dictionary<i32, i32> = [:]
+            entries.reserve(8)
+            _ = entries.tryInsert(1, 10)
+            _ = entries.tryInsert(2, 20)
+            _ = entries.remove(1)
+            entries.shrinkToFit()
+            require entries[2] == 20 else => $abort("stored value")
+            entries.clear()
+            require entries.length == 0 else => $abort("clear")
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryLibraryIdentity", Source, string.Empty);
+    }
+
+    [Fact]
+    public void ProgramsWithoutDictionariesDoNotCompileStorageAlgorithms()
+    {
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"plain\")");
+        using var output = new StringWriter();
+        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.DoesNotContain(c.Ownership.Bodies, body => body.Function.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain("__kimi_dictionary_", output.ToString());
+    }
+
+    [Fact]
     public void PrivateHandleUsesTheExpectedPlatformLayout()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
@@ -57,10 +89,13 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", output.ToString(), string.Empty);
     }
 
-    [Fact]
-    public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI()
+    [Theory]
+    [InlineData("unsafe => Kimi.DictionaryStorage.unlink(null, 24, 1)")]
+    [InlineData("unsafe => Kimi.DictionaryStorage.initialize(null)")]
+    [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
+    public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)
     {
-        var c = MinimalEmissionTest.Analyze("unsafe => Kimi.DictionaryStorage.unlink(null, 24, 1)");
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InaccessibleBinding_Kd);
     }
