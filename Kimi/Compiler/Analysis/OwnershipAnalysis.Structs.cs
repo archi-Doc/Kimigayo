@@ -43,7 +43,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < StructStorage.Count(type); i++)
         {
             var field = StructStorage.Field(type, i);
-            var place = this.LocalPlace(field.BoundSymbol, field, field.BoundType, field.VariableKind == VariableKind.Var);
+            var place = this.LocalPlace(field.BoundSymbol, field, field.BoundType, field.VariableKind == VariableKind.Var && (!function.IsConstructor || field.BoundSymbol!.Property!.Setter.IsStandard));
             this.Emit(function.IsConstructor ? OwnershipOperationKind.Declare : OwnershipOperationKind.InitializeReceiverField, field, place);
             if (function.IsConstructor && field.InitializerKoto is { } initializer)
             {

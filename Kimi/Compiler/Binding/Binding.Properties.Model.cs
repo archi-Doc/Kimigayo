@@ -68,6 +68,8 @@ public sealed class BoundAccessor
     internal BindingSymbol? StorageSymbol { get; set; }
 
     internal BindingSymbol? SignatureSymbol { get; set; }
+
+    internal FunctionKoto? ExecutionFunction { get; set; }
 }
 
 /// <summary>The limited implementations of a required Property operation.</summary>

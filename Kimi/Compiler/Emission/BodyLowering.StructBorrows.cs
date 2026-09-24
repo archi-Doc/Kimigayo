@@ -230,7 +230,7 @@ internal sealed partial class BodyLowering
         var field = value.Kind == OwnershipValueKind.BorrowedField ? operation.Source as MemberAccessKoto
             : operation.Source switch
             {
-                BinaryKoto binary => KotoHelper.UnwrapParentheses(binary.Left) as MemberAccessKoto,
+                BinaryKoto binary => binary.CodeContext.Compilation.Binding.StorageProjection(KotoHelper.UnwrapParentheses(binary.Left)) ?? KotoHelper.UnwrapParentheses(binary.Left) as MemberAccessKoto,
                 UnaryKoto unary => KotoHelper.UnwrapParentheses(unary.Operand) as MemberAccessKoto,
                 _ => null,
             };

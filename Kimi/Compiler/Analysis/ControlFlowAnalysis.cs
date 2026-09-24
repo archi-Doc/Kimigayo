@@ -405,6 +405,15 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case BinaryKoto { Akind: KotoKind.Equals } assignment when node.CodeContext.Compilation.Binding.PropertyCall(assignment.Left, PropertyAccessorKind.Set) is { } setter:
+                flow = this.Visit(setter, reachable) with { Type = this.types.GetExpressionType(node) };
+                break;
+            case IdentifierNameKoto or MemberAccessKoto when node.CodeContext.Compilation.Binding.PropertyCall(node, PropertyAccessorKind.Get) is { } getter:
+                flow = this.Visit(getter, reachable) with { Type = this.types.GetExpressionType(node) };
+                break;
+            case IdentifierNameKoto when node.CodeContext.Compilation.Binding.StorageProjection(node) is { } storage:
+                flow = this.Visit(storage, reachable);
+                break;
             case BinaryKoto { ComparisonCall: { } comparisonCall }:
                 flow = this.Visit(comparisonCall, reachable) with { Type = this.types.GetExpressionType(node) };
                 break;

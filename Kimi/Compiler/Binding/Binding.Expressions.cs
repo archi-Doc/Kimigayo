@@ -13,6 +13,11 @@ public sealed partial class Binding
     private static bool Writable(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
+        if (node.BoundSymbol?.Property is { IsStored: false, Setter.IsPresent: true })
+        {
+            return true; // The accessor's Receiver Expression checks its own capability.
+        }
+
         // SPEC 5.2: binding mutability does not decide pointee write permission.
         if (node is DereferenceKoto dereference)
         {
@@ -715,19 +720,13 @@ public sealed partial class Binding
             this.BindVariable(variable, symbol.Scope);
         }
 
+        if (symbol.Kind == BindingSymbolKind.Storage && symbol.Scope.Owner is PropertyAccessorKoto storageAccessor)
+        {
+            this.BindStorageProjection(node, Accessor(storageAccessor));
+        }
+
         if (symbol.Property is { } property)
         {
-            if (IsSpecialField(node, out var specialFunction) && specialFunction.IsConstructor)
-            {
-                if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
-                    !property.Getter.IsStandard || (property.Setter.IsPresent && !property.Setter.IsStandard))
-                {
-                    return Fail(node, BindingFailure.Unsupported);
-                }
-
-                return Complete(node, symbol.Type);
-            }
-
             var target = node;
             while (target.Parent is ParenthesizedKoto parentheses)
             {
@@ -737,6 +736,17 @@ public sealed partial class Binding
             var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
             var write = assignment && target.Parent!.Akind == KotoKind.Equals;
             var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+            if (IsSpecialField(node, out var specialFunction) && specialFunction.IsConstructor)
+            {
+                if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
+                    (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
+                {
+                    return Fail(node, BindingFailure.Unsupported);
+                }
+
+                return Complete(node, symbol.Type);
+            }
+
             var operation = write ? property.Setter : property.Getter;
             var sourceReceiver = (node as MemberAccessKoto)?.Left;
             if ((write || update) && sourceReceiver?.BoundType is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc })
@@ -769,9 +779,14 @@ public sealed partial class Binding
                     this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, compatibility);
                 }
 
-                // Callable Property uses need the operation/Origin plans of expression
-                // checking. A declaration-side witness alone must not bypass that boundary.
-                return Fail(node, BindingFailure.Unsupported, true);
+                var input = (target.Parent as BinaryKoto)?.Right;
+                if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
+                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
+                {
+                    return null;
+                }
+
+                return Complete(node, write ? property.Setter.Input : property.Getter.Result);
             }
 
             if (node is MemberAccessKoto stored && sourceReceiver?.BoundType is { } storedSource && this.memberSelections.TryGetValue(stored, out var storageSelection) && storageSelection.Path is not null)

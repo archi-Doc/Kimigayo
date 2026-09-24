@@ -50,6 +50,12 @@ public sealed class IdentifierNameKoto : ExpressionKoto
         this.IdentifierName = identifierName;
     }
 
+    internal IdentifierNameKoto(Koto source, string name)
+        : base(source.CodeContext, source.Span)
+    {
+        this.IdentifierName = name;
+    }
+
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {

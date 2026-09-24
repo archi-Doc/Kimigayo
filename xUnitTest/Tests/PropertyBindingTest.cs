@@ -327,10 +327,10 @@ public class PropertyBindingTest
     }
 
     [Fact]
-    public void CallablePropertyUseRemainsPendingUntilExpressionOperationChecking()
+    public void CopyPropertyUseHasCheckedExpressionOperations()
     {
         var c = Parse("struct S\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 0\nfunc read(value: ref/S) -> i32 => value.item");
-        Assert.False(c.Bind().IsComplete);
+        Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.True(Property(c, "S", "item").IsVerified);
     }
 

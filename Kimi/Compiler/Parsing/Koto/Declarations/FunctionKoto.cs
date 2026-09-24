@@ -318,6 +318,28 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Body = new CodeBlockKoto(owner.CodeContext) { Parent = this };
     }
 
+    // Non-owning execution view: accessor syntax, source boundaries and Origin binders
+    // remain unchanged. Ownership and native lowering share the ordinary function ABI.
+    internal FunctionKoto(BoundAccessor accessor)
+        : base(accessor.Declaration!.CodeContext, accessor.Declaration.Span)
+    {
+        this.Accessor = accessor;
+        this.Name = accessor.Property.Symbol.Name + "." + accessor.Kind;
+        this.Parent = accessor.Declaration.Parent;
+        this.parameters = new();
+        if (accessor.Receiver is not null)
+        {
+            this.parameters.Add(new("self", "self", new IdentifierNameKoto(accessor.Declaration, "self"), null));
+        }
+
+        if (accessor.Input is not null)
+        {
+            this.parameters.Add(new("value", "value", new IdentifierNameKoto(accessor.Declaration, "value"), null));
+        }
+    }
+
+    internal BoundAccessor? Accessor { get; }
+
     /// <summary>Consumes the function body.</summary>
     /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)
@@ -530,6 +552,19 @@ public sealed class FunctionKoto : DeclarationKoto
         else
         {
             this.Body?.WriteIndentedTo(ref builder);
+        }
+    }
+
+    internal void RefreshAccessor()
+    {
+        var accessor = this.Accessor!;
+        this.Body = accessor.Declaration!.Body as CodeBlockKoto;
+        this.ExpressionBody = this.Body is null ? accessor.Declaration.Body : null;
+        this.ReturnType = accessor.Declaration.ReturnType;
+        for (var i = 0; i < this.Parameters.Count; i++)
+        {
+            this.Parameters[i].Type.BoundType = i == 0 && accessor.Receiver is not null ? accessor.Receiver : accessor.Input;
+            this.Parameters[i].Type.BindingState = BindingState.Resolved;
         }
     }
 

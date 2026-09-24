@@ -564,6 +564,16 @@ public sealed partial class OwnershipAnalysis
 
     private int ExpressionCore(Koto node, PlaceUseKind use, AcquisitionKind? acquisition)
     {
+        if (this.compilation.Binding.PropertyCall(node, PropertyAccessorKind.Get) is { } getter)
+        {
+            return this.Call(getter);
+        }
+
+        if (this.compilation.Binding.StorageProjection(node) is { } storage)
+        {
+            return this.ReadBorrowedField(storage);
+        }
+
         if (node is IdentifierNameKoto or MemberAccessKoto && StaticScalar.TryGet(node.BoundSymbol?.Property, out var staticValue))
         {
             var result = this.Temporary(node);
@@ -759,6 +769,18 @@ public sealed partial class OwnershipAnalysis
         if (assignment)
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
+            if (this.compilation.Binding.PropertyCall(target, PropertyAccessorKind.Set) is { } setter)
+            {
+                if (binary.Akind != KotoKind.Equals)
+                {
+                    this.Unsupported(binary);
+                    return -1;
+                }
+
+                return this.Call(setter);
+            }
+
+            target = this.compilation.Binding.StorageProjection(target) ?? target;
             if (IsPointerPlace(target))
             {
                 return this.WritePointer(binary, target);
@@ -1417,6 +1439,11 @@ public sealed partial class OwnershipAnalysis
         }
 
         var target = this.flow!.Targets.GetValueOrDefault(jump);
+        if (target is not null && ReferenceEquals(target, this.body.Function.Accessor?.Declaration))
+        {
+            target = this.body.Function;
+        }
+
         var loanDepth = this.comparisonDepth;
         if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
         {
@@ -1638,9 +1665,21 @@ public sealed partial class OwnershipAnalysis
                     this.owner.Build(function);
                 }
             }
-            else if (node is PropertyAccessorKoto)
+            else if (node is PropertyAccessorKoto { Body: not null } syntax)
             {
-                this.owner.issues.Add(new(node, OwnershipFailure.Unsupported));
+                var property = ((PropertyKoto)syntax.Parent!).BoundSymbol!.Property!;
+                var accessor = syntax.AccessorKind == PropertyAccessorKind.Get ? property.Getter : property.Setter;
+                if (accessor.Result is not { CarriesOrigin: false } result || this.owner.compilation.Binding.ProveCopy(result, syntax) != ConstraintProof.Proven ||
+                    (accessor.Input is { } input && (input.CarriesOrigin || this.owner.compilation.Binding.ProveCopy(input, syntax) != ConstraintProof.Proven)))
+                {
+                    this.owner.issues.Add(new(node, OwnershipFailure.Unsupported));
+                }
+                else
+                {
+                    var executable = this.owner.compilation.Binding.AccessorFunction(accessor);
+                    this.owner.flow!.Append(executable);
+                    this.owner.Build(executable);
+                }
             }
 
             node.VisitChildren(this);

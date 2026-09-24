@@ -343,7 +343,9 @@ public sealed partial class Binding
         }
     }
 
-    internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => this.symbols[function.Parameters[index]];
+    internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => function.Accessor is { } accessor
+        ? index == 0 && accessor.Receiver is not null ? accessor.SelfSymbol! : accessor.ValueSymbol!
+        : this.symbols[function.Parameters[index]];
 
     internal void Invalidate()
     {

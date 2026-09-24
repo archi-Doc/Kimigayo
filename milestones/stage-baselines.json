@@ -1,6 +1,5 @@
 [
-  { "Program": 23, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "self.level", "SupportedPrefixEnd": "    public var level:" },
-  { "Program": 24, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "self.item", "SupportedPrefixEnd": "contract Viewed" },
+  { "Program": 24, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "value.item", "SupportedPrefixEnd": "contract Viewed" },
   { "Program": 25, "Stage": "Ownership", "Diagnostic": "UnsupportedOwnership_Kd", "Anchor": "value.count", "SupportedPrefixEnd": "public func main()" },
   { "Program": 26, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "func [value@move, visitor]() -> i32 => visitor(value@ref)", "SupportedPrefixEnd": "func inspectTwice" },
   { "Program": 27, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "Range", "SupportedPrefixEnd": "func tail" },

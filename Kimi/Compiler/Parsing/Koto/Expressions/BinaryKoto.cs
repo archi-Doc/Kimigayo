@@ -17,6 +17,14 @@ namespace Kimi.Compiler.Parsing;
 /// </remarks>
 public abstract class BinaryKoto : ExpressionKoto
 {
+    internal BinaryKoto(Koto source, Koto left, Koto right)
+        : base(source.CodeContext, source.Span)
+    {
+        this.Parent = source;
+        this.Left = left;
+        this.Right = right;
+    }
+
     internal InvocationKoto? ComparisonStorage { get; set; }
 
     internal bool ComparisonActive { get; set; }
@@ -128,6 +136,11 @@ public abstract class BinaryKoto : ExpressionKoto
 /// <summary>Represents a member-access expression.</summary>
 public sealed class MemberAccessKoto : BinaryKoto
 {
+    internal MemberAccessKoto(Koto source, Koto left, Koto right)
+        : base(source, left, right)
+    {
+    }
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.MemberAccess;
 
