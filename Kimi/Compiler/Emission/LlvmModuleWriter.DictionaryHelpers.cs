@@ -8,12 +8,17 @@ internal static partial class LlvmModuleWriter
     {
         foreach (var helper in module.DictionaryHelpers)
         {
+            if (helper.Kind == DictionaryHelperKind.Find)
+            {
+                WriteDictionaryEqualityAdapter(output, helper);
+            }
+
             output.Write(helper.Abi.GetDefinition(false));
             output.Write("entry:\n");
             switch (helper.Kind)
             {
                 case DictionaryHelperKind.Find:
-                    WriteDictionaryFind(output, helper);
+                    WriteDictionaryFind(output, helper, module.DictionaryFind!);
                     break;
                 case DictionaryHelperKind.Clear:
                     WriteDictionaryClear(output, helper, module.DictionaryClearLinks!);
@@ -52,17 +57,33 @@ internal static partial class LlvmModuleWriter
         DictionaryAddress(output, "%stored_value", "%slot", helper.ValueOffset);
     }
 
-    private static void WriteDictionaryFind(TextWriter output, DictionaryHelper helper)
+    private static void WriteDictionaryEqualityAdapter(TextWriter output, DictionaryHelper helper)
     {
-        output.Write("  %buffer = load ptr, ptr %handle, align 8\n");
-        DictionaryAddress(output, "%head_ptr", "%handle", 32);
-        output.Write("  %head = load i64, ptr %head_ptr, align 8\n  br label %test\ntest:\n  %link = phi i64 [ %head, %entry ], [ %next, %advance ]\n  %empty = icmp eq i64 %link, 0\n  br i1 %empty, label %absent, label %compare\ncompare:\n");
-        WriteDictionarySlot(output, helper);
+        // Adapt the verified equality witness to the ordinary Function Type ABI.
+        // The handle has an empty environment and no drop action or heap allocation.
+        output.Write('@');
+        output.Write(helper.Abi.Name);
+        output.Write("_table = private constant { ptr, ptr, ptr } { ptr @");
+        output.Write(helper.Abi.Name);
+        output.Write("_equals, ptr null, ptr null }, align 8\ndefine internal i1 @");
+        output.Write(helper.Abi.Name);
+        output.Write("_equals(i64 %environment, ptr %stored_key, ptr %key, ptr %context) #0 {\nentry:\n");
         output.Write("  %equal = call i1 @");
         output.Write(helper.Related!.Name);
-        output.Write("(ptr %stored_key, ptr %key)\n  br i1 %equal, label %found, label %advance\nadvance:\n");
-        DictionaryAddress(output, "%next_ptr", "%slot", 8);
-        output.Write("  %next = load i64, ptr %next_ptr, align 8\n  br label %test\nfound:\n  ret i64 %link\nabsent:\n  ret i64 0\n");
+        output.Write("(ptr %stored_key, ptr %key)\n  ret i1 %equal\n}\n\n");
+    }
+
+    private static void WriteDictionaryFind(TextWriter output, DictionaryHelper helper, FunctionAbi find)
+    {
+        output.Write("  %callback = alloca { i64, ptr }, align 8\n  store i64 0, ptr %callback, align 8\n  %table = getelementptr i8, ptr %callback, i64 8\n  store ptr @");
+        output.Write(helper.Abi.Name);
+        output.Write("_table, ptr %table, align 8\n  %link = call i64 @");
+        output.Write(find.Name);
+        output.Write("(ptr %handle, i64 ");
+        WriteNumber(output, helper.Stride);
+        output.Write(", i64 ");
+        WriteNumber(output, helper.KeyOffset);
+        output.Write(", ptr %key, ptr %callback)\n  ret i64 %link\n");
     }
 
     private static void WriteDictionaryClear(TextWriter output, DictionaryHelper helper, FunctionAbi clearLinks)

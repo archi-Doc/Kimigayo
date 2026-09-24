@@ -6,6 +6,8 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    private readonly List<FunctionAbi> valueCallAbis = new();
+
     private static int CaptureOffset(BoundClosure closure, int index)
     {
         var offset = 0;
@@ -34,6 +36,44 @@ internal sealed partial class BodyLowering
         }
 
         return offset;
+    }
+
+    // Retain physical signatures only; repeated compilation must not allocate
+    // parameter arrays or keep a previous syntax/Binding graph alive.
+    private FunctionAbi ValueCallAbi(BoundType signature, BoundType result)
+    {
+        var inputs = signature.Components[0];
+        var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
+        var returnType = FunctionAbi.ResultType(result)!;
+        var never = ReferenceEquals(result, BoundType.Never);
+        foreach (var candidate in this.valueCallAbis)
+        {
+            if (candidate.Result != returnType || candidate.NoReturn != never || candidate.Parameters.Length != count)
+            {
+                continue;
+            }
+
+            var matches = true;
+            for (var i = 0; i < count && matches; i++)
+            {
+                matches = candidate.Parameters[i].Type == WindowsLowering.GetValue(inputs.Components[i])!.ArgumentType;
+            }
+
+            if (matches)
+            {
+                return candidate;
+            }
+        }
+
+        var parameters = new AbiParameter[count];
+        for (var i = 0; i < count; i++)
+        {
+            parameters[i] = new(WindowsLowering.GetValue(inputs.Components[i])!.ArgumentType!, string.Empty);
+        }
+
+        var abi = new FunctionAbi(string.Empty, returnType, parameters, never);
+        this.valueCallAbis.Add(abi);
+        return abi;
     }
 
     private bool LowerClosureErasure(OwnershipBody body, EmissionFunction function, int id, out string? failure)
@@ -175,7 +215,12 @@ internal sealed partial class BodyLowering
 
         if (plan.ReceiverKind == SemanticsKind.Owner)
         {
-            protectedReceiver = body.Operations.Take(id).Any(x => x.Kind == OwnershipOperationKind.CallEntry && x.Place == operation.Input && ReferenceEquals(x.Source, plan.Receiver));
+            protectedReceiver = false;
+            for (var entry = 0; entry < id && !protectedReceiver; entry++)
+            {
+                var input = body.Operations[entry];
+                protectedReceiver = input.Kind == OwnershipOperationKind.CallEntry && input.Place == operation.Input && ReferenceEquals(input.Source, plan.Receiver);
+            }
         }
 
         if (!protectedReceiver || (plan.ReceiverKind != SemanticsKind.Owner && body.IsReachable(id) && (body.GetInputState(id, operation.Input) & PlaceState.MustInit) == 0))
@@ -189,7 +234,6 @@ internal sealed partial class BodyLowering
             return Fail("Common-function arguments do not match the selected signature.", out failure);
         }
 
-        var physical = new AbiParameter[plan.Arguments.Length];
         var start = function.Operands.Count;
         var receiverType = receiver.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver;
         var concreteEntry = receiverType.Kind == BoundTypeKind.Closure && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.functions?.GetValueOrDefault(definition) : null;
@@ -247,7 +291,6 @@ internal sealed partial class BodyLowering
                 return Fail("Common-function argument lacks checked value or borrow acquisition.", out failure);
             }
 
-            physical[i] = new(WindowsLowering.GetValue(parameterType)!.ArgumentType!, string.Empty);
             function.Operands.Add(this.PhysicalOperand(body, Input(body, entry, 0)));
         }
 
@@ -259,8 +302,8 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var abi = new FunctionAbi(string.Empty, FunctionAbi.ResultType(returnType)!, physical, ReferenceEquals(returnType, BoundType.Never));
-        function.Instructions.Add(new(EmissionOpcode.CallValue, id, operation.Input, Callee: abi, OperandStart: start, OperandCount: physical.Length));
+        var abi = this.ValueCallAbi(signature, returnType);
+        function.Instructions.Add(new(EmissionOpcode.CallValue, id, operation.Input, Callee: abi, OperandStart: start, OperandCount: plan.Arguments.Length));
         if (abi.NoReturn)
         {
             function.Add(EmissionOpcode.Unreachable, id);

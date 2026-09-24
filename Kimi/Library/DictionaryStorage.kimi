@@ -1,6 +1,17 @@
 // Private ordered-storage algorithms. The compiler supplies allocation and typed
 // acquisition/destruction; this source owns slot links and free-slot reuse.
 group DictionaryStorage
+    unsafe func find(handle: unsafe/isize, stride: isize, keyOffset: isize, key: unsafe/u8, equals: (unsafe/u8, unsafe/u8) -> bool) -> isize
+        unsafe
+            let buffer = *(handle@unsafe/unsafe/u8)
+            var link = handle[4]
+            while link != 0
+                let slot = buffer + (link - 1) * stride
+                if equals(slot + keyOffset, key)
+                    return link
+                link = (slot@unsafe/isize)[1]
+            return 0
+
     // Handle words: buffer, used, capacity, length, head, tail, free.
     // Links are slot index + 1; zero denotes no slot. The caller has already
     // secured capacity for needed entries before appendSlot changes any links.
