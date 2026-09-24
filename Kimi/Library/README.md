@@ -4,7 +4,8 @@ These files ship as resources in the compiler assembly. They are the source of
 the currently implemented Kimi declarations, not the complete required library.
 SPEC Chapter 22 and its references remain authoritative.
 
-- Put ordinary types, Contracts and method bodies in `.kimi` files. Add new source
+- Put ordinary types, Contracts and method bodies in `.kimi` files, subject to the
+  Text implementation policy below. Add new source
   files to `KimiLibrarySources.Sources.All`; the project embeds `Library/*.kimi`.
   Root-level functions follow ordinary startup parsing, so library helper
   functions belong inside declaration containers such as groups or structs.
@@ -32,3 +33,20 @@ Catalog validation does not prove runtime support. Missing API entries do not
 create placeholder declarations. Use `GetSymbol` / `GetDeclarationState` for ID
 lookup; the `Declarations` sequence is not indexed by the numeric ID. The old
 ObjectOwnership ID is reserved; ownership-family completeness is a separate query.
+
+## Text implementation policy
+
+Text and UTF-8 formatting operations currently use compiler-supplied LLVM IR,
+including the [generated Ryu conversion cores](../../third_party/ryu/README.md).
+This is an accepted implementation choice within Kimigayo's LLVM-based backend;
+portability alone does not require a rewrite in Kimigayo. LLVM IR implementation
+is not a language requirement, and retaining it does not imply that it is faster
+than a Kimigayo implementation.
+
+As Kimigayo's features mature, these operations may be considered for implementation
+in Kimigayo. A port is optional: compare its compilation time and runtime performance,
+including allocations, with the existing LLVM IR implementation before deciding
+whether to adopt it. Use equivalent workloads, target, toolchain and optimization
+settings, and include the cost of compiling the library code in the comparison.
+Either implementation must preserve the specified behavior, borrowing guarantees
+and allocation/copy requirements.
