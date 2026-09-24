@@ -44,16 +44,16 @@ public class OwnedAggregateContinuationTest
     [Theory]
     [InlineData("(let s, let n) if (return n) => Console.writeLine(s)")]
     [InlineData("(let s, let n) if (if c => return n else => false) => Console.writeLine(s)")]
-    public void UnsupportedCompositeGuardDoesNotInventUnitTypes(string arms)
+    public void CompositeGuardRetainsCandidateTypesAcrossReturnContinuations(string arms)
     {
-        // Composite owned guard candidates are an explicit limitation. Their unbound
-        // guard/body must not appear as Unit to control flow and cascade a Type error.
+        // Guard and unselected body retain their own candidate/acquired Types even
+        // when a terminal guard transfers directly to the enclosing function.
         var c = MinimalEmissionTest.Analyze("func f(c: bool) -> i32\n    let t = (\"a\", 4)\n    match t@move\n        " + arms + "\n        _ => ()\n    return 0\nf(true)");
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.NotEmpty(c.Binding.Issues);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(BindingFailure.Unsupported, x.Node.BindingFailure));
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.Empty(c.Binding.Issues);
         Assert.Empty(c.Ownership.ControlFlow!.Issues);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.Validate(out var error), error);
     }
 
     [Fact]

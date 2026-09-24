@@ -76,7 +76,7 @@ internal static partial class LlvmModuleWriter
 
         for (var i = 0; i < operands.Length; i++)
         {
-            var field = instruction.Pattern![i];
+            var field = function.PatternSteps[instruction.PatternStart + i];
             if (field.Representation.Layout.Size == 0)
             {
                 continue;

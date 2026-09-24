@@ -117,7 +117,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        var fields = new PatternTestStep[value.Count];
+        var patternStart = function.PatternSteps.Count;
         var environmentLayout = closure.EnvironmentType is { } environmentType ? this.aggregateLayouts.Get(environmentType) : null;
         if (closure.EnvironmentType is not null && environmentLayout is null)
         {
@@ -140,11 +140,11 @@ internal sealed partial class BodyLowering
                 return Fail("Closure capture requires a checked initialized inline scalar snapshot.", out failure);
             }
 
-            fields[i] = new(offset, representation, 0);
+            function.PatternSteps.Add(new(offset, representation, 0));
             function.Operands.Add(SlotTypes.IsResult(capture.Environment.Type) ? new(EmissionOperandKind.SlotAddress, body.Operations[input].Input) : this.PhysicalOperand(body, input));
         }
 
-        function.Instructions.Add(new(EmissionOpcode.CreateClosure, id, operation.Place, Callee: callee, OperandStart: start, OperandCount: value.Count, Pattern: fields, Aggregate: environmentLayout));
+        function.Instructions.Add(new(EmissionOpcode.CreateClosure, id, operation.Place, Callee: callee, OperandStart: start, OperandCount: value.Count, PatternStart: patternStart, PatternCount: value.Count, Aggregate: environmentLayout));
         this.AddStringFlags(function, operation, id);
         return true;
     }

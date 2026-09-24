@@ -16,14 +16,14 @@ internal static partial class LlvmModuleWriter
         output.Write("define internal i1 @");
         WritePatternName(output, function, instruction.Operation);
         output.Write("(ptr %subject) #0 {\nentry:\n");
-        var steps = instruction.Pattern!;
+        var steps = function.GetPattern(instruction);
         output.Write(steps.Length == 0 ? "  ret i1 true\n}\n" : "  br label %test0\n");
         for (var i = 0; i < steps.Length; i++)
         {
             var step = steps[i];
             Name(output, "test", i);
             output.Write(":\n");
-            WritePatternAddress(output, null, default, i, step.DereferenceOffsets, step.Offset, "  %address");
+            WritePatternAddress(output, null, default, i, function.GetPatternDereferences(step), step.Offset, "  %address");
             if (step.Text >= -1)
             {
                 WriteCompositeStringTest(output, constants, step, i);
@@ -64,9 +64,9 @@ internal static partial class LlvmModuleWriter
         }
     }
 
-    private static void WritePatternAddress(TextWriter output, EmissionFunction? function, EmissionOperand root, int id, int[]? dereferences, int offset, string name)
+    private static void WritePatternAddress(TextWriter output, EmissionFunction? function, EmissionOperand root, int id, ReadOnlySpan<int> dereferences, int offset, string name)
     {
-        if (dereferences is not null)
+        if (!dereferences.IsEmpty)
         {
             for (var d = 0; d < dereferences.Length; d++)
             {
@@ -86,7 +86,7 @@ internal static partial class LlvmModuleWriter
 
         Name(output, name, id);
         output.Write(" = getelementptr i8, ptr ");
-        WritePatternBase(output, id, dereferences?.Length ?? 0, function, root);
+        WritePatternBase(output, id, dereferences.Length, function, root);
         Name(output, ", i64 ", offset);
         output.Write('\n');
     }
@@ -150,7 +150,7 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var operands = function.GetOperands(instruction);
         var address = instruction.ScalarOperator == "address";
-        WritePatternAddress(output, function, operands[0], id, instruction.Pattern?[0].DereferenceOffsets, (int)operands[1].Value, address ? "  %v" : "  %patternAddress");
+        WritePatternAddress(output, function, operands[0], id, instruction.PatternCount == 0 ? default : function.GetPatternDereferences(function.PatternSteps[instruction.PatternStart]), (int)operands[1].Value, address ? "  %v" : "  %patternAddress");
         if (address)
         {
             return;

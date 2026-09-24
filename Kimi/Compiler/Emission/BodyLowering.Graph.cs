@@ -371,6 +371,14 @@ internal sealed partial class BodyLowering
 
         function.FunctionAddresses.AddRange(this.validation.FunctionAddresses);
         function.FormattingStacks.AddRange(this.validation.FormattingStacks);
+        var patternStart = function.PatternSteps.Count;
+        var dereferenceStart = function.PatternDereferences.Count;
+        function.PatternDereferences.AddRange(this.validation.PatternDereferences);
+        foreach (var step in this.validation.PatternSteps)
+        {
+            function.PatternSteps.Add(step with { DereferenceStart = step.DereferenceStart + dereferenceStart });
+        }
+
         function.AddScalar(EmissionOpcode.Branch, -1, [new(EmissionOperandKind.Block, 0)]);
         for (var i = 0; i < count; i++)
         {
@@ -394,12 +402,12 @@ internal sealed partial class BodyLowering
 
                     var start = function.Operands.Count;
                     function.Operands.AddRange(this.validation.GetOperands(instruction));
-                    function.Instructions.Add(instruction with { OperandStart = start });
+                    function.Instructions.Add(instruction with { OperandStart = start, PatternStart = instruction.PatternStart + patternStart });
                     function.NeedsStringComparison |= instruction.Opcode is EmissionOpcode.StringEquals or EmissionOpcode.StringCompare ||
                         (instruction.Opcode == EmissionOpcode.StringPattern && instruction.Constant >= 0);
                     if (instruction.Opcode == EmissionOpcode.CompositePattern)
                     {
-                        foreach (var test in instruction.Pattern!)
+                        foreach (var test in this.validation.GetPattern(instruction))
                         {
                             function.NeedsStringComparison |= test.Text >= 0;
                         }

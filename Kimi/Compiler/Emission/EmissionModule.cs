@@ -126,10 +126,10 @@ internal enum ArithmeticCheckKind : byte
 }
 
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>
-internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null, AggregateLayout? Aggregate = null, int Continuation = -1, PatternTestStep[]? Pattern = null);
+internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null, AggregateLayout? Aggregate = null, int Continuation = -1, int PatternStart = 0, int PatternCount = 0);
 
 // Text is -2 for a scalar test, -1 for an empty string, or a UTF-8 constant index.
-internal readonly record struct PatternTestStep(int Offset, ValueLowering Representation, Int128 Expected, int Text = -2, int[]? DereferenceOffsets = null);
+internal readonly record struct PatternTestStep(int Offset, ValueLowering Representation, Int128 Expected, int Text = -2, int DereferenceStart = 0, int DereferenceCount = 0);
 
 /// <summary>One physical function definition. Its lists are reused by later preparations.</summary>
 internal sealed class EmissionFunction
@@ -159,6 +159,16 @@ internal sealed class EmissionFunction
 
     internal List<int> FormattingStacks { get; } = new();
 
+    internal List<PatternTestStep> PatternSteps { get; } = new();
+
+    internal List<int> PatternDereferences { get; } = new();
+
+    internal ReadOnlySpan<PatternTestStep> GetPattern(in EmissionInstruction instruction)
+        => CollectionsMarshal.AsSpan(this.PatternSteps).Slice(instruction.PatternStart, instruction.PatternCount);
+
+    internal ReadOnlySpan<int> GetPatternDereferences(in PatternTestStep step)
+        => CollectionsMarshal.AsSpan(this.PatternDereferences).Slice(step.DereferenceStart, step.DereferenceCount);
+
     internal ReadOnlySpan<EmissionOperand> GetOperands(in EmissionInstruction instruction)
         => CollectionsMarshal.AsSpan(this.Operands).Slice(instruction.OperandStart, instruction.OperandCount);
 
@@ -176,6 +186,8 @@ internal sealed class EmissionFunction
         this.Operands.Clear();
         this.FunctionAddresses.Clear();
         this.FormattingStacks.Clear();
+        this.PatternSteps.Clear();
+        this.PatternDereferences.Clear();
     }
 
     internal void Add(EmissionOpcode opcode, int operation, int place = -1, int constant = -1)

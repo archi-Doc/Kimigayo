@@ -8,6 +8,26 @@ namespace XunitTest;
 public class SharedGuardTest
 {
     [Fact]
+    public void WarmSharedGuardAnalysisAndEmissionAllocateNothing()
+    {
+        const string Source = "let value = (\"hello\", 42)\nmatch value\n    (let text, let number) if text == \"hello\" and number == 42 => Console.writeLine(text)\n    (_, _) => ()";
+        var c = MinimalEmissionTest.Analyze(Source);
+        for (var i = 0; i < 8; i++)
+        {
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            {
+                throw new InvalidOperationException("Shared guard verification failed.");
+            }
+        }));
+    }
+
+    [Fact]
     public void CompleteCopyCandidatesSupportFieldsAndBorrowedCalls()
     {
         const string Source = """

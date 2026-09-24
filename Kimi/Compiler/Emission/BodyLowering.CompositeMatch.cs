@@ -6,7 +6,6 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private readonly List<PatternTestStep> compositeTests = new();
     private int[] patternProjectionRoots = [];
 
     private bool IsCompositeSubject(BoundType type) => (type.Semantics == SemanticsKind.Ref && ReferenceTypes.IsStorage(type)) ||
@@ -110,11 +109,13 @@ internal sealed partial class BodyLowering
         return count;
     }
 
-    private PatternTestStep PatternStep(BoundMatch match, int position, ValueLowering representation, Int128 expected, int text = -2, int root = -1)
+    private PatternTestStep PatternStep(EmissionFunction function, BoundMatch match, int position, ValueLowering representation, Int128 expected, int text = -2, int root = -1)
     {
         Span<int> dereferences = stackalloc int[64];
         var count = this.PatternPath(match, position, root, dereferences, out var offset);
-        return new(offset, representation, expected, text, count > 0 ? dereferences[..count].ToArray() : null);
+        var start = function.PatternDereferences.Count;
+        function.PatternDereferences.AddRange(dereferences[..Math.Max(count, 0)]);
+        return new(offset, representation, expected, text, start, Math.Max(count, 0));
     }
 
     private bool ValidateCompositePattern(BoundMatch match, int root)
@@ -407,20 +408,20 @@ internal sealed partial class BodyLowering
         }
 
         var binding = body.Matches[arm.Match].Binding;
-        this.compositeTests.Clear();
+        var patternStart = function.PatternSteps.Count;
         for (var i = arm.Pattern; i < binding.Positions[arm.Pattern].End; i++)
         {
             var node = binding.Positions[i];
             if (node.Kind == BoundPatternKind.Case)
             {
-                this.compositeTests.Add(this.PatternStep(binding, i, WindowsLowering.GetValue(BoundType.I32)!, node.Case!.Ordinal));
+                function.PatternSteps.Add(this.PatternStep(function, binding, i, WindowsLowering.GetValue(BoundType.I32)!, node.Case!.Ordinal));
             }
             else if (node.Kind == BoundPatternKind.Literal)
             {
                 if (ReferenceEquals(this.PatternType(node), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is { } text)
                 {
                     var constant = text.Length == 0 ? -1 : constants.Intern(text, LlvmConstantKind.Text);
-                    this.compositeTests.Add(this.PatternStep(binding, i, WindowsLowering.String, 0, constant));
+                    function.PatternSteps.Add(this.PatternStep(function, binding, i, WindowsLowering.String, 0, constant));
                     continue;
                 }
 
@@ -430,11 +431,11 @@ internal sealed partial class BodyLowering
                     return Fail("Unsupported composite literal.", out failure);
                 }
 
-                this.compositeTests.Add(this.PatternStep(binding, i, WindowsLowering.GetValue(this.PatternType(node))!, bits));
+                function.PatternSteps.Add(this.PatternStep(function, binding, i, WindowsLowering.GetValue(this.PatternType(node))!, bits));
             }
         }
 
-        function.Instructions.Add(new(EmissionOpcode.CompositePattern, id, operation.Place, Pattern: this.compositeTests.ToArray()));
+        function.Instructions.Add(new(EmissionOpcode.CompositePattern, id, operation.Place, PatternStart: patternStart, PatternCount: function.PatternSteps.Count - patternStart));
         return true;
     }
 
@@ -472,9 +473,10 @@ internal sealed partial class BodyLowering
 
         var representation = WindowsLowering.GetValue(type);
         var scalarCopy = copy && IsScalar(type);
-        var step = this.PatternStep(plan, position, representation ?? WindowsLowering.GetValue(BoundType.I32)!, 0, root: root);
+        var step = this.PatternStep(function, plan, position, representation ?? WindowsLowering.GetValue(BoundType.I32)!, 0, root: root);
         function.AddScalar(EmissionOpcode.PatternRead, id, [new(EmissionOperandKind.SlotAddress, subject), new(EmissionOperandKind.Integer, step.Offset)], scalarCopy ? representation!.ComputationType : "ptr", scalarCopy ? null : "address", place: subject, representation: representation);
-        function.Instructions[^1] = function.Instructions[^1] with { Pattern = [step] };
+        function.Instructions[^1] = function.Instructions[^1] with { PatternStart = function.PatternSteps.Count, PatternCount = 1 };
+        function.PatternSteps.Add(step);
         if (IsScalar(type) && storeScalar)
         {
             function.AddScalar(EmissionOpcode.StoreScalar, id, [new(EmissionOperandKind.Value, id)], representation!.ComputationType, place: destination, representation: representation);

@@ -102,9 +102,16 @@ public class ContinuationVerificationTest
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Reloaded guard verification failed.");
+            }
+        }));
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Emission.WriteIr(TextWriter.Null, out _))
+            {
+                throw new InvalidOperationException("Reloaded guard emission failed.");
             }
         }));
     }
