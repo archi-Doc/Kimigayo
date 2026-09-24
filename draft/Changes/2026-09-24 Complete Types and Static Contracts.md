@@ -2,6 +2,8 @@
 
 日付: 2026-09-24
 
+改訂日: 2026-09-25
+
 状態: 議論で採用した方針をまとめた仕様変更案。正式仕様への取り込み・実装検証は未実施。
 
 ## 1. 位置付けと基本方針
@@ -66,7 +68,7 @@ owner/W     = W
 
 Origin の同値性は、既存の等式、outlives、交差の正規化と限定された証明規則で判断する。任意の論理的同値性の探索は要求しない。必要な証明が期限までに得られなければエラーとし、Unknown を成功や不成立に置き換えない。
 
-Runtime Object Type Identity、overload の Signature、生成コードの共有キーは、既存の目的別の定義を維持する。型の同一性の一致だけで、実装や生成コードを共有してはならない。
+Runtime Object Type Identity と overload の Signature は目的別に判断し、receiver の順序は §5.1 で統一する。Origin だけが異なる具体化は、選択した実装、検証済みの操作、配置・ABI など既存の生成条件が一致すればコードを共有できる。適合の証明とコード共有の判断は分ける（§9.1）。
 
 ## 3. 型と Origin の束縛
 
@@ -93,13 +95,30 @@ Runtime Object Type Identity、overload の Signature、生成コードの共有
 | 導入位置 | 束縛の範囲 |
 | --- | --- |
 | 適合ヘッダーの新しい借用 Origin | 適合全体。公開条件を満たすすべての有効な束縛について検証する。 |
+| 制約の主語で構成する新しい借用 Origin | その制約節内。型形成条件を満たすすべての有効な束縛について要求する。 |
 | 関数・要求の新しい入力借用 Origin | 呼出しごと。既存の署名の量化規則に従う。 |
 | 既に完全型に含まれる Origin | 元の束縛を保持する。 |
 | 関連型の指定 | 外側の束縛、`static`、完全型の依存と明示的な関係から完成させる。独立した自由な Origin を追加しない。 |
 
-適合ヘッダーでは、通常の入力借用注釈と同様に、未束縛の単純名を普遍的な Origin として導入できる。省略された外側の借用 Origin は独立した匿名入力になる。既に見える名前はその束縛を参照し、内側の借用や未知のスキーマに新しい省略許可を与えない。
+適合ヘッダーと制約の主語では、通常の入力借用注釈と同様に、未束縛の単純名を普遍的な Origin として導入できる。省略された外側の借用 Origin は独立した匿名入力になる。既に見える名前はその束縛を参照し、内側の借用や未知のスキーマに新しい省略許可を与えない。
 
 `origin` 関係節そのものは名前を導入しない。`during` を持てる Semantics、集合名、射影、宣言スキーマの既存規則を維持する。Origin を持たない層に架空の `static` を追加しない。
+
+#### 3.2.1. 完全型を主語とする制約
+
+関数・型・contract の制約と `when` は、その位置で許される総称型・Self を起点として、Semantics を合成した型とその関連型射影を主語にできる。例えば `ref/C during a is Iterable` は、既存の a がなければ、有効なすべての a についての要求である。`ref/C is Iterable` も匿名の Origin について同じ意味になる。これは適合の利用条件であり、外部適合の宣言ではない。
+
+新しい a のスコープは一つの制約節の全体である。`(ref/C during a).Iterable.Iterator.Element is ref/i32 during a` のように右辺でも参照できるが、関数本体・署名や別の制約節へ持ち出さない。既存の入力 Origin や型のスキーマを参照する制約は、その束縛についてのみ要求する。
+
+使用時は、実際の借用 Origin を代入して必要な適合・等式の証明を得る。任意の Origin を探索せず、既存の限定された証明規則と期限を使う。一般の高階の関数型や Origin 引数を追加するものではない。関数の先頭に制約を置く既存構文を拡張し、節全体を括弧で囲んだ実行時の式との区別は維持する。
+
+#### 3.2.2. 型等式の右辺での省略
+
+利用条件としての型等式では、右辺に新しく書いた借用層の省略 Origin を、左辺の対応する層から補完する。例えば `X.Iterator.Element is ref/i32` は、左辺がその構造を持つことを要求し、右辺の Origin を左辺と同じ束縛にする。補完後には §2.2 の完全な同値性を検査する。
+
+補完は構造上の対応が一意な位置に限り、不透明な左辺では必要な構造と同値性を制約として保持する。寿命短縮、`static` の仮定、任意の存在変数の探索は行わない。明示した Origin は既存の束縛を参照し、未束縛名はエラーとする。省略の補完で本体から参照できる名前は導入しない。
+
+これは既に決まる左辺への制約であり、`associate Element is U` の定義には適用しない。関連型の定義は §3.1–3.2 に従って U を完成させ、自己参照や実装本体からの推測で補わない。
 
 ### 3.3. 依存と Loan の保持
 
@@ -115,22 +134,14 @@ Origin は有効期間を、Loan は領域・権限・借用元を表す。Origi
 
 Loan は、記憶域を有効に保つ**保護元**と、その借用を通じて**アクセスできる領域**を区別して保持する。分割しても、元の記憶域の再確保・移動・破棄などへの保護は失わない。同じ保護元を持つことだけで、分割済みの領域を重複とは扱わない。
 
-検証・lowering の基本操作として `splitLoan(L, A)` を規定する。これは説明用の内部操作名であり、利用者が呼ぶ関数や新しい型ではない。`L` のアクセス領域を `R`、取り出す部分を `A` とすると、次の契約を持つ。
+安全な分割・移譲は、次の保証を満たさなければならない。
 
-| 段階 | 規則 |
-| --- | --- |
-| 前提 | `L` は有効な排他権限を持つ。`A` はその権限で分割できる論理的な部分領域であり、`A ⊆ R` と残部との非重複を証明する。範囲、初期化、配置、アクセス権限、provenance も検証する。 |
-| 移譲 | 元の `R` 全体へのアクセス権限を消費し、`A` と `R ∖ A` に別々の Loan アンカーを与える。消費した L を複製・再使用しない。 |
-| 保持 | 両方が元の保護元・Origin・必要な親 Loan を保持する。有効期間は元を超えず、権限を強めない。結果を共有参照にしても、元の排他保護は弱めない。 |
-| 終了 | 片方の使用・破棄は他方の Loan を消さない。元の借用元を再び使えるのは、競合する派生 Loan が終了した後である。 |
+- 同時に使用できる排他領域は重複せず、元の権限を複製・強化しない。結果を共有参照にしても、元の排他保護は弱めない。
+- 結果と残部は必要な保護元・Origin・親 Loan を保持する。片方の終了で他方の保護を失わない。
+- 短い receiver 借用に依存しない結果を返す場合も、その非重複性と更新後の状態を検証する。単に Origin を長く指定しても権限は分離できない。
+- 総称要求、関数参照、別コンパイル、ユーザー型への委譲でも同じ保証を保つ。private な本体の再解析や型名による検査免除を前提にしない。
 
-全部の移譲は `A = R` として扱う。空の領域やサイズゼロの要素も論理的な位置で区別し、アドレスだけで重複を判断しない。分割は格納場所へのアクセス権限の操作であり、値の Move や未初期化化を伴わない。
-
-証明には既存の構造的な非重複規則、または実装まで検証された記憶域操作を使う。要素を排他的に借用する標準列挙には「残部の先頭の一要素を分離し、安全な参照を返す」操作を必須とする。この操作は境界・位置・provenance を検証し、`splitLoan` と cursor の更新を行ってから、分離した権限で参照を構成する。結果の Origin は元の source に接続し、操作状態の一時借用に付け替えない。動的な添字の比較、Origin の注釈、Unsafe 指定だけではこの証明にならず、未定義の生ポインター変換 API も前提にしない。
-
-呼出しの検証情報は、入力のどの権限を消費し、結果・更新後の状態へどの領域と保護元を渡すかを保持する。関数境界では、更新した状態と返した値にこの情報を反映する。safe な `uniq` 結果の非重複保証を、通常の借用型の契約として検証し、総称要求・関数参照・別コンパイルでも保持する。private な本体の再解析や iterator 名による検査免除は行わない。
-
-排他アクセス権限を保持する状態は Copy にできず、Move は権限も移す。共有参照の Copy は保護元を保持し、排他権限を複製しない。以後の操作・呼出し・cleanup は各状態に残る権限だけを使い、通常の関数境界の receiver 保護も守る。ユーザー型への委譲も同じ規則を使う。Loan の実行時タグ、要素ごとの割当て、一般の整数定理証明は要求しない。分割を使わない借用・Slice の競合規則は変更しない。
+排他権限を保持する状態は Non-Copy であり、Move は権限も移す。共有参照の Copy は保護元を保持する。以後の操作・cleanup は残る権限だけを使う。分割を使わない借用・Slice の競合規則は変更しない。実装に必要な証明と分割モデルは §9.2 にまとめる。
 
 ## 4. 完全型への静的適合
 
@@ -154,7 +165,7 @@ Origin の条件は、候補となる適合を使用できるかの証明に使�
 
 ### 4.2. `Self` と実装スコープ
 
-適合ヘッダーの `Self` は囲む型を表す。適合ブロックは新しい `Self` 束縛を導入し、ブロック内では適合対象の完全型を表す。要求側の `Self` にも同じ完全型を代入する。
+適合ヘッダーの `Self` は `when` 条件内も含めて囲む型を表す。適合ブロックは新しい `Self` 束縛を導入し、先頭の Origin 関係を含むブロック内では適合対象の完全型を表す。要求側の `Self` にも同じ完全型を代入する。
 
 ```kimi
 struct Array<E>
@@ -183,9 +194,9 @@ receiver 省略形 `self` は、ここでも常に `self: ref/Self` である。
 
 同じ宣言への複数経路は、完全な環境の同値性と §4.4 の経路整合性を検証してから統合する。例えば `Family<i32>.Source` と `Family<string>.Source` の Element は、宣言元が同じでも別の要求参照である。Origin を除いた登録キーの一致だけで、要求や関連型を統合しない。
 
-関連型は完全型を明示的に束縛する。要求の制約・祖先の指定から一意に決まる場合は再指定を要しない。関連型の独自の総称パラメータや Origin スキーマは追加しない。
+実装側の関連型指定は、その適合ブロック内の `associate Element is U` に統一する。型本体に置く従来の `associate C.Element is U` は廃止し、等式を型本体へ移して指定を代用することも認めない。要求の制約・祖先の指定から一意に決まる場合は再指定を要しない。指定が必要ならブロックを書く。contract 内の関連型宣言と、利用側の関連型制約は維持し、関連型の独自の総称パラメータや Origin スキーマは追加しない。
 
-`T.C.Element` を完全な射影、`T.Element` を利用可能な要求参照が一意な場合の短縮形とする。上の二つの Source に適合する T では `T.Element` は曖昧であり、結果型が偶然同じでも統合しない。`C` は利用箇所の contract 名として解決し、通常の修飾名とも解釈できる場合は `T.(C).Element` で要求を選択する。
+`T.C.Element` を完全な射影、`T.Element` を利用可能な要求参照が一意な場合の短縮形とする。上の二つの Source に適合する T では `T.Element` は曖昧であり、結果型が偶然同じでも統合しない。`C` を利用箇所の contract 名とする解釈と、通常の修飾名としての解釈の両方が成立する場合、`T.C.Element` は曖昧性エラーとする。優先順位や適合・期待型による再選択は設けない。`T.(C).Element` は常に contract を選ぶ。同じ規則を要求の関数・Property 名にも適用する。
 
 Semantics を適用した型全体を射影元にする場合は括弧を使う。
 
@@ -204,6 +215,8 @@ Semantics を適用した型全体を射影元にする場合は括弧を使う�
 適合の登録キーは、対象の型 Identity と、contract 宣言およびその束縛済み環境の Identity の組で決める。すべての Semantics と型引数を保持し、Origin は再帰的に除く。完全な Origin 束縛と条件は適合の証明に保持し、実装の選択キーにはしない。
 
 直接適合は、断片の併合後に、同じ組へ一致し得る宣言を重複として拒否する。別の Origin、異なる `when`、条件の強弱・排他性で重複を許可しない。既存の限定された構造の照合で非衝突を証明できなければ、衝突の可能性があるものとする。
+
+言語による個別の導出にも独立した実装の優先順位を設けない。導出の前提が成立する範囲で、同じ登録キーへのユーザー定義の適合と重なれば重複エラーとする。未確定の総称束縛で非衝突を証明できない場合も拒否する。前提のない万能な適合としては扱わず、例えば Iterator でない Array の Iterable 適合は §7.1 の導出と衝突しない。intrinsic の既存の宣言が導出の条件を検証させるだけの場合、それ自体は別の実装登録ではない。
 
 直接適合、contract の refinement、有効な基底型からの継承が同じ適合へ到達する場合、同時に成立し得る経路の関連型と実装対応は一致しなければならない。関連型の一致には完全な型記述の同値性を要求する。
 
@@ -265,7 +278,9 @@ struct Sink
 | Property の get | `C.p.get(receiver)` | `T.C.p.get(receiver)` |
 | Property の set | `C.p.set(receiver, value)` | `T.C.p.set(receiver, value)` |
 
-receiver は宣言内の位置によらず、常に先頭の無名実引数とする。残りの引数は、要求の仮引数列から `self` を除いた順序、ラベル、`!` 境界で照合する。receiver は通常引数の名前省略境界に数えず、`self:` ラベルも設けない。accessor の明示形は表の固定位置引数だけを取り、ラベル・default・`!` を持たない。
+receiver を明示する呼出し・関数参照では、宣言内の位置によらず、receiver を先頭の無名位置に置く。この規則を表の要求経由の形式と、通常の `Type.method` の両方に適用する。残りの引数は、参照先の仮引数列から `self` を除いた順序、ラベル、`!` 境界で照合する。receiver は通常引数の名前省略境界に数えず、`self:` ラベルも設けない。accessor の明示形は表の固定位置引数だけを取り、ラベル・default・`!` を持たない。
+
+関数の Signature における引数順序も同じ形へ正規化し、self の宣言位置の違いだけで overload を区別しない。それ以外の Signature と実装照合の条件は維持する。
 
 ```kimi
 Iterable.iterate(values@ref)
@@ -286,22 +301,27 @@ C の中に独立した同名要求が残る場合も、§5.2 の候補統合・
 
 `Iterable.iterate(values)` の Self を、適合を成立させるために `ref/Array<E>` へ変更してはならない。Non-Copy の所有する配列を渡すなら `@move`、共有列挙なら `@ref` と書く。
 
-関数要求の参照は `T.C.f` として Self を固定し、receiver を先頭へ置いた公開引数順序と、要求の型・Origin・効果・実装対応を保持する。関数値としては既存どおり全引数を位置指定する。実装側の default や名前省略許可は伝播しない。この順序の正規化は要求経由の呼出し・関数参照に適用し、普通の関数宣言・参照の順序は変えない。accessor の明示形は呼出し専用とし、accessor 単体の関数値化は追加しない。
+関数要求の参照は `T.C.f` として Self を固定し、要求の型・Origin・効果・実装対応を保持する。通常の `Type.method` と同様に、Function Item と関数値の型も receiver を先頭へ正規化する。関数値としては全引数を位置指定する。要求参照へ実装側の default や名前省略許可は伝播しない。receiver を持たない関数の順序は変えず、bound-method 値も追加しない。accessor の明示形は呼出し専用とする。
 
-### 5.2. 修飾なしの要求選択
+### 5.2. 層ごとの名前 lookup
 
-関数呼出しと Property の get／set は、次の順序で要求を選ぶ。
+値を receiver とする関数呼出しと Property の get／set は、その完全型 R から次の順に名前を探す。
 
-1. 通常メンバーの既存の lookup を行う。アクセス可能で役割が合うグループまたは Property があれば確定し、後の不適合から contract を探し直さない。
-2. 見つからなければ、その完全型で利用可能な公開適合または総称制約から要求参照を集め、§4.3 に従って重複経路を除く。
-3. 関数は、集めた receiver 付き要求の shape が一つであることを確認してから既存の overload 選択を行う。shape が異なる場合や選択が曖昧な場合は明示形を使う。Type 関数にも同じ要求 lookup を適用する。
-4. Property は要求する get／set の契約全体で一つを選び、その後に必要な accessor を検証する。setter の有無や結果の期待型で同名 Property を選び直さず、別の要求から getter と setter を組み合わせない。
+1. 現在の層の通常メンバーを探す。アクセス可能で役割が合うグループまたは Property があれば、そこで確定する。この段階では安全な借用の参照先へ進まない。
+2. なければ、その層の型構造に対応する公開適合・総称制約から同名の要求を集め、§4.3 に従って重複経路を除く。適合条件・Origin の証明は候補の義務として保持し、要求名があればその層で確定する。
+3. 両方になく、現在の層が安全な `ref/U`／`uniq/U` なら U で繰り返す。それ以外は名前がないというエラーにする。
+
+名前が見つかった層が要求の Self を決める。通常メンバーは既存の宣言元・基底型の対応を使う。同じ層では通常メンバーを優先し、要求と同じ実装を二重の候補にしない。確定後の適合条件、overload、receiver 取得、Loan などの失敗で別の層・適合へ戻らない。総称本体では宣言された証明環境でこの計画を決め、具体化後に lookup をやり直さない。
+
+要求の関数は、候補の receiver shape が一つであることを確認してから既存の overload 選択を行う。Property は get／set の契約全体で一つを選び、その後に必要な accessor を検証する。setter の有無や結果の期待型で同名 Property を選び直さず、別の要求から getter と setter を組み合わせない。
 
 独立した同名要求を一候補にまとめられるのは、公開する操作契約と実装対応の同値性を、許されるすべての束縛について証明できる場合だけである。Property では get／set の組全体を比較する。これ以外の曖昧性は §5.1 の明示形で解消する。
 
+借用を辿る場合は既存の receiver 取得表に従い、経路の権限を超えない再借用・Copy read を使う。新しい Semantics の適合は生成せず、共有経路から排他権限を回復させない。object と生ポインターの lookup は既存規則を維持する。型経由の参照・Type 関数・明示した `T.C` は T 自身で lookup し、借用層を辿らない。`for` も §7.3 の完全型に対する適合を使う。
+
 ### 5.3. receiver 取得と Property の動作
 
-適合の選択と receiver の取得は分ける。別の Semantics の適合を探すための借用は行わない。選択した要求の receiver に完全な Self を代入して、次の取得を計画する。
+名前の選択と receiver の取得は分ける。§5.2 で到達した層を対象とし、新しい Semantics の適合を探すための借用は行わない。選択した要求の receiver に完全な Self を代入して、次の取得を計画する。
 
 | 要求の receiver | メソッド・Property 形式の取得 |
 | --- | --- |
@@ -309,7 +329,9 @@ C の中に独立した同名要求が残る場合も、§5.2 の候補統合・
 | `ref/Self` | 完全な Self を保持する位置への共有借用 |
 | `uniq/Self` | 完全な Self を保持する位置への排他借用。位置の変更権限が必要 |
 
-例えば `iterator.next()` は iterator 自身の適合を使い、そのスロットを排他借用する。Self 自体が参照型でも層を省略しない。明示形で同じスロットを借りるには `@uniq/Self` に相当する完全な対象型を指定し、参照先を再借用する `@uniq` 省略形とは区別する。object receiver などは既存の形成・取得条件を維持する。
+例えば `it: uniq/I`、`I is Iterator` の `it.next()` は、外側に next がなければ I の層で要求を見つけ、参照先を排他再借用する。it の参照スロットの変更権限は不要である。一方、`uniq/I` 自身に next の要求があればそちらで確定し、receiver が `uniq/Self` なら参照スロットへの排他借用が必要になる。Self 自体が参照型でも層を省略しない。
+
+明示形で参照スロットを借りるには `@uniq/Self` に相当する完全な対象型を指定し、参照先を再借用する `@uniq` 省略形とは区別する。object receiver などは既存の形成・取得条件を維持する。
 
 Property 要求は accessor の呼出しであり、格納場所を公開しない。`value.p`、`value.p = rhs` と明示 accessor は、要求の型・権限・Loan と getter 結果の一時値制限を保持する。直接の格納操作へ lower しても、隠れた Field の Move／排他借用を許可しない。get／set の receiver 省略形と witness bridge は既存規則を使う。
 
@@ -330,6 +352,8 @@ Subject の式は一度だけ評価する。取得は、パターンや適合の
 | 明示的な `E@move` | 値を移動して取得。借用値の場合も、参照自体の移動を保持する |
 
 明示的な `@move` の行を優先する。新たに得た借用の一時値は、その型・権限を保って引き継ぐ。括弧、局所変数への保存、引数・戻り値経由で、借用の Semantics を暗黙に弱めない。
+
+これにより、格納済みの uniq 値や uniq 引数を Subject にした場合も、従来の共有再借用から排他再借用に変わる。派生 Loan の期間は arm 全体へ一律に延ばさず、既存どおり実際の使用と観測可能な cleanup に従う。
 
 Copy の Subject を値の Copy に置き換える最適化も、束縛の型、Loan、更新先を変えない場合に限る。排他借用先をコピーへ置き換えてはならない。
 
@@ -360,13 +384,15 @@ for item in access              // 同じく排他列挙。access 自体は移�
 | 経路 | 取得 |
 | --- | --- |
 | Subject 自身、または借用を通らない所有する部分 | 通常の Copy／Move |
-| 共有の経路 | 既存の shared reading（Copy／共有 Borrow／Reborrow） |
+| 共有の経路 | その位置への `ref/U`。Copy 型でも位置の借用を保持 |
 | 排他の経路 | その位置への `uniq/U`。Copy 型でも位置の借用を保持 |
 | Wildcard | 取得せず、既存の破棄責任を維持 |
 
-`let`／`var` は得た値を保持する束縛の変更可否を決め、参照先の権限を増やさない。排他経路で `U` 自体が参照型なら、その参照スロットへの借用となる。
+`let`／`var` は得た値を保持する束縛の変更可否を決め、参照先の権限を増やさない。U 自体が参照型なら、共有・排他ともその参照スロットへの借用となる。共有パターンの Copy 要素も、従来の値取得から参照取得に変わる。
 
-guard は従来どおり candidate を共有で読み、body 用の排他束縛は成功した guard の cleanup 後に作る。失敗時は候補を保持し、guard から権限を持ち出さない。Case の変更・全体更新と、payload の生きた借用との競合も既存の Loan 規則で拒否する。
+得た参照を値として使う位置では、既存の Copy read を適用できる。例えば `x: ref/i32` または `uniq/i32` から `let n: i32 = x` として値を得られる。これは期待型など既存の適合規則に基づく使用時の処理であり、束縛自体の型や総称推論を値型へ変更しない。
+
+guard の candidate も、格納完全型 U の位置を `ref/U` として読み、値が必要な位置では Copy read を使う。candidate と body の束縛は別の Identity であり、body の取得は成功した guard の cleanup 後に行う。失敗時は候補を保持する。candidate を読むための新しい Loan は guard から持ち出せず、格納済み外部参照の Copy は元の依存を保持する。その他の guard 制限と、Case 変更・全体更新に対する Loan 検査は維持する。
 
 `for` の単一束縛は next の Some payload を値として取得する。タプル形式は、返された要素自身の型からこの分解規則を使う。一般の match パターンを `for` の構文へ追加するものではない。
 
@@ -399,6 +425,10 @@ Iterable の Element を削除し、要素型は `T.Iterator.Element` から一�
 `iterate` は適合対象の完全型の値を受け取る。`next` は iterator の状態を更新するため、その完全型を排他借用する。列挙対象・iterator・要素の Semantics は独立している。
 
 Iterator の Element は next の呼出しより外側で束縛され、呼出しごとの receiver Origin を参照できない。このため、既存の外部 source への借用は返せるが、next の一時借用や iterator 所有の記憶域への借用は返せない。lending iterator は今回導入しない。
+
+言語による個別の導出として、`I is Iterator` から `I is Iterable` を導く。`I.Iterable.Iterator is I` とし、iterate は受け取った I をそのまま返す。これにより `for x in it@move` は iterator を直接消費できる。この導出と独自の Iterable 適合の重複は §4.4.1 に従って拒否する。
+
+`uniq/I is Iterator` は自動導出しない。これを追加すると外側の next が §5.2 の lookup を遮り、`it: uniq/I` の呼出しにも参照スロットの変更権限を要求するためである。借用して途中まで列挙する場合は、§7.5.3 のように参照を保持する型へ委譲する。関連型 Iterator に借用型を指定する場合も、その完全型自身の適合が必要である。
 
 ### 7.2. 標準型の適合
 
@@ -441,6 +471,8 @@ uniq/(ref/Dog during b) during a
 
 要素参照の配列を事前生成しない。Dictionary は列挙開始時に capacity 全体を走査せず、collection の既存の管理情報で生きた entry を辿れるようにする。利用者が保持する要素結果と body の処理は別に数える。所有する iterator の要素移動・破棄は既存の計算量と責任を維持する。この保証を一般のユーザー定義 Iterator へ要求しない。
 
+Dictionary の remove における割当て禁止と記憶域再利用の保証も維持する。実現例は、既存の O(capacity) の管理領域に生きた entry の挿入順リンクと空き位置のリストを持ち、削除時にリンクから外し、再利用時に末尾へ接続する方式である。墓石を走査せず両方の保証を満たせる。これは非規範の実装例であり、墓石数の上限や特定の圧縮方式は言語規則にしない。
+
 ### 7.3. `for` の処理
 
 1. §6.1 で式を一度取得し、隠れた iterable 局所値を作る。
@@ -456,7 +488,7 @@ break、return、try 伝播などの通常の制御移動では、未取得の�
 
 ### 7.4. 要素の排他借用と分離
 
-標準の Array／固定配列／Dictionary の uniq 適合は、§3.4 の分割・移譲を次の手順で使う。
+標準の Array／固定配列／Dictionary の uniq 適合は、§3.4 の保証と §9.2 の検証要件に従い、次の手順で分割・移譲する。
 
 1. iterate が受け取った排他権限を iterator の状態へ移す。状態は順序と未取得の領域を保持する。
 2. next は未取得の先頭要素を検証済み操作で分離し、残部を状態へ、分離した権限を Some の要素へ渡す。要素の参照を公開する前に cursor と権限の移譲を確定する。
@@ -469,6 +501,8 @@ iterator の破棄は残る権限だけを終了し、要素や元の collection
 一般の安全な動的添字分割や排他 Slice の公開 API は追加しない。標準の操作への委譲でユーザー型も排他列挙を提供できる。独自実装にも同じ Loan の契約を要求し、Unsafe や型名を根拠に省略しない。
 
 ### 7.5. ユーザー型と総称関数の例
+
+#### 7.5.1. collection への委譲
 
 次は、配列に共有列挙を委譲する型の例である。具体的な iterator 名や独自の Origin スロット付き関連型を必要としない。
 
@@ -484,7 +518,11 @@ public struct Bag<E>
 
         func iterate(self: Self) -> Self.Iterator
             return Iterable.iterate(self.items@ref)
+```
 
+#### 7.5.2. 値の型と借用した型への制約
+
+```kimi
 func count<X>(source: X) -> isize
     X is Iterable
 
@@ -492,9 +530,20 @@ func count<X>(source: X) -> isize
     for _ in source@move
         result += 1
     return result
+
+func inspectThenConsume<C>(source: C)
+    ref/C is Iterable
+    C is Iterable
+
+    for _ in source@ref/C       // C 全体を借り、その Origin で制約を具体化。
+        ()
+    for _ in source@move        // 借用の終了後に C 自体を消費。
+        ()
 ```
 
 `count(values@ref)` と `count(values@uniq)` は借用値を、`count(values@move)` は所有する配列を渡す。関数内の `source@move` は X の値を移すのであり、X が借用型なら元の collection を所有・消費するものではない。
+
+`inspectThenConsume` の `@ref/C` は、C が借用型でもその格納値全体を借りる。`@ref` の省略形へ置き換えると参照先の再借用になり得るため、総称本体で意図する層を明示している。
 
 排他要素の更新も既存操作で記述できる。
 
@@ -502,6 +551,61 @@ func count<X>(source: X) -> isize
 for item in values@uniq          // values: Array<i32>
     Intrinsics.replace(item, with: 0)
 ```
+
+#### 7.5.3. iterator を借用して列挙する
+
+次は説明用のユーザー型であり、新しい標準 API ではない。参照の格納だけを追加し、要素型と next の契約は元の Iterator に委譲する。
+
+```kimi
+struct BorrowingIterator<I> {source}
+    I is Iterator
+    let inner: uniq/I during source
+
+    init(inner: uniq/I during source)
+        self.inner = inner@move
+
+    Self is Iterator
+        associate Element is I.Iterator.Element
+
+        func next(self: uniq/Self) -> Option<Self.Element>
+            return I.Iterator.next(self.inner)
+
+func consumeOne<I>(it: uniq/I)
+    I is Iterator
+
+    for _ in BorrowingIterator<I>.init(it)
+        break
+```
+
+§7.1 の導出により、このラッパーも Iterable になる。反復は元の iterator の位置を進め、所有権は移さない。追加のヒープ割当ては不要で、転送呼出しは通常の最適化対象とする。参照や要素の Loan は省略しない。
+
+#### 7.5.4. Copy 型の共有列挙
+
+Copy 型を `for x in value` で列挙させる場合は、`ref/Self` の適合を宣言し、値をコピーして所有型の適合へ委譲できる。次の Span はユーザー型の例である。
+
+```kimi
+struct Span
+    Self is Copy
+    let range: ResolvedRange
+
+    init(range: ResolvedRange)
+        self.range = range
+
+    Self is Iterable
+        associate Iterator is ResolvedRange.Iterable.Iterator
+
+        func iterate(self: Self) -> Self.Iterator
+            return ResolvedRange.Iterable.iterate(self.range)
+
+    ref/Self is Iterable
+        associate Iterator is Span.Iterable.Iterator
+
+        func iterate(self: Self) -> Self.Iterator
+            let value: Span = self
+            return Span.Iterable.iterate(value@move)
+```
+
+共有適合がない所有型だけの Iterable は、Copy 型でも `value@move` または所有する一時値で列挙する。適合を探すために取得モードを切り替えない。
 
 ## 8. 既存機能との境界
 
@@ -519,30 +623,61 @@ runtime contract View、object erasure、任意の外部適合、適合の優先
 
 総称本体は宣言された証明環境で検証し、具体化によって欠けた前提を補わない。具体型・総称引数・関連型を経由した同じ完全型は、同じ Semantics と Origin の保証を持つ。
 
-適合の登録キーと完全な証明情報は分けて保持する。Origin を除いた型 Identity だけで Owned、適合の成立、関連型、呼出し計画をキャッシュしてはならない。要求の束縛済み環境、実装対応、Origin の量化・条件、Loan の分割・移譲、アクセスと効果を、保存・再読込み・無効化でも保持する。別コンパイル先の private な本体を調べなくても、公開契約と検証済み情報で使用を判定できなければならない。
+適合の登録キーと完全な証明情報は分けて保持する。Origin を除いたキーで候補と実装対応のテンプレートを共有し、Origin 条件、Owned、完全な関連型と使用計画は実際の証明環境で検証する。前段の候補情報を適合成立の証明として再利用してはならない。検証結果も、必要な完全な環境が一致すればキャッシュできる。この区別は論理上の要件であり、特定のキャッシュ構造は要求しない。
+
+要求の束縛済み環境、実装対応、Origin の量化・条件、Loan の分割・移譲、アクセスと効果を、保存・再読込み・無効化でも保持する。別コンパイル先の private な本体を調べなくても、公開契約と検証済み情報で使用を判定できなければならない。
 
 静的適合の選択や Origin に、実行時の型タグ、寿命タグ、割当てを必須としない。コード共有や最適化は、取得順序、Loan、破棄責任、診断すべき違反を変えてはならない。標準コレクションの既存の計算量・割当て保証を維持する。
 
+例えば `ref/(ref/T)` は、外側の参照スロットのアドレスが観測されず、型・寿命・aliasing・評価と cleanup の保証を保てる場合、内側の参照値を直接渡す形へ最適化できる。ABI の合意または適切な adapter を必要とし、外側スロットの非 alias 保証などを参照先へ転用しない。共有パターンの Copy 要素を値で処理する最適化にも同じ条件を適用する。
+
 診断では、型形成の失敗、同値性の未証明、適合の欠如・衝突、関連型の不足・曖昧性、実装の非互換、使用時の Loan 違反を区別する。使用違反を「別の適合が必要」と誤って扱わない。
 
-### 9.2. 成立例と拒否例
+未使用の名前付き Origin に対する lint は任意とする。`Self`・関連型・条件を通した暗黙の使用も数え、ヘッダー以外に名前が現れないことだけでは警告しない。lint の有無は適合の成立を変えない。
+
+### 9.2. Loan 分割の検証モデル
+
+分割には、既存の構造的な非重複の証明、または実装まで検証された記憶域操作を必要とする。次の `splitLoan(L, A)` はその検証モデルであり、特定の内部命令や公開 API を要求するものではない。L のアクセス領域を R とする。
+
+| 段階 | 必須の検証・保証 |
+| --- | --- |
+| 前提 | L の有効な排他権限、A が分割可能な R の部分領域であること、残部との非重複、範囲・初期化・配置・provenance |
+| 移譲 | R 全体への権限を消費し、A と R ∖ A に別々の権限を渡す。消費した L を再使用しない |
+| 保持 | 両方に元の保護元・Origin・必要な親 Loan を保持し、元の権限・有効期間を超えない |
+| 終了 | 一方の終了で他方の保護を消さず、元への競合するアクセスは必要な派生 Loan の終了まで拒否する |
+
+全部の移譲は A = R とする。空領域やサイズゼロの要素も論理的な位置で区別し、アドレスだけで重複を判断しない。分割自体は値の Move や未初期化化を伴わない。
+
+標準の排他列挙には、残部の先頭要素を分離して安全な参照を返す検証済み操作を用意する。境界・位置・provenance を検証し、cursor と権限の更新を確定してから参照を返す。結果の Origin は元の source に接続する。動的添字の比較、Origin 注釈、Unsafe 指定だけでは証明にならず、未定義の生ポインター変換 API も前提にしない。
+
+入力から消費する権限と、結果・更新後の状態へ渡す領域・保護元を呼出しの検証情報に保持する。通常の receiver 保護も維持する。同じ保証を証明できる別のモデルを使ってよく、Loan の実行時タグ、要素ごとの割当て、一般の整数定理証明は要求しない。
+
+### 9.3. 成立例と拒否例
 
 | 観点 | 成立させる例 | 拒否する例 |
 | --- | --- | --- |
 | 型比較 | 同じ構造の借用は Origin が異なっても同じ型 Identity | Origin の同値性なしで `T is U` を成立させ、完全型を置換 |
 | 完全型の束縛 | 総称引数・関連型・別名経由で内外の Origin を保持 | 射影や代入のたびに再束縛、または `static` を補充 |
+| 制約の量化 | `ref/C is Iterable` を実際の借用 Origin で使用 | 制約節内の新しい Origin を本体へ持ち出す、既存 Origin を再量化 |
+| 型等式の補完 | `X.Iterator.Element is ref/i32` は左辺の Origin を保持 | 型構造の不一致を補完で許可、未束縛名の存在変数化、関連型定義への転用 |
 | Semantics の合成 | `uniq/(ref/T)` は参照スロットへの排他アクセス | それを T への排他アクセスへ平坦化 |
-| 借用型の iterator | next が iterator 値のスロットを借り、完全な Self を保持 | `@uniq` 省略形へ展開して参照先の別の適合を呼ぶ |
+| 層ごとの lookup | `it: uniq/I` から I の next を呼ぶ。R 自身に同名要求があれば R が優先 | 外側の要求の receiver 取得に失敗して参照先へ戻る、共有経路で排他権限を回復 |
+| 借用型の iterator | 借用型自身の適合を選んだ next は参照スロットを借り、完全な Self を保持 | `for` の next をメソッド lookup に置き換え、参照先の適合で代用 |
 | 適合 | 同じ Array の owner／ref／uniq に別々の適合 | Origin や `when` だけが違う重複した直接適合 |
+| 個別導出 | Iterator から Iterable を導き、借用列挙はラッパーへ委譲 | 導出が適用される型へ同じキーの独自適合を登録、`uniq/I` の Iterator 適合を暗黙生成 |
+| 関連型の指定 | 適合ブロックごとに Iterator を指定 | 型本体の `associate Iterable.Iterator` で複数モードの指定を兼用 |
 | 要求の識別 | 同じ宣言・同値な束縛済み環境への経路だけを統合 | 外側の型引数や Origin が異なる関連型を短縮名で一つにする |
+| 修飾名 | `T.(C).f` で contract を明示 | `T.C.f` が通常の修飾名とも解釈できるのに片方を暗黙選択 |
 | refinement | Left／Right を別々に実装し、Both でその対応を再利用 | 同一要求への経路で完全な関連型や実装対応が不一致 |
 | 実装互換 | 要求の任意の入力 Origin を受け入れる | `static` だけを受け入れる実装で一般の借用要求を満たす |
 | 明示呼出し | `Iterable.iterate(values@ref)` | 適合がないため owner から ref へ実装探索をやり直す |
-| 公開引数順序 | self が末尾の Apply も receiver を先頭にして呼ぶ。関数参照も同順序 | receiver を名前必須の引数列へ混ぜる、実装側の名前省略許可を使う |
+| 公開引数順序 | self が末尾でも `Type.method` と `T.C.f` は receiver が先頭。関数参照も同順序 | `self:` ラベル、self の位置だけが異なる overload、実装側の名前省略許可の転用 |
 | Property | 通常メンバーにない要求を get／set し、明示形で曖昧性を除く | 別の要求の getter／setter を合成、明示 get で一時値制限を回避 |
 | 総称使用 | 例の count を三つの配列の取得形で使用 | 宣言時に証明できない要求を、好都合な具体化だけで許可 |
 | 排他 Subject | 直接の `@uniq` と、保存した uniq 値で同じモード | 保存したという理由で暗黙に ref へ弱める |
 | 排他パターン | guard は共有で読み、成功後に payload を排他借用 | guard の候補から権限を持ち出す、共有経路から排他へ強化 |
+| 共有パターン | Copy 要素も `ref/U` で束縛し、必要な値位置で Copy read | 束縛を値型にして Loan を消す、総称推論で参照型を無条件に値型へ変更 |
+| Copy の列挙 | ref 適合からコピーして所有型の適合へ委譲 | 所有型の Iterable 適合だけで、共有 Subject の適合を補う |
 | 非 lending | Element が既存の外部 source に依存 | iterator 所有の局所記憶域を next の短い借用より長く返す |
 | 分離 | 前の要素を保持して別の要素へ next。総称・別コンパイル・委譲でも保持 | 同じ要素を二度排他的に返す、分割前の権限を再使用する |
 | 終了・保持 | iterator 破棄後も要素の必要な Loan が残る | 要素を保持したまま元の collection を再確保・破棄 |
@@ -550,6 +685,7 @@ runtime contract View、object erasure、任意の外部適合、適合の優先
 | Dictionary | 排他列挙で値を更新し、キーは共有参照 | 生きた entry のキーを排他列挙から変更 |
 | 境界と cleanup | 空・サイズゼロの要素、途中終了、未取得要素の一度だけの破棄 | 物理アドレスだけで分離を判定、二重破棄・破棄漏れ |
 | 標準借用の性能 | 空・疎な Dictionary も要素数に比例する走査、O(1) の生成・記憶域 | capacity 全体の事前走査、参照配列の生成、列挙用ヒープ割当て |
+| キャッシュ・生成 | Origin ごとの証明を保ち、生成条件が同じコードを共有 | Origin を除いた候補を成立証明にする、外側スロットの非 alias 保証を参照先へ転用 |
 
 ## 10. 正式仕様へ取り込む際の担当箇所
 
@@ -558,14 +694,14 @@ runtime contract View、object erasure、任意の外部適合、適合の優先
 | 反映先 | 内容 |
 | --- | --- |
 | [第3章](../../spec/03-types-and-values.md) | 完全型の構成、三つの比較・適合判断。Core と直接の対象の区別 |
-| [第6章](../../spec/06-declarations-and-containers.md)、[第8章](../../spec/08-generics-constraints-and-contracts.md) | 適合ヘッダーと Self、完全型の関連型、環境付きの要求識別、一意性、refinement の合成、継承 |
-| [第7章](../../spec/07-functions-and-callable-values.md)、[第9章](../../spec/09-names-signatures-and-access.md)、[第10章](../../spec/10-overload-resolution-and-inference.md) | 完全型の qualifier、receiver が先頭の明示呼出し・関数参照、要求 lookup、取得、公開範囲 |
+| [第6章](../../spec/06-declarations-and-containers.md)、[第8章](../../spec/08-generics-constraints-and-contracts.md) | 完全型の制約、適合と Self、一意性、refinement、継承。§8.4.3 の Core 制限と型本体での関連型指定を廃止 |
+| [第7章](../../spec/07-functions-and-callable-values.md)、[第9章](../../spec/09-names-signatures-and-access.md)、[第10章](../../spec/10-overload-resolution-and-inference.md) | 完全型の qualifier、曖昧性エラー、層ごとの lookup、取得・公開範囲。Type.method を含む明示呼出し・関数参照・Signature の receiver 順序を統一 |
 | [第11章](../../spec/11-properties.md) | 要求 Property の選択・明示 accessor・一時値制限、実装と既存 witness bridge の照合 |
-| [第15章](../../spec/15-ownership-and-lifetime-analysis.md) | Origin の束縛・依存、Subject とパターン、Loan の保護元とアクセス領域、分割・移譲と呼出し境界 |
-| [第14章](../../spec/14-control-flow.md)、[第16章](../../spec/16-scope-exit-and-destruction.md) | for／match の共通取得、要素取得、guard、終了時の責任 |
-| [第4章](../../spec/04-arrays-indexing-and-slices.md)、[第22章](../../spec/22-core-execution-and-foreign-functions.md) | 二つの contract、標準適合と Element、検証済みの要素分離、借用 iterator の計算量・割当て保証 |
+| [第15章](../../spec/15-ownership-and-lifetime-analysis.md) | 制約の Origin 量化と等式の補完、依存、Subject とパターン、Loan の保護元とアクセス領域、分割・移譲の保証と検証モデル |
+| [第14章](../../spec/14-control-flow.md)、[第16章](../../spec/16-scope-exit-and-destruction.md) | for／match の共通取得、要素取得、guard の共有参照と Copy read、終了時の責任 |
+| [第4章](../../spec/04-arrays-indexing-and-slices.md)、[第22章](../../spec/22-core-execution-and-foreign-functions.md) | Iterable の Element と旧等式を削除し Iterator を完全型化。Iterator からの導出、標準適合、要素分離、Dictionary を含む計算量・割当て保証 |
 | [第13章](../../spec/13-operators-and-assignment.md) | 個別の比較適合導出と operand 取得の区別。代入の意味は維持 |
-| [第18章](../../spec/18-modules-and-dependencies.md)、[第21章](../../spec/21-layout-runtime-and-code-generation.md) | 適合と完全な証明情報の保存・無効化、用途別 Identity と生成キー |
+| [第18章](../../spec/18-modules-and-dependencies.md)、[第21章](../../spec/21-layout-runtime-and-code-generation.md) | 完全な証明情報の保存・無効化、用途別のキャッシュと生成キー、Origin ごとのコード共有、参照スロットの最適化条件 |
 | 付録 A／D／E／F | 検証例、今回解消する境界、用語、構文 |
 
-取り込み時は、本文の担当節を定義元とし、他の節ではその適用と参照を記述する。例・標準宣言・milestone のソースは同時に整合させる。実装済み範囲は実際の検証後に STATUS.md へ記録し、本書だけを根拠に対応済みとは扱わない。
+取り込み時は、本文の担当節を定義元とし、他の節ではその適用と参照を記述する。例・標準宣言・milestone のソースは、格納済み uniq の Subject、共有パターンの束縛型、明示 receiver の引数順序を含めて同時に整合させる。実装済み範囲は実際の検証後に STATUS.md へ記録し、本書だけを根拠に対応済みとは扱わない。
