@@ -4,7 +4,7 @@ Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md
 Programs 1–33 have source files; programs 34–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 23–28 and 33 are authored targets beyond current
+not an execution claim. Milestones 24–28 and 33 are authored targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -51,7 +51,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-24**, programs 1–22 and 29–32 pass their Release harnesses in the [Dictionary source session](../PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
+As of **2026-09-24**, Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -92,7 +92,7 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 20 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program20-completion) |
 | 21 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23) |
 | 22 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
-| 23 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug target/variants) | IN_PROGRESS | Unchanged target and renamed/value variants execute with the specified output. Compound operations, temporary restrictions and full session regression verification remain. |
+| 23 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (67 checks/configuration) | DONE | Unchanged target, name/value/compound/restricted-read/setter-Type variants and required rejections pass; focused lifetime/projection/Move tests and both full suites pass. Earlier-program harness scope was reduced by the user. |
 | 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnresolvedBinding_Kd` at required `value.item`; ownership-bearing setters/getters and Contract Property calls remain. |
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
 | 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
@@ -1277,7 +1277,7 @@ the receiver, once each, then calls the setter without a getter. One explicit
 read invokes the custom getter. The computed `doubled` has no storage and updates
 `raw` through its setter; its getter is evaluated once.
 
-Expected stdout (specification-derived; native execution is blocked):
+Verified stdout (unchanged source, Debug/Release and O0/O2; exit 0, empty stderr):
 
 ```text
 Standard access finished.
@@ -1296,6 +1296,16 @@ input Type; check compound assignment's receiver/getter/RHS/setter order. Reject
 writes and exclusive borrows into owned getter-result temporaries, including
 nested projections. Verify direct standard operations do not synthesize accessor
 calls and custom operations do not expose backing storage.
+
+`backend/windows-x64/test-milestone23.ps1 -Configuration Release` reproduces
+67 checks: 39 native/CLI executions and 28 diagnostic rejections. Debug also
+passes. `CopyPropertyEmissionTest` adds 41 focused cases, including 21 fixtures
+verified and executed at O0/O2, abrupt RHS evaluation, prefix/postfix updates,
+getter-result projection/borrowing, and direct Move permissions. Completed
+Debug/Release full suites each pass 12,440 tests. Evidence is in
+`bin/verify/20260924-111727-097-session-p23-completion`; the earlier-program
+regression portion was cancelled at the user's request, and target verification
+finished separately. No later-program implementation was started.
 
 Focus: [standard operations](../spec/11-properties.md#111-standard-access-and-acquisition),
 [accessor functions](../spec/11-properties.md#112-accessor-functions),

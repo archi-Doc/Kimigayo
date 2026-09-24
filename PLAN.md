@@ -23,9 +23,8 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 
 ## 3. Current position
 
-- **P23 active target (2026-09-24):** the user selected Program 23 independently of the table's execution order. Copy accessor calls, contextual storage and direct first construction placement now reach LLVM verification and native O0/O2 execution with the unchanged target output. Finish compound-operation order, permissions/temporary regressions, then Debug/Release session verification. P31 remains unfinished and is outside this session.
-- **P31 session (2026-09-24):** the 60-minute unit window was 08:50:04–09:50:04 UTC (17:50:04–18:50:04 JST). Eleven verified units through `446565f3` add mandatory static duplicate-key diagnostics and move Dictionary algorithms into ordinary Kimigayo at the user's request. No new unit started after the cutoff; final verification finished at 09:58:57 UTC.
-- **Verified implementation HEAD `446565f3`:** warning-free Debug/Release builds, 12,399 tests each, 104 fresh Dictionary O0/O2 executions and 26 Release harnesses (1,350 checks) in `bin/verify/20260924-095037-109-session-p31-kimigayo-library-session`. Program sources are unchanged. No NativeAOT or specification change; the unrelated user draft commit is preserved. Earlier broad native evidence remains in PLAN_HISTORY.
+- **P23 DONE (2026-09-24):** the user selected Program 23 independently of the table's execution order. The unchanged target passes LLVM verification, linking and native O0/O2 execution with exact stdout, exit 0 and empty stderr. Custom/computed Copy operations, construction placement, compound order, getter-result lifetimes and storage permissions pass 67 harness checks in each configuration. This session ends here; no subsequent milestone was started.
+- **Verified implementation HEAD `6f3e3482`:** warning-free Debug/Release builds, 12,440 tests each and 42 fresh Copy Property O0/O2 executions in `bin/verify/20260924-111727-097-session-p23-completion`. Earlier-program Release harnesses 1–16 passed; remaining earlier-program regression work was cancelled at the user's request, overriding that part of §5 for this session. The P23 Release harness then passed separately in the same evidence directory. No NativeAOT, program-source, specification or draft edits. Earlier broad native evidence remains in PLAN_HISTORY.
 - **P30 DONE:** the unchanged target, all 43 Debug/Release harness checks, recursive witness/effect/NaN regressions and allocation probes pass.
 - **P31 IN_PROGRESS:** the unchanged target and all 71 Debug/Release harness checks pass. Search, ordered links, slot reuse, initialization, reverse cleanup and shrink-to-fit compile from `DictionaryStorage.kimi`; warm compiler allocation probes remain zero. Public generic API/capacity migration, nonempty runtime literals and broader borrowed/nested storage forms remain.
 - **P25/P33 IN_PROGRESS:** explicit base construction, layered destruction, concrete runtime Type tests, payload exchange and explicit base views pass focused/native checks. Program 25 now stops at inherited field ownership projection; Program 33 still stops at flow-refined member lookup.
@@ -45,7 +44,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | 6 | P32 | UTF-8 formatting and interpolation | DONE | Buffers, erased Writers, reserve effects, builtin/user/generic formatting, Text conversions, interpolation and `$tryWrite` pass focused, native/cost and full-session checks. Program 32 and its variants/rejections pass in Debug/Release O0/O2. |
 | 7 | P30 | Equatable/Comparable Contracts | DONE | Primitive/user/generic, Tuple and borrow composition share finalized witnesses; Copy snapshots and NaN semantics are preserved. Unchanged source and 43 checks pass in Debug/Release, with focused/native/allocation and full-session regressions. |
 | 8 | P31 | Dictionary | IN_PROGRESS | Unchanged target and 71 Debug/Release harness checks pass. Empty storage, all seven APIs, generic/zero-sized entries, owned indexing, shared/owning iteration, cleanup, static duplicate-key rejection and allocation/cost guarantees are verified. Finish the requested source migration, nonempty runtime literals, borrowed indexing and nested owning storage. |
-| 9 | P23 | Basic Properties | IN_PROGRESS | Unchanged target executes in Debug at O0/O2. Finish compound-operation order, permissions/temporary regressions and full session verification. |
+| 9 | P23 | Basic Properties | DONE | Unchanged target and 67 checks pass in Debug/Release O0/O2. Compound operations, getter-result projections/lifetimes, construction and storage access/Move restrictions pass focused and full-suite verification; earlier-program harness scope follows the user override in §3. |
 | 10 | P24 | Ownership-bearing Properties | TODO | Non-Copy setters, getter results and temporaries, Contract witnesses. |
 | 11 | P25 | Inheritance | IN_PROGRESS | Explicit base prefix construction and layered/partial destruction pass. Finish implicit base calls and inherited member projections; unchanged target currently stops at ownership analysis of inherited fields. |
 | 12 | P26 | General closures and Callable | TODO | Composite/generic captures, function items and erasure (issue G10), indirect-call ABI. |
@@ -58,7 +57,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | 19 | P37 | Integrated processing application | TODO | Collections, borrows, iteration and closures combined. |
 | 20 | P38 | Integrated core application | TODO | Properties, inheritance, objects and formatting combined. |
 
-P22, P19, P20, P21, P29, P32 and P30 are done. P31 is next. Collections, comparison and formatting precede Properties and complete object refinement because later programs use them.
+P22, P19, P20, P21, P29, P32, P30 and the user-selected P23 are done. P31 remains next in the standing plan; this completed P23 session does not resume it.
 
 ### Toolchain track (after P38, or earlier when instructed)
 
@@ -86,7 +85,7 @@ Features that a program's source does not use belong to the milestone that owns 
 
 1. **Finish P31 source migration:** move the remaining generic operation/result dispatch and reserve/growth into Kimigayo over common memory/ownership primitives. Preserve equality/destructor effects, operation Abort locations and allocation bounds; keep backend support limited to physical representation and primitives (G20).
 2. **Finish P31 language coverage:** implement runtime literal duplicate checks before value evaluation, borrowed-handle indexing and nested owning storage through existing acquisition/storage plans. Static mandatory duplicate checking is complete; extend the harness for the remaining forms.
-3. **Resume the milestone order:** P23/P24 custom/computed and ownership-bearing Properties, then P25 inherited projections/implicit base calls, closure/Slice/Iterator work and P33 flow refinement. Preserve object identity and invalidate content facts on payload updates; general ObjectCallCompatible remains deferred.
+3. **Resume the milestone order when requested:** P24 ownership-bearing Properties and Contract operations, then P25 inherited projections/implicit base calls, closure/Slice/Iterator work and P33 flow refinement. P23 is complete. Preserve object identity and invalidate content facts on payload updates; general ObjectCallCompatible remains deferred.
 
 ## 7. Open issues
 
