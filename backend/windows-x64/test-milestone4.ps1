@@ -112,7 +112,7 @@ $invalid = [ordered]@{
     ConditionalInit = @{ source = (Edit-KimiSource $original 'self.value = 0' 'if false => self.value = 0'); diagnostic = 'UninitializedPlace_Kd' }
     LateInit = @{ source = (Edit-KimiSource $original 'self.value = 0' 'defer => self.value = 0'); diagnostic = 'UninitializedPlace_Kd' }
     UninitializedRead = @{ source = (Edit-KimiSource $original 'self.value = 0' 'self.value = self.value + 1'); diagnostic = 'UninitializedPlace_Kd' }
-    ImmutableOwner = @{ source = (Edit-KimiSource $original 'var counter =' 'let counter ='); diagnostic = 'UnsupportedOwnership_Kd' }
+    ImmutableOwner = @{ source = (Edit-KimiSource $original 'var counter =' 'let counter ='); diagnostic = 'InvalidAssignment_Kd' }
     PrivateConstructor = @{ source = (Edit-KimiSource $original 'public init()' 'init()'); diagnostic = 'NoApplicableOverload_Kd' }
     WrongArgument = @{ source = (Edit-KimiSource $original 'Counter.init()' 'Counter.init(true)'); diagnostic = 'NoApplicableOverload_Kd' }
     ExplicitDeinit = @{ source = (Edit-KimiSource $original 'finish(counter@move) //' 'counter.deinit() //'); diagnostic = 'IdentifierExpected_Kd' }

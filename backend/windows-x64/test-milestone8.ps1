@@ -123,7 +123,7 @@ $invalid = [ordered]@{
     DeinitExtraction = @{ source = (Edit-KimiSource $original 'public func take(self: Self)' "deinit => ()`n`n            public func take(self: Self)"); diagnostic = 'UnsupportedOwnership_Kd' }
     PrivateField = @{ source = (Edit-KimiSource $original 'selected@move.take()' 'selected.value'); diagnostic = 'InaccessibleBinding_Kd' }
     BareReceiver = @{ source = (Edit-KimiSource $original 'selected@move.take()' 'selected.take()'); diagnostic = 'TransferRequired_Kd' }
-    PrivateGroup = @{ source = (Edit-KimiSource $original 'public group Storage' 'group Storage'); diagnostic = 'UnresolvedBinding_Kd' }
+    PrivateGroup = @{ source = (Edit-KimiSource $original 'public group Storage' 'group Storage'); diagnostic = 'InaccessibleBinding_Kd' }
     ImmutableElement = @{ source = (Edit-KimiSource $original 'total = total + value' 'value = 1'); diagnostic = 'TypeMismatch_Kd' }
     EscapedElement = @{ source = (Edit-KimiSource $original 'require total == 12' 'require value == 12'); diagnostic = 'UnresolvedBinding_Kd' }
     WrongArrayLength = @{ source = (Edit-KimiSource $original '[3 of i32]' '[2 of i32]'); diagnostic = 'NoApplicableOverload_Kd' }

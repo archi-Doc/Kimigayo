@@ -109,7 +109,7 @@ $invalid = [ordered]@{
     WrongArgument = @{ source = (Edit-KimiSource $original 'applyTwice(10,' 'applyTwice(true,'); diagnostic = 'NoApplicableOverload_Kd' }
     ImplicitMove = @{ source = (Edit-KimiSource $original 'func [message@move]' 'func'); diagnostic = 'TransferRequired_Kd' }
     BareCapture = @{ source = (Edit-KimiSource $original '[message@move]' '[message]'); diagnostic = 'TransferRequired_Kd' }
-    MissingOuter = @{ source = (Edit-KimiSource $original 'func [offset] ()' 'func [] ()'); diagnostic = 'UnsupportedOwnership_Kd' }
+    MissingOuter = @{ source = (Edit-KimiSource $original 'func [offset] ()' 'func [] ()'); diagnostic = 'InvalidCaptureBinding_Kd' }
     DuplicateCapture = @{ source = (Edit-KimiSource $original '[var count]' '[var count, count]'); diagnostic = 'DuplicateBinding_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {

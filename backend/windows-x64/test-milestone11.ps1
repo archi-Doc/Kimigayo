@@ -110,7 +110,7 @@ $invalid = [ordered]@{
     MissingOriginal = @{ source = (Edit-KimiSource $original 'specialize func weight<i32>' 'specialize func missing<i32>'); diagnostic = 'MissingSpecializationTarget_Kd' }
     WrongLength = @{ source = (Edit-KimiSource $original 'total<3, i32>' 'total<2, i32>'); diagnostic = 'NoApplicableOverload_Kd' }
     InvalidOrdinary = @{ source = (Edit-KimiSource $original '=> defaultWeight' '=> true'); diagnostic = 'TypeMismatch_Kd' }
-    MissingCopy = @{ source = (Edit-KimiSource $original 'result = result + forward<T>(values[index]@ref/T)' "let copied: T = values[index]`n            result = result + forward<T>(values[index]@ref/T)"); diagnostic = 'UnsupportedOwnership_Kd' }
+    MissingCopy = @{ source = (Edit-KimiSource $original 'result = result + forward<T>(values[index]@ref/T)' "let copied: T = values[index]`n            result = result + forward<T>(values[index]@ref/T)"); diagnostic = 'TransferRequired_Kd' }
     StaticWrite = @{ source = (Edit-KimiSource $original '    let actual = (' "    Weights.defaultWeight = 3`n    let actual = ("); diagnostic = 'InaccessibleBinding_Kd' }
     NarrowOrigin = @{ source = (Edit-KimiSource $original 'weight<i32>(value: ref/i32)' 'weight<i32>(value: ref/i32 during static)'); diagnostic = 'IncompatibleContractImplementation_Kd' }
 }

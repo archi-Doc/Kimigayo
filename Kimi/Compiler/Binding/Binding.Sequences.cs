@@ -60,7 +60,7 @@ public sealed partial class Binding
         }
 
         var view = source.SharedIterable ?? iterable;
-        var element = view?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? view.Components[0] : view?.Kind == BoundTypeKind.Slice
+        var element = view is null ? null : view.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? view.Components[0] : view.Kind == BoundTypeKind.Slice
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : BoundType.ISize;
         var result = this.BeginResult(source, scope, BoundType.Unit);
         var duplicate = false;
@@ -68,7 +68,7 @@ public sealed partial class Binding
         {
             var name = source.Bindings[i];
             duplicate |= name.BoundSymbol!.Next is not null;
-            var slot = source.IsTupleBinding && element.Kind == BoundTypeKind.Tuple && i < element.Components.Count ? element.Components[i] : element;
+            var slot = source.IsTupleBinding && element?.Kind == BoundTypeKind.Tuple && i < element.Components.Count ? element.Components[i] : element;
             name.BoundSymbol!.Type = slot;
             Complete(name, slot);
         }
@@ -79,7 +79,12 @@ public sealed partial class Binding
             return Fail(source, BindingFailure.Duplicate);
         }
 
-        if (source.IsTupleBinding && (element.Kind != BoundTypeKind.Tuple || element.Components.Count != source.Bindings.Count))
+        if (iterable is null)
+        {
+            return Complete(source, null);
+        }
+
+        if (source.IsTupleBinding && (element?.Kind != BoundTypeKind.Tuple || element.Components.Count != source.Bindings.Count))
         {
             return Fail(source, BindingFailure.TypeMismatch);
         }

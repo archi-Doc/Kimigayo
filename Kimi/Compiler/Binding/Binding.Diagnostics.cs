@@ -11,6 +11,64 @@ public sealed partial class Binding
     private Dictionary<Koto, Koto>? constraintDiagnosticCauses;
     private Dictionary<Koto, BindingSymbol>? objectPayloadCauses;
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
+    private DiagnosticDependencyVisitor? diagnosticDependencyVisitor;
+    private Dictionary<Koto, Koto>? diagnosticDependencies;
+
+    private BoundType? CompleteDependent(Koto node, Koto cause)
+    {
+        (this.diagnosticDependencies ??= new(ReferenceEqualityComparer.Instance))[node] = cause;
+        return Complete(node, null);
+    }
+
+    // This affects publication only: invalid/unresolved state is retained, so a suppressed
+    // derivative diagnostic never becomes permission to emit code.
+    private bool IsDependentDiagnostic(Koto use)
+    {
+        if (use.BindingFailure is not (BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported or BindingFailure.TypeMismatch))
+        {
+            return false;
+        }
+
+        var visitor = this.diagnosticDependencyVisitor ??= new(this);
+        return visitor.HasCause(use);
+    }
+
+    // Called only after both value and Type lookup failed. A tentative Type path must not
+    // publish access errors when a valid value path exists in the other namespace.
+    private bool ReportUnavailableQualifier(Koto syntax, BindingScope scope)
+    {
+        if (syntax is GenericsKoto generic)
+        {
+            return this.ReportUnavailableQualifier(generic.Identifier!, scope);
+        }
+
+        if (syntax is not MemberAccessKoto member)
+        {
+            return false;
+        }
+
+        if (this.ReportUnavailableQualifier(member.Left, scope))
+        {
+            return true;
+        }
+
+        if (this.TypeName(member.Left, scope, false) is not { } qualifier || !this.scopes.TryGetValue(qualifier.Declaration, out var members) ||
+            TypeSpelling(member.Right) is not { } name || !members.Types.TryGetValue(name, out var first))
+        {
+            return false;
+        }
+
+        for (var candidate = first; candidate is not null; candidate = candidate.Next)
+        {
+            if (this.Accessible(candidate, scope))
+            {
+                return false;
+            }
+        }
+
+        Fail(member, BindingFailure.Access);
+        return true;
+    }
 
     /// <summary>Rejects an object form, creation, cast or runtime test over a Type that opts out of ObjectPayload, naming the declaring Type (SPEC 8.4.7.2).</summary>
     private BoundType? FailObjectPayload(Koto use, BindingSymbol renounced)
@@ -92,6 +150,48 @@ public sealed partial class Binding
             }
 
             node.VisitChildren(this);
+        }
+    }
+
+    private sealed class DiagnosticDependencyVisitor(Binding binding) : KotoVisitor
+    {
+        private readonly HashSet<Koto> seen = new(ReferenceEqualityComparer.Instance);
+        private bool found;
+
+        public override void Visit(Koto node)
+        {
+            if (this.found || !this.seen.Add(node))
+            {
+                return;
+            }
+
+            if (node.BindingFailure != BindingFailure.None)
+            {
+                this.found = true;
+                return;
+            }
+
+            if (binding.diagnosticDependencies?.TryGetValue(node, out var cause) == true)
+            {
+                this.Visit(cause);
+            }
+
+            if (node.BoundSymbol?.Declaration is VariableKoto { InitializerKoto: { } initializer } declaration &&
+                declaration.BindingState != BindingState.Resolved)
+            {
+                this.Visit(initializer);
+            }
+
+            node.VisitChildren(this);
+        }
+
+        internal bool HasCause(Koto node)
+        {
+            this.seen.Clear();
+            this.seen.Add(node);
+            this.found = false;
+            node.VisitChildren(this);
+            return this.found;
         }
     }
 }

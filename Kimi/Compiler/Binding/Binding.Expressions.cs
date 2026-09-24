@@ -40,6 +40,12 @@ public sealed partial class Binding
             return tupleElement.Left.BoundType!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
         }
 
+        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field && StructStorage.IsStruct(field.Left.BoundType) &&
+            !IsSpecialField(field, out _) && !Writable(field.Left))
+        {
+            return false; // A mutable field still requires a mutable owning root.
+        }
+
         if (node.BoundSymbol is { Kind: BindingSymbolKind.Storage, Scope.Owner: PropertyAccessorKoto syntax })
         {
             var accessor = Accessor(syntax);

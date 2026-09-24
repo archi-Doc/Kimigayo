@@ -23,6 +23,7 @@ public class MilestoneSourcesTest
         Assert.Equal(baselines.Length, baselines.Select(x => x.Program).Distinct().Count());
         var pending = baselines.ToDictionary(x => x.Program);
         var authored = new List<int>();
+        var differences = new List<string>();
         foreach (Match row in rows)
         {
             var number = int.Parse(row.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -50,7 +51,11 @@ public class MilestoneSourcesTest
             Assert.False(c.Binding.Result.IsComplete, $"Milestone{number} advanced: update its verified stage and README.");
             Assert.NotEmpty(c.Binding.Issues);
             var primary = c.Binding.Issues[0];
-            Assert.Equal((number, expected.Diagnostic, expected.Anchor), (number, primary.Code.ToString(), primary.Node.ToString().Split('\n')[0]));
+            var anchor = primary.Node.ToString().Split('\n')[0];
+            if (expected.Diagnostic != primary.Code.ToString() || expected.Anchor != anchor)
+            {
+                differences.Add($"Milestone{number}: expected {expected.Diagnostic} at {expected.Anchor}; actual {primary.Code} at {anchor}");
+            }
 
             // Verify the already-supported declaration subset independently. A pending target must
             // not hide regressions in declarations before its first unsupported feature.
@@ -62,6 +67,7 @@ public class MilestoneSourcesTest
         }
 
         Assert.Empty(pending);
+        Assert.True(differences.Count == 0, string.Join("\n", differences));
         var files = Directory.GetFiles(DirectoryPath, "Milestone*.kimi")
             .Select(x => int.Parse(Path.GetFileNameWithoutExtension(x)["Milestone".Length..], System.Globalization.CultureInfo.InvariantCulture)).Order();
         Assert.Equal(authored, files); // A removed, renamed or unrecorded source is never accepted by a minimum count.

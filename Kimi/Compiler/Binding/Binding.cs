@@ -88,6 +88,7 @@ public sealed partial class Binding
             this.issues.Clear();
             this.libraryImports.Clear();
             this.constraintDiagnosticCauses?.Clear();
+            this.diagnosticDependencies?.Clear();
             this.objectPayloadCauses?.Clear();
             this.ResetMatches();
             this.resultContexts.Clear();
@@ -355,6 +356,7 @@ public sealed partial class Binding
         this.issues.Clear();
         this.libraryImports.Clear();
         this.constraintDiagnosticCauses?.Clear();
+        this.diagnosticDependencies?.Clear();
         this.obligations.Clear();
         this.obligationSet.Clear();
         this.ResetStartup();
@@ -500,7 +502,9 @@ public sealed partial class Binding
 
             if (node.BindingState == BindingState.Unvisited)
             {
-                Fail(node, BindingFailure.Unsupported, true);
+                // Skipped dependent syntax has no Type evidence, not a proof of an unsupported feature.
+                // Actual subset gates diagnose themselves; the final fallback still rejects unresolved work.
+                node.BindingState = BindingState.Unresolved;
             }
 
             switch (node.BindingState)
@@ -516,7 +520,7 @@ public sealed partial class Binding
                     break;
             }
 
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None)
+            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && !this.IsDependentDiagnostic(node))
             {
                 var code = node.BindingFailure switch
                 {

@@ -343,14 +343,17 @@ public sealed partial class Binding
 
         if (group is null)
         {
-            Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : BindingFailure.MissingName, true);
+            if (!this.ReportUnavailableQualifier(callee, scope))
+            {
+                Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : BindingFailure.MissingName, true);
+            }
+
             return Complete(call, null);
         }
 
         if (group.Kind != BindingSymbolKind.Function)
         {
-            this.BindReference(callee, group, scope);
-            return Fail(call, BindingFailure.NotCallable);
+            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : Fail(call, BindingFailure.NotCallable);
         }
 
         if (unknownArgument)

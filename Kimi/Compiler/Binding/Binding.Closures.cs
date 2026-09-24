@@ -102,7 +102,7 @@ public sealed partial class Binding
 
                 if (source is null || this.Capture(function, source, scope) is not { } environment)
                 {
-                    return Fail(function, BindingFailure.Capture);
+                    return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : Fail(function, BindingFailure.Capture);
                 }
 
                 // SPEC 7.6.2: a bare capture Copies; a Non-Copy binding is transferred only by x@move.
@@ -128,6 +128,18 @@ public sealed partial class Binding
 
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope)
     {
+        if (scope.Parent?.Function is { } outer && !ReferenceEquals(source.Scope.Function, outer))
+        {
+            // A nested closure can capture only what its immediately enclosing activation owns.
+            // An inferred outer environment may forward the capture; an explicit list may not.
+            if (!outer.IsAnonymous || outer.Captures is not null || this.Capture(outer, source, this.scopes[outer]) is not { } forwarded)
+            {
+                return null;
+            }
+
+            source = forwarded;
+        }
+
         if (source.Type is null && source.Declaration is VariableKoto variable)
         {
             this.BindVariable(variable, source.Scope);
@@ -135,11 +147,16 @@ public sealed partial class Binding
 
         // Concrete environments preserve complete captured Types and dependencies.
         // Common-function erasure retains its independent Owned requirement.
-        if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture) ||
-            source.Type is not { } type || !(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
+        if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture) || source.Type is not { } type)
+        {
+            return null;
+        }
+
+        if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
                 (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Closure ||
                     ReferenceTypes.IsStorage(type) || ObjectTypes.IsOwner(type)))))
         {
+            Fail(function, BindingFailure.Unsupported);
             return null;
         }
 
@@ -207,7 +224,7 @@ public sealed partial class Binding
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
                 if (source is null || this.Capture(function, source, scope) is not { } environment)
                 {
-                    return Fail(function, BindingFailure.Capture);
+                    return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : Fail(function, BindingFailure.Capture);
                 }
 
                 environment.MutableCapture = capture.IsMutable;

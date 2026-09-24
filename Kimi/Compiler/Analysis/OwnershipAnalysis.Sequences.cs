@@ -59,7 +59,15 @@ public sealed partial class OwnershipAnalysis
             !(source.BoundType?.Kind == BoundTypeKind.Parameter && ReferenceTypes.IsArray(source.Left.BoundType) &&
             this.compilation.Binding.ProveCopy(source.BoundType, source) == ConstraintProof.Proven)))
         {
-            this.Unsupported(source);
+            if (acquisition is null && source.BoundType is { } element && this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven)
+            {
+                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+            }
+            else
+            {
+                this.Unsupported(source);
+            }
+
             this.EndComparisonLoans(depth, source);
             this.comparisonDepth = depth;
             return -1;
