@@ -60,6 +60,24 @@ public class Utf8ReserveEffectTest
     private const string Formatter = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        ";
 
     [Theory]
+    [InlineData("let value = Noisy.init()\n        _ = value.item")]
+    [InlineData("var value = Noisy.init()\n        value.item = 1")]
+    public void CustomAccessorEffectsAreChecked(string operation)
+    {
+        const string Accessors = "struct Noisy\n    public var item: i32 = 0\n        get(self: ref/Self) -> i32 => State.value\n        set(self: uniq/Self, value: i32) -> () => State.value = value\n";
+        var c = Analyze(State + Accessors, operation);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
+    [Fact]
+    public void NestedGenericDestructionEffectsAreChecked()
+    {
+        const string Nested = "struct Noisy\n    public init() => ()\n    deinit => State.value += 1\nstruct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n";
+        var c = Analyze(State + Nested, "_ = Box<Noisy>.init(Noisy.init())");
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
+    [Theory]
     [InlineData("", "_ = minimum")]
     [InlineData("", "self.local += 1")]
     [InlineData("group Helpers\n    public func pure(value: i32) -> i32 => value + 1\n", "_ = Helpers.pure(self.local)")]

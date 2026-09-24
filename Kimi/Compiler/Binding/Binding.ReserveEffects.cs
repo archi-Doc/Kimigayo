@@ -224,20 +224,13 @@ public sealed partial class Binding
 
             if (call.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
             {
-                if (call.TypeArguments.Length == 0 || call.TypeArguments[0] is not { } valueType)
+                if (!binding.TryResolveFormattingCallback(call, out var implementation))
                 {
                     this.valid = false;
                 }
-                else if (!FormattingTypes.IsBuiltin(valueType))
+                else if (implementation is not null)
                 {
-                    if (binding.RequirementImplementation(call, valueType, KimiDeclarationId.Utf8Format) is { } implementation)
-                    {
-                        this.Function(implementation.Target, implementation);
-                    }
-                    else
-                    {
-                        this.valid = false;
-                    }
+                    this.Function(implementation.Target, implementation);
                 }
 
                 return;
@@ -368,11 +361,9 @@ public sealed partial class Binding
             }
             else if (StructStorage.IsStruct(type))
             {
-                if (StructStorage.Destructor(type)?.BoundSymbol is { } destructor)
+                if (binding.DestructionCall(type) is { } call)
                 {
-                    var call = new BoundCall();
-                    call.Set(destructor, BoundType.Unit, null, [], [], declaringType: type);
-                    this.Function(destructor, call);
+                    this.Function(call.Target, call);
                 }
 
                 for (var i = 0; i < StructStorage.Count(type); i++)

@@ -119,7 +119,7 @@ internal sealed partial class GenericStoragePlan
     }
 
     private static bool IsFormattingCallback(BoundCall call)
-        => call.Target.CompilerFunction is CompilerFunctionKind.TextWriter or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat;
+        => Binding.HasFormattingCallback(call);
 
     // The template records the calls its instances forward; each instance resolves them under its substitution.
     private static Template CreateTemplate(OwnershipBody body)
@@ -286,19 +286,18 @@ internal sealed partial class GenericStoragePlan
             return true;
         }
 
-        if (site.TypeArguments.Length != (site.Target.CompilerFunction == CompilerFunctionKind.TextTryFormat ? 2 : 1) || site.TypeArguments[0] is not { } self)
+        if (!compilation.Binding.TryResolveFormattingCallback(site, out var call))
         {
-            return Fail("Formatting callback requires a concrete input Type.", out failure);
+            return Fail("Formatting callback has no verified conformance witness.", out failure);
         }
 
         var writer = site.Target.CompilerFunction == CompilerFunctionKind.TextWriter;
-        if (writer ? self.Symbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.HeapBuffer : FormattingTypes.IsBuiltin(self))
+        if (call is null)
         {
             return true;
         }
 
-        var call = compilation.Binding.RequirementImplementation(site, self, writer ? KimiDeclarationId.BufferWriter : KimiDeclarationId.Utf8Format);
-        if (call?.Target.Declaration is not FunctionKoto target)
+        if (call.Target.Declaration is not FunctionKoto target)
         {
             return Fail("Formatting callback has no verified conformance witness.", out failure);
         }
