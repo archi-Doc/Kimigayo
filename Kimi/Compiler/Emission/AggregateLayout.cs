@@ -36,18 +36,25 @@ internal sealed class AggregateLayoutPool
 
     internal Dictionary<BoundType, AggregateLayout?>.ValueCollection Used => this.resolved.Values;
 
-    /// <summary>Gets a value indicating whether a layout request exceeded the inline nesting depth bound (SPEC 21.3.5: a mandatory generation resource limit).</summary>
-    internal bool DepthExceeded { get; private set; }
+    /// <summary>Gets the exhausted implementation limit, independently of unsupported representations and invalid source.</summary>
+    internal string? ResourceLimitFailure { get; private set; }
 
     internal void Clear()
     {
         this.resolved.Clear();
-        this.DepthExceeded = false;
+        this.ResourceLimitFailure = null;
     }
 
     internal AggregateLayout? Get(BoundType type) => this.Get(type, 0);
 
     private static long Align(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
+
+    private AggregateLayout? ExceedLimit(BoundType type, bool depth = false)
+    {
+        this.ResourceLimitFailure ??= depth ? "Inline layout exceeds the generation depth limit of 64 levels."
+            : "Inline layout exceeds the generation limit of 2147483647 bytes or array elements.";
+        return this.resolved[type] = null;
+    }
 
     private AggregateLayout? Get(BoundType type, int depth)
     {
@@ -98,17 +105,21 @@ internal sealed class AggregateLayoutPool
 
         if (depth == DepthLimit)
         {
-            this.DepthExceeded = true;
-            return null;
+            return this.ExceedLimit(type, depth: true);
         }
 
         // SPEC 4.6.8, 4.7.4: a Slice is {buffer, length}; an Array handle is {buffer, length, capacity}.
         var sequence = type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array;
         if ((!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)) ||
             type.Semantics != SemanticsKind.Owner || (!sequence && type.Origin is not null) || (!structure && type.OriginArguments.Count != 0) ||
-            (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Length > int.MaxValue || type.Components.Count != 1)))
+            (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Components.Count != 1)))
         {
             return null;
+        }
+
+        if (type.Kind == BoundTypeKind.FixedArray && type.Length > int.MaxValue)
+        {
+            return this.ExceedLimit(type);
         }
 
         var start = this.fields.Count;
@@ -195,7 +206,7 @@ internal sealed class AggregateLayoutPool
                     size = Align(size, layout.Alignment);
                     if (size > int.MaxValue)
                     {
-                        return this.resolved[type] = null;
+                        return this.ExceedLimit(type);
                     }
 
                     offsets[i] = (int)size;
@@ -219,8 +230,7 @@ internal sealed class AggregateLayoutPool
                         size = Align(size, a);
                         if (size > int.MaxValue)
                         {
-                            this.resolved[type] = null;
-                            return null;
+                            return this.ExceedLimit(type);
                         }
 
                         offsets[i] = (int)size;
@@ -233,8 +243,7 @@ internal sealed class AggregateLayoutPool
 
             if (size > int.MaxValue)
             {
-                this.resolved[type] = null;
-                return null;
+                return this.ExceedLimit(type);
             }
 
             // A zero-length integer carrier preserves natural alignment without
@@ -278,8 +287,7 @@ internal sealed class AggregateLayoutPool
     {
         if (depth == DepthLimit)
         {
-            this.DepthExceeded = true;
-            return null;
+            return this.ExceedLimit(type, depth: true);
         }
 
         if (type.Origin is not null ||
@@ -322,7 +330,7 @@ internal sealed class AggregateLayoutPool
             var size = Align(offset + Align(payloadSize, alignment), Math.Max(4, alignment));
             if (size > int.MaxValue)
             {
-                return null;
+                return this.ExceedLimit(type);
             }
 
             var storage = "{ i32, { [0 x i" + (alignment * 8).ToString(CultureInfo.InvariantCulture) + "], [" + Align(payloadSize, alignment).ToString(CultureInfo.InvariantCulture) + " x i8] } }";

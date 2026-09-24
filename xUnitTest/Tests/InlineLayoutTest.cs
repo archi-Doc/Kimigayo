@@ -52,4 +52,29 @@ public class InlineLayoutTest
         Assert.False(c.Emission.TryPrepare(out _, out var error));
         Assert.True(c.Emission.FailureIsResourceLimit, error);
     }
+
+    [Theory]
+    [InlineData("[2147483648 of u8]")]
+    [InlineData("[1073741824 of i32]")]
+    [InlineData("(bool, [2147483647 of u8])")]
+    public void FiniteLayoutsBeyondTheInternalSizeOrCountBoundAreResourceLimits(string type)
+    {
+        var c = MinimalEmissionTest.Analyze($"func inspect(value: {type}) -> i32 => 1\nConsole.writeLine(\"finite\")");
+        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Emission.TryPrepare(out _, out var error));
+        Assert.True(c.Emission.FailureIsResourceLimit, error);
+        Assert.Contains("2147483647", error);
+    }
+
+    [Fact]
+    public void EnumTagAndAlignmentCountTowardsTheSizeLimit()
+    {
+        var c = MinimalEmissionTest.Analyze("enum Big\n    A([2147483647 of u8])\n    B\nfunc inspect(value: Big) -> i32 => 1\nConsole.writeLine(\"finite\")");
+        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Emission.TryPrepare(out _, out var error));
+        Assert.True(c.Emission.FailureIsResourceLimit, error);
+        Assert.Contains("2147483647", error);
+    }
 }

@@ -28,7 +28,7 @@ public sealed class LlvmEmitter
     public bool Validate(out string? failure)
         => this.TryPrepare(out _, out failure);
 
-    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5: generic contexts or inline nesting depth), not a semantic or representation obligation.</summary>
+    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5: generic contexts or inline layout depth, size or count), not a semantic or representation obligation.</summary>
     public bool FailureIsResourceLimit => this.resourceLimit;
 
     /// <summary>Writes inspection IR after checking the latest analysis. Does not certify a published artifact or native execution.</summary>
@@ -168,7 +168,12 @@ public sealed class LlvmEmitter
         finally
         {
             // Never retain a previous parse through the active declaration-to-ABI map.
-            this.resourceLimit |= this.lowering.AggregateLayouts.DepthExceeded; // SPEC 21.3.5: the layout depth bound is a resource limit.
+            if (!module.IsComplete && this.lowering.AggregateLayouts.ResourceLimitFailure is { } limit)
+            {
+                this.resourceLimit = true;
+                failure = limit;
+            }
+
             this.functions.Clear();
             this.generics.Clear();
             c.Ownership.ClearInstances();
