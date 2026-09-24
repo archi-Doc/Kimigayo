@@ -740,6 +740,19 @@ public sealed partial class OwnershipAnalysis
 
     private int Binary(BinaryKoto binary)
     {
+        if (binary.ComparisonCall is { } comparisonCall)
+        {
+            var compared = this.Call(comparisonCall);
+            if (compared < 0)
+            {
+                return -1;
+            }
+
+            var comparisonResult = this.Temporary(binary);
+            this.SetValue(this.Value(comparisonResult), OwnershipValueKind.ContractComparison, [this.Value(compared)], binary.Akind);
+            return comparisonResult;
+        }
+
         if ((ReferenceEquals(binary.Left.BoundType, BoundType.String) || ReferenceTypes.IsString(binary.Left.BoundType) || ReferenceTypes.IsString(binary.Right.BoundType)) && ReferenceEquals(binary.BoundType, BoundType.Boolean))
         {
             return this.StringComparison(binary);

@@ -564,6 +564,11 @@ internal sealed partial class BodyLowering
             return this.LowerPointerProjection(body, function, constants, directory, id, out failure);
         }
 
+        if (value.Kind == OwnershipValueKind.ContractComparison)
+        {
+            return this.LowerContractComparison(body, function, id, out failure);
+        }
+
         if (value.Kind is not (OwnershipValueKind.Binary or OwnershipValueKind.Unary))
         {
             return Fail("Missing scalar computation.", out failure);

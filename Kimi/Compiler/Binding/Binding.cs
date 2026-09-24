@@ -892,6 +892,11 @@ public sealed partial class Binding
         public override void Visit(Koto node)
         {
             node.BindingState = BindingState.Unvisited;
+            if (node is BinaryKoto binary)
+            {
+                binary.ComparisonActive = false;
+            }
+
             if (node.FormattingStorage is { } formatting)
             {
                 formatting.Active = false;

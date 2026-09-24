@@ -384,6 +384,7 @@ internal enum OwnershipValueKind : byte
     Unary,
     Binary,
     StringComparison,
+    ContractComparison,
     Element,
     Borrow,
     Phi,

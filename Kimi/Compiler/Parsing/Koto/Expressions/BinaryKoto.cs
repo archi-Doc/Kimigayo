@@ -17,6 +17,12 @@ namespace Kimi.Compiler.Parsing;
 /// </remarks>
 public abstract class BinaryKoto : ExpressionKoto
 {
+    internal InvocationKoto? ComparisonStorage { get; set; }
+
+    internal bool ComparisonActive { get; set; }
+
+    internal InvocationKoto? ComparisonCall => this.ComparisonActive && this.BindingState == BindingState.Resolved ? this.ComparisonStorage : null;
+
     private static readonly string[] InfixTexts = new string[MaxKind];
 
     static BinaryKoto()

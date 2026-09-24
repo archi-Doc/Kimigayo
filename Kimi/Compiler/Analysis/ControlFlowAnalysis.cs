@@ -405,6 +405,9 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case BinaryKoto { ComparisonCall: { } comparisonCall }:
+                flow = this.Visit(comparisonCall, reachable) with { Type = this.types.GetExpressionType(node) };
+                break;
             case MacroKoto { Formatting: { Acquisition: { } acquisition } tryWrite }:
                 var rootFlow = this.Visit(acquisition, reachable);
                 var normalRoot = rootFlow.Normal;

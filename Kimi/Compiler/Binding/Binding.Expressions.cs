@@ -864,6 +864,7 @@ public sealed partial class Binding
 
     private BoundType? BindBinary(BinaryKoto binary, BindingScope scope, BoundType? expected)
     {
+        binary.ComparisonActive = false;
         var kind = binary.Akind;
         if (kind is KotoKind.Conversion or KotoKind.As or KotoKind.Is)
         {
@@ -948,6 +949,12 @@ public sealed partial class Binding
                 : Fail(binary, BindingFailure.TypeMismatch);
         }
 
+        if (comparison && (ComparisonReferent(left).Kind != BoundTypeKind.Primitive || ComparisonReferent(right).Kind != BoundTypeKind.Primitive))
+        {
+            left = ComparisonReferent(left);
+            right = ComparisonReferent(right);
+        }
+
         if (!Compatible(right, left))
         {
             return Fail(binary, BindingFailure.TypeMismatch);
@@ -976,7 +983,7 @@ public sealed partial class Binding
                 return Complete(binary, BoundType.Boolean);
             }
 
-            return primitive ? Fail(binary, BindingFailure.TypeMismatch) : Fail(binary, BindingFailure.Unsupported, true);
+            return primitive ? Fail(binary, BindingFailure.TypeMismatch) : this.BindContractComparison(binary, left, scope);
         }
 
         if (left.IsNumeric)

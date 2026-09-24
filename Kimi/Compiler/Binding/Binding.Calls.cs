@@ -358,7 +358,7 @@ public sealed partial class Binding
         callee.BindingState = BindingState.Resolved;
         var requirementGroup = callee is MemberAccessKoto requirementMember && this.requirementGroups.TryGetValue(requirementMember, out var foundGroup) && foundGroup.Active ? foundGroup : null;
         var candidates = new CallCandidates(group, requirementGroup, this.importCandidates?.GetValueOrDefault(callee));
-        var self = requirementGroup?.Self;
+        var self = requirementGroup?.Self ?? (callee as ComparisonCalleeKoto)?.Self;
         var candidateCount = 0;
         var maxParameters = 0;
         var maxGenerics = 0;
@@ -787,7 +787,7 @@ public sealed partial class Binding
         }
 
         var receiver = this.CallReceiver(generic?.Identifier ?? call.Method);
-        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not (MemberAccessKoto or FormattingKoto { Operation: FormattingOperation.Callee }))
+        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not (MemberAccessKoto or ComparisonCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee }))
         {
             return CandidateApplicability.Inapplicable;
         }
