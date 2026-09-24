@@ -303,15 +303,7 @@ internal static partial class LlvmModuleWriter
             output.Write("\n  br i1 %done, label %end, label %body\nbody:\n  %index = sub i64 %remaining, 1\n  %offset = mul i64 %index, ");
             WriteNumber(output, Stride(helper));
             output.Write("\n  %element = getelementptr i8, ptr %buffer, i64 %offset\n");
-            if (helper.ElementIsString)
-            {
-                output.Write("  call void @__kimi_destroy_string(ptr %element, ptr %location, i64 %location_length)\n");
-            }
-            else
-            {
-                Name(output, "  call void @__kimi_drop_aggregate", helper.ElementLayout!.Id);
-                output.Write("(ptr %element, ptr %location, i64 %location_length)\n");
-            }
+            WriteStoredDestruction(output, helper.ElementLayout, helper.ElementIsString, "%element");
 
             output.Write("  br label %test\nend:\n");
         }
@@ -326,34 +318,7 @@ internal static partial class LlvmModuleWriter
     }
 
     private static void WriteArrayElementStore(TextWriter output, ArrayHelper helper)
-    {
-        if (helper.ElementLayout is null && !helper.ElementIsString)
-        {
-            // Scalars keep their storage representation in the buffer (a bool is an i8 byte, SPEC 21.1.4).
-            var storage = helper.Element.Layout.StorageType;
-            var widened = storage != helper.Element.ComputationType;
-            if (widened)
-            {
-                output.Write("  %stored = zext ");
-                output.Write(helper.Element.ComputationType);
-                output.Write(" %value to ");
-                output.Write(storage);
-                output.Write('\n');
-            }
-
-            output.Write("  store ");
-            output.Write(storage);
-            output.Write(widened ? " %stored, ptr %slot, align " : " %value, ptr %slot, align ");
-            WriteNumber(output, helper.Element.Layout.Alignment);
-            output.Write('\n');
-        }
-        else
-        {
-            output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr %slot, ptr %value, i64 ");
-            WriteNumber(output, Stride(helper));
-            output.Write(", i1 false)\n");
-        }
-    }
+        => WriteStoredArgument(output, helper.Element, helper.ElementLayout is null && !helper.ElementIsString, "%value", "%slot", "%stored");
 
     private static void WriteArrayReturn(TextWriter output, ArrayHelper helper, bool scalar)
     {

@@ -43,76 +43,6 @@ internal static partial class LlvmModuleWriter
         output.Write('\n');
     }
 
-    private static void DictionaryCopy(TextWriter output, string destination, string source, long size)
-    {
-        if (size == 0)
-        {
-            return;
-        }
-
-        output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr ");
-        output.Write(destination);
-        output.Write(", ptr ");
-        output.Write(source);
-        output.Write(", i64 ");
-        WriteNumber(output, size);
-        output.Write(", i1 false)\n");
-    }
-
-    private static void DictionaryStore(TextWriter output, ValueLowering value, bool scalar, string source, string destination, string widened)
-    {
-        if (!scalar)
-        {
-            DictionaryCopy(output, destination, source, value.Layout.Size);
-            return;
-        }
-
-        if (value.ComputationType != value.Layout.StorageType)
-        {
-            output.Write("  ");
-            output.Write(widened);
-            output.Write(" = zext ");
-            output.Write(value.ComputationType);
-            output.Write(' ');
-            output.Write(source);
-            output.Write(" to ");
-            output.Write(value.Layout.StorageType);
-            output.Write('\n');
-            source = widened;
-        }
-
-        output.Write("  store ");
-        output.Write(value.Layout.StorageType);
-        output.Write(' ');
-        output.Write(source);
-        output.Write(", ptr ");
-        output.Write(destination);
-        output.Write(", align ");
-        WriteNumber(output, value.Layout.Alignment);
-        output.Write('\n');
-    }
-
-    private static void DictionaryDestroy(TextWriter output, AggregateLayout? layout, bool text, string address)
-    {
-        if (!text && layout?.NeedsDestruction != true)
-        {
-            return;
-        }
-
-        if (text)
-        {
-            output.Write("  call void @__kimi_destroy_string");
-        }
-        else
-        {
-            Name(output, "  call void @__kimi_drop_aggregate", layout!.Id);
-        }
-
-        output.Write("(ptr ");
-        output.Write(address);
-        output.Write(", ptr %location, i64 %location_length)\n");
-    }
-
     private static void WriteDictionarySlot(TextWriter output, DictionaryHelper helper)
     {
         output.Write("  %index = sub i64 %link, 1\n  %offset = mul i64 %index, ");
@@ -145,8 +75,8 @@ internal static partial class LlvmModuleWriter
             output.Write("  %tail = load i64, ptr %tail_ptr, align 8\n  br label %test\ntest:\n  %link = phi i64 [ %tail, %entry ], [ %previous, %destroy ]\n  %empty = icmp eq i64 %link, 0\n  br i1 %empty, label %end, label %destroy\ndestroy:\n");
             WriteDictionarySlot(output, helper);
             output.Write("  %previous = load i64, ptr %slot, align 8\n");
-            DictionaryDestroy(output, helper.ValueLayout, helper.ValueIsString, "%stored_value");
-            DictionaryDestroy(output, helper.KeyLayout, helper.KeyIsString, "%stored_key");
+            WriteStoredDestruction(output, helper.ValueLayout, helper.ValueIsString, "%stored_value");
+            WriteStoredDestruction(output, helper.KeyLayout, helper.KeyIsString, "%stored_key");
             output.Write("  br label %test\nend:\n");
         }
 
@@ -171,7 +101,7 @@ internal static partial class LlvmModuleWriter
             output.Write(", align ");
             WriteNumber(output, helper.Key.Layout.Alignment);
             output.Write('\n');
-            DictionaryStore(output, helper.Key, true, "%key", "%key_slot", "%key_input");
+            WriteStoredArgument(output, helper.Key, true, "%key", "%key_slot", "%key_input");
         }
 
         output.Write("  %link = call i64 @");
@@ -189,13 +119,13 @@ internal static partial class LlvmModuleWriter
             DictionaryAddress(output, "%result_value", "%result", result.PayloadOffset + pair.Offset(1));
             if (insertion)
             {
-                DictionaryStore(output, helper.Key, scalarKey, "%key", "%result_key", "%key_rejected");
-                DictionaryStore(output, helper.Value, scalarValue, "%value", "%result_value", "%value_rejected");
+                WriteStoredArgument(output, helper.Key, scalarKey, "%key", "%result_key", "%key_rejected");
+                WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%result_value", "%value_rejected");
             }
             else
             {
-                DictionaryCopy(output, "%result_key", "%stored_key", helper.Key.Layout.Size);
-                DictionaryCopy(output, "%result_value", "%stored_value", helper.Value.Layout.Size);
+                WriteStoredCopy(output, "%result_key", "%stored_key", helper.Key.Layout.Size);
+                WriteStoredCopy(output, "%result_value", "%stored_value", helper.Value.Layout.Size);
                 output.Write("  call void @__kimi_dictionary_unlink(ptr %handle, i64 ");
                 WriteNumber(output, helper.Stride);
                 output.Write(", i64 %link)\n");
@@ -214,9 +144,9 @@ internal static partial class LlvmModuleWriter
             }
             else
             {
-                DictionaryCopy(output, "%result_value", "%stored_value", helper.Value.Layout.Size);
-                DictionaryStore(output, helper.Value, scalarValue, "%value", "%stored_value", "%value_replaced");
-                DictionaryDestroy(output, helper.KeyLayout, helper.KeyIsString, "%key");
+                WriteStoredCopy(output, "%result_value", "%stored_value", helper.Value.Layout.Size);
+                WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%stored_value", "%value_replaced");
+                WriteStoredDestruction(output, helper.KeyLayout, helper.KeyIsString, "%key");
             }
 
             output.Write("  store i32 0, ptr %result, align 4\n");
@@ -230,8 +160,8 @@ internal static partial class LlvmModuleWriter
             output.Write(", ptr %location, i64 %location_length)\n");
             DictionaryAddress(output, "%new_key", "%new_slot", helper.KeyOffset);
             DictionaryAddress(output, "%new_value", "%new_slot", helper.ValueOffset);
-            DictionaryStore(output, helper.Key, scalarKey, "%key", "%new_key", "%key_inserted");
-            DictionaryStore(output, helper.Value, scalarValue, "%value", "%new_value", "%value_inserted");
+            WriteStoredArgument(output, helper.Key, scalarKey, "%key", "%new_key", "%key_inserted");
+            WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%new_value", "%value_inserted");
         }
 
         output.Write(helper.Kind == DictionaryHelperKind.TryInsert ? "  store i32 0, ptr %result, align 4\n" : "  store i32 1, ptr %result, align 4\n");
