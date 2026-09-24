@@ -100,6 +100,7 @@ public sealed partial class KimiLibrary
         this.Option = this.GetSymbol(KimiDeclarationId.Option)!;
         this.Result = this.GetSymbol(KimiDeclarationId.Result)!;
         this.Iterator = this.GetSymbol(KimiDeclarationId.Iterator)!;
+        this.Iterable = this.GetSymbol(KimiDeclarationId.Iterable)!;
         this.Slice = this.GetSymbol(KimiDeclarationId.Slice)!;
         this.DynamicArray = this.GetSymbol(KimiDeclarationId.Array)!;
         this.Index = this.GetSymbol(KimiDeclarationId.Index)!;
@@ -169,6 +170,9 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the recognized static Iterator declaration.</summary>
     public BindingSymbol Iterator { get; }
+
+    /// <summary>Gets the recognized static consuming Iterable declaration.</summary>
+    public BindingSymbol Iterable { get; }
 
     /// <summary>Gets the recognized borrowed Slice Type declaration.</summary>
     public BindingSymbol Slice { get; }
