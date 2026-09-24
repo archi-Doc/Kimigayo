@@ -24,12 +24,13 @@ internal sealed partial class BodyLowering
         this.arrayIterationPlaces.AsSpan(0, body.Places.Count).Clear();
         foreach (var sequence in body.Sequences)
         {
-            if (sequence.Kind == SequenceOperation.ArrayMoveRead && (uint)sequence.Operation < (uint)body.Operations.Count &&
-                body.Operations[sequence.Operation] is { Kind: OwnershipOperationKind.Produce, Source: ForKoto { Bindings.Count: 1 } loop } produce &&
+            if (sequence.Kind is SequenceOperation.ArrayMoveRead or SequenceOperation.DictionaryMoveRead && (uint)sequence.Operation < (uint)body.Operations.Count &&
+                body.Operations[sequence.Operation] is { Kind: OwnershipOperationKind.Produce, Source: ForKoto loop } produce &&
                 (uint)produce.Place < (uint)body.Places.Count)
             {
                 this.arrayIterationPlaces[produce.Place] = 1;
-                if (loop.Bindings[0].BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var binding))
+                var slot = sequence.Element < 0 ? 0 : sequence.Element;
+                if ((uint)slot < (uint)loop.Bindings.Count && loop.Bindings[slot].BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var binding))
                 {
                     this.arrayIterationPlaces[binding] = 1;
                 }

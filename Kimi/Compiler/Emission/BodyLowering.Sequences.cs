@@ -49,8 +49,8 @@ internal sealed partial class BodyLowering
             FromEndIndexKoto fromEnd => ElementAccess.ValueSource(fromEnd.Operand),
             BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
             // A bare array Place iterates through its implicit Slice, whose temporary is sourced by the loop itself.
-            ForKoto { SharedIterable: not null } loop => plan.Kind == SequenceOperation.Slice ? ElementAccess.ValueSource(loop.Iterable) : loop,
-            ForKoto loop when plan.Kind is SequenceOperation.Start or SequenceOperation.End or SequenceOperation.Read or SequenceOperation.ArrayRead or SequenceOperation.Borrow or SequenceOperation.ArrayIterator or SequenceOperation.ArrayMoveRead => ElementAccess.ValueSource(loop.Iterable),
+            ForKoto { SharedIterable: not null } loop => plan.Kind == SequenceOperation.Slice || ReferenceTypes.IsDictionary(loop.SharedIterable) ? ElementAccess.ValueSource(loop.Iterable) : loop,
+            ForKoto loop => ElementAccess.ValueSource(loop.Iterable),
             _ => null,
         };
         var receiverPlace = body.Places[plan.Receiver];
@@ -173,6 +173,11 @@ internal sealed partial class BodyLowering
             arguments[count++] = new(EmissionOperandKind.ConstantLength, iteratorLocation);
             function.AddCall(id, take, arguments[..count]);
             return true;
+        }
+
+        if (receiver.Kind == BoundTypeKind.Dictionary && operation.Source is ForKoto)
+        {
+            return this.LowerDictionaryIteration(body, function, id, plan, receiver, borrowedArray, address, out failure);
         }
 
         if (plan.Kind == SequenceOperation.Borrow)

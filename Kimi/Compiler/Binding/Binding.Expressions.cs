@@ -609,6 +609,16 @@ public sealed partial class Binding
         symbol.Resolving = false;
         if (symbol.Kind == BindingSymbolKind.Local && declared is not null && inferred is not null)
         {
+            // Select the Copy-read shape before inferring omitted Origins. Comparing the
+            // unresolved Origin with the stored reference's Origin would reject ref/ref/T
+            // initializers before the ordinary lifetime constraints can be inferred.
+            if (variable.InitializerKoto is { } value && !ReferenceTypes.StorageMatches(inferred, declared) &&
+                this.Referent(inferred, value) is { } referent && ReferenceTypes.StorageMatches(referent, declared))
+            {
+                this.referentReads.Add(value);
+                inferred = referent;
+            }
+
             declared = this.InferLocalOrigins(declared, inferred, variable, scope);
         }
 

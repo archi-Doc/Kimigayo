@@ -155,9 +155,10 @@ public sealed partial class OwnershipAnalysis
     private void Iterate(ForKoto source)
     {
         var shared = source.SharedIterable;
+        var dictionary = source.Iterable.BoundType?.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(source.Iterable.BoundType);
         var array = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
         var dynamicArray = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.Array;
-        var slice = shared is not null || source.Iterable.BoundType?.Kind == BoundTypeKind.Slice;
+        var slice = !dictionary && (shared is not null || source.Iterable.BoundType?.Kind == BoundTypeKind.Slice);
         var element = slice ? source.Bindings[0].BoundType! : array || dynamicArray ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
         if (dynamicArray && (source.IsTupleBinding || !this.SupportsType(element) || this.compilation.Binding.ProveOwned(element, source) != ConstraintProof.Proven))
         {
@@ -172,7 +173,11 @@ public sealed partial class OwnershipAnalysis
         }
 
         int iterable;
-        if (shared is not null)
+        if (dictionary && shared is not null)
+        {
+            iterable = this.BorrowStruct(source.Iterable, shared);
+        }
+        else if (shared is not null)
         {
             // SPEC 14.6.2: a bare array Place is borrowed for the loop as its implicit whole-range Slice.
             var depth = this.comparisonDepth++;
@@ -206,7 +211,7 @@ public sealed partial class OwnershipAnalysis
         var head = this.Emit(OwnershipOperationKind.Branch, source);
         var exit = this.New(OwnershipOperationKind.Branch, source);
         var current = this.Use(source, cursor, PlaceUseKind.Read);
-        var testValue = this.ComputeUpdate(source, BoundType.Boolean, this.Value(current), this.Value(end), KotoKind.LessThan);
+        var testValue = this.ComputeUpdate(source, BoundType.Boolean, this.Value(current), this.Value(end), dictionary ? KotoKind.ExclamationEquals : KotoKind.LessThan);
         var test = this.Emit(OwnershipOperationKind.Branch, source);
         this.SetValue(test, OwnershipValueKind.Alias, [this.Value(testValue)]);
         var enter = this.New(OwnershipOperationKind.Branch, source.Body);
@@ -226,7 +231,11 @@ public sealed partial class OwnershipAnalysis
             this.locals.Add(new(binding, name, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, name, binding);
             int item;
-            if (dynamicArray)
+            if (dictionary)
+            {
+                item = this.SequenceValue(source, slotType, shared is null ? SequenceOperation.DictionaryMoveRead : SequenceOperation.DictionaryRead, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
+            }
+            else if (dynamicArray)
             {
                 item = this.SequenceValue(source, slotType, SequenceOperation.ArrayMoveRead, iterable, index: this.Value(current));
             }
@@ -252,8 +261,8 @@ public sealed partial class OwnershipAnalysis
         }
 
         // The last advance reaches end (at most maximum isize), never end + 1.
-        var one = this.SequenceConstant(source, BoundType.ISize, 1);
-        var next = this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(one), KotoKind.Plus);
+        var next = dictionary ? this.SequenceValue(source, BoundType.ISize, shared is null ? SequenceOperation.DictionaryTakeNext : SequenceOperation.DictionaryNext, iterable, index: this.Value(current))
+            : this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(this.SequenceConstant(source, BoundType.ISize, 1)), KotoKind.Plus);
         this.Emit(OwnershipOperationKind.Write, source, cursor, next);
         var seeds = this.terminalSeeds.Count;
         this.Block(source.Body, out var continuation);

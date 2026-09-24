@@ -59,9 +59,30 @@ public sealed partial class Binding
             source.SharedIterable = this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [iterable.Components[0]], origin: this.PlaceOrigin(source.Iterable));
         }
 
+        var dictionary = ReferenceTypes.IsDictionary(iterable) ? iterable!.Components[0] : iterable?.Kind == BoundTypeKind.Dictionary ? iterable : null;
+        if (dictionary is not null && (ReferenceTypes.IsDictionary(iterable) || IsBarePlace(source.Iterable)))
+        {
+            source.SharedIterable = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [dictionary], origin: iterable!.Origin ?? this.PlaceOrigin(source.Iterable));
+        }
+
         var view = source.SharedIterable ?? iterable;
         var element = view is null ? null : view.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? view.Components[0] : view.Kind == BoundTypeKind.Slice
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : BoundType.ISize;
+        if (dictionary is not null)
+        {
+            // SPEC 14.6.2: shared Dictionary iteration yields a pair of references,
+            // including for Copy components; owned iteration yields a pair of values.
+            var key = dictionary.Components[0];
+            var value = dictionary.Components[1];
+            if (source.SharedIterable is { } shared)
+            {
+                key = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: shared.Origin);
+                value = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [value], origin: shared.Origin);
+            }
+
+            element = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [key, value]);
+        }
+
         var sharedTuple = source.IsTupleBinding && ReferenceTypes.IsTuple(element);
         var tuple = sharedTuple ? element!.Components[0] : element;
         var result = this.BeginResult(source, scope, BoundType.Unit);
@@ -96,7 +117,7 @@ public sealed partial class Binding
             return Fail(source, BindingFailure.TypeMismatch);
         }
 
-        if (iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
+        if (dictionary is null && iterable?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
         {
             return Fail(source, BindingFailure.Unsupported);
         }
