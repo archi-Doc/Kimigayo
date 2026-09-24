@@ -118,6 +118,7 @@ public sealed class LlvmEmitter
             }
 
             this.lowering.ObjectCalls = this.objects.Calls;
+            this.lowering.ObjectRuntimeTypes = this.objects.RuntimeTypes;
             if (!this.LowerInstances(c, module, out failure))
             {
                 return false;

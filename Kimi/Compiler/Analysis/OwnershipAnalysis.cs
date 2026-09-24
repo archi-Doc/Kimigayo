@@ -641,11 +641,7 @@ public sealed partial class OwnershipAnalysis
             case InvocationKoto call:
                 return this.Call(call);
             case IsKoto { IsRuntimeTest: true } test:
-                // Object shared access and its Loans are not yet verified. Preserve left
-                // evaluation effects, but never visit the target Type as a local value.
-                this.Expression(test.Left, PlaceUseKind.Borrow);
-                this.Unsupported(test);
-                return this.Temporary(test);
+                return this.RuntimeTypeTest(test);
             case ConversionKoto conversion:
                 if (conversion.ConversionBinding == ConversionBinding.PayloadBorrow)
                 {

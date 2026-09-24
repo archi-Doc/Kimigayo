@@ -17,6 +17,7 @@ internal enum EmissionOpcode : byte
     ElementAddress,
     BorrowAddress,
     ObjectPayload,
+    ObjectTypeTest,
     ObjectBorrow,
     Sequence,
     StoreScalar,
@@ -248,6 +249,8 @@ internal sealed class EmissionModule
 
     internal List<ObjectCreation> Objects { get; } = new();
 
+    internal bool NeedsObjectRuntime { get; set; }
+
     /// <summary>Gets the foreign functions (SPEC 22.3), one per external symbol; each call shares its physical signature.</summary>
     internal List<ExternalFunction> Externals { get; } = new();
 
@@ -279,6 +282,7 @@ internal sealed class EmissionModule
         this.FormattingConversions.Clear();
         this.PendingEntries.Clear();
         this.Objects.Clear();
+        this.NeedsObjectRuntime = false;
         this.Externals.Clear();
     }
 

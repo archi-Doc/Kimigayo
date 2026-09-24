@@ -6,21 +6,28 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402 // Checked call contexts and syntax-free physical object records.
 
-internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, string? Destroy, bool Copy, FunctionAbi Abi);
+internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, string? Destroy, bool Copy, FunctionAbi Abi, int TypeToken, int[] BaseTokens);
 
 internal sealed record ObjectCall(BoundType Payload, BoundType Result, ObjectCreation Physical);
 
 internal sealed class ObjectGenerationPlan
 {
     private readonly Dictionary<BoundCall, ObjectCall> calls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, int> runtimeTypes = new(ReferenceEqualityComparer.Instance);
 
     internal IReadOnlyDictionary<BoundCall, ObjectCall> Calls => this.calls;
 
-    internal void Clear() => this.calls.Clear();
+    internal IReadOnlyDictionary<BoundType, int> RuntimeTypes => this.runtimeTypes;
+
+    internal void Clear()
+    {
+        this.calls.Clear();
+        this.runtimeTypes.Clear();
+    }
 
     internal bool Prepare(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, out string? failure)
     {
-        this.calls.Clear();
+        this.Clear();
         failure = null;
         var hasObjects = false;
         for (var b = 0; b < compilation.Ownership.Bodies.Count && !hasObjects; b++)
@@ -28,8 +35,8 @@ internal sealed class ObjectGenerationPlan
             var operations = compilation.Ownership.Bodies[b].Operations;
             for (var i = 0; i < operations.Count; i++)
             {
-                if (operations[i].Kind == OwnershipOperationKind.Call && operations[i].Source is InvocationKoto { BoundCall: { } call } &&
-                    ReferenceEquals(call.Target, compilation.Library.MakeObj))
+                if ((operations[i].Kind == OwnershipOperationKind.Call && operations[i].Source is InvocationKoto { BoundCall: { } call } &&
+                    ReferenceEquals(call.Target, compilation.Library.MakeObj)) || operations[i].Source is IsKoto { BoundRuntimeTest: not null })
                 {
                     hasObjects = true;
                     break;
@@ -44,10 +51,17 @@ internal sealed class ObjectGenerationPlan
 
         var definitions = new SortedDictionary<string, (BoundType Type, ValueLowering Value, string? Drop, bool Copy)>(StringComparer.Ordinal);
         var requests = new List<(BoundCall Call, BoundType Type, string Key)>();
+        var identities = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var typeKeys = new Dictionary<BoundType, string>(ReferenceEqualityComparer.Instance);
         foreach (var body in compilation.Ownership.Bodies)
         {
             foreach (var operation in body.Operations)
             {
+                if (operation.Source is IsKoto { BoundRuntimeTest: { } test })
+                {
+                    RegisterType(test.TargetType);
+                }
+
                 if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call } ||
                     !ReferenceEquals(call.Target, compilation.Library.MakeObj))
                 {
@@ -75,11 +89,24 @@ internal sealed class ObjectGenerationPlan
                 var drop = ReferenceEquals(payload, BoundType.String) ? "__kimi_destroy_string" :
                     aggregate?.NeedsDestruction == true ? "__kimi_drop_aggregate" + aggregate.Id : null;
                 var key = Key(payload, compilation.Project.Directory);
+                RegisterType(payload);
                 definitions.TryAdd(key, (payload, value, drop, copy == ConstraintProof.Proven));
                 requests.Add((call, payload, key));
             }
         }
 
+        var keys = identities.Keys.ToArray();
+        for (var i = 0; i < keys.Length; i++)
+        {
+            identities[keys[i]] = i + 1;
+        }
+
+        foreach (var pair in typeKeys)
+        {
+            this.runtimeTypes.Add(pair.Key, identities[pair.Value]);
+        }
+
+        module.NeedsObjectRuntime = true;
         var entries = new Dictionary<string, ObjectCreation>(StringComparer.Ordinal);
         foreach (var pair in definitions)
         {
@@ -94,7 +121,13 @@ internal sealed class ObjectGenerationPlan
             parameters.Add(new("i64", "length", AbiParameterKind.LocationLength));
             var id = module.Objects.Count;
             var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray(), resultSlot: true);
-            var entry = new ObjectCreation(id, module.Constants.Intern(pair.Key, LlvmConstantKind.Text), value, pair.Value.Drop, pair.Value.Copy, abi);
+            var bases = new List<int>();
+            for (var parent = Base(pair.Value.Type); parent is not null; parent = Base(parent))
+            {
+                bases.Add(this.runtimeTypes[parent]);
+            }
+
+            var entry = new ObjectCreation(id, module.Constants.Intern(pair.Key, LlvmConstantKind.Text), value, pair.Value.Drop, pair.Value.Copy, abi, identities[pair.Key], bases.ToArray());
             module.Objects.Add(entry);
             entries.Add(pair.Key, entry);
         }
@@ -105,6 +138,24 @@ internal sealed class ObjectGenerationPlan
         }
 
         return true;
+
+        BoundType? Base(BoundType type) => type.Symbol?.Declaration is StructKoto { Bases.Count: 1 } structure ? compilation.Binding.StoredType(structure.Bases[0], type) : null;
+
+        void RegisterType(BoundType type)
+        {
+            if (typeKeys.ContainsKey(type))
+            {
+                return;
+            }
+
+            var key = Key(type, compilation.Project.Directory);
+            typeKeys.Add(type, key);
+            identities.TryAdd(key, 0);
+            if (Base(type) is { } parent)
+            {
+                RegisterType(parent);
+            }
+        }
     }
 
     private static string Key(BoundType type, string directory)

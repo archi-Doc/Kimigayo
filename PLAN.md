@@ -63,7 +63,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | 12 | P26 | General closures and Callable | TODO | Composite/generic captures, function items and erasure (issue G10), indirect-call ABI. |
 | 13 | P27 | General Slice/Index/Range | TODO | Partial/nested slices, bounds evaluation, retained Origins. |
 | 14 | P28 | General Iterator/Iterable | TODO | User protocols, owned/borrowed elements, early-exit cleanup; general loop backedge/continue joins. |
-| 15 | P33 | Exclusive objects and views | TODO | Authored target fails Binding on base construction/upcasts/refinement; complete base views, runtime tests/refinement, payload updates and dynamic destruction. |
+| 15 | P33 | Exclusive objects and views | IN_PROGRESS | Concrete runtime tests use retained shared access and immutable dynamic identity; native tests verify payload exchange, one evaluation and original-allocation destruction/release. Authored target still fails Binding on base construction/upcasts/refinement; complete inherited views and flow refinement. |
 | 16 | P34 | Shared object ownership (rc/arc) | TODO | Validate source declarations, Binding, ownership and runtime support for the already-cataloged ownership family (issue G4). |
 | 17 | P35 | Weak | TODO | Downgrade/upgrade, expiration, cyclic construction, table release. |
 | 18 | P36 | General static storage | TODO | First initialization, effects, cycles, shutdown. |

@@ -288,6 +288,11 @@ internal sealed partial class BodyLowering
             return this.LowerSequence(library, body, function, constants, projectDirectory, index, out failure);
         }
 
+        if (body.Values[index].Kind == OwnershipValueKind.RuntimeTypeTest)
+        {
+            return this.LowerRuntimeTypeTest(body, function, index, out failure);
+        }
+
         if (body.Values[index].Kind is OwnershipValueKind.Address or OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite)
         {
             return this.LowerStructBorrow(body, function, constants, projectDirectory, index, out failure);

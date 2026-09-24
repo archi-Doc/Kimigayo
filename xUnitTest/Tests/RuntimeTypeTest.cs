@@ -324,13 +324,13 @@ public class RuntimeTypeTest
     }
 
     [Fact]
-    public void OwnershipExplicitlyRejectsTheTestAndNeverReadsItsType()
+    public void OwnershipBorrowsTheOperandAndNeverReadsItsType()
     {
         var c = Parse("struct Dog\nfunc f(x: objref/Dog) -> bool => x is not Dog");
         AssertBound(c);
-        Assert.False(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Ownership.Analyze().IsVerified);
         var test = Test(c);
-        Assert.Contains(c.Ownership.Issues, issue => issue.Source == test && issue.Failure == OwnershipFailure.Unsupported);
+        Assert.Empty(c.Ownership.Issues);
         Assert.DoesNotContain(c.Ownership.Issues, issue => issue.Source == test.Right);
         var body = Assert.Single(c.Ownership.Bodies, body => body.Function.Name == "f");
         Assert.Single(body.Operations, op => op.Source == test.Left && op.Kind == OwnershipOperationKind.Borrow);

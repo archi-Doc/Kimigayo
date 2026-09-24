@@ -421,6 +421,22 @@ internal static partial class LlvmModuleWriter
                     Name(output, " = getelementptr i8, ptr %objectHeader", instruction.Operation);
                     output.Write(", i64 16\n");
                     break;
+                case EmissionOpcode.ObjectTypeTest:
+                    var testOperands = function.GetOperands(instruction);
+                    Name(output, instruction.ScalarOperator == "not" ? "  %tested" : "  %v", instruction.Operation);
+                    output.Write(" = call i1 @__kimi_object_supports(ptr ");
+                    WriteOperand(output, testOperands[0]);
+                    output.Write(", i64 ");
+                    WriteOperand(output, testOperands[1]);
+                    output.Write(")\n");
+                    if (instruction.ScalarOperator == "not")
+                    {
+                        Name(output, "  %v", instruction.Operation);
+                        Name(output, " = xor i1 %tested", instruction.Operation);
+                        output.Write(", true\n");
+                    }
+
+                    break;
                 case EmissionOpcode.SwapScalars:
                     WriteScalarSwap(output, function, instruction);
                     break;

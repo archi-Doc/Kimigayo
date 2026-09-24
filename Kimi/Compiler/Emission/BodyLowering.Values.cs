@@ -42,7 +42,7 @@ internal sealed partial class BodyLowering
             var expected = value.Kind switch
             {
                 OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection => 0,
-                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField or OwnershipValueKind.ClosureErasure or OwnershipValueKind.PointerLoad or OwnershipValueKind.ContractComparison => 1,
+                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField or OwnershipValueKind.ClosureErasure or OwnershipValueKind.PointerLoad or OwnershipValueKind.ContractComparison or OwnershipValueKind.RuntimeTypeTest => 1,
                 OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => 2,
                 OwnershipValueKind.PointerStore => IsScalar(ValueType(body, id)!) ? 2 : 1,
                 OwnershipValueKind.Address => value.Count is >= 0 and <= 2 ? value.Count : -1,

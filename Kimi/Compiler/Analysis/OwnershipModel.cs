@@ -385,6 +385,7 @@ internal enum OwnershipValueKind : byte
     Binary,
     StringComparison,
     ContractComparison,
+    RuntimeTypeTest,
     Element,
     Borrow,
     Phi,
