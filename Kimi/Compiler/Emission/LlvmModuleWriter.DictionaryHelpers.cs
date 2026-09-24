@@ -162,8 +162,8 @@ internal static partial class LlvmModuleWriter
     private static void WriteDictionarySearchOperation(TextWriter output, DictionaryHelper helper)
     {
         var insertion = helper.Kind is DictionaryHelperKind.TryInsert or DictionaryHelperKind.InsertOrReplace;
-        var scalarKey = helper.KeyLayout is null && !helper.KeyIsString;
-        var scalarValue = helper.ValueLayout is null && !helper.ValueIsString;
+        var scalarKey = helper.KeyLayout is null && !helper.KeyIsString && helper.Key.Layout.Size != 0;
+        var scalarValue = helper.ValueLayout is null && !helper.ValueIsString && helper.Value.Layout.Size != 0;
         if (insertion && scalarKey)
         {
             output.Write("  %key_slot = alloca ");

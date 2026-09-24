@@ -63,6 +63,7 @@ public class DictionaryOperationsTest
             while i < 2048
                 _ = entries.remove(2)
                 _ = entries.remove(3)
+                entries.reserve(2)
                 _ = entries.tryInsert(3, 30)
                 _ = entries.tryInsert(2, 20)
                 entries.reserve(0)

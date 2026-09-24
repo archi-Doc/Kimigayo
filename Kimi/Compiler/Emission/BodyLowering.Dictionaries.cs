@@ -59,8 +59,8 @@ internal sealed partial class BodyLowering
             plan.ReceiverOperation.Kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != call.ArgumentNodes.Count || plan.ArgumentToParameter.Length != call.ArgumentNodes.Count ||
             call.ArgumentNodes.Count + 1 != target.Parameters.Count || target.BoundSymbol?.ReceiverIndex != 0 ||
-            plan.ReceiverOperation.ParameterType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.Ref, Components: [{ Kind: BoundTypeKind.Dictionary, Components.Count: 2 } dictionary] } receiverType ||
-            !this.TryGetArrayElement(dictionary.Components[0], out var key) || !this.TryGetArrayElement(dictionary.Components[1], out var value))
+            SignatureType(this, plan.ReceiverOperation.ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.Ref, Components: [{ Kind: BoundTypeKind.Dictionary, Components.Count: 2 } dictionary] } receiverType ||
+            !this.TryGetArrayElement(dictionary.Components[0], out var key, allowEmpty: true) || !this.TryGetArrayElement(dictionary.Components[1], out var value, allowEmpty: true))
         {
             return Fail("Dictionary operation requires a supported receiver, acquired arguments and entry layout.", out failure);
         }
@@ -123,7 +123,7 @@ internal sealed partial class BodyLowering
             }
             else
             {
-                var searchType = plan.ArgumentOperations[0].ParameterType;
+                var searchType = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
                 if (searchType is null || !this.ScalarArrayArgument(body, id, 1, searchType, out var search))
                 {
                     return Fail("Dictionary search requires its acquired key borrow.", out failure);

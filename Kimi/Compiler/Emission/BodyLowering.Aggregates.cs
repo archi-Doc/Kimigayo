@@ -593,7 +593,7 @@ internal sealed partial class BodyLowering
         FunctionAbi callee;
         if (dictionary)
         {
-            if (!this.TryGetArrayElement(arrayType.Components[0], out var key) || !this.TryGetArrayElement(arrayType.Components[1], out var item))
+            if (!this.TryGetArrayElement(arrayType.Components[0], out var key, allowEmpty: true) || !this.TryGetArrayElement(arrayType.Components[1], out var item, allowEmpty: true))
             {
                 return Fail("Dictionary destruction requires concrete entry storage.", out failure);
             }

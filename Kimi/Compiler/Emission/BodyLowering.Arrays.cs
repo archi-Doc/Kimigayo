@@ -55,7 +55,7 @@ internal sealed partial class BodyLowering
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
     {
-        internal bool IsScalar => this.Layout is null && !this.IsString;
+        internal bool IsScalar => this.Layout is null && !this.IsString && !ReferenceEquals(this.Type, BoundType.Unit);
 
         internal bool NeedsDestruction => this.IsString || this.Layout?.NeedsDestruction == true;
 
@@ -68,9 +68,15 @@ internal sealed partial class BodyLowering
             (body.Places[body.Constructions[this.payloadOwners[place]].Place].Type.Kind == BoundTypeKind.Array ||
              body.Places[body.Constructions[this.payloadOwners[place]].Place].Source is ArrayLiteralKoto { FillLength: not null });
 
-    private bool TryGetArrayElement(BoundType type, out ArrayElement element)
+    private bool TryGetArrayElement(BoundType type, out ArrayElement element, bool allowEmpty = false)
     {
         element = default;
+        if (allowEmpty && ReferenceEquals(type, BoundType.Unit))
+        {
+            element = new(type, WindowsLowering.Unit, null, false);
+            return true;
+        }
+
         if (ReferenceEquals(type, BoundType.String))
         {
             element = new(type, WindowsLowering.String, null, true);
@@ -90,7 +96,7 @@ internal sealed partial class BodyLowering
 
         // Nested handles and zero-sized elements wait for their own storage plans (PLAN P29).
         if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never) ||
-            this.aggregateLayouts.Get(type) is not { } layout || layout.Value.Layout.Stride <= 0)
+            this.aggregateLayouts.Get(type) is not { } layout || (!allowEmpty && layout.Value.Layout.Stride <= 0))
         {
             return false;
         }
@@ -401,6 +407,13 @@ internal sealed partial class BodyLowering
         }
 
         var place = body.Operations[entry].Place;
+        if (ReferenceEquals(element.Type, BoundType.Unit))
+        {
+            operand = new(EmissionOperandKind.NullAddress, 0);
+            return ReferenceEquals(body.Places[place].Type, BoundType.Unit) &&
+                (!body.IsReachable(entry) || (body.GetInputState(entry, place) & PlaceState.MustInit) != 0);
+        }
+
         if (!ReferenceTypes.StorageMatches(element.Type, body.Places[place].Type) || !SlotTypes.IsResult(body.Places[place].Type) ||
             !this.IsSlotValue(body.Places[place]) || (body.IsReachable(entry) && (body.GetInputState(entry, place) & PlaceState.MustInit) == 0))
         {

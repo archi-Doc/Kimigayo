@@ -110,7 +110,8 @@ public sealed partial class OwnershipAnalysis
 
         if (type.Kind == BoundTypeKind.Dictionary)
         {
-            return type.Components.Count == 2 && this.SupportsType(type.Components[0]) && this.SupportsType(type.Components[1]) &&
+            return type.Components.Count == 2 && (type.Components[0].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[0])) &&
+                (type.Components[1].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[1])) &&
                 type.Components[0].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && type.Components[1].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary);
         }
 
