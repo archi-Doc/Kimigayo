@@ -8,6 +8,33 @@ namespace XunitTest;
 public class ComparisonCompositionTest
 {
     [Fact]
+    public void RecursiveGenericWitnessCompositionReusesThePreparedHelper()
+    {
+        const string Source = """
+            struct Key<T>
+                Self is Equatable
+                T is Copy
+                public let value: T
+                public let remaining: i32
+                public init(value: T, remaining: i32)
+                    self.value = value
+                    self.remaining = remaining
+                public func equals(self: ref/Self, other: ref/Self) -> bool
+                    if self.remaining == 0 => return other.remaining == 0
+                    if other.remaining == 0 => return false
+                    let next = Key<T>.init(self.value, self.remaining - 1)
+                    let peer = Key<T>.init(other.value, other.remaining - 1)
+                    return (next@ref, 0) == (peer@ref, 0)
+            let first = Key<i32>.init(1, 3)
+            let last = Key<i32>.init(2, 3)
+            require (first@ref, 0) == (last@ref, 0) else => $abort("recursive witness")
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
+        NativeAllocationAudit.WriteFixture("ComparisonCompositionRecursive", Source, 0, 0, 0);
+    }
+
+    [Fact]
     public void MilestoneComposesBorrowedAndTupleWitnesses()
     {
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../milestones/Milestone30.kimi"));

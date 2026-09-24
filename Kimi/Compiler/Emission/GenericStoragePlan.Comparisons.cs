@@ -25,7 +25,7 @@ internal sealed partial class GenericStoragePlan
             return Fail(failure ?? "Composite comparison requires a verified recursive witness plan.", out failure);
         }
 
-        this.comparisonCalls.Add(site, abi!);
+        this.comparisonCalls.TryAdd(site, abi!);
         return true;
     }
 
@@ -41,6 +41,14 @@ internal sealed partial class GenericStoragePlan
         {
             this.ResourceLimitExceeded = true;
             return Fail("Comparison witness composition exceeds the generation depth limit.", out failure);
+        }
+
+        // Publish helper signatures before traversing implementations and children.
+        // A generic leaf may recursively call this same composite comparison.
+        if (plan.Implementation is null || (!plan.Equality && plan.Operators))
+        {
+            abi = new("__kimi_comparison" + this.comparisonHelpers.Count, plan.Equality ? "i1" : "i32", [new("ptr", "a0", LogicalIndex: 0), new("ptr", "a1", LogicalIndex: 1)]);
+            this.comparisonHelpers.Add(plan, abi);
         }
 
         FunctionAbi? implementation = null;
@@ -68,7 +76,8 @@ internal sealed partial class GenericStoragePlan
 
             if (plan.Equality || !plan.Operators)
             {
-                this.comparisonHelpers.Add(plan, abi = implementation);
+                this.comparisonHelpers.TryAdd(plan, implementation);
+                abi = this.comparisonHelpers[plan];
                 return true;
             }
         }
@@ -84,9 +93,7 @@ internal sealed partial class GenericStoragePlan
             children[i] = child!;
         }
 
-        abi = new("__kimi_comparison" + this.comparisonHelpers.Count, plan.Equality ? "i1" : "i32", [new("ptr", "a0", LogicalIndex: 0), new("ptr", "a1", LogicalIndex: 1)]);
-        this.comparisonHelpers.Add(plan, abi);
-        var function = module.AddFunction(abi, false);
+        var function = module.AddFunction(abi!, false);
         var next = 0;
         EmissionOperand left = new(EmissionOperandKind.Argument, 0);
         EmissionOperand right = new(EmissionOperandKind.Argument, 1);
@@ -114,11 +121,11 @@ internal sealed partial class GenericStoragePlan
                 var finish = next++;
                 function.AddScalar(EmissionOpcode.ConditionalBranch, next++, [new(EmissionOperandKind.Value, condition), new(EmissionOperandKind.Block, proceed), new(EmissionOperandKind.Block, finish)]);
                 function.Add(EmissionOpcode.Label, finish);
-                function.AddScalar(EmissionOpcode.ReturnScalar, next++, [new(EmissionOperandKind.Value, value)], abi.Result);
+                function.AddScalar(EmissionOpcode.ReturnScalar, next++, [new(EmissionOperandKind.Value, value)], abi!.Result);
                 function.Add(EmissionOpcode.Label, proceed);
             }
 
-            function.AddScalar(EmissionOpcode.ReturnScalar, next++, [new(EmissionOperandKind.Integer, plan.Equality ? 1 : 0)], abi.Result);
+            function.AddScalar(EmissionOpcode.ReturnScalar, next++, [new(EmissionOperandKind.Integer, plan.Equality ? 1 : 0)], abi!.Result);
             return true;
         }
 
@@ -162,7 +169,7 @@ internal sealed partial class GenericStoragePlan
             return Fail("Comparison leaf has no concrete representation.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.ReturnScalar, next, [new(EmissionOperandKind.Value, result)], abi.Result);
+        function.AddScalar(EmissionOpcode.ReturnScalar, next, [new(EmissionOperandKind.Value, result)], abi!.Result);
         return true;
 
         EmissionOperand Address(EmissionOperand owner, int offset, ValueLowering field)

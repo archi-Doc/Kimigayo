@@ -139,6 +139,12 @@ internal sealed partial class GenericStoragePlan
 
     private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth = 0)
     {
+        failure = null;
+        if (this.calls.TryGetValue(call, out entry))
+        {
+            return true; // An in-progress entry already has its complete physical signature.
+        }
+
         var function = template.Body.Function;
         this.chainCounts.TryGetValue(function, out var chain);
         if (chain >= GrowingKeyLimit)
