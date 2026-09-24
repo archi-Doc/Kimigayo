@@ -77,6 +77,45 @@ public class CopyPropertyEmissionTest
     public void SharedBorrowMaterializesGetterResultForTheCall()
         => ScalarEmissionTest.EmitFixture("CopyPropertyTemporaryBorrow", Meter + "func inspect(value: ref/i32)\n    require value == 3 else => $abort(\"value\")\nlet m = Meter.init()\ninspect(m.level@ref)", "get\n");
 
+    [Fact]
+    public void UnusedGetterBorrowDoesNotExtendTheTemporaryLifetime()
+        => ScalarEmissionTest.EmitFixture("CopyPropertyUnusedBorrow", Meter + "let m = Meter.init()\nlet unused = m.level@ref", "get\n");
+
+    [Fact]
+    public void AbruptAssignmentInputDoesNotEvaluateReceiverOrSetter()
+        => ScalarEmissionTest.EmitFixture("CopyPropertyAbruptInput", Meter + "func receiver(m: uniq/Meter during source) -> uniq/Meter during source\n    Console.writeLine(\"receiver\")\n    return m\nfunc test(m: uniq/Meter) -> i32\n    receiver(m).level = do\n        return 5\nvar m = Meter.init()\nrequire test(m@uniq) == 5 and m.level == 3 else => $abort(\"result\")", "get\n");
+
+    [Theory]
+    [InlineData("private set", "@move")]
+    [InlineData("set(value: i32) -> () => storage = value", "@move")]
+    [InlineData("set(value: i32) -> () => storage = value", "@owner")]
+    [InlineData("set(value: i32) -> () => storage = value", "@owner/i32")]
+    public void StorageTransferRequiresAnAccessibleStandardSetter(string setter, string transfer)
+    {
+        var c = MinimalEmissionTest.Analyze("struct S\n    public var item: i32 = 1\n        " + setter + "\nlet s = S.init()\nlet taken = s.item" + transfer);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Fact]
+    public void MovingGetterResultKeepsBackingStorageInitialized()
+        => ScalarEmissionTest.EmitFixture("CopyPropertyMoveResult", Meter + "let m = Meter.init()\nlet result = m.level@move\nrequire result == 3 and m.level == 3 else => $abort(\"result\")", "get\nget\n");
+
+    [Theory]
+    [InlineData("let")]
+    [InlineData("var")]
+    public void StorageTransferDoesNotRequireAWritableRoot(string kind)
+        => ScalarEmissionTest.EmitFixture("CopyPropertyMove" + kind, "struct S\n    public " + kind + " item: i32 = 1\nlet s = S.init()\nlet taken = s.item@move\nrequire taken == 1 else => $abort(\"value\")", string.Empty);
+
+    [Theory]
+    [InlineData("private set")]
+    [InlineData("set(value: Point) -> () => storage = value")]
+    public void ChildTransferCannotBypassTheParentSetter(string setter)
+    {
+        var c = MinimalEmissionTest.Analyze("struct Point\n    Self is Copy\n    public var x: i32 = 1\nstruct S\n    public var point: Point = Point.init()\n        " + setter + "\nlet s = S.init()\nlet taken = s.point.x@move");
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     [Theory]
     [InlineData("++m.level", 4, 4)]
     [InlineData("m.level++", 3, 4)]

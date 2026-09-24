@@ -52,11 +52,39 @@ public sealed partial class Binding
         }
     }
 
-    private static BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type)
+    private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
         if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
         {
             return Fail(conversion, BindingFailure.InvalidAssignment);
+        }
+
+        // SPEC 11.1: consuming var storage requires its accessible standard setter,
+        // including enclosing owned projections. Move does not require a writable
+        // root; a custom getter instead starts a separate result value.
+        var source = KotoHelper.UnwrapParentheses(conversion.Left);
+        while (!IsGetterResult(source))
+        {
+            if (source.BoundSymbol?.Property is { Declaration.DeclarationKind: PropertyDeclarationKind.Var } property)
+            {
+                if (!property.Setter.IsStandard)
+                {
+                    return Fail(conversion, BindingFailure.InvalidAssignment);
+                }
+
+                if (!this.Accessible(property.Symbol, scope, property.Setter.Access, (source as MemberAccessKoto)?.Left.BoundType))
+                {
+                    return Fail(conversion, BindingFailure.Access);
+                }
+            }
+
+            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || ElementAccess.IsSyntax(projection)) ||
+                projection.Left.BoundType?.Semantics != SemanticsKind.Owner)
+            {
+                break;
+            }
+
+            source = KotoHelper.UnwrapParentheses(projection.Left);
         }
 
         conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
@@ -174,7 +202,7 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, transferred);
-            return CompleteTransfer(conversion, transferred);
+            return this.CompleteTransfer(conversion, transferred, scope);
         }
 
         if (syntax is TypeSemanticsKoto { Type: null, HasOrigin: false } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
@@ -231,7 +259,7 @@ public sealed partial class Binding
                     targetNode = targetNode is ParenthesizedTypeKoto parentheses ? parentheses.Type : ((TypeSemanticsKoto)targetNode).Type!;
                 }
 
-                return CompleteTransfer(conversion, operandType);
+                return this.CompleteTransfer(conversion, operandType, scope);
             }
 
             Fail(conversion.Right, BindingFailure.Unsupported, true);
@@ -305,7 +333,7 @@ public sealed partial class Binding
         if (ReferenceEquals(source, target) && source.Semantics == SemanticsKind.Owner &&
             syntax is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
         {
-            return CompleteTransfer(conversion, target);
+            return this.CompleteTransfer(conversion, target, scope);
         }
 
         if (source.IsNumeric && target.IsNumeric)
