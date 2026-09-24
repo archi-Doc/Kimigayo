@@ -953,6 +953,11 @@ public sealed partial class Binding
         {
             left = ComparisonReferent(left);
             right = ComparisonReferent(right);
+            if (ReferenceEquals(left, BoundType.Never))
+            {
+                // The other operand still supplies and must prove the user comparison capability.
+                left = right;
+            }
         }
 
         if (!Compatible(right, left))
@@ -965,8 +970,7 @@ public sealed partial class Binding
             return Complete(binary, BoundType.Unit);
         }
 
-        // Only built-in primitive operations are decided here. User Types need Contract mappings or
-        // pointer rules (SPEC 13.4.1, 5.3), which are not bound yet.
+        // Built-in comparisons retain priority over the user Contract mapping (SPEC 13.4.1).
         var primitive = left.Kind == BoundTypeKind.Primitive && !ReferenceEquals(left, BoundType.Never);
         if (comparison && ReferenceTypes.IsPointer(left))
         {

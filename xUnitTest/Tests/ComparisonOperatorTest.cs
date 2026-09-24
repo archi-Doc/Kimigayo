@@ -29,10 +29,12 @@ public class ComparisonOperatorTest
         ScalarEmissionTest.EmitFixture("ComparisonOperatorSpecialization", Source, "specialized\nspecialized\n");
     }
 
-    [Fact]
-    public void ReturningDuringTheRightOperandAbandonsTheComparison()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReturningDuringEitherOperandAbandonsTheComparison(bool left)
     {
-        const string Source = """
+        var source = $$"""
             struct Key
                 Self is Equatable
                 public func equals(self: ref/Self, other: ref/Self) -> bool
@@ -42,11 +44,26 @@ public class ComparisonOperatorTest
             func run() -> i32
                 let first = Key.init()
                 defer => Console.writeLine("deferred")
-                let ignored = first == (do => return 7)
+                let ignored = {{(left ? "(do => return 7) == first" : "first == (do => return 7)")}}
                 return 0
             require run() == 7 else => $abort("return")
             """;
-        ScalarEmissionTest.EmitFixture("ComparisonOperatorReturn", Source, "deferred\ndestroyed\n");
+        ScalarEmissionTest.EmitFixture("ComparisonOperatorReturn" + (left ? "Left" : "Right"), source, "deferred\ndestroyed\n");
+    }
+
+    [Fact]
+    public void AnAbruptOperandDoesNotWaiveTheOtherOperandsContract()
+    {
+        var c = MinimalEmissionTest.Analyze("""
+            struct Key
+                public let value: i32 = 1
+            func run() -> i32
+                let value = Key.init()
+                let invalid = (do => return 7) == value
+                return 0
+            """);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == "UnsatisfiedConstraint_Kd");
     }
 
     [Fact]
