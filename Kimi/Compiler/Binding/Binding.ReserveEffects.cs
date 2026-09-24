@@ -281,7 +281,7 @@ public sealed partial class Binding
                 // These operations use their inputs and the allocator only.
                 // Formatting dispatch is checked through its selected witness.
                 this.valid &= symbol.CompilerFunction is
-                    CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or
+                    CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or
                     >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
                     CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
                     >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
@@ -362,7 +362,28 @@ public sealed partial class Binding
                 return;
             }
 
-            if (type.Semantics != SemanticsKind.Owner || !this.types.Add(type))
+            if (!this.types.Add(type))
+            {
+                return;
+            }
+
+            if (ObjectTypes.IsOwner(type))
+            {
+                // An open view can hide any more-derived destructor. Without a
+                // published effect bound it cannot certify reserve's restrictions.
+                if (binding.ProveSealed(type.Components[0], use) != ConstraintProof.Proven)
+                {
+                    this.valid = false;
+                }
+                else
+                {
+                    this.Destruction(type.Components[0], use);
+                }
+
+                return;
+            }
+
+            if (type.Semantics != SemanticsKind.Owner)
             {
                 return;
             }

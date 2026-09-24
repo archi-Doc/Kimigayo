@@ -8,6 +8,97 @@ namespace XunitTest;
 public class ObjectRuntimeTest
 {
     [Fact]
+    public void ExplicitBaseViewsPreserveTheOriginalOwnerAndCompleteDestruction()
+    {
+        const string Source = """
+            open struct Base
+                public let value: i32
+                protected init(value: i32) => self.value = value
+                deinit => Console.writeLine("base")
+            struct Leaf: Base
+                public let extra: i32
+                public init(): base(10) => self.extra = 20
+                deinit => Console.writeLine("leaf")
+            func inspect(view: objref/Base)
+                require view.value == 10 and view is Leaf else => $abort("base view")
+            func widen(view: objref/Leaf) -> objref/Base during view => view@objref/Base
+            func inspectExclusive(view: objuniq/Base)
+                require view.value == 10 and view is Leaf else => $abort("exclusive base view")
+            func make() -> obj/Leaf => Kimi.Intrinsics.makeObj(Leaf.init())
+            do
+                var owner = make()
+                inspect(owner@objref/Base)
+                inspect(widen(owner@objref))
+                inspectExclusive(owner@objuniq/Base)
+                do
+                    let child = owner@objuniq/Leaf
+                    inspect(child@objref/Base)
+                    inspectExclusive(child@objuniq/Base)
+                let moved = owner@obj/Base
+                inspect(moved@objref)
+                require moved is Leaf else => $abort("lost identity")
+            do
+                let moved = make()@obj/Base
+                inspect(moved@objref)
+            """;
+        NativeAllocationAudit.WriteFixture("ObjectRuntimeBaseViews", Source, 2, 2, 48, "leaf\nbase\nleaf\nbase\n");
+    }
+
+    [Theory]
+    [InlineData("func bad(value: objref/Base) => value@objref/Leaf")]
+    [InlineData("func bad(value: objref/Leaf) => value@objuniq/Base")]
+    [InlineData("func bad(value: objref/Leaf) => value@obj/Base")]
+    [InlineData("func bad(value: objref/Leaf) -> objref/Base during value => value")]
+    public void BaseViewsDoNotGrantDowncastsOwnershipOrImplicitAdaptations(string operation)
+    {
+        const string Declarations = """
+            open struct Base
+                protected init() => ()
+            struct Leaf: Base
+                public init(): base() => ()
+            """;
+        var c = MinimalEmissionTest.Analyze(Declarations + "\n" + operation);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.NotEmpty(c.Binding.Issues);
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+    }
+
+    [Fact]
+    public void BaseErasureCannotHideBorrowedPayloadDependencies()
+    {
+        const string Source = """
+            open struct Base
+                protected init() => ()
+            struct Leaf<T>: Base
+                public init(): base() => ()
+            func bad(source: ref/i32, owner: objref/Leaf<ref/i32 during source>)
+                _ = owner@objref/Base
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, issue => issue.Node.ToString() == "owner@objref/Base" &&
+            issue.Code is Kimi.DiagnosticCode.InvalidConstraint_Kd or Kimi.DiagnosticCode.UnprovenConstraint_Kd);
+    }
+
+    [Fact]
+    public void BaseViewsRetainTheirLoansAgainstWholeOwnerMoves()
+    {
+        const string Source = """
+            open struct Base
+                protected init() => ()
+            struct Leaf: Base
+                public init(): base() => ()
+            var owner = Kimi.Intrinsics.makeObj(Leaf.init())
+            let view = owner@objuniq/Base
+            _ = owner@obj/Base
+            _ = view@move
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+    }
+
+    [Fact]
     public void PayloadExchangePreservesRuntimeIdentityAndReleasesOneOriginalAllocation()
     {
         const string Source = """

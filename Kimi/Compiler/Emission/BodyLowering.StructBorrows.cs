@@ -56,7 +56,11 @@ internal sealed partial class BodyLowering
 
             if (ObjectTypes.IsBorrow(output))
             {
-                if (!(ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type)) || !ReferenceEquals(type.Components[0], output.Components[0]) ||
+                var upcast = (ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type)) &&
+                    operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
+                    ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(SignatureType(this, conversion.BoundType), output) &&
+                    ObjectTypes.Supports(type.Components[0], output.Components[0]);
+                if (!(ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type)) || (!ReferenceEquals(type.Components[0], output.Components[0]) && !upcast) ||
                     (output.Semantics == SemanticsKind.ObjUniq && type.Semantics is not (SemanticsKind.Obj or SemanticsKind.ObjUniq)))
                 {
                     return Fail("Object borrow requires matching view and exclusive authority.", out failure);

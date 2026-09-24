@@ -16,6 +16,7 @@ internal enum ConversionBinding : byte
     Transfer,
     Borrow,
     PayloadBorrow,
+    ObjectUpcast,
 
     // SPEC 5.4-5.5: between raw pointer Types, or a raw pointer and usize.
     Pointer,

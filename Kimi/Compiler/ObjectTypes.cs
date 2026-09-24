@@ -12,4 +12,17 @@ internal static class ObjectTypes
 
     internal static bool IsBorrow(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 };
+
+    internal static bool Supports(BoundType source, BoundType target)
+    {
+        for (var current = source; current is not null; current = current.StoredBase)
+        {
+            if (ReferenceEquals(current, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

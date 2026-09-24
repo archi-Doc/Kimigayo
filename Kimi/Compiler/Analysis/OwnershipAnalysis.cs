@@ -631,6 +631,17 @@ public sealed partial class OwnershipAnalysis
             case IsKoto { IsRuntimeTest: true } test:
                 return this.RuntimeTypeTest(test);
             case ConversionKoto conversion:
+                if (conversion.ConversionBinding == ConversionBinding.ObjectUpcast)
+                {
+                    if (ObjectTypes.IsBorrow(conversion.BoundType))
+                    {
+                        return this.BorrowStruct(conversion.Left, conversion.BoundType!);
+                    }
+
+                    var owner = this.Expression(conversion.Left, PlaceUseKind.Read);
+                    return this.Use(conversion, owner, PlaceUseKind.Consume, AcquisitionKind.Move);
+                }
+
                 if (conversion.ConversionBinding == ConversionBinding.PayloadBorrow)
                 {
                     if ((ObjectTypes.IsOwner(conversion.Left.BoundType) || ObjectTypes.IsBorrow(conversion.Left.BoundType)) && ReferenceTypes.IsStorage(conversion.BoundType))

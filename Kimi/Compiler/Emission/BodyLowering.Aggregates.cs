@@ -451,16 +451,21 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.Consume:
                 // A transfer (@move) of a Copy aggregate is the same byte transfer as its Copy.
+                var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
+                    ObjectTypes.IsOwner(place.Type) && ObjectTypes.IsOwner(conversion.BoundType) &&
+                    ReferenceEquals(SignatureType(this, conversion.Left.BoundType), place.Type) &&
+                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(SignatureType(this, conversion.BoundType), body.Places[operation.Input].Type) &&
+                    ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
-                    !(operation.Kind == OwnershipOperationKind.Consume
+                    (!upcast && !(operation.Kind == OwnershipOperationKind.Consume
                         ? FitsValue(place.Type, body.Places[operation.Input].Type)
-                        : FitsValue(body.Places[operation.Input].Type, place.Type)) ||
+                        : FitsValue(body.Places[operation.Input].Type, place.Type))) ||
                     (body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary && this.slotResultPlaces[operation.Input] == 0 &&
                     !(body.Places[operation.Input].Kind == OwnershipPlaceKind.Result && (IsScalar(place.Type) || ReferenceEquals(place.Type, BoundType.Unit)))) ||
                     (operation.Kind == OwnershipOperationKind.PayloadPlacement && this.payloadOwners[place.Id] < 0) ||
                     (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.slotResultWrites[id] == 0 && this.slotFunctionPlaces[place.Id] != 2) ||
                     (operation.Kind == OwnershipOperationKind.Consume && place.Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
-                    !this.IsPreparedAggregateCopy(body, id)) ||
+                    !(upcast && place.Kind == OwnershipPlaceKind.Temporary) && !this.IsPreparedAggregateCopy(body, id)) ||
                     (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition != place.Acquisition &&
                     !(operation.Acquisition == AcquisitionKind.Move && place.Acquisition == AcquisitionKind.Copy)))
                 {

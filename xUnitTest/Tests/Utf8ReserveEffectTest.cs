@@ -177,6 +177,24 @@ public class Utf8ReserveEffectTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DynamicDestructionRequiresACompleteEffectBound(bool openView)
+    {
+        var prefix = State + "open struct Base\n    protected init() => ()\nstruct Leaf: Base\n    public init(): base() => ()\n" +
+            (openView ? string.Empty : "    deinit => State.value += 1\n");
+        var c = Analyze(prefix, "let value = Kimi.Intrinsics.makeObj(Leaf.init())" + (openView ? "@obj/Base" : string.Empty));
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
+    [Fact]
+    public void PureSealedObjectDestructionIsAllowed()
+    {
+        var c = Analyze("struct Value\n", "let value = Kimi.Intrinsics.makeObj(Value.init())");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
     [Fact]
     public void GenericFormattingChecksTheSelectedConcreteEffects()
     {

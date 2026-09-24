@@ -124,6 +124,12 @@ public sealed partial class Binding
                 return Complete(conversion, actual);
             }
 
+            if (ObjectTypes.IsBorrow(pattern) && (ObjectTypes.IsOwner(actual) || ObjectTypes.IsBorrow(actual)) &&
+                !ReferenceEquals(actual.Components[0], pattern.Components[0]))
+            {
+                return this.BindObjectUpcast(conversion, scope, actual, pattern);
+            }
+
             if (IsObjectSemantics(actual.Semantics) && pattern.Origin is null &&
                 this.TryPayloadProjection(conversion.Left, pattern, actual, scope, out var payload))
             {
@@ -282,6 +288,11 @@ public sealed partial class Binding
             }
 
             return Fail(conversion, BindingFailure.TypeMismatch);
+        }
+
+        if (ObjectTypes.IsOwner(target) && (ObjectTypes.IsOwner(source) || ObjectTypes.IsBorrow(source)))
+        {
+            return this.BindObjectUpcast(conversion, scope, source, target);
         }
 
         if (!plain)
