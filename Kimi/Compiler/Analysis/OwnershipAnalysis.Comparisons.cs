@@ -92,6 +92,13 @@ public sealed partial class OwnershipAnalysis
     private int BorrowArgument(InvocationKoto call, BoundArgumentOperation argument)
     {
         var source = BorrowedArgumentSource(argument.Source!);
+        if (source is MemberAccessKoto field && ReferenceEquals(field.BoundType, BoundType.String) && ElementAccess.BorrowedPathRoot(field) is not null)
+        {
+            // A string field reached through a reference, such as a shared iteration binding, is
+            // reborrowed from that referent (SPEC 15.6.3); its owner stays protected by the reference's Loan.
+            return this.BorrowStruct(source, argument.ParameterType!);
+        }
+
         if (source is BinaryKoto element && ElementAccess.IsSyntax(element))
         {
             return this.BorrowStringElement(element, call, argument.ParameterType, out _);

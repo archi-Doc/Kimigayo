@@ -43,6 +43,19 @@ public class SharedSubjectTest
         "var message: Message = .Write(\"hi\")\nrequire show(message@uniq) == 1 else => $abort(\"show\")\nConsole.writeLine(keep(message@uniq))\n" +
         "let r = message@uniq\nmatch r\n    .Write(let text) => Console.writeLine(text)\n    .Quit => ()\nmatch message@move\n    .Write(let text) => Console.writeLine(text@move)\n    .Quit => ()";
 
+    private const string TaskDeclarations =
+        "struct Inner\n    public let label: string\n    public init(label: string) => self.label = label@move\n" +
+        "struct Task\n    public let id: i32\n    public let name: string\n    public let inner: Inner\n" +
+        "    public init(id: i32, name: string)\n        self.id = id\n        self.name = name@move\n        self.inner = Inner.init(\"inner\")\n" +
+        "func same(s: ref/string) -> ref/string during s => s\n";
+
+    private const string FieldsSource =
+        TaskDeclarations +
+        "func label(t: ref/Task) -> ref/string during t => same(t.inner.label)\nfunc show(t: uniq/Task) => Console.writeLine(t.name)\n" +
+        "var tasks: Array<Task> = [Task.init(1, \"one\"), Task.init(2, \"two\")]\nfor task in tasks\n    let kept = same(task.name)\n    Console.writeLine(kept)\n    Console.writeLine(task.inner.label)\n" +
+        "let pairs: [2 of (i32, string)] = [(1, \"a\"), (2, \"b\")]\nfor pair in pairs\n    Console.writeLine(pair.1)\n" +
+        "var single = Task.init(3, \"three\")\nConsole.writeLine(label(single))\nshow(single@uniq)\ntasks.append(single@move)\nrequire tasks.length == 3 else => $abort(\"length\")";
+
     private const string UniqLiteralSource =
         "func f(x: uniq/i32) -> i32 => match x\n    0 => 10\n    _ => 20\n" +
         "var n: i32 = 0\nrequire f(n@uniq) == 10 else => $abort(\"zero\")\nn = 3\nrequire f(n@uniq) == 20 and n == 3 else => $abort(\"other\")\nConsole.writeLine(\"ok\")";
@@ -53,7 +66,8 @@ public class SharedSubjectTest
     [InlineData("UniqArrayTransfer", UniqArrayTransferSource, "ok\n")]
     [InlineData("FixedArray", FixedArraySource, "ok\n")]
     [InlineData("Strings", StringsSource, "bb\nx\ny\nbb\n")]
-    public void BorrowValuesIterateThroughTheSharedSlice(string name, string source, string stdout)
+    [InlineData("Fields", FieldsSource, "one\ninner\ntwo\ninner\na\nb\ninner\nthree\n")]
+    public void SharedIterationReadsThroughBorrowValuesAndFields(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedSubjectIteration" + name, source, stdout);
 
     [Theory]
@@ -94,6 +108,8 @@ public class SharedSubjectTest
     [Theory]
     [InlineData("func total(values: uniq/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values\n        sum += v\n        values.append(4)\n    return sum")]
     [InlineData("func last(values: uniq/Array<i32>) -> ref/i32\n    var kept: ref/i32 = values[0]@ref\n    for v in values\n        kept = v\n    values.append(4)\n    return kept")]
+    [InlineData(TaskDeclarations + "var t = Task.init(1, \"one\")\nlet r = t@ref\nlet kept = same(r.name)\nt = Task.init(2, \"two\")\nConsole.writeLine(kept)")]
+    [InlineData(TaskDeclarations + "var tasks: Array<Task> = [Task.init(1, \"one\")]\nfor task in tasks\n    let kept = same(task.name)\n    tasks.append(Task.init(2, \"two\"))\n    Console.writeLine(kept)")]
     public void SharedReborrowsKeepTheirLoans(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
