@@ -76,11 +76,7 @@ public class AssociatedForwardingTest
     public void EmitsCompoundAssociatedResult()
     {
         const string source = "contract Source\n    associate Element is Copy\n    func read(self: ref/Self) -> Element\nstruct PairSource\n    Self is Source\n    associate Source.Element is (i32, bool)\n    let pair: (i32, bool)\n    public init(pair: (i32, bool)) => self.pair = pair\n    public func read(self: ref/Self) -> (i32, bool) => self.pair\nfunc readOne<T>(source: ref/T) -> T.Source.Element\n    T is Source\n    return source.read()\nlet value = PairSource.init((7, true))\nmatch readOne(value@ref)\n    (7, true) => Console.writeLine(\"Pair received.\")\n    _ => $abort(\"pair\")";
-        // Copying a whole aggregate field through a shared receiver is a separate,
-        // currently rejected storage operation. Keep its rejection boundary explicit.
-        var unsupported = MinimalEmissionTest.Analyze(source);
-        Assert.False(unsupported.Ownership.Result.IsVerified);
-        Assert.Contains(unsupported.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        ScalarEmissionTest.EmitFixture("AssociatedForwardingFieldSnapshot", source, "Pair received.\n");
         var constructed = source.Replace("let pair: (i32, bool)", "let value: i32", StringComparison.Ordinal)
             .Replace("public init(pair: (i32, bool)) => self.pair = pair", "public init(value: i32) => self.value = value", StringComparison.Ordinal)
             .Replace("=> self.pair", "=> (self.value, true)", StringComparison.Ordinal)

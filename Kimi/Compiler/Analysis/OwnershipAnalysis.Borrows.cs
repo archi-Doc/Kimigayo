@@ -103,7 +103,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var place = source is FormattingKoto hidden && !ReferenceTypes.IsBorrow(hidden.BoundType) && this.formattingPlaces.TryGetValue(hidden, out var prepared) ? prepared
-            : (StructStorage.IsStruct(source.BoundType) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple || ScalarTypes.Supports(source.BoundType)) && unwrapped is IdentifierNameKoto
+            : (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple || ScalarTypes.Supports(source.BoundType)) && unwrapped is IdentifierNameKoto
             ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {
@@ -113,8 +113,9 @@ public sealed partial class OwnershipAnalysis
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
         var operation = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
         // A scalar temporary is materialized at the borrow from its one prepared value (SPEC 3.6.2, 10.2).
-        var materialized = ScalarTypes.Supports(source.BoundType) && this.body.Places[place].Kind == OwnershipPlaceKind.Temporary;
-        this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsBorrow(source.BoundType) || materialized ? [this.Value(place)] : [], constant: place);
+        var actual = this.body.Places[place];
+        var materialized = ScalarTypes.Supports(actual.Type) && actual.Kind == OwnershipPlaceKind.Temporary;
+        this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsBorrow(actual.Type) || materialized ? [this.Value(place)] : [], constant: place);
         return this.RegisterTemporary(result);
     }
 
@@ -126,7 +127,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if ((!ReferenceTypes.IsValue(field.BoundType) && field.BoundType?.Kind != BoundTypeKind.Slice) || field.BoundType!.Semantics == SemanticsKind.Uniq)
+        if (this.Concrete(field.BoundType) is not { } type || !this.SupportsCopySnapshot(type, field))
         {
             this.Unsupported(field); // Non-Copy fields require an explicit reborrow, never an implicit Move.
             return -1;

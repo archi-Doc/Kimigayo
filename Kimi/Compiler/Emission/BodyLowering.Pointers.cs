@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
@@ -61,10 +63,12 @@ internal sealed partial class BodyLowering
         var place = body.Places[operation.Place];
         var type = place.Type;
         var address = Input(body, id, 0);
-        // SPEC 13.4: a scalar borrow's referent is loaded through the reference for a comparison; the
+        // SPEC 3.3: a Copy borrow's referent is loaded through the reference; the
         // operation's source is then the borrow itself, and its address needs no Unsafe obligation.
         var sourceType = SignatureType(this, operation.Source.BoundType);
-        var referent = !store && ReferenceTypes.IsScalarBorrow(sourceType) && ReferenceEquals(sourceType!.Components[0], type);
+        var referent = !store && place.Acquisition == AcquisitionKind.Copy &&
+            sourceType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+            ReferenceEquals(sourceType.Components[0], type);
         if ((place.Kind != OwnershipPlaceKind.Temporary && (!store || place.Kind != OwnershipPlaceKind.Result)) ||
             place.Acquisition is not (AcquisitionKind.Copy or AcquisitionKind.Move) ||
             (!referent && !ReferenceEquals(sourceType, type)) ||

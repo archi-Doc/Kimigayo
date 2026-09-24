@@ -100,8 +100,8 @@ public sealed partial class OwnershipAnalysis
 
     // SPEC 3.3: a Copy read. The reference expression is read, and its referent is loaded through that
     // reference (a valid address by the reference's Origin, no new Loan) into a fresh Copy temporary.
-    // The referent stays initialized. Only scalar referents are lowered so far; a Copy aggregate referent
-    // is recorded as unsupported.
+    // The referent stays initialized. The acquired Type retains nested Origins; the outer reference
+    // Origin is not attached to an independent snapshot.
     private int LoadReferent(Koto source)
     {
         var reference = this.ExpressionCore(source, PlaceUseKind.Read, null);
@@ -110,7 +110,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (this.Concrete(source.BoundType) is not { Components.Count: 1 } type || !ReferenceTypes.IsScalarBorrow(type))
+        if (this.Concrete(source.BoundType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type ||
+            !this.SupportsCopySnapshot(type.Components[0], source))
         {
             this.Unsupported(source);
             return -1;
@@ -121,6 +122,11 @@ public sealed partial class OwnershipAnalysis
         this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(reference)]);
         return this.RegisterTemporary(loaded);
     }
+
+    private bool SupportsCopySnapshot(BoundType type, Koto source)
+        => this.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Proven &&
+        (ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) ||
+            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
 
     private int LoadPointer(Koto source, int pointer)
     {

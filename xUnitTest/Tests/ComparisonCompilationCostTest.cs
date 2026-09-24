@@ -7,8 +7,10 @@ namespace XunitTest;
 
 public class ComparisonCompilationCostTest
 {
-    [Fact]
-    public void WarmOperatorBindingReusesItsWitnessPlans()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmOperatorBindingReusesItsWitnessPlans(bool snapshot)
     {
         const string Source = """
             struct Key
@@ -19,7 +21,10 @@ public class ComparisonCompilationCostTest
             let last = Key.init()
             require first == last and not (first != last) else => $abort("comparison")
             """;
-        var c = MinimalEmissionTest.Analyze(Source);
+        var source = snapshot ? Source.Replace("Self is Equatable", "Self is Copy\n    Self is Equatable", StringComparison.Ordinal)
+            .Replace("first == last", "first@ref == last@ref", StringComparison.Ordinal)
+            .Replace("first != last", "first@ref != last@ref", StringComparison.Ordinal) : Source;
+        var c = MinimalEmissionTest.Analyze(source);
         for (var i = 0; i < 32; i++)
         {
             Assert.True(c.Bind().IsComplete);

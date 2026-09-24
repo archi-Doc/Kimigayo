@@ -135,6 +135,11 @@ public sealed partial class Binding
 
     private BoundOrigin PlaceOrigin(Koto source)
     {
+        if (this.ReadsReferent(source))
+        {
+            return this.OriginAtom(source, OriginKind.Projection, 0);
+        }
+
         source = PlaceOriginSource(source);
         return source.BoundType?.Origin ?? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
@@ -255,6 +260,17 @@ public sealed partial class Binding
                 return false;
             }
 
+            return true;
+        }
+
+        // A comparison's Copy read is a temporary value, even though its syntax retains ref/T.
+        // Borrow that snapshot; borrowing the original storage would change left-to-right semantics.
+        if (!projected && pattern.Semantics == SemanticsKind.Ref && this.ReadsReferent(source) &&
+            this.Referent(actual, source) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source))
+        {
+            adapted = this.PreparedBorrowType(source, pattern);
+            quality = ArgumentAdaptation.CrossSemanticsBorrow;
+            kind = ArgumentOperationKind.Borrow;
             return true;
         }
 

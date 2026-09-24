@@ -24,29 +24,6 @@ internal sealed partial class BodyLowering
             body.IncomingEdges[to] == edge && body.IncomingCounts[to] == 1;
     }
 
-    private static bool IsCopyElement(BoundType type, int depth = 0)
-    {
-        if (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || type.Kind == BoundTypeKind.Slice)
-        {
-            return true;
-        }
-
-        if (depth == 64 || type.Semantics != SemanticsKind.Owner || type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (!IsCopyElement(type.Components[i], depth + 1))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     private bool IsElementReceiverRead(OwnershipBody body, int id)
     {
         if ((uint)id >= (uint)body.LoanStates.Count || body.LoanStates[id] is not (>= 0 and var loanId) ||
@@ -270,14 +247,15 @@ internal sealed partial class BodyLowering
 
             if (plan.Output >= 0)
             {
+                var copy = source.CodeContext.Compilation.Binding.ProveCopy(element!, source) == ConstraintProof.Proven;
                 if ((uint)plan.Output >= (uint)body.Operations.Count || this.elementOutputs[plan.Output] >= 0 ||
                     body.Operations[plan.Output] is not { Kind: OwnershipOperationKind.Produce } output ||
                     (uint)output.Place >= (uint)body.Places.Count || !ReferenceEquals(output.Source, source) ||
                     body.Values[plan.Output].Kind != OwnershipValueKind.Element ||
                     body.Places[output.Place].Kind != OwnershipPlaceKind.Temporary ||
-                    (body.Places[output.Place].Acquisition == AcquisitionKind.Copy ? output.Acquisition != AcquisitionKind.None || !IsCopyElement(element!) :
+                    (body.Places[output.Place].Acquisition == AcquisitionKind.Copy ? output.Acquisition != AcquisitionKind.None || !copy :
                         body.Places[output.Place].Acquisition != AcquisitionKind.Move || output.Acquisition != AcquisitionKind.Move || plan.Path != i ||
-                        !ElementAccess.SupportsMoveRoot(body.Places[plan.Root]) || IsCopyElement(element!)) ||
+                        !ElementAccess.SupportsMoveRoot(body.Places[plan.Root]) || copy) ||
                     !ReferenceEquals(body.Places[output.Place].Type, element))
                 {
                     return Fail("Element acquisition requires a fresh Copy result or an eligible static owned Move of the selected Type.", out failure);

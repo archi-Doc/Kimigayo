@@ -194,11 +194,12 @@ internal sealed partial class BodyLowering
         var receiver = Input(body, id, 0);
         var root = field is null ? null : ElementAccess.BorrowedPathRoot(field);
         var fieldType = field is null ? null : SignatureType(this, field.BoundType);
-        // A Slice-handle field is copied whole into its temporary (SPEC 4.6.8); other fields need a scalar-like value.
-        var handle = fieldType?.Kind == BoundTypeKind.Slice ? this.aggregateLayouts.Get(fieldType) : null;
+        // Copy aggregate fields use the same field-wise transfer as other acquisitions. In particular,
+        // enum transfer observes its active case and never reads inactive payload or padding.
+        var handle = fieldType is not null ? this.aggregateLayouts.Get(fieldType) : null;
         if (field is null || root is null ||
             (!ReferenceEquals(ValueType(body, receiver), SignatureType(this, root.BoundType)) &&
-                !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !(ReferenceTypes.IsValue(fieldType) || handle is not null) ||
+                !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !(ReferenceTypes.IsValue(fieldType) || ReferenceEquals(fieldType, BoundType.Unit) || handle is not null) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
             return Fail("Borrowed field access requires a dominating typed receiver.", out failure);
@@ -213,10 +214,15 @@ internal sealed partial class BodyLowering
         function.AddScalar(EmissionOpcode.ElementAddress, id, [this.PhysicalOperand(body, receiver), new(EmissionOperandKind.Integer, offset)], representation: representation);
         if (value.Kind == OwnershipValueKind.BorrowedField)
         {
-            if (operation.Kind != OwnershipOperationKind.Produce || !ReferenceEquals(ValueType(body, id), fieldType) ||
+            if (operation.Kind != OwnershipOperationKind.Produce || body.Places[operation.Place].Acquisition != AcquisitionKind.Copy || !ReferenceEquals(ValueType(body, id), fieldType) ||
                 (handle is not null && this.aggregatePlaces[operation.Place] is null))
             {
                 return Fail("Borrowed field read has no matching result.", out failure);
+            }
+
+            if (representation.Layout.Size == 0)
+            {
+                return true;
             }
 
             if (handle is not null)
