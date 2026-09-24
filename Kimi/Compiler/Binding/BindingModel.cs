@@ -278,6 +278,8 @@ public sealed record BoundType : ControlFlowType
     // Refilled by ownership preparation after each final bind; excluded from Type identity.
     internal BoundType[]? StoredFields { get; set; }
 
+    internal BoundType? StoredBase { get; set; }
+
     internal BoundType[]? StoredCases { get; set; }
 
     internal ulong StorageVersion { get; set; }

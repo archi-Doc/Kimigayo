@@ -123,19 +123,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
-            issue.Source.AddDiagnostic(issue.Failure switch
-            {
-                OwnershipFailure.UninitializedUse => DiagnosticCode.UninitializedPlace_Kd,
-                OwnershipFailure.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
-                OwnershipFailure.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
-                OwnershipFailure.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
-                OwnershipFailure.ComparisonLoanConflict => issue.Activation ? DiagnosticCode.CallActivationConflict_Kd :
-                    issue.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
-                OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
-                OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
-                OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
-                _ => DiagnosticCode.UnsupportedOwnership_Kd,
-            });
+            issue.Source.AddDiagnostic(issue.Code);
         }
     }
 

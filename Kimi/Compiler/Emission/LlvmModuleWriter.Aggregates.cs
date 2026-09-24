@@ -224,6 +224,12 @@ internal static partial class LlvmModuleWriter
             }
         }
 
+        if (aggregate.Base is { NeedsDestruction: true } parent)
+        {
+            Name(output, "  call void @__kimi_drop_aggregate", parent.Id);
+            output.Write("(ptr %slot, ptr %location, i64 %length)\n");
+        }
+
         output.Write("  ret void\n}\n");
     }
 

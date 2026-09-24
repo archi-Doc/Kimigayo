@@ -140,7 +140,7 @@ internal sealed partial class BodyLowering
 
         if (StructStorage.IsStruct(type))
         {
-            if (StructStorage.Destructor(type) is not null)
+            if (StructStorage.Destructor(type) is not null || (type.StoredBase is { } parent && HasOwnedStorage(parent)))
             {
                 return true;
             }

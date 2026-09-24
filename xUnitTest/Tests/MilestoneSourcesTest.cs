@@ -47,14 +47,29 @@ public class MilestoneSourcesTest
             }
 
             Assert.StartsWith("FAIL", row.Groups[3].Value.Trim());
-            Assert.Equal("Binding", expected.Stage);
-            Assert.False(c.Binding.Result.IsComplete, $"Milestone{number} advanced: update its verified stage and README.");
-            Assert.NotEmpty(c.Binding.Issues);
-            var primary = c.Binding.Issues[0];
-            var anchor = primary.Node.ToString().Split('\n')[0];
-            if (expected.Diagnostic != primary.Code.ToString() || expected.Anchor != anchor)
+            var stage = "Binding";
+            string diagnostic;
+            string anchor;
+            if (c.Binding.Result.IsComplete)
             {
-                differences.Add($"Milestone{number}: expected {expected.Diagnostic} at {expected.Anchor}; actual {primary.Code} at {anchor}");
+                stage = "Ownership";
+                Assert.False(c.Ownership.Analyze().IsVerified, $"Milestone{number} advanced: update its verified stage and README.");
+                Assert.NotEmpty(c.Ownership.Issues);
+                var primary = c.Ownership.Issues[0];
+                diagnostic = primary.Code.ToString();
+                anchor = primary.Source.ToString().Split('\n')[0];
+            }
+            else
+            {
+                Assert.NotEmpty(c.Binding.Issues);
+                var primary = c.Binding.Issues[0];
+                diagnostic = primary.Code.ToString();
+                anchor = primary.Node.ToString().Split('\n')[0];
+            }
+
+            if (expected.Stage != stage || expected.Diagnostic != diagnostic || expected.Anchor != anchor)
+            {
+                differences.Add($"Milestone{number}: expected {expected.Stage} {expected.Diagnostic} at {expected.Anchor}; actual {stage} {diagnostic} at {anchor}");
             }
 
             // Verify the already-supported declaration subset independently. A pending target must

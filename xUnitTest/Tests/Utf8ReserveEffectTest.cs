@@ -166,6 +166,17 @@ public class Utf8ReserveEffectTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InheritedConstructionAndDestructionUseTheSameCallbackEffectPlan(bool destruction)
+    {
+        var prefix = State + "open struct Base\n    protected init() => " + (destruction ? "()" : "State.value += 1") +
+            (destruction ? "\n    deinit => State.value += 1" : string.Empty) + "\nstruct Leaf: Base\n    public init(): base() => ()\n";
+        var c = Analyze(prefix, "let value = Leaf.init()");
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     [Fact]
     public void GenericFormattingChecksTheSelectedConcreteEffects()
     {

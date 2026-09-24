@@ -279,6 +279,8 @@ public sealed partial class Binding
             case ParenthesizedTypeKoto:
                 // Grouped Types are bound by Type/qualifier entry points, never as runtime values.
                 return Fail(node, BindingFailure.InvalidTypeFormation);
+            case SyntaxFormKoto { Akind: KotoKind.ConstructorReference } constructorReference:
+                return this.BindBaseConstructor(constructorReference, scope);
             case TypeKoto:
                 return this.BindType(node, scope);
             case DeclarationContainerKoto container:
@@ -661,7 +663,7 @@ public sealed partial class Binding
     {
         node.BoundSymbol = symbol;
         if (symbol.Name == "self" && symbol.Declaration is FunctionKoto special && (special.IsConstructor || special.IsDestructor) &&
-            (node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))
+            ((special.BaseInitializer is { } initializer && IsWithin(node, initializer)) || node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))
         {
             return Fail(node, BindingFailure.InvalidAssignment);
         }

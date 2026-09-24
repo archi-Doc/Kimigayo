@@ -418,6 +418,11 @@ public sealed partial class OwnershipBody
                         return true;
                     }
                 }
+
+                if (type.StoredBase is { } parent && Observes(parent, depth + 1))
+                {
+                    return true;
+                }
             }
 
             if (ObjectTypes.IsOwner(type) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray)

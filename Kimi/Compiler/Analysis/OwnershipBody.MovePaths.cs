@@ -245,5 +245,5 @@ internal readonly record struct MovePath(int Root, int Parent, int Selector, Bou
 {
     internal int Count => this.Type.Kind == BoundTypeKind.FixedArray ? (int)this.Type.Length : this.Type.Kind == BoundTypeKind.Tuple ? this.Type.Components.Count : StructStorage.Count(this.Type);
 
-    internal bool HasRemainder => this.Children < this.Count || this.Count == 0;
+    internal bool HasRemainder => this.Children < this.Count || this.Count == 0 || this.Type.StoredBase is not null;
 }

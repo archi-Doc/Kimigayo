@@ -314,6 +314,7 @@ public sealed partial class Binding
                 var selected = (call is null ? null : binding.SelectSpecialization(call)) ?? function;
                 this.Queue(selected.Body);
                 this.Queue(selected.ExpressionBody);
+                this.Queue(selected.BaseInitializer);
                 if (function.IsConstructor && StructStorage.ReceiverType(function) is { } receiver)
                 {
                     for (var i = 0; i < StructStorage.Count(receiver); i++)
@@ -383,6 +384,11 @@ public sealed partial class Binding
                     {
                         this.Destruction(field, use);
                     }
+                }
+
+                if (binding.StoredBase(type) is { } parent)
+                {
+                    this.Destruction(parent, use);
                 }
             }
             else

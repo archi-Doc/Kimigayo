@@ -184,6 +184,11 @@ internal sealed partial class BodyLowering
             this.CollectPartDestruction(body, child, offset + layout.Offset(selector));
             end = selector;
         }
+
+        if (layout?.Base is { } parent)
+        {
+            this.AddPartDestruction(body, path, offset, 1, parent.Value, parent);
+        }
     }
 
     private void AddPartDestruction(OwnershipBody body, int path, int offset, int count, ValueLowering value, AggregateLayout? aggregate)

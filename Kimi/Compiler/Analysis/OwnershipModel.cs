@@ -172,7 +172,22 @@ public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject
 public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
     int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
-public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false);
+public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false)
+{
+    public DiagnosticCode Code => this.Failure switch
+    {
+        OwnershipFailure.UninitializedUse => DiagnosticCode.UninitializedPlace_Kd,
+        OwnershipFailure.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
+        OwnershipFailure.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
+        OwnershipFailure.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
+        OwnershipFailure.ComparisonLoanConflict => this.Activation ? DiagnosticCode.CallActivationConflict_Kd :
+            this.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
+        OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
+        OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
+        OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
+        _ => DiagnosticCode.UnsupportedOwnership_Kd,
+    };
+}
 
 /// <summary>Verification of the supported ownership subset, never an executable-emission certificate.</summary>
 public readonly record struct OwnershipResult(bool IsVerified, int BodyCount, int ErrorCount, int UnsupportedCount);
@@ -217,6 +232,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipCheckingSeed> CheckingSeeds = new();
     internal readonly List<OwnershipCheckingReplay> CheckingReplays = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
+    internal int ReceiverBase = -1;
     internal bool[] Reachable = [];
     internal bool[] BlockReachable = [];
     internal bool[] BlockQueued = [];
@@ -301,6 +317,7 @@ public sealed partial class OwnershipBody
         this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
         this.Projections.Clear();
+        this.ReceiverBase = -1;
         this.movePaths.Clear();
         this.movePathIndex.Clear();
         this.movePathOrder.Clear();

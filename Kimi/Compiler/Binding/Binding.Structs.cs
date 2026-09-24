@@ -13,6 +13,9 @@ public sealed partial class Binding
 
     internal bool PrepareTypeStorage(BoundType type) => this.PrepareInstantiatedStorage(type, 0);
 
+    internal BoundType? StoredBase(BoundType type)
+        => StructStorage.Declaration(type) is { Bases.Count: 1 } declaration ? this.StoredType(declaration.Bases[0], type) : null;
+
     internal BoundType? InstantiateStorageType(BoundType type, BoundCall call)
     {
         var result = this.MemberType(type, call.DeclaringType) is { } member &&
@@ -62,6 +65,13 @@ public sealed partial class Binding
             }
 
             type.StorageVersion = this.storageVersion;
+            type.StoredBase = this.StoredBase(type);
+            if (type.StoredBase is { } parent && !this.PrepareInstantiatedStorage(parent, depth + 1))
+            {
+                type.StoredFields = null;
+                return false;
+            }
+
             for (var i = 0; i < type.StoredFields.Length; i++)
             {
                 var field = this.StoredType(StructStorage.Field(type, i), type);
@@ -140,7 +150,7 @@ public sealed partial class Binding
 
         var qualifier = this.TypeName(member.Left, scope, false);
         var type = qualifier is null ? null : this.EnumQualifierType(member.Left, qualifier, scope, null);
-        if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } || declaration.Bases.Count != 0 ||
+        if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
             Fail(member, BindingFailure.Unsupported);
@@ -153,10 +163,27 @@ public sealed partial class Binding
         return constructor;
     }
 
+    private BoundType? BindBaseConstructor(SyntaxFormKoto node, BindingScope scope)
+    {
+        if (node.Parent is InvocationKoto { Parent: FunctionKoto { IsConstructor: true } constructor } call &&
+            ReferenceEquals(call.Method, node) && ReferenceEquals(constructor.BaseInitializer, call))
+        {
+            var parent = this.StoredBase(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!.Type!);
+            if (parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var initializer))
+            {
+                return this.BindReference(node, initializer, scope);
+            }
+        }
+
+        return Fail(node, BindingFailure.InvalidTypeFormation);
+    }
+
     private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope)
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
-        var type = ((MemberAccessKoto)call.Method).Left.BoundType!;
+        var type = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call)
+            ? this.StoredBase(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!.Type!)!
+            : ((MemberAccessKoto)call.Method).Left.BoundType!;
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)
         {

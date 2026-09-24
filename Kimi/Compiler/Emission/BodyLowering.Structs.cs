@@ -28,14 +28,15 @@ internal sealed partial class BodyLowering
     }
 
     private static bool ReceiverField(OwnershipBody body, int place)
-        => (uint)place < (uint)body.Places.Count && body.Places[place] is { Kind: OwnershipPlaceKind.Local, Source: PropertyKoto field } &&
-            ReferenceEquals(field.Parent, body.Function.BoundSymbol?.Scope.Owner);
+        => place >= 0 && (place == body.ReceiverBase || ((uint)place < (uint)body.Places.Count && body.Places[place] is { Kind: OwnershipPlaceKind.Local, Source: PropertyKoto field } &&
+            ReferenceEquals(field.Parent, body.Function.BoundSymbol?.Scope.Owner)));
 
     private static bool ValidateReceiverInitialization(OwnershipBody body, OwnershipOperation operation)
         => (operation.Kind == OwnershipOperationKind.CheckReceiverField ? body.Function.IsConstructor : body.Function.IsDestructor) && StructStorage.ReceiverType(body.Function) is { } type &&
-            operation.Place >= 0 && body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Source: PropertyKoto field } &&
+            operation.Place >= 0 && (operation.Place == body.ReceiverBase ? type.StoredBase is not null && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local :
+            body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Source: PropertyKoto field } &&
             ReferenceEquals(field.Parent, StructStorage.Declaration(type)) && (operation.Kind == OwnershipOperationKind.CheckReceiverField || ReferenceEquals(operation.Source, field)) &&
-            field.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var place) && place == operation.Place;
+            field.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var place) && place == operation.Place);
 
     private bool PrepareReceiverFields(OwnershipBody body, EmissionFunction function, out string? failure)
     {
@@ -51,6 +52,18 @@ internal sealed partial class BodyLowering
         if (type is null || layout is null || !function.Abi.ResultSlot)
         {
             return Fail("Special receiver requires concrete structure storage and its dedicated address.", out failure);
+        }
+
+        if (body.ReceiverBase >= 0)
+        {
+            var place = body.ReceiverBase;
+            if (type.StoredBase is null || layout.Base is null || !ReferenceTypes.StorageMatches(body.Places[place].Type, type.StoredBase))
+            {
+                return Fail("Special receiver base requires its complete instantiated prefix layout.", out failure);
+            }
+
+            function.SlotAddresses[place] = new(EmissionOperandKind.ProjectedSlot, place);
+            function.Subslots.Add(new(place, -1, 0));
         }
 
         for (var i = 0; i < StructStorage.Count(type); i++)

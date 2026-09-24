@@ -886,7 +886,9 @@ public sealed class ControlFlowAnalysis
         }
 
         var discards = !KotoHelper.IsBodyExpression(body) || boundary.Expected == ControlFlowType.Unit;
-        var flow = this.VisitBodyItem(body, true, discards ? null : boundary.Expected);
+        var baseFlow = node is FunctionKoto { BaseInitializer: { } initializer } ? this.Visit(initializer, true, null) : new Flow(true, ControlFlowType.Unit);
+        var flow = this.VisitBodyItem(body, baseFlow.Normal, discards ? null : boundary.Expected);
+        flow = baseFlow.Normal ? flow with { Transfers = Union(baseFlow.Transfers, flow.Transfers), Pending = baseFlow.Pending || flow.Pending } : baseFlow;
         if (!discards || (!flow.Pending && this.structural.CanComplete(body)))
         {
             boundary.Sources.Add(new(body, discards ? ControlFlowType.Unit : flow.Type, true));

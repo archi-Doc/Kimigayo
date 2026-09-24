@@ -52,6 +52,11 @@ public sealed partial class OwnershipAnalysis
 
         if (StructStorage.IsStruct(type))
         {
+            if (type.StoredBase is { } parent && !IsZeroSized(parent))
+            {
+                return false;
+            }
+
             for (var i = 0; i < StructStorage.Count(type); i++)
             {
                 if (StructStorage.FieldType(type, i) is not { } field || !IsZeroSized(field))
@@ -134,7 +139,8 @@ public sealed partial class OwnershipAnalysis
 
             // Reserve the key before following fields to reject recursive inline storage.
             this.supportedTypes[type] = false;
-            supported = structure.Bases.Count == 0 &&
+            type.StoredBase = this.compilation.Binding.StoredBase(type);
+            supported = (type.StoredBase is null || this.SupportsType(type.StoredBase)) &&
                 type.OriginArguments.Count <= structure.OriginNames.Count;
             var count = StructStorage.Count(type);
             if (type.StoredFields?.Length != count)

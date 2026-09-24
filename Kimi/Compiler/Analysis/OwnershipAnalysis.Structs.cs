@@ -17,6 +17,29 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
+        if (this.compilation.Binding.StoredBase(type) is { } parent)
+        {
+            var source = (Koto?)function.BaseInitializer ?? function;
+            var place = this.Place(source, parent, OwnershipPlaceKind.Local, false);
+            this.body.ReceiverBase = place;
+            this.Emit(function.IsConstructor ? OwnershipOperationKind.Declare : OwnershipOperationKind.InitializeReceiverField, source, place);
+            if (function.IsConstructor)
+            {
+                if (function.BaseInitializer is not { } initializer)
+                {
+                    this.Unsupported(function);
+                }
+                else
+                {
+                    var value = this.Expression(initializer);
+                    if (value >= 0)
+                    {
+                        this.Emit(OwnershipOperationKind.Write, source, place, value);
+                    }
+                }
+            }
+        }
+
         for (var i = 0; i < StructStorage.Count(type); i++)
         {
             var field = StructStorage.Field(type, i);
@@ -44,6 +67,11 @@ public sealed partial class OwnershipAnalysis
         {
             var field = StructStorage.Field(type, i);
             this.Emit(OwnershipOperationKind.CheckReceiverField, source, this.body.SymbolPlaces[field.BoundSymbol!]);
+        }
+
+        if (this.body.ReceiverBase >= 0)
+        {
+            this.Emit(OwnershipOperationKind.CheckReceiverField, source, this.body.ReceiverBase);
         }
     }
 }

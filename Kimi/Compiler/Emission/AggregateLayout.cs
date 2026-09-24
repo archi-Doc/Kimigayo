@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1402 // Physical aggregate descriptors and their reusable pool.
 
 /// <summary>A syntax-free aggregate representation. Fields remain in logical acquisition/destruction order.</summary>
-internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false, bool CLayout = false)
+internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false, bool CLayout = false, AggregateLayout? Base = null)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 }
@@ -122,6 +122,12 @@ internal sealed class AggregateLayoutPool
             return this.ExceedLimit(type);
         }
 
+        var baseLayout = structure && type.StoredBase is { } parent ? this.Get(parent, depth + 1) : null;
+        if (structure && type.StoredBase is not null && baseLayout is null)
+        {
+            return this.resolved[type] = null;
+        }
+
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
         var fieldCount = sequence ? (type.Kind == BoundTypeKind.Dictionary ? 7 : type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? StructStorage.Count(type) : type.Components.Count;
@@ -162,7 +168,7 @@ internal sealed class AggregateLayoutPool
 
             foreach (var candidate in this.pool)
             {
-                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor)
+                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || !ReferenceEquals(candidate.Base, baseLayout))
                 {
                     continue;
                 }
@@ -180,8 +186,8 @@ internal sealed class AggregateLayoutPool
                 }
             }
 
-            var alignment = 1;
-            var destroy = destructor >= 0;
+            var alignment = baseLayout?.Value.Layout.Alignment ?? 1;
+            var destroy = destructor >= 0 || baseLayout?.NeedsDestruction == true;
             for (var i = 0; i < fieldCount; i++)
             {
                 alignment = Math.Max(alignment, this.fields[start + i].Layout.Alignment);
@@ -190,7 +196,9 @@ internal sealed class AggregateLayoutPool
 
             // The existing physical plan uses signed 32-bit byte offsets. Reject its
             // limit explicitly before any LLVM parser can truncate a size or offset.
-            long size = 0;
+            // The complete base occupies a prefix, including its tail padding. Own fields
+            // can still use the ordinary alignment grouping after that prefix.
+            long size = baseLayout?.Value.Layout.Size ?? 0;
             var offsets = array ? Array.Empty<int>() : new int[fieldCount];
             if (array)
             {
@@ -271,7 +279,7 @@ internal sealed class AggregateLayoutPool
             }
 
             var representation = new ValueLowering(new(storage, (int)size, alignment, (int)size, offsets), storage, "ptr");
-            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout);
+            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout);
             this.pool.Add(result);
             this.resolved[type] = result;
             return result;

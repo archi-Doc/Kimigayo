@@ -45,6 +45,11 @@ internal static class MatchTypes
 
         if (StructStorage.IsStruct(type))
         {
+            if (type.StoredBase is { } parent && !SupportsOwnedPatternValue(parent, cache))
+            {
+                return false;
+            }
+
             for (var i = 0; i < StructStorage.Count(type); i++)
             {
                 if (StructStorage.FieldType(type, i) is not { } field || !SupportsOwnedPatternValue(field, cache))
