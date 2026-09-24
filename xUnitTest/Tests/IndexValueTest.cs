@@ -44,7 +44,7 @@ public class IndexValueTest
             "Console.writeLine(\"before\")\nlet index = Index.init(-1)\nConsole.writeLine(\"after\")",
             "before\n",
             1,
-            "compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/Core.kimi:20:37: abort KIMI_E_ABORT: Negative Index offset\n");
+            NegativeOffsetLocation() + ": abort KIMI_E_ABORT: Negative Index offset\n");
 
     [Fact]
     public void CatalogRejectsAdditionalStorage()
@@ -56,5 +56,17 @@ public class IndexValueTest
         c.Library.Kotonoha.CreateCodeContext().Parse(index, "public let extra: i32 = 0");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
+    }
+
+    private static string NegativeOffsetLocation()
+    {
+        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Kimi/Library/Core.kimi"));
+        const string Anchor = "$abort(\"Negative Index offset\")";
+        var offset = source.IndexOf(Anchor, StringComparison.Ordinal);
+        Assert.True(offset >= 0);
+        Assert.Equal(offset, source.LastIndexOf(Anchor, StringComparison.Ordinal));
+        var line = source.AsSpan(0, offset).Count('\n') + 1;
+        var column = offset - source.LastIndexOf('\n', offset);
+        return FormattableString.Invariant($"compiler://Kimi/{Compilation.CurrentLanguageVersion}/Core.kimi:{line}:{column}");
     }
 }
