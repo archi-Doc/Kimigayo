@@ -32,7 +32,7 @@ reproducer (a failing test or program variant)
 
 - Keep units small enough to verify in minutes. Split large work into committed steps that each keep the tree green.
 - Unit verification covers only the related tests, native fixtures and harnesses. Do not run the full Debug/Release suites per unit.
-- Never edit sources while a build or `verify.ps1` run is in progress, and never run two test processes at once (they share `bin/scalar-fixtures`).
+- Never edit sources while a build or `verify.ps1` run is in progress. `verify.ps1` isolates fixtures by run and configuration; direct test invocations still share `bin/scalar-fixtures` unless `KIMI_FIXTURE_DIRECTORY` is set.
 - Write test source strings in C# with the Edit tool; shell heredocs corrupt backslashes.
 
 ## 3. Correctness rules

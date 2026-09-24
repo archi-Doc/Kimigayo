@@ -12,6 +12,8 @@ if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $fixtures = if ($FixtureDirectory) { (Resolve-Path -LiteralPath $FixtureDirectory).Path } else { Join-Path $repo 'bin/scalar-fixtures' }
+$selectedFixtures = @(Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern -File)
+if ($selectedFixtures.Count -eq 0) { throw "No scalar fixtures match '$FixturePattern' in '$fixtures'." }
 $out = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory, (Get-Location).ProviderPath) } else { Join-Path $repo 'bin/scalar-native' }
 New-Item -ItemType Directory -Force $out | Out-Null
 $tools = @{}
@@ -34,7 +36,7 @@ function Invoke-Tool([string] $exe, [string[]] $arguments) {
 }
 $runs = 0
 $executionEncoding = [Text.UTF8Encoding]::new($false, $true)
-foreach ($fixture in Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern) {
+foreach ($fixture in $selectedFixtures) {
     $stem = [IO.Path]::Combine($fixtures, $fixture.BaseName)
     $expected = [IO.File]::ReadAllText("$stem.stdout")
     $exit = [int][IO.File]::ReadAllText("$stem.exit")
