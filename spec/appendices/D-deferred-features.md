@@ -66,6 +66,7 @@ The initial [enum](../06-declarations-and-containers.md#63-enums) and [match](..
 | OR Pattern | Agree on binding names, Types, mutability and acquisition across alternatives; define the guard evaluation count. |
 | Range / Rest / Array | Extend coverage explicitly; Rest lengths and dynamic indices do not become implicit Move Paths. |
 | Structural Patterns on `uniq` candidates / exclusive decomposition | Define syntax, shared/exclusive Reborrow, overlapping Loans and invalidation by Case replacement. |
+| Exclusive Subjects and exclusive iteration | Define what `match x@uniq` and `for item in values@uniq` grant: exclusive Pattern bindings, `uniq/T` elements with disjoint element Loans, and their Origins and invalidation. Until then the subject rule rejects an exclusive borrow written as the Subject (§15.1.6), and elements are mutated through indices (§4.5). |
 | Public non-exhaustive enum | Require an explicit declaration and client catch-all rules; do not silently add unknown Cases to closed enums. |
 | Other binding constructs | Specify permitted refutability, failure control flow and scopes for each construct. |
 | Guard candidate capture | Define explicit read-value acquisition syntax and timing and Origin/Loan escape checks; no `@copy` form exists. |

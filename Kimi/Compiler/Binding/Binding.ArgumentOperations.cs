@@ -140,6 +140,20 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 15.1.6 subject rule: a match Subject or for iterable is acquired with shared access only, so an
+    // exclusive borrow written as one is rejected. Binding continues with the shared reborrow the rule performs.
+    private BoundType? RejectExclusiveSubject(Koto subject, BoundType? type)
+    {
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ||
+            KotoHelper.UnwrapParentheses(subject) is not ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.PayloadBorrow or ConversionBinding.ObjectUpcast } conversion)
+        {
+            return type;
+        }
+
+        Fail(conversion, BindingFailure.ExclusiveSubject);
+        return this.InternType(BoundTypeKind.Semantics, null, type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef, [type.Components[0]], origin: type.Origin);
+    }
+
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
     // so a call without applicable candidates names the required spelling (SPEC 15.1.5).
     private bool transferRequired;

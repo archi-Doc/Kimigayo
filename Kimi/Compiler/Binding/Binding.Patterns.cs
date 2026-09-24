@@ -152,12 +152,23 @@ public sealed partial class Binding
 
             expected = subject.Components[0];
         }
-        else if (subject is { Semantics: SemanticsKind.Owner } && IsBarePlace(match.Expression) && this.ProveCopy(subject, match.Expression) != ConstraintProof.Proven)
+        else
         {
-            // SPEC 15.1.6 subject rule: an owned Place is shared-borrowed; a proven-Copy Place is copied instead,
-            // which is observationally the same and keeps no Loan. Consuming a Place is written match x@move.
-            subject = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [subject], origin: this.PlaceOrigin(match.Expression));
-            plan.SharedSubject = subject;
+            subject = this.RejectExclusiveSubject(match.Expression, subject);
+            if (subject is { Semantics: SemanticsKind.Owner } && IsBarePlace(match.Expression) && this.ProveCopy(subject, match.Expression) != ConstraintProof.Proven)
+            {
+                // SPEC 15.1.6 subject rule: an owned Place is shared-borrowed; a proven-Copy Place is copied instead,
+                // which is observationally the same and keeps no Loan. Consuming a Place is written match x@move.
+                subject = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [subject], origin: this.PlaceOrigin(match.Expression));
+                plan.SharedSubject = subject;
+            }
+            else if (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                // SPEC 15.1.6: an exclusive borrow value is shared-reborrowed for the match; it is neither
+                // consumed nor granted exclusive Pattern bindings.
+                subject = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [subject.Components[0]], origin: subject.Origin);
+                plan.SharedSubject = subject;
+            }
         }
 
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);

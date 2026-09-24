@@ -115,6 +115,9 @@ internal enum BindingFailure : byte
     TransferRequired,
     ExclusiveBorrowRequired,
 
+    // SPEC 15.1.6 subject rule: a match Subject or for iterable has shared access only, so @uniq/@objuniq is rejected there.
+    ExclusiveSubject,
+
     // SPEC 7.3: one receiver shape per function group fixed by member lookup.
     ReceiverShapeMismatch,
     MissingSpecializationTarget,

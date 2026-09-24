@@ -298,7 +298,7 @@ while ready => process()
 
 ### 14.6.2. Iteration protocol and acquisition
 
-The recognized Kimi Iterable and Iterator Contracts define `for` iteration. The iterable expression `E` is evaluated once and acquired into a hidden iterable local under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): an owned Place is shared-borrowed, even when its Type is Copy; a borrow value is copied or shared-reborrowed; a Temporary Value, including the result of `E@move`, is acquired by value. Its consuming `iterate` mapping is invoked once on that local, consuming a borrowed local's Copy reference, to obtain a hidden iterator local. `Iterator.next` is then invoked repeatedly with a short exclusive reborrow of that iterator; a `Some` payload supplies the next element, and `None` terminates the loop. Missing or ambiguous conformances are errors; there is no method-name duck typing or fallback protocol.
+The recognized Kimi Iterable and Iterator Contracts define `for` iteration. The iterable expression `E` is evaluated once and acquired into a hidden iterable local under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): an owned Place is shared-borrowed, even when its Type is Copy; a borrow value, including `E@ref` and a `uniq` parameter, is copied or shared-reborrowed; a Temporary Value, including the result of `E@move`, is acquired by value; an exclusive borrow written as `E` (`E@uniq`, `E@objuniq`) is an error. Its consuming `iterate` mapping is invoked once on that local, consuming a borrowed local's Copy reference, to obtain a hidden iterator local. `Iterator.next` is then invoked repeatedly with a short exclusive reborrow of that iterator; a `Some` payload supplies the next element, and `None` terminates the loop. Missing or ambiguous conformances are errors; there is no method-name duck typing or fallback protocol.
 
 ~~~text
 iterable := acquire(E)
@@ -326,14 +326,19 @@ The receiver Loan of `next` ends before the loop body. Results may keep existing
 | `Slice` | `ref/T during source`, even for Copy elements |
 | Dictionary under `owner` Semantics | `(K, V)` pairs consumed in insertion order |
 
-Bare iteration over an owned collection Place therefore borrows it and yields shared references, while `for item in values@move` consumes the collection and yields owned elements. A consumed source remains unavailable until validly reinitialized. A user Type offers shared iteration through a member that returns an Iterable view, such as a Slice; a shared Iterable requirement is a design boundary ([Appendix D](appendices/D-deferred-features.md#d1-enum-and-pattern-extensions)).
+The hidden local of a borrow value is always a shared reference, so a `uniq/Array<T>` or `uniq/[N of T]` value is iterated through the `ref` rows and remains usable after the loop, and a borrowed Slice or ResolvedRange is read as its Copy value.
+
+Bare iteration over an owned collection Place therefore borrows it and yields shared references; `values@ref` means the same. `for item in values@move` consumes the collection and yields owned elements, and `for item in values@uniq` is an error ([subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime)). A consumed source remains unavailable until validly reinitialized. A user Type offers shared iteration through a member that returns an Iterable view, such as a Slice; a shared Iterable requirement is a design boundary ([Appendix D](appendices/D-deferred-features.md#d1-enum-and-pattern-extensions)).
 
 ```kimi
 for item in items        // Shared iteration; items remains usable.
     inspect(item)
 for item in items@move   // Consuming iteration.
     store(item@move)
-``` Source Loans are kept while the iterator or escaped yielded references need them; overlapping mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. See [ranges](04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [Slice iteration](04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
+// for item in items@uniq // Error: iteration never lends items exclusively.
+```
+
+Source Loans are kept while the iterator or escaped yielded references need them; overlapping mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. See [ranges](04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [Slice iteration](04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
 
 Body fall-through and `continue` clean up the current bindings before calling `next` again; `exit`, `return` and outer transfers also clean up the iterator and its unyielded owned elements. The protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
 

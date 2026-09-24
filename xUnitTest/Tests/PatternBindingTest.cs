@@ -52,7 +52,6 @@ public class PatternBindingTest
     [InlineData("func f(x: (i32, i32)) => match x\n    (let n,) => ()")]
     [InlineData("func f<T>(x: Option<T>) => match x\n    .Some(1) => ()\n    _ => ()")]
     [InlineData("func f(x: i32) => match x\n    true => ()")]
-    [InlineData("func f(x: uniq/i32) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("func f(x: ref/(ref/i32 during static) during static) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("func f(x: unsafe/i32) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("func f(x: Option<uniq/i32 during a>) => match x\n    .Some(0) => ()\n    _ => ()")]
@@ -357,10 +356,12 @@ public class PatternBindingTest
     [InlineData("i32", "x", PatternAcquisition.Copy)]
     [InlineData("string", "x@move", PatternAcquisition.Move)]
     [InlineData("ref/i32 during static", "x", PatternAcquisition.Copy)]
-    [InlineData("uniq/i32", "x", PatternAcquisition.Move)]
+    [InlineData("uniq/i32", "x", PatternAcquisition.Copy)]
+    [InlineData("uniq/i32", "x@move", PatternAcquisition.Copy)]
     public void OwnedBindingAcquisitionUsesTheCompleteStoredType(string type, string subject, PatternAcquisition acquisition)
     {
         // SPEC 15.1.6: a bare Non-Copy Place is shared-borrowed; the owned subject needs x@move.
+        // A borrow value, even a transferred one, is shared-reborrowed, so its whole binding Copies a ref.
         var c = Parse($"func f(x: {type}) => match {subject}\n    let value => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var binding = Assert.Single(Plan(c).Positions);

@@ -180,8 +180,11 @@ Getter results are acquired as results, never by moving hidden storage. An alrea
 | Subject `E` | Acquisition |
 | --- | --- |
 | Owned Place, including a Copy one | Shared borrow; the Subject holds a `ref` |
-| Borrow value | Copy of a shared reference, or shared Reborrow of an exclusive one |
+| Borrow value, including `x@ref` and a stored, parameter or returned `uniq`/`objuniq` value | Copy of a shared reference, or shared Reborrow of an exclusive one |
 | Temporary Value, including `x@move` and a call result | Whole-value acquisition by value, materialized without an extra acquisition |
+| Exclusive borrow written as the Subject: `x@uniq`, `x@objuniq`, `x@uniq/T` | Error |
+
+The subject rule grants shared access or ownership, never a new exclusive lending. An exclusive borrow written as the Subject, with or without parentheses, is therefore an error instead of a silently weakened borrow; write the Place bare or as `x@ref` to inspect it, or `x@move` to consume it. `x@ref` is equivalent to the bare Place. An existing exclusive borrow value needs no spelling: it is shared-reborrowed, remains usable after the match, and grants no exclusive Pattern binding. A transferred borrow value is still a borrow value and is reborrowed the same way. Exclusive Pattern bindings and exclusive iteration are a [design boundary](appendices/D-deferred-features.md#d1-enum-and-pattern-extensions).
 
 This happens before arm selection, regardless of bindings, Wildcards, or whether any arm succeeds, and optimization cannot change the original Place's Move state, lifetime or Loans. A proven-Copy Place may be implemented by a Copy of its value instead of a shared borrow: the bindings of a Copy Subject are copies, so the two are observationally equivalent and no Loan is required. A custom, computed or required `get` subject invokes its getter once; a standard stored `get` uses the permitted Place operation. A borrowed Subject's Loan follows the uses of its bindings: an arm without a live borrowed binding may assign to or transfer the original Place.
 
@@ -200,6 +203,7 @@ match message@move                  // Owned Subject: payloads Move.
     .Write(let text) => store(text@move)
     _ => ()
 // use(message)                     // Error: the whole value was transferred.
+// match message@uniq               // Error: a Subject is never lent exclusively.
 ```
 
 Once an arm is selected, its body locals are initialized left to right from the [Candidate Places](14-control-flow.md#1483-guards). An unguarded arm is selected immediately on Pattern success; a guarded arm additionally requires successful guard cleanup.

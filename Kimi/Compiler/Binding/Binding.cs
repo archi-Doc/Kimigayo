@@ -570,6 +570,7 @@ public sealed partial class Binding
                     BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
+                    BindingFailure.ExclusiveSubject => DiagnosticCode.ExclusiveSubject_Kd,
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
