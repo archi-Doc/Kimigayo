@@ -169,7 +169,7 @@ public sealed partial class OwnershipBody
                 loan.Mode != LoanRequirement.Ref || loan.Projection != -1 || this.Operations[loan.Read].Place != loan.Place ||
                 (loan.Guard < 0 && this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
                     ((!loan.Access && loan.Call is null && this.Places[loan.Place].Type.Kind != BoundTypeKind.Function) || this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))) ||
-                (loan.Access ? loan.Call is not null || loan.Guard != -1 || (this.Places[loan.Place].Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array) && !StructStorage.IsStruct(this.Places[loan.Place].Type))
+                (loan.Access ? loan.Call is not null || loan.Guard != -1 || (this.Places[loan.Place].Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary) && !StructStorage.IsStruct(this.Places[loan.Place].Type))
                     : loan.Guard < 0 && !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) && this.Places[loan.Place].Type.Kind != BoundTypeKind.Function) ||
                 this.LoanStates[loan.Read] != i || this.LoanInputs[loan.Read] != loan.Parent)
             {

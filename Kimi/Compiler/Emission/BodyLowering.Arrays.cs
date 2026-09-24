@@ -89,7 +89,7 @@ internal sealed partial class BodyLowering
         }
 
         // Nested handles and zero-sized elements wait for their own storage plans (PLAN P29).
-        if (type.Kind == BoundTypeKind.Array || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never) ||
+        if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never) ||
             this.aggregateLayouts.Get(type) is not { } layout || layout.Value.Layout.Stride <= 0)
         {
             return false;
@@ -171,49 +171,11 @@ internal sealed partial class BodyLowering
             return Fail("Array operation has an unsupported receiver, argument plan or element Type.", out failure);
         }
 
-        Grow(ref this.parameterArguments, target.Parameters.Count);
-        this.parameterArguments.AsSpan(0, target.Parameters.Count).Fill(-1);
-        var cursor = 0;
-        var complete = true;
-        for (var i = -1; i < call.ArgumentNodes.Count; i++)
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
         {
-            var parameter = i < 0 ? 0 : plan.ArgumentToParameter[i];
-            var acquisition = i < 0 ? plan.ReceiverOperation : plan.ArgumentOperations[i];
-            var sourceArgument = i < 0 ? plan.Receiver : call.ArgumentNodes[i];
-            if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 || !ReferenceEquals(acquisition.Source, sourceArgument) ||
-                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow))
-            {
-                return Fail("Invalid Array operation argument mapping or acquisition.", out failure);
-            }
-
-            // The builder omits CallEntry for an argument whose evaluation cannot complete.
-            if (!this.flow!.Nodes[sourceArgument].CanCompleteNormally)
-            {
-                this.parameterArguments[parameter] = -2;
-                complete = false;
-                continue;
-            }
-
-            if (cursor == this.arguments.Count)
-            {
-                return Fail("Missing acquired Array operation argument.", out failure);
-            }
-
-            var entry = this.arguments[cursor++];
-            if (!ReferenceEquals(body.Operations[entry].Source, call) || (body.IsReachable(id) && !this.Dominates(entry, id)))
-            {
-                return Fail("Array operation entry does not match its call.", out failure);
-            }
-
-            this.parameterArguments[parameter] = entry;
+            return false;
         }
 
-        if (cursor != this.arguments.Count || (!complete && body.IsReachable(id)))
-        {
-            return Fail("Array operation has extra arguments or follows a noncompleting argument.", out failure);
-        }
-
-        this.arguments.Clear();
         if (!complete)
         {
             return true;
@@ -332,6 +294,55 @@ internal sealed partial class BodyLowering
         }
 
         function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands));
+        return true;
+    }
+
+    private bool PrepareCollectionArguments(OwnershipBody body, int id, InvocationKoto call, BoundCall plan, FunctionKoto target, out bool complete, out string? failure)
+    {
+        failure = null;
+        Grow(ref this.parameterArguments, target.Parameters.Count);
+        this.parameterArguments.AsSpan(0, target.Parameters.Count).Fill(-1);
+        var cursor = 0;
+        complete = true;
+        for (var i = -1; i < call.ArgumentNodes.Count; i++)
+        {
+            var parameter = i < 0 ? 0 : plan.ArgumentToParameter[i];
+            var acquisition = i < 0 ? plan.ReceiverOperation : plan.ArgumentOperations[i];
+            var sourceArgument = i < 0 ? plan.Receiver : call.ArgumentNodes[i];
+            if (sourceArgument is null || (uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 || !ReferenceEquals(acquisition.Source, sourceArgument) ||
+                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow))
+            {
+                return Fail("Invalid Collection operation argument mapping or acquisition.", out failure);
+            }
+
+            // The builder omits CallEntry for an argument whose evaluation cannot complete.
+            if (!this.flow!.Nodes[sourceArgument].CanCompleteNormally)
+            {
+                this.parameterArguments[parameter] = -2;
+                complete = false;
+                continue;
+            }
+
+            if (cursor == this.arguments.Count)
+            {
+                return Fail("Missing acquired Collection operation argument.", out failure);
+            }
+
+            var entry = this.arguments[cursor++];
+            if (!ReferenceEquals(body.Operations[entry].Source, call) || (body.IsReachable(id) && !this.Dominates(entry, id)))
+            {
+                return Fail("Collection operation entry does not match its call.", out failure);
+            }
+
+            this.parameterArguments[parameter] = entry;
+        }
+
+        if (cursor != this.arguments.Count || (!complete && body.IsReachable(id)))
+        {
+            return Fail("Collection operation has extra arguments or follows a noncompleting argument.", out failure);
+        }
+
+        this.arguments.Clear();
         return true;
     }
 

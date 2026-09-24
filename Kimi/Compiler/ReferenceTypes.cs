@@ -23,7 +23,10 @@ internal static class ReferenceTypes
     internal static bool IsDynamicArray(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
         && type.Components[0].Kind == BoundTypeKind.Array;
 
-    internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) || IsTuple(type) || IsEnum(type) || IsDynamicArray(type) ||
+    internal static bool IsDictionary(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+        && type.Components[0].Kind == BoundTypeKind.Dictionary;
+
+    internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) || IsTuple(type) || IsEnum(type) || IsDynamicArray(type) || IsDictionary(type) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && ReferenceEquals(type.Components[0], BoundType.String)) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             type.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }) ||

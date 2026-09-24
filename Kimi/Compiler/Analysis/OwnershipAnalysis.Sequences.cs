@@ -82,7 +82,7 @@ public sealed partial class OwnershipAnalysis
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
-        this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDynamicArray(this.body.Places[receiver].Type) || FormattingTypes.IsSliceBorrow(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
+        this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDynamicArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDictionary(this.body.Places[receiver].Type) || FormattingTypes.IsSliceBorrow(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
         this.body.Sequences.Add(new(op, kind, receiver, projection, index, end, element));
         return this.RegisterTemporary(result);
     }
@@ -97,7 +97,7 @@ public sealed partial class OwnershipAnalysis
             return projection < 0 ? -1 : this.body.Projections[projection].Root;
         }
 
-        if (source.BoundType?.Kind == BoundTypeKind.Array)
+        if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
             // SPEC 4.6.1: an owned Array shares access for the operation and is never consumed by it.
             var root = this.Expression(source, PlaceUseKind.Read);
@@ -122,7 +122,7 @@ public sealed partial class OwnershipAnalysis
             return root;
         }
 
-        return this.Expression(source, ReferenceTypes.IsArray(source.BoundType) || ReferenceTypes.IsDynamicArray(source.BoundType) || FormattingTypes.IsSliceBorrow(source.BoundType) ? PlaceUseKind.Read : PlaceUseKind.Consume);
+        return this.Expression(source, ReferenceTypes.IsArray(source.BoundType) || ReferenceTypes.IsDynamicArray(source.BoundType) || ReferenceTypes.IsDictionary(source.BoundType) || FormattingTypes.IsSliceBorrow(source.BoundType) ? PlaceUseKind.Read : PlaceUseKind.Consume);
     }
 
     private int SequenceMember(MemberAccessKoto source)

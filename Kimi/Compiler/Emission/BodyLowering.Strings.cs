@@ -155,7 +155,7 @@ internal sealed partial class BodyLowering
         }
 
         // SPEC 4.7.6: an Array handle owns its buffer even when its elements are Copy.
-        if (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Array)
+        if (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
             return true;
         }
@@ -496,7 +496,7 @@ internal sealed partial class BodyLowering
         }
 
         // SPEC 4.7.6: replacing a whole Array destroys the old elements and releases its buffer first.
-        var array = body.Places[operation.Place].Type.Kind == BoundTypeKind.Array;
+        var array = body.Places[operation.Place].Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary;
         if (!array && aggregate is { NeedsDestruction: false })
         {
             return true;

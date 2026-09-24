@@ -40,8 +40,10 @@ internal sealed partial class BodyLowering
             }
         }
 
-        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.arrayHelpers.Count != 0;
+        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed || this.arrayHelpers.Count != 0;
         this.arrayRuntimeUsed = false;
+        module.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;
+        this.dictionaryRuntimeUsed = false;
         module.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
         this.formattingRuntimeUsed = false;
         this.arrayHelpers.Clear();
@@ -82,7 +84,7 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && !ObjectTypes.IsOwner(place.Type))
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && !ObjectTypes.IsOwner(place.Type))
             {
                 continue;
             }
@@ -143,7 +145,7 @@ internal sealed partial class BodyLowering
                 type = type.StoredCases![selected.Ordinal];
                 offset = ownerLayout.PayloadOffset;
             }
-            else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto))
+            else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto { Entries.Count: 0 }))
             {
                 return Fail("Aggregate construction has no matching source shape.", out failure);
             }
@@ -157,7 +159,7 @@ internal sealed partial class BodyLowering
                 _ => null,
             };
             // SPEC 4.3, 4.7.4: an Array literal's payloads keep their own slots; construction moves them into the buffer.
-            var handle = type.Kind == BoundTypeKind.Array;
+            var handle = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary;
             var fill = body.Places[plan.Place].Source is ArrayLiteralKoto { FillLength: not null };
             if ((!handle && !fill && layout.Count != plan.PayloadCount) || (fill && plan.PayloadCount != 1) || (elements is not null && elements.Count != plan.PayloadCount))
             {
@@ -337,7 +339,7 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
             case OwnershipOperationKind.Read when ObjectTypes.IsOwner(place.Type):
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
-            case OwnershipOperationKind.Read when place.Type.Kind == BoundTypeKind.Array:
+            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary:
                 // SPEC 4.6.1: metadata shares the handle in place; the sequence operation loads its fields.
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Array receiver is not initialized.", out failure);
             case OwnershipOperationKind.Declare:
@@ -406,7 +408,7 @@ internal sealed partial class BodyLowering
                     function.Instructions.Add(new(EmissionOpcode.FillArray, id, place.Id, plan.PayloadStart, Aggregate: layout));
                 }
 
-                if (place.Type.Kind == BoundTypeKind.Array)
+                if (place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
                 {
                     // SPEC 4.3, 4.7.4: the handle is zeroed (the empty literal allocates nothing); an element literal reserves its count
                     // once and moves each acquired payload into the buffer in source order.
@@ -415,7 +417,9 @@ internal sealed partial class BodyLowering
                         return Fail("Array construction has no diagnostic source location.", out failure);
                     }
 
-                    function.AddCall(id, WindowsLowering.ArrayInit, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                    var dictionary = place.Type.Kind == BoundTypeKind.Dictionary;
+                    this.dictionaryRuntimeUsed |= dictionary;
+                    function.AddCall(id, dictionary ? WindowsLowering.DictionaryInit : WindowsLowering.ArrayInit, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
                     if (plan.PayloadCount != 0)
                     {
                         if (!this.TryGetArrayElement(place.Type.Components[0], out var element))
@@ -509,7 +513,7 @@ internal sealed partial class BodyLowering
 
                 break;
             case OwnershipOperationKind.Cleanup:
-                if (place.Type.Kind == BoundTypeKind.Array
+                if (place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary
                     ? !this.LowerArrayDestruction(body, function, constants, directory, id, marks, out failure)
                     : !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
                 {
@@ -564,7 +568,9 @@ internal sealed partial class BodyLowering
 
         // SPEC 4.7.6: elements with cleanup are destroyed in reverse index order before the buffer is released.
         var arrayType = body.Places[place].Type;
-        if (arrayType.Kind != BoundTypeKind.Array || !this.TryGetArrayElement(arrayType.Components[0], out var element))
+        var dictionary = arrayType.Kind == BoundTypeKind.Dictionary;
+        ArrayElement element = default;
+        if (!dictionary && (arrayType.Kind != BoundTypeKind.Array || !this.TryGetArrayElement(arrayType.Components[0], out element)))
         {
             return Fail("Array destruction has an unsupported element Type.", out failure);
         }
@@ -575,7 +581,8 @@ internal sealed partial class BodyLowering
             return Fail("Array iterator cleanup requires its initialized cursor.", out failure);
         }
 
-        var callee = element.NeedsDestruction ? this.GetArrayHelper(iterator >= 0 ? ArrayHelperKind.IteratorDrop : ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+        // Only empty Dictionary construction/capacity operations are admitted until entry helpers are available.
+        var callee = !dictionary && element.NeedsDestruction ? this.GetArrayHelper(iterator >= 0 ? ArrayHelperKind.IteratorDrop : ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
         if (conditional)
         {
             // An owning iterator always has a dominating unconditional cursor.

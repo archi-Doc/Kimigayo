@@ -232,6 +232,8 @@ internal sealed class EmissionModule
     /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.7.4).</summary>
     internal bool NeedsArrayRuntime { get; set; }
 
+    internal bool NeedsDictionaryRuntime { get; set; }
+
     internal bool NeedsFormattingRuntime { get; set; }
 
     internal List<(FunctionAbi Wrapper, FunctionAbi Implementation)> FormattingWrites { get; } = new();
@@ -267,6 +269,7 @@ internal sealed class EmissionModule
         this.Aggregates.Clear();
         this.ArrayHelpers.Clear();
         this.NeedsArrayRuntime = false;
+        this.NeedsDictionaryRuntime = false;
         this.NeedsFormattingRuntime = false;
         this.FormattingWrites.Clear();
         this.FormattingConversions.Clear();

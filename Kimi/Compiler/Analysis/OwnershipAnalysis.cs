@@ -634,6 +634,8 @@ public sealed partial class OwnershipAnalysis
             case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.Array:
                 // SPEC 4.3, 4.7.4: an Array literal acquires its elements as payloads that construction moves into the buffer.
                 return this.ConstructAggregate(array, array.Elements);
+            case DictionaryLiteralKoto { Entries.Count: 0, BoundType.Kind: BoundTypeKind.Dictionary } dictionary:
+                return this.ConstructAggregate(dictionary, []);
             case TupleTypeKoto { ElementNodes.Count: 0 }:
                 return this.Temporary(node);
             case InvocationKoto call:
@@ -664,7 +666,7 @@ public sealed partial class OwnershipAnalysis
                 return this.ConversionValue(conversion);
             case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
                 return this.ReadPointer(element, use);
-            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) ||
+            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) || ReferenceTypes.IsDictionary(member.Left.BoundType) ||
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))):
                 return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) || ObjectTypes.IsBorrow(member.Left.BoundType) ||

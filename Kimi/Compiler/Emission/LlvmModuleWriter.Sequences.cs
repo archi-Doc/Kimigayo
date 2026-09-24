@@ -122,7 +122,9 @@ internal static partial class LlvmModuleWriter
             Name(output, "  %seqendptr", id);
             output.Write(" = getelementptr i8, ptr ");
             Address();
-            output.Write(", i64 8\n");
+            output.Write(", i64 ");
+            WriteNumber(output, operands.Length == 3 ? operands[2].Value : 8);
+            output.Write('\n');
             Name(output, "  %seqend", id);
             output.Write(" = load i64, ptr ");
             Name(output, "%seqendptr", id);

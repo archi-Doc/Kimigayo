@@ -60,6 +60,11 @@ internal sealed partial class BodyLowering
             return this.LowerArrayOperation(library, body, function, constants, directory, id, arrayCall, arrayPlan, out failure);
         }
 
+        if (operation.Source is InvocationKoto { BoundCall: { } dictionaryPlan } dictionaryCall && KimiLibraryCatalog.IsDictionaryOperation(dictionaryPlan.Target.CompilerFunction))
+        {
+            return this.LowerDictionaryOperation(body, function, constants, directory, id, dictionaryCall, dictionaryPlan, out failure);
+        }
+
         var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
         var creation = operation.Source is InvocationKoto { BoundCall: { } objectCall } ? this.ObjectCalls?.GetValueOrDefault(objectCall) : null;
         var original = (operation.Source as InvocationKoto)?.BoundCall;

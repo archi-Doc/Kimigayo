@@ -109,7 +109,7 @@ internal sealed class AggregateLayoutPool
         }
 
         // SPEC 4.6.8, 4.7.4: a Slice is {buffer, length}; an Array handle is {buffer, length, capacity}.
-        var sequence = type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array;
+        var sequence = type.Kind is BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
         if ((!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)) ||
             type.Semantics != SemanticsKind.Owner || (!sequence && type.Origin is not null) || (!structure && type.OriginArguments.Count != 0) ||
             (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Components.Count != 1)))
@@ -124,7 +124,7 @@ internal sealed class AggregateLayoutPool
 
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
-        var fieldCount = sequence ? (type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? StructStorage.Count(type) : type.Components.Count;
+        var fieldCount = sequence ? (type.Kind == BoundTypeKind.Dictionary ? 7 : type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? StructStorage.Count(type) : type.Components.Count;
         var count = array ? (int)type.Length : fieldCount;
         if (cLayout && (fieldCount == 0 || StructStorage.Declaration(type) is not { Bases.Count: 0 } declaration || (declaration.Modifier & ModifierKind.Open) != 0))
         {
@@ -142,14 +142,14 @@ internal sealed class AggregateLayoutPool
             for (var i = 0; i < fieldCount; i++)
             {
                 var component = sequence ? BoundType.ISize : structure ? StructStorage.FieldType(type, i)! : type.Components[i];
-                if (component.Kind == BoundTypeKind.Array)
+                if (component.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
                 {
                     this.resolved[type] = null; // An Array field would need its buffer released by the container's destruction (PLAN P29).
                     return null;
                 }
 
                 var child = this.Get(component, depth + 1);
-                var value = type.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && i == 0 ? WindowsLowering.StringReference : child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
+                var value = type.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary && i == 0 ? WindowsLowering.StringReference : child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
                 if (value is null || (cLayout && (value.Layout.Size == 0 || value.Layout.Alignment > 16)))
                 {
                     this.resolved[type] = null;

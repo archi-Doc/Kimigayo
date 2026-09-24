@@ -105,7 +105,13 @@ public sealed partial class OwnershipAnalysis
             // has no stride-based storage plan yet and is refused here rather than at generation.
             // A generic element is checked again by each instance under its substitution.
             var element = type.Components[0];
-            return element.Kind == BoundTypeKind.Parameter || (element.Kind != BoundTypeKind.Array && this.SupportsType(element) && !IsZeroSized(element));
+            return element.Kind == BoundTypeKind.Parameter || (element.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && this.SupportsType(element) && !IsZeroSized(element));
+        }
+
+        if (type.Kind == BoundTypeKind.Dictionary)
+        {
+            return type.Components.Count == 2 && this.SupportsType(type.Components[0]) && this.SupportsType(type.Components[1]) &&
+                type.Components[0].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && type.Components[1].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary);
         }
 
         if (type.Kind == BoundTypeKind.Primitive)
@@ -139,7 +145,7 @@ public sealed partial class OwnershipAnalysis
             {
                 var field = this.compilation.Binding.StoredType(StructStorage.Field(type, i), type);
                 // An Array field would need its buffer released by the container's destruction (PLAN P29).
-                supported = field is not null && field.Kind != BoundTypeKind.Array && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
+                supported = field is not null && field.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
                 type.StoredFields[i] = field!;
             }
 
@@ -152,7 +158,7 @@ public sealed partial class OwnershipAnalysis
             supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                supported &= type.Components[i].Kind != BoundTypeKind.Array && (type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]));
+                supported &= type.Components[i].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && (type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]));
             }
 
             this.supportedTypes[type] = supported;
@@ -188,7 +194,7 @@ public sealed partial class OwnershipAnalysis
 
         for (var i = 0; i < storage.Count && supported; i++)
         {
-            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && payload.Kind != BoundTypeKind.Array && (payload.Kind == BoundTypeKind.Parameter || this.SupportsType(payload));
+            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && payload.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && (payload.Kind == BoundTypeKind.Parameter || this.SupportsType(payload));
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);

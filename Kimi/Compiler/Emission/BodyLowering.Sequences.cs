@@ -55,7 +55,7 @@ internal sealed partial class BodyLowering
         };
         var receiverPlace = body.Places[plan.Receiver];
         var acquiredSource = syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow &&
-            ReferenceTypes.IsDynamicArray(receiverPlace.Type) && ReferenceEquals(receiverPlace.Type, SignatureType(this, borrow.BoundType))
+            (ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, SignatureType(this, borrow.BoundType))
             ? ElementAccess.ValueSource(borrow.Left) : syntaxReceiver;
         if (syntaxReceiver is null || plan.Projection < -1 ||
             (plan.Projection < 0 && !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source), acquiredSource) &&
@@ -90,7 +90,7 @@ internal sealed partial class BodyLowering
         }
 
         var address = new EmissionOperand(EmissionOperandKind.SlotAddress, plan.Receiver);
-        var borrowedArray = ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver) || FormattingTypes.IsSliceBorrow(receiver);
+        var borrowedArray = ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver);
         if (!borrowedArray && value.Count != 0)
         {
             return Fail("Owned sequence metadata must not carry a reference operand.", out failure);
@@ -307,9 +307,9 @@ internal sealed partial class BodyLowering
         };
         if (name is null || (operation.Source is not ForKoto && operation.Source is not MemberAccessKoto { Right: IdentifierNameKoto }) ||
             (operation.Source is MemberAccessKoto { Right: IdentifierNameKoto member } && member.IdentifierName != name) ||
-            (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array) &&
+            (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary) &&
                 !(FormattingTypes.IsUtf8Slice(receiver) && plan.Kind == SequenceOperation.Length && this.aggregateLayouts.Get(receiver) is { Value.Layout.Size: 16, Fields.Length: 1 } viewLayout && viewLayout.Offset(0) == 0)) ||
-            (plan.Kind == SequenceOperation.Capacity && receiver.Kind != BoundTypeKind.Array) ||
+            (plan.Kind == SequenceOperation.Capacity && receiver.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary)) ||
             (plan.Kind == SequenceOperation.Indices ? operation.Source is not MemberAccessKoto { Right: IdentifierNameKoto { IdentifierName: "indices" } } ||
                 receiver.Kind == BoundTypeKind.ResolvedRange || !ReferenceEquals(ValueType(body, id), BoundType.ResolvedRange) :
                 plan.Kind == SequenceOperation.IsEmpty ? !ReferenceEquals(ValueType(body, id), BoundType.Boolean) : !ReferenceEquals(ValueType(body, id), BoundType.ISize)))
@@ -317,7 +317,7 @@ internal sealed partial class BodyLowering
             return Fail("Sequence operation does not match its source and result Type.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1)], place: operation.Place, op: name, representation: receiver.Kind == BoundTypeKind.ResolvedRange ? WindowsLowering.Unit : null);
+        function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1), new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.Dictionary ? 24 : 8)], place: operation.Place, op: name, representation: receiver.Kind == BoundTypeKind.ResolvedRange ? WindowsLowering.Unit : null);
         return true;
     }
 }

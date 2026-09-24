@@ -95,6 +95,11 @@ internal static partial class LlvmModuleWriter
             WriteFormattingWrappers(module, output);
         }
 
+        if (module.NeedsDictionaryRuntime)
+        {
+            output.Write(DictionaryRuntime);
+        }
+
         if (module.NeedsStringComparison)
         {
             output.Write(StringComparisons);
