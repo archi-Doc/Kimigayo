@@ -8,6 +8,48 @@ namespace XunitTest;
 public class ComparisonOperatorTest
 {
     [Fact]
+    public void ForwardingAndExplicitSpecializationPreserveNaNContractEquality()
+    {
+        const string Source = """
+            func equal<T>(left: ref/T, right: ref/T) -> bool
+                T is Equatable
+                return left == right
+            specialize func equal<f64>(left: ref/f64, right: ref/f64) -> bool
+                Console.writeLine("specialized")
+                return left.equals(right)
+            func forward<T>(left: ref/T, right: ref/T) -> bool
+                T is Equatable
+                return equal<T>(left, right)
+            let nan: f64 = 0.0 / 0.0
+            let zero: f64 = 0.0
+            require forward(nan@ref, nan@ref) else => $abort("NaN")
+            require not forward(nan@ref, zero@ref) else => $abort("different")
+            require not (nan == nan) else => $abort("IEEE")
+            """;
+        ScalarEmissionTest.EmitFixture("ComparisonOperatorSpecialization", Source, "specialized\nspecialized\n");
+    }
+
+    [Fact]
+    public void ReturningDuringTheRightOperandAbandonsTheComparison()
+    {
+        const string Source = """
+            struct Key
+                Self is Equatable
+                public func equals(self: ref/Self, other: ref/Self) -> bool
+                    Console.writeLine("unexpected witness")
+                    return true
+                deinit => Console.writeLine("destroyed")
+            func run() -> i32
+                let first = Key.init()
+                defer => Console.writeLine("deferred")
+                let ignored = first == (do => return 7)
+                return 0
+            require run() == 7 else => $abort("return")
+            """;
+        ScalarEmissionTest.EmitFixture("ComparisonOperatorReturn", Source, "deferred\ndestroyed\n");
+    }
+
+    [Fact]
     public void OperandsEvaluateOnceAndTemporariesAreDestroyedAfterTheWitness()
     {
         const string Source = """
