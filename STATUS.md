@@ -79,6 +79,8 @@ Fixed-array fill `[N of value]` is implemented through parsing, Binding, ownersh
 
 Array literals and fixed-array fill retain actual nested reference Origins while inferring omitted local annotations. Independent literals combine only permitted Origin restrictions of the same Core; transfers check both complete semantic compatibility and identical physical storage. Fixed/dynamic Tuple elements execute natively, and retained element references reject owner invalidation. Evidence: 210 related tests and 16 O0/O2 executions (`bin/verify/20260924-035409-908-unit-array-literal-origins-verified`), including the existing zero-allocation warm inference check.
 
+Borrowing a complete owned local also proves the required ordering of its stored Origins for nested reference formation. The annotation being checked cannot supply its own premise, and ownership still checks every retained dependency at its uses. Nested reference patterns with and without an explicit Origin intersection pass; moving the original owner before the read rejects (`bin/verify/20260924-041638-863-unit-nested-local-origin-premises-complete`: 220 tests, 24 O0/O2 executions).
+
 #### UTF-8 formatting
 
 The normative profile, effect/allocation audits, example and Program 32 pass focused and full-session verification. The baseline above covers the complete final source; the following unit records identify each support boundary.

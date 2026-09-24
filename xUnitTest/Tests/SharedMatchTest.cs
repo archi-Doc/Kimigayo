@@ -67,8 +67,10 @@ public class SharedMatchTest
         NativeAllocationAudit.WriteFixture("SharedMatchTuple", Source, 1, 1, 5, "hello\nhello\n");
     }
 
-    [Fact]
-    public void NestedReferencePatternsFollowTheirOwnAddresses()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NestedReferencePatternsFollowTheirOwnAddresses(bool explicitIntersection)
     {
         const string Source = """
             enum E<T>
@@ -78,7 +80,7 @@ public class SharedMatchTest
             let savedText = text@ref
             let inner = (savedText, 42)
             let input = inner@ref
-            let value: E<ref/(ref/string during savedText, i32) during (input and savedText)> = .Some(input)
+            let value: E<ref/(ref/string during savedText, i32) during input> = .Some(input)
             match value@ref
                 .Some(("wrong", _)) => $abort("wrong")
                 .Some((let saved, let number))
@@ -86,10 +88,15 @@ public class SharedMatchTest
                     Console.writeLine(saved)
                 .None => $abort("none")
             """;
-        var c = MinimalEmissionTest.Analyze(Source);
+        var source = explicitIntersection ? Source.Replace("during input>", "during (input and savedText)>", StringComparison.Ordinal) : Source;
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Binding.Obligations));
-        NativeAllocationAudit.WriteFixture("SharedMatchNestedReferences", Source, 0, 0, 0, "hello\n");
+        NativeAllocationAudit.WriteFixture("SharedMatchNestedReferences" + explicitIntersection, source, 0, 0, 0, "hello\n");
+        var invalid = MinimalEmissionTest.Analyze(source.Replace("match value@ref", "_ = text@move\nmatch value@ref", StringComparison.Ordinal));
+        Assert.True(invalid.Binding.Result.IsComplete, string.Join("\n", invalid.Binding.Issues));
+        Assert.Contains(invalid.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(invalid.Emission.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]

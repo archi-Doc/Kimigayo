@@ -23,6 +23,19 @@ public sealed partial class Binding
         return false;
     }
 
+    private static bool IsWithin(Koto use, Koto declaration)
+    {
+        for (var current = use; current is not null; current = current.Parent)
+        {
+            if (ReferenceEquals(current, declaration))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use)
     {
         for (var node = use; node is not null; node = node.Parent)
@@ -52,6 +65,17 @@ public sealed partial class Binding
 
         try
         {
+            // A borrow of a complete local Place is usable only while every stored
+            // dependency is valid. Ownership verifies that availability at each use.
+            // This is a premise of borrowing the Place, not a relation declared by
+            // the annotation currently being checked.
+            if (shorter is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
+                this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner } stored &&
+                !IsWithin(use, variable) && this.ProvesStoredOriginPremise(stored, longer, use))
+            {
+                return true;
+            }
+
             if (longer.Kind == OriginKind.Intersection)
             {
                 var all = true;
@@ -118,6 +142,32 @@ public sealed partial class Binding
         {
             this.originProofPath.Remove((longer, shorter));
         }
+    }
+
+    private bool ProvesStoredOriginPremise(BoundType type, BoundOrigin longer, Koto use)
+    {
+        if (type.Origin is { } origin && this.ProvesOriginOutlives(longer, origin, use))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (this.ProvesOriginOutlives(longer, type.OriginArguments[i], use))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.ProvesStoredOriginPremise(type.Components[i], longer, use))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool ProvesTypeOriginPremise(BoundType type, BoundOrigin longer, BoundOrigin shorter, Koto use)
