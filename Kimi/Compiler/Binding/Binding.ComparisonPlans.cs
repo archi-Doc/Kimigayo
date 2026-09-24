@@ -31,7 +31,7 @@ public sealed partial class Binding
         BoundComparison[] parts = [];
         if (ComparisonTypes.IsComposite(self))
         {
-            parts = new BoundComparison[self.Components.Count];
+            parts = cached.Plan?.Parts.Length == self.Components.Count ? cached.Plan.Parts : new BoundComparison[self.Components.Count];
             for (var i = 0; i < parts.Length; i++)
             {
                 if (this.ComparisonPlan(site, self.Components[i], identity, operators) is not { } part)
@@ -39,7 +39,15 @@ public sealed partial class Binding
                     return null;
                 }
 
-                parts[i] = part;
+                if (!ReferenceEquals(parts[i], part))
+                {
+                    if (ReferenceEquals(parts, cached.Plan?.Parts))
+                    {
+                        parts = (BoundComparison[])parts.Clone();
+                    }
+
+                    parts[i] = part;
+                }
             }
         }
         else if (!ComparisonTypes.IsBuiltin(self, identity) && !(operators && self.IsNumeric))
@@ -51,7 +59,9 @@ public sealed partial class Binding
             }
         }
 
-        var plan = new BoundComparison(self, identity == KimiDeclarationId.Equatable, operators, implementation, parts);
+        // Revalidate witnesses every Binding pass, retaining only unchanged immutable plans.
+        var plan = cached.Plan is { } previous && ReferenceEquals(previous.Implementation, implementation) && ReferenceEquals(previous.Parts, parts)
+            ? previous : new BoundComparison(self, identity == KimiDeclarationId.Equatable, operators, implementation, parts);
         this.comparisonPlans[key] = (this.storageVersion, plan);
         return plan;
     }

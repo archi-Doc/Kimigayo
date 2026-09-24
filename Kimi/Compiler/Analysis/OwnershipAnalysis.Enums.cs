@@ -252,7 +252,7 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(output);
     }
 
-    private int ConstructAggregate(Koto source, List<Koto> elements)
+    private int ConstructAggregate(Koto source, IReadOnlyList<Koto> elements)
     {
         if (source.BoundType is { } sourceType && !AggregateCanComplete(sourceType))
         {

@@ -8,6 +8,7 @@ internal sealed partial class GenericStoragePlan
 {
     private readonly Dictionary<BoundCall, FunctionAbi> comparisonCalls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundComparison, FunctionAbi> comparisonHelpers = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundComparison, (FunctionAbi Abi, FunctionAbi[] Children)> comparisonStorage = new(ReferenceEqualityComparer.Instance);
 
     internal IReadOnlyDictionary<BoundCall, FunctionAbi> ComparisonCalls => this.comparisonCalls;
 
@@ -70,7 +71,13 @@ internal sealed partial class GenericStoragePlan
         // A generic leaf may recursively call this same composite comparison.
         if (plan.Implementation is null || (!plan.Equality && plan.Operators))
         {
-            abi = new("__kimi_comparison" + this.comparisonHelpers.Count, plan.Equality ? "i1" : "i32", [new("ptr", "a0", LogicalIndex: 0), new("ptr", "a1", LogicalIndex: 1)]);
+            if (!this.comparisonStorage.TryGetValue(plan, out var storage))
+            {
+                storage = (new("__kimi_comparison" + this.comparisonStorage.Count, plan.Equality ? "i1" : "i32", [new("ptr", "a0", LogicalIndex: 0), new("ptr", "a1", LogicalIndex: 1)]), new FunctionAbi[plan.Parts.Length]);
+                this.comparisonStorage.Add(plan, storage);
+            }
+
+            abi = storage.Abi;
             this.comparisonHelpers.Add(plan, abi);
         }
 
@@ -105,7 +112,7 @@ internal sealed partial class GenericStoragePlan
             }
         }
 
-        var children = new FunctionAbi[plan.Parts.Length];
+        var children = this.comparisonStorage[plan].Children;
         for (var i = 0; i < children.Length; i++)
         {
             if (!this.PrepareComparisonHelper(compilation, module, layouts, plan.Parts[i], out var child, out failure, depth + 1))
