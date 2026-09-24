@@ -54,8 +54,7 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = plan.Target.CompilerFunction;
-        if (operation == CompilerFunctionKind.DictionaryShrinkToFit ||
-            plan.Target.Declaration is not FunctionKoto target || plan.Receiver is null || call.AttributeChain is not null ||
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is null || call.AttributeChain is not null ||
             plan.ReceiverOperation.Kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != call.ArgumentNodes.Count || plan.ArgumentToParameter.Length != call.ArgumentNodes.Count ||
             call.ArgumentNodes.Count + 1 != target.Parameters.Count || target.BoundSymbol?.ReceiverIndex != 0 ||
@@ -85,16 +84,19 @@ internal sealed partial class BodyLowering
         this.callOperands.Clear();
         this.callOperands.Add(handle);
         FunctionAbi abi;
-        if (operation == CompilerFunctionKind.DictionaryReserve)
+        if (operation is CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryShrinkToFit)
         {
-            if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var additional))
-            {
-                return Fail("Dictionary reserve amount is unavailable.", out failure);
-            }
-
-            abi = WindowsLowering.DictionaryReserve;
+            abi = operation == CompilerFunctionKind.DictionaryReserve ? WindowsLowering.DictionaryReserve : WindowsLowering.DictionaryShrink;
             this.callOperands.Add(new(EmissionOperandKind.Integer, this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value).Stride));
-            this.callOperands.Add(additional);
+            if (operation == CompilerFunctionKind.DictionaryReserve)
+            {
+                if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var additional))
+                {
+                    return Fail("Dictionary reserve amount is unavailable.", out failure);
+                }
+
+                this.callOperands.Add(additional);
+            }
         }
         else if (operation == CompilerFunctionKind.DictionaryClear)
         {

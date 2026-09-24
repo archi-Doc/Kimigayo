@@ -65,6 +65,7 @@ internal static partial class WindowsLowering
     internal static readonly FunctionAbi ArrayReserve = new("__kimi_array_reserve", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "additional"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
     internal static readonly FunctionAbi DictionaryReserve = new("__kimi_dictionary_reserve", Unit.ComputationType, ArrayReserve.Parameters);
     internal static readonly FunctionAbi ArrayShrink = new("__kimi_array_shrink", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
+    internal static readonly FunctionAbi DictionaryShrink = new("__kimi_dictionary_shrink", Unit.ComputationType, ArrayShrink.Parameters);
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters, noReturn: true);
     internal static readonly FunctionAbi TestTempDirectory = new("__kimi_test_temp", "void", [new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true);
 

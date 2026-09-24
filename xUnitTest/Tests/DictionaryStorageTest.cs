@@ -28,9 +28,21 @@ public class DictionaryStorageTest
         => NativeAllocationAudit.WriteFixture("DictionaryStorageBorrow", "func length(value: ref/Dictionary<i32, i32>) -> isize => value.length\nvar entries: Dictionary<i32, i32> = [:]\nentries.reserve(3)\nrequire length(entries) == 0 else => $abort(\"borrow\")", 1, 1, 96);
 
     [Theory]
+    [InlineData("Negative", "-1", "KIMI_E_ARGUMENT: Invalid argument value")]
+    [InlineData("Overflow", "9223372036854775807", "KIMI_E_INT_OVERFLOW: Integer overflow")]
+    [InlineData("Size", "9223372036854775806", "KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
+    public void ReserveRejectsInvalidOrUnrepresentableCapacityBeforeAllocation(string name, string amount, string reason)
+    {
+        var source = "var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)\nentries.reserve(" + amount + ")";
+        var c = MinimalEmissionTest.Analyze(source);
+        using var output = new StringWriter();
+        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        ScalarEmissionTest.WriteFixture("DictionaryStorageLimit" + name, output.ToString(), string.Empty, 1, "Hello.kimi:3:1: abort " + reason + "\n");
+    }
+
+    [Theory]
     [InlineData("let values: Array<Dictionary<i32, i32>> = [[:]]")]
     [InlineData("let entries: Dictionary<i32, i32> = [1: 2]")]
-    [InlineData("var entries: Dictionary<i32, i32> = [:]\nentries.shrinkToFit()")]
     public void UnimplementedStorageOperationsRefuseGeneration(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

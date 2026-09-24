@@ -7,7 +7,7 @@ namespace XunitTest;
 
 internal static class NativeAllocationAudit
 {
-    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "")
+    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0)
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
@@ -39,7 +39,7 @@ internal static class NativeAllocationAudit
             }
             """;
         ir += "\n" + start + "\n";
-        ir += """
+        ir += $$"""
 
             @audit_allocations = private global i64 0
             @audit_frees = private global i64 0
@@ -52,6 +52,11 @@ internal static class NativeAllocationAudit
               %before = load i64, ptr @audit_bytes
               %total = add i64 %before, %size
               store i64 %total, ptr @audit_bytes
+              %fail = icmp eq i64 %count, {{failAllocation}}
+              br i1 %fail, label %rejected, label %allocate
+            rejected:
+              ret ptr null
+            allocate:
               %data = call ptr @HeapAlloc(ptr %heap, i32 %flags, i64 %size)
               ret ptr %data
             }
