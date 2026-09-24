@@ -4,9 +4,8 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
-    // Allocate a candidate before touching the old buffer. Linear compaction preserves
-    // insertion order and transfers bytes without equality or destruction callbacks.
-    private const string DictionaryShrinkBody = """
+    // Allocation is the platform boundary. Compaction itself is ordinary Kimigayo.
+    private const string DictionaryShrinkAllocation = """
         entry:
           %length_ptr = getelementptr i8, ptr %handle, i64 24
           %length = load i64, ptr %length_ptr, align 8
@@ -28,40 +27,9 @@ internal static partial class LlvmModuleWriter
           %failed = icmp eq ptr %memory, null
           br i1 %failed, label %done, label %prepare
         prepare:
-          %head_ptr = getelementptr i8, ptr %handle, i64 32
-          %head = load i64, ptr %head_ptr, align 8
-          br label %copy
-        copy:
-          %link = phi i64 [ %head, %prepare ], [ %next, %copy ]
-          %position = phi i64 [ 0, %prepare ], [ %advanced, %copy ]
-          %index = sub i64 %link, 1
-          %offset = mul i64 %index, %stride
-          %slot = getelementptr i8, ptr %buffer, i64 %offset
-          %next_ptr = getelementptr i8, ptr %slot, i64 8
-          %next = load i64, ptr %next_ptr, align 8
-          %destination_offset = mul i64 %position, %stride
-          %destination = getelementptr i8, ptr %memory, i64 %destination_offset
-          call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %slot, i64 %stride, i1 false)
-          %advanced = add i64 %position, 1
-          %last = icmp eq i64 %advanced, %length
-          %following = add i64 %advanced, 1
-          %next_link = select i1 %last, i64 0, i64 %following
-          %destination_next = getelementptr i8, ptr %destination, i64 8
-          store i64 %position, ptr %destination, align 8
-          store i64 %next_link, ptr %destination_next, align 8
-          br i1 %last, label %replace, label %copy
-        replace:
-          call void @__kimi_free(ptr %buffer, ptr %location, i64 %location_length)
-          store ptr %memory, ptr %handle, align 8
-          store i64 %length, ptr %capacity_ptr, align 8
-          %used_ptr = getelementptr i8, ptr %handle, i64 8
-          store i64 %length, ptr %used_ptr, align 8
-          store i64 1, ptr %head_ptr, align 8
-          %tail_ptr = getelementptr i8, ptr %handle, i64 40
-          store i64 %length, ptr %tail_ptr, align 8
-          %free_ptr = getelementptr i8, ptr %handle, i64 48
-          store i64 0, ptr %free_ptr, align 8
-          br label %done
+        """;
+
+    private const string DictionaryShrinkRelease = """
         release:
           call void @__kimi_free(ptr %buffer, ptr %location, i64 %location_length)
           call void @__kimi_dictionary_init(ptr %handle, ptr %location, i64 %location_length)
@@ -77,6 +45,16 @@ internal static partial class LlvmModuleWriter
     private static readonly string DictionaryRuntime = WindowsLowering.DictionaryReserve.GetDefinition(false) + ArrayReserveBody
             .Replace("ptr %handle, i64 8", "ptr %handle, i64 24", StringComparison.Ordinal)
             .Replace("REASON_ARGUMENT", Reason(WindowsLowering.ArgumentReason), StringComparison.Ordinal)
-            .Replace("REASON_OVERFLOW", Reason(WindowsLowering.IntegerOverflowReason), StringComparison.Ordinal) +
-        WindowsLowering.DictionaryShrink.GetDefinition(false) + DictionaryShrinkBody;
+            .Replace("REASON_OVERFLOW", Reason(WindowsLowering.IntegerOverflowReason), StringComparison.Ordinal);
+
+    private static void WriteDictionaryShrink(EmissionModule module, TextWriter output)
+    {
+        output.Write("@__kimi_dictionary_transfer_table = private constant { ptr, ptr, ptr } { ptr @__kimi_dictionary_transfer, ptr null, ptr null }, align 8\ndefine internal void @__kimi_dictionary_transfer(i64 %environment, ptr %destination, ptr %source, i64 %size, ptr %context) #0 {\nentry:\n  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n  ret void\n}\n\n");
+        output.Write(WindowsLowering.DictionaryShrink.GetDefinition(false));
+        output.Write(DictionaryShrinkAllocation);
+        output.Write("\n  %callback = alloca { i64, ptr }, align 8\n  store i64 0, ptr %callback, align 8\n  %table = getelementptr i8, ptr %callback, i64 8\n  store ptr @__kimi_dictionary_transfer_table, ptr %table, align 8\n  %old = call ptr @");
+        output.Write(module.DictionaryCompact!.Name);
+        output.Write("(ptr %handle, ptr %memory, i64 %stride, ptr %callback)\n  call void @__kimi_free(ptr %old, ptr %location, i64 %location_length)\n  br label %done\n");
+        output.Write(DictionaryShrinkRelease);
+    }
 }

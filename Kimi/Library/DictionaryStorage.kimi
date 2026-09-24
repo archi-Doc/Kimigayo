@@ -1,6 +1,38 @@
 // Private ordered-storage algorithms. The compiler supplies allocation and typed
 // acquisition/destruction; this source owns slot links and free-slot reuse.
 group DictionaryStorage
+    // The caller allocates memory before calling; failure leaves the old handle
+    // intact. Transfer does not acquire or destroy entries or call user code.
+    unsafe func compact(handle: unsafe/isize, memory: unsafe/u8, stride: isize, transfer: (unsafe/u8, unsafe/u8, isize) -> ()) -> unsafe/u8
+        unsafe
+            let buffer = *(handle@unsafe/unsafe/u8)
+            let length = handle[3]
+            var link = handle[4]
+            var position: isize = 0
+            while link != 0
+                let slot = buffer + (link - 1) * stride
+                let next = (slot@unsafe/isize)[1]
+                let destination = memory + position * stride
+                transfer(destination, slot, stride)
+                let links = destination@unsafe/isize
+                links[0] = position
+                position += 1
+                if position == length
+                    links[1] = 0
+                else
+                    links[1] = position + 1
+                link = next
+            *(handle@unsafe/unsafe/u8) = memory
+            handle[1] = length
+            handle[2] = length
+            if length == 0
+                handle[4] = 0
+            else
+                handle[4] = 1
+            handle[5] = length
+            handle[6] = 0
+            return buffer
+
     unsafe func clear(handle: unsafe/isize, stride: isize, keyOffset: isize, valueOffset: isize, destroyEntry: (unsafe/u8, unsafe/u8) -> ())
         unsafe
             let buffer = *(handle@unsafe/unsafe/u8)

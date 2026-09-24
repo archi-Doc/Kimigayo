@@ -41,6 +41,7 @@ public sealed partial class KimiLibrary
         this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
         this.DictionaryFind = (FunctionKoto)FindDeclaration(dictionaryStorage, "find", true)!;
         this.DictionaryClear = (FunctionKoto)FindDeclaration(dictionaryStorage, "clear", true)!;
+        this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
         foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.WriteWindow, KimiLibraryContainer.Utf8Writer })
         {
@@ -197,6 +198,8 @@ public sealed partial class KimiLibrary
     internal FunctionKoto DictionaryFind { get; }
 
     internal FunctionKoto DictionaryClear { get; }
+
+    internal FunctionKoto DictionaryCompact { get; }
 
     internal GroupKoto Console { get; }
 
