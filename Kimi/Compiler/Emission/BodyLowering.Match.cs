@@ -162,7 +162,10 @@ internal sealed partial class BodyLowering
 
                 this.subjectInitializers[operation.Place] = id;
                 // Ownership changes identity; the already acquired storage is reused.
-                function.SlotAddresses[operation.Place] = function.SlotAddresses[operation.Input];
+                if (!ReferenceTypes.IsStorage(body.Places[operation.Place].Type))
+                {
+                    function.SlotAddresses[operation.Place] = function.SlotAddresses[operation.Input];
+                }
             }
         }
 
@@ -216,7 +219,7 @@ internal sealed partial class BodyLowering
 
                 var pattern = binding.Positions[arm.Pattern];
                 var composite = this.IsCompositeSubject(this.Matched(pattern.MatchedType));
-                if (pattern.Parent != -1 || (!composite && (pattern.End != arm.Pattern + 1 || arm.DecompositionCount != 0)) || pattern.AccessMode != PatternAccessMode.Owned || pattern.ImplicitDeref != PatternImplicitDeref.None ||
+                if (pattern.Parent != -1 || (!composite && (pattern.End != arm.Pattern + 1 || arm.DecompositionCount != 0 || pattern.AccessMode != PatternAccessMode.Owned || pattern.ImplicitDeref != PatternImplicitDeref.None)) ||
                     !ReferenceEquals(this.Matched(pattern.MatchedType), body.Places[match.Subject].Type) ||
                     body.Operations[arm.Test].Kind != OwnershipOperationKind.PatternTest || body.Operations[arm.Test].Place != match.Subject ||
                     body.OperationSteps[arm.Test] != armIndex || !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[arm.Test].Source), pattern.Source) || !this.PureMatchTest(body, arm.Test))
@@ -559,7 +562,7 @@ internal sealed partial class BodyLowering
 
     private bool TryMatchNumber(BoundPattern pattern, out Int128 bits)
     {
-        if (pattern.Literal.Kind == PatternLiteralKind.Character && ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.Char) &&
+        if (pattern.Literal.Kind == PatternLiteralKind.Character && ReferenceEquals(this.PatternType(pattern), BoundType.Char) &&
             !pattern.Literal.Negative && pattern.Literal.Magnitude <= 0x10FFFF &&
             pattern.Source is CharLiteralKoto { Value: { } scalar } && (UInt128)scalar.Value == pattern.Literal.Magnitude)
         {
@@ -569,7 +572,7 @@ internal sealed partial class BodyLowering
 
         bits = 0;
         return pattern.Literal.Kind == PatternLiteralKind.Integer &&
-            ScalarTypes.TryLiteral(this.Matched(pattern.MatchedType), pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out bits);
+            ScalarTypes.TryLiteral(this.PatternType(pattern), pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out bits);
     }
 
     private bool ValidateCandidateRead(OwnershipBody body, int id, out string? failure)

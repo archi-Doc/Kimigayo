@@ -23,8 +23,29 @@ internal static partial class LlvmModuleWriter
             var step = steps[i];
             Name(output, "test", i);
             output.Write(":\n");
+            var dereferences = step.DereferenceOffsets;
+            if (dereferences is not null)
+            {
+                for (var d = 0; d < dereferences.Length; d++)
+                {
+                    Name(output, "  %derefAddress", i);
+                    Name(output, "_", d);
+                    output.Write(" = getelementptr i8, ptr ");
+                    WritePatternBase(output, i, d);
+                    Name(output, ", i64 ", dereferences[d]);
+                    output.Write('\n');
+                    Name(output, "  %deref", i);
+                    Name(output, "_", d);
+                    Name(output, " = load ptr, ptr %derefAddress", i);
+                    Name(output, "_", d);
+                    output.Write(", align 8\n");
+                }
+            }
+
             Name(output, "  %address", i);
-            Name(output, " = getelementptr i8, ptr %subject, i64 ", step.Offset);
+            output.Write(" = getelementptr i8, ptr ");
+            WritePatternBase(output, i, dereferences?.Length ?? 0);
+            Name(output, ", i64 ", step.Offset);
             output.Write('\n');
             if (step.Text >= -1)
             {
@@ -63,6 +84,19 @@ internal static partial class LlvmModuleWriter
         if (steps.Length != 0)
         {
             output.Write("accepted:\n  ret i1 true\nrejected:\n  ret i1 false\n}\n");
+        }
+    }
+
+    private static void WritePatternBase(TextWriter output, int test, int dereferences)
+    {
+        if (dereferences == 0)
+        {
+            output.Write("%subject");
+        }
+        else
+        {
+            Name(output, "%deref", test);
+            Name(output, "_", dereferences - 1);
         }
     }
 

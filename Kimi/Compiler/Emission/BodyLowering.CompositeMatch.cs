@@ -8,8 +8,12 @@ internal sealed partial class BodyLowering
 {
     private readonly List<PatternTestStep> compositeTests = new();
 
-    private bool IsCompositeSubject(BoundType type) => (type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type)) &&
-        this.aggregateLayouts.Get(type) is { } layout && (!layout.NeedsDestruction || MatchTypes.SupportsOwnedPatternValue(type, this.ownedPatternTypes));
+    private bool IsCompositeSubject(BoundType type) => (type.Semantics == SemanticsKind.Ref && ReferenceTypes.IsStorage(type)) ||
+        ((type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type)) &&
+        this.aggregateLayouts.Get(type) is { } layout && (!layout.NeedsDestruction || MatchTypes.SupportsOwnedPatternValue(type, this.ownedPatternTypes)));
+
+    private BoundType PatternType(BoundPattern pattern)
+        => this.Matched(pattern.ImplicitDeref == PatternImplicitDeref.SharedOnce ? pattern.MatchedType.Components[0] : pattern.MatchedType);
 
     private int PatternOffset(BoundMatch match, int position)
     {
@@ -70,7 +74,8 @@ internal sealed partial class BodyLowering
         for (var i = root; i < end; i++)
         {
             var node = match.Positions[i];
-            if (node.End <= i || node.End > end || node.AccessMode != PatternAccessMode.Owned || node.ImplicitDeref != PatternImplicitDeref.None ||
+            if (node.End <= i || node.End > end ||
+                (node.ImplicitDeref == PatternImplicitDeref.SharedOnce && node.MatchedType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 }) ||
                 node.Source.BindingState != BindingState.Resolved || node.Source.AttributeChain is not null || this.PatternOffset(match, i) < 0)
             {
                 return false;
@@ -102,9 +107,9 @@ internal sealed partial class BodyLowering
                 }
             }
             else if (node.End != i + 1 || node.Kind is not (BoundPatternKind.Wildcard or BoundPatternKind.Binding or BoundPatternKind.Unit or BoundPatternKind.Literal) ||
-                (node.Kind == BoundPatternKind.Unit && !ReferenceEquals(this.Matched(node.MatchedType), BoundType.Unit)) ||
-                (node.Kind == BoundPatternKind.Literal && !(ReferenceEquals(this.Matched(node.MatchedType), BoundType.Boolean) && node.Literal.Kind == PatternLiteralKind.Boolean && node.Literal.Magnitude <= 1) &&
-                !(ReferenceEquals(this.Matched(node.MatchedType), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is not null) && !this.TryMatchNumber(node, out _)))
+                (node.Kind == BoundPatternKind.Unit && !ReferenceEquals(this.PatternType(node), BoundType.Unit)) ||
+                (node.Kind == BoundPatternKind.Literal && !(ReferenceEquals(this.PatternType(node), BoundType.Boolean) && node.Literal.Kind == PatternLiteralKind.Boolean && node.Literal.Magnitude <= 1) &&
+                !(ReferenceEquals(this.PatternType(node), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is not null) && !this.TryMatchNumber(node, out _)))
             {
                 return false;
             }
@@ -266,6 +271,18 @@ internal sealed partial class BodyLowering
 
         if (operation.Kind == OwnershipOperationKind.InitializeSubject)
         {
+            if (IsScalar(body.Places[operation.Place].Type))
+            {
+                if (body.Values[id].Kind != OwnershipValueKind.Alias || body.Values[id].Count != 1 ||
+                    ValuePlace(body.Operations[Input(body, id, 0)]) != operation.Input || (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
+                {
+                    return Fail("Borrowed Subject does not retain its acquired reference.", out failure);
+                }
+
+                var representation = WindowsLowering.GetValue(body.Places[operation.Place].Type)!;
+                function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, Input(body, id, 0))], representation.ComputationType, place: operation.Place, representation: representation);
+            }
+
             this.AddStringFlags(function, operation, id);
             return (this.subjectInitializers[operation.Place] == id && (!body.IsReachable(id) ||
                 ((body.GetInputState(id, operation.Input) & PlaceState.MustInit) != 0 && (body.GetInputState(id, operation.Place) & PlaceState.MayInit) == 0))) || Fail("Composite Subject acquisition is not fresh.", out failure);
@@ -303,20 +320,21 @@ internal sealed partial class BodyLowering
             }
             else if (node.Kind == BoundPatternKind.Literal)
             {
-                if (ReferenceEquals(this.Matched(node.MatchedType), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is { } text)
+                var dereferences = node.ImplicitDeref == PatternImplicitDeref.SharedOnce ? new[] { 0 } : null;
+                if (ReferenceEquals(this.PatternType(node), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is { } text)
                 {
                     var constant = text.Length == 0 ? -1 : constants.Intern(text, LlvmConstantKind.Text);
-                    this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.String, 0, constant));
+                    this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.String, 0, constant, dereferences));
                     continue;
                 }
 
                 var bits = (Int128)node.Literal.Magnitude;
-                if (!ReferenceEquals(this.Matched(node.MatchedType), BoundType.Boolean) && !this.TryMatchNumber(node, out bits))
+                if (!ReferenceEquals(this.PatternType(node), BoundType.Boolean) && !this.TryMatchNumber(node, out bits))
                 {
                     return Fail("Unsupported composite literal.", out failure);
                 }
 
-                this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.GetValue(this.Matched(node.MatchedType))!, bits));
+                this.compositeTests.Add(new(this.PatternOffset(binding, i), WindowsLowering.GetValue(this.PatternType(node))!, bits, DereferenceOffsets: dereferences));
             }
         }
 

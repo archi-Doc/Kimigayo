@@ -55,7 +55,6 @@ public class LendingRuleTest
     }
 
     [Theory]
-    [InlineData("func f(x: string) => match x\n    let s => Console.writeLine(s)", DiagnosticCode.UnsupportedBinding_Kd)]
     [InlineData("func take(text: string) => ()\nlet text = \"a\"\ntake(text)", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("func bump(n: uniq/i32) => ()\nvar n = 1\nbump(n)", DiagnosticCode.ExclusiveBorrowRequired_Kd)]
     public void BindingNamesTheRequiredSpellingOrBoundary(string source, DiagnosticCode code)

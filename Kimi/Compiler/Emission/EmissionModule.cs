@@ -129,7 +129,7 @@ internal enum ArithmeticCheckKind : byte
 internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null, AggregateLayout? Aggregate = null, int Continuation = -1, PatternTestStep[]? Pattern = null);
 
 // Text is -2 for a scalar test, -1 for an empty string, or a UTF-8 constant index.
-internal readonly record struct PatternTestStep(int Offset, ValueLowering Representation, Int128 Expected, int Text = -2);
+internal readonly record struct PatternTestStep(int Offset, ValueLowering Representation, Int128 Expected, int Text = -2, int[]? DereferenceOffsets = null);
 
 /// <summary>One physical function definition. Its lists are reused by later preparations.</summary>
 internal sealed class EmissionFunction

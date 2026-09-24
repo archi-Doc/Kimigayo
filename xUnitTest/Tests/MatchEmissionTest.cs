@@ -73,7 +73,7 @@ public class MatchEmissionTest
 
     [Theory]
     [InlineData("match 0\n    _ => ()\n    0 => 1.0 + 2.0", true)]
-    [InlineData("let text = \"a\"\ntext == (match text\n    _ => \"a\"\n)")]
+    [InlineData("let text = \"a\"\ntext == (match text\n    _ => \"a\"\n)", true)]
     [InlineData("match \"a\"\n    let text\n        _ = text@move\n        Console.writeLine(text)")]
     [InlineData("match 1.0\n    _ if true => ()\n    _ => ()", true)]
     public void ArmSupportPreservesConflictRejection(string source, bool emitted = false)

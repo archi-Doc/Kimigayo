@@ -156,12 +156,6 @@ public sealed partial class Binding
         {
             // SPEC 15.1.6 subject rule: an owned Place is shared-borrowed; a proven-Copy Place is copied instead,
             // which is observationally the same and keeps no Loan. Consuming a Place is written match x@move.
-            if (ReferenceEquals(subject, BoundType.String))
-            {
-                plan.Pending = true;
-                return Fail(match, BindingFailure.Unsupported, true); // ref/string bindings are not lowered yet.
-            }
-
             subject = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [subject], origin: this.PlaceOrigin(match.Expression));
             plan.SharedSubject = subject;
         }
@@ -277,7 +271,7 @@ public sealed partial class Binding
         {
             type = type.Components[0];
             shared = true;
-            unsupported = true;
+            unsupported = !ScalarTypes.Supports(type) && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.String);
             implicitDeref = PatternImplicitDeref.SharedOnce;
         }
 
@@ -529,6 +523,11 @@ public sealed partial class Binding
         {
             plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
             return;
+        }
+
+        if (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 })
+        {
+            subject = subject.Components[0];
         }
 
         var caseCount = subject.Symbol?.Declaration is EnumKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape) ? shape.CaseCount : 0;
