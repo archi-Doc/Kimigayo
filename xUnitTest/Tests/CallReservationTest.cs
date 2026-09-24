@@ -137,12 +137,13 @@ public class CallReservationTest
     }
 
     [Fact]
-    public void GenericValueReservationDoesNotClaimUnsupportedStorageAbi()
+    public void GenericValueReservationUsesTheReferenceValueAbi()
     {
-        var c = MinimalEmissionTest.Analyze(Cell + "func use<T>(c: T, n: i32) => ()\nvar c = Cell.init()\nuse(c@uniq, read(c))");
+        var source = Cell + "func use<T>(c: T, n: i32) => require n == 1 else => $abort(\"read\")\nvar c = Cell.init()\nuse(c@uniq, read(c))";
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        NativeAllocationAudit.WriteFixture("CallReservationGenericReference", source, 0, 0, 0);
     }
 
     [Fact]

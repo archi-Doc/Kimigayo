@@ -56,7 +56,6 @@ public class OwnershipAnalysisTest
     }
 
     [Theory]
-    [InlineData("func show(s: uniq/string) => ()\nvar s = \"a\"\nshow(s@uniq)")]
     [InlineData("let s = \"a\" + \"b\"")]
     [InlineData("var s = \"a\"\ns += \"b\"")]
     [InlineData("func f(x: string = \"x\") => ()\nf()")]

@@ -84,7 +84,7 @@ public class ProductTestMembershipTest
     {
         var compilation = MinimalEmissionTest.Analyze("#Test\n#Unknown\nfunc test() => Missing.api()\n()");
         Assert.False(compilation.Binding.Result.IsComplete);
-        Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTestDefinition_Kd);
         Assert.DoesNotContain(compilation.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
     }
 

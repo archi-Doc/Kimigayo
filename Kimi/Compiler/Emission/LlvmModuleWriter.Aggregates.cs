@@ -67,8 +67,9 @@ internal static partial class LlvmModuleWriter
 
         if (instruction.Opcode == EmissionOpcode.TransferAggregate)
         {
+            var value = instruction.Representation ?? layout.Value;
             output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr align ");
-            WriteNumber(output, layout.Value.Layout.Alignment);
+            WriteNumber(output, value.Layout.Alignment);
             output.Write(' ');
             if (instruction.OperandCount == 2)
             {
@@ -80,7 +81,7 @@ internal static partial class LlvmModuleWriter
             }
 
             output.Write(", ptr align ");
-            WriteNumber(output, layout.Value.Layout.Alignment);
+            WriteNumber(output, value.Layout.Alignment);
             output.Write(' ');
             if (instruction.OperandCount >= 1)
             {
@@ -92,7 +93,7 @@ internal static partial class LlvmModuleWriter
             }
 
             output.Write(", i64 ");
-            WriteNumber(output, layout.Value.Layout.Size);
+            WriteNumber(output, value.Layout.Size);
             output.Write(", i1 false)\n");
             return;
         }

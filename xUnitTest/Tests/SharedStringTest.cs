@@ -8,6 +8,25 @@ namespace XunitTest;
 public class SharedStringTest
 {
     [Fact]
+    public void BorrowedWholeUpdatesTransferAndDestroyHeapBuffersExactlyOnce()
+    {
+        const string Source = """
+            func change(value: uniq/string) -> string => Kimi.Intrinsics.exchange(value, with: Text.toString("new"))
+            func swap(left: uniq/string, right: uniq/string) => Kimi.Intrinsics.swap(left, right)
+            func replace(value: uniq/string) => Kimi.Intrinsics.replace(value, with: "replacement")
+            var left = Text.toString("old")
+            var right = Text.toString("other")
+            let old = change(left@uniq)
+            swap(left@uniq, right@uniq)
+            replace(left@uniq)
+            Console.writeLine(old)
+            Console.writeLine(right)
+            Console.writeLine(left)
+            """;
+        NativeAllocationAudit.WriteFixture("WholeValueBorrowedStringHeap", Source, 3, 3, 11, "old\nnew\nreplacement\n");
+    }
+
+    [Fact]
     public void LocalsAndResultsRetainTheOriginalOwner()
     {
         const string Source = """

@@ -24,7 +24,7 @@ public sealed partial class Binding
     // derivative diagnostic never becomes permission to emit code.
     private bool IsDependentDiagnostic(Koto use)
     {
-        if (use.BindingFailure is not (BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported or BindingFailure.TypeMismatch))
+        if (use.BindingFailure is not (BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported))
         {
             return false;
         }

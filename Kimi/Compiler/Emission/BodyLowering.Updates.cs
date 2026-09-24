@@ -6,11 +6,11 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private static void Transfer(EmissionFunction function, int id, AggregateLayout layout, ReadOnlySpan<EmissionOperand> operands, int place = -1)
+    private static void Transfer(EmissionFunction function, int id, AggregateLayout? layout, ReadOnlySpan<EmissionOperand> operands, int place = -1, ValueLowering? representation = null)
     {
         var start = function.Operands.Count;
         function.Operands.AddRange(operands);
-        function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, Place: place, OperandStart: start, OperandCount: operands.Length, Aggregate: layout));
+        function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, Place: place, OperandStart: start, OperandCount: operands.Length, Aggregate: layout, Representation: representation ?? layout!.Value));
     }
 
     private bool LowerBorrowedUpdate(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
@@ -50,7 +50,7 @@ internal sealed partial class BodyLowering
 
         var layout = exchange || swap ? this.aggregatePlaces[operation.Place] : this.aggregateLayouts.Get(type);
         var representation = layout?.Value ?? WindowsLowering.GetValue(type);
-        if (representation is null || (!ScalarTypes.Supports(type) && layout is null && !ReferenceEquals(type, BoundType.Unit)))
+        if (representation is null || (!ScalarTypes.Supports(type) && layout is null && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.String)))
         {
             return Fail("Borrowed update has no complete value representation.", out failure);
         }
@@ -67,15 +67,14 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        function.AddScalar(EmissionOpcode.ElementAddress, id, [this.PhysicalOperand(body, receiver), new(EmissionOperandKind.Integer, 0)], representation: representation);
-        var destination = new EmissionOperand(EmissionOperandKind.ElementAddress, id);
-        if (layout is not null)
+        var destination = this.PhysicalOperand(body, receiver);
+        if (layout is not null || ReferenceEquals(type, BoundType.String))
         {
             if (exchange || swap)
             {
-                Transfer(function, id, layout, [destination], operation.Place);
+                Transfer(function, id, layout, [destination], operation.Place, representation);
             }
-            else if (layout.NeedsDestruction)
+            else if (layout?.NeedsDestruction != false)
             {
                 if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
                 {
@@ -86,14 +85,15 @@ internal sealed partial class BodyLowering
             }
 
             var incoming = swap ? this.PhysicalOperand(body, input) : new(EmissionOperandKind.SlotAddress, operation.Input);
-            Transfer(function, id, layout, [incoming, destination]);
+            Transfer(function, id, layout, [incoming, destination], representation: representation);
             if (swap)
             {
-                Transfer(function, id, layout, [new(EmissionOperandKind.SlotAddress, operation.Place), incoming]);
+                Transfer(function, id, layout, [new(EmissionOperandKind.SlotAddress, operation.Place), incoming], representation: representation);
             }
         }
         else if (representation.Layout.Size != 0)
         {
+            function.AddScalar(EmissionOpcode.ElementAddress, id, [destination, new(EmissionOperandKind.Integer, 0)], representation: representation);
             if (exchange || swap)
             {
                 function.AddScalar(EmissionOpcode.LoadElement, id, [], representation.ComputationType, place: id, representation: representation);

@@ -65,7 +65,7 @@ public class FunctionEmissionTest
     [InlineData("group G\n    func f() => ()\n()", true)]
     [InlineData("func f(x: i32 = 1) => ()\n()", true)]
     [InlineData("func f<T>() => ()\n()", true)]
-    [InlineData("func f(x: uniq/string) => ()\n()")]
+    [InlineData("func f(x: uniq/string) => ()\n()", true)]
     [InlineData("func unused() -> ()\n    " + MinimalEmissionTest.FloatExpression + "\n()", true)]
     [InlineData("public func main() -> i32 => 0")]
     [InlineData("public func main() => ()\n()")]
