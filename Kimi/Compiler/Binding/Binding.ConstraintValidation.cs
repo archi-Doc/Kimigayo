@@ -108,7 +108,8 @@ public sealed partial class Binding
             proof = CombineProof(proof, this.CheckTypeConstraints(type.Components[i], scope), true);
         }
 
-        if (type is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container })
+        if (type is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } &&
+            (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
         {
             for (var parent = container; parent is not null && !parent.IsRoot; parent = parent.Parent as DeclarationContainerKoto)
             {
@@ -300,7 +301,8 @@ public sealed partial class Binding
                 this.RequireConstraint(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode);
             }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0)
+            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 &&
+                (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
                 var result = this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope);

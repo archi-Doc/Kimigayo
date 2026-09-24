@@ -46,6 +46,7 @@ public sealed partial class KimiLibrary
         // Array operation signatures are members of the Array struct; recognition finds them through this owner scope,
         // and indexing later gives their symbols the struct's ordinary member scope.
         this.ArrayScope = FindDeclaration(this.Kotonoha.RootKoto, "Array", false) is DeclarationContainerKoto array ? new(array) { Parent = this.Scope } : this.Scope;
+        this.DictionaryScope = FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) is DeclarationContainerKoto dictionary ? new(dictionary) { Parent = this.Scope } : this.Scope;
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
         var symbolCount = 4;
@@ -58,6 +59,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Intrinsics => this.IntrinsicsScope,
                 KimiLibraryContainer.Test => this.TestScope,
                 KimiLibraryContainer.Array => this.ArrayScope,
+                KimiLibraryContainer.Dictionary => this.DictionaryScope,
                 _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
             };
             var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload);
@@ -174,6 +176,8 @@ public sealed partial class KimiLibrary
     internal BindingSymbol SliceIterator { get; }
 
     internal BindingScope Scope { get; }
+
+    internal BindingScope DictionaryScope { get; }
 
     internal GroupKoto Console { get; }
 

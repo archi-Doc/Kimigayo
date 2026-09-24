@@ -79,7 +79,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Kind == BoundTypeKind.Array && kind == IntrinsicKind.Copy)
+        if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && kind == IntrinsicKind.Copy)
         {
             result = ConstraintProof.Refuted; // SPEC 4.5: Array is Non-Copy for every element Type.
             return true;
@@ -392,12 +392,21 @@ public sealed partial class Binding
             }
         }
 
-        if (work.Type.Kind == BoundTypeKind.Array)
+        if (work.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
-            // SPEC 4.5: Array is Non-Copy; its Owned classification follows the element Type.
-            return work.Intrinsic.Intrinsic == IntrinsicKind.Owned
-                ? this.RequestCapability(work.Type.Components[0], work.Intrinsic, work.Scope)
-                : work.Intrinsic.Intrinsic == IntrinsicKind.Copy ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            // SPEC 4.5: collection ownership follows every stored Type, even when empty.
+            if (work.Intrinsic.Intrinsic != IntrinsicKind.Owned)
+            {
+                return work.Intrinsic.Intrinsic == IntrinsicKind.Copy ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            }
+
+            var owned = ConstraintProof.Proven;
+            for (var i = 0; i < work.Type.Components.Count; i++)
+            {
+                owned = CombineProof(owned, this.RequestCapability(work.Type.Components[i], work.Intrinsic, work.Scope), true);
+            }
+
+            return owned;
         }
 
         if (work.Type.Symbol?.Declaration is DeclarationContainerKoto container)

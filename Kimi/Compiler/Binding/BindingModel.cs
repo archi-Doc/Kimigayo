@@ -63,6 +63,7 @@ public enum BoundTypeKind : byte
     Range,
     Closure,
     Array,
+    Dictionary,
 }
 
 internal enum BindingFailure : byte

@@ -9,6 +9,7 @@ internal enum KimiLibraryContainer : byte
     Intrinsics,
     Test,
     Array,
+    Dictionary,
     Text,
     FixedBuffer,
     HeapBuffer,
@@ -33,7 +34,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Range, "Range", SourceExpected: false),
         new(KimiDeclarationId.ResolvedRange, "ResolvedRange", SourceExpected: false),
         new(KimiDeclarationId.Slice, "Slice"),
-        new(KimiDeclarationId.Dictionary, "Dictionary", SourceExpected: false),
+        new(KimiDeclarationId.Dictionary, "Dictionary"),
         new(KimiDeclarationId.Equatable, "Equatable"),
         new(KimiDeclarationId.Comparable, "Comparable"),
         new(KimiDeclarationId.Iterator, "Iterator"),
@@ -98,6 +99,13 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.WriterWrite, "write", KimiLibraryContainer.Utf8Writer, Function: CompilerFunctionKind.WriterWrite),
         new(KimiDeclarationId.WriterStatus, "status", KimiLibraryContainer.Utf8Writer, Function: CompilerFunctionKind.WriterStatus),
         new(KimiDeclarationId.WriteLineUtf8, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLineUtf8, Overload: 1),
+        new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryReserve),
+        new(KimiDeclarationId.DictionaryTryInsert, "tryInsert", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryTryInsert),
+        new(KimiDeclarationId.DictionaryInsertOrReplace, "insertOrReplace", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryInsertOrReplace),
+        new(KimiDeclarationId.DictionaryRemove, "remove", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryRemove),
+        new(KimiDeclarationId.DictionaryTryGet, "tryGet", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryTryGet),
+        new(KimiDeclarationId.DictionaryClear, "clear", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryClear),
+        new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryShrinkToFit),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -105,6 +113,8 @@ internal static class KimiLibraryCatalog
     internal static ReadOnlySpan<Entry> Entries => Definitions;
 
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArrayRemoveIndex;
+
+    internal static bool IsDictionaryOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.DictionaryReserve and <= CompilerFunctionKind.DictionaryShrinkToFit;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

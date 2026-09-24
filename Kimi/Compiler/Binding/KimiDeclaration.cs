@@ -84,6 +84,13 @@ public enum KimiDeclarationId : byte
     WriterStatus,
     WriteLineUtf8,
     ObjectPayload,
+    DictionaryReserve,
+    DictionaryTryInsert,
+    DictionaryInsertOrReplace,
+    DictionaryRemove,
+    DictionaryTryGet,
+    DictionaryClear,
+    DictionaryShrinkToFit,
 }
 
 public enum KimiDeclarationState : byte

@@ -36,8 +36,10 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Equatable or KimiDeclarationId.Comparable => this.ValidComparisonContract(symbol, entry.Id),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
+                        KimiDeclarationId.Dictionary => this.ValidDictionary(symbol),
                         KimiDeclarationId.Index => this.ValidIndex(symbol),
                         >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex => this.ValidArrayOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -288,12 +290,19 @@ public sealed partial class KimiLibrary
         return true;
     }
 
-    private bool ValidArray(BindingSymbol symbol)
+    private bool ValidArray(BindingSymbol symbol) => this.ValidCollection(symbol, dictionary: false);
+
+    private bool ValidDictionary(BindingSymbol symbol) => this.ValidCollection(symbol, dictionary: true);
+
+    private bool ValidCollection(BindingSymbol symbol, bool dictionary)
     {
         if (symbol.Intrinsic != IntrinsicKind.None || !ReferenceEquals(symbol.Scope, this.Scope) ||
-            symbol.Declaration is not StructKoto { Name: "Array", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } array ||
+            symbol.Declaration is not StructKoto { HasIncompatibleBindingHeader: false, OriginNames.Count: 0, Bases.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } array ||
+            array.Name != (dictionary ? "Dictionary" : "Array") || array.GenericParameterNodes.Count != (dictionary ? 2 : 1) || array.ConstraintNodes.Count != (dictionary ? 1 : 0) ||
             !ReferenceEquals(array.Parent, this.Kotonoha.RootKoto) ||
-            array.GenericParameterNodes[0] is not GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null })
+            array.GenericParameterNodes[0] is not GenericParameterKoto { SemanticsParameter: null, AttributeChain: null } first || first.Identifier != (dictionary ? "K" : "T") ||
+            (dictionary && (array.GenericParameterNodes[1] is not GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null } ||
+                !BareName(array.ConstraintNodes[0].Left, "K") || !BareName(array.ConstraintNodes[0].Right, "Equatable"))))
         {
             return false;
         }

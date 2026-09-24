@@ -700,6 +700,11 @@ public sealed partial class Binding
             symbol = this.Library.DynamicArray.Declaration.BoundSymbol ?? this.Library.DynamicArray;
         }
 
+        if (symbol?.LibraryDeclaration == KimiDeclarationId.Dictionary)
+        {
+            kind = BoundTypeKind.Dictionary;
+        }
+
         if (kind == BoundTypeKind.Slice || (symbol is not null && ReferenceEquals(symbol.Declaration, this.Library.Slice.Declaration)))
         {
             kind = BoundTypeKind.Slice;

@@ -481,6 +481,8 @@ public sealed partial class Binding
                 return Complete(node, this.BindNode(labeled.Target, scope, expected));
             case TupleLiteralKoto tuple:
                 return this.BindTuple(tuple, scope, expected);
+            case DictionaryLiteralKoto dictionary:
+                return this.BindDictionaryLiteral(dictionary, scope, expected);
             case ArrayLiteralKoto { FillLength: not null } fill:
                 return this.BindArrayFill(fill, scope, expected);
             case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array }:

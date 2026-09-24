@@ -1,0 +1,3 @@
+// Compiler-managed ordered Dictionary storage (SPEC 4.5, 4.7).
+public struct Dictionary<K, V>
+    K is Equatable

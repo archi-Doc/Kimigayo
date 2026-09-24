@@ -64,4 +64,11 @@ public enum CompilerFunctionKind : byte
     BuiltinFormat,
     BuiltinEquals,
     BuiltinCompare,
+    DictionaryReserve,
+    DictionaryTryInsert,
+    DictionaryInsertOrReplace,
+    DictionaryRemove,
+    DictionaryTryGet,
+    DictionaryClear,
+    DictionaryShrinkToFit,
 }

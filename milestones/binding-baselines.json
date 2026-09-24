@@ -5,6 +5,6 @@
   { "Program": 26, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "func [value@move, visitor]() -> i32 => visitor(value@ref)", "SupportedPrefixEnd": "func inspectTwice" },
   { "Program": 27, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "Range", "SupportedPrefixEnd": "func tail" },
   { "Program": 28, "Stage": "Binding", "Diagnostic": "InvalidConstraint_Kd", "Anchor": "struct Batch", "SupportedPrefixEnd": "struct Drain" },
-  { "Program": 31, "Stage": "Binding", "Diagnostic": "InvalidTypeFormation_Kd", "Anchor": "Dictionary<Key, Item>", "SupportedPrefixEnd": "public func main" },
+  { "Program": 31, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "entries.length", "SupportedPrefixEnd": "public func main" },
   { "Program": 33, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "base", "SupportedPrefixEnd": "struct Leaf" }
 ]
