@@ -39,8 +39,8 @@ internal sealed partial class BodyLowering
             if ((uint)plan.Operation >= (uint)body.Operations.Count || this.stringComparisons[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation].Kind != OwnershipOperationKind.Produce || body.Values[plan.Operation].Kind != OwnershipValueKind.StringComparison ||
                 body.Operations[plan.Operation].Source is not BinaryKoto source ||
-                !((ReferenceEquals(SignatureType(this, source.Left.BoundType), BoundType.String) && ReferenceEquals(SignatureType(this, source.Right.BoundType), BoundType.String)) ||
-                    (ReferenceTypes.IsString(SignatureType(this, source.Left.BoundType)) && ReferenceTypes.IsString(SignatureType(this, source.Right.BoundType)))) ||
+                !(ReferenceEquals(SignatureType(this, source.Left.BoundType), BoundType.String) || ReferenceTypes.IsString(SignatureType(this, source.Left.BoundType))) ||
+                !(ReferenceEquals(SignatureType(this, source.Right.BoundType), BoundType.String) || ReferenceTypes.IsString(SignatureType(this, source.Right.BoundType))) ||
                 !ReferenceEquals(ValueType(body, plan.Operation), BoundType.Boolean) ||
                 source.Akind != body.Values[plan.Operation].Operator)
             {

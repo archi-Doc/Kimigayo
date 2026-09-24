@@ -24,6 +24,7 @@ internal static class ReferenceTypes
         && type.Components[0].Kind == BoundTypeKind.Array;
 
     internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) || IsTuple(type) || IsEnum(type) || IsDynamicArray(type) ||
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && ReferenceEquals(type.Components[0], BoundType.String)) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             type.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && ReferenceEquals(type.Components[0], BoundType.Unit)) ||

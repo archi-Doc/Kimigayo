@@ -30,7 +30,7 @@ public sealed partial class Binding
         }
 
         var visitor = this.diagnosticDependencyVisitor ??= new(this);
-        return visitor.HasCause(use);
+        return visitor.HasCause(use) && this.BorrowOriginHint(use) is null;
     }
 
     // Called only after both value and Type lookup failed. A tentative Type path must not

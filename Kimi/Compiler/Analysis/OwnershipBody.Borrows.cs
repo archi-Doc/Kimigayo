@@ -14,6 +14,7 @@ public sealed partial class OwnershipBody
     private bool[] borrowRootLoss = [];
     private int[] borrowDefinitions = [];
     private int[] slicePaths = [];
+    private bool[] inspectionBorrows = [];
 
     internal PlaceState GetBorrowInputState(int operation)
     {
@@ -43,6 +44,19 @@ public sealed partial class OwnershipBody
             return;
         }
 
+        // Short-lived call/guard inspections already have an explicit Loan extent,
+        // including abrupt checking continuations. A stored Copy or returned reference
+        // is a separate Place and retains its ordinary Origin-based dependency.
+        Grow(ref this.inspectionBorrows, count);
+        this.inspectionBorrows.AsSpan(0, count).Clear();
+        for (var id = 0; id < this.Operations.Count; id++)
+        {
+            if (this.Values[id].Kind == OwnershipValueKind.Borrow && this.Operations[id].Input >= 0)
+            {
+                this.inspectionBorrows[this.Operations[id].Input] = true;
+            }
+        }
+
         Grow(ref this.borrowDependencies, checked(count * count));
         this.borrowDependencies.AsSpan(0, count * count).Clear();
         Grow(ref this.borrowRootLoss, count);
@@ -50,7 +64,10 @@ public sealed partial class OwnershipBody
         var any = false;
         for (var p = 0; p < count; p++)
         {
-            AddType(p, this.Places[p].Type);
+            if (!this.inspectionBorrows[p])
+            {
+                AddType(p, this.Places[p].Type);
+            }
         }
 
         if (!any)
@@ -213,11 +230,6 @@ public sealed partial class OwnershipBody
 
         void AddType(int place, BoundType type)
         {
-            if (ReferenceTypes.IsString(type))
-            {
-                return; // Argument references use the existing call/guard Loan plans; dependent results retain their own Origins.
-            }
-
             if (type.Origin is { } origin)
             {
                 AddOrigin(place, origin, type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
@@ -392,11 +404,6 @@ public sealed partial class OwnershipBody
 
     private static bool HasProjection(BoundType type)
     {
-        if (ReferenceTypes.IsString(type))
-        {
-            return false;
-        }
-
         if (ContainsProjection(type.Origin))
         {
             return true;

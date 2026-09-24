@@ -77,11 +77,11 @@ public class ReferenceEmissionTest
     }
 
     [Theory]
-    [InlineData("func bad(a: ref/string) -> ref/string => a\n()")]
-    [InlineData("func bad(a: ref/string)\n    let saved = a\n()")]
-    [InlineData("func bad(a: ref/string, b: string) -> bool => a == b\n()")]
+    [InlineData("func identity(a: ref/string) -> ref/string => a\n()", true)]
+    [InlineData("func save(a: ref/string)\n    let saved = a\n()", true)]
+    [InlineData("func compare(a: ref/string, b: string) -> bool => a == b\n()", true)]
     [InlineData("func good(a: ref/string)\n    Console.writeLine(a)\n()", true)] // SPEC 22.4: writeLine accepts an existing shared reference.
-    [InlineData("let a = \"a\"\na@ref")]
+    [InlineData("let a = \"a\"\na@ref", true)]
     [InlineData("func unused(a: ref/string) => 1.0 + 2.0\n()", true)]
     public void ReferenceUsesAndIndependentFloatResultsRespectSupport(string source, bool emitted = false)
     {

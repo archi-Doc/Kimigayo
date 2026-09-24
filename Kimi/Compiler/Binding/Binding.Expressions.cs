@@ -932,8 +932,8 @@ public sealed partial class Binding
         }
 
         // Shared references compare their immediate referents, independently of the two input Origins.
-        if (comparison && ((ReferenceTypes.IsString(left) && (ReferenceTypes.IsString(right) || ReferenceEquals(right, BoundType.Never))) ||
-            (ReferenceEquals(left, BoundType.Never) && ReferenceTypes.IsString(right))))
+        if (comparison && (ReferenceTypes.IsString(left) || ReferenceEquals(left, BoundType.String) || ReferenceEquals(left, BoundType.Never)) &&
+            (ReferenceTypes.IsString(right) || ReferenceEquals(right, BoundType.String) || ReferenceEquals(right, BoundType.Never)))
         {
             return Complete(binary, BoundType.Boolean);
         }

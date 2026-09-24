@@ -64,7 +64,6 @@ public class StringEmissionTest
 
     [Theory]
     [InlineData("func unused() -> string => " + MinimalEmissionTest.FloatExpression + "\nConsole.writeLine(\"ok\")")]
-    [InlineData("func unused(text: uniq/string) => ()\nConsole.writeLine(\"ok\")")]
     [InlineData("let text = \"a\"\ntext@string\nConsole.writeLine(text)")]
     [InlineData("let text = \"a\"\nlet taken = text@move\nConsole.writeLine(text)")]
     [InlineData("let text = \"a\"\nlet taken = text\nConsole.writeLine(text)")]

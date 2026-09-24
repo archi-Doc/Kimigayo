@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // String borrows (ref/string, uniq/string) are formed only as call arguments; string reference locals are not lowered yet.
+    // An independent array literal defaults differently from a contextual call argument.
     private static bool IsCallArgument(Koto node)
     {
         for (var parent = node.Parent; parent is not null; parent = parent.Parent)
@@ -50,6 +50,17 @@ public sealed partial class Binding
                 return syntax;
             }
         }
+    }
+
+    private static BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type)
+    {
+        if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
+        {
+            return Fail(conversion, BindingFailure.InvalidAssignment);
+        }
+
+        conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
+        return Complete(conversion, type);
     }
 
     private bool ConversionCanComplete(Koto source, BindingScope scope)
@@ -157,8 +168,7 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, transferred);
-            conversion.ConversionBinding = ReferenceEquals(transferred, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
-            return Complete(conversion, transferred);
+            return CompleteTransfer(conversion, transferred);
         }
 
         if (syntax is TypeSemanticsKoto { Type: null, HasOrigin: false } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
@@ -187,7 +197,7 @@ public sealed partial class Binding
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
                 (StructStorage.IsStruct(operandType) || Compiler.EnumStorage.IsEnum(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array || ReferenceTypes.IsStorage(operandType) ||
-                    ScalarTypes.Supports(operandType) || ReferenceEquals(operandType, BoundType.Unit) || (ReferenceEquals(operandType, BoundType.String) && IsCallArgument(conversion))))
+                    ScalarTypes.Supports(operandType) || ReferenceEquals(operandType, BoundType.Unit) || ReferenceEquals(operandType, BoundType.String)))
             {
                 var referent = IsBorrow(operandType.Semantics) ? operandType.Components[0] : operandType;
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent]);
@@ -215,8 +225,7 @@ public sealed partial class Binding
                     targetNode = targetNode is ParenthesizedTypeKoto parentheses ? parentheses.Type : ((TypeSemanticsKoto)targetNode).Type!;
                 }
 
-                conversion.ConversionBinding = ReferenceEquals(operandType, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
-                return Complete(conversion, operandType);
+                return CompleteTransfer(conversion, operandType);
             }
 
             Fail(conversion.Right, BindingFailure.Unsupported, true);
@@ -280,6 +289,14 @@ public sealed partial class Binding
             return Fail(conversion, BindingFailure.Unsupported, true);
         }
 
+        // An explicitly written owning Semantics transfers an unchanged Type,
+        // including numeric values; it is not the Type-only numeric conversion.
+        if (ReferenceEquals(source, target) && source.Semantics == SemanticsKind.Owner &&
+            syntax is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
+        {
+            return CompleteTransfer(conversion, target);
+        }
+
         if (source.IsNumeric && target.IsNumeric)
         {
             if (source.IsFloatingPoint && target.IsFloatingPoint)
@@ -306,14 +323,7 @@ public sealed partial class Binding
 
         if (ReferenceEquals(source, target))
         {
-            // SPEC 13.5.3: a written outermost owner Semantics (@owner/T) transfers; a Type-only target is
-            // Identity Acquisition, which Copies and never transfers a Non-Copy Place.
-            if (syntax is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null } && source.Semantics == SemanticsKind.Owner)
-            {
-                conversion.ConversionBinding = ConversionBinding.Transfer;
-                return Complete(conversion, target);
-            }
-
+            // A Type-only target Copies and never transfers a Non-Copy Place.
             if (SupportsIdentityAcquisition(source))
             {
                 if (IsBarePlace(conversion.Left) && this.ProveCopy(source, conversion) != ConstraintProof.Proven)

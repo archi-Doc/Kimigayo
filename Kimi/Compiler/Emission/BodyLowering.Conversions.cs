@@ -70,7 +70,9 @@ internal sealed partial class BodyLowering
 
     // Semantic aliases remain separate: a conversion's Type and dominance identity
     // are checked before resolving the physical bits used by every IR consumer.
-    private EmissionOperand PhysicalOperand(OwnershipBody body, int id) => Operand(body, this.physicalValues[id]);
+    private EmissionOperand PhysicalOperand(OwnershipBody body, int id)
+        => this.referenceRoots[id] >= 0 && ReferenceTypes.IsString(ValueType(body, id))
+            ? this.ReferenceOperand(body, id) : Operand(body, this.physicalValues[id]);
 
     private void PrepareConversions(OwnershipBody body)
     {

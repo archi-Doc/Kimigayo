@@ -32,7 +32,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (value.Kind == OwnershipValueKind.Address)
         {
-            // A string reference result is admitted only by the reference prepass (a borrowed array element).
+            // All supported storage borrows use the same address and lifetime checks.
             if (operation.Kind != OwnershipOperationKind.Borrow || !(ReferenceTypes.IsBorrow(ValueType(body, id)) || ReferenceTypes.IsString(ValueType(body, id))) ||
                 (uint)operation.Place >= (uint)body.Places.Count || value.Constant != operation.Place ||
                 (body.IsReachable(id) && (body.GetBorrowInputState(id) & PlaceState.MustInit) == 0))
@@ -200,7 +200,7 @@ internal sealed partial class BodyLowering
             else
             {
                 if (value.Count != 0 || !ReferenceTypes.StorageMatches(type, output.Components[0]) ||
-                    (this.aggregatePlaces[operation.Place] is null && !ReferenceEquals(type, BoundType.Unit) && !(ScalarTypes.Supports(type) && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local)))
+                    (this.aggregatePlaces[operation.Place] is null && !ReferenceEquals(type, BoundType.Unit) && !this.IsStringStorage(body.Places[operation.Place]) && !(ScalarTypes.Supports(type) && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local)))
                 {
                     return Fail("Borrow source has no matching aggregate storage.", out failure);
                 }

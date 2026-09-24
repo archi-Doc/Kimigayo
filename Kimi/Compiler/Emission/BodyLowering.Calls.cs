@@ -164,7 +164,7 @@ internal sealed partial class BodyLowering
                 return Fail("Owned argument is not an initialized acquired value.", out failure);
             }
 
-            if (ReferenceTypes.IsString(type))
+            if (ReferenceTypes.IsString(type) && this.referenceRoots[entry] >= 0)
             {
                 // The instantiated parameter Type was matched against the callee's entry above; a
                 // monomorphized instance forwards its ref/T parameter as the substituted string reference.

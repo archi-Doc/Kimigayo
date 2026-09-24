@@ -1062,15 +1062,17 @@ public sealed partial class OwnershipAnalysis
         var borrows = false;
         if (plan.Receiver is { } receiver)
         {
-            borrows |= plan.ReceiverOperation.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(plan.ReceiverOperation.ParameterType);
-            this.arguments.Add(this.PrepareCallArgument(call, receiver, plan.ReceiverOperation));
+            var prepared = this.PrepareCallArgument(call, receiver, plan.ReceiverOperation);
+            borrows |= this.HasCallInspection(prepared);
+            this.arguments.Add(prepared);
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = plan.ArgumentOperations[i];
-            borrows |= argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType);
-            this.arguments.Add(this.PrepareCallArgument(call, call.ArgumentNodes[i], argument));
+            var prepared = this.PrepareCallArgument(call, call.ArgumentNodes[i], argument);
+            borrows |= this.HasCallInspection(prepared);
+            this.arguments.Add(prepared);
         }
 
         this.PrepareDefaults(plan, mark);

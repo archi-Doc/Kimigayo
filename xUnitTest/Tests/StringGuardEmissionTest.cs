@@ -12,6 +12,7 @@ public class StringGuardEmissionTest
     [Theory]
     [InlineData("Candidate", "match \"a\"\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("Direct", "match \"a\"\n    let s if s == s => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("DirectLiteral", "match \"a\"\n    let s if s == \"a\" => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("LiteralBorrow", "match \"a\"\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("False", "match \"a\"\n    let s if same(s, \"b\") => Console.writeLine(\"bad\")\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("Wildcard", "match \"a\"\n    _ if false => ()\n    _ if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
@@ -43,7 +44,9 @@ public class StringGuardEmissionTest
     }
 
     [Theory]
-    [InlineData("match \"a\"\n    let s if s == \"a\" => ()\n    _ => ()")]
+    [InlineData("match 1\n    let s if (work: do\n        let saved = s@move\n        exit to work: true\n    ) => ()\n    _ => ()")]
+    [InlineData("match 1\n    let s if (work: do\n        let saved = s@owner\n        exit to work: true\n    ) => ()\n    _ => ()")]
+    [InlineData("match 1\n    let s if (work: do\n        let saved = s@owner/i32\n        exit to work: true\n    ) => ()\n    _ => ()")]
     [InlineData("func take(s: string) => ()\nmatch \"a\"\n    let s if (work: do\n        take(s@move)\n        exit to work: true\n    ) => ()\n    _ => ()")]
     [InlineData("match \"a\"\n    var s if (work: do\n        s = \"b\"\n        exit to work: true\n    ) => ()\n    _ => ()")]
     [InlineData("match \"a\"\n    let s if (work: do\n        let saved = s@move\n        exit to work: true\n    ) => ()\n    _ => ()")]

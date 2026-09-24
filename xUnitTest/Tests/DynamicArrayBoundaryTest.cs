@@ -10,12 +10,10 @@ public class DynamicArrayBoundaryTest
     [Theory]
     [InlineData("let values: Array<Array<i32>> = [[1]]")]
     [InlineData("let values: Array<()> = [()]")]
-    [InlineData("let values: Array<string> = [\"value\"]\nfor value in values => ()")]
     [InlineData("struct Item\n    Self is Copy\n    public let id: i32\n    public init(id: i32) => self.id = id\nlet values: Array<Item> = [Item.init(42)]\nlet item = values[0]")]
     [InlineData("struct Empty\n    public init() => ()\nlet values: Array<Empty> = [Empty.init()]")]
     [InlineData("let values: Array<[2 of ()]> = [[(), ()]]")]
     [InlineData("let values: Array<((), ())> = [((), ())]")]
-    [InlineData("let values: Array<string> = [\"a\", \"b\"]\nfor value in values[0..1] => ()")]
     [InlineData("func count<T>(values: Array<T>) -> isize => values.length\nlet n = count<()>([()])")]
     public void UnsupportedNeighboringShapesNeverPublishPartialIr(string source)
     {
@@ -35,6 +33,8 @@ public class DynamicArrayBoundaryTest
     [InlineData("struct Pair\n    Self is Copy\n    public let id: i32\n    public let unit: ()\n    public init(id: i32)\n        self.id = id\n        self.unit = ()\nlet values: Array<Pair> = [Pair.init(7)]")]
     [InlineData("let values: Array<(i32, ())> = [(1, ())]")]
     [InlineData("let values: Array<i32> = [1, 2]\nfor value in values => ()")]
+    [InlineData("let values: Array<string> = [\"value\"]\nfor value in values => ()")]
+    [InlineData("let values: Array<string> = [\"a\", \"b\"]\nfor value in values[0..1] => ()")]
     public void ElementsWithStorageRemainSupported(string source)
     {
         // A zero-sized component inside an element with bytes keeps an ordinary stride.

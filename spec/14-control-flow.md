@@ -530,7 +530,7 @@ match "hello"
     _ => ()
 ```
 
-The guard reads `text` as `ref/string`, and the literal argument is also borrowed for the call. After guard cleanup, the selected body acquires the owned string from the Subject. Comparing `text == "hello"` directly would mix a borrow with an owned value, which built-in comparisons do not adapt (§13.4).
+The guard reads `text` as `ref/string`, and the literal argument is also borrowed for the call. After guard cleanup, the selected body acquires the owned string from the Subject. The guard may equivalently compare `text == "hello"` directly: comparisons inspect the Non-Copy referent under the common operand rule (§13.4).
 
 **Guard syntax.** A guard is one expression whose normal result is `bool`. Parentheses are optional, and `and`, `or` and `not` keep their ordinary semantics. There are no `let` conditions, comma-separated condition lists or guard chains. The arm's Body start, either `=>` or the indented body, ends the guard. Nested body-bearing expressions in a guard require grouping under §2.2.
 

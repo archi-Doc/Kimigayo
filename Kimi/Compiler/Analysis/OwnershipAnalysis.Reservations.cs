@@ -9,8 +9,26 @@ public sealed partial class OwnershipAnalysis
     private static bool IsDirectExclusiveBorrow(Koto source)
         => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.PayloadBorrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq };
 
+    private bool HasCallInspection(int place)
+    {
+        var value = this.Value(place);
+        // Address values use Origin liveness; reads of guard candidates retain their
+        // enclosing guard Loan. Only a new inspection has its own call-wide extent.
+        return value >= 0 && this.body.Values[value].Kind == OwnershipValueKind.Borrow &&
+            this.body.Operations[value].Kind == OwnershipOperationKind.Borrow;
+    }
+
     private int PrepareCallArgument(InvocationKoto call, Koto source, BoundArgumentOperation argument, bool immediate = false)
     {
+        var stringElement = BorrowedArgumentSource(source) is IndexKoto index &&
+            (index.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(index.Left.BoundType));
+        if (argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType) && !stringElement)
+        {
+            // Preserve the call-wide inspection plan for implicit string arguments.
+            // Stored references use the same Origin-based liveness as all other borrows.
+            return this.BorrowArgument(call, argument);
+        }
+
         if (ReferenceTypes.IsBorrow(argument.ParameterType) &&
             (argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection ||
                 (argument.Kind == ArgumentOperationKind.Value && IsDirectExclusiveBorrow(source))))
@@ -38,8 +56,7 @@ public sealed partial class OwnershipAnalysis
             return result;
         }
 
-        return argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType)
-            ? this.BorrowArgument(call, argument) : this.Argument(source, argument.Kind);
+        return this.Argument(source, argument.Kind);
     }
 
     private int NewCallReservation(InvocationKoto call)

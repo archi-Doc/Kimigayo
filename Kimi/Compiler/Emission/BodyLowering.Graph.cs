@@ -261,7 +261,6 @@ internal sealed partial class BodyLowering
 
             if ((this.aggregatePlaces[p]?.Value ?? WindowsLowering.GetValue(place.Type)) is not { } value ||
                 (this.aggregatePlaces[p] is null && !IsScalar(place.Type) && !ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceEquals(place.Type, BoundType.String) && !ReferenceTypes.IsString(place.Type)) ||
-                (ReferenceTypes.IsString(place.Type) && place.Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary)) ||
                 (ReferenceEquals(place.Type, BoundType.String) && !this.IsStringStorage(place)))
             {
                 return Fail("Unsupported value storage or string result/parameter.", out failure);
@@ -280,7 +279,7 @@ internal sealed partial class BodyLowering
                 }
             }
 
-            if (!ReferenceTypes.IsString(place.Type) && (value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local || IsMaterializedScalar(body, p) || this.IsArrayPayload(body, p)))
+            if ((value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local || IsMaterializedScalar(body, p) || this.IsArrayPayload(body, p)))
             {
                 function.Slots.Add(new(p, value));
             }

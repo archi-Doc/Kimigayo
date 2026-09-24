@@ -332,7 +332,7 @@ internal sealed partial class BodyLowering
             return this.LowerAggregate(body, function, constants, projectDirectory, index, marks, out failure);
         }
 
-        if (operation.Kind == OwnershipOperationKind.Borrow || (ReferenceTypes.IsString(ValueType(body, index)) &&
+        if (operation.Kind == OwnershipOperationKind.Borrow || (ReferenceTypes.IsString(ValueType(body, index)) && this.referenceRoots[index] >= 0 &&
             operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.Read or OwnershipOperationKind.Consume))
         {
             return this.LowerReference(body, index, out failure);

@@ -108,7 +108,6 @@ public class ConversionEmissionTest
     [InlineData("let flag = true\nflag@char", "TypeMismatch")]
     [InlineData("let s = \"x\"\ns@bool", "TypeMismatch")]
     [InlineData("256@owner/u8", "InvalidLiteral")]
-    [InlineData("let x = 1\nx@(ref)", "Unsupported")]
     [InlineData("func f(x: i32) => ()\nf(1@u8)", "NoApplicableCandidate")]
     public void InvalidAndUnimplementedAdaptationsHaveDistinctFailures(string source, string failure)
     {
@@ -123,6 +122,15 @@ public class ConversionEmissionTest
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
+    }
+
+    [Fact]
+    public void UnresolvedConversionTargetReportsItsCause()
+    {
+        var c = MinimalEmissionTest.Analyze("let x = 1\nx@(ref)");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal("UnresolvedBinding_Kd", Assert.Single(c.Binding.Issues).Code.ToString());
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]

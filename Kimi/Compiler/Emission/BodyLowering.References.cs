@@ -91,6 +91,17 @@ internal sealed partial class BodyLowering
             }
 
             var place = body.Places[ValuePlace(operation)];
+            // Only implicit call/guard inspections need this additional short-lived Loan plan.
+            // Stored references, returned references and explicit storage borrows use ordinary
+            // pointer values, validated by the common scalar and Origin/Loan paths.
+            var alias = value.Kind == OwnershipValueKind.Alias && value.Count == 1 ? Input(body, id, 0) : -1;
+            if (value.Kind != OwnershipValueKind.Borrow && value.Kind != OwnershipValueKind.Parameter &&
+                !(operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.CallEntry &&
+                    alias >= 0 && alias < id && this.referenceRoots[alias] >= 0))
+            {
+                continue;
+            }
+
             if (place.Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary) || place.Acquisition != AcquisitionKind.Copy)
             {
                 return Fail("Reference storage and results are not implemented.", out failure);
@@ -176,6 +187,11 @@ internal sealed partial class BodyLowering
     private EmissionOperand ReferenceOperand(OwnershipBody body, int value)
     {
         var root = this.referenceRoots[value];
+        if (root < 0)
+        {
+            return this.PhysicalOperand(body, value);
+        }
+
         // A guard candidate may be read under another argument's element Loan.
         // Only a reference formed from a projection uses that projection's address.
         return body.Values[root].Kind switch
@@ -188,13 +204,18 @@ internal sealed partial class BodyLowering
 
     private bool ValidateReferenceUse(OwnershipBody body, int value, int at)
     {
-        if ((uint)value >= (uint)body.Operations.Count || this.referenceRoots[value] < 0 ||
+        if ((uint)value >= (uint)body.Operations.Count || !ReferenceTypes.IsString(ValueType(body, value)) ||
             (body.IsReachable(at) && !this.Dominates(value, at)))
         {
             return false;
         }
 
         var root = this.referenceRoots[value];
+        if (root < 0)
+        {
+            return true; // The common value lowering and retained Origin dependencies validate storage.
+        }
+
         // A parameter or a borrowed array's element address needs no Loan of this body: their sources outlive it.
         if (body.Values[root].Kind is OwnershipValueKind.Parameter or OwnershipValueKind.Address || !body.IsReachable(at))
         {
