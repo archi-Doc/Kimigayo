@@ -4,7 +4,7 @@ Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md
 Programs 1–33 have source files; programs 34–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 23–28, 30–31 and 33 are authored targets beyond current
+not an execution claim. Milestones 23–28 and 33 are authored targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -51,15 +51,15 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-24**, programs 1–22, 29 and 32 pass their Release harnesses in the [P30 session](../PLAN_HISTORY.md#p30-session1); older Debug results retain their original verification scope. Build means a native
+As of **2026-09-24**, programs 1–22 and 29–32 pass their Release harnesses in the [review remediation session](../PLAN_HISTORY.md#review-remediation); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 
 This table is the source/native status record. `MilestoneSourcesTest` checks the exact
-authored source set against it, requires complete Binding for passed programs, and
+authored source set against it, checks the explicit Binding column, requires complete Binding for passed programs, and
 checks each pending program's stage, first diagnostic and source anchor against
-[binding-baselines.json](binding-baselines.json). It also binds the recorded supported
+[stage-baselines.json](stage-baselines.json). It also binds the recorded supported
 declaration prefix independently. A changed failure or a newly successful stage requires
 review and fresh evidence; neither is accepted as an arbitrary pending failure. These
 checks supplement the focused feature tests and native harnesses; they do not certify
@@ -68,46 +68,46 @@ unreached parts of a pending program.
 Affected programs now use postfix `during` annotations with the same intended behavior.
 An unchanged target run compiles the checked-in program without test-specific edits.
 
-| Program | Created | Build | Tests | Evidence / boundary |
-| --- | --- | --- | --- | --- |
-| 1 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 2 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 3 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 4 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 5 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 6 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 7 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 8 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 9 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 10 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 11 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 12 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 13 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
-| 14 | YES | PASS (Release) | PASS (Release) | Existing target/variant/rejection harness, O0/O2 |
-| 15 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
-| 16 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
-| 17 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
-| 18 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
-| 19 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program19-completion) |
-| 20 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program20-completion) |
-| 21 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23) |
-| 22 | YES | PASS (Debug/Release) | PASS (Debug/Release) | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
-| 23 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom/computed Property access; cascading unresolved bindings |
-| 24 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | UnsupportedBinding_Kd for custom setters, getter results and Contract Property calls |
-| 25 | YES | FAIL (prior Debug/Release native probes) | NOT_RUN | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
-| 26 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
-| 27 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Range resolution/general Slice operations report `UnsupportedBinding_Kd` with unresolved/Type/result cascades; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
-| 28 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | User Iterable is unresolved; associated-Type/Constraint and generic iterator-state operations fail Binding; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
-| 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
-| 30 | YES | PASS (Debug, O0/O2); Release verification pending | PASS (Debug target, variants and rejections) | The unchanged target now composes Tuple/shared-borrow witnesses and preserves IEEE operators separately from Contract equality. Unit evidence: `bin/verify/20260924-021918-773-unit-comparison-composition-regressions`; full-session completion is pending. |
-| 31 | YES | PASS (Debug, O0/O2) | PASS (Debug) | Unchanged target, exact output and one buffer allocation/release pass alongside 842 related tests and 80 Dictionary O0/O2 executions (`bin/verify/20260924-065552-186-unit-dictionary-index-regressions`). The dedicated harness passes all 59 Debug checks (`bin/verify/20260924-070802-266-unit-dictionary-harness-verified`). Release/session completion and nonempty literal coverage remain pending; P31 is IN_PROGRESS. |
-| 32 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
-| 33 | YES | FAIL (prior Debug/Release native probes) | NOT_RUN | Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
-| 34 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 35 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 36 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 37 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
-| 38 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| Program | Created | Binding | Build | Tests | Implementation | Evidence / boundary |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 2 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 3 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 4 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 5 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 6 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 7 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 8 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 9 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 10 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 11 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 12 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 13 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
+| 14 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 15 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
+| 16 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
+| 17 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
+| 18 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
+| 19 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program19-completion) |
+| 20 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program20-completion) |
+| 21 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23) |
+| 22 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
+| 23 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnsupportedBinding_Kd` at custom/computed `self.level` access. |
+| 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnsupportedBinding_Kd` at `self.item`; custom setters, getter results and Contract Property calls remain. |
+| 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
+| 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
+| 27 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnresolvedBinding_Kd` at `Range`; general Slice/Range support remains. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
+| 28 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `InvalidConstraint_Kd` at `struct Batch`; user Iterable and generic iterator-state support remain. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
+| 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (123 checks per configuration); shared string iteration is a positive case, while zero-sized Array elements retain an ownership-stage unsupported diagnostic. Allocation/cost probes pass. |
+| 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../PLAN_HISTORY.md#review-remediation). |
+| 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 59 checks per harness, slot reuse/cleanup and zero-allocation warm compilation; nonempty literals, borrowed indexing and nested owning storage remain. [Evidence](../PLAN_HISTORY.md#review-remediation). |
+| 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
+| 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
+| 34 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
+| 35 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
+| 36 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
+| 37 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
+| 38 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
 
 [Restructuring audit](../PLAN_HISTORY.md#programs38-restructure) records source/DLL
 identities and exact commands: Release compiler/test-project build PASS with zero
@@ -1562,10 +1562,9 @@ comparison. Tuples compose user mappings through shared-borrow elements.
 
 Floating Contract equality treats all NaNs as equal and both signed zeros as
 equal; ordinary floating and Tuple comparison expressions retain IEEE equality.
-The source deliberately exercises both rules without replacing the pending
-composition with an implementation-specific workaround.
+The unchanged source exercises both rules through the common recursive comparison plan.
 
-Expected stdout (target, not an execution claim):
+Expected stdout (verified unchanged target, Debug/Release O0/O2):
 
 ```text
 User comparisons keep their operands.
@@ -1579,7 +1578,7 @@ declarations, changed values and an `f32` variant at O0/O2. Its independent
 rejections cover missing conformance/premises, incompatible or missing witnesses,
 an exclusive equality receiver, mixed operand Types, floating Comparable and a
 Move conflicting with the left operand's Loan. `-Cases Rejections` checks those
-cases without certifying the pending canonical target. Companion managed/native
+cases independently of the canonical target. Companion managed/native
 tests cover primitive boundaries, evaluation/destruction order and NaN mapping.
 The review remediation unit now passes the unchanged target and every Debug
 harness case, 415 related managed tests and 146 native O0/O2 executions
@@ -1587,8 +1586,8 @@ harness case, 415 related managed tests and 146 native O0/O2 executions
 Composite comparisons preserve witness effects and short-circuit order; floating
 Tuple operators retain unordered NaN results, while Contract equality is reflexive.
 The measured warm Tuple-operator Binding and native floating-composition workloads
-allocate zero bytes. Release and final session verification remain pending; the
-[earlier failed probes](../PLAN_HISTORY.md#p30-session1) are historical evidence.
+allocate zero bytes. Debug/Release full suites and all 26 Release harnesses now pass; see the
+[completion session](../PLAN_HISTORY.md#review-remediation). The [earlier failed probes](../PLAN_HISTORY.md#p30-session1) are historical evidence.
 
 Focus: [comparison mapping](../spec/13-operators-and-assignment.md#1341-contract-comparison-mapping),
 [floating key equality](../spec/12-expressions.md#1234-dictionary-literals),
@@ -1606,7 +1605,7 @@ them. Removing and reinserting an equal key appends its new entry while retainin
 capacity. Owning iteration stops after the first pair; cleanup destroys that
 pair, then the unyielded entries in reverse insertion order, value before key.
 
-Expected stdout (verified unchanged target with Debug O0/O2; full milestone completion remains pending):
+Expected stdout (verified unchanged target with Debug/Release O0/O2; full milestone completion remains pending):
 
 ```text
 Duplicate returned both inputs.

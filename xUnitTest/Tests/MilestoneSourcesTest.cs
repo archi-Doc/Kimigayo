@@ -19,7 +19,7 @@ public class MilestoneSourcesTest
         var readme = File.ReadAllText(Path.Combine(DirectoryPath, "README.md"));
         var rows = Regex.Matches(readme, @"^\| (\d+) \| (YES|NO \(planned\)) \| ([^|]+) \|", RegexOptions.Multiline);
         Assert.Equal(Enumerable.Range(1, 38), rows.Select(x => int.Parse(x.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)));
-        var baselines = JsonSerializer.Deserialize<Baseline[]>(File.ReadAllText(Path.Combine(DirectoryPath, "binding-baselines.json")))!;
+        var baselines = JsonSerializer.Deserialize<Baseline[]>(File.ReadAllText(Path.Combine(DirectoryPath, "stage-baselines.json")))!;
         Assert.Equal(baselines.Length, baselines.Select(x => x.Program).Distinct().Count());
         var pending = baselines.ToDictionary(x => x.Program);
         var authored = new List<int>();
@@ -39,6 +39,7 @@ public class MilestoneSourcesTest
             authored.Add(number);
             var source = File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal);
             var c = Bind(source, Path.GetFileName(path));
+            Assert.Equal(c.Binding.Result.IsComplete ? "PASS" : "FAIL", row.Groups[3].Value.Trim());
             if (!pending.Remove(number, out var expected))
             {
                 Assert.StartsWith("PASS", row.Groups[3].Value.Trim());
@@ -46,7 +47,6 @@ public class MilestoneSourcesTest
                 continue;
             }
 
-            Assert.StartsWith("FAIL", row.Groups[3].Value.Trim());
             var stage = "Binding";
             string diagnostic;
             string anchor;
