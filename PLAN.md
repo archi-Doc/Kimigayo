@@ -28,6 +28,7 @@ Implement the finalized language of SPEC.md (Chapters 1–22 and Appendix A) for
 - **P30 DONE:** the unchanged target, all 43 Debug/Release harness checks, recursive witness/effect/NaN regressions and allocation probes pass.
 - **P31 IN_PROGRESS:** the unchanged target and all 71 Debug/Release harness checks pass. Search, ordered links, slot reuse, initialization, reverse cleanup and shrink-to-fit compile from `DictionaryStorage.kimi`; warm compiler allocation probes remain zero. Public generic API/capacity migration, nonempty runtime literals and broader borrowed/nested storage forms remain.
 - **P25/P33 IN_PROGRESS:** explicit base construction, layered destruction, concrete runtime Type tests, payload exchange and explicit base views pass focused/native checks. Program 25 now stops at inherited field ownership projection; Program 33 still stops at flow-refined member lookup.
+- **Subject rule alignment (2026-09-24, user-selected):** `0d65a993`–`49e1522c` reject exclusive Subjects (`ExclusiveSubject_Kd`), shared-reborrow `uniq` borrow values in `match`/`for`, iterate `ref`/`uniq` collection borrow values and explicit `@ref` iterables, and borrow string fields through references. The follow-up proposal `draft/Changes/2026-09-24 Exclusive Iteration and Iterable Modes.md` (exclusive iteration/match, write-through, three Iterable modes) awaits the user's decision; nothing of it is specified or implemented.
 - The program status table is [milestones/README.md](milestones/README.md); product support boundaries are in STATUS. Source authoring or a successful target alone does not complete a milestone.
 
 ## 4. Milestones (execution order)
@@ -85,7 +86,8 @@ Features that a program's source does not use belong to the milestone that owns 
 
 1. **Finish P31 source migration:** move the remaining generic operation/result dispatch and reserve/growth into Kimigayo over common memory/ownership primitives. Preserve equality/destructor effects, operation Abort locations and allocation bounds; keep backend support limited to physical representation and primitives (G20).
 2. **Finish P31 language coverage:** implement runtime literal duplicate checks before value evaluation, borrowed-handle indexing and nested owning storage through existing acquisition/storage plans. Static mandatory duplicate checking is complete; extend the harness for the remaining forms.
-3. **Resume the milestone order when requested:** P24 ownership-bearing Properties and Contract operations, then P25 inherited projections/implicit base calls, closure/Slice/Iterator work and P33 flow refinement. P23 is complete. Preserve object identity and invalidate content facts on payload updates; general ObjectCallCompatible remains deferred.
+3. **Iteration modes proposal:** after the user's decision on `draft/Changes/2026-09-24 Exclusive Iteration and Iterable Modes.md`, integrate it into SPEC and stage the implementation (write-through, built-in exclusive iteration, exclusive match, then the Contracts within P28).
+4. **Resume the milestone order when requested:** P24 ownership-bearing Properties and Contract operations, then P25 inherited projections/implicit base calls, closure/Slice/Iterator work and P33 flow refinement. P23 is complete. Preserve object identity and invalidate content facts on payload updates; general ObjectCallCompatible remains deferred.
 
 ## 7. Open issues
 
