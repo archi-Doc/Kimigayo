@@ -270,7 +270,7 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
-        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ScalarTypes.Supports(type))
+        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
                 : ComparisonTypes.IsBuiltin(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;

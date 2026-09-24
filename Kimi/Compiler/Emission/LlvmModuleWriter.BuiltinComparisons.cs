@@ -8,6 +8,13 @@ internal static partial class LlvmModuleWriter
     {
         var id = instruction.Operation;
         var type = instruction.ScalarType;
+        if (type == "void")
+        {
+            Name(output, "  %v", id);
+            output.Write(" = icmp eq i1 0, 0\n");
+            return;
+        }
+
         var operands = function.GetOperands(instruction);
         for (var side = 0; side < 2; side++)
         {

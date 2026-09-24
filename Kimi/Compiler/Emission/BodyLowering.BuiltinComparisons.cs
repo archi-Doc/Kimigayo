@@ -28,7 +28,15 @@ internal sealed partial class BodyLowering
             }
         }
 
-        function.AddScalar(EmissionOpcode.BuiltinComparison, id, [this.PhysicalOperand(body, this.parameterArguments[0]), this.PhysicalOperand(body, this.parameterArguments[1])], representation.Layout.StorageType, equality ? "equals" : ScalarTypes.Signed(self) ? "s" : "u", representation: representation);
+        if (ReferenceEquals(self, BoundType.String))
+        {
+            function.AddScalar(equality ? EmissionOpcode.StringEquals : EmissionOpcode.StringCompare, id, [this.ReferenceOperand(body, this.parameterArguments[0]), this.ReferenceOperand(body, this.parameterArguments[1])], op: equality ? "eq" : "order");
+        }
+        else
+        {
+            function.AddScalar(EmissionOpcode.BuiltinComparison, id, ReferenceEquals(self, BoundType.Unit) ? [] : [this.PhysicalOperand(body, this.parameterArguments[0]), this.PhysicalOperand(body, this.parameterArguments[1])], representation.Layout.StorageType, equality ? "equals" : ScalarTypes.Signed(self) ? "s" : "u", representation: representation);
+        }
+
         return true;
     }
 }
