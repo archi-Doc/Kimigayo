@@ -55,10 +55,12 @@ internal sealed partial class BodyLowering
         };
         var receiverPlace = body.Places[plan.Receiver];
         var acquiredSource = syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow &&
-            (ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, SignatureType(this, borrow.BoundType))
+            (ReferenceTypes.IsArray(receiverPlace.Type) || ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, SignatureType(this, borrow.BoundType))
             ? ElementAccess.ValueSource(borrow.Left) : syntaxReceiver;
+        // A shared iterable written as an explicit borrow (dictionary@ref) is reborrowed from the evaluated borrow itself.
+        var receiverSource = ElementAccess.ValueSource(receiverPlace.Source);
         if (syntaxReceiver is null || plan.Projection < -1 ||
-            (plan.Projection < 0 && !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source), acquiredSource) &&
+            (plan.Projection < 0 && !ReferenceEquals(receiverSource, acquiredSource) && !ReferenceEquals(receiverSource, syntaxReceiver) &&
                 !(syntaxReceiver.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var local) && local == plan.Receiver)))
         {
             return Fail("Sequence receiver does not match its evaluated source.", out failure);

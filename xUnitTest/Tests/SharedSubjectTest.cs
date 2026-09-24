@@ -56,6 +56,13 @@ public class SharedSubjectTest
         "let pairs: [2 of (i32, string)] = [(1, \"a\"), (2, \"b\")]\nfor pair in pairs\n    Console.writeLine(pair.1)\n" +
         "var single = Task.init(3, \"three\")\nConsole.writeLine(label(single))\nshow(single@uniq)\ntasks.append(single@move)\nrequire tasks.length == 3 else => $abort(\"length\")";
 
+    private const string DictionarySource =
+        "func total(d: ref/Dictionary<i32, i32>) -> i32\n    var sum: i32 = 0\n    for (k, v) in d\n        sum += k + v\n    return sum\n" +
+        "func grow(d: uniq/Dictionary<i32, i32>) -> i32\n    var sum: i32 = 0\n    for (k, v) in d\n        sum += v\n    return sum\n" +
+        "var d: Dictionary<i32, i32> = [:]\n_ = d.tryInsert(1, 10)\n_ = d.tryInsert(2, 20)\nvar s: i32 = 0\nfor (k, v) in d\n    s += v\nfor (k, v) in d@ref\n    s += v\n" +
+        "let fixed: [2 of i32] = [1, 2]\nfor v in fixed@ref\n    s += v\n" +
+        "require s == 63 and total(d) == 33 and grow(d@uniq) == 30 and d.length == 2 else => $abort(\"dictionary\")\nConsole.writeLine(\"ok\")";
+
     private const string UniqLiteralSource =
         "func f(x: uniq/i32) -> i32 => match x\n    0 => 10\n    _ => 20\n" +
         "var n: i32 = 0\nrequire f(n@uniq) == 10 else => $abort(\"zero\")\nn = 3\nrequire f(n@uniq) == 20 and n == 3 else => $abort(\"other\")\nConsole.writeLine(\"ok\")";
@@ -67,6 +74,7 @@ public class SharedSubjectTest
     [InlineData("FixedArray", FixedArraySource, "ok\n")]
     [InlineData("Strings", StringsSource, "bb\nx\ny\nbb\n")]
     [InlineData("Fields", FieldsSource, "one\ninner\ntwo\ninner\na\nb\ninner\nthree\n")]
+    [InlineData("Dictionary", DictionarySource, "ok\n")]
     public void SharedIterationReadsThroughBorrowValuesAndFields(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedSubjectIteration" + name, source, stdout);
 
