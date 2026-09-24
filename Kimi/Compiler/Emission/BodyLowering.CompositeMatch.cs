@@ -235,8 +235,9 @@ internal sealed partial class BodyLowering
                     acquire.Place != input || acquire.Input != local || !ReferenceEquals(acquire.Source, binding.Source) || this.patternAcquisitions[cursor] != 0 ||
                     body.Values[cursor] is not { Kind: OwnershipValueKind.PatternProjection } projection || projection.Constant != i ||
                     (binding.Acquisition == PatternAcquisition.Copy ? !ReferenceEquals(this.Matched(binding.MatchedType), body.Places[local].Type) :
-                        binding.Acquisition != PatternAcquisition.Borrow || !ReferenceTypes.IsStorage(body.Places[local].Type) ||
-                        !ReferenceEquals(body.Places[local].Type.Components[0], this.Matched(binding.MatchedType))))
+                        binding.Acquisition != PatternAcquisition.Borrow ||
+                        !(SharedReadTypes.ReadsStoredPointer(this.Matched(binding.MatchedType), body.Places[local].Type) ||
+                            (ReferenceTypes.IsStorage(body.Places[local].Type) && ReferenceEquals(body.Places[local].Type.Components[0], this.Matched(binding.MatchedType))))))
                 {
                     return false;
                 }
@@ -460,7 +461,8 @@ internal sealed partial class BodyLowering
 
         var pattern = plan.Positions[position];
         var type = body.Places[operation.Input].Type;
-        this.LowerPatternRead(function, plan, position, this.patternProjectionRoots[id], type, pattern.Acquisition == PatternAcquisition.Copy, id, operation.Place, operation.Input, true);
+        var pointerRead = pattern.Acquisition == PatternAcquisition.Copy || SharedReadTypes.ReadsStoredPointer(this.Matched(pattern.MatchedType), type);
+        this.LowerPatternRead(function, plan, position, this.patternProjectionRoots[id], type, pointerRead, id, operation.Place, operation.Input, true);
         return true;
     }
 
@@ -530,7 +532,7 @@ internal sealed partial class BodyLowering
         }
 
         var type = body.Places[operation.Input].Type;
-        var copy = ReferenceEquals(type, this.Matched(node.MatchedType));
+        var copy = ReferenceEquals(type, this.Matched(node.MatchedType)) || SharedReadTypes.ReadsStoredPointer(this.Matched(node.MatchedType), type);
         if (!copy && (!ReferenceTypes.IsStorage(type) || !ReferenceEquals(type.Components[0], this.Matched(node.MatchedType))))
         {
             return Fail("Candidate projection has no shared-read acquisition.", out failure);

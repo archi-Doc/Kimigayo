@@ -118,7 +118,7 @@ internal static class ElementAccess
     {
         for (var depth = 0; depth < 64; depth++)
         {
-            if (ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType))
+            if (ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType) || ObjectTypes.IsBorrow(field.Left.BoundType))
             {
                 return field.Left;
             }
@@ -173,7 +173,7 @@ internal static class ElementAccess
             return TryBorrowedTupleElement(field, out element, out var index) ? index : -1;
         }
 
-        if (ReferenceTypes.IsStruct(left))
+        if (ReferenceTypes.IsStruct(left) || ObjectTypes.IsBorrow(left))
         {
             owner = left!.Components[0];
             for (var i = 0; i < StructStorage.Count(owner); i++)

@@ -16,9 +16,10 @@ public sealed partial class Binding
             return element;
         }
 
-        if (proof == ConstraintProof.Refuted && element.Semantics == SemanticsKind.Owner)
+        if (proof == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
         {
-            return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [element], origin: origin);
+            var target = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
+            return this.InternType(BoundTypeKind.Semantics, null, semantics, [target], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin);
         }
 
         return Fail(source, BindingFailure.Unsupported);

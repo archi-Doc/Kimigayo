@@ -291,7 +291,8 @@ internal sealed partial class BodyLowering
     // validated level's stored offset from the borrowed base.
     private bool TryBorrowedPathOffset(BinaryKoto field, Koto root, out int offset)
     {
-        offset = 0;
+        // Object views point at the allocation header; ordinary borrows point at payload storage.
+        offset = ObjectTypes.IsBorrow(SignatureType(this, root.BoundType)) ? 16 : 0;
         for (var level = field; ;)
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);
