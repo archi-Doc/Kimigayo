@@ -5,7 +5,6 @@
   { "Program": 26, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "let read = func [value@move, visitor]() -> i32 => visitor(value@ref)", "SupportedPrefixEnd": "func inspectTwice" },
   { "Program": 27, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "let bounds: Range = startBound()..endBound()", "SupportedPrefixEnd": "func tail" },
   { "Program": 28, "Stage": "Binding", "Diagnostic": "InvalidConstraint_Kd", "Anchor": "struct Batch", "SupportedPrefixEnd": "struct Drain" },
-  { "Program": 30, "Stage": "Binding", "Diagnostic": "NoApplicableOverload_Kd", "Anchor": "forwardEquality(pair@ref, samePair@ref)", "SupportedPrefixEnd": "public func main" },
   { "Program": 31, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "var entries: Dictionary<Key, Item> = [:]", "SupportedPrefixEnd": "public func main" },
   { "Program": 33, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "base", "SupportedPrefixEnd": "struct Leaf" }
 ]

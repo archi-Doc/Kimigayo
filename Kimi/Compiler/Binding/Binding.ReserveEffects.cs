@@ -230,7 +230,7 @@ public sealed partial class Binding
                 }
                 else if (!FormattingTypes.IsBuiltin(valueType))
                 {
-                    if (binding.FormattingImplementation(call, valueType, KimiDeclarationId.Utf8Format) is { } implementation)
+                    if (binding.RequirementImplementation(call, valueType, KimiDeclarationId.Utf8Format) is { } implementation)
                     {
                         this.Function(implementation.Target, implementation);
                     }
@@ -243,7 +243,32 @@ public sealed partial class Binding
                 return;
             }
 
+            if (call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare && ComparisonTypes.IsComposite(call.ConformingType))
+            {
+                this.Comparison(binding.ComparisonPlan(call));
+                return;
+            }
+
             this.Function(call.Target, call);
+        }
+
+        private void Comparison(BoundComparison? plan)
+        {
+            if (plan is null)
+            {
+                this.valid = false;
+                return;
+            }
+
+            if (plan.Implementation is { } implementation)
+            {
+                this.Function(implementation.Target, implementation);
+            }
+
+            foreach (var part in plan.Parts)
+            {
+                this.Comparison(part);
+            }
         }
 
         private void Function(BindingSymbol symbol, BoundCall? call = null)

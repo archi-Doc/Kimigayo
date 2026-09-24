@@ -12,12 +12,12 @@ public sealed partial class Binding
 
     // Compiler-created calls use the same verified witness and storage substitution as source calls.
     // Their input Origins remain the implementation's external inputs; no borrowed value is captured.
-    internal BoundCall? FormattingImplementation(BoundCall site, BoundType self, KimiDeclarationId identity)
+    internal BoundCall? RequirementImplementation(BoundCall site, BoundType self, KimiDeclarationId identity, string? name = null)
     {
         if (this.compilation.Library.GetSymbol(identity) is not { } contract ||
             this.ResolveConformance(self, contract, site.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true, Witnesses.Count: 1 } ||
-            path.Witnesses[0] is not { Implementation: { Declaration: FunctionKoto function } implementation, Function.BasePath: null } witness ||
+            path is not { IsVerified: true } ||
+            (name is null ? path.Witnesses.Count == 1 ? path.Witnesses[0] : null : this.FindRequirementWitness(path, contract, name)) is not { Implementation: { Declaration: FunctionKoto function } implementation, Function.BasePath: null } witness ||
             this.StoredType(witness.Function!.DeclaringType, self) is not { } declaring)
         {
             return null;
@@ -46,10 +46,14 @@ public sealed partial class Binding
         return call;
     }
 
-    private BindingSymbol FormatTarget(BindingSymbol selected, BoundType? self)
+    private BoundWitness? FindRequirementWitness(BoundConformancePath path, BindingSymbol contract, string name)
+        => contract.Contract is { } shape && shape.MembersByName.TryGetValue(name, out var members) && members.Count == 1
+            ? path.WitnessMap.GetValueOrDefault(members[0]) : null;
+
+    private BindingSymbol CompilerRequirementTarget(BindingSymbol selected, BoundType? self)
     {
         if (self is not null && selected.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract &&
-            ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration))
+            (ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration) || ComparisonTypes.IsComposite(self)))
         {
             ref var cached = ref (contract.LibraryDeclaration == KimiDeclarationId.Equatable ? ref this.builtinEquals : ref this.builtinCompare);
             cached ??= new(selected.Name, selected.Kind, selected.Declaration, selected.Scope)

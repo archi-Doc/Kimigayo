@@ -9,13 +9,17 @@ namespace XunitTest;
 public class Utf8ReserveEffectTest
 {
     [Theory]
-    [InlineData("==", false)]
-    [InlineData("!=", false)]
-    [InlineData("<", false)]
-    [InlineData(">=", false)]
-    [InlineData("==", true)]
-    [InlineData("<", true)]
-    public void ComparisonWitnessEffectsAreCheckedThroughOperators(string operation, bool generic)
+    [InlineData("==", false, false)]
+    [InlineData("!=", false, false)]
+    [InlineData("<", false, false)]
+    [InlineData(">=", false, false)]
+    [InlineData("==", true, false)]
+    [InlineData("<", true, false)]
+    [InlineData("==", false, true)]
+    [InlineData("<", false, true)]
+    [InlineData("==", true, true)]
+    [InlineData("<", true, true)]
+    public void ComparisonWitnessEffectsAreCheckedThroughOperators(string operation, bool generic, bool tuple)
     {
         var equality = operation is "==" or "!=";
         var prefix = State + $$"""
@@ -34,7 +38,8 @@ public class Utf8ReserveEffectTest
 
             """;
         var expression = generic ? "Helpers.compareValues(left@ref, right@ref)" : "left " + operation + " right";
-        var c = Analyze(prefix, "let left = Compared.init()\n        let right = Compared.init()\n        _ = " + expression);
+        var values = tuple ? "let first = Compared.init()\n        let last = Compared.init()\n        let left = (first@ref, 1)\n        let right = (last@ref, 2)" : "let left = Compared.init()\n        let right = Compared.init()";
+        var c = Analyze(prefix, values + "\n        _ = " + expression);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }

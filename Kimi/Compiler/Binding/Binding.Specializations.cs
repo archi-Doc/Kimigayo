@@ -58,6 +58,7 @@ public sealed partial class Binding
 
             var call = new BoundCall();
             call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types, conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: Origins(inner.Origins), inputOrigins: Origins(inner.InputOrigins), operations: inner.ArgumentOperations, receiverOperation: inner.ReceiverOperation, lengthArguments: lengths, defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
+            call.TupleOperator = inner.TupleOperator;
             if (inner.Target.Declaration is FunctionKoto { IsRequirement: true })
             {
                 return this.InstantiateRequirementCall(call, outer);

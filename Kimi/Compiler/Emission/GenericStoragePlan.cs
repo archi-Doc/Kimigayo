@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 /// context receives a caller-facing entry ABI and the calls its body forwards under that substitution;
 /// <c>LlvmEmitter.LowerInstances</c> analyzes and lowers every entry as its own concrete instance.
 /// </summary>
-internal sealed class GenericStoragePlan
+internal sealed partial class GenericStoragePlan
 {
     // SPEC 21.3.5: a growing substitution key (T -> Box<T>) re-enters one template with ever new keys;
     // finite recursion reuses its registered entry long before this bound.
@@ -46,6 +46,8 @@ internal sealed class GenericStoragePlan
         this.formattingCalls.Clear();
         this.formattingWrites.Clear();
         this.formattingConversions.Clear();
+        this.comparisonCalls.Clear();
+        this.comparisonHelpers.Clear();
         this.chainCounts.Clear();
         this.entryCounts.Clear();
         this.ResourceLimitExceeded = false;
@@ -90,7 +92,7 @@ internal sealed class GenericStoragePlan
                     continue;
                 }
 
-                if (!this.PrepareFormatting(compilation, module, layouts, call, out failure))
+                if (!this.PrepareFormatting(compilation, module, layouts, call, out failure) || !this.PrepareComparison(compilation, module, layouts, call, out failure))
                 {
                     return false;
                 }
@@ -126,7 +128,7 @@ internal sealed class GenericStoragePlan
         foreach (var operation in body.Operations)
         {
             if (operation.Kind == OwnershipOperationKind.Call && operation.Source is InvocationKoto { BoundCall: { } call } &&
-                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call)) && !calls.Contains(call))
+                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) && !calls.Contains(call))
             {
                 calls.Add(call);
             }
@@ -245,7 +247,7 @@ internal sealed class GenericStoragePlan
             entry.ConcreteCalls[i] = inner;
             if (inner.Target.CompilerFunction != CompilerFunctionKind.None)
             {
-                if (!this.PrepareFormatting(compilation, module, layouts, inner, out failure, depth + 1))
+                if (!this.PrepareFormatting(compilation, module, layouts, inner, out failure, depth + 1) || !this.PrepareComparison(compilation, module, layouts, inner, out failure, depth + 1))
                 {
                     return false;
                 }
@@ -289,7 +291,7 @@ internal sealed class GenericStoragePlan
             return true;
         }
 
-        var call = compilation.Binding.FormattingImplementation(site, self, writer ? KimiDeclarationId.BufferWriter : KimiDeclarationId.Utf8Format);
+        var call = compilation.Binding.RequirementImplementation(site, self, writer ? KimiDeclarationId.BufferWriter : KimiDeclarationId.Utf8Format);
         if (call?.Target.Declaration is not FunctionKoto target)
         {
             return Fail("Formatting callback has no verified conformance witness.", out failure);

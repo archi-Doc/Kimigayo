@@ -10,11 +10,12 @@ public sealed partial class Binding
     private BoundCall? InstantiateRequirementCall(BoundCall call, BoundCall outer, BoundCall? destination = null)
     {
         var requirement = (FunctionKoto)call.Target.Declaration;
-        var builtin = this.FormatTarget(call.Target, call.ConformingType);
-        if (!ReferenceEquals(builtin, call.Target))
+        var builtin = this.CompilerRequirementTarget(call.Target, call.ConformingType);
+        if (builtin.CompilerFunction != CompilerFunctionKind.None)
         {
             var intrinsic = destination ?? new BoundCall();
             intrinsic.Set(builtin, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
+            intrinsic.TupleOperator = call.TupleOperator;
             return intrinsic;
         }
 

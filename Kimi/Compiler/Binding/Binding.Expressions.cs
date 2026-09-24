@@ -900,7 +900,7 @@ public sealed partial class Binding
             left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
 
             // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
-            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : left);
+            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && left?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : left);
         }
 
         if (!assignment)
@@ -962,7 +962,14 @@ public sealed partial class Binding
 
         if (!Compatible(right, left))
         {
-            return Fail(binary, BindingFailure.TypeMismatch);
+            if (comparison && this.CommonOriginType(left, right) is { } common)
+            {
+                left = common;
+            }
+            else
+            {
+                return Fail(binary, BindingFailure.TypeMismatch);
+            }
         }
 
         if (kind == KotoKind.Equals)

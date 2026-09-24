@@ -20,6 +20,59 @@ public sealed partial class Binding
 
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
 
+    // Only Origin restriction is inferred here. No Core conversion or common base search is
+    // introduced; every invariant position stays identical and both inputs must fit the result.
+    internal BoundType? CommonOriginType(BoundType left, BoundType right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return left;
+        }
+
+        if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
+            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || left.Components.Count != right.Components.Count ||
+            left.OriginArguments.Count != right.OriginArguments.Count || (left.Origin is null) != (right.Origin is null))
+        {
+            return null;
+        }
+
+        var components = this.RentTypes(left.Components.Count);
+        var origins = this.originScratch.Rent(left.OriginArguments.Count);
+        try
+        {
+            for (var i = 0; i < left.Components.Count; i++)
+            {
+                var covariant = left.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe) &&
+                    !(left.Kind == BoundTypeKind.Function && i == 0) &&
+                    (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
+                if ((covariant ? this.CommonOriginType(left.Components[i], right.Components[i]) : ReferenceEquals(left.Components[i], right.Components[i]) ? left.Components[i] : null) is not { } part)
+                {
+                    return null;
+                }
+
+                components[i] = part;
+            }
+
+            for (var i = 0; i < left.OriginArguments.Count; i++)
+            {
+                if (!ReferenceEquals(left.OriginArguments[i], right.OriginArguments[i]) && left.Symbol?.Schema?.Origins[i].Variance != OriginVariance.Covariant)
+                {
+                    return null;
+                }
+
+                origins[i] = this.Meet(left.OriginArguments[i], right.OriginArguments[i]);
+            }
+
+            var result = this.InternType(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression);
+            return FitsType(left, result) && FitsType(right, result) ? result : null;
+        }
+        finally
+        {
+            this.originScratch.Return(origins, clearArray: true);
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
     private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false)
     {
         if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))

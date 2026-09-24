@@ -27,7 +27,7 @@ public class CopySnapshotTest
     }
 
     [Fact]
-    public void EnumSnapshotCopiesOnlyTheActivePayload()
+    public void EnumSnapshotPreservesActiveCase()
     {
         const string source = """
             enum Choice

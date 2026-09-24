@@ -139,7 +139,7 @@ internal sealed partial class BodyLowering
             if (ReferenceTypes.IsStorage(type))
             {
                 if (value.Count != 1 || (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)) ||
-                    !ReferenceEquals(type.Components[0], output.Components[0]) || (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq))
+                    !ReferenceTypes.StorageMatches(type.Components[0], output.Components[0]) || (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq))
                 {
                     return Fail("Reborrow has no matching reference source.", out failure);
                 }
@@ -172,7 +172,7 @@ internal sealed partial class BodyLowering
             }
             else
             {
-                if (value.Count != 0 || !ReferenceEquals(type, output.Components[0]) ||
+                if (value.Count != 0 || !ReferenceTypes.StorageMatches(type, output.Components[0]) ||
                     (this.aggregatePlaces[operation.Place] is null && !ReferenceEquals(type, BoundType.Unit) && !(ScalarTypes.Supports(type) && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local)))
                 {
                     return Fail("Borrow source has no matching aggregate storage.", out failure);
@@ -194,8 +194,8 @@ internal sealed partial class BodyLowering
         var receiver = Input(body, id, 0);
         var root = field is null ? null : ElementAccess.BorrowedPathRoot(field);
         var fieldType = field is null ? null : SignatureType(this, field.BoundType);
-        // Copy aggregate fields use the same field-wise transfer as other acquisitions. In particular,
-        // enum transfer observes its active case and never reads inactive payload or padding.
+        // Copy aggregate fields use the common byte transfer, preserving the enum tag and payload
+        // without interpreting padding as typed values.
         var handle = fieldType is not null ? this.aggregateLayouts.Get(fieldType) : null;
         if (field is null || root is null ||
             (!ReferenceEquals(ValueType(body, receiver), SignatureType(this, root.BoundType)) &&

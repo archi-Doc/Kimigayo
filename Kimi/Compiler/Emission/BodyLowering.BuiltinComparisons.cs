@@ -9,6 +9,12 @@ internal sealed partial class BodyLowering
     private bool LowerBuiltinComparison(OwnershipBody body, EmissionFunction function, BoundCall call, int id, out string? failure)
     {
         failure = null;
+        if (this.ComparisonCalls?.GetValueOrDefault(call) is { } composite)
+        {
+            function.AddCall(id, composite, [this.PhysicalOperand(body, this.parameterArguments[0]), this.PhysicalOperand(body, this.parameterArguments[1])]);
+            return true;
+        }
+
         var equality = call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals;
         var contract = equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable;
         if (SignatureType(this, call.ConformingType) is not { } self || !ComparisonTypes.IsBuiltin(self, contract) ||

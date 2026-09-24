@@ -59,7 +59,7 @@ public sealed partial class Binding
 
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
-        if (!FormattingTypes.IsBuiltin(type) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
+        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
         {
             return null;
         }
@@ -79,12 +79,14 @@ public sealed partial class Binding
             Add(formatting);
         }
 
-        if (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) && this.Library.GetSymbol(KimiDeclarationId.Equatable)?.Contract is { } equality)
+        if (this.Library.GetSymbol(KimiDeclarationId.Equatable) is { Contract: { } equality } equatable &&
+            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) || (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, equatable, scope, false) == ConstraintProof.Proven)))
         {
             Add(equality);
         }
 
-        if (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) && this.Library.GetSymbol(KimiDeclarationId.Comparable)?.Contract is { } ordering)
+        if (this.Library.GetSymbol(KimiDeclarationId.Comparable) is { Contract: { } ordering } comparable &&
+            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) || (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, comparable, scope, false) == ConstraintProof.Proven)))
         {
             Add(ordering);
         }

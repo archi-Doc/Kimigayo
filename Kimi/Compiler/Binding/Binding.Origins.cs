@@ -29,7 +29,7 @@ public sealed partial class Binding
             return 0;
         }
 
-        var order = a.Kind.CompareTo(b.Kind);
+        var order = ((int)a.Kind).CompareTo((int)b.Kind);
         if (order != 0)
         {
             return order;

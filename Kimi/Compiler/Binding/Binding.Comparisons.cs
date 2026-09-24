@@ -13,7 +13,8 @@ public sealed partial class Binding
     {
         var equality = binary.Akind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
         var contract = this.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-        var proof = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: contract)), scope);
+        var tupleOperator = self.Kind == BoundTypeKind.Tuple;
+        var proof = tupleOperator ? this.ComparisonProof(self, contract, scope, true) : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: contract)), scope);
         if (proof != ConstraintProof.Proven)
         {
             return Fail(binary, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
@@ -53,6 +54,7 @@ public sealed partial class Binding
         }
 
         callee.RequirementStorage = selected;
+        selected.TupleOperator = tupleOperator;
         if (!DependentType(self))
         {
             var resolved = this.InstantiateRequirementCall(selected, selected, callee.ImplementationStorage);

@@ -40,6 +40,7 @@ internal enum EmissionOpcode : byte
     StringEquals,
     StringCompare,
     BuiltinComparison,
+    TupleRelation,
     StringPattern,
     CompositePattern,
     PatternRead,

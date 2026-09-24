@@ -99,7 +99,7 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 27 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Range resolution/general Slice operations report `UnsupportedBinding_Kd` with unresolved/Type/result cascades; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
 | 28 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | User Iterable is unresolved; associated-Type/Constraint and generic iterator-state operations fail Binding; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
 | 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
-| 30 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN (target); PASS (Debug/Release rejections) | Tuple/shared-borrow composition fails Binding (`NoApplicableOverload_Kd` / `UnprovenConstraint_Kd`). All 16 independent rejection checks pass in each configuration. Companion scalar/user Contract tests do not certify this target. [Evidence](../PLAN_HISTORY.md#p30-session1). |
+| 30 | YES | PASS (Debug, O0/O2); Release verification pending | PASS (Debug target, variants and rejections) | The unchanged target now composes Tuple/shared-borrow witnesses and preserves IEEE operators separately from Contract equality. Unit evidence: `bin/verify/20260924-021918-773-unit-comparison-composition-regressions`; full-session completion is pending. |
 | 31 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Dictionary formation/literals and operations report `UnsupportedBinding_Kd`; unresolved Types cascade into iteration/index diagnostics. [Authoring evidence](../PLAN_HISTORY.md#programs31-33-authoring). |
 | 32 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
 | 33 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Base construction, object upcasts and refinement-dependent access/projection fail Binding (`UnsupportedBinding_Kd`, `UnresolvedBinding_Kd`, `InvalidAssignment_Kd`). [Authoring evidence](../PLAN_HISTORY.md#programs31-33-authoring). |
@@ -1581,12 +1581,14 @@ an exclusive equality receiver, mixed operand Types, floating Comparable and a
 Move conflicting with the left operand's Loan. `-Cases Rejections` checks those
 cases without certifying the pending canonical target. Companion managed/native
 tests cover primitive boundaries, evaluation/destruction order and NaN mapping.
-Tuple/shared-borrow Contract composition and its cost evidence remain P30 work.
-The final session passes 12,169 managed tests per configuration, 48 Comparison
-native O0/O2 executions and all 24 completed Release harnesses (1,232 checks).
-Program 30 itself fails all four Debug/Release O0/O2 build probes at Binding;
-its runtime tests are NOT_RUN, while 16 independent rejection checks pass in each
-configuration. See [P30 session evidence](../PLAN_HISTORY.md#p30-session1).
+The review remediation unit now passes the unchanged target and every Debug
+harness case, 415 related managed tests and 146 native O0/O2 executions
+(`bin/verify/20260924-021918-773-unit-comparison-composition-regressions`).
+Composite comparisons preserve witness effects and short-circuit order; floating
+Tuple operators retain unordered NaN results, while Contract equality is reflexive.
+The measured warm Tuple-operator Binding and native floating-composition workloads
+allocate zero bytes. Release and final session verification remain pending; the
+[earlier failed probes](../PLAN_HISTORY.md#p30-session1) are historical evidence.
 
 Focus: [comparison mapping](../spec/13-operators-and-assignment.md#1341-contract-comparison-mapping),
 [floating key equality](../spec/12-expressions.md#1234-dictionary-literals),

@@ -63,12 +63,16 @@ public sealed class BoundCall
     /// <summary>Gets length substitutions in declaration-slot order; Type slots are null.</summary>
     public ReadOnlySpan<BoundLength?> LengthArguments => this.lengthArguments;
 
+    // Selected from source syntax, never inferred again after generic substitution.
+    internal bool TupleOperator { get; set; }
+
     internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         this.Target = target;
         this.ReturnType = result;
         this.Receiver = receiver;
         this.ConformingType = conformingType;
+        this.TupleOperator = false;
         this.DeclaringType = declaringType;
         this.BasePath = basePath;
         this.ReceiverOperation = receiverOperation;
@@ -630,7 +634,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(this.FormatTarget(winner, self), result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            (call.CallStorage ??= new()).Set(this.CompilerRequirementTarget(winner, self), result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
             return Complete(call, result);
         }
         finally
@@ -1143,7 +1147,7 @@ public sealed partial class Binding
             }
 
             pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
-            return this.Infer(pattern, actual, function, arguments, true, lengths);
+            return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null);
         }
 
         bool CompleteArguments()
@@ -1160,7 +1164,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null)
+    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false)
     {
         if (ReferenceEquals(actual, BoundType.Never))
         {
@@ -1172,11 +1176,11 @@ public sealed partial class Binding
         {
             if (whole.Semantics == SemanticsKind.Owner)
             {
-                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths);
+                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins);
             }
 
             return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths);
+                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
@@ -1188,7 +1192,18 @@ public sealed partial class Binding
 
             if (arguments[slot] is { } previous)
             {
-                return ReferenceEquals(previous, actual);
+                if (ReferenceEquals(previous, actual) || (inferOrigins && FitsType(actual, previous)))
+                {
+                    return true;
+                }
+
+                if (commonOrigins && this.CommonOriginType(previous, actual) is { } common)
+                {
+                    arguments[slot] = common;
+                    return true;
+                }
+
+                return false;
             }
 
             arguments[slot] = actual;
@@ -1217,7 +1232,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths))
+            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins))
             {
                 return false;
             }

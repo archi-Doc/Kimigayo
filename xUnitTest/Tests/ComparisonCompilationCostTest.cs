@@ -8,9 +8,10 @@ namespace XunitTest;
 public class ComparisonCompilationCostTest
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void WarmOperatorBindingReusesItsWitnessPlans(bool snapshot)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void WarmOperatorBindingReusesItsWitnessPlans(bool snapshot, bool tuple)
     {
         const string Source = """
             struct Key
@@ -24,6 +25,12 @@ public class ComparisonCompilationCostTest
         var source = snapshot ? Source.Replace("Self is Equatable", "Self is Copy\n    Self is Equatable", StringComparison.Ordinal)
             .Replace("first == last", "first@ref == last@ref", StringComparison.Ordinal)
             .Replace("first != last", "first@ref != last@ref", StringComparison.Ordinal) : Source;
+        if (tuple)
+        {
+            source = source.Replace("require first == last", "let a = (first@ref, 1)\nlet b = (last@ref, 1)\nrequire a == b", StringComparison.Ordinal)
+                .Replace("first != last", "a != b", StringComparison.Ordinal);
+        }
+
         var c = MinimalEmissionTest.Analyze(source);
         for (var i = 0; i < 32; i++)
         {

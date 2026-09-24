@@ -16,6 +16,8 @@ internal sealed partial class BodyLowering
 
     internal IReadOnlyDictionary<BoundCall, FunctionAbi>? FormattingCalls { get; set; }
 
+    internal IReadOnlyDictionary<BoundCall, FunctionAbi>? ComparisonCalls { get; set; }
+
     internal IReadOnlyDictionary<BoundCall, ObjectCall>? ObjectCalls { get; set; }
 
     internal void ClearFunctionContext()
@@ -23,6 +25,7 @@ internal sealed partial class BodyLowering
         this.functions = null;
         this.GenericCalls = null;
         this.FormattingCalls = null;
+        this.ComparisonCalls = null;
         this.ObjectCalls = null;
         this.flow = null;
         this.arguments.Clear();

@@ -32,7 +32,8 @@ internal sealed partial class BodyLowering
             return Fail("Contract comparison has an inconsistent requirement result.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Scalar, id, [this.PhysicalOperand(body, input), new(EmissionOperandKind.Integer, 0)], equality ? "i1" : "i32", predicate, comparison: true);
+        var opcode = !equality && call.BoundCall?.TupleOperator == true ? EmissionOpcode.TupleRelation : EmissionOpcode.Scalar;
+        function.AddScalar(opcode, id, [this.PhysicalOperand(body, input), new(EmissionOperandKind.Integer, 0)], equality ? "i1" : "i32", predicate, comparison: true);
         return true;
     }
 }
