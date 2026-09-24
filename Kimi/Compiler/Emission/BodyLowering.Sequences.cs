@@ -223,7 +223,7 @@ internal sealed partial class BodyLowering
 
             var aggregate = this.aggregateLayouts.Get(ValueType(body, id)!);
             if ((arrayRead ? receiver.Kind != BoundTypeKind.FixedArray : receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array)) || !validSource ||
-                (!ReferenceEquals(ValueType(body, id), readType) && !(receiver.Kind == BoundTypeKind.Slice && SharedReadTypes.ReadsStoredPointer(readType!, ValueType(body, id)))) ||
+                (!ReferenceEquals(ValueType(body, id), readType) && !SharedReadTypes.ReadsStoredPointer(readType!, ValueType(body, id))) ||
                 (!ReferenceTypes.IsValue(ValueType(body, id)) && aggregate is null && !ReferenceEquals(ValueType(body, id), BoundType.Unit)) ||
                 body.Places[operation.Place].Acquisition != AcquisitionKind.Copy ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||

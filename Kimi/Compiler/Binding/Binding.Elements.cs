@@ -102,9 +102,9 @@ public sealed partial class Binding
         return Complete(source, element);
     }
 
-    private BoundType SequenceReadType(BinaryKoto source, BoundType element)
+    private BoundType? SequenceReadType(BinaryKoto source, BoundType element)
     {
-        // SPEC 4.6.6: a concrete Non-Copy struct is read by shared storage borrow.
+        // SPEC 4.6.6: element reads use the same acquisition as shared patterns.
         // Chained projections, assignment and explicit acquisition instead retain the Place.
         var target = (Koto)source;
         while (target.Parent is ParenthesizedKoto parentheses)
@@ -114,8 +114,6 @@ public sealed partial class Binding
 
         var place = target.Parent is ConversionKoto || (source.Left.BoundType?.Kind == BoundTypeKind.Array && target.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, target)) ||
             (target.Parent is BinaryKoto assignment && ReferenceEquals(assignment.Left, target) && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals);
-        return !place && StructStorage.IsStruct(element) && this.ProveCopy(element, source) == ConstraintProof.Refuted
-            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [element], origin: this.PlaceOrigin(source.Left))
-            : element;
+        return place ? element : this.SharedReadType(element, this.PlaceOrigin(source.Left), source);
     }
 }

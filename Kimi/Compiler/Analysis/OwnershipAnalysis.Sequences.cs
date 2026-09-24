@@ -23,7 +23,7 @@ public sealed partial class OwnershipAnalysis
     private int ReadSlice(IndexKoto source, AcquisitionKind? acquisition)
     {
         var sequence = ReferenceTypes.IsDynamicArray(source.Left.BoundType) ? source.Left.BoundType!.Components[0] : source.Left.BoundType;
-        if (ReferenceTypes.IsStruct(source.BoundType) && source.BoundType!.Semantics == SemanticsKind.Ref &&
+        if (ReferenceTypes.IsStorage(source.BoundType) && source.BoundType!.Semantics == SemanticsKind.Ref &&
             sequence?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice && ReferenceEquals(source.BoundType.Components[0], sequence.Components[0]))
         {
             if (acquisition == AcquisitionKind.Move)
@@ -55,9 +55,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (acquisition == AcquisitionKind.Move || (!ScalarTypes.Supports(source.BoundType) &&
-            !(source.BoundType?.Kind == BoundTypeKind.Parameter && ReferenceTypes.IsArray(source.Left.BoundType) &&
-            this.compilation.Binding.ProveCopy(source.BoundType, source) == ConstraintProof.Proven)))
+        if (acquisition == AcquisitionKind.Move || this.Concrete(source.BoundType) is not { } resultType ||
+            !this.SupportsCopySnapshot(resultType, source))
         {
             if (acquisition is null && source.BoundType is { } element && this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven)
             {
