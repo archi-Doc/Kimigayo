@@ -73,12 +73,12 @@ public class PatternBindingTest
     [InlineData("func f(x: ref/i32 during static) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("func f(x: Option<ref/i32 during static>) => match x\n    .Some(0) => ()\n    _ => ()")]
     [InlineData("func f(x: Option<i32>) => match x@ref\n    .Some(_) => ()\n    .None => ()")]
-    public void SharedStructuralInspectionIsPending(string source)
+    public void SharedStructuralInspectionHasCompleteCoverage(string source)
     {
         var c = Parse(source);
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(MatchCoverageState.Pending, Plan(c).Coverage.State);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
+        Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
+        Assert.Contains(Plan(c).Positions, x => x.ImplicitDeref == PatternImplicitDeref.SharedOnce);
     }
 
     [Theory]
@@ -244,10 +244,10 @@ public class PatternBindingTest
     }
 
     [Fact]
-    public void SharedAccessDoesNotCreateAnOwnedBodyAcquisition()
+    public void SharedAccessCopiesTheCompleteCopyPayloadType()
     {
         var c = Parse("func f(x: ref/Option<i32> during static) => match x\n    .Some(let n) => n\n    .None => 0");
-        Assert.False(c.Bind().IsComplete);
+        Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
         var plan = Plan(c);
         var root = plan.Positions[plan.Arms[0].Pattern];
         Assert.Equal(PatternAccessMode.Shared, root.AccessMode);
@@ -255,9 +255,9 @@ public class PatternBindingTest
         var binding = Assert.Single(plan.Positions, p => p.Kind == BoundPatternKind.Binding);
         Assert.Equal(PatternAccessMode.Shared, binding.AccessMode);
         Assert.Equal(PatternImplicitDeref.None, binding.ImplicitDeref);
-        Assert.Equal(PatternAcquisition.None, binding.Acquisition);
-        Assert.Null(binding.BodySymbol!.Type);
-        Assert.Equal(BindingState.Unresolved, plan.Syntax.Arms[0].Body.BindingState);
+        Assert.Equal(PatternAcquisition.Copy, binding.Acquisition);
+        Assert.Same(BoundType.I32, binding.BodySymbol!.Type);
+        Assert.Equal(BindingState.Resolved, plan.Syntax.Arms[0].Body.BindingState);
     }
 
     [Fact]
