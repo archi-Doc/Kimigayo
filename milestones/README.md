@@ -1711,6 +1711,19 @@ Existing native harness results retain their prior scope. Source/compiler hashes
 commands, diagnostics and logs are recorded in the
 [authoring session](../PLAN_HISTORY.md#programs25-28-authoring).
 
+### Programs 31 and 33 authoring verification (2026-09-24)
+
+Both sources pass syntax parsing and are explicitly pending in the Binding source
+catalog, which now covers 33 authored programs. Source catalog/alias checks pass
+58 tests; the final Debug/Release compiler builds are warning-free and each full
+managed suite passes 12,169 tests. Eight Application builds use byte-identical
+source copies and the Debug/Release compilers at O0/O2; all fail Binding before
+native execution. Their native tests are NOT_RUN, and expected output above is
+specification-derived. P31/P33 remain TODO, with no new native harness, rejection
+or allocation evidence; existing harness results retain their prior scope.
+Commands, source/compiler hashes and diagnostics are in the
+[authoring session](../PLAN_HISTORY.md#programs31-33-authoring).
+
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining
 ordinary cleanup and return exit code 1 under the specified Windows runtime.
