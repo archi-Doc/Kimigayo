@@ -1,0 +1,68 @@
+// Milestone 33: exclusive objects, base views, refinement and complete payload updates.
+struct Resource
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit
+        match self.id
+            1 => Console.writeLine("Original resource destroyed.")
+            2 => Console.writeLine("Replacement resource destroyed.")
+            _ => $abort("Unexpected resource")
+
+open struct Base
+    public var baseValue: i32
+    protected init(value: i32) => self.baseValue = value
+    deinit => Console.writeLine("Base deinit.")
+
+struct Leaf : Base
+    let resource: Resource
+    public let extra: i32
+    public init(value: i32, extra: i32, resourceId: i32) : base(value)
+        self.resource = Resource.init(resourceId)
+        self.extra = extra
+    deinit => Console.writeLine("Leaf deinit.")
+
+struct Other : Base
+    public init() : base(-1) => ()
+
+func inspect(view: objref/Base)
+    require view.baseValue == 10 else => $abort("Base view read failed")
+    // Short-circuit refinement permits the Leaf-only standard Field on the right.
+    require view is Leaf and view.extra == 20 else => $abort("Leaf refinement failed")
+    require view is not Other else => $abort("Unrelated Type test succeeded")
+    let narrowed = view // Its inferred declaration Type is objref/Leaf.
+    let payload = narrowed@ref/Leaf // Leaf is Sealed; this is the complete payload.
+    require payload.extra == 20 else => $abort("Shared payload projection failed")
+    Console.writeLine("Base view refined to Leaf.")
+
+func observe(view: objref/Base) -> objref/Base during view
+    Console.writeLine("Type-test operand evaluated.")
+    return view
+
+func replacePayload(view: objuniq/Base)
+    // A stable parameter refines without gaining authority: it was already exclusive.
+    require view is Leaf else => $abort("Exclusive view refinement failed")
+    do
+        let old = Kimi.Intrinsics.exchange(view@uniq/Leaf, with: Leaf.init(30, 40, 2))
+        require old.baseValue == 10 and old.extra == 20 else => $abort("Old payload lost")
+        // Dynamic Type refinement survives, but old let-Field contents do not.
+        require view.baseValue == 30 and view.extra == 40 else => $abort("Payload contents were cached")
+        Console.writeLine("Complete payload replaced.")
+        // The old complete Leaf is destroyed independently of the living object.
+    require view is Leaf else => $abort("Payload update changed Dynamic Type")
+    Console.writeLine("Updated object remains a Leaf.")
+
+public func main()
+    do
+        var owner = Kimi.Intrinsics.makeObj<Leaf>(Leaf.init(10, 20, 1))
+        do
+            let baseView = owner@objref/Base
+            inspect(baseView)
+        // The test evaluates observe once, even though the actual object is a Leaf.
+        require observe(owner@objref/Base) is Leaf else => $abort("Call-result Type test failed")
+        replacePayload(owner@objuniq/Base)
+        require owner.baseValue == 30 and owner.extra == 40 else => $abort("Owner lost updated contents")
+        let moved: obj/Base = owner@obj/Base // Move the whole object through its base view.
+        require moved is Leaf and moved.extra == 40 else => $abort("Owning upcast lost Dynamic Type")
+        Console.writeLine("Owning base view retains the complete Leaf.")
+        // Destroy Leaf, its Resource and Base before releasing the original object storage.
+    Console.writeLine("Exclusive object run finished.")

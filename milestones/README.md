@@ -1,10 +1,10 @@
 # Language milestones
 
 Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md).
-Programs 1–30 and 32 have source files; programs 31 and 33–38 have design and verification scopes.
+Programs 1–33 have source files; programs 34–38 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
-not an execution claim. Milestones 23–28 and 30 are authored targets beyond current
+not an execution claim. Milestones 23–28, 30–31 and 33 are authored targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
@@ -45,7 +45,9 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone28](Milestone28.kimi) | User Iterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
 | [Milestone30](Milestone30.kimi) | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
+| [Milestone31](Milestone31.kimi) | Dictionary duplicate rejection, retained equal keys, replacement/removal, insertion-order iteration and exact entry cleanup |
 | [Milestone32](Milestone32.kimi) | User/generic UTF-8 formatting, independent owning strings, short-circuit writes, fixed-buffer reuse and bounded Console interpolation |
+| [Milestone33](Milestone33.kimi) | Exclusive objects, base views, struct Type tests/refinement, complete Sealed payload exchange and dynamic layered destruction |
 
 ## Program status
 
@@ -89,9 +91,9 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 28 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | User Iterable is unresolved; associated-Type/Constraint and generic iterator-state operations fail Binding; [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring) |
 | 29 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged source, shared-view/cleanup variants and required rejections (including ownership-stage `UnsupportedOwnership_Kd` for zero-sized elements and shared string iteration) pass through `test-milestone29.ps1`; allocation/cost probes pass |
 | 30 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN (target); PASS (Debug/Release rejections) | Tuple/shared-borrow composition fails Binding (`NoApplicableOverload_Kd` / `UnprovenConstraint_Kd`). All 16 independent rejection checks pass in each configuration. Companion scalar/user Contract tests do not certify this target. [Evidence](../PLAN_HISTORY.md#p30-session1). |
-| 31 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 31 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Dictionary formation/literals and operations report `UnsupportedBinding_Kd`; unresolved Types cascade into iteration/index diagnostics. [Authoring evidence](../PLAN_HISTORY.md#programs31-33-authoring). |
 | 32 | YES | PASS (Debug/Release) | PASS (Debug/Release) | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
-| 33 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
+| 33 | YES | FAIL (Debug/Release, O0/O2) | NOT_RUN | Base construction, object upcasts and refinement-dependent access/projection fail Binding (`UnsupportedBinding_Kd`, `UnresolvedBinding_Kd`, `InvalidAssignment_Kd`). [Authoring evidence](../PLAN_HISTORY.md#programs31-33-authoring). |
 | 34 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 35 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
 | 36 | NO (planned) | NOT_RUN | NOT_RUN | Scope assigned in the future-verification table |
@@ -130,7 +132,7 @@ Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 ## Roadmap from program 15 to core completion
 
 The current plan has **38 programs**, including **24 programs numbered 15–38**.
-Programs 15–30 and 32 are concrete below; 31 and 33–38 are future source targets.
+Programs 15–33 are concrete; 34–38 are future source targets.
 Source creation is not implemented capability. This count is a decomposition of scope, not an effort or delivery
 estimate. Passing programs 13/14 does not
 establish general Slice, Iterator, callable, or object support.
@@ -1581,6 +1583,106 @@ Focus: [comparison mapping](../spec/13-operators-and-assignment.md#1341-contract
 [floating key equality](../spec/12-expressions.md#1234-dictionary-literals),
 [Contracts](../spec/08-generics-constraints-and-contracts.md), and
 [required declarations](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations).
+
+## Milestone 31: Dictionary keys, insertion order and entry ownership
+
+`Key.equals` compares an immutable logical code and ignores the tag identifying
+each individual key value. `tryInsert` returns both rejected inputs in `Err`;
+`insertOrReplace` keeps the original stored key and position, destroys the unused
+input key before delivering the old Item, and indexed assignment destroys the
+replaced Item. Shared lookup and iteration inspect entries without consuming
+them. Removing and reinserting an equal key appends its new entry while retaining
+capacity. Owning iteration stops after the first pair; cleanup destroys that
+pair, then the unyielded entries in reverse insertion order, value before key.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Duplicate returned both inputs.
+Rejected item destroyed.
+Rejected key destroyed.
+Replacement key destroyed.
+Replacement returned item 10.
+Item 10 destroyed.
+Item 11 destroyed.
+Stored keys and insertion order preserved.
+Removed the original key and item.
+Item 12 destroyed.
+Key 1 destroyed.
+Owning iteration starts at key 2.
+Item 20 destroyed.
+Key 2 destroyed.
+Item 30 destroyed.
+Key 3 destroyed.
+Item 40 destroyed.
+Key 4 destroyed.
+Dictionary run finished.
+```
+
+Separate checks: nonempty literals, mandatory literal duplicate diagnostics,
+runtime duplicates before value evaluation, NaN/signed-zero keys, missing-key
+assignment Abort, empty/clear/shrink paths, complete owning iteration and generic
+keys. Reject missing Equatable, moved inputs, key mutation and structural mutation
+while a retained lookup/iteration borrow is live; preserve nested dependencies
+through rejected inputs and removed/replaced results. Check argument/equality
+effects, one-time indexed evaluation and destructor Abort. Measure internal
+allocations for empty construction, lookup, duplicate/absence, replacement and
+full-capacity churn, plus the specified management bounds; unchanged capacity
+alone is not evidence of allocation-free execution. No public Hash is required.
+
+Focus: [Dictionary operations](../spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement),
+[duplicate keys](../spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys),
+[Loans and effects](../spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects),
+[cleanup](../spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order)
+and [required costs](../spec/04-arrays-indexing-and-slices.md#477-performance-and-extension-boundary).
+
+## Milestone 33: exclusive object views and complete dynamic destruction
+
+An exclusively owned `Leaf` is inspected through `objref/Base`. A stable
+parameter's `is Leaf` test enables the Leaf-only standard Field on the right of
+`and`, and a new narrowed binding supports complete Sealed payload projection.
+A call-result Type test evaluates its observable operand once. An exclusive base
+view is refined before exchanging the complete Leaf payload: the old contents
+are destroyed separately, while the object's Dynamic Type remains Leaf and
+subsequent reads see the new `let` Field contents. An owning upcast finally moves
+the whole object into `obj/Base`; scope exit still destroys the complete Leaf,
+its Resource and its Base before releasing object storage.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Base view refined to Leaf.
+Type-test operand evaluated.
+Complete payload replaced.
+Leaf deinit.
+Original resource destroyed.
+Base deinit.
+Updated object remains a Leaf.
+Owning base view retains the complete Leaf.
+Leaf deinit.
+Replacement resource destroyed.
+Base deinit.
+Exclusive object run finished.
+```
+
+Separate checks: same-target shared/exclusive reborrows, deeper bases and generic
+struct identity, failed/unrelated tests, `not`/`or`/join refinement and test-operand
+cleanup. Reject implicit or downward upcasts, open/base payload projection,
+borrow escape, conflicting access, moved-handle reuse, ObjectPayload opt-outs and
+refinement assumed through `var`, aliases or stored Booleans. Check whole-payload
+replacement/swap, field-fact invalidation, retained dependencies and destruction
+Abort. Inspect header/view identity, unchanged allocation/metadata across payload
+updates, and release through the original allocation after dynamic destruction;
+the source makes no address-equality claim. Direct standard Fields and complete
+Sealed projections require no deferred ObjectCallCompatible inference. Runtime
+Contract Views and checked-cast syntax remain outside this program.
+
+Focus: [object views](../spec/03-types-and-values.md#335-object-views-and-identity),
+[upcasts](../spec/13-operators-and-assignment.md#1357-object-upcasts),
+[runtime tests](../spec/13-operators-and-assignment.md#1361-runtime-is-tests),
+[refinement](../spec/14-control-flow.md#1410-type-refinement),
+[payload projection](../spec/13-operators-and-assignment.md#13551-complete-object-payload-projection)
+and [dynamic release](../spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
 
 ### Programs 22–24 authoring verification (2026-09-22)
 
