@@ -321,6 +321,12 @@ internal sealed partial class BodyLowering
             return this.LowerPatternProjection(body, function, index, out failure);
         }
 
+        if (operation.Kind == OwnershipOperationKind.Read && operation.Input < 0 && this.IsGuardProtectionRead(body, index))
+        {
+            failure = null;
+            return !body.IsReachable(index) || (body.GetInputState(index, operation.Place) & PlaceState.MustInit) != 0 || Fail("Guard protection requires initialized Subject storage.", out failure);
+        }
+
         if (operation.Kind is OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.DecomposeCase)
         {
             return this.LowerMatchOperation(body, function, constants, index, out failure);

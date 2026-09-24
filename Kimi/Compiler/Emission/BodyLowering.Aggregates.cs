@@ -17,6 +17,7 @@ internal sealed partial class BodyLowering
     private int[] payloadPlacements = [];
     private int[] aggregateCompletions = [];
     private int[] decompositionOwners = [];
+    private int[] aggregateReadInitializations = [];
 
     internal AggregateLayoutPool AggregateLayouts => this.aggregateLayouts;
 
@@ -65,6 +66,8 @@ internal sealed partial class BodyLowering
         Grow(ref this.payloadPlacements, body.Places.Count);
         Grow(ref this.aggregateCompletions, body.Places.Count);
         Grow(ref this.decompositionOwners, body.Places.Count);
+        Grow(ref this.aggregateReadInitializations, body.Places.Count);
+        this.aggregateReadInitializations.AsSpan(0, body.Places.Count).Fill(-1);
         this.decompositionOwners.AsSpan(0, body.Places.Count).Fill(-1);
         this.payloadOwners.AsSpan(0, body.Places.Count).Fill(-1);
         this.constructionOwners.AsSpan(0, body.Places.Count).Fill(-1);
@@ -93,6 +96,26 @@ internal sealed partial class BodyLowering
             }
 
             this.aggregatePlaces[place.Id] = layout;
+        }
+
+        for (var id = 0; id < body.Operations.Count; id++)
+        {
+            var operation = body.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.Produce && (uint)operation.Place < (uint)body.Places.Count &&
+                body.Places[operation.Place].Kind == OwnershipPlaceKind.Temporary && this.aggregatePlaces[operation.Place] is not null &&
+                (body.Values[id].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField ||
+                    (id > 0 && body.Values[id - 1].Kind == OwnershipValueKind.PatternProjection &&
+                        body.Operations[id - 1] is { Kind: OwnershipOperationKind.Read } read && read.Input == operation.Place && ReferenceEquals(read.Source, operation.Source))))
+            {
+                if (this.aggregateReadInitializations[operation.Place] >= 0)
+                {
+                    return Fail("A complete aggregate read must initialize its own temporary once.", out failure);
+                }
+
+                // Each producer is checked by its ordinary lowering path. Retain its
+                // initialization so subsequent field access uses the acquired snapshot.
+                this.aggregateReadInitializations[operation.Place] = id;
+            }
         }
 
         for (var c = 0; c < body.Constructions.Count; c++)
@@ -325,6 +348,13 @@ internal sealed partial class BodyLowering
 
                 break;
             case OwnershipOperationKind.Produce:
+                if (id > 0 && body.Values[id - 1].Kind == OwnershipValueKind.PatternProjection &&
+                    body.Operations[id - 1] is { Kind: OwnershipOperationKind.Read } candidate && candidate.Input == place.Id &&
+                    ReferenceEquals(candidate.Source, operation.Source) && (!body.IsReachable(id) || this.Dominates(id - 1, id)))
+                {
+                    break; // The checked guard projection already copied the complete value.
+                }
+
                 if (body.Values[id].Kind == OwnershipValueKind.Closure)
                 {
                     return this.LowerClosure(body, function, id, out failure);

@@ -42,7 +42,7 @@ internal sealed partial class BodyLowering
 
         var place = body.Places[operation.Place];
         return ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
-            (operation.Source is IdentifierNameKoto identifier
+            (operation.Source is IdentifierNameKoto { BoundSymbol.Kind: not BindingSymbolKind.PatternCandidate } identifier
                 ? identifier.BoundSymbol is { } symbol && ((body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id) || this.IsPreparedArgument(body, id, symbol, place.Id))
                 : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
             this.IsElementOwnerStorage(place) &&
@@ -116,14 +116,15 @@ internal sealed partial class BodyLowering
         OwnershipPlaceKind.Local => true,
         OwnershipPlaceKind.Parameter => this.slotFunctionPlaces[place.Id] == 1,
         OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
-        OwnershipPlaceKind.Temporary => this.constructionOwners[place.Id] >= 0 || this.slotFunctionInitializations[place.Id] >= 0,
+        OwnershipPlaceKind.Temporary => this.constructionOwners[place.Id] >= 0 || this.slotFunctionInitializations[place.Id] >= 0 || this.aggregateReadInitializations[place.Id] >= 0,
         _ => false,
     };
 
     private bool ValidateElementOwner(OwnershipBody body, int id)
     {
         var place = body.Operations[id].Place;
-        var initialized = this.constructionOwners[place] >= 0 ? this.aggregateCompletions[place] : this.slotFunctionInitializations[place];
+        var initialized = this.constructionOwners[place] >= 0 ? this.aggregateCompletions[place]
+            : this.aggregateReadInitializations[place] >= 0 ? this.aggregateReadInitializations[place] : this.slotFunctionInitializations[place];
         // Locals use their dataflow state. Selection results are checked against
         // their current declaration/Join lifetime in ValidateSlotResults.
         return body.Places[place].Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Result ||

@@ -257,6 +257,27 @@ public sealed partial class OwnershipBody
             }
             else if (origin.Kind == OriginKind.Projection || (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, this.Function)))
             {
+                if (origin.Kind == OriginKind.Projection)
+                {
+                    var guardCandidate = false;
+                    foreach (var match in this.Matches)
+                    {
+                        foreach (var position in match.Binding.Positions)
+                        {
+                            if (position.CandidateSymbol is { } candidate && ReferenceEquals(candidate.Declaration, origin.Binder) && candidate.Slot == origin.Slot)
+                            {
+                                Record(match.Subject);
+                                guardCandidate = true;
+                            }
+                        }
+                    }
+
+                    if (guardCandidate)
+                    {
+                        return; // The selected body binding shares syntax, but is not the guard's storage.
+                    }
+                }
+
                 foreach (var entry in this.SymbolPlaces)
                 {
                     if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && entry.Key.Slot == (origin.Kind == OriginKind.Input ? origin.InputIndex : origin.Slot) &&
@@ -328,6 +349,17 @@ public sealed partial class OwnershipBody
             if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
             {
                 return this.Values[id].Constant == place || operation.Input == place;
+            }
+
+            if (operation.Kind == OwnershipOperationKind.EndComparisonLoans)
+            {
+                for (var loan = this.LoanInputs[id]; loan >= 0; loan = this.ComparisonLoans[loan].Parent)
+                {
+                    if (this.ComparisonLoans[loan] is { Guard: >= 0 } guard && guard.Place == place)
+                    {
+                        return true; // Subject and referents remain protected through guard cleanup.
+                    }
+                }
             }
 
             if (this.Values[id] is { Kind: OwnershipValueKind.Sequence, Constant: var sequence } && this.Sequences[(int)sequence].Receiver == place)

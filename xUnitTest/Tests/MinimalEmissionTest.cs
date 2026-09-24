@@ -310,5 +310,7 @@ public class MinimalEmissionTest
 
     internal static string Describe(Compilation c, string? error)
         => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Ownership={c.Ownership.Result}; " +
+            string.Join(", ", c.Binding.Issues) + "; " + string.Join(", ", c.Ownership.Issues) + "; " +
+            (c.Ownership.ControlFlow is { } flow ? string.Join(", ", flow.Issues) + "; " + string.Join(", ", flow.PendingBinding) : string.Empty) + "; " +
             string.Join(", ", c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => $"{x.Kind}:{x.Place}:{x.Source.Akind}"));
 }

@@ -177,11 +177,13 @@ public sealed partial class OwnershipAnalysis
                 this.Connect(test, guardEntry, OwnershipEdgeKind.True);
                 this.EnterCheckingBranch(guardEntry, armFork);
                 var guardDepth = this.comparisonDepth++;
-                if (ReferenceEquals(syntax.Expression.BoundType, BoundType.String))
+                if (MatchTypes.NeedsGuardProtection(plan.Positions[arm.Pattern].MatchedType))
                 {
                     // Pure tests inspect private owned Subject storage. Once guard
                     // code can observe it, retain shared protection through cleanup.
+                    var subjectValue = this.Value(subject);
                     this.Emit(OwnershipOperationKind.Read, guard, subject);
+                    this.placeValues[subject] = subjectValue;
                     guardLoan = this.BeginSharedLoan(subject, guard: armStart + i);
                 }
 
@@ -190,7 +192,7 @@ public sealed partial class OwnershipAnalysis
                 {
                     if (plan.Positions[position].CandidateSymbol is { } candidate)
                     {
-                        this.candidates.Add((candidate, subject, this.Value(subject), armStart + i, guardLoan, position == arm.Pattern ? -1 : position));
+                        this.candidates.Add((candidate, subject, this.Value(subject), armStart + i, guardLoan, position == arm.Pattern && MatchTypes.SupportsGuard(plan.Positions[position].MatchedType) ? -1 : position));
                     }
                 }
 
@@ -542,8 +544,10 @@ public sealed partial class OwnershipAnalysis
                     var inspect = this.Emit(OwnershipOperationKind.Read, source, candidate.Subject, result);
                     this.body.OperationSteps[inspect] = candidate.Arm;
                     this.SetValue(inspect, OwnershipValueKind.PatternProjection, [], constant: candidate.Position);
+                    this.EnsureGuardProtection(candidate.Subject, candidate.Arm, candidate.Loan);
+
                     var produce = this.Emit(OwnershipOperationKind.Produce, source, result);
-                    if (ScalarTypes.Supports(source.BoundType))
+                    if (ScalarResult(source.BoundType!))
                     {
                         this.SetValue(produce, OwnershipValueKind.Alias, [inspect]);
                     }
@@ -557,21 +561,7 @@ public sealed partial class OwnershipAnalysis
                     var reference = this.Place(source, source.BoundType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
                     var inspect = this.Emit(OwnershipOperationKind.Read, source, candidate.Subject, reference);
                     this.body.OperationSteps[inspect] = candidate.Arm;
-                    var protection = this.CurrentLoanHead;
-                    while (protection >= 0 && this.body.ComparisonLoans[protection].Guard != candidate.Arm)
-                    {
-                        protection = this.body.ComparisonLoans[protection].Parent;
-                    }
-
-                    if (protection < 0)
-                    {
-                        // A transfer ended the original protection. A new read in
-                        // its checking continuation forms a fresh Loan, not a restore.
-                        var depth = this.comparisonDepth;
-                        this.comparisonDepth = this.body.ComparisonLoans[candidate.Loan].Depth;
-                        this.BeginSharedLoan(candidate.Subject, guard: candidate.Arm);
-                        this.comparisonDepth = depth;
-                    }
+                    this.EnsureGuardProtection(candidate.Subject, candidate.Arm, candidate.Loan);
 
                     return this.RegisterTemporary(reference);
                 }
@@ -598,6 +588,29 @@ public sealed partial class OwnershipAnalysis
 
         this.Unsupported(source);
         return -1;
+    }
+
+    private void EnsureGuardProtection(int subject, int arm, int original)
+    {
+        if (original < 0)
+        {
+            return;
+        }
+
+        for (var protection = this.CurrentLoanHead; protection >= 0; protection = this.body.ComparisonLoans[protection].Parent)
+        {
+            if (this.body.ComparisonLoans[protection].Guard == arm)
+            {
+                return;
+            }
+        }
+
+        // A transfer ended the original protection. The first subsequent checking
+        // read forms one fresh Loan, shared by all later reads in that continuation.
+        var depth = this.comparisonDepth;
+        this.comparisonDepth = this.body.ComparisonLoans[original].Depth;
+        this.BeginSharedLoan(subject, guard: arm);
+        this.comparisonDepth = depth;
     }
 
     private void CleanupSubject(int place, Koto source)

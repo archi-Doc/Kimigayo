@@ -170,7 +170,7 @@ public sealed partial class OwnershipBody
                 (loan.Guard < 0 && this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
                     ((!loan.Access && loan.Call is null && this.Places[loan.Place].Type.Kind != BoundTypeKind.Function) || this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))) ||
                 (loan.Access ? loan.Call is not null || loan.Guard != -1 || (this.Places[loan.Place].Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array) && !StructStorage.IsStruct(this.Places[loan.Place].Type))
-                    : !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) && this.Places[loan.Place].Type.Kind != BoundTypeKind.Function) ||
+                    : loan.Guard < 0 && !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) && this.Places[loan.Place].Type.Kind != BoundTypeKind.Function) ||
                 this.LoanStates[loan.Read] != i || this.LoanInputs[loan.Read] != loan.Parent)
             {
                 return false;
@@ -391,6 +391,6 @@ public sealed partial class OwnershipBody
         return !this.IsReachable(loan.Read) && this.OperationRegions[loan.Read] > 0 &&
             (uint)arm.GuardLoan < (uint)index && this.ComparisonLoans[arm.GuardLoan].Depth == loan.Depth &&
             this.OperationSteps[loan.Read] == loan.Guard && this.Operations[loan.Read].Input >= 0 &&
-            this.Values[loan.Read].Kind == OwnershipValueKind.Borrow;
+            this.Values[loan.Read].Kind is OwnershipValueKind.Borrow or OwnershipValueKind.PatternProjection;
     }
 }

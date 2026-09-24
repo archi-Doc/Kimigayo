@@ -79,20 +79,19 @@ internal static class MatchTypes
             return true;
         }
 
-        // Composite candidates currently expose independent scalar/Unit values.
-        // Reference-bearing and whole aggregate candidates need additional Loan plans.
         for (var i = root; i < match.Positions[root].End; i++)
         {
             var position = match.Positions[i];
-            if (position.AccessMode != PatternAccessMode.Owned || position.ImplicitDeref != PatternImplicitDeref.None ||
-                (position.Kind == BoundPatternKind.Binding && !ScalarTypes.Supports(position.MatchedType) && !ReferenceEquals(position.MatchedType, BoundType.Unit)))
+            if (position.Kind == BoundPatternKind.Binding && position.CandidateSymbol?.Type is null)
             {
                 return false;
             }
         }
 
-        return match.Positions[root].Kind is BoundPatternKind.Case or BoundPatternKind.Tuple;
+        return true;
     }
+
+    internal static bool NeedsGuardProtection(BoundType type) => !ScalarTypes.Supports(type) && !ReferenceEquals(type, BoundType.Unit);
 
     internal static bool SupportsGuard(BoundType? type) => ScalarTypes.Supports(type) ||
         ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String);

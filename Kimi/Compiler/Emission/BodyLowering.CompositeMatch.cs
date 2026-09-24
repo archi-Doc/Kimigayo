@@ -459,21 +459,30 @@ internal sealed partial class BodyLowering
 
         var pattern = plan.Positions[position];
         var type = body.Places[operation.Input].Type;
-        var representation = WindowsLowering.GetValue(type);
-        var scalarCopy = pattern.Acquisition == PatternAcquisition.Copy && IsScalar(type);
-        var step = this.PatternStep(plan, position, representation ?? WindowsLowering.GetValue(BoundType.I32)!, 0, root: this.patternProjectionRoots[id]);
-        function.AddScalar(EmissionOpcode.PatternRead, id, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.Integer, step.Offset)], scalarCopy ? representation!.ComputationType : "ptr", scalarCopy ? null : "address", place: operation.Place, representation: representation);
-        function.Instructions[^1] = function.Instructions[^1] with { Pattern = [step] };
-        if (IsScalar(type))
+        this.LowerPatternRead(function, plan, position, this.patternProjectionRoots[id], type, pattern.Acquisition == PatternAcquisition.Copy, id, operation.Place, operation.Input, true);
+        return true;
+    }
+
+    private void LowerPatternRead(EmissionFunction function, BoundMatch plan, int position, int root, BoundType type, bool copy, int id, int subject, int destination, bool storeScalar)
+    {
+        if (ReferenceEquals(type, BoundType.Unit) || (copy && this.aggregateLayouts.Get(type) is { Value.Layout.Size: 0 }))
         {
-            function.AddScalar(EmissionOpcode.StoreScalar, id, [new(EmissionOperandKind.Value, id)], representation!.ComputationType, place: operation.Input, representation: representation);
+            return;
+        }
+
+        var representation = WindowsLowering.GetValue(type);
+        var scalarCopy = copy && IsScalar(type);
+        var step = this.PatternStep(plan, position, representation ?? WindowsLowering.GetValue(BoundType.I32)!, 0, root: root);
+        function.AddScalar(EmissionOpcode.PatternRead, id, [new(EmissionOperandKind.SlotAddress, subject), new(EmissionOperandKind.Integer, step.Offset)], scalarCopy ? representation!.ComputationType : "ptr", scalarCopy ? null : "address", place: subject, representation: representation);
+        function.Instructions[^1] = function.Instructions[^1] with { Pattern = [step] };
+        if (IsScalar(type) && storeScalar)
+        {
+            function.AddScalar(EmissionOpcode.StoreScalar, id, [new(EmissionOperandKind.Value, id)], representation!.ComputationType, place: destination, representation: representation);
         }
         else if (this.aggregateLayouts.Get(type) is { } layout && layout.Value.Layout.Size != 0)
         {
-            Transfer(function, id, layout, [new(EmissionOperandKind.Value, id)], operation.Input);
+            Transfer(function, id, layout, [new(EmissionOperandKind.Value, id)], destination);
         }
-
-        return true;
     }
 
     private bool LowerPatternProjection(OwnershipBody body, EmissionFunction function, int id, out string? failure)
@@ -489,7 +498,7 @@ internal sealed partial class BodyLowering
         var arm = body.MatchArms[armIndex];
         var match = body.Matches[arm.Match];
         var index = body.Values[id].Constant;
-        if (index <= arm.Pattern || index >= match.Binding.Positions[arm.Pattern].End || operation.Place != match.Subject ||
+        if (index < arm.Pattern || index >= match.Binding.Positions[arm.Pattern].End || operation.Place != match.Subject ||
             (uint)operation.Input >= (uint)body.Places.Count || arm.GuardEntry < 0 || (body.IsReachable(id) && !this.Dominates(arm.GuardEntry, id)))
         {
             return Fail("Candidate projection is outside its selected guard.", out failure);
@@ -498,17 +507,34 @@ internal sealed partial class BodyLowering
         var node = match.Binding.Positions[(int)index];
         var offset = this.PatternOffset(match.Binding, (int)index);
         if (node.Kind != BoundPatternKind.Binding || node.CandidateSymbol is null || !ReferenceEquals(operation.Source.BoundSymbol, node.CandidateSymbol) ||
-            !ReferenceEquals(body.Places[operation.Input].Type, this.Matched(node.MatchedType)) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), node.CandidateSymbol.Type) ||
+            !ReferenceEquals(body.Places[operation.Input].Type, this.Matched(node.CandidateSymbol.Type)) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), this.Matched(node.CandidateSymbol.Type)) ||
             offset < 0 || (body.IsReachable(id) && (body.GetInputState(id, match.Subject) & PlaceState.MustInit) == 0))
         {
             return Fail("Candidate projection has the wrong position or Type.", out failure);
         }
 
-        if (ScalarTypes.Supports(this.Matched(node.MatchedType)))
+        if (arm.GuardLoan >= 0)
         {
-            var representation = WindowsLowering.GetValue(this.Matched(node.MatchedType))!;
-            function.AddScalar(EmissionOpcode.PatternRead, id, [new(EmissionOperandKind.SlotAddress, match.Subject), new(EmissionOperandKind.Integer, offset)], representation.ComputationType, place: match.Subject, representation: representation);
+            var protection = body.LoanStates[id];
+            while (protection >= 0 && body.ComparisonLoans[protection].Guard != armIndex)
+            {
+                protection = body.ComparisonLoans[protection].Parent;
+            }
+
+            if (protection < 0)
+            {
+                return Fail("Candidate projection has no active guard protection.", out failure);
+            }
         }
+
+        var type = body.Places[operation.Input].Type;
+        var copy = ReferenceEquals(type, this.Matched(node.MatchedType));
+        if (!copy && (!ReferenceTypes.IsStorage(type) || !ReferenceEquals(type.Components[0], this.Matched(node.MatchedType))))
+        {
+            return Fail("Candidate projection has no shared-read acquisition.", out failure);
+        }
+
+        this.LowerPatternRead(function, match.Binding, (int)index, arm.Pattern, type, copy, id, match.Subject, operation.Input, false);
 
         return true;
     }

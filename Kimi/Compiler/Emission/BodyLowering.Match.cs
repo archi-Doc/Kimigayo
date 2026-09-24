@@ -84,6 +84,19 @@ internal sealed partial class BodyLowering
 
     private int LogicalIncoming(int id) => this.hasMatches ? this.logicalIncoming[id] : this.incoming[id];
 
+    private bool IsGuardProtectionRead(OwnershipBody body, int id)
+    {
+        if (body.LoanStates.Count <= id || body.LoanStates[id] < 0)
+        {
+            return false;
+        }
+
+        var index = body.LoanStates[id];
+        var loan = body.ComparisonLoans[index];
+        return loan.Read == id && loan.Place == body.Operations[id].Place && (uint)loan.Guard < (uint)body.MatchArms.Count &&
+            body.MatchArms[loan.Guard].GuardLoan == index && body.MatchArms[loan.Guard].GuardEntry + 1 == id;
+    }
+
     private EmissionOperand PhysicalOperandForBranch(OwnershipBody body, int id, ref int yes, ref int no)
     {
         if (body.Operations[id].Kind != OwnershipOperationKind.PatternTest)
@@ -290,10 +303,10 @@ internal sealed partial class BodyLowering
                 if (guarded)
                 {
                     var guard = binding.Arms[n].Syntax.Guard!;
-                    if (ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.String) &&
+                    if (MatchTypes.NeedsGuardProtection(this.Matched(pattern.MatchedType)) &&
                         ((uint)arm.GuardLoan >= (uint)body.ComparisonLoans.Count || body.ComparisonLoans[arm.GuardLoan].Guard != armIndex))
                     {
-                        return Fail("String guard has no Subject protection plan.", out failure);
+                        return Fail("Guard has no Subject protection plan.", out failure);
                     }
 
                     if ((uint)arm.GuardEntry >= (uint)body.Operations.Count || body.Edges[success].To != arm.GuardEntry ||
