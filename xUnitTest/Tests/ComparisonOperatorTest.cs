@@ -8,6 +8,23 @@ namespace XunitTest;
 public class ComparisonOperatorTest
 {
     [Fact]
+    public void AUserContractNamedEquatableCannotReplaceTheKimiIdentity()
+    {
+        var c = MinimalEmissionTest.Analyze("""
+            contract Equatable
+                func equals(self: ref/Self, other: ref/Self) -> bool
+            struct Key
+                Self is Equatable
+                public func equals(self: ref/Self, other: ref/Self) -> bool => true
+            let first = Key.init()
+            let second = Key.init()
+            let invalid = first == second
+            """);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == "UnsatisfiedConstraint_Kd");
+    }
+
+    [Fact]
     public void ForwardingAndExplicitSpecializationPreserveNaNContractEquality()
     {
         const string Source = """
