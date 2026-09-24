@@ -85,18 +85,28 @@ internal static partial class LlvmModuleWriter
         output.Write(", ptr null, ptr null }, align 8\n");
     }
 
-    private static void WriteDictionaryCallbackHandle(TextWriter output, DictionaryHelper helper, string environment)
+    private static void WriteDictionaryCallbackHandle(TextWriter output, string table, string handle, string environment)
     {
-        output.Write("  %callback = alloca { i64, ptr }, align 8\n  store i64 ");
+        output.Write("  ");
+        output.Write(handle);
+        output.Write(" = alloca { i64, ptr }, align 8\n  store i64 ");
         output.Write(environment);
-        output.Write(", ptr %callback, align 8\n  %table = getelementptr i8, ptr %callback, i64 8\n  store ptr @");
-        output.Write(helper.Abi.Name);
-        output.Write("_table, ptr %table, align 8\n");
+        output.Write(", ptr ");
+        output.Write(handle);
+        output.Write(", align 8\n  ");
+        output.Write(handle);
+        output.Write("_table = getelementptr i8, ptr ");
+        output.Write(handle);
+        output.Write(", i64 8\n  store ptr @");
+        output.Write(table);
+        output.Write("_table, ptr ");
+        output.Write(handle);
+        output.Write("_table, align 8\n");
     }
 
     private static void WriteDictionaryFind(TextWriter output, DictionaryHelper helper, FunctionAbi find)
     {
-        WriteDictionaryCallbackHandle(output, helper, "0");
+        WriteDictionaryCallbackHandle(output, helper.Abi.Name, "%callback", "0");
         output.Write("  %link = call i64 @");
         output.Write(find.Name);
         output.Write("(ptr %handle, i64 ");
@@ -129,7 +139,7 @@ internal static partial class LlvmModuleWriter
             output.Write("  %origin = alloca { ptr, i64 }, align 8\n  store ptr %location, ptr %origin, align 8\n");
             DictionaryAddress(output, "%length_ptr", "%origin", 8);
             output.Write("  store i64 %location_length, ptr %length_ptr, align 8\n  %environment = ptrtoint ptr %origin to i64\n");
-            WriteDictionaryCallbackHandle(output, helper, "%environment");
+            WriteDictionaryCallbackHandle(output, helper.Abi.Name, "%callback", "%environment");
             output.Write("  call void @");
             output.Write(clear.Name);
             output.Write("(ptr %handle, i64 ");

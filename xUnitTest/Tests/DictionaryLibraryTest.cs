@@ -9,6 +9,23 @@ namespace XunitTest;
 public class DictionaryLibraryTest
 {
     [Fact]
+    public void PointerReturningCallbacksUseOrdinaryCallAbi()
+    {
+        const string Source = """
+            func invoke(f: (isize) -> unsafe/u8) -> unsafe/u8 => f(0)
+            unsafe
+                let address: usize = 4096
+                let expected = address@unsafe/u8
+                let concrete = func [address] (offset: isize) -> unsafe/u8
+                    unsafe => return address@unsafe/u8
+                let erased: (isize) -> unsafe/u8 = concrete
+                require concrete(0) == expected and erased(0) == expected else => $abort("pointer result")
+                require invoke(erased@move) == expected else => $abort("forwarded result")
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryPointerCallbacks", Source, string.Empty);
+    }
+
+    [Fact]
     public void RemovalCompilesTheOrdinaryLibrarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)\n_ = entries.remove(1)");
@@ -21,6 +38,7 @@ public class DictionaryLibraryTest
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryFind));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClear));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryCompact));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryShrink));
         Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.BoundSymbol!.CompilerFunction);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
         Assert.DoesNotContain("%left_index = sub", output.ToString());

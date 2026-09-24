@@ -109,6 +109,7 @@ public sealed class LlvmEmitter
             module.DictionaryFind = this.functions.GetValueOrDefault(c.Library.DictionaryFind);
             module.DictionaryClear = this.functions.GetValueOrDefault(c.Library.DictionaryClear);
             module.DictionaryCompact = this.functions.GetValueOrDefault(c.Library.DictionaryCompact);
+            module.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {

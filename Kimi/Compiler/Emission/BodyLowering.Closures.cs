@@ -200,7 +200,7 @@ internal sealed partial class BodyLowering
         if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) || receiver is null || signature is null || returnType is null ||
             !ReferenceEquals(body.Places[operation.Input].Type, receiver) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
             plan.Arguments.Length != call.ArgumentNodes.Count || this.arguments.Count != call.ArgumentNodes.Count ||
-            !(ScalarTypes.Supports(returnType) || SlotTypes.IsResult(returnType) || ReferenceEquals(returnType, BoundType.Unit) || ReferenceEquals(returnType, BoundType.Never)))
+            !(ScalarTypes.Supports(returnType) || ReferenceTypes.IsPointer(returnType) || SlotTypes.IsResult(returnType) || ReferenceEquals(returnType, BoundType.Unit) || ReferenceEquals(returnType, BoundType.Never)))
         {
             return Fail("Unsupported common-function call signature or receiver.", out failure);
         }

@@ -102,6 +102,7 @@ public sealed partial class OwnershipAnalysis
             this.CollectLibraryBody(this.compilation.Library.DictionaryFind);
             this.CollectLibraryBody(this.compilation.Library.DictionaryClear);
             this.CollectLibraryBody(this.compilation.Library.DictionaryCompact);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryShrink);
         }
 
         if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) || ObjectTypes.IsOwner(type))

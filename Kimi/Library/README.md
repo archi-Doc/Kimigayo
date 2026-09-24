@@ -15,7 +15,7 @@ SPEC Chapter 22 and its references remain authoritative.
   validated recognized identities. Primitive witnesses use compiler lowering;
   user witnesses use ordinary calls with the same ownership and effect checks.
 - Dictionary algorithms belong in Kimigayo sources. `DictionaryStorage.kimi`
-  currently supplies ordered search, cleanup and compaction, initialization, append/unlink and free-slot bookkeeping through ordinary
+  currently supplies ordered search, cleanup and shrink-to-fit, initialization, append/unlink and free-slot bookkeeping through ordinary
   compilation; the remaining hand-written Dictionary IR is being migrated.
   Compiler support supplies physical layout, allocation, and typed ownership
   operations. Private storage functions are not public library APIs.
