@@ -51,7 +51,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-24**, programs 1–22 and 29–32 pass their Release harnesses in the [review remediation session](../PLAN_HISTORY.md#review-remediation); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
+As of **2026-09-24**, programs 1–22 and 29–32 pass their Release harnesses in the [Dictionary source session](../PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -100,7 +100,7 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 28 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `InvalidConstraint_Kd` at `struct Batch`; user Iterable and generic iterator-state support remain. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
 | 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (123 checks per configuration); shared string iteration is a positive case, while zero-sized Array elements retain an ownership-stage unsupported diagnostic. Allocation/cost probes pass. |
 | 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../PLAN_HISTORY.md#review-remediation). |
-| 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 59 checks per harness, slot reuse/cleanup and zero-allocation warm compilation; nonempty literals, borrowed indexing and nested owning storage remain. [Evidence](../PLAN_HISTORY.md#review-remediation). |
+| 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; public generic API/capacity source migration, nonempty runtime literals, borrowed indexing and nested owning storage remain. [Evidence](../PLAN_HISTORY.md#p31-kimigayo-library). |
 | 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
 | 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
 | 34 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
