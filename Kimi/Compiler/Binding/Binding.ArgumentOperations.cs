@@ -62,7 +62,13 @@ public sealed partial class Binding
         return source;
     }
 
-    internal static Koto PlaceOriginBinder(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Declaration : source;
+    internal static Koto PlaceOriginBinder(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
+        ? CandidateOriginBinder(candidate)
+        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage } symbol ? symbol.Declaration : source;
+
+    // A guard candidate and the selected body binding share their source declaration,
+    // but never their storage lifetime. Reuse the name node as the candidate's identity.
+    internal static Koto CandidateOriginBinder(BindingSymbol candidate) => ((SyntaxFormKoto)candidate.Declaration).Operands[0];
 
     internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Slot : 0;
 

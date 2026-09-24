@@ -8,6 +8,25 @@ namespace XunitTest;
 public class SharedGuardTest
 {
     [Fact]
+    public void SelectedCopyBindingHasItsOwnStorageOrigin()
+    {
+        const string Source = """
+            struct Pair
+                Self is Copy
+                public let number: i32
+                public init(number: i32) => self.number = number
+            var original = ("hello", Pair.init(42))
+            match original
+                (let text, let pair) if text == "hello" and pair.number == 42
+                    let saved = pair@ref
+                    original = ("new", Pair.init(7))
+                    require saved.number == 42 else => $abort("snapshot")
+                (_, _) => $abort("missing")
+            """;
+        NativeAllocationAudit.WriteFixture("SharedGuardBodyStorageOrigin", Source, 0, 0, 0);
+    }
+
+    [Fact]
     public void WarmSharedGuardAnalysisAndEmissionAllocateNothing()
     {
         const string Source = "let value = (\"hello\", 42)\nmatch value\n    (let text, let number) if text == \"hello\" and number == 42 => Console.writeLine(text)\n    (_, _) => ()";

@@ -266,7 +266,7 @@ public sealed partial class OwnershipBody
                         for (var n = 0; n < match.Binding.Positions.Count; n++)
                         {
                             var position = match.Binding.Positions[n];
-                            if (position.CandidateSymbol is { } candidate && ReferenceEquals(candidate.Declaration, origin.Binder) && candidate.Slot == origin.Slot)
+                            if (position.CandidateSymbol is { } candidate && ReferenceEquals(Binding.CandidateOriginBinder(candidate), origin.Binder) && candidate.Slot == origin.Slot)
                             {
                                 Record(match.Subject);
                                 guardCandidate = true;

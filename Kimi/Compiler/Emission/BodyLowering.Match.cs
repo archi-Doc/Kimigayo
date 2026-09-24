@@ -631,7 +631,7 @@ internal sealed partial class BodyLowering
                 operation.Acquisition != AcquisitionKind.None || operation.LoanMode != LoanRequirement.None ||
                 (uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(body.Places[operation.Input].Type, type) ||
                 body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(body.Places[operation.Input].Source, operation.Source) ||
-                type!.Origin is not { Kind: OriginKind.Projection } origin || !ReferenceEquals(origin.Binder, pattern.CandidateSymbol!.Declaration) || origin.Slot != pattern.CandidateSymbol.Slot ||
+                type!.Origin is not { Kind: OriginKind.Projection } origin || !ReferenceEquals(origin.Binder, Binding.CandidateOriginBinder(pattern.CandidateSymbol!)) || origin.Slot != pattern.CandidateSymbol!.Slot ||
                 (uint)arm.GuardLoan >= (uint)body.ComparisonLoans.Count || protection < 0)
             {
                 return Fail("Candidate reference has no active Subject Loan or matching Origin.", out failure);

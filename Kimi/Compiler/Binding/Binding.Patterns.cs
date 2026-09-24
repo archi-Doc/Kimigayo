@@ -293,7 +293,7 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };
                 if (this.symbols.TryGetValue(binding.Operands[0], out var candidate) && candidate.Kind == BindingSymbolKind.PatternCandidate)
                 {
-                    candidate.Type = this.SharedReadType(matched, this.OriginAtom(candidate.Declaration, OriginKind.Projection, candidate.Slot), binding);
+                    candidate.Type = this.SharedReadType(matched, this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot), binding);
                     position = position with { CandidateSymbol = candidate };
                 }
 
