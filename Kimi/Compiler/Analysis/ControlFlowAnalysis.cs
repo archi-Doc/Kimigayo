@@ -737,6 +737,19 @@ public sealed class ControlFlowAnalysis
             ? null : flow.Type;
         info.CanCompleteNormally = flow.Normal;
         info.IsCompletionPending = flow.Pending;
+        var updatedTarget = node switch
+        {
+            BinaryKoto binary when binary.Akind is > KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals => binary.Left,
+            UnaryKoto unary when ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid => unary.Operand,
+            _ => null,
+        };
+        if (updatedTarget is not null && node.CodeContext.Compilation.Binding.PropertyCall(updatedTarget, PropertyAccessorKind.Set) is { } updateSetter)
+        {
+            // The receiver and RHS were visited once in source order. The final call
+            // consumes their prepared values and adds no second evaluation or transfer.
+            this.nodes[updateSetter] = info;
+        }
+
         if (expected is not null)
         {
             this.Constrain(node, expected);

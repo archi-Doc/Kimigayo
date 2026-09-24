@@ -158,6 +158,12 @@ public sealed partial class OwnershipAnalysis
 
     private int UnaryValue(UnaryKoto unary)
     {
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            this.compilation.Binding.PropertyUpdateStorage(unary.Operand) is { } updateStorage)
+        {
+            return this.UpdateProperty(unary, KotoHelper.UnwrapParentheses(unary.Operand), updateStorage);
+        }
+
         // Binding fits a directly signed literal once, including each signed minimum.
         if (unary is PrefixMinusKoto or PrefixPlusKoto && unary.Operand is NumberLiteralKoto)
         {

@@ -8,6 +8,13 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(Koto Source, PropertyAccessorKind Kind), InvocationKoto> propertyCalls = new();
     private readonly Dictionary<Koto, MemberAccessKoto> storageProjections = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, MemberAccessKoto> propertyUpdateStorage = new(ReferenceEqualityComparer.Instance);
+
+    internal static bool IsGetterResult(Koto node)
+        => KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
+
+    internal MemberAccessKoto? PropertyUpdateStorage(Koto node)
+        => this.propertyUpdateStorage.GetValueOrDefault(KotoHelper.UnwrapParentheses(node));
 
     internal FunctionKoto AccessorFunction(BoundAccessor accessor)
     {
@@ -35,6 +42,60 @@ public sealed partial class Binding
 
     internal MemberAccessKoto? StorageProjection(Koto node)
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage ? this.storageProjections.GetValueOrDefault(node) : null;
+
+    private bool ValidPropertyWritePath(Koto node, BindingScope scope)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        while (node is BinaryKoto projection && (projection is MemberAccessKoto || ElementAccess.IsSyntax(projection)))
+        {
+            node = KotoHelper.UnwrapParentheses(projection.Left);
+            if (node.BoundType?.Semantics != SemanticsKind.Owner)
+            {
+                break; // A reference reaches a separate referent with its own authority.
+            }
+
+            if (node.BoundSymbol?.Property is { } parent &&
+                (!parent.Getter.IsStandard || !parent.Setter.IsStandard ||
+                    !this.Accessible(parent.Symbol, scope, parent.Setter.Access, (node as MemberAccessKoto)?.Left.BoundType)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool BindPropertyUpdate(MemberAccessKoto node, BindingScope scope)
+    {
+        var property = node.BoundSymbol!.Property!;
+        if (property.Getter.Result is not { } result || property.Setter.Input is not { } input ||
+            !this.FitsTypeAt(result, input, node))
+        {
+            Fail(node, BindingFailure.TypeMismatch);
+            return false;
+        }
+
+        var owner = node.Left.BoundType!;
+        var referent = ReferenceTypes.IsStruct(owner) ? owner.Components[0] : owner;
+        var type = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
+        if (!this.AdaptInput(node.Left, type, owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
+        {
+            Fail(node, BindingFailure.InvalidAssignment);
+            return false;
+        }
+
+        this.receiverOperations[node] = new(node.Left, owner, adapted, kind, quality, ParameterIndex: 0);
+        if (!this.propertyUpdateStorage.TryGetValue(node, out var storage))
+        {
+            storage = new(node, new IdentifierNameKoto(node.Left, "self"), node.Right);
+            this.propertyUpdateStorage.Add(node, storage);
+        }
+
+        Complete(storage.Left, adapted);
+        storage.BoundSymbol = property.Symbol;
+        Complete(storage, property.Type);
+        return true;
+    }
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
     {
@@ -84,12 +145,15 @@ public sealed partial class Binding
             receiverOperation = new(receiver, actual, adapted, kind, quality, ParameterIndex: 0);
         }
 
-        if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call))
+        if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||
+            call.ArgumentNodes.Count != (input is null ? 0 : 1) + (receiver is null ? 0 : 1) ||
+            (input is not null && !ReferenceEquals(call.ArgumentNodes[0], input)) ||
+            (receiver is not null && !ReferenceEquals(call.ArgumentNodes[^1], receiver)))
         {
             var method = new IdentifierNameKoto(node, accessor.Property.Symbol.Name + "." + accessor.Kind);
             Koto[] arguments = input is null ? receiver is null ? [] : [receiver] : receiver is null ? [input] : [input, receiver];
             call = new(node, method, arguments) { CallStorage = new() };
-            this.propertyCalls.Add((node, accessor.Kind), call);
+            this.propertyCalls[(node, accessor.Kind)] = call;
         }
 
         var function = this.AccessorFunction(accessor);

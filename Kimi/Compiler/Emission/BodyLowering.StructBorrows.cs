@@ -189,7 +189,7 @@ internal sealed partial class BodyLowering
 
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
             }
-            else if (operation.Source is BinaryKoto path && !ReceiverField(body, operation.Place) && ElementAccess.OwnedPathRoot(path) is { } owner)
+            else if (operation.Source is BinaryKoto path && !Binding.IsGetterResult(path) && !ReceiverField(body, operation.Place) && ElementAccess.OwnedPathRoot(path) is { } owner)
             {
                 if (value.Count != 0 || this.aggregatePlaces[operation.Place] is null || !ReferenceEquals(SignatureType(this, owner.BoundType), type) ||
                     !ReferenceEquals(SignatureType(this, path.BoundType), output.Components[0]) || !this.TryBorrowedPathOffset(path, owner, out var pathOffset))
@@ -230,8 +230,8 @@ internal sealed partial class BodyLowering
         var field = value.Kind == OwnershipValueKind.BorrowedField ? operation.Source as MemberAccessKoto
             : operation.Source switch
             {
-                BinaryKoto binary => binary.CodeContext.Compilation.Binding.StorageProjection(KotoHelper.UnwrapParentheses(binary.Left)) ?? KotoHelper.UnwrapParentheses(binary.Left) as MemberAccessKoto,
-                UnaryKoto unary => KotoHelper.UnwrapParentheses(unary.Operand) as MemberAccessKoto,
+                BinaryKoto binary => binary.CodeContext.Compilation.Binding.PropertyUpdateStorage(binary.Left) ?? binary.CodeContext.Compilation.Binding.StorageProjection(KotoHelper.UnwrapParentheses(binary.Left)) ?? KotoHelper.UnwrapParentheses(binary.Left) as MemberAccessKoto,
+                UnaryKoto unary => unary.CodeContext.Compilation.Binding.PropertyUpdateStorage(unary.Operand) ?? KotoHelper.UnwrapParentheses(unary.Operand) as MemberAccessKoto,
                 _ => null,
             };
         var receiver = Input(body, id, 0);

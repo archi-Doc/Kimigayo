@@ -779,9 +779,10 @@ public sealed partial class Binding
                     this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, compatibility);
                 }
 
-                var input = (target.Parent as BinaryKoto)?.Right;
+                var input = target.Parent is BinaryKoto parentBinary ? parentBinary.Right : target.Parent;
                 if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
-                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
+                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))) ||
+                    (update && (node is not MemberAccessKoto updateMember || !this.BindPropertyUpdate(updateMember, scope))))
                 {
                     return null;
                 }
@@ -868,6 +869,11 @@ public sealed partial class Binding
                 // Negation is defined for signed integers and floating-point values only (SPEC 13.2).
                 return operand.IsNumeric && !operand.IsUnsignedInteger ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
+                if (!this.ValidPropertyWritePath(unary.Operand, scope))
+                {
+                    return Fail(unary, BindingFailure.InvalidAssignment);
+                }
+
                 if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
                 {
                     return Fail(unary, BindingFailure.InvalidAssignment);
@@ -933,6 +939,11 @@ public sealed partial class Binding
         if (left is null || right is null)
         {
             return Complete(binary, null);
+        }
+
+        if (assignment && !this.ValidPropertyWritePath(binary.Left, scope))
+        {
+            return Fail(binary, BindingFailure.InvalidAssignment);
         }
 
         if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&

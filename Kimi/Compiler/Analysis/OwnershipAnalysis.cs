@@ -564,6 +564,11 @@ public sealed partial class OwnershipAnalysis
 
     private int ExpressionCore(Koto node, PlaceUseKind use, AcquisitionKind? acquisition)
     {
+        if (this.propertyReceivers.TryGetValue(node, out var preparedReceiver))
+        {
+            return preparedReceiver;
+        }
+
         if (this.compilation.Binding.PropertyCall(node, PropertyAccessorKind.Get) is { } getter)
         {
             return this.Call(getter);
@@ -769,14 +774,13 @@ public sealed partial class OwnershipAnalysis
         if (assignment)
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
+            if (binary.Akind != KotoKind.Equals && this.compilation.Binding.PropertyUpdateStorage(target) is { } updateStorage)
+            {
+                return this.UpdateProperty(binary, target, updateStorage);
+            }
+
             if (this.compilation.Binding.PropertyCall(target, PropertyAccessorKind.Set) is { } setter)
             {
-                if (binary.Akind != KotoKind.Equals)
-                {
-                    this.Unsupported(binary);
-                    return -1;
-                }
-
                 return this.Call(setter);
             }
 
@@ -1052,7 +1056,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private int Call(InvocationKoto call)
+    private int Call(InvocationKoto call, int preparedInput = -1, int preparedReceiver = -1)
     {
         if (call.BoundValueCall is { } valueCall)
         {
@@ -1089,7 +1093,10 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = plan.ArgumentOperations[i];
-            var prepared = this.PrepareCallArgument(call, call.ArgumentNodes[i], argument);
+            var accessor = (plan.Target.Declaration as FunctionKoto)?.Accessor;
+            var prepared = accessor is not null && argument.ParameterIndex == 0 && accessor.Receiver is not null && preparedReceiver >= 0 ? preparedReceiver
+                : accessor?.Kind == PropertyAccessorKind.Set && preparedInput >= 0 ? preparedInput
+                : this.PrepareCallArgument(call, call.ArgumentNodes[i], argument);
             borrows |= this.HasCallInspection(prepared);
             this.arguments.Add(prepared);
         }
@@ -1134,7 +1141,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var result = this.Temporary(call);
+        var result = this.Temporary(plan.Target.Declaration is FunctionKoto { Accessor.Kind: PropertyAccessorKind.Get } ? call.Parent! : call);
         var scalar = ScalarResult(this.body.Places[result].Type);
         if (scalar || SlotTypes.IsResult(this.body.Places[result].Type))
         {

@@ -255,7 +255,7 @@ public sealed partial class OwnershipBody
                     AddOrigin(place, origin.Operands[i], mode);
                 }
             }
-            else if (origin.Kind == OriginKind.Projection || (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, this.Function)))
+            else if (origin.Kind == OriginKind.Projection || (origin.Kind == OriginKind.Input && (ReferenceEquals(origin.Binder, this.Function) || ReferenceEquals(origin.Binder, this.Function.Accessor?.Declaration))))
             {
                 if (origin.Kind == OriginKind.Projection)
                 {

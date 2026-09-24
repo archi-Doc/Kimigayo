@@ -52,6 +52,11 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         while (source is MemberAccessKoto or IndexKoto)
         {
+            if (IsGetterResult(source))
+            {
+                break; // Its lifetime is the result temporary, not the receiver's storage.
+            }
+
             source = KotoHelper.UnwrapParentheses(((BinaryKoto)source).Left);
             if (source.BoundType?.Origin is not null)
             {
@@ -325,7 +330,7 @@ public sealed partial class Binding
                     return false;
                 }
             }
-            else if (!((source.BoundSymbol is null || unwrapped is InvocationKoto) &&
+            else if (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
                 (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
                 !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
                 unwrapped is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) &&
