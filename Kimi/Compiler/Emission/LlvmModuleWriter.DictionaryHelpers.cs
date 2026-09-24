@@ -12,6 +12,10 @@ internal static partial class LlvmModuleWriter
             {
                 WriteDictionaryEqualityAdapter(output, helper);
             }
+            else if (helper.Kind == DictionaryHelperKind.Clear && DictionaryNeedsDestruction(helper))
+            {
+                WriteDictionaryDestructionAdapter(output, helper);
+            }
 
             output.Write(helper.Abi.GetDefinition(false));
             output.Write("entry:\n");
@@ -21,7 +25,7 @@ internal static partial class LlvmModuleWriter
                     WriteDictionaryFind(output, helper, module.DictionaryFind!);
                     break;
                 case DictionaryHelperKind.Clear:
-                    WriteDictionaryClear(output, helper, module.DictionaryClearLinks!);
+                    WriteDictionaryClear(output, helper, module.DictionaryClear!, module.DictionaryClearLinks!);
                     break;
                 case DictionaryHelperKind.Drop:
                     output.Write("  call void @");
@@ -61,11 +65,8 @@ internal static partial class LlvmModuleWriter
     {
         // Adapt the verified equality witness to the ordinary Function Type ABI.
         // The handle has an empty environment and no drop action or heap allocation.
-        output.Write('@');
-        output.Write(helper.Abi.Name);
-        output.Write("_table = private constant { ptr, ptr, ptr } { ptr @");
-        output.Write(helper.Abi.Name);
-        output.Write("_equals, ptr null, ptr null }, align 8\ndefine internal i1 @");
+        WriteDictionaryCallbackTable(output, helper, "equals");
+        output.Write("define internal i1 @");
         output.Write(helper.Abi.Name);
         output.Write("_equals(i64 %environment, ptr %stored_key, ptr %key, ptr %context) #0 {\nentry:\n");
         output.Write("  %equal = call i1 @");
@@ -73,11 +74,30 @@ internal static partial class LlvmModuleWriter
         output.Write("(ptr %stored_key, ptr %key)\n  ret i1 %equal\n}\n\n");
     }
 
+    private static void WriteDictionaryCallbackTable(TextWriter output, DictionaryHelper helper, string entry)
+    {
+        output.Write('@');
+        output.Write(helper.Abi.Name);
+        output.Write("_table = private constant { ptr, ptr, ptr } { ptr @");
+        output.Write(helper.Abi.Name);
+        output.Write('_');
+        output.Write(entry);
+        output.Write(", ptr null, ptr null }, align 8\n");
+    }
+
+    private static void WriteDictionaryCallbackHandle(TextWriter output, DictionaryHelper helper, string environment)
+    {
+        output.Write("  %callback = alloca { i64, ptr }, align 8\n  store i64 ");
+        output.Write(environment);
+        output.Write(", ptr %callback, align 8\n  %table = getelementptr i8, ptr %callback, i64 8\n  store ptr @");
+        output.Write(helper.Abi.Name);
+        output.Write("_table, ptr %table, align 8\n");
+    }
+
     private static void WriteDictionaryFind(TextWriter output, DictionaryHelper helper, FunctionAbi find)
     {
-        output.Write("  %callback = alloca { i64, ptr }, align 8\n  store i64 0, ptr %callback, align 8\n  %table = getelementptr i8, ptr %callback, i64 8\n  store ptr @");
-        output.Write(helper.Abi.Name);
-        output.Write("_table, ptr %table, align 8\n  %link = call i64 @");
+        WriteDictionaryCallbackHandle(output, helper, "0");
+        output.Write("  %link = call i64 @");
         output.Write(find.Name);
         output.Write("(ptr %handle, i64 ");
         WriteNumber(output, helper.Stride);
@@ -86,19 +106,40 @@ internal static partial class LlvmModuleWriter
         output.Write(", ptr %key, ptr %callback)\n  ret i64 %link\n");
     }
 
-    private static void WriteDictionaryClear(TextWriter output, DictionaryHelper helper, FunctionAbi clearLinks)
+    private static bool DictionaryNeedsDestruction(DictionaryHelper helper)
+        => helper.KeyIsString || helper.KeyLayout?.NeedsDestruction == true || helper.ValueIsString || helper.ValueLayout?.NeedsDestruction == true;
+
+    private static void WriteDictionaryDestructionAdapter(TextWriter output, DictionaryHelper helper)
     {
-        var destroy = helper.KeyIsString || helper.KeyLayout?.NeedsDestruction == true || helper.ValueIsString || helper.ValueLayout?.NeedsDestruction == true;
-        if (destroy)
+        WriteDictionaryCallbackTable(output, helper, "destroy");
+        output.Write("define internal void @");
+        output.Write(helper.Abi.Name);
+        output.Write("_destroy(i64 %environment, ptr %stored_key, ptr %stored_value, ptr %context) #0 {\nentry:\n  %origin = inttoptr i64 %environment to ptr\n  %location = load ptr, ptr %origin, align 8\n");
+        DictionaryAddress(output, "%length_ptr", "%origin", 8);
+        output.Write("  %location_length = load i64, ptr %length_ptr, align 8\n");
+        WriteStoredDestruction(output, helper.ValueLayout, helper.ValueIsString, "%stored_value");
+        WriteStoredDestruction(output, helper.KeyLayout, helper.KeyIsString, "%stored_key");
+        output.Write("  ret void\n}\n\n");
+    }
+
+    private static void WriteDictionaryClear(TextWriter output, DictionaryHelper helper, FunctionAbi clear, FunctionAbi clearLinks)
+    {
+        if (DictionaryNeedsDestruction(helper))
         {
-            output.Write("  %buffer = load ptr, ptr %handle, align 8\n");
-            DictionaryAddress(output, "%tail_ptr", "%handle", 40);
-            output.Write("  %tail = load i64, ptr %tail_ptr, align 8\n  br label %test\ntest:\n  %link = phi i64 [ %tail, %entry ], [ %previous, %destroy ]\n  %empty = icmp eq i64 %link, 0\n  br i1 %empty, label %end, label %destroy\ndestroy:\n");
-            WriteDictionarySlot(output, helper);
-            output.Write("  %previous = load i64, ptr %slot, align 8\n");
-            WriteStoredDestruction(output, helper.ValueLayout, helper.ValueIsString, "%stored_value");
-            WriteStoredDestruction(output, helper.KeyLayout, helper.KeyIsString, "%stored_key");
-            output.Write("  br label %test\nend:\n");
+            output.Write("  %origin = alloca { ptr, i64 }, align 8\n  store ptr %location, ptr %origin, align 8\n");
+            DictionaryAddress(output, "%length_ptr", "%origin", 8);
+            output.Write("  store i64 %location_length, ptr %length_ptr, align 8\n  %environment = ptrtoint ptr %origin to i64\n");
+            WriteDictionaryCallbackHandle(output, helper, "%environment");
+            output.Write("  call void @");
+            output.Write(clear.Name);
+            output.Write("(ptr %handle, i64 ");
+            WriteNumber(output, helper.Stride);
+            output.Write(", i64 ");
+            WriteNumber(output, helper.KeyOffset);
+            output.Write(", i64 ");
+            WriteNumber(output, helper.ValueOffset);
+            output.Write(", ptr %callback)\n  ret void\n");
+            return;
         }
 
         output.Write("  call void @");
