@@ -47,7 +47,7 @@ public var resource: Resource
     private set
 ```
 
-Standard `get` exposes permitted operations on the storage. Value acquisition Copies `T` if it is Copy and otherwise Moves, only from a Movable Place (§15.1.5). Borrowing follows the existing adaptation rules without first acquiring the value. Standard `set` directly initializes or replaces the storage under the ordinary state and cleanup rules.
+Standard `get` exposes permitted operations on the storage. Bare value acquisition Copies a proven-Copy `T`, and `@move` transfers from a Movable Place (§15.1.5). Borrowing follows the existing adaptation rules without first acquiring the value. Standard `set` directly initializes or replaces the storage under the ordinary state and cleanup rules.
 
 | Direct storage operation | Required accessible standard accessors |
 | --- | --- |
@@ -66,7 +66,7 @@ Every row additionally requires valid receiver capabilities, initialization and 
 | Standard `get` + custom `set` | Storage Copy or shared borrow; no direct Move or exclusive borrow | Call `set` |
 | Custom `get` + custom `set` | Getter result; no direct storage access | Call `set` |
 
-Shorthand borrows keep the semantics of §13.5.5. For a slot of Type `F = ref/U`, `@ref` copies the stored shared reference, while `@ref/F` borrows the slot as `ref/ref/U`. Specify the complete slot Type to request slot access; a failed Reborrow cannot retry as slot borrowing.
+Borrows keep the semantics of §13.5.5. For a slot of Type `F = ref/U`, both `@ref` and `@ref/F` borrow the slot as `ref/(ref/U)`; the stored reference is copied by bare acquisition or at an expected `ref/U`, and its referent is Reborrowed with `@deref@ref` or at an expected borrow Type.
 
 ### 11.1.1. Access and mutability
 
@@ -216,7 +216,7 @@ Non-Copy results must be legally created or acquired; a shared receiver cannot s
 
 Stored custom `get`, computed `get` and Contract `get` produce function results; adaptations apply to that result, not to backing storage.
 
-**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and the implicit or explicit exclusive receiver acquisition of §7.3 preserve this restriction: a `uniq/Self` method or getter cannot be called on an owned getter result, and no Copy is modified instead. A reference returned by a getter keeps its referent's own capabilities (`holder.view@uniq` reborrows a returned `uniq/T`, and `holder.view.update()` reborrows it implicitly). Updating the Property itself through `set` is separate and remains allowed (§13.7).
+**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and the implicit or explicit exclusive receiver acquisition of §7.3 preserve this restriction: a `uniq/Self` method or getter cannot be called on an owned getter result, and no Copy is modified instead. A reference returned by a getter keeps its referent's own capabilities (`holder.view@deref@uniq` Reborrows a returned `uniq/T`, and `holder.view.update()` Reborrows it implicitly). Updating the Property itself through `set` is separate and remains allowed (§13.7).
 
 ```kimi
 // position: Point is Copy, with custom get and standard set.

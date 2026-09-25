@@ -261,7 +261,7 @@ The complete spelling `try` is reserved. The complete spelling `_` is a reserved
 | `#case _` | Final catch-all with existing placement/count restrictions (§19) |
 | `[N of _]` | Existing element inference in an initialized local annotation (§4) |
 | `_ = expression` | Explicit discard statement (§14.2.4) |
-| for binding or Tuple binding element | Unnamed iteration binding (§14.6.1) |
+| for binding or Tuple binding element | Unnamed iteration binding (§14.6.1); `var _` is invalid |
 
 Every other standalone `_` is a syntax error, including declarations, references, captures, `let _`, `var _`, and named/anonymous function parameters.
 
@@ -283,17 +283,17 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | --- | --- |
 | Declarations | `alias`, `rootgroup`, `group`, `struct`, `enum`, `contract`, `computed`, `property` in declaration and header positions. `extension` is reserved in the same positions for a future declaration and is rejected in this revision. |
 | Unavailable declaration modifiers | `virtual`, `override`, `abstract`; recognized only in a declaration's leading modifier sequence, and rejected there with the unavailable-feature diagnostic. |
-| Parameters and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance. |
+| Parameters and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `associate` in an associated-Type declaration or specification; `wellformed` at the start of a clause attached to an associated-Type declaration; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance; `place` in a function result position when immediately followed by `(` (§7.1.1). |
 | Origins | `during` after an AnnotatedType's body and optional suffixes; `origin` at the start of a declaration-attached relation; `outlives` within that relation; `static` as the distinguished Origin in Origin expressions. |
-| Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe` in Semantics positions, including requirements. `unsafe` is also recognized before `func` and before a Body that introduces an Unsafe Statement. |
-| Transfer | `move` immediately after `@`, as the [transfer operation](13-operators-and-assignment.md#1353-defined-adaptations) `E@move`. |
+| Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe` in Semantics positions, including requirements and the mode of a Place result. `unsafe` is also recognized before `func` and before a Body that introduces an Unsafe Statement. |
+| Transfer and dereference | `move` immediately after `@`, as the [transfer operation](13-operators-and-assignment.md#1353-defined-adaptations) `E@move`; `deref` immediately after `@`, as the [dereference](13-operators-and-assignment.md#13551-dereference) `E@deref`. |
 | Semantics categories | `value`, `valueborrow`, `object`, `objectborrow`, `borrow`, `owning`, `reference` in Semantics requirements; see [category sets](03-types-and-values.md#33-type-semantics). |
 | Contextual bindings and operations | `self`, `value`, `storage` under the receiver and accessor rules (§9.2, Chapter 11); `abort` after `$`. |
 | Fixed arrays and lengths | `of` between length and element Type in `[N of T]`, or length and value in fill construction `[N of value]`; `length` only at the start of a generic parameter declaration, followed by its Name. |
 
 Further notes on individual keywords:
 
-- `Self` is reserved. After `@`, the built-in Semantics names select shorthand targets and `move` selects the transfer operation; elsewhere `move` is an ordinary Name. There is no prefix `move` operator.
+- `Self` is reserved. After `@`, the built-in Semantics names select shorthand targets, `move` selects the transfer operation and `deref` selects the dereference; elsewhere `move` and `deref` are ordinary Names. There is no prefix `move` or `*` operator for safe references.
 - The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](09-names-signatures-and-access.md#93-accessibility-and-reachability).
 - `init`, `deinit` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors) and destruction. They introduce no ordinary callable Names and no implicit base receiver.
 - `require` and `do` are reserved for the [require statement](14-control-flow.md#1411-require-statement) and the [do expression](14-control-flow.md#1432-do-expressions).

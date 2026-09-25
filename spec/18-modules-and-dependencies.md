@@ -309,7 +309,7 @@ These keys only find candidates; actual Type and Symbol identities keep the defi
 
 Private information may support generation and reverification without entering consumer lookup; using a public contract must not require searching private bodies. Origins are preserved even when erased at runtime. ObjectCallCompatible is exported only as a completed Proven/NotProven status with causes, never as a pending status. Legitimate generic representation obligations keep their subject, premises, dependencies and deadline; they are not completed proofs. Each use still checks its own obligations, Loans, initialization and cleanup.
 
-Openness and the dependencies of Sealed proofs, payload projections, complete-target effects and all allowed Type/Origin/full-specialization checks are published. Positive and negative proofs are rechecked after an openness change, which is an API change, and a breaking change when it invalidates a previously valid use. Sealed alone never replaces the required ObjectCallCompatible checks.
+Openness and the dependencies of Sealed proofs, payload dereferences, complete-target effects and all allowed Type/Origin/full-specialization checks are published. Positive and negative proofs are rechecked after an openness change, which is an API change, and a breaking change when it invalidates a previously valid use. Sealed alone never replaces the required ObjectCallCompatible checks.
 
 ### 18.7.3. Invalidation and persistence
 

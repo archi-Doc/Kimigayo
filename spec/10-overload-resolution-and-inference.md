@@ -36,37 +36,46 @@ pair(3)            // first = 3, second = 2.
 pair(second: 3)    // first = 1, second = 3.
 ```
 
-## 10.2. Argument adaptation and literals
+## 10.2. Common adaptation at expected types
 
-Adaptations are compared in this order, best first:
+This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or the ordinary common-Type inference; it is never derived backward from a borrow or a Scalar read. When `ref/i32` and `i32` result sources have no common Type, an annotation or an explicit `@deref` is required. The call form, explicit Type arguments and aliases do not change the rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
 
-| Class | Meaning |
-| --- | --- |
-| Exact | Normalized Type compatibility requiring no adaptation operation, including no borrow or reborrow |
-| Literal fitting | Directly fitting an unresolved literal to the candidate's Type |
-| Same-Semantics reborrow | A reborrow that preserves the input Type Semantics |
-| Cross-Semantics borrow/reborrow | Any other permitted borrow or reborrow |
+In the table, `U` is the complete immediate referent Type.
 
-Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies when bare or transfers under `@move` ([Copy and Move](03-types-and-values.md#35-copy-and-move)), and Copy versus transfer adds no ranking preference. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value parameter: overload selection never transfers a bare Place. Origin subtyping that needs no value operation remains permitted.
-
-The initial borrow adaptations are listed below. In the owner-Place and owner-temporary rows `T` has `owner` Semantics; in the value-reborrow rows it is the complete immediate Referent Type. A Place reached through an exclusive reference ([access path](03-types-and-values.md#34-values-places-and-storage)) is an owned Place for this table and is not exclusively borrowed implicitly at an argument position; its explicit child borrow stays within the parent's authority. Adding a layer around an existing reference or object handle requires a fully specified explicit [storage-borrow target](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow); it is not an implicit argument adaptation.
-
-| Input | Expected | Operation / class |
+| Input | Expected | Operation |
 | --- | --- | --- |
-| Readable `T` Place | `ref/T` | Shared borrow / cross |
-| Owner `T` temporary | `ref/T` | Materialize once and shared-borrow / cross |
-| `uniq/T` | `uniq/T` | Call reborrow / same |
-| `uniq/T` | `ref/T` | Shared reborrow / cross |
-| Accessible `obj/T` Place | `objref/T` | Shared object borrow / cross |
-| `objuniq/T` | `objuniq/T` | Object call reborrow / same |
-| `objuniq/T` | `objref/T` | Shared object reborrow / cross |
-| `ref/T` or `uniq/T`, Copy `T` | `T` | Copy read / cross |
+| Readable Place storing `U` | `ref/U` | New shared borrow |
+| Owner `U` temporary | `ref/U` | Materialize once and shared-borrow |
+| `ref/U` | `ref/U` | Copy of the shared reference with permitted Origin shortening |
+| `uniq/U` | `uniq/U` | Exclusive Reborrow for the required extent |
+| `uniq/U` | `ref/U` | Shared Reborrow |
+| Readable owning object handle | The corresponding `objref/U` | Shared object borrow |
+| `objuniq/U` | `objuniq/U` or `objref/U` | The corresponding object Reborrow |
+| Safe value-reference layers ending in a Scalar `U` | `U` | Scalar read (§3.5.3) |
+| Any other value or Place | Its complete Type | Bare acquisition, explicit transfer, or transfer of a temporary (§3.5) |
 
-The Copy read is the [read through a reference](03-types-and-values.md#33-type-semantics) of §3.3 applied at an argument: it copies the referent, removes one reference layer and never extracts a Non-Copy referent. A required exclusive reborrow is not Exact even when the written Types match. Type and declaration permissions and the Place-versus-temporary form are checked during applicability; flow-dependent initialization and active Loan conflicts are checked after selection. Borrow adaptations neither extend lifetimes nor duplicate ownership. Selected exclusive adaptations use [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations); these checks do not change applicability or ranking. An owned Place is exclusively borrowed implicitly only as a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)); at an argument position write `x@uniq` or `x@objuniq`, whatever the access path ([lending rule](15-ownership-and-lifetime-analysis.md#1515-movable-places)). A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and no candidate switch arises from implicit exclusive borrowing; between a by-value candidate and a shared-borrow candidate, Copy capability decides as before. No further `rc`/`arc`, exclusive-temporary or outer-layer borrow adaptations are inferred from this table.
+Exactly one table operation, plus ordinary Origin fitting, is selected; adaptations are never chained, and the Scalar read counts as one operation however many layers it follows. A same-Type temporary is transferred as is. The Copy and Reborrow rows operate on the existing reference value and add no dependency on a temporary slot holding it. There is no implicit borrow of a reference or handle slot, no implicit payload dereference of an object, no implicit `rc`/`arc` or exclusive-temporary borrow, and no implicit object upcast, numeric, integer/float or user conversion. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value expectation; an explicit `@move` is executed first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
 
-[Inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) and same-complete-Type Sealed payload receiver projection (§12.4.4) are member-receiver operations supplied by implicit receiver acquisition (§7.3); they do not apply to ordinary arguments or unbound calls and take no part in candidate comparison. Ordinary lookup, applicability, comparison and access checking run first, and the selected receiver is evaluated and applied once. Neither adds an implicit projection to ordinary arguments or grants inherited-base completeness.
+A new exclusive borrow of an owned Place requires `@uniq`/`@objuniq`; only a Receiver Expression acquires it implicitly ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). An annotation, assignment or result never adds lifetime or capability. A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and no candidate switch arises from implicit exclusive borrowing.
 
-Fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is handled separately and adds no rank to this table. There are no implicit object upcasts, numeric-width, signedness, integer/float or user-defined conversions, and no unlimited dereference or conversion chains; raw dereference is explicit. The existing Never and Origin rules remain Type rules and add no overload priorities.
+```kimi
+func work(node: uniq/Node)
+    validate(node)       // validate: ref/Node. Shared Reborrow.
+    normalize(node)      // normalize: uniq/Node. Exclusive Reborrow.
+    let transferred = node@move // The reference value itself.
+
+var node = Node.init()
+validate(node)           // Shared borrow of the owned value.
+normalize(node@uniq)     // A new exclusive borrow is explicit.
+let view: ref/Node = node // The same shared borrow at an annotated initializer.
+
+func positiveOrZero(value: ref/Option<i32>) -> i32
+    return match value
+        .Some(let number) if number > 0 => number // ref/i32; a Scalar read at i32.
+        _ => 0
+```
+
+**Temporaries.** An owner temporary may be borrowed at every value position, not only at arguments. It is evaluated once and materialized in a Temporary Place that lasts until the ordinary outermost expression, condition or match temporary boundary (§3.6), and at least through a call; it is neither shortened nor extended to keep a borrow valid. Using `view` after `let view: ref/Node = makeNode()`, or returning that borrow, is rejected with a diagnostic naming the expired temporary and the use; a borrow that ends within the full expression, such as inside an aggregate literal passed to a call, is accepted by the same lifetime check. A known source Type infers `U`; for an unfitted literal, receiver, other-argument and known-result constraints are processed first, then candidate fitting and the ordinary value defaults.
 
 **Literals.** An untyped integer literal fits any representable candidate integer Type directly; floating literals follow the numeric rules. Literals are not defaulted to `i32`/`f64` before fitting, narrower widths are not preferred, and defaults never break overload ambiguity. Outside candidate comparison, an independent expression without an expected Type uses the ordinary numeric defaults. Generic inference processes receiver, other-argument and known-result constraints before defaulting. `null`, empty collections and untyped functions gain no universal fallback Type.
 
@@ -77,15 +86,7 @@ choose(1)      // Error: both integer Types fit.
 let x = 1      // Independently defaults to i32.
 choose(x)      // Exact i32.
 choose(1@i64)  // Exact i64.
-```
 
-**Borrowed temporaries.** An owner temporary can be shared-borrowed for **any** `ref/T` argument, not only for collection keys. It is evaluated once and materialized in a Temporary Place. A known source Type can infer `T` as for an owner Place; the target need not already be fixed. For an unfitted literal, receiver, other-argument and known-result constraints are processed first, then candidate fitting and ordinary value defaults as above. The result ranks as a cross-Semantics borrow, below Exact and direct literal fitting, and defaults do not break ties.
-
-Copying or reborrowing an existing reference takes priority over adding a layer: this rule adds no implicit `uniq` temporary borrow, outer borrow of an object handle, or outer layer around an existing reference. For example, a key `K = ref/X` needs an explicit `@ref/ref/X` to borrow its slot.
-
-The materialized owner lasts until the normal outermost expression, condition or match temporary boundary (§3.6), and at least through the call. It is neither shortened to the end of the call nor extended to keep a returned borrow valid. On an escape failure, the diagnostic identifies the borrow, the temporary's end and the required use, and suggests a named local only when its Type and Origin constraints can work.
-
-```kimi
 func inspect<T>(value: ref/T) -> () => ()
 func makeValue() -> i64 => 1
 inspect(makeValue()) // Infer T = i64 and borrow the temporary.
@@ -95,6 +96,49 @@ func chooseBorrow(value: ref/i32) -> () => ()
 func chooseBorrow(value: ref/i64) -> () => ()
 chooseBorrow(1) // Error: both fit; default i32 does not break the tie.
 ```
+
+### 10.2.1. Inference and adaptation classes
+
+Type inference and acquisition planning are separate: inferring a Type performs no Copy, Move or borrow.
+
+1. Bind explicit Type arguments, then infer the remaining Type arguments from the original complete Types of the receiver and the arguments. A bare `T` binds the original Type; a declared layer such as `ref/T` matches through the permitted correspondences of the table. Constraints over several arguments are solved together, and no argument fixes `T` first by traversal order.
+2. An independently known expected result Type fills still-unbound parts by ordinary Type matching; it never selects an unknown Type by inverting a borrow or Scalar read, and never changes an established Type. Origin inference and shortening follow the ordinary rules, keeping bound internal Origins.
+3. Normalize the parameter Types and plan the acquisition of each argument under §3.5 and this section. An existing reference passed to a borrow parameter is Reborrowed in a generic call as elsewhere; consuming the reference value itself needs `@move`.
+
+An unannotated local initializer is bare acquisition: for `r: uniq/Node`, `let saved = r` is an error, `let saved: uniq/Node = r` Reborrows and `let saved = r@move` transfers.
+
+```kimi
+// n: ref/i32; r: uniq/Node; identity<T>(value: T) -> T returns value@move.
+let a = identity(n)        // T = ref/i32.
+let b = identity<i32>(n)   // Scalar read at the fixed i32.
+let c = identity(r)        // T = uniq/Node; the argument is an exclusive Reborrow.
+// While c is live, conflicting uses of r are rejected.
+let d = identity(r@move)   // After c's last use: the reference value is transferred and r is Moved.
+```
+
+Candidates are checked for applicability with their acquisition plans, and the selected plan acquires each argument once. The adaptation classes are compared in this order, best first, with no further preference within a class:
+
+| Class | Meaning |
+| --- | --- |
+| Exact | Normalized Type compatibility requiring no adaptation operation, including no borrow or Reborrow |
+| Literal fitting | Directly fitting an unresolved literal to the candidate's Type |
+| Same-Semantics Reborrow | A Reborrow that preserves the input's outer Semantics |
+| Cross-Semantics adaptation | Any other borrow or Reborrow of the table, or a Scalar read |
+
+Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies when bare or transfers under `@move`, and Copy versus transfer adds no ranking preference. A required exclusive Reborrow is not Exact even when the written Types match. Type and declaration permissions and the Place-versus-temporary form are checked during applicability; flow-dependent initialization and active Loan conflicts are checked after selection and never reselect a candidate. Selected exclusive adaptations use [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). `uniq/T` is never treated as a subtype of `ref/T`. Nested calls use the shared expectation of §10.5; bodies are not rechecked per candidate.
+
+```kimi
+func process(value: Node)
+func process(value: ref/Node)
+// Independent calls:
+process(node)       // The by-value candidate when Node is Copy; otherwise the shared-borrow candidate.
+process(node@move)  // The by-value candidate; node is transferred.
+process(node@ref)   // The shared-borrow candidate.
+```
+
+Copy proof, explicit transfer and Take are part of applicability: a bare Non-Copy Place has no applicable by-value candidate, and adding a candidate never introduces an implicit Move. A generic body verifies acquisition, adaptation and candidate ranking symbolically from its published Constraints and rejects at definition what it cannot prove; instantiation neither reselects candidates nor redistributes Copy and Move. Because a by-value candidate is preferred when applicable, adding or conditionally granting Copy can change the selected callee, and a generic body's fixed selection can differ from a concrete call with the same arguments. Pattern binding Types are unaffected; use `@ref` to fix a borrow.
+
+[Inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) and the complete Sealed payload dereference of a receiver (§12.4.4) are member-receiver operations supplied by implicit receiver acquisition (§7.3); they do not apply to ordinary arguments or unbound calls and take no part in candidate comparison. Fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is handled separately and adds no rank to this table.
 
 ## 10.3. Expected results
 
@@ -111,7 +155,25 @@ let text: string = fetch(1) // Selects fetch(i32) by result compatibility.
 fetch(1)                   // Error: discarding leaves both candidates.
 ```
 
-These declarations have distinct parameter Signatures; declarations that differ only in return Type are invalid regardless of call-site expectations. A candidate returning `T` cannot survive an expected `ref/T` by borrowing its result, and a `uniq/T` result cannot become `ref/T` through a newly inserted reborrow.
+These declarations have distinct parameter Signatures; declarations that differ only in return Type or result mode (§7.1.1) are invalid regardless of call-site expectations.
+
+**Result adaptation.** Once a candidate's published result Type and result category are fixed, the acquisition and adaptation that the use position admits are part of its applicability; candidates are never ranked by the amount of result adaptation. The same procedure applies to ordinary values, Place results and Scalar reads:
+
+| Use position | Rule applied to the known result |
+| --- | --- |
+| Value position or result source with a fixed expected Type | The common adaptation of §10.2, with the position's own lifetime check |
+| Value position without an expected Type | Bare acquisition (§3.5) |
+| Position that requires a Place | The Place's Type, capabilities and Origin are checked; an ordinary value is never materialized into a Place result |
+| Explicit operation or discard | That operation's own rule; discarding supplies no Unit expectation |
+
+This check uses fixed declaration information only. An unknown result `T` is never inferred backward from the adapted Type, a Place's published Type is never inferred from a borrow adaptation, and Origins and Loans follow the acquisition actually selected. A candidate returning `T` therefore cannot survive an expected `ref/T` by borrowing a temporary result outside the lifetime rules of §10.2, and an outer `@ref` never prefers a Place-returning candidate.
+
+```kimi
+func read(x: i32) -> ref/i32
+func read(x: i64) -> i32
+// let value: i32 = read(1)   // Error: both results fit through a Scalar read or exactly.
+let value: i32 = read(1@i32)  // The argument selects; the result is then read.
+```
 
 ## 10.4. Best candidate
 
@@ -213,7 +275,7 @@ inspect(number) // Select Exact i32, then reject without an Unsafe Block.
 
 Adding a better overload can invalidate existing calls, even if the new overload then fails usage legality. A failed Move, Loan or Property permission check cannot retry with a borrow, a getter or a same-name declaration.
 
-Operator operands keep the fixed syntax, evaluation order and permitted adaptations. Built-in operations and the comparison Contract mappings of §13.4.1 define the available operator candidates; there are no extension operator candidates in this revision. User-defined arithmetic, general indexer declarations and additional ambiguity-resolution syntax remain deferred, and ordinary lookup must not invent them.
+Operator operands keep the fixed syntax, evaluation order and permitted adaptations. Built-in operations and the comparison Contract mappings of §13.4.1 define the available operator candidates, and the [Indexable Contracts](04-arrays-indexing-and-slices.md#469-indexable-contracts) define index-expression candidates; there are no extension operator candidates in this revision. User-defined arithmetic and additional ambiguity-resolution syntax remain deferred, and ordinary lookup must not invent them.
 
 **Diagnostics** distinguish undefined, wrong-role and inaccessible names, path or value-kind conflicts, missing receivers, Type-argument or argument mismatches, no applicable overload, ambiguity, inference boundaries, dependency cycles, declaration errors and usage errors. Ambiguity diagnostics show the candidate Signatures and declaration locations and keep useful rejection reasons without dumping every tentative error. Exhausting a resource limit is distinct from language ambiguity or mismatch; it must request annotations or smaller expressions and never chooses the first candidate.
 
@@ -231,7 +293,7 @@ Implicit erasure applies only after the expected common Function Type is fixed. 
 
 The additional [fixed-array inference rules](04-arrays-indexing-and-slices.md#44-function-length-parameters) apply to lengths and literal element counts. Lengths are kept alongside Type, Semantics and Origin bindings within each candidate, and results are independent of argument traversal order.
 
-Within each candidate, explicit arguments bind first. Otherwise, structural Type, Semantics and Origin constraints are collected together from the receiver and the independently typable arguments; the first input is not fixed with later inputs adapted to it. An independently known expected result is used only for still-unbound parts, without changing Types or Semantics established by inputs. The nested-expression boundaries and literal fitting apply, and literal defaults are used only after all other evidence has been processed. An expected Type propagates through a Semantics-preserving adaptation to an untyped literal: under an expected `s/T`, the untyped literal operand `n` of `n@s` is fitted to `T`. A typed operand keeps its own Type there, so the borrow or reborrow forms from its Place and never from a [read](03-types-and-values.md#33-type-semantics) of it.
+Within each candidate, explicit arguments bind first. Otherwise, structural Type, Semantics and Origin constraints are collected together from the receiver and the independently typable arguments under the inference steps of §10.2.1; the first input is not fixed with later inputs adapted to it. An independently known expected result is used only for still-unbound parts, without changing Types or Semantics established by inputs. The nested-expression boundaries and literal fitting apply, and literal defaults are used only after all other evidence has been processed. An expected Type propagates through a Semantics-preserving adaptation to an untyped literal: under an expected `s/T`, the untyped literal operand `n` of `n@s` is fitted to `T`. A typed operand keeps its own Type there, so the borrow forms from its Place and never from a Scalar read of it.
 
 An unbound `s` is inferred directly from the source's outer Semantics. No implicit Borrow, Reborrow or other conversion is searched to find a common Semantics: `owner` and `ref` evidence for the same `s` conflict. Once a target Type is fixed, including by explicit arguments, normal adaptation is checked separately. Origin inference uses the [limited principal-solution rules](15-ownership-and-lifetime-analysis.md#1536-limited-origin-inference).
 
@@ -244,5 +306,5 @@ Argument or candidate traversal order, arbitrary conversion chains, common-base 
 The following are not specified in this revision, and implementations must not invent them through broader search:
 
 - General Const arguments beyond [function lengths](04-arrays-indexing-and-slices.md#44-function-length-parameters), standalone Semantics slots, partial, default or variadic generic arguments, and partial or conditional specialization.
-- Implicit argument or receiver adaptations beyond the defined applicability table, and exact contextual-binding boundaries for additional accessor or function forms. The explicit Borrow table adds no implicit overload preferences.
-- Operator and indexer candidate collection and explicit selection syntax. Constructor collection is defined under [constructors](06-declarations-and-containers.md#623-constructors); external/internal parameter names and the `!` boundary are defined in §7.2.
+- Implicit argument or receiver adaptations beyond the common adaptation table, and exact contextual-binding boundaries for additional accessor or function forms. The explicit Borrow table adds no implicit overload preferences.
+- Operator candidate collection and explicit selection syntax beyond the built-in operators, the comparison mappings and the Indexable Contracts. Constructor collection is defined under [constructors](06-declarations-and-containers.md#623-constructors); external/internal parameter names and the `!` boundary are defined in §7.2.

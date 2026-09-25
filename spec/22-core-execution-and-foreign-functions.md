@@ -19,26 +19,30 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Kimi.Copy} |
 | `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Kimi.Copy, E is Kimi.Copy} |
 | `Weak<S>` | Compiler-managed Non-Copy struct over a valid complete rc/arc S; always holds a target table, with no empty constructor. Kimi.Intrinsics.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
-| `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; §4.6 indexing, §4.7 mutation/capacity APIs, literals and consuming Iterable conformance |
+| `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; `UniqIndexable<isize>` and `UniqIndexable<Index>` (§4.6.9), §4.7 mutation/capacity APIs, literals, and the `Iterable`/`UniqIterable`/`IntoIterable` conformances with the items of §14.6.2 |
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
-| `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
-| `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and `Iterable` with associated Type `Element = isize` under §4.6.3 |
-| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
-| `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and consuming Iterable conformance |
+| `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not enumerable |
+| `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and the three iteration conformances with item `isize` under §4.6.3 |
+| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; `Indexable<isize>` and `Indexable<Index>` publishing `place(ref, T) during self.source`; the three iteration conformances with item `ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
+| `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, `UniqIndexable<K>` existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and the three iteration conformances with the pair items of §14.6.2 |
 | UTF-8 formatting declarations | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` at the root, and the `Text` group: exact signatures, shape, intrinsic Origin/Loan/variance metadata and operations in the [formatting profile](utf8-formatting.md#1-contracts-and-declarations) |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
-| `Iterator` | `associate Element`; `func next(self: uniq/Self) -> Option<Self.Element>` |
-| `Iterable` | `associate Element`; `associate Iterator is ::Kimi.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
+| `Iterator`, `Cursor`, `UniqCursor` | The exact declarations of §22.1.2.1: `Item(step)` with its formation clause and `next(self: uniq/Self during step) -> Option<Self.Item(step)>`; Cursor's `Element`, `advance` and Place-publishing `current`/`currentUniq` |
+| `Iterable`, `UniqIterable`, `IntoIterable` | The exact declarations of §22.1.2.2: `IteratorType(source)` or `IteratorType` bound to an Iterator, and `iterate`, `iterateUniq` or `intoIterator` |
+| `IndependentIterator: Iterator` | `associate StableItem`; `associate Iterator.Item(step) is StableItem`; the verified independence guarantee of §22.1.2.4 |
+| `Indexable<Key>`, `UniqIndexable<Key>: Indexable<Key>` | `associate Element`; `index(self: ref/Self, key: ref/Key) -> place(ref, Element) during self` and `indexUniq(self: uniq/Self, key: ref/Key) -> place(uniq, Element) during self` (§4.6.9) |
+| `Iteration` group | `Owned<I>`, `Borrowed<I>`, `Shared<C>`, `Uniq<C>` and `owned`, `borrowed`, `shared`, `uniq` under §22.1.2.3 |
+| `Storage` internal group | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`, `borrowStorage`, `ownStorage`, `splitFirst`, `takeFirst` under §22.1.2.5; usable only inside the Kimi Kotonoha |
 | Copy, Owned, Callable, Sealed, ObjectPayload | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts; every creation declares `T is ObjectPayload` (§8.4.7.2) |
 | Whole-value update intrinsics | `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts |
 | `Console.writeLine` | Overloads `(text: ref/string) -> ()` and `(text: Text.Utf8Slice) -> ()`; §22.4 and the [formatting profile](utf8-formatting.md#61-console-output) |
 | `Test.tempDirectory` | `public func tempDirectory() -> string`; independently owned case-directory path, restricted to test-only bodies under the [test profile](testing-profile.md#environment-and-temporary-directory) |
 
-Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
+The iteration and indexing Contracts are static Contracts whose associated Types are complete Types with the Origin parameters of §8.4.3.1; `Item(step)` may depend on the receiver borrow of each `next`, so lending iterators are ordinary conforming Types. Table signatures follow the normal associated-Type, receiver, result-Origin and lifetime rules.
 
-Fixed arrays implement Iterable with Element = T. Owning Array/Dictionary iterators retain and destroy unyielded elements in §4.7.6 order. ResolvedRange and Slice use concrete Kimi iterator identities with §4.6’s element Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and both stay exhausted after None. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next’s result extends no lifetime. These requirements add no public iterator constructors or other changes to associated-requirement kinds.
+Fixed arrays conform to the three iteration entries with the items of §14.6.2. Owning Array/Dictionary iterators retain and destroy unyielded elements in §4.7.6 order. ResolvedRange and Slice use concrete Kimi iterator identities with §4.6's item Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and all standard iterators stay exhausted after None and conform to `IndependentIterator`. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next's result extends no lifetime. These requirements add no public iterator constructors.
 
 The primitive keyword string denotes the compiler's UTF-8 string Core, not a shadowable alias. It supports literal/interpolation construction, concatenation, comparison and Utf8Format. The [formatting profile](utf8-formatting.md) defines separate mutable buffers, validated views and `Text.toString` for string copying; it adds no character indexer or formatting options. Fixed-array syntax and layout follow [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](04-arrays-indexing-and-slices.md#46-indexing-and-slicing).
 
@@ -71,9 +75,187 @@ The following reference collects the public function names. Types are abbreviate
 | `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
 
-Container members stay with their owning Types and Contracts: `Iterator.next` and `Iterable.iterate` are listed in §22.1; collection, indexing, range and Slice APIs are defined in §4.6–7; comparison requirements are listed in §22.1; formatting members are in the [profile](utf8-formatting.md). `Text`, like Console, is not recursively opened by the default alias. `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` and `$tryWrite` are not declarations in these groups.
+| `Kimi.Iteration.owned<I>` | `I -> Owned<I>` | §22.1.2.3 |
+| `Kimi.Iteration.borrowed<I>` | `uniq/I during source -> Borrowed<I>{r}` with `origin r.source == source` | §22.1.2.3 |
+| `Kimi.Iteration.shared<C>` | `C -> Shared<C>` | §22.1.2.3 |
+| `Kimi.Iteration.uniq<C>` | `C -> Uniq<C>` | §22.1.2.3 |
+
+Container members stay with their owning Types and Contracts: the iteration, Cursor and Indexable requirements are listed in §22.1.2 and §4.6.9; collection, indexing, range and Slice APIs are defined in §4.6–7; comparison requirements are listed in §22.1; formatting members are in the [profile](utf8-formatting.md). `Text`, `Iteration` and the internal `Storage` group, like Console, are not recursively opened by the default alias. `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` and `$tryWrite` are not declarations in these groups.
 
 This reference specifies required APIs, including unimplemented ones. [STATUS.md](../STATUS.md#kimi-library-and-whole-value-updates) records current declaration and runtime coverage separately.
+
+### 22.1.2. Iteration, cursors and storage
+
+#### 22.1.2.1. Iterator and Cursor
+
+```kimi
+contract Iterator
+    associate Item(step)
+        wellformed uniq/Self during step
+    func next(self: uniq/Self during step) -> Option<Self.Item(step)>
+
+contract Cursor
+    associate Element
+    func advance(self: uniq/Self) -> bool
+    func current(self: ref/Self) -> place(ref, Element) during self
+
+contract UniqCursor: Cursor
+    func currentUniq(self: uniq/Self) -> place(uniq, Element) during self
+```
+
+An Iterator delivers its next item as a value; each `next` binds `step` to the receiver borrow of that call and keeps the actual Loan dependencies. A general Iterator may return `Some` after `None`; `for` stops at the first `None`, and the standard guarantees are in §22.1.2.3. `None` carries no Loan.
+
+| `Item(step)` | Retention and the next `next` |
+| --- | --- |
+| `E` | Follows the value's own ownership and internal dependencies; independence from the call is verified separately |
+| `ref/E during step`, `uniq/E during step` | Depends on that call's receiver borrow and conflicts with the next `next` while retained |
+| `ref/E during source` and similar | An external borrow proven independent of the receiver; the required `source` protection remains |
+
+An annotation alone removes no receiver dependency, and `I is Iterator` alone does not permit a retained item across the next call; use `IndependentIterator` (§22.1.2.4). A Cursor publishes the Place of its current position: after creation and after a false `advance` there is no current position and `current`/`currentUniq` Abort; after a true `advance` the same logical element is selected until the next `advance`, with repeated shared or exclusive access, and resuming after `false` is allowed. State management is the implementation's responsibility; the compiler proves no state machine and inserts no flags. Conflicting `advance`, updates and destruction are rejected by the ordinary Loan rules.
+
+#### 22.1.2.2. Iteration entries
+
+```kimi
+contract Iterable
+    associate IteratorType(source) is Iterator
+        wellformed ref/Self during source
+    func iterate(self: ref/Self during source) -> Self.IteratorType(source)
+
+contract UniqIterable
+    associate IteratorType(source) is Iterator
+        wellformed uniq/Self during source
+    func iterateUniq(self: uniq/Self during source) -> Self.IteratorType(source)
+
+contract IntoIterable
+    associate IteratorType is Iterator
+    func intoIterator(self: Self) -> Self.IteratorType
+```
+
+The three capabilities are independent; `for` requires the conformance of the entry its Subject mode selects (§14.6.2). The borrowing entries keep the per-call `source`, and the owning entry keeps the dependencies inside `Self`. The item Type is `Iterator.Item(step)` of the selected `IteratorType`; the entry mode forces neither `ref`, `uniq` nor an owned item. `UniqIterable` guarantees only the exclusive receiver borrow; the exclusive Place results of `UniqIndexable` and `UniqCursor` are guarantees of those requirement signatures, not of the name `Uniq`. A Type may conform to `Iterator` and to entries at the same time. There is no duck typing by member name, no automatic conformance of references or arbitrary Iterators, no derived Contract or default body, and no standard conformance that advances an Iterator through a shared borrow.
+
+```kimi
+struct Countdown
+    Self is Iterator
+    Self is IntoIterable
+    Self is UniqIterable
+    associate Iterator.Item(step) is i32
+    associate IntoIterable.IteratorType is Self
+    associate UniqIterable.IteratorType(a) is Kimi.Iteration.Borrowed<Self>{view}
+        origin view.source == a
+    var remaining: i32 = 3
+
+    public func next(self: uniq/Self during step) -> Option<i32>
+        if self.remaining == 0 => return .None
+        self.remaining -= 1
+        return .Some(self.remaining)
+
+    public func intoIterator(self: Self) -> Self
+        return self@move
+
+    public func iterateUniq(self: uniq/Self during source)
+        -> Kimi.Iteration.Borrowed<Self>{result}
+        origin result.source == source
+        return Kimi.Iteration.borrowed(self)
+
+var total: i32 = 0
+var countdown = Countdown.init()
+for number in countdown@uniq
+    total += number
+    exit                       // One item; countdown is reusable once its Loans end.
+for number in countdown@move
+    total += number            // Consumes the rest.
+```
+
+#### 22.1.2.3. Standard adapters
+
+The public group `Kimi.Iteration` declares the following functions and result Types. `I` is an Iterator and `C` a Cursor; each result is an ordinary generic struct that conforms to `Iterator`, `IntoIterable` (transferring itself) and `UniqIterable` (returning `Borrowed<Self>`).
+
+| Operation | Result Type | Contract |
+| --- | --- | --- |
+| `owned(iterator)` | `Owned<I>` | Takes `I` by value and forwards its `Item(step)` and dependencies; a Non-Copy Place is written `@move` |
+| `borrowed(iterator)` | `Borrowed<I>` | Takes `uniq/I` and advances it without Moving it; items keep `I`'s contract |
+| `shared(cursor)` | `Shared<C>` | Takes `C` by value; after a true `advance` it borrows `current` and returns `ref/Element during step` |
+| `uniq(cursor)` | `Uniq<C>` | Takes a `UniqCursor` by value; after a true `advance` it returns `uniq/Element during step` from `currentUniq` |
+
+`uniq` is a contextual word only in Semantics positions, so `Kimi.Iteration.uniq(cursor)` is an ordinary call, distinct from the borrow `@uniq`. `Borrowed`'s slot `source` is the outer Origin of its input, and each item's `step` is the actual `next` Reborrow. `Owned` and `Borrowed` inherit their input's exhaustion guarantee and conform to `IndependentIterator` exactly when `I` does, with the same `StableItem`, dependencies and effect bound. `Shared` and `Uniq` are lending Types whose items depend on `step`; they keep their own finished state, call `advance` once per `next`, call the corresponding `current` only after `true`, and after the first `false` return `None` without calling the Cursor again, so they are exhausted regardless of the Cursor's later behavior. An Option payload is an ordinary reference value, never a Place. No adapter allocates, updates a reference count or materializes items in advance. Draining is an ordinary Iterator API that publishes how items are taken and how an early exit treats the remainder; it is not a language protocol.
+
+```kimi
+// iterator: a writable owned variable conforming to UniqIterable.
+for item in iterator@uniq
+    inspect(item)
+    exit // The remaining items stay; iterator is reusable once the retained Loans end.
+```
+
+Every standard collection iterator of §14.6.2 keeps returning `None` after the first `None`, conforms to `IndependentIterator`, and, for exclusive enumeration, proves the non-overlap of its items by region splitting (§15.6.3). An owning iterator owns the unreturned elements and transfers only the returned element's responsibility; a borrowing iterator never destroys the collection.
+
+#### 22.1.2.4. Independent items
+
+```kimi
+contract IndependentIterator: Iterator
+    associate StableItem
+    associate Iterator.Item(step) is StableItem
+```
+
+`IndependentIterator` guarantees that a retained item survives the next `next` and a Move of the Iterator. `StableItem` is the complete Type of the delivered value, independent of `step`; it says nothing about immutability or the stored element Type. `for` does not require this conformance. For every valid `step` and admitted Type binding, the conformance requires:
+
+1. the item's complete Type is `StableItem`, independent of `step`;
+2. a returned item depends on neither the receiver Loan of `next` nor the Iterator's own Storage, while dependencies on the external source, the owner and needed parent Loans remain;
+3. for exclusive region splitting, the returned parts and the remainder's anchors are non-overlapping, and moving or freeing the Iterator's Storage invalidates no returned part;
+4. the effects of `next`, including reads, writes, borrows, the Loans of its result, access to statics and captures, and cleanup inside the call, conflict with no Loan that the same Iterator formed or kept when it returned an earlier item, including Loans kept by ordinary transfer or Reborrow of that item; a Move of the Iterator carries the guarantee.
+
+Item 4 is the published effect bound of `next`, verified at conformance with the common root, Loan and effect summaries and the region-splitting rules; every implementation, including specializations and callees, must satisfy it, or the conformance is not published. User Types declare `Self is IndependentIterator` and undergo the same verification; a Type equality alone proves nothing, and nothing is derived from `Iterator` automatically. Generic callers use the published bound (§15.6.4, §21.3.4); it promises no purity, and Loans unrelated to items, other operations and result lifetimes are checked as usual. The `next` of a standard collection iterator only traverses, splits and transfers; it calls no user comparison, destructor or callback.
+
+```kimi
+func nextPair<I>(iterator: uniq/I)
+    -> (Option<I.StableItem>, Option<I.StableItem>)
+    I is IndependentIterator
+    let first = iterator.next()
+    let second = iterator.next() // The published effect bound permits retaining first.
+    return (first@move, second@move)
+```
+
+Destruction or replacement of the whole Iterator is a separate effect: a remainder destructor that conflicts with a retained item is rejected. Standard borrowing iterators end only their handle; owning iterators follow the destruction summary of the remaining element Type. A generic accumulation of items from a borrowing Iterator is possible, while an owning `collect<I>(it: I)` must also prove that results and cleanup do not conflict; unknown effects are never treated as empty, and no hidden call condition postpones the check to instantiation. Dependencies a user adds after an item was returned are checked ordinarily, as is protection of the original collection. A delegating wrapper that borrows itself for its result, or adds conflicting effects to `next`, loses independence. For a general Iterator, an item is used up before the next call, or non-conflict is proven from the published contract case by case.
+
+#### 22.1.2.5. Standard storage boundary
+
+The internal group `Kimi.Storage` holds the operations that split standard collection Storage into non-overlapping regions. The group, its Types and its operations are `internal`: only the Kimi Kotonoha itself uses them (§9.3), no alias, re-export or same-spelled declaration grants the capability, and public Iterators keep them in private Fields without exposing them in results or associated Types. No public exclusive Slice or raw-pointer conversion is added.
+
+| Type | Responsibility |
+| --- | --- |
+| `RefRemainder<S>` | The shared Loan of its `source` slot and the traversal position of the untaken part; it does not own `S` |
+| `UniqRemainder<S>` | The parent Loan of its `source` slot and exclusive access to the untaken part; it does not own `S` |
+| `OwnedRemainder<S>` | The Storage transferred from `S` and the destruction responsibility for unreturned elements, with `S`'s internal dependencies |
+
+`S` is one of `Array<E>`, `[N of E]` or `Dictionary<K, V>`; a borrowing remainder requires `ref/S during source` or `uniq/S during source` to be well formed, and each operation is an overload with the corresponding `E`, `K`, `V` and, where needed, `length N` and the ordinary Type constraints. The result families below are descriptive: `R(a)` is `ref/E during a` for arrays and `(ref/K during a, ref/V during a)` for Dictionary; `U(a)` is `uniq/E during a` and `(ref/K during a, uniq/V during a)`; `O` is `E` and `(K, V)`.
+
+| Signature template | Contract |
+| --- | --- |
+| `borrowStorage(value: ref/S during a) -> RefRemainder<S>{r}` with `origin r.source == a` | Holds the shared Loan and traverses from the first element |
+| `borrowStorage(value: uniq/S during a) -> UniqRemainder<S>{r}` with `origin r.source == a` | Transfers the received whole-collection capability to the untaken part; no independent whole access remains |
+| `ownStorage(value: S) -> OwnedRemainder<S>` | Transfers the Storage of `S` and its cleanup responsibility |
+| `splitFirst(state: uniq/RefRemainder<S>{r}) -> Option<R(r.source)>` | Lends the untaken first element for shared access and advances |
+| `splitFirst(state: uniq/UniqRemainder<S>{r}) -> Option<U(r.source)>` | Splits the untaken first element off as a child Loan and updates the remainder |
+| `takeFirst(state: uniq/OwnedRemainder<S>) -> Option<O>` | Moves the unreturned first element out, updating its state and responsibility first |
+
+```kimi
+internal func splitFirst<E>(state: uniq/RefRemainder<Array<E>>{r})
+    -> Option<ref/E during r.source>
+internal func splitFirst<E>(state: uniq/UniqRemainder<Array<E>>{r})
+    -> Option<uniq/E during r.source>
+internal func takeFirst<E>(state: uniq/OwnedRemainder<Array<E>>)
+    -> Option<E>
+```
+
+Borrowed results depend on `source`, never on the `state` borrow or slot; the shared form needs no non-overlap proof but delivers each element once in order. The following hold for empty and zero-sized Storage too:
+
+1. the constructed target is complete; representation, construction, duplication and initialization-state changes are confined to these operations, and ordinary Field operations grant no capability;
+2. `splitFirst` and `takeFirst` return `None` when nothing remains and otherwise the first untaken element exactly once, in the order of §14.6.2, calling no user callback, comparison or destructor;
+3. an `OwnedRemainder` remains a complete handle over the unreturned part; it publishes neither a reference to the whole `S` with holes nor Take through a borrow;
+4. destroying a `RefRemainder` or `UniqRemainder` ends only the capabilities it holds; destroying an `OwnedRemainder` destroys the unreturned part once in the ordinary cleanup order and frees the region, ending no returned Loan or responsibility and publishing the external effects of that destruction.
+
+The internal operations obey the complexity bounds of §4.6.8. Array and fixed-array traversal keeps the valid untaken range as a start and count, so a nonempty check proves the next element valid without a public `index` call or a second bounds check; Dictionary traversal uses the ordering information of live entries, distinct from hash-probe tombstones, and never charges a capacity scan to "amortization". This built-in boundary guarantees Storage validity, dynamic non-overlap and initialization state; its capability is bound to the standard declaration identities, never to spellings. Everything else an Iterator does, including user delegation, is checked ordinarily, and no user Storage can register with the boundary.
+
+**Published effects.** Result anchors, parent Loans, remainder non-overlap and the effects on statics, captures and cleanup enter the public summary of each operation (§15.6.4); generic, separately compiled and indirect calls compose those summaries without reanalyzing private bodies, treat unknown effects conservatively, and never erase an existing Loan because a conversion or erasure dropped a guarantee. An Unsafe designation grants neither independence nor a longer Origin. The `next` of an `IndependentIterator` carries the effect bound of §22.1.2.4, checked at each use separately from the whole-value destruction summary; element-dependent cleanup uses the symbolic summaries of §4.7.5. No general effect syntax or runtime tag is added.
 
 ## 22.2. Program startup and static initialization
 

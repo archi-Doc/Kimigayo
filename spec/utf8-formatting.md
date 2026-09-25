@@ -227,7 +227,7 @@ Built-in formatting checks status, computes the exact encoded byte length, reser
 
 For a finite nonzero float, choose the decimal representation with the fewest significant digits that rounds to the original value in its original width using nearest-even rounding. Among equal-length candidates choose the closest to the exact value, then an even final significant digit to break a tie. `f32` uses its own rounding interval. Let `e` be the normalized decimal exponent: use fixed notation for `-4 <= e < 16`, scientific notation otherwise. Omit unnecessary fractional trailing zeros and decimal points. Use `.`, lowercase `e`, no exponent `+` and no leading exponent zeros. Special values are `0`, `-0`, `Infinity`, `-Infinity` and `NaN`; NaN sign and payload are ignored.
 
-Borrow Types do not forward conformance. Argument Adaptation selects the referent Type (§5.2). Object handles, object borrows and pointers do not implicitly format; diagnostics suggest explicit payload projection (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance.
+Borrow Types do not forward conformance. Argument Adaptation selects the referent Type (§5.2). Object handles, object borrows and pointers do not implicitly format; diagnostics suggest an explicit payload dereference `@deref` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance.
 
 ## 5. Interpolation and internal adapters
 

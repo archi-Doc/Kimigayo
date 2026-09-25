@@ -224,7 +224,7 @@ let nested: i32?? = .Some(.None)
 let missingBorrow: ref/i32? during static = .None
 ```
 
-There is no implicit wrapping, unwrapping, default initialization or argument omission. `null` cannot construct None; for `unsafe/T?`, `.None` differs from `.Some(null)`. No layout/allocation guarantee is added; §21.1.5 still requires explicit enum tags.
+There is no implicit wrapping, unwrapping, default initialization or argument omission. `null` cannot construct None; for `unsafe/T?`, `.None` differs from `.Some(null)`. Layout follows §21.1.5: an `Option` whose payload is a safe reference or object handle uses the one-word nonnull representation defined there, and every other enum keeps an explicit tag.
 
 ## 3.3. Type semantics
 
@@ -273,7 +273,7 @@ Value borrows provide non-owning access to the storage of their immediate comple
 - `ref/T` is a shared borrow; multiple shared references may coexist.
 - `uniq/T` is an exclusive mutable borrow; no conflicting reference may coexist.
 
-A complete Sealed object payload may supply an ordinary value borrow (§13.5.5.1). Its outer Loan keeps the object owner and referent dependencies. Whole-content updates follow §15.7; allocation lifetime and content lifetime remain distinct.
+A complete Sealed object payload may be selected with `@deref` and then supply an ordinary value borrow (§13.5.5.1). Its outer Loan keeps the object owner and referent dependencies. Whole-content updates follow §15.7; allocation lifetime and content lifetime remain distinct.
 
 ### 3.3.3. Object ownership
 
@@ -391,15 +391,29 @@ At each safe value-borrow layer, all observable Origins of `V` must outlive that
 
 The outer Semantics determines Copy: `ref/uniq/T` is Copy, while `uniq/ref/T` is not. Copying an outer shared reference does not duplicate the inner exclusive capability. Shared access cannot Move a Non-Copy inner value, use its `uniq` exclusively, or mutate the slot; a shared Reborrow stays within the outer Loan. Moving or destroying an outer reference leaves its referent intact. A valid exclusive slot replacement must preserve the inner Type, Origin and Loan constraints.
 
-**Reading through a reference.** A value of Type `ref/T` or `uniq/T` whose referent Type `T` is Copy is read as its referent wherever a `T` is expected: an initializer, an assignment source, an argument, a result and an operand (the [Copy read adaptation](10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals)). The read copies the referent and leaves it initialized, and it forms no Loan of its own because the reference's validity follows from its Origin. One read removes exactly one reference layer, so `ref/ref/T` reads as `ref/T`. A Non-Copy referent is never extracted this way ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)); it is inspected through the reference, as by field access, element access and [comparison](13-operators-and-assignment.md#134-comparison-and-logical-operators), which are the same read applied to a part or to a comparison operand.
+**Selecting and reading a referent.** A reference value is not read as its referent by default. The Place a `ref/T` or `uniq/T` value points to is selected explicitly with the postfix [dereference `@deref`](13-operators-and-assignment.md#13551-dereference), or implicitly by the [reference-path selection](#341-reference-path-selection) of member, index and receiver positions and of structural Patterns. Only a **Scalar** referent is read implicitly, by the [Scalar read](#353-scalar-read) at positions that require a Scalar, following every safe reference layer to its terminal Scalar. A Non-Copy referent is never extracted through a reference ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)); it is inspected through the reference by the selected part, by [comparison](13-operators-and-assignment.md#134-comparison-and-logical-operators) or by a borrow of the selected Place.
 
-This syntax adds no implicit repeated dereference, safe `*` operator, or conversion between pointers and safe references. Borrow formation follows the explicit rules for [Borrow and Reborrow](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow).
+There is no safe `*` operator and no conversion between pointers and safe references. Borrow formation follows the explicit rules for [Borrow](13-operators-and-assignment.md#1355-dereference-borrow-and-reborrow), which always borrow the immediately written slot, and the implicit [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) at positions with a fixed expected Type.
 
 ## 3.4. Values, places, and storage
 
-**Storage** is a region that holds values. **Destruction responsibility** is the obligation to destroy an owned value at the end of its lifetime, subject to [cleanup and termination](16-scope-exit-and-destruction.md#16-scope-exit-and-destruction).
+**Storage** is an identifiable region that holds values: a local, a part of an aggregate, the payload of a separate object, or the storage of a materialized temporary. **Destruction responsibility** is the obligation to destroy an owned value at the end of its lifetime, subject to [cleanup and termination](16-scope-exit-and-destruction.md#16-scope-exit-and-destruction).
 
-A **Place** is a storage location that can hold a value; a **Place expression** designates one, and parentheses preserve that classification. A Place is distinct from a **Temporary Value**, even when that value is materialized into a separate [Temporary Place](#36-temporary-values-places-and-lifetimes).
+A **Place** is the result of selecting Storage: it carries the stored **complete Type** (Semantics, Type arguments, nested structure and internal Origins), the access path, the capabilities of that path and the dependencies needed to keep the Storage valid. A **Place expression** designates one, and parentheses preserve that classification. A Place is distinct from a **Temporary Value**, even when that value is materialized into a separate [Temporary Place](#36-temporary-values-places-and-lifetimes). A Place is not a value: it cannot be stored in a variable, passed as an argument, bound to a Type argument or wrapped in `Option`; to keep a location, borrow it and store the reference. Zero-sized Storage has a logical location without a distinct physical address.
+
+**Completeness.** A value is complete when every part needed to treat it as one value is Initialized. A value of a fully determined Type may still be incomplete after a [Partial Move](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move).
+
+**Capabilities.** A Place offers up to three independent capabilities; none includes another:
+
+| Capability | Meaning |
+| --- | --- |
+| Read | Observe the value: Copy it, borrow it for shared access, compare or inspect it |
+| Write | Initialize or replace the value |
+| Take | Extract the value together with its destruction responsibility |
+
+An owned `let` root offers Take but not Write, and the referent of `uniq/T` offers Write but not Take. A child Place is derived from its parent's path and the child's declaration: it keeps the child's declared complete Type, never adopts the parent's Semantics, never recovers exclusive capability through a shared path, and keeps the access, Property and owner-protection restrictions of every layer. An active Loan restricts uses of a capability; it does not change the capability itself.
+
+Distinct Fields, distinct Tuple positions and distinct in-range constant fixed-array indices designate non-overlapping Places (§15.6.2). Parentheses do not change the classification. Runtime indices, different Dictionary keys, spare capacity or different calls do not by themselves prove non-overlap.
 
 An **Access Designator** identifies an access target after Name and Type resolution: a local or parameter, Field, computed or required Property, Tuple element, index, or built-in dereference. It includes computed Properties and user indexers, without promising storage or Consume permission. Resolution of a designator has one of three outcomes:
 
@@ -420,7 +434,7 @@ These are alternative outcomes, not fallback stages: a failed direct Move cannot
 | Through an exclusive reference | Resolves a `uniq` or `objuniq` reference, including the result of a getter that returns one |
 | Through a shared reference | Resolves a `ref`, `objref`, `rc` or `arc` reference |
 
-A **borrow value** is an expression whose outer Semantics belongs to the `borrow` category (§3.3); a stored reference is both a borrow value and, through its path, a Place. The path's authority bounds every borrow of the Place ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-movable-places), [§13.5.5](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow)); a temporary is not a Place and has no path.
+A **borrow value** is an expression whose outer Semantics belongs to the `borrow` category (§3.3); a stored reference is both a borrow value and, through its path, a Place. The path's authority bounds every borrow of the Place ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-movable-places), [§13.5.5](13-operators-and-assignment.md#1355-dereference-borrow-and-reborrow)); a temporary is not a Place and has no path.
 
 **Value kinds.** For acquisition, the source of an expression is classified in the following order. The access path is used only for permissions and for the Movable Place rules (§15.1.5); it does not change the value kind.
 
@@ -434,15 +448,31 @@ An **object-kind input** is an owned handle or an `objref`/`objuniq` value; ever
 
 A **Receiver Expression** is the expression in the receiver position of a call: a method call, a custom, computed or required accessor, or a direct call of a Closure or function value ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers), §7.6.3, §11.2). It may be a Place or a temporary, and it is acquired implicitly under §7.3 whatever its value kind. The `self` argument of an unbound call `Type.method(x, ...)` is an argument, not a Receiver Expression, and an assignment target is not one either (§13.7). The Subject Place of `match` and `for` (§15.1.6) is a separate notion.
 
-The **lending point** of a borrow, Reborrow or projection is the storage it targets: for an owned Place, the Place reached by following standard field, Tuple-element and array-element projections that call no user code as far as they extend; for an owned temporary, that temporary; for a borrow value, its referent; for an object borrow, the object, and for a payload projection, the payload; for a base projection (§9.5.1), the selected base subobject. Reference slots and owners that are protected to keep the target valid follow the dependency rules of §15.6.7 and are not part of the lending point.
+The **lending point** of a borrow, Reborrow or projection is the storage it targets: for an owned Place, the Place reached by following standard field, Tuple-element and array-element projections that call no user code as far as they extend; for an owned temporary, that temporary; for a borrow value, its referent; for an object borrow, the object, and for a dereferenced payload, the payload; for a base projection (§9.5.1), the selected base subobject. Reference slots and owners that are protected to keep the target valid follow the dependency rules of §15.6.7 and are not part of the lending point.
 
 **Initialization** places a value in an empty Place. **Destruction** ends a value's lifetime and its responsibility; if the storage remains, that Place becomes Uninitialized after normal completion. Nothing can access storage after the storage's own lifetime ends.
 
 Value lifetime separates three steps: acquisition (Copy or Move), placement (Initialization or Replacement) and Destruction. One assignment may contain both a Move and a Replacement.
 
-An ownership Move transfers ownership and destruction responsibility, preventing a second destruction at the source. Copying or moving a borrow value duplicates or transfers its access capability without owning the referent; destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under the object lifetime rules. A non-owning `unsafe/T` neither destroys its referent nor frees its storage.
+An ownership Move transfers ownership and destruction responsibility, preventing a second destruction at the source. Copying or moving a borrow value duplicates or transfers its access capability without owning the referent; destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under the object lifetime rules. A non-owning `unsafe/T` neither destroys its referent nor frees its storage. Move, Take and Consume are distinct notions: Take is a Place capability, Move is the transfer of a value and its responsibility, and Consume is the analysis judgment that records an acquisition's effect.
 
 The [initialization-state rules](15-ownership-and-lifetime-analysis.md#1511-storage-state-and-responsibility) define Initialized, Uninitialized and Moved. A **Partial Move** transfers an inline part and leaves the aggregate incomplete; supported paths and permissions follow [Move Paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move).
+
+### 3.4.1. Reference-path selection
+
+A member access, an index expression and the receiver of a method call select a Place from the declaration and the Type of their operand. If the operand's current layer is a safe value reference (`ref` or `uniq`) that has no such member, index or receiver declaration, selection continues at its immediate referent, layer by layer, and stops at the first layer that has the declaration. Selection is decided from Types alone: a later acquisition, adaptation or Loan failure never returns to another layer. Object Semantics keep the object view rules of §12.4.3–4; a complete Sealed payload is selected under the [dereference rules](13-operators-and-assignment.md#13551-dereference).
+
+```kimi
+func update(node: uniq/Node)
+    node.count += 1       // Selects the Field through the reference.
+    node.validate()       // Borrows the receiver as the selected declaration requires.
+```
+
+The same selection applies to the receiver of a borrowing `for` entry (§14.6.2) and to structural Patterns, which stop at the first layer that has the required structure (§14.8.1). A Scalar read and a comparison instead select the terminal of the reference chain (§3.5.3, §13.4). Each selected layer keeps its own capabilities, Origins and Loans; exclusive capability is never recovered through a shared layer.
+
+In a generic body, a Type parameter or associated Type whose shape is not determined by the public Constraints and Type equalities, after normalization, is the terminal of the path: only the published capabilities are used there, and instantiation never selects a different layer, member or comparison. A reference shape proven by a declared equality may be followed at definition time.
+
+Bare acquisition and a single-name binding never select a referent. `@ref` and `@uniq` are not subject to selection: they always borrow the immediately written slot (§13.5.5). An update requirement, such as the exclusive access needed by `matrix[f()][j] = value`, propagates only along the selected projection path, never into the argument `f()` or behind an ordinary function or getter.
 
 ## 3.5. Copy and move
 
@@ -450,9 +480,29 @@ The [initialization-state rules](15-ownership-and-lifetime-analysis.md#1511-stor
 
 **Move** transfers the value and its destruction responsibility, or a borrow value's access capability, and marks the source Moved. It invokes no user code and need not clear the source memory.
 
-**Bare acquisition** is the acquisition of an expression written without an explicit `@` operation. From a Place it selects Copy for a Copy Type and otherwise rejects the acquisition: a bare Place never Moves. A Move is requested by the [transfer operation](13-operators-and-assignment.md#1353-defined-adaptations) `@move` or one of its owning-Semantics spellings, only out of a Movable Place (§15.1.5), and then transfers the value even when its Type is Copy. A Temporary Value transfers its ownership without any spelling. These rules apply to initialization, assignment sources, by-value arguments, aggregate elements, payloads and result transfers. Borrow creation and Reborrowing are separate operations; the [lending rule](15-ownership-and-lifetime-analysis.md#1515-movable-places) states where a spelling is required.
+**Bare acquisition** is the acquisition of an expression written without an explicit `@` operation. Let the Place have the stored complete Type `T`:
 
-Copy capability is independent of `let`/`var` and of flow-dependent Loans. At a use site, Copy obeys read restrictions, and a transfer must not conflict with overlapping active Loans. Both preserve Origin dependencies without extending referent lifetimes. Reborrowing does not make exclusive references Copy.
+| Operation | Result |
+| --- | --- |
+| Bare acquisition of a Place | Copy, only when `T` is proven Copy; the result Type is `T`. A Non-Copy or Copy-unproven Place is an error |
+| `P@move` | Transfer of `T` whatever its Copy capability; the source becomes Uninitialized |
+| `P@ref`, `P@ref/T` | Shared borrow of `P` itself: `ref/T` |
+| `P@uniq`, `P@uniq/T` | Exclusive borrow of `P` itself: `uniq/T` |
+| Bare acquisition or `@move` of a temporary | The already acquired value is transferred; no extra Copy or Move |
+
+`@move` is the only spelling that transfers a value out of a Place ([transfer operation](13-operators-and-assignment.md#1353-defined-adaptations)); it requires a Take-capable [Movable Place](15-ownership-and-lifetime-analysis.md#1515-movable-places). `@owner`, `@obj`, `@rc`, `@arc` and their full forms are not transfer spellings: they perform the same-Type acquisition or the explicit adaptation they name under the ordinary acquisition rules. A Temporary Value transfers its ownership without any spelling. These rules apply to initialization, assignment sources, by-value arguments, by-value results, aggregate elements, payloads and defaults. When the position has a fixed expected Type, the [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) is planned first and the value is acquired once; without an admitted adaptation, an unproven Copy is never replaced by an implicit Move or borrow.
+
+A typed borrow `P@ref/T` requires the written `T` to be exactly the stored Type; it is neither a selection of the referent, a Copy of a same-Type reference nor a Reborrow, and the outer Origin is inferred from the path while the stored Type's internal Origins are kept. An explicit borrow of a temporary materializes it under the ordinary temporary lifetime and borrows that Temporary Place.
+
+```kimi
+// r: uniq/Node
+r@ref                 // ref/(uniq/Node): the slot of r
+r@ref/uniq/Node       // The same slot borrow
+r@deref@ref           // ref/Node: a shared Reborrow of the referent
+// r@ref/Node         // Error: the stored Type is uniq/Node
+```
+
+Copy capability is independent of `let`/`var` and of flow-dependent Loans. At a use site, Copy obeys read restrictions, and a transfer must not conflict with overlapping active Loans. Both preserve Origin dependencies without extending referent lifetimes. Reborrowing does not make exclusive references Copy. The distribution of an already acquired owned Subject or iteration item into Pattern bindings is a transfer inside that construct and needs no `@move` per binding (§15.1.6).
 
 ```kimi
 let a: i32 = 10
@@ -530,6 +580,31 @@ Derivation must hold for every generic binding admitted by the Type Constraints 
 
 Proof may depend on declared constraints, but successful individual instantiations do not validate an otherwise unproven declaration. [Generic access effects](08-generics-constraints-and-contracts.md#89-generic-access-effects) may defer exact effect determination only after legality is proven for every admitted case; unknown Copy is never treated as Non-Copy.
 
+### 3.5.3. Scalar read
+
+At a position that requires a Scalar Type `T` (§3.1), a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **Scalar read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to built-in operator operands and to `bool` conditions. An operator selects its operation from the terminal Scalar Type of each operand. An unknown generic Type is never assumed to be a Scalar.
+
+```kimi
+for number in numbers        // numbers: Array<i32>; number: ref/i32.
+    let reference = number   // Copy of the reference; the binding keeps ref/i32.
+    let snapshot: i32 = number
+    let doubled = number * 2 // i32.
+    total += number
+
+for number in numbers@uniq   // number: uniq/i32.
+    number@deref = number + 1 // The target is selected explicitly; the right side is a Scalar read.
+
+for number in references     // references: Array<ref/i32>; number: ref/(ref/i32).
+    total += number          // Reads the terminal i32.
+```
+
+- Only safe value-reference layers are followed. Object Semantics, raw pointers and Fields are not followed, and every layer is checked for initialization, capability and Loans.
+- No numeric conversion is added; an unresolved literal is fitted to the terminal Scalar Type. Overflow, operator availability and short-circuit evaluation are unchanged.
+- Every read takes the value at that evaluation; nothing is snapshotted at binding time.
+- The target of an assignment, compound assignment, increment or decrement is never redirected to a referent: `number += 1` on `number: ref/i32` is an error, and `number@deref += 1` updates the referent.
+- The original reference keeps its Loan, and the read result carries no new borrow.
+- A non-Scalar Copy referent is copied only through an explicit `@deref` selection; comparisons follow the shared inspection rule of §13.4.
+
 ## 3.6. Temporary values, places, and lifetimes
 
 ### 3.6.1. Materialization
@@ -560,7 +635,7 @@ Unless a construct needs a longer lifetime, a temporary lasts until the outermos
 
 Each `if`, `else if`, `while`, `require` and match-guard test is a temporary-lifetime boundary: the bool result is secured, condition temporaries and guard-local temporary Loans are cleaned up, and then control branches, under [condition evaluation](14-control-flow.md#1423-conditions-and-temporary-lifetimes). Explicit bindings, match subjects and iterators keep their own scopes, and Moved values follow their destination lifetimes. To keep a value alive through a body, store it outside the condition.
 
-A new borrow of an owned temporary depends on its Temporary Place and cannot outlive it. Exclusive capability permits the applicable explicit exclusive borrow; it does not bypass the [Borrow table](13-operators-and-assignment.md#1355-explicit-borrow-and-reborrow).
+A new borrow of an owned temporary depends on its Temporary Place and cannot outlive it. Exclusive capability permits the applicable explicit exclusive borrow; it does not bypass the [Borrow table](13-operators-and-assignment.md#1355-dereference-borrow-and-reborrow).
 
 ```kimi
 inspect(makeResource())       // Shared borrow of the temporary (§10.2).
@@ -576,10 +651,11 @@ let lastingView = owned@ref // Borrow the retained local instead.
 inspect(lastingView)
 ```
 
-A temporary that is already a borrow follows the shared-reference Copy or Reborrow rules. Its referent Origins are preserved; it is not replaced by a borrow of the storage holding the reference value.
+A temporary that is already a borrow is acquired as that reference value, keeping its referent Origins; it is adapted at a position with an expected Type under §10.2. An explicit `@ref` on it borrows the storage that materializes the reference value and adds a layer.
 
 ```kimi
-let view = makeView()@ref // If makeView returns ref/T, its Origins are preserved.
+let view = makeView()      // If makeView returns ref/T, view is ref/T with its Origins preserved.
+inspect(makeView())        // Passed to ref/T as is.
 ```
 
 Borrow and Slice formation never extend the source's lifetime. Result transfers secure their values before the common [scope-exit cleanup](16-scope-exit-and-destruction.md#162-scope-exit-destruction); Abort follows [Abort termination](17-failure-handling.md#173-abort-termination).
@@ -616,11 +692,11 @@ Here `A <: B` covers normalized identity and the explicitly defined subtype rule
 | Callable signature compatibility | For implementation `(A1, ..., An) -> R` and requirement `(P1, ..., Pn) -> Q`, apply [callable compatibility](10-overload-resolution-and-inference.md#107-callable-signature-compatibility): equal arity, `Pi <: Ai`, `R <: Q`, and compatible Origin/Loan contracts. | Static signature fitting. It inserts no argument or result operations and does not itself convert a Function Item or Closure to a common Function Type. Receiver and environment requirements remain separate. |
 | Expected-result compatibility | An instantiated candidate result Type and an independently established expected Type, under [expected-result filtering](10-overload-resolution-and-inference.md#103-expected-results). Requires identity or a defined subtype relation. | Excludes candidates without inserting a value operation. Result acquisition and declared Loan propagation are still required; this is not general implicit adaptation. |
 | Never fitting | Never has no normally produced value and fits any otherwise valid expected value Type without a value conversion. | No outer value operation executes on a non-completing path. Target, Unsafe and local correctness checks remain, and transfer operands are validated against their own result boundary under [result validation](14-control-flow.md#149-result-validation). The Target Result Type stays separate from inferred Never; every syntactic result source is checked under §14.9. |
-| Implicit expression adaptation | An expression, target Type and use-site context. Only adaptations allowed in that position are selected, including the finite [argument adaptation rules](10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals) and fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion). | May require acquisition, Borrow/Reborrow or a defined conversion. Literal fitting determines the Type of an unresolved literal; it does not convert an established numeric Type. No universal implicit-conversion search exists. |
-| Explicit expression adaptation | An expression and a resolved Adaptation Target in context. Select one [defined `@` operation](13-operators-and-assignment.md#1353-defined-adaptations), then enforce its requirements and static result fitting. | May change value representation, view or Loan state, or perform runtime checks. No hidden sequence of operations is inserted. Origins are inferred as specified for Adaptation Targets. |
+| Implicit expression adaptation | An expression, a fixed expected Type and use-site context. Exactly one operation of the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) or the fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is selected. | May require acquisition, Borrow/Reborrow, a Scalar read or a defined conversion. Literal fitting determines the Type of an unresolved literal; it does not convert an established numeric Type. Adaptations are never chained, and no universal implicit-conversion search exists. |
+| Explicit expression adaptation | An expression and a resolved Adaptation Target in context, or the postfix dereference `@deref`. Select one [defined `@` operation](13-operators-and-assignment.md#1353-defined-adaptations), then enforce its requirements and static result fitting. | May select a Place, change value representation, view or Loan state, or perform runtime checks. No hidden sequence of operations is inserted. Origins are inferred as specified for Adaptation Targets. |
 | Object upcast | An expression and a different object View Target, with proof of `Supports(S, V)` and a matching [explicit upcast row](13-operators-and-assignment.md#1357-object-upcasts). | One explicit view/acquisition operation. Inheritance or conformance alone establishes neither an implicit complete-value adaptation nor a callable argument/result conversion. |
 | Base subobject receiver projection | An instance member selected in a base layer by [inherited lookup](09-names-signatures-and-access.md#951-base-subobject-receiver-projection). | Locates the receiver subobject and applies the permitted receiver access; no standalone conversion or owning base value. |
-| Borrow / Reborrow | An expression with the required Place, access and Loan properties, and a permitted implicit or explicit borrow operation. | Establishes or derives Loans under the borrow rules. Changing `uniq/T` to `ref/T` requires a shared Reborrow; it is not a subtype rule. |
+| Borrow / Reborrow | An expression with the required Place, access and Loan properties, and a permitted implicit or explicit borrow operation. | Establishes or derives Loans under the borrow rules. Changing `uniq/T` to `ref/T` requires a shared Reborrow, selected implicitly at an expected `ref/T` or written `@deref@ref`; it is not a subtype rule. |
 | Numeric conversion | An established numeric Type and a target admitted by the [explicit numeric conversion table](13-operators-and-assignment.md#1354-numeric-conversions-and-literals). | A value conversion with the specified rounding, range checks and failure behavior. `i32` is not a subtype of `i64`; representable literal fitting is separate. |
 | Acquisition legality | An expression, the selected access operation, and the current initialization, access, ownership and Loan state. Apply the ordinary Copy, Move, Borrow or Consume requirements. | Type compatibility does not prove legality: an exact Type match can still fail because storage is Moved, access is unavailable or a Loan conflicts. Such a failure does not reopen committed lookup or overload selection. |
 

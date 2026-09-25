@@ -220,17 +220,17 @@ An incomplete structure layer does not run its own `deinit`; its remaining initi
 
 Tuple elements and array elements are destroyed in decreasing element-index order, from the last logical element to index zero. This covers fixed-length arrays, the initialized elements of a partly built array, and owning array storage used by array literals; spare capacity is not an initialized element. A partially initialized element is cleaned recursively before the preceding element. Unit and empty arrays have no components to destroy.
 
-Enum values destroy only the active Case's remaining initialized payloads, in reverse declaration order. Inactive Cases, and payloads moved out by [selected match acquisition](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime), have no remaining responsibility. Borrow payloads never destroy their referents. Other library containers must define the destruction order of their owned elements in their own contracts.
+Enum values destroy only the active Case's remaining initialized payloads, in reverse declaration order. Inactive Cases, and payloads transferred by [owned decomposition](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime), have no remaining responsibility. Borrow payloads never destroy their referents. Other library containers must define the destruction order of their owned elements in their own contracts.
 
-| Aggregate state | Own `deinit` | Field destruction |
+| Aggregate state at the destruction point | Own `deinit` | Field destruction |
 | --- | --- | --- |
 | Complete | Run if declared | All fields afterward |
+| Wholly Moved | Never run | Nothing |
 | Construction not completed | Never run | Initialized fields only |
-| Incomplete after a Partial Move | Never run | Remaining fields only |
+| Incomplete after a Partial Move, no own `deinit` | None | Remaining fields only |
+| Incomplete after a Partial Move, own `deinit` declared | Error: the path must restore completeness before this point (§15.1.3) | Not reached |
 
-The table applies per structure layer; any base cleanup follows the own-field cleanup and uses the base's independent state. For example, a complete `Derived : Base` is destroyed as `Derived.deinit`, `Derived`'s fields in reverse order, `Base.deinit`, `Base`'s fields in reverse order, recursively. If `Derived`'s construction is incomplete but `Base` completed, `Derived.deinit` is omitted, while the remaining `Derived`-field cleanup and the complete `Base` cleanup still run.
-
-A Partial Move is forbidden if the aggregate it makes incomplete, or an inline containing ancestor, has a user-defined `deinit`; the last row does not authorize bypassing that restriction.
+The table applies per structure layer; any base cleanup follows the own-field cleanup and uses the base's independent state. For example, a complete `Derived : Base` is destroyed as `Derived.deinit`, `Derived`'s fields in reverse order, `Base.deinit`, `Base`'s fields in reverse order, recursively. If `Derived`'s construction is incomplete but `Base` completed, `Derived.deinit` is omitted, while the remaining `Derived`-field cleanup and the complete `Base` cleanup still run. A layer that completed construction and is then partially Moved keeps its restoration obligation; incompleteness never excuses the `deinit` of an already completed layer, and reinitialization does not change a local's destruction position.
 
 ```text
 Declaration order: a, b, c

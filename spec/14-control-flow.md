@@ -285,12 +285,19 @@ Each iteration has a fresh body scope. Its normal body result is discarded, and 
 
 ### 14.6.1. `for` and `while`
 
-`for` acquires its iterable once and then obtains successive elements; `while` evaluates its `bool` condition before each iteration. Both complete with Unit on exhaustion or a false condition, or on a self-targeted `exit`, whose operand must fit Unit. The body end and a self-targeted `continue` request the next element or reevaluate the condition.
+`for` acquires its Subject once and then obtains successive items; `while` evaluates its `bool` condition before each iteration. Both complete with Unit on exhaustion or a false condition, or on a self-targeted `exit`, whose operand must fit Unit. The body end and a self-targeted `continue` request the next item or reevaluate the condition.
 
-A `for` binding is one Name or `_`, or a Tuple of those slots, not a general Pattern or nested decomposition. Named slots must be distinct; each `_` is a separate unnamed immutable iteration binding and cannot be referenced or captured. Conditions follow §14.2.3, including cleanup before branching and the ban on condition-binding syntax.
+```text
+ForBinding := ForSlot | "(" List<ForSlot> ")"
+ForSlot    := Name | "var" Name | "_"
+```
+
+A `for` binding is one slot or a parenthesized Tuple of slots, not a general Pattern or nested decomposition. A bare Name is an immutable `let` iteration binding, `var Name` is a reassignable iteration local, and each `_` is a separate unnamed immutable binding that cannot be referenced or captured; `var _` is invalid. Named slots must be distinct. Conditions follow §14.2.3, including cleanup before branching and the ban on condition-binding syntax.
 
 ```kimi
 for (key, value) in dictionary => process(key, value)
+for var number in numbers@move   // number: i32, reassignable inside the body
+    number += 1                  // Updates only the iteration local.
 while ready => process()
 ```
 
@@ -298,57 +305,65 @@ while ready => process()
 
 ### 14.6.2. Iteration protocol and acquisition
 
-The recognized Kimi Iterable and Iterator Contracts define `for` iteration. The iterable expression `E` is evaluated once and acquired into a hidden iterable local under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): an owned Place is shared-borrowed, even when its Type is Copy; a borrow value, including `E@ref` and a `uniq` parameter, is copied or shared-reborrowed; a Temporary Value, including the result of `E@move`, is acquired by value; an exclusive borrow written as `E` (`E@uniq`, `E@objuniq`) is an error. Its consuming `iterate` mapping is invoked once on that local, consuming a borrowed local's Copy reference, to obtain a hidden iterator local. `Iterator.next` is then invoked repeatedly with a short exclusive reborrow of that iterator; a `Some` payload supplies the next element, and `None` terminates the loop. Missing or ambiguous conformances are errors; there is no method-name duck typing or fallback protocol.
+`for` uses only the [Iterator Contract](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and the three iteration entries. The Subject `E` is evaluated once and acquired under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime); the Subject mode selects the entry, and the entry's receiver is acquired under the [reference-path selection](03-types-and-values.md#341-reference-path-selection) of the complete Subject Type:
+
+| Subject | Mode | Entry |
+| --- | --- | --- |
+| `E`, `E@ref` | Shared | `Iterable.iterate` |
+| `E@uniq` | Exclusive | `UniqIterable.iterateUniq` |
+| `E@move` | ByValue; a Copy Subject is transferred too | `IntoIterable.intoIterator` |
+
+For `values: ref/Array<T>`, `for value in values` selects Array's shared entry through the reference. The mode is never changed by the selection, and an explicit borrow must be valid on the immediately written slot before the entry is searched: `values@uniq` on `let values: uniq/Array<T>` is an error, and `values@deref@uniq` enumerates the referent exclusively. ByValue uses the `IntoIterable` conformance of the acquired complete Type and never takes ownership of a referent. Missing or ambiguous conformances are errors; there is no method-name duck typing, no automatic conformance of references or arbitrary iterators, and no fallback protocol. A user Iterator without an entry conformance is enumerated through the standard adapters, `Kimi.Iteration.owned(it@move)@move` or `Kimi.Iteration.borrowed(it@uniq)@move` (§22.1.2).
 
 ~~~text
-iterable := acquire(E)
-iterator := Iterable.iterate(consume iterable)
+subject  := acquire(E) in its mode
+iterator := entry(receiver)               // iterate, iterateUniq or intoIterator, once
 repeat:
-    step := Iterator.next(exclusive reborrow of iterator)
+    step := Iterator.next(short exclusive reborrow of iterator)
     if step is None: finish
-    acquire Some payload into fresh iteration bindings
+    item := the Some payload, owned by this iteration
+    bind item under the owned decomposition of §15.1.6
     execute body
-    clean up iteration bindings before requesting the next step
-clean up iterator on normal exit and ordinary transfers
+    clean up the iteration scope, then continue
+clean up the iteration scope, the iterator and the internal Subject on every loop exit
 ~~~
 
-Each `for` binding is an immutable `let` binding scoped to that iteration's body; there is no implicit `var` form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right, and named slots must be distinct. When the yielded element is a shared reference to a Tuple (`ref/(A, B) during source`, as bare iteration over an owned array yields), each component is acquired under the [match rules for borrowed Subjects](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): a Copy component is copied and a Non-Copy component binds as `ref/T during source`. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
+The **item Type** is `Iterator.Item(step)` of the selected iterator Type, where `step` is bound to the receiver borrow of each `next` call; the entry mode does not force `ref`, `uniq` or an owned item. A single slot binds the item as that Type, without a Copy- or reference-dependent Type change. A parenthesized binding requires an item that is a Tuple of exactly that many elements, or a safe reference to one selected under §14.8.1, and binds each component under the owned decomposition rules: components of an owned `(A, B)` are transferred, components reached through `ref/(A, B)` bind as `ref/A` and `ref/B`, and components reached through `uniq/(A, B)` bind as `uniq/A` and `uniq/B`. General match Patterns are not accepted here. `_` still requests the item and cleans it up; binding shape determines the unit: `for _ in pairs` acquires one Tuple, `for (_, _) in pairs` its components.
 
-The receiver Loan of `next` ends before the loop body. Results may keep existing external dependencies but cannot borrow that exclusive receiver or iterator-owned storage; lending iteration is deferred.
+| Enumerated value | `Iterable` item | `UniqIterable` item | `IntoIterable` item |
+| --- | --- | --- | --- |
+| `Array<E>`, `[N of E]` | `ref/E during a` | `uniq/E during a` | `E` |
+| `Dictionary<K, V>` | `(ref/K during a, ref/V during a)` | `(ref/K during a, uniq/V during a)` | `(K, V)` |
+| `Slice<E>` | `ref/E during s` | `ref/E during s` | `ref/E during s` |
+| `ResolvedRange` | `isize` | `isize` | `isize` |
 
-| Iterable | Yielded value and acquisition |
-| --- | --- |
-| `ref/Array<T>`, `ref/[N of T]` | `ref/T during source`, as the Slice iteration of `values[..]` |
-| `ref/Dictionary<K, V>` | `(ref/K during source, ref/V during source)` pairs in insertion order, through the Kimi shared pair iterator |
-| `ref/Slice<T>`, `ref/ResolvedRange` | The Copy value is read and iterated as below; the local keeps no Loan of its own |
-| Array or fixed array under `owner` Semantics | Elements consumed as `T` |
-| `ResolvedRange` | `isize`; an unresolved `Range` is not Iterable |
-| `Slice` | `ref/T during source`, even for Copy elements |
-| Dictionary under `owner` Semantics | `(K, V)` pairs consumed in insertion order |
-
-The hidden local of a borrow value is always a shared reference, so a `uniq/Array<T>` or `uniq/[N of T]` value is iterated through the `ref` rows and remains usable after the loop, and a borrowed Slice or ResolvedRange is read as its Copy value.
-
-Bare iteration over an owned collection Place therefore borrows it and yields shared references; `values@ref` means the same. `for item in values@move` consumes the collection and yields owned elements, and `for item in values@uniq` is an error ([subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime)). A consumed source remains unavailable until validly reinitialized. A user Type offers shared iteration through a member that returns an Iterable view, such as a Slice; a shared Iterable requirement is a design boundary ([Appendix D](appendices/D-deferred-features.md#d1-enum-and-pattern-extensions)).
+Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`; element-internal Origins are kept separately, so an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Array, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order; all of them keep returning `None` after the first `None`, and every standard iterator conforms to `IndependentIterator` (§22.1.2). Exclusive enumeration of a Slice lends the handle; its elements stay shared. `Range` is not enumerable; resolve it first (§4.6.3).
 
 ```kimi
-for item in items        // Shared iteration; items remains usable.
-    inspect(item)
-for item in items@move   // Consuming iteration.
+for item in items            // Shared iteration; items remains usable.
+    inspect(item)            // item: ref/Item
+for item in items@uniq       // Exclusive iteration.
+    update(item)             // uniq/Item, Reborrowed at a uniq parameter
+for item in items@move       // Consuming iteration.
     store(item@move)
-// for item in items@uniq // Error: iteration never lends items exclusively.
+for (a, b) in rows@uniq      // a, b: uniq/i32
+    a@deref += b
+for (a, b) in pairs          // pairs: Array<(i32, i32)>
+    total += a + b           // ref/(i32, i32) is decomposed; a, b: ref/i32
+for (key, value) in dictionary@uniq
+    inspectKey(key)          // ref/K
+    update(value)            // uniq/V
 ```
 
-Source Loans are kept while the iterator or escaped yielded references need them; overlapping mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. See [ranges](04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [Slice iteration](04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
-
-Body fall-through and `continue` clean up the current bindings before calling `next` again; `exit`, `return` and outer transfers also clean up the iterator and its unyielded owned elements. The protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
-
-Unnamed slots follow named acquisition, dependencies and lifetime. Do not skip acquisition or destroy their values before the body. Binding a Result is not expression discard. Binding shape determines the unit: `for _ in pairs` acquires one Tuple; `for (_, _) in pairs` acquires its components separately. Tuple components and separate bindings both clean up last-to-first (§16.2–3), after body locals and defers. Borrowed bindings never destroy referents. This differs from Pattern wildcards and explicit-discard temporary cleanup.
+**Loans and cleanup.** The Subject Loan is kept while the iterator or an escaped item needs it; conflicting mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. Body fall-through and `continue` clean up the iteration scope before the next `next`; `exit`, `return`, `try` propagation and outward `yield` clean up the iteration scope, then the iterator, then the internal Subject. A Loan saved outside the loop is not ended by the iteration; when it conflicts with the next `next`, the loop's back edge is rejected. Early exit secures the dependencies of retained results before cleanup, does not destroy a Moved Subject twice, and consumes no further items of a ByValue Subject. Unnamed slots keep the same acquisition, dependencies and cleanup as named ones, and Tuple components and separate bindings clean up last-to-first (§16.2–3), after body locals and defers. Borrowed bindings never destroy referents. The protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
 
 ```kimi
 // n: isize, n >= 0. Range itself is not Iterable.
 for _ in (0..n).resolve(n) => tick()
 for (key, _) in pairs => use(key)
 ```
+
+**Delivery.** The `Some` payload, the internal item and the bindings are stages of meaning, not separate physical copies: an implementation may deliver the payload directly into its binding when the intermediate storage is not otherwise observed and every address, Loan, initialization state and cleanup count is preserved (§21.4.4). A consuming loop over an owned fixed array may keep the source storage as the iterator's remainder instead of transferring the whole array first, under the same conditions. No standard owned iterator materializes an array of items in advance.
 
 ### 14.6.3. `loop`
 
@@ -418,14 +433,14 @@ action: match event@ref
 
 ## 14.8. Match expressions and patterns
 
-The subject is evaluated and acquired once. Arms are tried in source order, and the first arm whose Pattern matches and whose optional `bool` guard is true is selected. Only that arm's body executes; there is no fall-through to another arm. Each arm has its own Body, result rules and binding scope.
+The subject is evaluated and acquired once in the mode fixed by its outermost operation (§15.1.6). Arms are tried in source order, and the first arm whose Pattern matches and whose optional `bool` guard is true is selected. Only that arm's body executes; there is no fall-through to another arm. Each arm has its own Body, result rules and binding scope.
 
 **Match is exhaustive in every Evaluation Context and body form.** Intentionally ignored values are handled with `_ => ()` or suitable Case-specific arms. A selected arm list must be nonempty. Coverage uses only the conservative proof rules of §14.8.4.
 
 ```kimi
 func positiveOrZero(value: Option<i32>) -> i32
     return match value
-        .Some(let n) if n > 0 => n
+        .Some(let n) if n > 0 => n   // n: ref/i32 in the guard and the body; read as i32 at the fixed result Type.
         .Some(_)
             log("non-positive")
             yield 0
@@ -459,24 +474,25 @@ Each nested Case's expected Type comes from the payload Type at its position, us
 
 Bare names, constants, Properties, calls and arbitrary expressions are invalid Patterns. Use `let x` to bind, `.Some(...)` or `Option<T>.Some(...)` for a Case, and `let x if x == expected` for comparison with an existing value; a misspelling never becomes a catch-all. Pattern execution invokes no constructor, getter, conversion or user-defined operator.
 
-**Structural Patterns.** Case, Tuple, Unit and Literal Patterns are structural Patterns. At each position they inspect an owned value directly, or implicitly dereference `ref/T` at most once and inspect the immediate referent with shared access if its Type supports that Pattern. Grouping adds no dereference, and Wildcard and Binding never dereference. Object Semantics and raw pointers are not implicitly dereferenced. Type checking uses the original matched Type and this rule, not a binding's shared-reading result Type.
+**Structural Patterns.** Case, Tuple, Unit and Literal Patterns are structural Patterns. At each position they inspect an owned value directly or, when the current Type is a safe value reference (`ref/T`, `uniq/T`) without the required structure, select its immediate referent and repeat until a Type with that structure is reached ([reference-path selection](03-types-and-values.md#341-reference-path-selection)). The selection is decided from the Type alone and never backtracks to another layer. Grouping adds no selection, and Wildcard and Binding never select a referent. Object Semantics and raw pointers are not selected implicitly. Type checking uses the original matched Type and this rule.
 
-Each child payload or Tuple position applies the rule independently. Once a path passes through a borrow, its descendants keep shared access. Valid nested Types such as `ref/ref/T` and `ref/uniq/T` still have a reference layer after one dereference and cannot take a structural Pattern at that position. Types are never flattened, and dereferencing is never repeated until a Pattern fits.
-
-A position containing `uniq/T` permits only Wildcard or Binding, optionally grouped. At the root, write `match value@ref`; for nested payloads, bind first and inspect in an inner match. There is no Pattern-local `@ref` syntax.
+Each child payload or Tuple position applies the rule independently. A path through `ref` bounds every descendant to shared access; a path through `uniq` grants exclusive access when the Subject mode and the enclosing path allow it, and a shared layer anywhere above bounds it to shared access. `ref/(ref/())` therefore accepts the Unit Pattern `()`, and a nested Case Pattern through a stored `uniq/Option<i32>` is valid. There is no Pattern-local `@ref` syntax.
 
 ```kimi
 enum Box {source}
     Value(uniq/Option<i32> during source)
 
-match box
-    .Value(let value)
-        match value@ref
-            .Some(let x) => use(x)
-            .None => ()
+match box@uniq
+    .Value(.Some(let x)) => x@deref += 1 // x: uniq/i32 through the exclusive path.
+    .Value(.None) => ()
+    _ => ()
+
+match box                            // Shared Subject: every binding is shared.
+    .Value(.Some(let x)) => use(x)   // x: ref/i32
+    _ => ()
 ```
 
-On this owned path, `value` acquires the exclusive reference by Move, and the inner match creates a shared Reborrow; `.Value(.Some(let x))` is invalid. On a shared path, the body binding already receives a shared Reborrow under the [acquisition rules](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime). Wildcard and Binding also accept Types that support no structural Pattern, and binding a reference value does not acquire its owned referent.
+Wildcard and Binding also accept Types that support no structural Pattern, and binding a reference value does not acquire its owned referent.
 
 Tuple arity and Case payload count must match exactly; write `_` for each ignored element. Omitted, named, Rest and shorthand fields are not accepted. `(P)` groups, `(P,)` is a singleton Tuple, and `()` is Unit; `.Some((let x, let y))` matches one Tuple payload, while `.Pair(let x, let y)` matches two payloads. Structure is tested from the outside inward and left to right among siblings, stopping at the first mismatch, without Copying or Moving payloads.
 
@@ -486,7 +502,7 @@ Booleans compare by value, characters by Unicode scalar value, and strings by ex
 
 ### 14.8.2. Binding scopes
 
-`let name` and `var name` are irrefutable at their position. They create non-reassignable and reassignable body locals respectively; `var` grants no mutation of, or exclusive access to, the original payload. Names within one Pattern must be unique: `(let x, let x)` is an error, not an equality test. `let _` and `var _` are invalid, while `_name` is an ordinary binding with acquisition and possible destruction responsibility.
+`let name` and `var name` are irrefutable at their position. They create non-reassignable and reassignable body locals respectively; `var` grants no mutation of, or exclusive access to, the original payload, which follows the Subject mode and path (§15.1.6). Names within one Pattern must be unique: `(let x, let x)` is an error, not an equality test. `let _` and `var _` are invalid, while `_name` is an ordinary binding with acquisition and possible destruction responsibility.
 
 A Pattern name is visible only in its own arm: as a candidate name in the guard and as a separate local in the body. It is not visible in the subject, in other arms, after the match, or for resolving its Pattern's Types and Case names. Ordinary shadowing and local redeclaration rules apply, and a single-item body also has an arm-local scope. Candidate and body names have distinct Binding Identities, so they may have different Types and acquisition effects: [guard reading](#1483-guards) determines the former and [selected acquisition](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime) the latter.
 
@@ -496,17 +512,17 @@ Binding Type annotations, `name @ Pattern`, and an outer `let` applying to a who
 
 ### 14.8.3. Guards
 
-Each Binding position has an internal **Candidate Place** designating initialized storage in the Subject or its referent. This Access Designator creates no new storage, value or owning local. In a guard, its candidate name performs **shared reading**: the Copy, shared Borrow or Reborrow selected by the [shared element-read rules](04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results), without invoking an actual getter. It never reads an uninitialized body local.
+Each Binding position has an internal **Candidate Place** designating initialized storage in the Subject or its referent. This Access Designator creates no new storage, value or owning local. In a guard, its candidate name denotes a **shared reference** `ref/T` to that Place, where `T` is the stored complete Type, whatever the Subject mode and `T`'s Copy capability ([guard candidates](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime)); no getter is invoked, and no uninitialized body local is read.
 
-| Candidate's stored Type | Guard read Type | Body Type on an owned path |
-| --- | --- | --- |
-| `i32` | `i32` (Copy) | `i32` |
-| Non-Copy `Data` | `ref/Data` | `Data` |
-| `obj/User` | `objref/User` | `obj/User` |
-| `ref/T` | `ref/T` (Copy) | `ref/T` |
-| `uniq/T` | `ref/T` (shared Reborrow) | `uniq/T` |
+| Candidate's stored Type | Guard Type | Body Type on an owned path | Body Type on a shared path |
+| --- | --- | --- | --- |
+| `i32` | `ref/i32` | `i32` | `ref/i32` |
+| Non-Copy `Data` | `ref/Data` | `Data` | `ref/Data` |
+| `obj/User` | `ref/(obj/User)` | `obj/User` | `ref/(obj/User)` |
+| `ref/T` | `ref/(ref/T)` | `ref/T` | `ref/(ref/T)` |
+| `uniq/T` | `ref/(uniq/T)` | `uniq/T` | `ref/(uniq/T)` |
 
-On a shared path, the body binding also uses the shared-reading Type. The table omits Origins; complete Types preserve them and their Loans. Each scope resolves its expressions and overloads with its own Types. Guard lookup is not retried with the body Type, and guard refinement facts do not transfer automatically to the body's distinct Identity.
+On an exclusive path the body binding is `uniq/T`. The table omits Origins; complete Types preserve them and their Loans. Scalar reads and comparisons follow the reference layers (§3.5.3, §13.4), so `n > 0` on a candidate `n: ref/i32` compares the integer. Each scope resolves its expressions and overloads with its own Types. Guard lookup is not retried with the body Type, and guard refinement facts do not transfer automatically to the body's distinct Identity.
 
 A guarded arm proceeds as follows:
 
@@ -525,7 +541,7 @@ match packet@move
     .End => ()
 ```
 
-Here the first `data` is `ref/Data` in the guard and `Data` in the body; writing `data@ref` in the guard copies that shared reference.
+Here the first `data` is `ref/Data` in the guard and `Data` in the body; writing `data@ref` in the guard borrows the candidate's reference slot as `ref/(ref/Data)`, and `data@deref@ref` borrows the payload again.
 
 ```kimi
 func same(a: ref/string, b: ref/string) -> bool => a == b
@@ -535,22 +551,22 @@ match "hello"
     _ => ()
 ```
 
-The guard reads `text` as `ref/string`, and the literal argument is also borrowed for the call. After guard cleanup, the selected body acquires the owned string from the Subject. The guard may equivalently compare `text == "hello"` directly: comparisons inspect the Non-Copy referent under the common operand rule (§13.4).
+The bare temporary is a Shared Subject held in an internal local, so `text` is `ref/string` in the guard and in the body, and the literal argument is also borrowed for the call. The guard may equivalently compare `text == "hello"` directly: comparisons inspect the Non-Copy referent under the common operand rule (§13.4). To take the string by value, write `match makeText()@move`.
 
 **Guard syntax.** A guard is one expression whose normal result is `bool`. Parentheses are optional, and `and`, `or` and `not` keep their ordinary semantics. There are no `let` conditions, comma-separated condition lists or guard chains. The arm's Body start, either `=>` or the indented body, ends the guard. Nested body-bearing expressions in a guard require grouping under §2.2.
 
-**Candidate restrictions.** Candidate names, including `var` candidates, cannot be Moved or reassigned, create exclusive borrows or be captured. Candidate Places themselves cannot be returned or stored as values. Whether a shared-read result may be returned or stored depends on its transitive Origin and Loan dependencies and on the destination, not on Copyability alone:
+**Candidate restrictions.** Candidate names, including `var` candidates, cannot be Moved or reassigned, create exclusive borrows or be captured. Candidate Places themselves cannot be returned or stored as values. Whether a value obtained in the guard may be returned or stored depends on its transitive Origin and Loan dependencies and on the destination, not on Copyability alone:
 
-| Shared-read result | Escape from the guard |
+| Value obtained in the guard | Escape from the guard |
 | --- | --- |
-| Copy value without Candidate or Subject lifetime dependence | Permitted by the ordinary rules |
-| Copy of a stored reference | Permitted when the existing Origins and Loans and the destination allow |
-| New Borrow/Reborrow for candidate reading, or any value depending on it | Forbidden; its Loan must end inside the guard |
+| Scalar read, or a Copy taken with `candidate@deref`, without Candidate or Subject lifetime dependence | Permitted by the ordinary rules |
+| Copy of a stored reference taken with `candidate@deref` | Permitted when the existing Origins and Loans and the destination allow |
+| The candidate reference, a new Borrow/Reborrow of the candidate Place, or any value depending on it | Forbidden; its Loan must end inside the guard |
 | Copy aggregate with an existing Subject dependency | Its Origins and Loans are checked; it cannot outlive the Subject |
 
-Copying a stored value keeps its existing dependencies; reading its candidate adds no new dependency itself. These rules apply transitively through aliases, retained values and callees.
+Copying a stored value keeps its existing dependencies; the candidate reference adds no new dependency to it. These rules apply transitively through aliases, retained values and callees, including indirect calls and wrapping values.
 
-Although ordinary capture acquires values by Binding Identity, a candidate Identity is never an allowed capture source, explicitly or implicitly, even with a Copy read Type. A value read into a separate ordinary local or parameter may be saved or captured under the table and the normal rules. Thus `func [x] () => use(x)` directly capturing an `i32` candidate is invalid, while passing its read value to `saveCopy(x)` may allow the callee to store it. There is no capture spelling such as `@copy`.
+Although ordinary capture acquires values by Binding Identity, a candidate Identity is never an allowed capture source, explicitly or implicitly. A value read into a separate ordinary local or parameter may be saved or captured under the table and the normal rules. Thus `func [x] () => use(x)` directly capturing a candidate is invalid, while passing its read value to `saveCopy(x)` may allow the callee to store it. There is no capture spelling such as `@copy`.
 
 **Subject protection.** From Pattern testing through guard cleanup, the Subject and traversed referents are protected with shared access: aliases and callees cannot change or consume them in a way that invalidates the Case or candidate positions. Independent side effects are allowed and are not rolled back on a false guard.
 

@@ -70,7 +70,7 @@ Operands are evaluated once, from left to right, unless a construct specifies an
 | `start()..end()` | Start boundary, end boundary. |
 | `"\(a()) / \(b())"` | Each interpolation is evaluated and written in source order; failure stops later expressions. |
 
-`and`, `or` and selections evaluate only the required operands or branches. [Simple assignment](13-operators-and-assignment.md#1371-simple-assignment) evaluates and secures its right-hand side before its target, while compound assignment keeps target-first evaluation. Type arguments, length arguments and adaptation-target Type formation are not evaluated at runtime.
+`and`, `or` and selections evaluate only the required operands or branches. [Simple and compound assignment](13-operators-and-assignment.md#137-assignment) evaluate and secure their right-hand side before locating the target. Type arguments, length arguments and adaptation-target Type formation are not evaluated at runtime.
 
 An abrupt Completion, divergence or Abort prevents evaluation of later operands and of the enclosing operation. Unevaluated syntax still undergoes name, Type and transfer-target checks; syntax excluded by `#if`/`#switch` follows [conditional compilation](19-compile-time-directives.md#19-compile-time-directives). [Temporary lifetimes](03-types-and-values.md#36-temporary-values-places-and-lifetimes) and scope-exit rules govern retained values.
 
@@ -165,7 +165,7 @@ These equality and stability laws are semantic API obligations, not a compiler p
 
 ### 12.4.1. Member access
 
-`expression.name` selects a member. [Qualified lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. The right side of an ordinary member-access `.` must be a member Name or an in-range decimal integer literal that selects a Tuple element; `pair.0` selects the first element. Dynamic member lookup with an arbitrary expression is not defined.
+`expression.name` selects a member. [Qualified lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. When the operand is a safe value reference without that member, the member is selected in its referent under the [reference-path selection](03-types-and-values.md#341-reference-path-selection); the same applies to index expressions and method receivers. The right side of an ordinary member-access `.` must be a member Name or an in-range decimal integer literal that selects a Tuple element; `pair.0` selects the first element. Dynamic member lookup with an arbitrary expression is not defined.
 
 Type-side qualifiers and construction paths use [bound Container paths](09-names-signatures-and-access.md#961-bound-container-paths), including arguments at each segment and `(Path{...}).member`; they create no runtime value. The reserved `.init(...)` suffix forms a [construction expression](06-declarations-and-containers.md#623-constructors) with a Type qualifier and never falls back to an ordinary value-member call.
 
@@ -197,7 +197,7 @@ Shared object access admits shared members and getters. Exclusive access may sha
 
 **ObjectCallCompatible** is the public guarantee that a borrowed-receiver call preserves receiver completeness, access authority, and its Type/Origin/Loan contract. An ObjectCallCompatible operation may be called through object borrows or base-subobject projections, subject to the ordinary call, access, Type, Origin and Loan checks. The guarantee is keyed by the **call operation identity**, not by a Type substitution or a separate receiver-kind key; receiver kind belongs to the Signature. Functions and custom or computed `get`/`set` each use their declaration identity.
 
-**Complete Sealed payload exception.** When the source View Target of an object-kind receiver is exactly the same complete Sealed Type, a selected `ref/Self` or `uniq/Self` receiver is acquired through the complete payload projection of §13.5.5.1: implicitly under [§7.3](07-functions-and-callable-values.md#73-explicit-receivers), or written explicitly as in `(handle@uniq/T).method()`. The selection rule is common to shared and exclusive receivers; an exclusive projection additionally requires the exclusive acquisition conditions of §15.1.5. Either form is an ordinary complete-value call and needs no ObjectCallCompatible proof; any existing NotProven public status stays unchanged. Ordinary argument positions always require an explicit projection.
+**Complete Sealed payload exception.** When the source View Target of an object-kind receiver is exactly the same complete Sealed Type, a selected `ref/Self` or `uniq/Self` receiver is acquired through the payload dereference of §13.5.5.1: implicitly under [§7.3](07-functions-and-callable-values.md#73-explicit-receivers), or written explicitly as in `handle@deref.method()` or `(handle@deref@uniq).method()`. The selection rule is common to shared and exclusive receivers; an exclusive borrow additionally requires the exclusive acquisition conditions of §15.1.5. Either form is an ordinary complete-value call and needs no ObjectCallCompatible proof; any existing NotProven public status stays unchanged. Ordinary argument positions always require an explicit `@deref`.
 
 Every other object or base-subobject receiver path requires published Proven status, checked after overload selection; the status never excludes a candidate and never causes reselection (§7.3). Open Views and base subobjects cannot undergo whole-value replacement or incomplete MoveOut. Inherited Self remains the defining base Type, and a sealed derived Core never grants whole-base replacement. Owning-handle replacement instead replaces the handle's object and keeps the ordinary borrowing and destruction conditions. `rc`/`arc` provide only shared access, even at count one.
 
@@ -208,13 +208,13 @@ Direct standard `get`/`set` remain Place operations, checked by acquisition and 
 | Published status | Call through a base-subobject projection or object borrow |
 | --- | --- |
 | Proven | Allowed if the ordinary call, access, Type, Origin and Loan checks pass |
-| NotProven | Error on protected object/base paths; ordinary complete-value calls, including proven Sealed payload projection, follow their normal rules |
+| NotProven | Error on protected object/base paths; ordinary complete-value calls, including a proven Sealed payload dereference, follow their normal rules |
 
 NotProven means the absence of a common proof, not a refutation for every binding. Additional caller premises, favorable Type arguments, the exact Dynamic Type or one selected specialization cannot strengthen the status, and a failed use never excludes a candidate or causes overload reselection. Unknown is internal pending work, never a published status. Invalid bodies, missing mandatory artifact information and unimplemented verification cannot be hidden as NotProven.
 
 #### 12.4.4.2. Effect verification
 
-Completeness evidence is kept separately from storage relations. Payload projection does not turn Whole into Part or Separate. A legal complete-target update or borrow return is not itself a preservation failure. A formal `ref`/`uniq` parameter alone does not prove caller storage completeness: callee effects are composed at each actual storage target, and unknown-call, unsafe and specialization checks are preserved.
+Completeness evidence is kept separately from storage relations. A payload dereference does not turn Whole into Part or Separate. A legal complete-target update or borrow return is not itself a preservation failure. A formal `ref`/`uniq` parameter alone does not prove caller storage completeness: callee effects are composed at each actual storage target, and unknown-call, unsafe and specialization checks are preserved.
 
 Verification uses resolved operations and acquisition plans before optimization. Under the declaration's Signature, Constraints and conditional premises, every admitted Type/Origin binding is verified using §8.7–§8.10, without inferring hidden caller Constraints from a body. The abstract rules below determine the public result independently of analysis precision, optimization and processing order; representations and worklist algorithms are implementation choices.
 

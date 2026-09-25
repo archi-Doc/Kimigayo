@@ -72,8 +72,8 @@ A Move Path defines tracking granularity, not access permission:
 
 | Source access | Partial Move |
 | --- | --- |
-| Tuple element / constant-index fixed-array element | Direct Place acquisition normally Moves a Non-Copy value |
-| Stored Property slot | Standard acquisition Copies `F` when it is Copy and otherwise Moves, under the permissions of §11.1 and the Move Path rules |
+| Tuple element / constant-index fixed-array element | `@move` transfers the element; a bare read Copies a Copy value |
+| Stored Property slot | Standard acquisition Copies `F` when it is Copy, and `@move` transfers it under the permissions of §11.1 and the Move Path rules |
 
 ```kimi
 var pair: (string, i32) = ("Alice", 30)
@@ -86,9 +86,20 @@ let all = pair     // Complete again.
 
 A Non-Copy referent or subpart is never Moved through `ref`, `uniq`, `objref` or `objuniq` in a way that leaves the borrowed Place Moved or Uninitialized, even if a later reinitialization is planned; exclusive access does not transfer ownership. Copy acquisition leaves the source initialized and is not extraction.
 
-A user-defined `deinit` assumes a complete value. A Partial Move that would invalidate this assumption, for the aggregate itself or for any enclosing ancestor, including through nested paths, methods and destruction, is rejected. A complete owned value whose own Type has a `deinit` may still be Moved as a whole.
+**Partial Move and destructors.** A Move leaves its path Uninitialized and an Initialize restores it; the remaining parts stay usable when they can be selected without whole-value access to the incomplete ancestor. Completeness is required immediately before a whole-value read, borrow or Move, a call that receives the whole value, and the execution of a user-defined `deinit`. An ancestor's `deinit` does not by itself forbid a Partial Move; instead every path that reaches such a point, including normal completion, `return`, `try` propagation, `exit`, `continue`, `yield`, `defer` bodies and the cleanup of abandoned construction, must be proven to restore completeness by the same state analysis. Planned future assignments and optimization results are not proof.
 
-When ordinary extraction is forbidden, use [exchange or swap](#157-whole-value-updates) or a Type-specific operation. Exchange preserves initialization; Type-specific invariants remain the implementation's responsibility and may require restricted storage access. A Field path never bypasses an intervening computed getter.
+```kimi
+// Box.value is a mutable Resource; Box has a deinit that needs a complete Box.
+var box = Box.init(Resource.init())
+let saved = box.value@move  // Partial Move.
+// inspect(box)             // Error: a whole-value shared borrow of an incomplete Box.
+box.value = Resource.init() // Direct initialization; the whole is not borrowed.
+inspect(box)                // Complete again.
+```
+
+If the restoring value is obtained with `try`, the failure return must also be able to destroy `box`. Abort does not unwind and requires no destructor on its unexecuted paths, but an ordinary failure value is not an exception. Cleanup order at a destruction point follows §16.3.2: a layer with its own `deinit` that is incomplete there is an error, an incomplete aggregate without its own `deinit` destroys its remaining initialized parts, and a wholly Moved value is not destroyed. Restoration through `defer` or an inner destructor is checked in execution order; nothing proceeds past a cleanup that does not complete normally, and nothing is destroyed twice.
+
+When ordinary extraction is unavailable, use [exchange or swap](#157-whole-value-updates) or a Type-specific operation. Exchange preserves initialization; Type-specific invariants remain the implementation's responsibility and may require restricted storage access. A Field path never bypasses an intervening computed getter.
 
 ### 15.1.4. Consume verification and representation
 
@@ -119,18 +130,27 @@ Lowering may elide transfers and temporary storage, or use conditional cleanup f
 
 ### 15.1.5. Movable places
 
-A **Movable Place** permits transferring ownership or capability out of its current value. The safe direct sources are owned root Places, Tuple elements, fixed-array elements at eligible constant indices, and authorized stored Property slots. A Move requires an Initialized, complete target, no conflicting Loan, accessible consuming operations, and valid construction, Partial Move, Origin and `deinit` conditions.
+A **Movable Place** offers the Take capability (§3.4) and satisfies the Move conditions below, so that ownership or capability can be transferred out of its current value. Take is tracked for owned root Places, permitted inline Fields and Tuple elements, and fixed-array elements at eligible constant indices. Borrowed referents, object payloads, static storage, elements of dynamic collections, Places published by functions (§7.1.1), unsupported indices and hidden Property storage never offer Take; `remove` and owning iterators extract elements under contracts that update the collection's state and responsibility.
 
-Borrowed referents, object fields, static storage, unsupported indices and hidden Property storage cannot supply safe extraction. Generic owned arguments may be Moved as whole values without an extra Contract. Raw dereference keeps its Unsafe obligations.
+| Operation | Required conditions |
+| --- | --- |
+| Copy | Read; complete; the complete Type is Copy |
+| Shared borrow | Read; complete; a valid Place and dependencies |
+| Exclusive borrow | Read and Write; complete; exclusive capability of the lending point |
+| Move | Take; complete; a trackable owned path |
+| Initialize | Uninitialized; the initialization permission of the declaration and current state |
+| Replace | Write; the old state can be destroyed legally; no dependency of the old or new value is broken |
 
-**Lending rule.** A transfer from a Place is written `@move`; an owned temporary passes without a spelling. A new exclusive lending is written `@uniq`/`@objuniq`, except for a Receiver Expression, which is acquired implicitly under [§7.3](07-functions-and-callable-values.md#73-explicit-receivers) whatever its value kind ([§3.4](03-types-and-values.md#34-values-places-and-storage)). A borrow value is reborrowed in the mode its position requires, never stronger than its own mode or its path's authority, and needs no spelling. Bare acquisition Copies a Copy Type and never Moves. `@move` transfers from a Movable Place even when its Type is Copy: it marks the source Moved and transfers its complete Type, dependencies and destruction responsibility; transferring a reference transfers capability, not ownership of the referent. A `let` binding may supply a transfer but cannot be reinitialized, and restoring a `var` needs write permission.
+Every operation additionally checks access, Origins and Loan conflicts. The first initialization of a `let` and initialization during construction are dedicated permissions, not derived from Write or Take. A Moved `let` cannot be reinitialized, and Uninitialized storage cannot be borrowed as a safe `uniq/T` before it is initialized. Generic owned arguments may be Moved as whole values without an extra Contract. Raw dereference keeps its Unsafe obligations. An unknown `T` is acquired as `T`; there is no Copy-dependent result Type family.
 
-At every position other than a Receiver Expression, including arguments, annotated initializers, assignment sources, results, defaults, and element and payload positions, the value kinds are acquired as follows:
+**Lending rule.** A transfer from a Place is written `@move`; an owned temporary passes without a spelling. A new exclusive lending is written `@uniq`/`@objuniq`, except for a Receiver Expression, which is acquired implicitly under [§7.3](07-functions-and-callable-values.md#73-explicit-receivers) whatever its value kind ([§3.4](03-types-and-values.md#34-values-places-and-storage)). A borrow value is Reborrowed in the mode a fixed expected Type requires, never stronger than its own mode or its path's authority, and needs no spelling; `@ref` and `@uniq` written on it borrow its slot instead (§13.5.5.2). Bare acquisition Copies a proven-Copy Type and never Moves. `@move` transfers from a Movable Place even when its Type is Copy: it marks the source Moved and transfers its complete Type, dependencies and destruction responsibility; transferring a reference transfers capability, not ownership of the referent. A `let` binding may supply a transfer but cannot be reinitialized, and restoring a `var` needs write permission.
+
+At every position other than a Receiver Expression, including arguments, annotated initializers, assignment sources, results, defaults, and element and payload positions, the value kinds are acquired by the [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) when the expected Type is fixed and by bare acquisition otherwise:
 
 | Value kind | Acquisition at other positions |
 | --- | --- |
-| Borrow value | Reborrow in the required mode, or Copy read (§10.2); never stronger than its own mode or its path's authority |
-| Owned Place | Shared borrow bare; exclusive borrow requires `@uniq`/`@objuniq`, whatever the access path; by value, Copy when Copy and otherwise `@move` |
+| Borrow value | Reborrow or Copy of the reference at a fixed expected borrow Type, or a Scalar read at a Scalar; without an expected Type, Copy only for `ref`/`objref` |
+| Owned Place | Shared borrow bare at an expected borrow Type; exclusive borrow requires `@uniq`/`@objuniq`, whatever the access path; by value, Copy when Copy and otherwise `@move` |
 | Owned temporary | By value, passed as is; shared borrow materializes it; exclusive borrow requires `@uniq` |
 
 A Place reached through an exclusive reference is therefore not exclusively borrowed implicitly at an argument position; write `@uniq`/`@objuniq` there as for any owned Place.
@@ -141,7 +161,7 @@ A Place reached through an exclusive reference is therefore not exclusively borr
 - a standard projection inherits its root's permission and adds the Property permissions of §11.1 and the Loan restrictions (for example `values[i].update()`, §4.6);
 - storage rooted in a `let` binding or an owned-Type parameter, and the storage of an owned getter result and its inline parts (§11.2.3), cannot be exclusively acquired.
 
-The condition is decided for the storage being borrowed, not for the expression it came from: a separate referent reached through a returned reference or handle follows that referent's own permission. A borrow value follows its own mode, so a `uniq` value held in a `let` binding or in a parameter can still be reborrowed exclusively.
+The condition is decided for the storage being borrowed, not for the expression it came from: a separate referent reached through a returned reference or handle follows that referent's own permission. A borrow value follows its own mode, so a `uniq` value held in a `let` binding or in a parameter can still be Reborrowed exclusively.
 
 ```kimi
 let number: i32 = 10
@@ -175,18 +195,17 @@ Getter results are acquired as results, never by moving hidden storage. An alrea
 
 ### 15.1.6. Match acquisition and lifetime
 
-`match E` evaluates `E` once and initializes an internal **Subject Place** under the **subject rule**, which `for` shares for its iterable (§14.6.2):
+`match E` and `for` evaluate their Subject expression `E` once and initialize an internal **Subject Place** under the **subject rule**. The outermost written operation fixes the **Subject mode**; parentheses change nothing, and inner operations are ordinary expressions:
 
-| Subject `E` | Acquisition |
-| --- | --- |
-| Owned Place, including a Copy one | Shared borrow; the Subject holds a `ref` |
-| Borrow value, including `x@ref` and a stored, parameter or returned `uniq`/`objuniq` value | Copy of a shared reference, or shared Reborrow of an exclusive one |
-| Temporary Value, including `x@move` and a call result | Whole-value acquisition by value, materialized without an extra acquisition |
-| Exclusive borrow written as the Subject: `x@uniq`, `x@objuniq`, `x@uniq/T` | Error |
+| Subject `E` | Mode | Subject Place |
+| --- | --- | --- |
+| Bare Place, `E@ref`, or a bare temporary | Shared | A shared borrow of the Place; a bare temporary is stored in an internal owned local for the construct's lifetime and borrowed |
+| `E@uniq`, `E@objuniq`, or a typed exclusive slot borrow | Exclusive | An exclusive borrow of that slot |
+| `E@move`, or an existing exclusive borrow value at the Subject | ByValue for `@move`; a borrow value keeps its own mode | The transferred value; a transferred `@move` is ByValue even for a Copy Type |
 
-The subject rule grants shared access or ownership, never a new exclusive lending. An exclusive borrow written as the Subject, with or without parentheses, is therefore an error instead of a silently weakened borrow; write the Place bare or as `x@ref` to inspect it, or `x@move` to consume it. `x@ref` is equivalent to the bare Place. An existing exclusive borrow value needs no spelling: it is shared-reborrowed, remains usable after the match, and grants no exclusive Pattern binding. A transferred borrow value is still a borrow value and is reborrowed the same way. Exclusive Pattern bindings and exclusive iteration are a [design boundary](appendices/D-deferred-features.md#d1-enum-and-pattern-extensions).
+A typed slot borrow such as `E@ref/T` has the same mode after its Type check. The mode never depends on `var`, Copy capability, an available conformance or the body. An explicit borrow applies to the immediately written slot (§13.5.5.2), so `values@uniq` on `let values: uniq/Array<T>` is an error, and the referent is enumerated exclusively with `values@deref@uniq`; a shared layer anywhere on the path bounds the mode to Shared. `E@move` on a reference transfers the reference value, never the referent's ownership. `for` selects its iteration entry from the mode (§14.6.2); `match` does not itself dereference the Subject, and structural Patterns select the Places they need under §14.8.1.
 
-This happens before arm selection, regardless of bindings, Wildcards, or whether any arm succeeds, and optimization cannot change the original Place's Move state, lifetime or Loans. A proven-Copy Place may be implemented by a Copy of its value instead of a shared borrow: the bindings of a Copy Subject are copies, so the two are observationally equivalent and no Loan is required. A custom, computed or required `get` subject invokes its getter once; a standard stored `get` uses the permitted Place operation. A borrowed Subject's Loan follows the uses of its bindings: an arm without a live borrowed binding may assign to or transfer the original Place.
+The Subject Place is initialized before arm selection, regardless of bindings, Wildcards, or whether any arm succeeds, and optimization cannot change the original Place's Move state, lifetime or Loans. A Shared Subject of a proven-Copy Place may be implemented by a Copy of its value: its bindings are shared views of an unchanging value, so the two are observationally equivalent and no Loan is required. A custom, computed or required `get` subject invokes its getter once; a standard stored `get` uses the permitted Place operation. A borrowed Subject's Loan follows the uses of its bindings: an arm without a live borrowed binding may assign to or transfer the original Place.
 
 ```kimi
 // Message is Non-Copy.
@@ -199,30 +218,34 @@ match state                         // Arms without borrowed bindings may replac
     .Idle => state = .Running
     _ => ()
 
-match message@move                  // Owned Subject: payloads Move.
+match message@move                  // Owned Subject: payloads are transferred.
     .Write(let text) => store(text@move)
     _ => ()
 // use(message)                     // Error: the whole value was transferred.
-// match message@uniq               // Error: a Subject is never lent exclusively.
+
+match counter@uniq                  // Exclusive Subject.
+    .Count(let n) => n@deref += 1   // n: uniq/i32
+    _ => ()
 ```
 
-Once an arm is selected, its body locals are initialized left to right from the [Candidate Places](14-control-flow.md#1483-guards). An unguarded arm is selected immediately on Pattern success; a guarded arm additionally requires successful guard cleanup.
+**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected immediately on Pattern success; a guarded arm additionally requires successful guard cleanup. `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. Binding the whole Subject borrows the original Place, never the internal reference slot.
 
-| Access to the Binding position | Acquisition |
+| Selected Place | Value bound |
 | --- | --- |
-| The Subject itself, or an owned Tuple or payload path that traverses no borrow | Ordinary Copy/Move of the stored complete Type |
-| An element reached by structural matching through `ref/T` | Shared reading under the [shared element-read rules](04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results), without calling a getter |
-| A Wildcard position | No acquisition; the existing responsibility stays with the Subject or the referent's owner |
+| A part of the already acquired owned Subject or iteration item | The stored complete Type `T` and its destruction responsibility, transferred; no `@move` is written |
+| A Place reached with shared access | `ref/T`, also for a Copy `T` |
+| A Place reached with exclusive access | `uniq/T`, when the path grants it |
+| `_` | Nothing is acquired; the responsibility stays with the current owner |
 
-Dependent read Types and Copy/Move/Borrow/Reborrow effects are resolved by the [generic Access Effect deadline](08-generics-constraints-and-contracts.md#89-generic-access-effects). Borrowed access cannot Move a Non-Copy referent or grant exclusive authority. In `.Some(let r)`, a stored `ref/T` is copied as a reference, and a nested Case Pattern through that reference restricts descendant acquisitions to shared access. New borrows require valid referents and owners; copied references keep their existing Origins and Loans.
+On a path that passed through a reference, parts are bound with that path's capability and are never Moved out of the referent: an owned item `ref/(A, B)` decomposes into shared borrows and `uniq/(A, B)` into exclusive borrows, a shared layer bounds every descendant to shared access, and a Pattern that needs exclusive access through a shared path is rejected. Literal Patterns observe the selected value. Wildcard and single-name Bindings select no referent. Owned decomposition distributes ownership that the Subject already holds; it grants no acquisition that §3.5 denies to a bare Place, and the responsibility for unbound parts stays with the Subject. Each selected Case identity and positional payload index of an owned Subject is tracked as a Move Path inside the Subject, including recursive decomposition; these internal paths never apply to the caller's original enum and invent no payload projection syntax. New borrows require valid referents and owners; copied references keep their existing Origins and Loans.
 
-For `wrapper: Option<Result<i32, i32>>`, matching `wrapper@ref` with `.Some(let r)` Copies the `Result` into `r`: borrowing the subject does not force payload bindings to be borrows. A change in payload Copy capability can therefore change binding Types and generic-body validity. There is no explicit borrow-binding or ordinary payload projection syntax; an API that needs such a borrow may accept the whole enum by reference instead, which may change its public Signature. [Pattern acquisition selection](appendices/D-deferred-features.md#d1-enum-and-pattern-extensions) remains a design boundary.
+A change in payload Copy capability therefore changes neither binding Types nor generic-body validity: `match wrapper` with `.Some(let r)` binds `ref/Result<i32, i32>` for `wrapper: Option<Result<i32, i32>>`, and `r@deref` Copies the value where one is needed.
 
-For owned decomposition, each selected Case identity and positional payload index is tracked as a Move Path inside the Subject, including recursive decomposition, together with the remaining initialization and destruction responsibility after each acquisition. These internal paths never apply to the caller's original enum and invent no ordinary payload projection syntax.
+**Guards.** In a guard, each candidate name is exposed as a **shared reference** `ref/T` to its selected Place, whatever the Subject mode and `T`'s Copy capability; the candidate has its own `let`-like reference slot and a Binding Identity distinct from the body binding. `candidate@ref` borrows that slot, `candidate@deref` Copies a Copy value, and `candidate@deref@ref` borrows the original Place again; a stored `ref/U` gives `ref/(ref/U)` without flattening. Assignment, Move and direct capture of a candidate, and exclusive operations on the candidate Storage, are rejected. Candidate references and Loans newly derived from them cannot leave the guard, through a callee or a wrapping value; a Scalar snapshot or a Copy of a stored external reference obtained with `candidate@deref` may be kept under the ordinary dependency rules when it does not depend on the candidate. From Pattern testing through guard cleanup the Case and the candidate Places are protected; a false guard cleans up the guard's reference slots, temporaries and Loans and tries the next arm, and a true guard runs the same cleanup and then initializes the body bindings from the original Places. Side effects are not rolled back, and no payload is Moved during a guard. Guard syntax, escape checks and Subject protection are detailed in §14.8.3.
 
 **Lifetime.** The Subject lasts for the match evaluation. A match result or outward transfer value is secured first; then the arm scope is cleaned up under ordinary Scope Exit, and finally the Subject's remaining initialized parts are destroyed. Body bindings enter scope left to right and are destroyed in reverse order, before the Subject; body locals and `defer` keep their normal reverse registration order. A Wildcard does not destroy immediately, and unselected arms acquire no body ownership. Match is exhaustive and has no unmatched normal-completion path. Each later step requires the earlier cleanup to complete normally; Abort does not unwind.
 
-Borrowing through a borrowed Subject depends on the referent and the original Loan, not on the temporary slot storing that reference, and such a borrow may be returned when its original contract allows. A new borrow into an owned Subject's payload depends on the Subject and cannot escape the match. Copying or moving a stored external reference keeps that reference's external Origin instead. Returning a reference never extends its lifetime, and destroying a stored non-owning reference never destroys its referent. Guards have [stricter escape restrictions for new candidate-dependent Loans](14-control-flow.md#1483-guards).
+Borrowing through a borrowed Subject depends on the referent and the original Loan, not on the temporary slot storing that reference, and such a borrow may be returned when its original contract allows. A new borrow into an owned Subject's payload depends on the Subject and cannot escape the match. Copying or moving a stored external reference keeps that reference's external Origin instead. Returning a reference never extends its lifetime, and destroying a stored non-owning reference never destroys its referent.
 
 ## 15.2. Origin expressions and ordering
 
@@ -704,7 +727,7 @@ Each operation is checked against every active Loan on an overlapping Place:
 
 This enforces shared aliasing or mutation, never both at once.
 
-### 15.6.3. Reborrowing
+### 15.6.3. Reborrowing and region splitting
 
 Borrowing through an exclusive borrow creates a child Loan anchored on the referent Place, with a region contained in the parent's Origin. While the child is live, the parent Loan remains live but access through the parent reference is suspended; overlapping access is rejected by the normal conflict rules. The child does not depend on the lifetime of the variable that holds the parent reference, so a Reborrow of a parameter may be returned or stored like a copied reference.
 
@@ -717,6 +740,12 @@ bump(v@uniq)
 ```
 
 Each call creates a temporary reborrow; the first ends before the second starts.
+
+**Region splitting** derives several child Loans from one parent Loan by the same mechanism. Exclusive children and the remainder of the parent region must be proven pairwise non-overlapping; shared children may overlap. Access through the parent path stays suspended while a child is live, and each child's validity depends on the parent Loan and the owner, never on the variable holding the parent reference. Non-overlap is proven by the structural rules of §15.6.2 or by the verified operations of the standard storage boundary (§22.1.2); an ordinary Slice Loan is never split automatically, and neither general integer proofs nor a runtime Loan ledger is required.
+
+A split target must be valid initialized Storage with correct bounds, placement and provenance. The remainder's capabilities are updated before a child is published, and capabilities over an already published part are never regenerated from the remainder. Zero-sized parts are distinguished by logical position, not by address. A Dictionary separates one entry and then lends the key and the value with different modes; exclusive access to a key, which fixes identity, is never published. Destroying an iterator or a remainder handle does not end published child Loans. Conflicting reads, writes, reallocation, Move or destruction of the original collection are rejected while a published child is needed. Internal dependencies of elements and external effects are checked separately from non-overlap.
+
+**Independence of published results.** A result whose Type does not depend on the receiver Loan of the call that produced it, and whose Loan anchors are the external source, owner or a needed parent Loan rather than the receiver or the callee's storage, may be retained across later calls on the same receiver. The callee's published effects (§15.6.4, §9.1) must not conflict with the Loans of results it published earlier; a generic caller uses the published upper bound of those effects and never reanalyzes a private body.
 
 ### 15.6.4. Calls and origin propagation
 
@@ -786,7 +815,7 @@ Here `observe` accepts `ref/Writer`, and reading `self.out` shares the stored ca
 
 A **call reservation** delays exclusive access, not evaluation or lifetime protection. It belongs to one invocation's preparation and is not a value, Type, Semantics or Origin. No runtime lock, allocation or fallible activation is required.
 
-**Eligibility.** A final exclusive Borrow/Reborrow that directly prepares a receiver or parameter starts a reservation of its target. This includes explicit `@uniq`/`@uniq/T` and `@objuniq`, the implicit exclusive acquisition of a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), including the exclusive Reborrow of a borrow value, permitted exclusive object projections, and generic adaptations with that resolved effect. An assignment target is not a Receiver Expression and starts no reservation (§13.7). Parentheses are transparent. A lending point ([§3.4](03-types-and-values.md#34-values-places-and-storage)) followed by standard field or element projections that call no user code, up to the invocation, is one preparation: `holder.items.append(holder.items.length)` reads its argument during reservation, its lending point is `holder.items`, and it equals `holder.items@uniq.append(...)` and `holder@uniq.items.append(...)`. A getter or another invocation on that path activates at its own call and acquires its own receiver under §7.3. Direct, indirect, Callable, generic, constructor and intrinsic invocations follow the same rule. Resolve the operation and overload first; reservation legality never changes candidate ranking or retries selection.
+**Eligibility.** A final exclusive Borrow/Reborrow that directly prepares a receiver or parameter starts a reservation of its target. This includes explicit `@uniq`/`@uniq/T`, `@deref@uniq` and `@objuniq`, the implicit exclusive acquisition of a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), including the exclusive Reborrow of a borrow value, permitted exclusive payload dereferences, and generic adaptations with that resolved effect. An assignment target is not a Receiver Expression and starts no reservation (§13.7). Parentheses are transparent. A lending point ([§3.4](03-types-and-values.md#34-values-places-and-storage)) followed by standard field or element projections that call no user code, up to the invocation, is one preparation: `holder.items.append(holder.items.length)` reads its argument during reservation, its lending point is `holder.items`, and it equals `holder.items@uniq.append(...)` and `holder@uniq.items.append(...)`. A getter or another invocation on that path activates at its own call and acquires its own receiver under §7.3. Direct, indirect, Callable, generic, constructor and intrinsic invocations follow the same rule. Resolve the operation and overload first; reservation legality never changes candidate ranking or retries selection.
 
 The directly written adaptation and its call-only Reborrow form one preparation chain. They must not first activate an intermediate exclusive Loan. Other operand operations keep their own evaluation and Loans. Reservations do not pass through local or aggregate storage, Closure captures, nested invocations, or results of `if`, `match`, `do` or other control-flow expressions. Such expressions use ordinary Borrow/Reborrow rules internally; a subsequent call adaptation cannot demote their already active Loans. An inner invocation activates its own reservations before entry. Ordinary exclusive borrows outside eligible preparation remain immediately active. Compound assignment and indexing keep their own evaluation rules; lowering them to helper calls grants no new reservation permission.
 
@@ -849,7 +878,7 @@ Each target must be fully Initialized, exclusively writable and permitted to und
 | `Kimi.Intrinsics.exchange` | Transferred without destruction | The acquired value is installed | The old value and its responsibilities |
 | `Kimi.Intrinsics.swap` | Both transferred without destruction | Contents and responsibilities exchanged | Unit |
 
-An owned Place is lent with `@uniq`, whatever its access path, because these arguments are not Receiver Expressions ([lending rule](#1515-movable-places)); an existing value borrow is reborrowed without a spelling. Object payloads require an explicit projection at ordinary argument positions. Reference or handle *storage* is borrowed with a fully specified target. If `T` is a borrow Type, the operations transfer its reference value and capability, not ownership of its referent. Property access and hidden-storage permissions still apply.
+An owned Place is lent with `@uniq`, whatever its access path, because these arguments are not Receiver Expressions ([lending rule](#1515-movable-places)); an existing value borrow is reborrowed without a spelling. An object payload is selected with `@deref` first (`handle@deref@uniq`), and a reference or handle *slot* is borrowed with `@uniq` on that slot (§13.5.5). If `T` is a borrow Type, the operations transfer its reference value and capability, not ownership of its referent. Property access and hidden-storage permissions still apply.
 
 These operations cannot repair Uninitialized, Moved or partially moved storage; `=` keeps its existing repair rules. They permit no incomplete MoveOut through a borrow, no unrestricted construction or destruction receivers, and no assignment to the immutable `self` binding. Whole-content replacement may replace values containing `let` fields without granting individual writes to those fields.
 
@@ -959,11 +988,10 @@ Loan validity covers later uses, results and dependencies observed by destructio
 
 This revision does not define:
 
-- abstract Origin parameters owned by Contracts or trait-like abstractions; static Contracts may inherit outer Origins under §6.1.3, and the [Property getter receiver and result contracts](11-properties.md#1122-computed-properties) introduce no Contract-level Origin parameters;
+- abstract Origin parameters owned by Contracts themselves; static Contracts may inherit outer Origins under §6.1.3, associated Types may declare Origin parameters under §8.4.3, and the [Property getter receiver and result contracts](11-properties.md#1122-computed-properties) introduce no Contract-level Origin parameters;
 - existential object views that hide non-static payload dependencies;
-- general higher-ranked Origins beyond the direct-input quantification of Callable constraints;
+- general higher-ranked Origins beyond the direct-input quantification of Callable constraints and the per-call `step` of `Iterator.next`;
 - Origin expressions naming static Places, such as a function result bounded by a mutable static Field; use direct access, an input-bounded result (§11.3.2), a scoped callback or immutable static storage instead;
-- lending iterators;
 - cancellation cleanup guarantees.
 
 These features require extensions of the [ownership and Origin rules](#15-ownership-and-lifetime-analysis) and must not be inferred from this revision.

@@ -8,7 +8,7 @@ Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a o
 
 | Level | Operators or syntax | Association |
 | --- | --- | --- |
-| 1 | `.name`, `(...)`, `<Types>`, `[...]`, postfix `++` `--` | Postfix chain, left to right |
+| 1 | `.name`, `(...)`, `<Types>`, `[...]`, `@deref`, postfix `++` `--` | Postfix chain, left to right |
 | 2 | Prefix `+` `-` `not` `*` `^` `++` `--` | Right |
 | 3 | `@Type`, `@Semantics`, `@move` | Left |
 | 4 | Prefix `try` | Right |
@@ -28,7 +28,7 @@ In ordinary expressions, `is`/`is not` ends after one named struct Core, and out
 
 Unparenthesized comparison chains such as `a < b < c`, `a == b == c` and `a < b == flag` are syntax errors; write `a < b and b < c` or `(a < b) == flag`. Each comparison still requires valid operand Types.
 
-`@` is one token. All adaptations share one precedence level and left associativity, below the level-2 prefix operators: `-x@i64` means `(-x)@i64`. Targets may contain qualified names, `/` and generic arguments, so a result adapted to such a target must be parenthesized before selection, calls or indexing: `(x@T).name`, `(f@T)()`, `(a@T)[0]`. After a bare built-in Semantics shorthand or `@move` the target is complete, and the postfix chain continues: `tasks@uniq.length`, `counter@uniq()`, `builder@move.finish()` and `a@uniq[0]` group as `(tasks@uniq).length` and so on. Use `(x@Number) / divisor` for division after adaptation.
+`@` is one token. The postfix dereference `@deref` (§13.5.5.1) is a level-1 postfix operation and chains with selection, calls and indexing from left to right: `r@deref.field`, `r@deref[i]`, `-r@deref.x` and `try r@deref` group as `(r@deref).field`, `(r@deref)[i]`, `-((r@deref).x)` and `try (r@deref)`. All other adaptations share one precedence level and left associativity, below the level-2 prefix operators: `-x@i64` means `(-x)@i64`. Targets may contain qualified names, `/` and generic arguments, so a result adapted to such a target must be parenthesized before selection, calls or indexing: `(x@T).name`, `(f@T)()`, `(a@T)[0]`. After a bare built-in Semantics shorthand or `@move` the target is complete, and the postfix chain continues: `tasks@uniq.length`, `counter@uniq()`, `builder@move.finish()`, `a@uniq[0]` and `r@ref@deref` group as `(tasks@uniq).length`, `(r@ref)@deref` and so on. Use `(x@Number) / divisor` for division after adaptation.
 
 Prefix `try` binds below `@` and above the multiplicative operators, so `try x@move` is `try (x@move)` and `try a + 1` is `(try a) + 1`. Extracting before adapting needs grouping, `(try f())@i64`, and a level-2 prefix operator cannot take a `try` expression directly: write `-(try x)` or `not (try x)`.
 
@@ -101,7 +101,16 @@ For floating-point values, `+0.0 == -0.0` is true. With a NaN operand, `==`, `<`
 
 Tuple comparison visits corresponding elements from left to right and stops as soon as the result is determined. Equality stops at the first unequal pair. Lexicographic ordering stops at the first pair that is unequal or unordered; an unordered pair makes all four relational operators false, without inspecting later elements. This rule composes recursively, including shared-borrow elements; it never converts unordered floating values into a Comparable result.
 
-Comparisons may borrow their operands and never Move Non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability (§13.4.1). An operand of Type `ref/T` or `uniq/T` denotes its referent: a Copy referent is [read through the reference](03-types-and-values.md#33-type-semantics), and a Non-Copy referent is inspected through it without a Copy or Move. After that, both operands must have the same Type (or one is `Never`), and that Type's comparison capability applies; an owned operand and a borrow of one referent Type therefore compare alike, and an untyped literal operand is fitted to the other operand's referent Type. The outer borrow Origins need not be identical, but each operand must remain valid through the comparison. Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison.
+Comparisons may borrow their operands and never Move Non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability (§13.4.1). An operand whose Type consists of safe value-reference layers (`ref`, `uniq`) denotes the terminal Place of that chain: every layer is followed under the [reference-path selection](03-types-and-values.md#341-reference-path-selection), and the comparison applies to the terminal Type. Following the layers acquires nothing; the selected terminal is then copied or shared-inspected as this section requires. After that, both operands must have the same Type (or one is `Never`), and that Type's comparison capability applies; an owned operand and a reference to one referent Type therefore compare alike, and an untyped literal operand is fitted to the other operand's terminal Type. The outer borrow Origins need not be identical, but each layer of each operand must remain valid through the comparison. Object Semantics and raw pointers are not followed and compare under their own rules. Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison.
+
+```kimi
+// names: Array<ref/string>; name is ref/(ref/string).
+for name in names
+    if name == "admin" => found = true
+// r: ref/(ref/(i32, i32)); r == (0, 0) compares the terminal Tuple.
+```
+
+In a generic body, a comparison of `ref/T` values under `T is Equatable` selects the one known layer and uses `T`'s Contract mapping; instantiating `T` as `ref/f32` neither follows further layers nor replaces that mapping with the built-in floating `==` (§3.4.1).
 
 **Inspection Loans.** A built-in comparison that inspects a Non-Copy owned Place forms an implicit shared Loan when that operand is evaluated. Operands are evaluated left to right, so the left operand's Loan begins before the right operand is evaluated and lasts through the comparison. Both inspections require Initialized values. The normal [Loan conflict rules](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts) apply throughout operand evaluation: a later operand cannot Move, replace, destroy or exclusively borrow the earlier borrowed Place. Optimization cannot change this acceptance rule.
 
@@ -165,7 +174,8 @@ Explicit operation selection is distinct from subtyping and acquisition legality
 ```text
 Explicit @ Operation
 ├─ Type / Semantics Adaptation: @Type, @ref, @uniq, ...
-└─ Transfer: @move
+├─ Transfer: @move
+└─ Dereference: @deref (postfix, §13.5.5.1)
 ```
 
 ### 13.5.1. Forms and adaptation targets
@@ -175,6 +185,7 @@ Explicit @ Operation
 | `E@Type` | A defined adaptation to the specified target |
 | `E@Semantics` | The same, with the Core, immediate Referent Type or object View Target taken from the operand as applicable |
 | `E@move` | The [transfer](#1353-defined-adaptations) of a Movable Place; no effect on a Temporary Value |
+| `E@deref` | Selection of the Place that the reference or complete object handle `E` points to (§13.5.5.1) |
 
 An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. Outer borrow Origins are inferred from the operand, operation, Loans and constraints. Complete aggregate payload Types keep their own annotations and dependencies. Runtime `is` keeps its Origin-free target restrictions; `exit to Label: value` belongs to control-transfer syntax.
 
@@ -186,7 +197,7 @@ Adaptation Target
     -> complete result Type retains target, Semantics, and Origin
 ```
 
-**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. A bare built-in Semantics name or `move` not followed by a slash completes the target, and a following `.`, `(` or `[` continues the postfix chain (§13.1); `move` cannot be a prefix. Otherwise the remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target, including optional suffixes. Generic adjacency follows §12.4.2. Written borrow Origins are forbidden on the target's outer Semantics chain, including through grouping; those Origins are inferred. Complete Types inside an Option or another aggregate retain their own annotations and dependencies. Named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
+**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. A bare built-in Semantics name, `move` or `deref` not followed by a slash completes the operation, and a following `.`, `(` or `[` continues the postfix chain (§13.1); `move` and `deref` cannot be prefixes, take no Type, `?` or `during`, and are never reinterpreted as Type or Semantics names. A slash after `deref` is division. Otherwise the remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target, including optional suffixes. Generic adjacency follows §12.4.2. Written borrow Origins are forbidden on the target's outer Semantics chain, including through grouping; those Origins are inferred. Complete Types inside an Option or another aggregate retain their own annotations and dependencies. Named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
 
 `a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses the target `T/b` and fails Semantics lookup if `T` is only a Core; whitespace cannot change this. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping, as in `x@(i32)`, preserves the adaptation. Group a complete Function Type target, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and is never retried after a conversion failure.
 
@@ -201,12 +212,12 @@ An ungrouped AdaptationType has no trailing `during`. Use `@(Type)` for a suffix
 | `x@View<T>{v} / y` | `(x@View<T>{v}) / y`; the set suffix completes the Type head |
 | `x@s{a}/T` | `(x@s{a}) / T`; if s is only a Semantics binding, Type lookup fails. Never reinterpret it as a brace borrow annotation |
 
-For a single-layer value Type with Core `T`, `@ref` and `@ref/T` select the same Borrow/Reborrow operation when applicable. For a nested borrow, shorthand keeps the immediate Referent Type: applying `@ref` to `ref/ref/T` copies that outer shared reference. It adds no layer and never becomes `@objref`. A fully specified target can instead request a borrow of reference-value storage under [Borrow and Reborrow](#1355-explicit-borrow-and-reborrow). Type names, aliases, generic applications, grouping and Tuple syntax are accepted as target syntax without implying that every adaptation is defined.
+`@ref` and `@ref/T` borrow the same slot when `T` is exactly the stored complete Type; both add one reference layer around the written operand, whatever that operand's own Semantics (§13.5.5.2). `@ref` never becomes `@objref`. Type names, aliases, generic applications, grouping and Tuple syntax are accepted as target syntax without implying that every adaptation is defined.
 
 ```kimi
 let wide = number@i64
 let view = value@ref
-let sameView = value@ref/Value // When value's Core is Value.
+let sameView = value@ref/Value // When value's stored Type is Value.
 let taken = value      // Copy; a Non-Copy Place needs value@move.
 ```
 
@@ -256,17 +267,18 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 | Raw Pointer Conversion | The [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-pointer-conversions) |
 | Typed Null Formation | Contextually typing `null` as a raw pointer; no Unsafe context required |
 
-**Transfer.** `E@move` requires a Movable Place (§15.1.5) and transfers its value and destruction responsibility, marking the Place Moved even when its Type is Copy. A borrow value's transfer moves the reference, not its referent; a Place reached through a reference is never transferred. Applied to a Temporary Value, including a getter result, `@move` has no effect. `@` applies to its direct operand only: `holder.item@move` transfers the Field or the getter result, never the receiver, which is acquired under §7.3. `@move/T`, `@move?` and `@move{...}` are invalid, and `x@move@ref` shared-borrows the transferred temporary.
+**Transfer.** `E@move` requires a Movable Place (§15.1.5) and transfers its value and destruction responsibility, marking the Place Moved even when its Type is Copy. A borrow value's transfer moves the reference, not its referent; a Place reached through a reference offers no Take and is never transferred. Applied to a Temporary Value, including a getter result, `@move` has no effect. `@` applies to its direct operand only: `holder.item@move` transfers the Field or the getter result, never the receiver, which is acquired under §7.3. `@move/T`, `@move?` and `@move{...}` are invalid, and `x@move@ref` shared-borrows the transferred temporary.
 
-The owning-Semantics spellings `@owner`, `@obj`, `@rc`, `@arc`, their full forms and a generic `@s` bound to an owning Semantics are the same transfer when the target's outermost written Semantics, after applying the Option suffix rule of §3.2.3 with grouping transparent, matches the operand's outer Semantics or selects an owning [upcast row](#1357-object-upcasts). Alias expansion supplies no written Semantics. `n@owner/i32` and `n@(owner/i32)` transfer; `x@uniq/i32?` and `x@owner/T?` are Type targets for the whole Option; `x@owner/(T?)` transfers. Any other owning target is an error: these spellings neither perform [ownership creation or strong-owner duplication](#1358-object-ownership-creation-and-sharing) nor convert between ownership representations.
+`@move` is the only transfer spelling. The owning-Semantics spellings `@owner`, `@obj`, `@rc`, `@arc`, their full forms and a generic `@s` bound to an owning Semantics are ordinary same-Type acquisitions when the target's outermost written Semantics, after applying the Option suffix rule of §3.2.3 with grouping transparent, matches the operand's outer Semantics: they Copy a Copy value, transfer a temporary and reject a Non-Copy Place. When the target selects an owning [upcast row](#1357-object-upcasts), that upcast is performed on the operand acquired the same way. Alias expansion supplies no written Semantics. `n@owner/i32` and `n@(owner/i32)` Copy; `x@uniq/i32?` and `x@owner/T?` are Type targets for the whole Option. Any other owning target is an error: these spellings neither perform [ownership creation or strong-owner duplication](#1358-object-ownership-creation-and-sharing) nor convert between ownership representations.
 
-**Identity Acquisition** copies a Copy Type; a Non-Copy Place is an error that names `@move`, and a Temporary Value transfers its ownership. Borrow targets take precedence, including a same-Type exclusive Reborrow. Same-Type raw pointer acquisition is an ordinary Copy and needs no Unsafe context for the operation itself.
+**Identity Acquisition** copies a Copy Type; a Non-Copy Place is an error that names `@move`, and a Temporary Value transfers its ownership. Borrow targets take precedence. Same-Type raw pointer acquisition is an ordinary Copy and needs no Unsafe context for the operation itself.
 
 ```kimi
 number@move    // Transfer; number becomes Moved although i32 is Copy.
-resource@owner // Transfer, the same as resource@move.
 number@i32     // Identity Acquisition: Copy.
-// resource@Resource // Error: a bare Non-Copy Place is not transferred; write @move.
+number@owner   // The same Copy.
+// resource@owner    // Error: a bare Non-Copy Place is not transferred; write @move.
+// resource@Resource // Error: the same.
 ```
 
 **Origin Restriction** is common static result fitting, not another value operation. The acquisition or Borrow and its effect are determined first; then only the shortening permitted by the variance and outlives rules is applied. Identity Acquisition is checked before this use-site restriction. Core, Semantics, dependencies and Loans are preserved; no Copy, Move or Borrow is added, lifetimes are not extended, and arbitrary nested Origins are not rewritten. For example, fitting `ref/T during longer` to `ref/T during shorter` requires `longer` to outlive `shorter`. An exclusive same-Type adaptation still uses Reborrow.
@@ -279,7 +291,7 @@ A target that changes both Core and Semantics must be one defined operation; no 
 inspect(number@i64@ref)
 ```
 
-There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only under the [Copy read](03-types-and-values.md#33-type-semantics) of §3.3; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
+There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [Scalar read](03-types-and-values.md#353-scalar-read) or after an explicit `@deref`; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
 
 ### 13.5.4. Numeric conversions and literals
 
@@ -316,87 +328,94 @@ let truncated = 3.9@i32  // 3
 
 Rounding and checks apply at every `@` in a chain; an intermediate result is never removed if its rounding or failure would change.
 
-### 13.5.5. Explicit borrow and reborrow
+### 13.5.5. Dereference, borrow and reborrow
 
-#### 13.5.5.1. Complete object payload projection
+#### 13.5.5.1. Dereference
 
-A fully specified `@ref/T` or `@uniq/T` may project a complete object payload when `T is Kimi.Sealed` is Proven (§8.4.7.1). The source View Target and the immediate result Referent Type must be exactly the same complete `T`, including generic arguments and internal Origins; only the outer borrow lifetime may shorten. The target's outer borrow chain contains no written Origin annotation; the result's Origin is inferred from the source and keeps both the referent and the owning-handle dependencies.
+`E@deref` selects the Place that a `ref/T` or `uniq/T` value `E` points to. It reads only the reference information needed to locate that Place; it neither Copies nor Moves the reference or the referent. The selected Place keeps the capabilities and dependencies of the reference: the referent of `ref/T` offers Read, the referent of `uniq/T` offers Read and Write, and neither offers Take. Each `@deref` removes exactly one layer; write it twice to follow two layers. It takes no Type, `?` or `during`, and raw pointers keep the `*` operator and its Unsafe rules (§5.2).
 
-| Input | Explicit target | Result |
-| --- | --- | --- |
-| `objref/T` or `objuniq/T` | `@ref/T` | Shared child `ref/T` |
-| Readable `obj/T`, `rc/T` or `arc/T` Place | `@ref/T` | Shared payload `ref/T` |
-| `objuniq/T` | `@uniq/T` | Exclusive child `uniq/T` |
-| Exclusively writable `obj/T` Place | `@uniq/T` | Exclusive payload `uniq/T` |
+```kimi
+var number: i32 = 1
+let r = number@uniq
+r@deref = 2               // Updates number.
+let child = r@deref@uniq  // Exclusive Reborrow of number through r.
+child@deref += 1
+let slot = r@ref          // ref/(uniq/i32): the slot of r itself.
+// r@uniq                 // Error: r is a let binding; its slot is not exclusively borrowable.
+```
 
-Ordinary initialization, access, reborrow, Loan and Origin checks apply. Shared projections may coexist; conflicting parent access, moving or releasing the owner, and replacing the handle remain forbidden while a dependent projection is live. No ownership transfer or reference-count operation occurs. Neither `rc` nor `arc` grants exclusive access, even with one strong reference.
+`let` forbids reassignment of the slot but does not weaken the capability of the stored reference. Exclusive capability is never recovered through a shared layer: `ref/(uniq/T)` reaches `T` with shared access only, and `uniq/(ref/T)` can replace the slot but reaches `T` with shared access.
 
-The effective static Type and declared constraints are used; an inventory of derived Types or an optimizer's guess of the Dynamic Type is not Sealed evidence. Open Views, runtime Contract Views and base subobjects do not qualify. No ordinary argument receives an implicit payload projection; only a selected same-complete-Type shared or exclusive receiver uses the implicit path of §12.4.4 through [receiver acquisition](07-functions-and-callable-values.md#73-explicit-receivers).
+**Object payloads.** `@deref` on `obj/T`, `rc/T`, `arc/T`, `objref/T` or `objuniq/T` selects the complete payload and is permitted only when the normalized View Target is exactly the complete payload Type `T`, including internal Origins, and `T is Kimi.Sealed` is Proven (§8.4.7.1). An open View, a runtime Contract View, a base subobject, an inventory of derived Types or an optimizer's guess of the Dynamic Type is not evidence. The handle slot and the payload are distinct Places: an owning path inherits the `let`/`var` and Field permissions of its root, and a borrowing path follows the permission of the reference. The payload never offers Take.
+
+| Path to the handle | Capabilities of the payload |
+| --- | --- |
+| Writable owning `obj/T` path | Read, Write, shared and exclusive borrows |
+| Read-only owning path, such as `let h: obj/T` | Read and shared borrows; `h@move` transfers the handle |
+| `objuniq/T`, including through a `let` slot | Exclusive access within the borrow |
+| `rc/T`, `arc/T`, `objref/T`, or any handle reached through a shared path | Shared access only |
+
+These permissions also govern View borrows, upcasts and implicit receiver borrows. Sealed and the complete-payload proof are required only to expose the payload as an ordinary value Place; forming and borrowing an open View and ObjectCallCompatible calls keep their own rules (§12.4.4, §13.5.7). `h@objref/Base` is a View upcast, `h@ref` borrows the handle slot as `ref/(obj/T)`, and `h@deref@ref` and `h@deref@uniq` borrow the payload. A complete `uniq/T` can replace all of `T` in another function, so it is never formed from an incomplete View.
+
+A Loan on an owning handle also protects the payload for as long as it is needed: while the handle is shared-borrowed, no other path may update the payload exclusively. After a Move, the payload follows the new owning path. Neither operation identifies the handle storage with the payload storage, and neither changes a reference count. `@deref` applies to temporary references and eligible temporary handles under their ordinary lifetimes; it extends no owner's lifetime.
 
 ```kimi
 func borrowPayload<T>(source: objref/T) -> ref/T during source
-    T is Sealed and ObjectPayload   // Sealed for the projection, ObjectPayload to form objref/T
-    return source@ref/T
+    T is Sealed and ObjectPayload   // Sealed for the dereference, ObjectPayload to form objref/T
+    return source@deref@ref
 func borrowPayloadMut<T>(source: objuniq/T) -> uniq/T during source
     T is Sealed and ObjectPayload
-    return source@uniq/T
+    return source@deref@uniq
 
 // a and b are writable obj/Cell<i32> Places; Cell is non-open.
-Kimi.Intrinsics.swap(a@uniq/Cell<i32>, b@uniq/Cell<i32>)         // Exchange payload contents.
-Kimi.Intrinsics.swap(a@uniq/obj/Cell<i32>, b@uniq/obj/Cell<i32>) // Exchange handle values.
+Kimi.Intrinsics.swap(a@deref@uniq, b@deref@uniq) // Exchange payload contents.
+Kimi.Intrinsics.swap(a@uniq, b@uniq)             // Exchange handle values.
 ```
 
-The shorthand operations of §13.5.5.2 keep their meaning: `@ref`/`@uniq` never select payload projection, and `@uniq/obj/T` borrows handle storage. No reverse conversion from value borrows to object borrows is introduced. A payload projection changes access to the complete payload, not its View Target; it is distinct from an upcast (§13.5.7) and never supplies base-subobject replacement permission.
+#### 13.5.5.2. Borrow and reborrow
 
-#### 13.5.5.2. Existing borrow and storage operations
-
-In the value Borrow/Reborrow rows, `T` is the same normalized immediate Referent Type, which may itself have Semantics. In the object rows it is the same View Target; changing the target uses the upcast table (§13.5.7). Every row requires valid initialization, access, Loans and Origins. These are explicit adaptations; appearing here does not add them to implicit [argument fitting](10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals).
+`E@ref`, `E@ref/V`, `E@uniq` and `E@uniq/V` borrow the immediately written slot `E`, whatever its stored Semantics: for a stored `V` the results are `ref/V` and `uniq/V`. A written `V` must be exactly the normalized stored Type; it never selects the referent, copies a same-Type reference or Reborrows. `@objref` and `@objuniq` borrow the object behind an owning handle. Every row requires valid initialization, capability, Loans and Origins, and a Temporary Value is materialized under the ordinary lifetime rules. These are explicit operations; the implicit adaptations at expected Types are the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types).
 
 | Input | Operation | Result |
 | --- | --- | --- |
-| Readable owned `T` Place | `@ref` | New `ref/T` |
-| Exclusively writable owned `T` Place | `@uniq` | New `uniq/T` |
-| `ref/T` | `@ref` | Copy of the shared reference, preserving its Origins |
-| `uniq/T` | `@ref` | Shared Reborrow |
-| `uniq/T` | `@uniq` | Exclusive Reborrow |
+| Readable Place storing `V` | `@ref`, `@ref/V` | New `ref/V` |
+| Exclusively writable Place storing `V` | `@uniq`, `@uniq/V` | New `uniq/V` |
 | Readable `obj/T`, `rc/T` or `arc/T` Place | `@objref` | New `objref/T`; no reference-count increment |
 | Exclusively writable `obj/T` Place | `@objuniq` | New `objuniq/T` |
 | `objref/T` | `@objref` | Copy of the shared object reference |
 | `objuniq/T` | `@objref` | Shared object Reborrow |
 | `objuniq/T` | `@objuniq` | Exclusive object Reborrow |
 
-**Storage borrows.** A fully specified `ref/V` or `uniq/V` target may borrow a readable or exclusively writable Place of exactly the normalized Type `V`, even when `V` is a reference or object handle; Temporary Values are materialized under the normal lifetime rules. This adds one reference layer and preserves all of `V`'s dependencies. Same-Type Copy or Reborrow and the `uniq/V` to `ref/V` Reborrow take precedence, and a failed Reborrow cannot fall back to storage borrowing. Shorthand `@ref`/`@uniq` adds no layer to an already borrowed value.
+A **Reborrow** of a value reference is written through the referent: `r@deref@ref` and `r@deref@uniq` lend the referent's capability without moving the parent reference, and a position with a fixed expected `ref/T` or `uniq/T` Reborrows a `uniq/T` value implicitly (§10.2). While a child Loan is live, conflicting access through the parent is forbidden; a `let` binding holding an exclusive reference does not prevent Reborrow. A new Borrow depends on the borrowed slot and on the owner's validity; a Reborrow depends on the referent and the parent Loan, not on the variable holding the parent. `@move` transfers the reference itself.
 
 ```kimi
 var number = 1
 var reference = number@ref
-let same = reference@ref            // ref/i32; preserves number's Origin.
-let slot = reference@ref/ref/i32     // ref/ref/i32; also depends on reference's storage.
-// reference = other@ref            // Error while slot's Loan is live.
-```
+let slot = reference@ref             // ref/(ref/i32): depends on reference's storage.
+let same: ref/i32 = reference        // Copy of the reference at an expected ref/i32.
+// reference = other@ref             // Error while slot's Loan is live.
 
-For `reference: ref/i32`, `reference@uniq/ref/i32` borrows the writable slot exclusively; it grants no mutable access to `number`. A `let` reference slot cannot be exclusively borrowed this way. `reference@ref@ref` remains `ref/i32`. Written Origins on the target's outer Semantics chain are forbidden; complete aggregate payload annotations follow §13.5.1. Binding-set names are allowed, and any attached relations belong to the enclosing declaration; actual result dependencies are inferred or kept from existing Types.
-
-A new Borrow depends on the target Place and on the owner's validity. Copying a shared reference preserves its referent Origins rather than using the lifetime of the variable holding it. A Reborrow lends referent capability without moving the parent reference; while the child Loan is live, conflicting access through the parent is forbidden. A `let` binding holding an exclusive reference does not by itself prevent Reborrow. A bare borrow value is reborrowed in the mode its position requires, and in its own mode where no Type is expected; `@move` transfers the reference itself.
-
-```kimi
 var value = makeValue()
 let exclusive = value@uniq
-inspect(exclusive)          // Shared Reborrow for a ref parameter.
-modify(exclusive)           // Exclusive Reborrow for a uniq parameter, after the previous child Loan ends.
-let child = exclusive       // Exclusive Reborrow; exclusive resumes after child's last use.
-let transferred = exclusive@move // Transfer the reference, not its referent.
+inspect(exclusive)                   // Shared Reborrow at a ref parameter.
+modify(exclusive)                    // Exclusive Reborrow at a uniq parameter, after the previous child Loan ends.
+let child: uniq/Value = exclusive    // Exclusive Reborrow; exclusive resumes after child's last use.
+// let bare = exclusive              // Error: no expected Type and uniq/Value is Non-Copy.
+let transferred = exclusive@move     // Transfer the reference, not its referent.
 ```
+
+For `reference: var ref/i32`, `reference@uniq` borrows the writable slot exclusively as `uniq/(ref/i32)`; it grants no mutable access to `number`. A `let` reference slot cannot be exclusively borrowed. Written Origins on the target's outer Semantics chain are forbidden; complete aggregate payload annotations follow §13.5.1. Binding-set names are allowed, and any attached relations belong to the enclosing declaration; actual result dependencies are inferred or kept from existing Types.
 
 Shared access is never upgraded to exclusive, exclusive object borrows are never derived from `rc`/`arc`, and value borrows and object borrows are never converted into each other; a runtime reference count of one grants no exception. Temporaries under `owner` Semantics use [materialization and temporary borrowing](03-types-and-values.md#36-temporary-values-places-and-lifetimes).
 
-**Getter results.** A custom, computed or required `get` invokes the getter once and adapts its declared result Type, including for shorthand inference. Borrowing an owned result materializes its temporary and obeys §11.2.3; references keep the ordinary Copy and Reborrow rules. `set` access grants no borrow of hidden storage. Standard `get` uses the Place permissions of §11.1.
+**Getter results.** A custom, computed or required `get` invokes the getter once and adapts its declared result. Borrowing an owned result materializes its temporary and obeys §11.2.3; a returned reference is a value and is Reborrowed through `@deref` or at an expected Type. `set` access grants no borrow of hidden storage. Standard `get` uses the Place permissions of §11.1.
 
 ```kimi
 // Assume item is computed and its getter returns ref/Resource.
-let view = holder.item@ref // Copy that reference.
-// holder.item@uniq       // Error if get returns ref/Resource.
-inspect(person.age@ref)    // Borrow the getter's Copy result temporary.
+let view: ref/Resource = holder.item // The returned reference itself.
+let same = holder.item@deref@ref     // Reborrow of the referent.
+// holder.item@deref@uniq            // Error: get returns ref/Resource.
+inspect(person.age@ref)              // Borrow the getter's Copy result temporary.
 ```
 
 ### 13.5.6. Evaluation, results, and failure
@@ -435,7 +454,7 @@ Let `S` be the source's static Core View Target and `V` a different target. An u
 
 | Source | Explicit operation | Acquisition and result |
 | --- | --- | --- |
-| `obj/S`, `rc/S`, `arc/S` | `@obj/V`, `@rc/V`, `@arc/V` respectively | Move of the same owning handle; no count change |
+| `obj/S`, `rc/S`, `arc/S` | `@obj/V`, `@rc/V`, `@arc/V` respectively | The same owning handle, acquired by ordinary acquisition: a temporary transfers, and a Place is transferred first with `@move`; no count change |
 | `objref/S` | `@objref/V` | Copy of the shared reference with a changed view |
 | `objuniq/S` | `@objuniq/V` | Exclusive child Reborrow with a changed view |
 | Shared-borrowable `obj/S`, `rc/S` or `arc/S` Place | `@objref/V` | Shared object Borrow; the owner is unchanged |
@@ -446,7 +465,7 @@ Each row is one defined operation, evaluated once, not a search for convert-then
 
 ```kimi
 let dog: obj/Dog = makeDog()
-let animal = dog@obj/Animal // dog is Moved; animal still owns the entire Dog.
+let animal = dog@move@obj/Animal // dog is Moved; animal still owns the entire Dog.
 let view = animal@objref
 let invalid = view@objref/Dog // Error: Animal does not statically imply Dog.
 ```
@@ -466,7 +485,7 @@ These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary i
 | `Kimi.Intrinsics.makeRcCyclic<T, F>(build)` | `F -> rc/T` | Cyclic construction, below |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>(build)` | `F -> arc/T` | The corresponding `arc` construction |
 
-Any valid complete owner Core other than Never that does not opt out of ObjectPayload may be the concrete payload, including open struct Cores; only projection to ordinary value borrows additionally requires Sealed (§13.5.5.1). Generic signatures must prove the target's validity from their declared constraints (§8.10).
+Any valid complete owner Core other than Never that does not opt out of ObjectPayload may be the concrete payload, including open struct Cores; only the dereference to an ordinary value Place additionally requires Sealed (§13.5.5.1). Generic signatures must prove the target's validity from their declared constraints (§8.10).
 
 **Normal creation** acquires the complete input once by bare acquisition or transfer (`makeObj(value@move)` for a Non-Copy Place), allocates object storage and Moves `T` into the payload, without transferring ownership of the original storage and without repeating constructors, accessors or `deinit`. The initial exact-`T` view is published only after metadata and payload initialization. No blanket Owned constraint applies to concrete payload creation, and normal external dependencies are preserved; view erasure separately requires the existing Owned proof.
 
@@ -598,11 +617,11 @@ The target of an assignment, compound assignment, increment or decrement is not 
 
 Replacement uses the existing storage without invoking incoming constructors or declaration initializers. A complete old value is cleaned up by its exact Type's full destruction chain, and an incomplete one under [partial cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup). A derived value's base view is not a whole-value target. Destination and ancestor permissions and Loans are checked first. If cleanup of the old value does not complete normally, nothing is installed; the old state is not restored, and execution does not continue with an observably empty destination.
 
-The destination Type is known statically, so Type checking does not evaluate the left side early. Right-hand-side-first evaluation lets the destination supply its own old value. It deliberately differs from compound assignment and from ordinary receiver calls:
+The destination Type is known statically, so Type checking does not evaluate the left side early. Right-hand-side-first evaluation lets the destination supply its own old value. Compound assignment uses the same order (§13.7.2), which deliberately differs from ordinary receiver calls:
 
 ```kimi
 values[index()] = makeValue()  // makeValue, index, old destruction, placement.
-values[index()] += amount()    // index, old read, amount, compute, write.
+values[index()] += amount()    // amount, index, old read, compute, write.
 obj().prop = arg()             // arg, obj, setter.
 obj().setProp(arg())           // obj, arg, method call.
 object.view.x = 10 // If computed view returns uniq/Point: RHS, view get, x set.
@@ -629,22 +648,22 @@ Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result m
 
 ### 13.7.2. Compound assignment
 
-`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=` perform the corresponding binary operation and return Unit. The destination is resolved once, its old value read once, the right-hand side evaluated, the result computed and written once. This is not a textual rewrite to `target = target op value`: receivers and indices are not repeated.
+`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=` perform the corresponding binary operation and return Unit. Evaluation is right-hand-side first: the right-hand side is evaluated and acquired, the destination is located once, its old value is read once as the selected operator requires, the result is computed and written once. This is not a textual rewrite to `target = target op value`: receivers and indices are evaluated once, and the destination is never reevaluated. Increment and decrement locate their target once and follow the same read, compute and write steps.
 
 String `+=` remains subject to the deferred operator ownership design of [§13.3](#133-arithmetic-bitwise-and-shift-operators); this section's evaluation order does not supply its missing acquisition rules.
 
-Reading and writing are selected independently under Chapter 11: standard operations use permitted storage access, and custom, computed and required operations call their accessors. The destination is an assignment target, not a Receiver Expression (§13.7.1). The read result must support the operator, and the operator's result must fit the `set` input. Valid receivers and Loans are required through every stage, and an owning getter may consume a receiver that `set` needs. No duplication is inserted, borrowing is not retried after a failed Move, and a setter is never bypassed through exclusive storage access. Evaluation remains target and read first, then the right-hand side, and updates of getter-owned temporaries remain forbidden (§11.2.3).
+Reading and writing are selected independently under Chapter 11: standard operations use permitted storage access, and custom, computed and required operations call their accessors. The destination is an assignment target, not a Receiver Expression (§13.7.1), and the target of the write is never redirected from a reference to its referent (§3.5.3). The old value is acquired under the operator's contract and the common adaptation; no implicit Move is added, and a borrowed destination offers no Take. An update that consumes a Non-Copy value and rebuilds it uses an explicit transfer, such as `a = transform(a@move)`, whose reinitialization and intermediate completeness are checked. The operator's result must fit the `set` input. The destination and its dependencies are protected until placement, but no safe reference is manufactured to storage that may become Uninitialized. If acquisition, the operation or the old-value destruction does not complete normally, nothing further happens and earlier effects are not rolled back; a result that depends on old contents lost by the replacement is rejected. A setter is never bypassed through exclusive storage access, and updates of getter-owned temporaries remain forbidden (§11.2.3).
 
 ```kimi
-values[nextIndex()] += amount() // Index, old value, amount, addition, write.
+values[nextIndex()] += amount() // amount, nextIndex, old value, addition, write.
 // item: Resource has standard get and custom set.
-holder.item += x // Cannot acquire non-Copy item by Move for this update.
+holder.item += x // Cannot acquire non-Copy item for this update.
 // User-defined Resource arithmetic is itself unavailable (§13.8).
-holder.item = rebuild(holder.item@ref/Resource, x)
+holder.item = rebuild(holder.item@ref, x)
 // OK if rebuild returns an independent owner and its input Loan ends before set.
 ```
 
-If the right-hand side or the operation does not complete normally, nothing is written; getter and operand effects already performed remain. Compound assignment is not atomic and provides no synchronization. Raw-pointer `+=` and `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden.
+Computed, custom and required Properties are calls of their declared `get` and `set`; no hidden Field is accessed directly. Compound assignment is not atomic and provides no synchronization. Raw-pointer `+=` and `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden. Any future user-defined operator follows this acquisition and evaluation order.
 
 ## 13.8. Extension boundaries and reserved syntax
 

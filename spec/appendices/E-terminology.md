@@ -10,12 +10,23 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Adaptation Target | Core or object View Target and Semantics requested by `@`; result Origins are inferred. | [Explicit operations](../13-operators-and-assignment.md#1351-forms-and-adaptation-targets) |
 | Alias | A source-local resolved Container reference that opens direct members or introduces a named Qualifier. | [Source aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases) |
 | API signature | Exposed Types and requirements checked for accessibility, beyond overload identity. | [API signature accessibility](../09-names-signatures-and-access.md#932-api-signature-accessibility) |
-| Associated Type | Ordinarily a Core binding fixed by explicit Type-identity facts; Kimi iteration Element requirements have the explicit complete-Type exception in §22.1. | [Associated Types](../08-generics-constraints-and-contracts.md#843-associated-types) |
+| Associated Type | A complete-Type binding fixed by explicit Type-identity facts, optionally with Origin parameters applied positionally as `Item(a)`. | [Associated Types](../08-generics-constraints-and-contracts.md#843-associated-types) |
+| Place result | A function result category `place(ref, T)` or `place(uniq, T)` that publishes existing Storage without acquiring a value; no Take. | [Place results](../07-functions-and-callable-values.md#711-place-results) |
+| Read / Write / Take | The three independent capabilities of a Place: observe, initialize or replace, extract with responsibility. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
+| Reference-path selection | Selection of a member, index, receiver or Pattern structure through successive safe reference layers, decided from Types alone. | [Reference-path selection](../03-types-and-values.md#341-reference-path-selection) |
+| Scalar read | Implicit Copy of the terminal Scalar of a safe reference chain at a position requiring that Scalar. | [Scalar read](../03-types-and-values.md#353-scalar-read) |
+| Dereference | The postfix `@deref` that selects the Place a reference or complete Sealed object handle points to. | [Dereference](../13-operators-and-assignment.md#13551-dereference) |
+| Subject mode | Shared, Exclusive or ByValue acquisition of a `match`/`for` Subject, fixed by its outermost operation. | [Subject rule](../15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime) |
+| Item / `Item(step)` | The value an Iterator delivers per `next`, whose Type may depend on that call's receiver borrow `step`. | [Iterator](../22-core-execution-and-foreign-functions.md#2212-iteration-cursors-and-storage) |
+| Cursor | A library Contract publishing the Place of a current position after a successful `advance`. | [Cursor](../22-core-execution-and-foreign-functions.md#2212-iteration-cursors-and-storage) |
+| IndependentIterator / StableItem | An Iterator whose retained items survive later `next` calls and Moves / its step-independent item Type. | [Independent items](../22-core-execution-and-foreign-functions.md#22124-independent-items) |
+| Region splitting | Deriving non-overlapping child Loans from one parent Loan, proven structurally or by the standard storage boundary. | [Reborrowing and region splitting](../15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) |
+| Indexable / UniqIndexable | The Contracts through which `receiver[key]` selects an element Place for shared or exclusive access. | [Indexable Contracts](../04-arrays-indexing-and-slices.md#469-indexable-contracts) |
 | Binding | Associating source names and operations with declarations and meanings. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |
 | Binding Identity / Value Instance | Resolved binding / its currently held value | [Stable bindings](../14-control-flow.md#14101-stable-bindings-and-effective-types) |
 | Body | A scoped single expression/statement after `=>`, or an indented sequence whose direct expression values are discarded. | [Body forms and results](../14-control-flow.md#142-blocks-and-evaluation-contexts) |
 | Callable / Call Receiver Requirement | Declared generic access / concrete minimum body access | [Callable constraints](../08-generics-constraints-and-contracts.md#86-callable-constraints), [call receivers](../07-functions-and-callable-values.md#763-call-receiver-and-acquisition) |
-| Candidate Place | Initialized matched storage designated for guard reading and later body acquisition. | [Guards](../14-control-flow.md#1483-guards) |
+| Candidate Place | Initialized matched storage exposed to a guard as a shared reference and acquired by the body after selection. | [Guards](../14-control-flow.md#1483-guards) |
 | Case / Payload | An enum alternative / its attached positional data. | [Enums](../06-declarations-and-containers.md#63-enums) |
 | Closure / Environment / Capture | A callable body and values acquired when it is created | [Function expressions](../07-functions-and-callable-values.md#76-function-expressions) |
 | CodeContext | Source-local lookup and diagnostic context for one immutable source snapshot. | [Compiler requirements](A-compiler-requirements.md#appendix-a-compiler-implementation-requirements) |
@@ -67,9 +78,10 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Kimi Kotonoha | The compiler-compatible foundation module referenced as `Kimi`. | [Required declarations](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
 | Loan | A borrowed place, access mode, and validity region. | [Borrow checking](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |
-| Move | Transfer of a value and responsibility or capability, marking its source Moved; requested by `@move` and its owning-Semantics spellings. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
-| Bare acquisition | Acquisition of an expression without an explicit `@` operation: Copy, shared borrow or Reborrow, never a Move of a Place. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
-| Lending rule | A transfer from a Place needs `@move`; a new exclusive lending needs `@uniq`/`@objuniq` except for a Receiver Expression; owned temporaries pass and borrow values reborrow without a spelling. | [Movable Places](../15-ownership-and-lifetime-analysis.md#1515-movable-places) |
+| Move | Transfer of a value and responsibility or capability, marking its source Moved; requested only by `@move`. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
+| Bare acquisition | Acquisition of an expression without an explicit `@` operation and without a fixed expected Type: Copy of a proven-Copy Place, never a Move or a borrow. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
+| Common adaptation | The single operation selected at a position with a fixed expected Type: borrow, Copy of a reference, Reborrow, Scalar read or acquisition. | [Common adaptation](../10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) |
+| Lending rule | A transfer from a Place needs `@move`; a new exclusive lending needs `@uniq`/`@objuniq` except for a Receiver Expression; owned temporaries pass and borrow values Reborrow at expected Types without a spelling; `@ref`/`@uniq` always borrow the written slot. | [Movable Places](../15-ownership-and-lifetime-analysis.md#1515-movable-places) |
 | Access path | How a Place is reached: directly, or through an exclusive or shared reference; it bounds the borrows of the Place. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
 | Value kind | The acquisition source class of an expression: borrow value, owned Place or owned temporary; independent of the access path. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
 | Borrow value | An expression whose outer Semantics is in the `borrow` category. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
@@ -86,7 +98,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Object Target | A Type over which object forms may be formed: an ObjectPayload Core, a runtime Contract View Target, or a pair target with pair evidence | [ObjectPayload](../08-generics-constraints-and-contracts.md#8472-objectpayload) |
 | Admitted set | The Semantics a Semantics binding may take under its available premises; decides every Semantics requirement by containment | [Constraint proof system](../08-generics-constraints-and-contracts.md#87-constraint-proof-system) |
 | Whole-value update | Replacement or exchange of the complete contents of initialized authorized storage, preserving required dependencies | [Whole-value updates](../15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
-| Complete payload projection | A same-target Sealed object payload borrowed as ordinary ref/uniq with retained owner and referent dependencies | [Payload projection](../13-operators-and-assignment.md#13551-complete-object-payload-projection) |
+| Complete payload dereference | `@deref` on a same-target Sealed object handle, selecting the payload as an ordinary Place with retained owner and referent dependencies | [Dereference](../13-operators-and-assignment.md#13551-dereference) |
 | Owned / OwnedOrigins | Lifetime independence from non-static dependencies / the conservative Origin closure proving it | [static and Owned](../15-ownership-and-lifetime-analysis.md#1523-static-and-owned) |
 | Origin | A set of program points where a borrow is guaranteed valid. | [Origin expressions](../15-ownership-and-lifetime-analysis.md#1521-origin-expressions) |
 | Origin binding set | A Type occurrence's mapping from schema slots to Origins; a suffix may name it. | [Binding sets](../15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets) |
@@ -94,13 +106,13 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Origin relation | Declaration-attached equality or outlives requirement; it creates no Loan authority. | [Relations](../15-ownership-and-lifetime-analysis.md#1533-declaration-attached-relations) |
 | Partial Move | Transfer of an aggregate's part, leaving the aggregate incomplete. | [Move Paths](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) |
 | Pattern / Guard | Structural or binding syntax / an optional Boolean test selecting a match arm | [Match](../14-control-flow.md#148-match-expressions-and-patterns) |
-| Place | A storage location that can hold a value. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
+| Place / Storage | The result of selecting Storage, with its stored complete Type, path, capabilities and dependencies / an identifiable region that holds values. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
 | Project root | Root of the primary Kotonoha's declaration hierarchy. | [Modules](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
 | Provisional Binding | Mod-time semantic results that do not constrain final Binding. | [Mod Binding](../20-compilation-configuration.md#2072-compilation-and-binding) |
 | Property Witness Mapping | Verified requirement-to-Property operations with Type/Origin substitutions and optional standard-operation bridges. | [Witness adaptation](../11-properties.md#1142-standard-operation-witnesses) |
 | Field | The storage slot of a let/var Property; source access obeys its accessor permissions. | [Stored Properties](../11-properties.md#11-properties) |
 | Property | A let/var stored member or computed operation member; a Contract property requires operations. | [Properties](../11-properties.md#11-properties) |
-| Reborrow | A borrow derived from an existing borrow, subject to the parent's capability and Origin. | [Reborrowing](../15-ownership-and-lifetime-analysis.md#1563-reborrowing) |
+| Reborrow | A borrow derived from an existing borrow, subject to the parent's capability and Origin. | [Reborrowing](../15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) |
 | Result source / Target Result Type / Expression Type | A value-supplying site / its target constraint / the checked expression's Type. | [Results](../14-control-flow.md#149-result-validation) |
 | Scalar | Integer, floating-point, Boolean, or Character Core; short for Primitive scalar. | [Primitive cores](../03-types-and-values.md#31-primitive-cores) |
 | Semantics | A value's representation, ownership, borrowing, access, and safety rules; also called Type Semantics. | [Type Semantics](../03-types-and-values.md#33-type-semantics) |

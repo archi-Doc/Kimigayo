@@ -129,7 +129,7 @@ This table does not authorize every operation or FFI use. Safe borrow and object
 
 Tuples use the alignment-sorted aggregate algorithm of §21.1.3, keeping logical indices and evaluation and destruction order separate from physical offsets. All-zero-sized elements yield size and stride zero. Tuples have no Layout Attribute and no C ABI. For example, `(u8, u64)` has logical-element offsets 8 and 0, size and stride 16, and alignment 8.
 
-Initial enums use an explicit `i32` tag and an aligned payload area, without niche optimization. Selected Cases are numbered from zero in declaration order; more than 2^32 Cases is unsupported. These internal tags introduce no source discriminants or integer conversions.
+Enums use an explicit `i32` tag and an aligned payload area, with one exception: the **nonnull Option representation**. After alias normalization, `Option<R>` with `R` one of `ref/T`, `uniq/T`, `obj/T`, `rc/T`, `arc/T`, `objref/T` or `objuniq/T` is stored as one pointer-sized word with the size, alignment and stride of `R` (8/8/8 on windows-x64-v1): null is `None`, and every valid nonnull representation of `R` is `Some`. A zero-sized referent keeps its nonnull substitute address (§21.2.4). `None` holds no payload and carries no destruction or reference-count responsibility; `Some` follows `R`'s ordinary ownership, Loans and cleanup. Construction, Case tests, placement, cleanup and generation caches use this representation; it is not generalized to `Option<Option<R>>`, to Tuples or structs containing references, or to any other enum, and the function ABI still follows the selected generation method rather than the storage size alone. Selected Cases of other enums are numbered from zero in declaration order; more than 2^32 Cases is unsupported. These internal tags introduce no source discriminants or integer conversions.
 
 Each Case payload is laid out with the alignment-sorted algorithm of §21.1.3, without moving the enum tag. Let `A` be the maximum payload alignment and `P` the maximum payload size rounded up to `A`; if all payloads are empty, `A = 1` and `P = 0`. The payload starts at `alignUp(4, A)`, the enum alignment is `max(4, A)`, and the total size and stride are rounded up to that alignment. Only a selected tag paired with its valid active payload is a valid enum value. Initialization, Move, match and cleanup use that active Case, never unused payload bytes.
 
@@ -147,7 +147,7 @@ enum Message
 %Message = type { i32, %MessagePayload }
 ```
 
-These layouts are verified when nested in structs and arrays. Payloads are never flattened to alignment-1 byte arrays, tag-only mutation is never exposed, and no C enum or union compatibility is claimed.
+These layouts are verified when nested in structs and arrays, as is the nonnull Option word. Payloads are never flattened to alignment-1 byte arrays, tag-only mutation is never exposed, and no C enum or union compatibility is claimed.
 
 ### 21.1.6. C exchange eligibility
 
@@ -299,13 +299,13 @@ On CAS failure, the latest representation is rechecked; a failure that discovers
 
 ### 21.2.4. Value-borrow storage
 
-`ref/V` and `uniq/V` point to the storage of the **immediate complete `V`**, without implicit dereference. On windows-x64-v1 each is one nonnull address-space-0 pointer with size, alignment and stride 8/8/8, aligned for `V`. It contains no metadata, length, count, Origin or Loan ID. A borrow of an Array or Slice points to its complete handle. `ref/(rc/T)` points to a handle slot, while `objref/T` points to the original object header; `uniq/(rc/T)` grants exclusive access to the handle slot, not unique payload ownership. Nested dependencies stay distinct, and an ordinary `@ref` on an existing shared borrow copies it rather than adding a layer.
+`ref/V` and `uniq/V` point to the storage of the **immediate complete `V`**, without implicit dereference. On windows-x64-v1 each is one nonnull address-space-0 pointer with size, alignment and stride 8/8/8, aligned for `V`. It contains no metadata, length, count, Origin or Loan ID. A borrow of an Array or Slice points to its complete handle. `ref/(rc/T)` points to a handle slot, while `objref/T` points to the original object header; `uniq/(rc/T)` grants exclusive access to the handle slot, not unique payload ownership. Nested dependencies stay distinct: `@ref` on a reference slot yields a pointer to that slot, a Reborrow reuses the loaded referent address, and `@deref` loads nothing beyond the address it selects. A Place result `place(ref, T)` or `place(uniq, T)` has exactly the ABI of `ref/T` or `uniq/T` under the same Type binding, generation method and contract, for direct and indirect calls, Callable values and Contract entries and adapters; this is an ABI equality, not a Type identity.
 
 A zero-sized `V` keeps its logical initialization, Loans and destruction. It uses nonnull aligned substitute storage that stays alive for the required uses; one static substitute per alignment may serve several distinct Places. Pointer equality merges neither those Places nor their logical overlap. Size and stride remain zero, lifetimes are not extended, and substitute bytes justify no positive `dereferenceable` attribute; `noalias` follows the call contract of §21.5.5, not substitute addresses.
 
 An unknown-layout generic `V` still uses one borrow pointer. A separate GenericContext is passed only if operations on `V` need it; transferring the borrow alone needs no `V` metadata. Direct value layouts must be finite. If materializing a required temporary needs unsupported storage, a verified adapter or specialization is used, or the use is diagnosed; it is never silently boxed or made unsized.
 
-A proven Sealed payload projection uses the ordinary `ref`/`uniq` ABI and points to the payload address of §21.2.3, not to the object header. Its completeness proof is static: it adds no mode, count operation, header field, generation counter or runtime Loan representation, and the ownership dependencies stay in the existing analysis facts.
+A borrow of a proven Sealed payload selected with `@deref` uses the ordinary `ref`/`uniq` ABI and points to the payload address of §21.2.3, not to the object header. Its completeness proof is static: it adds no mode, count operation, header field, generation counter or runtime Loan representation, and the ownership dependencies stay in the existing analysis facts.
 
 ### 21.2.5. Concrete Closures and common function values
 
@@ -437,7 +437,7 @@ LLVM `align` and `dereferenceable` use proven constant bounds; attributes are we
 
 Width, signedness, floating-point rules, Semantics, effects and partial state are kept in the typed plan. `obj`/`rc`/`arc`/`objref`/`objuniq` acquisition and count operations stay distinct until equivalent low-level operations can safely merge. Unit keeps its zero-sized state and effects, and Never has no value or normal return. Raw-pointer pointee layout and Unsafe preconditions are preserved.
 
-Metadata only runs acquisition plans already proven valid under §8.10. A conditional Copy/Move plan may use HasCopy, but runtime flags never establish source legality. SharedReadResult (§4.6.6) remains a full-Semantics plan: owner Copy elements yield values, owner Non-Copy elements yield `ref`, object owners yield `objref` without retaining counts, and exclusive borrows yield shared Reborrows. Correlated result Types, Origins and ABI mappings are preserved; slot borrowing is a different operation.
+Metadata only runs acquisition plans already proven valid under §8.10; runtime flags never establish source legality. An element Place (§4.6.1) is a full-Semantics plan: its Type is the stored Type, a bare read Copies only a proven-Copy Type, and borrows and Reborrows follow the common adaptation. Result Types, Origins and ABI mappings are preserved; slot borrowing and referent Reborrowing are different operations.
 
 The Copy/Move and duplication examples of §8.10 also apply to shared lowering. In contrast, a pure borrow transfer can omit referent metadata entirely:
 
@@ -706,7 +706,7 @@ Omitting physical storage for a zero-sized argument or result preserves evaluati
 
 ### 21.4.4. Values, Places, and control flow
 
-Acquisition, Place evaluation, first placement and replacement stay distinct. First placement writes uninitialized storage without destroying an old value. Replacement secures the right-hand side, evaluates the left Place, destroys its remaining old parts and then places the new value. A setter receives the secured value instead of an automatic old-value destruction and store, and simple assignment does not call the final target's getter. Compound assignment remains target-first (§13.7).
+Acquisition, Place evaluation, first placement and replacement stay distinct. First placement writes uninitialized storage without destroying an old value. Replacement secures the right-hand side, evaluates the left Place, destroys its remaining old parts and then places the new value. A setter receives the secured value instead of an automatic old-value destruction and store, and simple assignment does not call the final target's getter. Compound assignment likewise secures its right-hand side first, then locates the target, reads, computes and writes (§13.7.2). A Place-publishing call returns the selected address and acquires nothing; the caller's acquisition follows.
 
 Standard stored access uses TypeLayout; custom, computed and required access keeps the selected callable contract, including its restrictions after witness optimization. Self-assignment cannot be removed based only on address equality.
 
@@ -908,7 +908,9 @@ Address-free Scalar values stay in SSA, using `phi` at joins, and mutable locals
 | `readonly` for `ref/V` | No writes to `V`'s inline storage through the argument or derived pointers; this is not function purity |
 | `noalias` for `ref/V` and `uniq/V` | The complete call-wide contract above |
 
-These guarantees cover the immediate `V` storage only. Targets reached through loaded pointers keep their own rights: another `rc` handle may share the payload and update counts without writing the borrowed handle slot. Array and Slice handle `noalias` does not prove their element pointers disjoint; vectorization needs separate provenance, range and Loan proofs. This table does not apply to object-borrow headers, uninitialized internal pointers or an entire `environmentWord`.
+These guarantees cover the immediate `V` storage only. Targets reached through loaded pointers keep their own rights: another `rc` handle may share the payload and update counts without writing the borrowed handle slot. Array and Slice handle `noalias` does not prove their element pointers disjoint; vectorization needs separate provenance, range and Loan proofs. This table does not apply to object-borrow headers, uninitialized internal pointers or an entire `environmentWord`. A Place result (§7.1.1) receives no `noalias` from its result mode alone; a zero-sized Place needs no identity beyond its logical position.
+
+A `ref/Key` argument whose referent is a Scalar may be passed physically by value only when the compiler proves that no address is observed, escaped or compared, that dependencies and evaluation order are preserved, and that direct and indirect calls, entries and adapters keep one common ABI; a result that does not depend on the key is not sufficient, and Unsafe address observation is not made unspecified.
 
 Unsafe and FFI implementations receiving these borrows must satisfy the same promises: raw pointers derived from `ref` cannot write its inline storage, and `uniq` permits no conflicting independent access during the call. Missing Loan or effect verification is diagnosed before emission. Future interior mutability or concurrency requires revisiting the shared proof.
 

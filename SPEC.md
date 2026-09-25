@@ -24,6 +24,8 @@ The argument-name boundary (`!`), normalized name contracts and independent argu
 
 Optional Type spelling is defined in [§3.2.3](spec/03-types-and-values.md#323-optional-type-spelling), explicit discard in [§14.2.4](spec/14-control-flow.md#1424-explicit-discard), and try propagation in [§17.2.4](spec/17-failure-handling.md#1724-try-propagation).
 
+Places and their capabilities are defined in [§3.4](spec/03-types-and-values.md#34-values-places-and-storage), Place results in [§7.1.1](spec/07-functions-and-callable-values.md#711-place-results), the Indexable Contracts in [§4.6.9](spec/04-arrays-indexing-and-slices.md#469-indexable-contracts), Origin-parameterized associated Types in [§8.4.3](spec/08-generics-constraints-and-contracts.md#843-associated-types), and the iteration Contracts, adapters and storage boundary in [§22.1.2](spec/22-core-execution-and-foreign-functions.md#2212-iteration-cursors-and-storage).
+
 ## Contents
 
 ### Part I. Introduction and source text
@@ -56,8 +58,8 @@ Optional Type spelling is defined in [§3.2.3](spec/03-types-and-values.md#323-o
 ### Part V. Ownership, cleanup, and failure
 
 - [15. Ownership and lifetime analysis](spec/15-ownership-and-lifetime-analysis.md)
-  - [Lending rule](spec/15-ownership-and-lifetime-analysis.md#1515-movable-places): a bare Place never Moves; `@move` transfers, a new exclusive lending of an owned Place needs `@uniq`/`@objuniq` except for a [Receiver Expression](spec/07-functions-and-callable-values.md#73-explicit-receivers), which is acquired implicitly, and borrow values are reborrowed without a spelling.
-  - [Subject rule](spec/15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): `match` Subjects and `for` iterables are shared-borrowed bare or with `@ref`, shared-reborrowed as borrow values, taken by value with `@move`, and never written `@uniq`/`@objuniq`.
+  - [Lending rule](spec/15-ownership-and-lifetime-analysis.md#1515-movable-places): a bare Place Copies only a proven-Copy Type and never Moves; `@move` is the only transfer; a new exclusive lending of an owned Place needs `@uniq`/`@objuniq` except for a [Receiver Expression](spec/07-functions-and-callable-values.md#73-explicit-receivers), which is acquired implicitly; `@ref`/`@uniq` borrow the written slot, `@deref` selects the referent, and borrow values are Reborrowed at fixed expected Types under the [common adaptation](spec/10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types).
+  - [Subject rule](spec/15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): `match` and `for` Subjects are Shared when bare or `@ref`, Exclusive with `@uniq`, and ByValue with `@move`; shared and exclusive paths bind `ref/T` and `uniq/T`, owned Subjects transfer their parts, and guards see `ref/T` candidates.
   - [Call borrow reservations](spec/15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations): preparation, activation and non-escaping explicit borrows.
 - [16. Scope exit and destruction](spec/16-scope-exit-and-destruction.md)
 - [17. Failure handling](spec/17-failure-handling.md)
@@ -103,7 +105,9 @@ This table indexes the required declarations in [§22.1](spec/22-core-execution-
 | Declaration container | Declarations / functions | Reference |
 | --- | --- | --- |
 | `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees) |
-| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Equatable`, `Comparable`, `Iterator`, `Iterable` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
+| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Equatable`, `Comparable`, `Iterator`, `Iterable`, `UniqIterable`, `IntoIterable`, `IndependentIterator`, `Cursor`, `UniqCursor`, `Indexable<Key>`, `UniqIndexable<Key>` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations), [§22.1.2 iteration and indexing](spec/22-core-execution-and-foreign-functions.md#2212-iteration-cursors-and-storage) |
+| `Kimi.Iteration` | `Owned<I>`, `Borrowed<I>`, `Shared<C>`, `Uniq<C>`; `owned`, `borrowed`, `shared`, `uniq` | [§22.1.2.3 standard adapters](spec/22-core-execution-and-foreign-functions.md#22123-standard-adapters) |
+| `Kimi.Storage` (internal) | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`; `borrowStorage`, `ownStorage`, `splitFirst`, `takeFirst` | [§22.1.2.5 storage boundary](spec/22-core-execution-and-foreign-functions.md#22125-standard-storage-boundary) |
 | `Kimi` | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` | [Formatting declarations](spec/utf8-formatting.md#1-contracts-and-declarations) |
 | `Kimi.Text` | `FixedBuffer`, `HeapBuffer`, `Utf8Slice`, `InvalidUtf8`; `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](spec/utf8-formatting.md#2-text-operations) |
 | `Kimi.Console` | `writeLine(text: ref/string) -> ()`, `writeLine(text: Text.Utf8Slice) -> ()` | [§22.4](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |
@@ -111,7 +115,7 @@ This table indexes the required declarations in [§22.1](spec/22-core-execution-
 | `Kimi.Intrinsics` | `replace`, `exchange`, `swap` | [§15.7 whole-value updates](spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
 | `Kimi.Intrinsics` | `makeObj`, `makeRc`, `makeArc`, strong/Weak `clone`, `downgrade`, `upgrade`, `makeRcCyclic`, `makeArcCyclic` | [§13.5.8–9](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) |
 
-These are specification requirements, not a list of completed compiler features. [STATUS.md](STATUS.md#kimi-library-and-whole-value-updates) lists current declarations, compiler-supplied helpers such as `SliceIterator`, and runtime limits. `$abort` is a separate language built-in, not a Kimi Function.
+These are specification requirements, not a list of completed compiler features. [STATUS.md](STATUS.md#kimi-library-and-whole-value-updates) lists current declarations, compiler-supplied iterators, and runtime limits. `$abort` is a separate language built-in, not a Kimi Function.
 
 ## Specification boundaries
 

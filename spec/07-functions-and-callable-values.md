@@ -2,7 +2,7 @@
 
 [Specification index](../SPEC.md)
 
-A function declaration begins with `func`, its Name, optional generic parameters and a parenthesized parameter list. A result Type follows `->`; omitting it in a named function means Unit (`()`), regardless of accessibility or body form. Functions have no Origin parameter list: directly written borrow annotations can introduce implicit scalar Origins under §15.3.4. Declaration-attached `origin` relations precede executable items, at the same indentation as Type Constraints. Definitions use the common Body forms (§7.1). Anonymous functions have separate [inference rules](#761-syntax-and-inference).
+A function declaration begins with `func`, its Name, optional generic parameters and a parenthesized parameter list. A result Type or a Place result (§7.1.1) follows `->`; omitting it in a named function means Unit (`()`), regardless of accessibility or body form. Functions have no Origin parameter list: directly written borrow annotations can introduce implicit scalar Origins under §15.3.4. Declaration-attached `origin` relations precede executable items, at the same indentation as Type Constraints. Definitions use the common Body forms (§7.1). Anonymous functions have separate [inference rules](#761-syntax-and-inference).
 
 The declared function Name is a single, unqualified Name, and the declaration belongs to the lexical Container or executable scope in which it appears. A member is declared inside the relevant Container body, including a permitted fragment; `func View.get(...)` and other qualified declaration names are compile-time errors. A qualified declaration cannot attach a function to another Container, introduce an extension, or obtain that Container's private access or generic bindings. Qualified Names at use sites and explicit receivers follow their own rules.
 
@@ -30,6 +30,41 @@ let twice = func (value: i32) => value * 2 // Anonymous return inference: i32.
 ```
 
 A final selection, loop or do expression in an indented body is still discarded; return that expression, or return inside its paths. Anonymous return inference and its fixed-context boundary follow §7.6.1 and §10.5. Other function-like targets are listed in §14.5.3; all of them use the common Scope Exit (§16.2).
+
+### 7.1.1. Place results
+
+A function may publish a Place instead of returning a value:
+
+```text
+FunctionResult := Type
+                | "place" "(" ("ref" | "uniq") "," Type ")" BorrowOrigin?
+```
+
+`place(ref, T)` and `place(uniq, T)` publish an existing, complete Storage whose stored complete Type is `T`. The shared form offers a shared borrow and the Copy of a Copy value; the exclusive form additionally offers exclusive borrows and replacement. Neither offers Take. `T` is the stored Type: `place(ref, ref/Node)` publishes a slot holding a reference, and `@ref` on it gives `ref/(ref/Node)`. There is no `place(owner, T)`, `place(T)` or `place(ref/T)`. A Place is a result category, not a Semantics or a value Type: the same syntax is used in function declarations, anonymous functions with an explicit result, Function Types, Callable requirements and Contract requirements; an unannotated anonymous function never infers a Place result. In result position, the unqualified name `place` immediately followed by `(` is this syntax, regardless of whitespace, and is never reinterpreted as a Type name; a following `during` binds to the Place result, and the Origins inside `T` are separate.
+
+```kimi
+func first<T>(values: ref/Array<T>) -> place(ref, T) during values
+    return values[0]       // Publishes the element Place; nothing is acquired.
+
+let view = first(resources@ref)@ref
+inspect(view)
+```
+
+**Returning a Place.** A `return` or single-item body of a Place result designates a Place without acquiring a value: the operand is a Place expression or a call whose Place result is compatible. The slot of a local or by-value parameter that ends with the function cannot be returned, while external Storage reached through a local reference can. An ordinary value is never materialized to satisfy a Place result. Every normal completion path must designate a Place: Never supplies none, structural fall-through supplies Unit and does not satisfy even `place(ref, ())`, and several candidates are returned from separate branches; `if`, `match` and `do` do not produce Places. The returned Storage's actual Type `A` and the published `T` must agree in Semantics, Core and structure; their Origins are checked as the ordinary fitting of `ref/A` to `ref/T` or `uniq/A` to `uniq/T`, keeping invariant positions and the actual Loans. An exclusive Place may be published as a shared result, never the reverse, and Function Types have no implicit conversion between result modes.
+
+**Origins.** The outer Origin of a Place result is introduced, quantified and elided exactly like the corresponding borrow result: an omitted Origin is the meet of the outer Origins of the direct borrowed inputs, without preferring the receiver; with no such input, a shared result defaults to `static` and an exclusive result requires an explicit valid contract. The body's dependencies are checked in every case. An accessor whose result does not depend on its search key writes `during self`, which names the receiver's borrow Origin, not the slot of `self`; an annotation such as `during self.source` never removes the actual receiver Loan. Function Type and Callable Origin rules are not bypassed, and specializations inherit the original contract.
+
+**Contracts and identity.** Overloads that differ only in result mode cannot coexist. The published `T` is fixed from the arguments, explicit Type information and the expected Place contract, and the use position is checked under the result adaptation of §10.3; an outer `@ref` never prefers a Place-returning candidate. Result mode, capabilities, Origins and Loan contract are preserved through function references, Callable, Contract implementations, indirect calls and separate compilation. A Place result cannot be bound to an ordinary Type argument; a higher-order value API is used through an explicit wrapper that returns an ordinary reference. Function Type and Callable compatibility require the same result mode and the corresponding reference contract, under the input contravariance, Origin quantification, Unsafe and Closure rules of §10.7; Contract implementation matching follows §8.4.5.
+
+**Using a Place.** Acquisition from a published Place follows §3.5 and §10.2: a Copy value may be read bare, a Non-Copy value cannot, `@move` is unavailable, and a reference is obtained with an explicit borrow or by the common adaptation at a fixed expected Type.
+
+```kimi
+let view = table.get(key)@ref  // One search; the reference is kept.
+inspect(table.get(key))        // Shared borrow at a ref/Resource parameter.
+// let value = table.get(key)  // Error when Resource is Non-Copy.
+```
+
+A Place is used without acquiring a value when it is returned as a Place, borrowed or transferred explicitly, projected, used as a Subject, or used as an assignment target. Discarding an unacquired Place performs the call and its effects and destroys nothing in the published Storage; `_ = expression` instead acquires a value and destroys it, so it cannot discard a Non-Copy borrowed Place. An API that publishes an exclusive whole `T` permits replacing it with any valid `T`; a Place through which an internal invariant could be broken is not published. A Dictionary publishes its values, but never an exclusive Place of a key.
 
 ## 7.2. Parameters and defaults
 
@@ -145,21 +180,21 @@ struct Buffer
 
 | Receiver requirement | Value-kind input `p` | Object-kind input `p` |
 | --- | --- | --- |
-| `ref/Self`, `uniq/Self` | `p@ref`, `p@uniq`; a borrow value is reborrowed in the required mode | The complete payload projection `p@ref/T`, `p@uniq/T` (§13.5.5.1) when the View Target is exactly the same complete Sealed Type `T`; otherwise `p@objref`, `p@objuniq` |
+| `ref/Self`, `uniq/Self` | An owned Place or temporary is borrowed as `p@ref`, `p@uniq`; a borrow value is Reborrowed in the required mode as `p@deref@ref`, `p@deref@uniq`, after the [reference-path selection](03-types-and-values.md#341-reference-path-selection) that located the member | The complete payload `p@deref@ref`, `p@deref@uniq` (§13.5.5.1) when the View Target is exactly the same complete Sealed Type `T`; otherwise `p@objref`, `p@objuniq` |
 | `objref/Self`, `objuniq/Self` | Not applicable | `p@objref`, `p@objuniq` |
 | Declaration in a base `B` | The projection of §9.5.1 | The same |
-| Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and otherwise nothing is supplied (write `p@move.m()`); a `ref/T` or `uniq/T` value is Copy read when the referent is Copy (§10.2) | An owned temporary passes as is; an owned Place requires `p@move`; there is no Copy read from an object borrow |
+| Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and otherwise nothing is supplied (write `p@move.m()`); a reference supplies a Scalar `Self` by the Scalar read, and otherwise `p@deref.m()` Copies a Copy referent | An owned temporary passes as is; an owned Place requires `p@move`; there is no read from an object borrow |
 
 **Checks.** The acquisition is checked in the following order, and the call is an error when any check fails:
 
-1. *The supplied operation is legal* under the existing explicit rules, including static storage (§15.2.3), values of generic Semantics (§8.9), `rc`/`arc` (shared access only, §13.5.5.2), Property permissions (§11.1), getter-result storage (§11.2.3) and the exclusive acquisition conditions of §15.1.5.
+1. *The supplied operation is legal* under the existing explicit rules, including static storage (§15.2.3), values of generic Semantics (§8.9), `rc`/`arc` (shared access only, §13.5.5), Property permissions (§11.1), getter-result storage (§11.2.3) and the exclusive acquisition conditions of §15.1.5.
 2. *The path's receiver compatibility holds.* For a value-kind path, the complete result Type must fit the required Type; an object-borrow path follows object receiver compatibility (§12.4.3–4) and a base-projection path follows §9.5.1. For example, `objuniq/T` satisfies a `uniq/Self` receiver through this path rule, not through a Type conversion.
-3. *The post-selection use conditions hold.* When a protected object borrow or a base projection was selected, the selected candidate must be ObjectCallCompatible Proven after overload selection (§12.4.4.1, §9.5.1); a complete Sealed payload projection is an ordinary complete-value call and needs no proof (§12.4.4). Proven never excludes a candidate, and a missing proof never reselects another candidate.
+3. *The post-selection use conditions hold.* When a protected object borrow or a base projection was selected, the selected candidate must be ObjectCallCompatible Proven after overload selection (§12.4.4.1, §9.5.1); a complete Sealed payload dereference is an ordinary complete-value call and needs no proof (§12.4.4). Proven never excludes a candidate, and a missing proof never reselects another candidate.
 
 **Consequences.**
 
-- *No fallback.* When a check fails, the call does not switch to a Copy read, a materialized temporary or any other acquisition; in particular, no Copy is modified with its update discarded.
-- *Explicit spellings.* Writing the table's operation explicitly has the same meaning: for a value-kind input and a receiver that requires exclusivity, `p@uniq.m()` equals `p.m()` through the preparation path of §15.6.7, and a redundant spelling is accepted. A different explicit operation is that other operation, as written: `tasks@uniq.length` lends `tasks` exclusively and then reads it through shared access.
+- *No fallback.* When a check fails, the call does not switch to a Scalar read, a materialized temporary or any other acquisition; in particular, no Copy is modified with its update discarded.
+- *Explicit spellings.* Writing the table's operation explicitly has the same meaning: for a value-kind input and a receiver that requires exclusivity, `p@uniq.m()` equals `p.m()` through the preparation path of §15.6.7, and a redundant spelling is accepted. A different explicit operation is that other operation, as written: `tasks@uniq.length` lends `tasks` exclusively and then reads it through shared access, and `r@ref.m()` on a reference `r` borrows its slot rather than Reborrowing the referent.
 - *Chains.* Each call acquires the previous call's result as its receiver by this table. Acquisition never reaches back through an earlier call, and reservations are separated per call (§15.6.7).
 
 ```kimi
@@ -336,7 +371,7 @@ let invalid = func () => text              // Error: explicit list required.
 let holder = func [text@move] () => ()     // Transfer executes even if unused.
 ```
 
-Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` form or additional object-borrow capture syntax. `var` combines only with bare Copy or `@move`, not with `@ref` or `@uniq`. Capturing an existing reference follows ordinary adaptation:
+Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` form or additional object-borrow capture syntax. `var` combines only with bare Copy or `@move`, not with `@ref` or `@uniq`. Capture entries are capture operations, not the slot borrows of §13.5.5.2: on a reference binding, `@ref` and `@uniq` Copy or Reborrow the reference value rather than borrowing the binding's slot:
 
 | Source | `[x]` | `[x@move]` | `[x@ref]` | `[x@uniq]` |
 | --- | --- | --- | --- | --- |
