@@ -69,14 +69,18 @@ internal sealed partial class BodyLowering
         var pointerType = ValueType(body, address);
         // SPEC 3.5.3, 13.5.5.1: a load through a safe reference copies its referent layer by layer, and a
         // referent write stores through a uniq reference; both use the reference value as the address.
+        // SPEC 10.2: a stored ref or uniq reference may be loaded as one shared reference to the same referent.
+        var sharedRead = !store && pointerType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+            pointerType.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } storedReference &&
+            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && ReferenceEquals(storedReference.Components[0], type.Components[0]);
         var referent = pointerType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            ReferenceEquals(pointerType.Components[0], type) &&
+            (ReferenceEquals(pointerType.Components[0], type) || sharedRead) &&
             (store ? pointerType.Semantics == SemanticsKind.Uniq && ReferenceEquals(sourceType, pointerType) : place.Acquisition == AcquisitionKind.Copy);
         if ((place.Kind != OwnershipPlaceKind.Temporary && (!store || place.Kind != OwnershipPlaceKind.Result)) ||
             place.Acquisition is not (AcquisitionKind.Copy or AcquisitionKind.Move) ||
             (!referent && !ReferenceEquals(sourceType, type)) ||
             pointerType is null || !(referent || ReferenceTypes.IsPointer(pointerType)) ||
-            !ReferenceEquals(pointerType.Components[0], type) || (body.IsReachable(id) && !this.Dominates(address, id)))
+            (!ReferenceEquals(pointerType.Components[0], type) && !sharedRead) || (body.IsReachable(id) && !this.Dominates(address, id)))
         {
             return Fail("Pointer access requires a matching pointee and a dominating address.", out failure);
         }

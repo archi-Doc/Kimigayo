@@ -58,7 +58,7 @@ public sealed partial class Binding
             // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy handle or
             // interval is the entry receiver and is read once for the loop. Exclusive enumeration of a
             // Slice lends only the handle, so its elements stay shared.
-            this.referentReads.Add(source.Iterable);
+            this.adaptations[source.Iterable] = new(ExpectedAdaptationKind.ReferentRead, iterable.Components[0]);
             iterable = iterable.Components[0];
         }
 

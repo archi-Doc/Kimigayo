@@ -54,7 +54,7 @@ public sealed partial class Binding
                 var written = source.Right.BoundType;
                 if (written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && !FitsType(written, key) && FitsType(written.Components[0], key))
                 {
-                    this.referentReads.Remove(source.Right);
+                    this.adaptations.Remove(source.Right);
                     actual = written.Components[0];
                 }
 

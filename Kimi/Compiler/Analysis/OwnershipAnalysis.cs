@@ -537,16 +537,18 @@ public sealed partial class OwnershipAnalysis
 
     private int Expression(Koto node, PlaceUseKind use = PlaceUseKind.Consume, AcquisitionKind? acquisition = null)
     {
-        // SPEC 3.3: the value of a read reference expression is its copied referent.
-        if (this.compilation.Binding.ReadsReferent(node))
+        // SPEC 10.2: the one implicit adaptation selected at the expression's fixed expected Type.
+        if (this.compilation.Binding.TryGetAdaptation(node, out var adaptation))
         {
-            return this.LoadReferent(node);
-        }
+            if (adaptation.Kind == ExpectedAdaptationKind.ReferentRead)
+            {
+                return this.LoadReferent(node);
+            }
 
-        // SPEC 10.2: a uniq value at a fixed expected reference Type is Reborrowed through its parent reference.
-        if (use == PlaceUseKind.Consume && acquisition is null && this.compilation.Binding.ImplicitReborrow(node) is { } reborrow)
-        {
-            return this.BorrowStruct(node, reborrow);
+            if (use == PlaceUseKind.Consume && acquisition is null)
+            {
+                return adaptation.Kind == ExpectedAdaptationKind.ReferenceRead ? this.ReadReference(node, adaptation.Type) : this.BorrowStruct(node, adaptation.Type);
+            }
         }
 
         if (node.ErasedFunctionType is { } erased)

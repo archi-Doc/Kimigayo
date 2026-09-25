@@ -56,6 +56,12 @@ public sealed partial class OwnershipAnalysis
             return result;
         }
 
+        if (argument.Kind == ArgumentOperationKind.ReferenceRead && argument.SourceType is { } actual && argument.ParameterType is { Components.Count: 1 } parameter &&
+            this.compilation.Binding.SharedReferenceThroughLayers(actual, parameter.Components[0], out _) is { } shared)
+        {
+            return this.ReadReference(source, shared);
+        }
+
         return this.Argument(source, argument.Kind);
     }
 

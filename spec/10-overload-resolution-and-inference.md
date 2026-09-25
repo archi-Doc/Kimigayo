@@ -55,16 +55,20 @@ In the table, `U` is the complete immediate referent Type.
 
 Exactly one table operation, plus ordinary Origin fitting, is selected; adaptations are never chained, and the shared reference and Scalar read rows each count as one operation however many layers they follow. A same-Type temporary is transferred as is. The shared reference and Reborrow rows operate on the existing reference values and add no dependency on a temporary slot holding them.
 
-**One shared reference through layers.** For an input whose Type is safe reference layers ending in `U`, the adaptation yields one `ref/U`. The stored reference of the innermost `ref` layer is Copied with its own Origin, each `uniq` layer below it is Reborrowed as shared, and the result's Origin is the meet of the Origins of those layers; the layers above the innermost `ref` layer add no dependency, because a shared reference is Copy and reading it only requires them to be valid at that moment. Without a `ref` layer, the result is a shared Reborrow through every layer, whose Origin is the meet of all of them. A single `ref/U` is thus Copied with permitted Origin shortening, and a single `uniq/U` is shared-Reborrowed. Every layer is checked for initialization, capability and Loans, as for the Scalar read.
+**One shared reference through layers.** For an input whose Type is safe reference layers ending in `U`, the adaptation yields one `ref/U`. The innermost `ref` layer, a shared reference, is Copied with its own Origin, each `uniq` layer below it is Reborrowed as shared, and the result's Origin is the meet of the Origins of those layers; the layers above the innermost `ref` layer add no dependency, because a shared reference is Copy and reading it only requires them to be valid at that moment. Without a `ref` layer, the result is a shared Reborrow through every layer, whose Origin is the meet of all of them. A single `ref/U` is thus Copied with permitted Origin shortening, and a single `uniq/U` is shared-Reborrowed. Every layer is checked for initialization, capability and Loans, as for the Scalar read.
 
 ```kimi
 func validate(node: ref/Node) -> () => ()
-func visit(nodes: ref/Array<uniq/Node>, found: Option<ref/Node during nodes>)
-    for node in nodes            // node: ref/(uniq/Node)
-        validate(node)           // Shared Reborrow through both layers.
+func report(found: ref/Node? during a)
     match found                  // A bare Place: Shared.
         .Some(let hit) => validate(hit) // hit: ref/(ref/Node); the inner reference is Copied.
         .None => ()
+
+var first = Node.init()
+var second = Node.init()
+let nodes: [2 of uniq/Node] = [first@uniq, second@uniq]
+for node in nodes                // node: ref/(uniq/Node)
+    validate(node)               // Shared Reborrow through both layers.
 ``` There is no implicit borrow of a reference or handle slot, no implicit payload dereference of an object, no implicit `rc`/`arc` or exclusive-temporary borrow, and no implicit object upcast, numeric, integer/float or user conversion. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value expectation; an explicit `@move` is executed first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
 
 A new exclusive borrow of an owned Place requires `@uniq`/`@objuniq`; only a Receiver Expression acquires it implicitly ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). An annotation, assignment or result never adds lifetime or capability. A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and no candidate switch arises from implicit exclusive borrowing.

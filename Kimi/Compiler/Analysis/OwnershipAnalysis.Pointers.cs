@@ -151,6 +151,41 @@ public sealed partial class OwnershipAnalysis
         return loaded;
     }
 
+    // SPEC 10.2: one shared reference through several reference layers. The outer layers are read only for their
+    // addresses, and the reference stored in the last layer is loaded as the shared reference; the Loans follow the
+    // Origin of that Type, so a Copied inner reference no longer depends on the layers above it.
+    private int ReadReference(Koto source, BoundType result)
+    {
+        var reference = this.ExpressionCore(source, PlaceUseKind.Read, null);
+        if (reference < 0)
+        {
+            return -1;
+        }
+
+        result = this.Concrete(result)!;
+        var loaded = reference;
+        for (var type = this.Concrete(source.BoundType); ; type = this.Concrete(type.Components[0]))
+        {
+            if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
+                this.Concrete(type.Components[0]) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } stored)
+            {
+                this.Unsupported(source);
+                return -1;
+            }
+
+            var last = ReferenceEquals(this.Concrete(stored.Components[0]), result.Components[0]);
+            var pointer = loaded;
+            loaded = this.Place(source, last ? result : stored, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
+            this.Emit(OwnershipOperationKind.Produce, source, loaded);
+            this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(pointer)]);
+            this.RegisterTemporary(loaded);
+            if (last)
+            {
+                return loaded;
+            }
+        }
+    }
+
     private bool SupportsCopySnapshot(BoundType type, Koto source)
         => this.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Proven &&
         (ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) ||

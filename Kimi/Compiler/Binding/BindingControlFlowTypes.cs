@@ -20,8 +20,7 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
 
     public override ControlFlowType? GetExpressionType(Koto expression)
         => expression.BindingState != BindingState.Resolved ? null
-            : binding.ReadsReferent(expression) ? FlowType(Terminal(expression.BoundType!)) // SPEC 3.5.3: a Scalar read follows every reference layer.
-            : binding.ImplicitReborrow(expression) is { } reborrow ? FlowType(reborrow) // SPEC 10.2: the Reborrow formed at the expected Type.
+            : binding.TryGetAdaptation(expression, out var adaptation) ? FlowType(adaptation.Type) // SPEC 10.2: the Type its one adaptation supplies.
             : FlowType(expression.ErasedFunctionType ?? expression.BoundType);
 
     // SPEC 5.1: Binding types null only from an expected raw-pointer Type, such as a call argument's parameter.
@@ -134,16 +133,6 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
 
     public override MatchCoverage GetMatchCoverage(MatchKoto match, ControlFlowType? subject)
         => binding.TryGetMatch(match, out var plan) ? plan!.Coverage : default;
-
-    private static BoundType Terminal(BoundType type)
-    {
-        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            type = type.Components[0];
-        }
-
-        return type;
-    }
 
     private static ControlFlowType? FlowType(BoundType? type)
         => ReferenceEquals(type, BoundType.Unit) ? ControlFlowType.Unit : ReferenceEquals(type, BoundType.Never) ? ControlFlowType.Never : ReferenceEquals(type, BoundType.Boolean) ? ControlFlowType.Boolean : type;

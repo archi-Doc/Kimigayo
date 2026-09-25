@@ -23,7 +23,27 @@ public enum ArgumentOperationKind : byte
     StorageProjection,
     PayloadProjection,
     CopyRead,
+    ReferenceRead,
 }
+
+/// <summary>An implicit operation of the common adaptation (SPEC 10.2) selected at a fixed expected Type.</summary>
+public enum ExpectedAdaptationKind : byte
+{
+    /// <summary>The Copy referent at the end of the reference layers is read (SPEC 3.5.3).</summary>
+    ReferentRead,
+
+    /// <summary>A readable owned Place is shared-borrowed.</summary>
+    SharedBorrow,
+
+    /// <summary>A single uniq layer is Reborrowed in the expected mode.</summary>
+    Reborrow,
+
+    /// <summary>Several reference layers yield one shared reference to their final referent.</summary>
+    ReferenceRead,
+}
+
+/// <summary>The one recorded adaptation of an expression and the Type it supplies; the node keeps its own Type.</summary>
+public readonly record struct BoundAdaptation(ExpectedAdaptationKind Kind, BoundType Type);
 
 /// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it.</summary>
 public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven);
@@ -32,18 +52,18 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundArgumentOperation> argumentOperationScratch = new();
     private readonly Dictionary<Koto, BoundArgumentOperation> receiverOperations = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<Koto> referentReads = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Koto, BoundType> implicitReborrows = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, BoundAdaptation> adaptations = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Gets whether an expression of Type <c>ref/T</c> or <c>uniq/T</c> is read as its Copy referent where a <c>T</c> is expected (SPEC 3.3).</summary>
+    /// <summary>Gets whether an expression of Type <c>ref/T</c> or <c>uniq/T</c> is read as its Copy referent where a <c>T</c> is expected (SPEC 3.5.3).</summary>
     /// <param name="node">The bound expression; its BoundType remains the reference Type.</param>
     /// <returns>Whether the expression's value is the copied referent.</returns>
-    public bool ReadsReferent(Koto node) => this.referentReads.Contains(node);
+    public bool ReadsReferent(Koto node) => this.adaptations.TryGetValue(node, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.ReferentRead;
 
-    /// <summary>Gets the Reborrow Type of a bare uniq value at a fixed expected reference Type (SPEC 10.2), or null.</summary>
+    /// <summary>Gets the implicit adaptation selected for an expression at its fixed expected Type (SPEC 10.2).</summary>
     /// <param name="node">The expression.</param>
-    /// <returns>The reference Type formed by the implicit Reborrow, or null when the value is acquired as it is.</returns>
-    public BoundType? ImplicitReborrow(Koto node) => this.implicitReborrows.GetValueOrDefault(node);
+    /// <param name="adaptation">The operation and the Type it supplies.</param>
+    /// <returns>Whether the expression is adapted rather than acquired as it is.</returns>
+    public bool TryGetAdaptation(Koto node, out BoundAdaptation adaptation) => this.adaptations.TryGetValue(node, out adaptation);
 
     /// <summary>Gets a selected receiver/storage operation, including an unresolved projected-use proof obligation.</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
@@ -86,6 +106,33 @@ public sealed partial class Binding
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PlaceOrigin(source));
+
+    /// <summary>
+    /// SPEC 10.2: safe reference layers ending in <paramref name="referent"/> yield one shared reference to it. A <c>ref</c>
+    /// layer is Copied with its own Origin, so it restarts the dependency; each <c>uniq</c> layer below it is shared-Reborrowed
+    /// and meets its Origin into the result.
+    /// </summary>
+    /// <param name="actual">The complete Type of the value.</param>
+    /// <param name="referent">The referent the expected <c>ref</c> Type names.</param>
+    /// <param name="layers">The number of reference layers followed, or zero when the layers do not end in the referent.</param>
+    /// <returns>The shared reference Type, or null.</returns>
+    internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
+    {
+        BoundOrigin? origin = null;
+        layers = 0;
+        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && layers < 64; type = type.Components[0])
+        {
+            layers++;
+            origin = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin : type.Origin is null ? origin : this.Meet(origin, type.Origin);
+            if (ReferenceEquals(type.Components[0], referent))
+            {
+                return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: origin);
+            }
+        }
+
+        layers = 0;
+        return null;
+    }
 
     private static ConstraintProof ProjectedReceiverProof(BindingSymbol implementation)
         // Until Access Effect verification supplies callee/returned-Loan summaries, no body or signature is evidence.
@@ -153,6 +200,45 @@ public sealed partial class Binding
     private bool transferRequired;
     private bool lendingRequired;
 
+    // SPEC 10.2: the implicit rows of the common adaptation for a value at a fixed expected Type. Exactly one operation
+    // is selected, and it is recorded once for control flow, ownership and generation. Arguments select the same rows
+    // through AdaptInput; explicit borrows, projections and receivers are separate operations.
+    private BoundAdaptation? ExpectedAdaptation(Koto node, BoundType actual, BoundType expected)
+    {
+        if (this.Referent(actual, node) is { } referent && Compatible(referent, expected))
+        {
+            return new(ExpectedAdaptationKind.ReferentRead, referent);
+        }
+
+        if (expected is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            return null;
+        }
+
+        var target = expected.Components[0];
+        if (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            if (expected.Semantics == SemanticsKind.Uniq)
+            {
+                // An exclusive Reborrow keeps one exclusive layer; a shared layer on the path bounds it.
+                return actual.Semantics == SemanticsKind.Uniq && ReferenceEquals(actual.Components[0], target) && !ReachedThroughShared(node)
+                    ? new(ExpectedAdaptationKind.Reborrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [target], origin: actual.Origin)) : null;
+            }
+
+            if (this.SharedReferenceThroughLayers(actual, target, out var layers) is not { } shared)
+            {
+                return null;
+            }
+
+            // A single ref layer is the reference itself: ordinary fitting Copies it.
+            return layers > 1 ? new(ExpectedAdaptationKind.ReferenceRead, shared)
+                : actual.Semantics == SemanticsKind.Uniq ? new(ExpectedAdaptationKind.Reborrow, shared) : null;
+        }
+
+        return expected.Semantics == SemanticsKind.Ref && actual.Semantics == SemanticsKind.Owner && Compatible(actual, target) && IsBarePlace(node)
+            ? new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [actual], origin: this.PlaceOrigin(node))) : null;
+    }
+
     private BoundOrigin PlaceOrigin(Koto source)
     {
         if (this.ReadsReferent(source))
@@ -192,13 +278,13 @@ public sealed partial class Binding
             return type;
         }
 
-        this.referentReads.Add(node);
+        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, referent);
         return referent;
     }
 
     // The type an argument presents to adaptation: a node already read where its parameter Type was
     // expected adapts from its own reference Type, so the plan records the Copy read once.
-    private BoundType ArgumentType(Koto source, BoundType actual) => this.referentReads.Contains(source) ? source.BoundType ?? actual : actual;
+    private BoundType ArgumentType(Koto source, BoundType actual) => this.ReadsReferent(source) ? source.BoundType ?? actual : actual;
 
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
     {
@@ -360,6 +446,16 @@ public sealed partial class Binding
             if (!explicitBorrow && pattern.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && ReferenceEquals(pattern.Components[0], actual))
             {
                 return false; // SPEC 10.2: no implicit borrow of a reference slot.
+            }
+
+            if (!explicitBorrow && !projected && target == SemanticsKind.Ref &&
+                this.SharedReferenceThroughLayers(actual, pattern.Components[0], out var layers) is { } shared && layers > 1)
+            {
+                // SPEC 10.2: several reference layers yield one shared reference to the parameter's referent.
+                adapted = shared;
+                quality = ArgumentAdaptation.CrossSemanticsBorrow;
+                kind = ArgumentOperationKind.ReferenceRead;
+                return true;
             }
 
             if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || ReachedThroughShared(source)))

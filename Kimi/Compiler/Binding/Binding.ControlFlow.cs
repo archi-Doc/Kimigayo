@@ -323,8 +323,8 @@ public sealed partial class Binding
         var item = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
         if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
         {
-            // SPEC 3.5.3: a source read as its terminal Scalar supplies that Scalar.
-            context.Sources.Add(this.ReadsReferent(item) && item.BoundType is { } read ? ComparisonReferent(read) : item.BoundType);
+            // SPEC 3.5.3, 10.2: an adapted source supplies the Type of its one adaptation.
+            context.Sources.Add(this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.BoundType);
         }
         else if (structural.CanComplete(body))
         {
