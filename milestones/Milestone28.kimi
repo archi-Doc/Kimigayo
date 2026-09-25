@@ -86,16 +86,16 @@ public func main()
 
     let values: [3 of i32] = [10, 20, 30]
     var cursor = View<i32>.init(values[..]).iterate()
-    let first: ref/i32 = match cursor.next()@move
+    let first: ref/i32 = match cursor.next()
         .Some(let item) => item
         .None => $abort("Missing first element")
     var total: i32 = 0
     loop
-        match cursor.next()@move
+        match cursor.next()
             .Some(let item) => total = total + item
             .None => exit
     require first == 10 and total == 50 else => $abort("External borrow did not survive next")
-    match cursor.next()@move
+    match cursor.next()
         .Some(_) => $abort("Exhausted iterator restarted")
         .None => Console.writeLine("External first is 10; remaining total is 50.")
     for item in View<i32>.init(values[1..])

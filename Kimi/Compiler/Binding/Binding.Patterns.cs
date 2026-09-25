@@ -26,11 +26,13 @@ public sealed partial class Binding
     /// <returns>Whether the current Binding pass indexed this match.</returns>
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
 
-    // SPEC 15.1.6 subject rule: the outermost written operation of a match or for Subject fixes its mode.
+    // SPEC 15.1.6 subject rule: the Subject mode is the access that the Subject Place grants to its first layer that
+    // is not a safe reference. A uniq/objuniq value is Exclusive, a ref/objref value and a bare Place (borrowed in
+    // place) are Shared, and any other acquisition, including @move and a temporary, yields an owned ByValue Subject.
     private static SubjectMode SubjectModeOf(Koto expression, BoundType? type)
-        => KotoHelper.UnwrapParentheses(expression) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ? SubjectMode.ByValue
-            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ? SubjectMode.Exclusive
-            : SubjectMode.Shared;
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ? SubjectMode.Exclusive
+            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef, Components.Count: 1 } || IsBarePlace(expression) ? SubjectMode.Shared
+            : SubjectMode.ByValue;
 
     private static bool ContainsPattern(BoundMatch plan, int earlier, int later)
     {
@@ -250,25 +252,21 @@ public sealed partial class Binding
         return plan.ResultType;
     }
 
-    // SPEC 15.1.6 subject rule: the outermost written operation fixes the Subject mode. A bare Place or temporary
-    // is shared-borrowed for the construct, an explicit borrow or transfer keeps its written mode, and a bare
-    // exclusive borrow value is Reborrowed exclusively; any other borrow value is acquired as it is.
+    // SPEC 15.1.6 subject rule: the Subject is acquired as written, except that a bare Place is borrowed in place: a
+    // stored uniq/objuniq reference is Reborrowed exclusively, a stored ref/objref reference is Copied, and any other
+    // stored value is shared-borrowed.
     private BoundType? AcquireSubject(Koto expression, BoundType? type, out BoundType? borrow, out SubjectMode mode)
     {
         borrow = null;
         mode = SubjectModeOf(expression, type);
-        if (type is null || ReferenceEquals(type, BoundType.Never) || mode == SubjectMode.ByValue)
+        if (type is null || ReferenceEquals(type, BoundType.Never) || !IsBarePlace(expression))
         {
             return type;
         }
 
         if (mode == SubjectMode.Exclusive)
         {
-            if (KotoHelper.UnwrapParentheses(expression) is not ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } && IsBarePlace(expression))
-            {
-                borrow = type;
-            }
-
+            borrow = type;
             return type;
         }
 

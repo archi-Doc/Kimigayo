@@ -25,13 +25,13 @@ public func main()
         Sample.init(1), Sample.init(2), Sample.init(3), Sample.init(4),
     ]
     var cursor = Cursor<Sample>.init(samples[..])
-    let first: ref/Sample = match cursor.next()@move
+    let first: ref/Sample = match cursor.next()
         .Some(let item) => item
         .None => $abort("Expected a first sample")
 
     var total: i32 = 0
     loop
-        match cursor.next()@move
+        match cursor.next()
             .Some(let item)
                 require item.value % 2 == 0 else => continue
                 total = total + item.value
@@ -39,7 +39,7 @@ public func main()
     require total == 6 and first.value == 1 else => $abort("Iterator loan failed")
     Console.writeLine("Even sample total is 6; first is still 1.")
 
-    match cursor.next()@move
+    match cursor.next()
         .Some(_) => $abort("Exhausted iterator restarted")
         .None => Console.writeLine("Iterator remains exhausted.")
 

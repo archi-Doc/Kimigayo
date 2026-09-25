@@ -63,6 +63,18 @@ public class SharedSubjectTest
         "let fixed: [2 of i32] = [1, 2]\nfor v in fixed@ref\n    s += v\n" +
         "require s == 63 and total(d) == 33 and grow(d@uniq) == 30 and d.length == 2 else => $abort(\"dictionary\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 15.1.6: a Subject is acquired as written and only a bare Place is borrowed. Temporaries are owned
+    // ByValue Subjects, E@owner copies a Copy Place, and a transferred uniq value keeps its Exclusive mode.
+    private const string SubjectAcquisitionSource =
+        Message + "func make() -> Message => .Write(\"made\")\nfunc makeAll() -> Array<string> => [\"a\", \"b\"]\n" +
+        "func same(a: ref/string, b: ref/string) -> bool => a == b\n" +
+        "func total(values: uniq/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move\n        v@deref += 1\n        sum += v\n    return sum\n" +
+        "match make()\n    .Write(let text)\n        let owned: string = text@move\n        Console.writeLine(owned)\n    .Quit => ()\n" +
+        "var count: i32 = 5\nmatch count@owner\n    var n\n        n += 1\n        require n == 6 else => $abort(\"copy\")\nrequire count == 5 else => $abort(\"count\")\n" +
+        "for s in makeAll()\n    let owned: string = s@move\n    Console.writeLine(owned)\n" +
+        "match \"hello\"\n    let text if same(text, \"hello\") => Console.writeLine(text)\n    _ => ()\n" +
+        "var numbers: Array<i32> = [1, 2]\nrequire total(numbers@uniq) == 5 and numbers[0] == 2 and numbers[1] == 3 else => $abort(\"exclusive\")\nConsole.writeLine(\"ok\")";
+
     private const string UniqLiteralSource =
         "func f(x: uniq/i32) -> i32 => match x\n    0 => 10\n    _ => 20\n" +
         "var n: i32 = 0\nrequire f(n@uniq) == 10 else => $abort(\"zero\")\nn = 3\nrequire f(n@uniq) == 20 and n == 3 else => $abort(\"other\")\nConsole.writeLine(\"ok\")";
@@ -94,9 +106,20 @@ public class SharedSubjectTest
     [Theory]
     [InlineData("UniqMatch", UniqMatchSource, "hi\nhi\nhi\nhi\n")]
     [InlineData("UniqLiteral", UniqLiteralSource, "ok\n")]
+    [InlineData("Acquisition", SubjectAcquisitionSource, "made\na\nb\nhello\nok\n")]
     [InlineData("UniqIteration", UniqIterationSource, "a\nb\nok\n")]
     public void ExclusiveBorrowValuesKeepTheirMode(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedSubject" + name, source, stdout);
+
+    [Theory]
+    [InlineData(Message + "var message: Message = .Write(\"hi\")\nmatch message\n    .Write(let text)\n        let owned: string = text@move\n    .Quit => ()")]
+    [InlineData("func makeAll() -> Array<string> => [\"a\"]\nlet names = makeAll()\nfor s in names\n    let owned: string = s@move")]
+    public void BarePlaceSubjectsStayBorrowed(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+    }
 
     [Theory]
     [InlineData("var values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    values.append(4)")]
