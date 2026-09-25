@@ -109,6 +109,8 @@ func update(node: uniq/Node)
 
 同じ経路選択を、`for`の借用入口のreceiver（§7.1）と、構造を要求するPattern（§7.2）にも用いる。Scalar readと比較は§3.3で定める終端を選ぶ。receiverは対象宣言、Patternは必要な構造を見つけた層で止め、すべての操作を無条件に終端までたどらせない。各層の権限・Origin・Loanを保ち、共有経路を越えて排他権限を回復しない。
 
+総称本体では、公開制約・型等式で正規化しても形状が未確定の型引数や関連型を経路の終端とする。その地点では公開された能力だけを使い、具体化後に参照層・探索先・比較方式を選び直さない。宣言済みの等式で参照形状が証明できる場合は、その既知の経路を定義時に選べる。これはreceiver・列挙入口・Pattern・Scalar read・比較に共通する。
+
 裸の通常取得や単独の名前の束縛では参照を外さない。`@ref`／`@uniq`は省略の対象でなく、必ず直前のスロットを借りる。値receiverも§3の取得規則に従い、経路を見つけただけでは非Scalarの参照先を値取得しない。更新要求の伝播も投影経路に限り、`matrix[f()][j] = value`の`f()`の内部や、通常の関数・getterの背後まで伝播させない。
 
 ## 3. 値の取得と暗黙適合
@@ -221,6 +223,8 @@ for number in references     // references: Array<ref/i32>。
 `==`、`!=`、`<`、`<=`、`>`、`>=`は、各オペランドの安全な値参照（ref／uniq）を終端までたどり、その型へ既存§13.4の比較を適用する。参照をたどるだけでは値を取得せず、選択後のCopyまたは共有観察は既存の比較規則に従う。終端型の一致、literal適合、比較能力、Tuple内の比較順序・短絡、浮動小数点の規則を維持する。Contract比較の意味を組み込み比較へ置き換えない。
 
 object・raw pointerは自動投影せず、終端型自身の既存規則で扱う。参照の層ごとの有効性を保ち、必要な検査Loanは選んだ場所を保護する。左右の評価順序とLoanの開始・終了は既存どおりであり、右辺の副作用で左辺を無効化できない。
+
+例えば`T is Equatable`の総称コードで`ref/T`同士を比較するなら、既知の一層を選んでTのEquatableを使う。Tが具体化後に`ref/f32`でも、そのContract比較を追加の参照追跡や浮動小数点の組み込み`==`へ変更しない（§2.5）。
 
 ```kimi
 // names: Array<ref/string>。nameはref/(ref/string)。
@@ -464,49 +468,53 @@ Sliceの要素用indexは共有receiverを取り、具体的な公開結果を`p
 ### 6.2. Origin引数を持つ関連型
 
 ```text
-associate Item{step}                    // 要求の宣言
-associate Item{step} is E               // 所有値など
-associate Item{step} is ref/E during step
-associate Item{step} is uniq/E during step
-associate Item{step} is ref/E during source
+associate Item(step)                    // 要求の宣言
+associate Item(step) is E               // 所有値など
+associate Item(step) is ref/E during step
+associate Item(step) is uniq/E during step
+associate Item(step) is ref/E during source
 ```
 
-stepは関連型宣言が導入する仮Origin、sourceは囲む環境で束縛済みのOriginである。仮Originのスコープはその関連型宣言の右辺と付属する制約節に限り、兄弟のメソッド宣言へ漏らさない。メソッド署名の同名Originは別の束縛であり、`Self.Item{step}`で明示的に適用する。重複名・隠蔽は既存のOrigin名前規則に従う。
+stepは関連型宣言が導入する仮Origin、sourceは囲む環境で束縛済みのOriginである。仮Originのスコープはその関連型宣言の右辺と付属する制約節に限り、兄弟のメソッド宣言へ漏らさない。メソッド署名の同名Originは別の束縛であり、`Self.Item(step)`で明示的に適用する。重複名・隠蔽は既存のOrigin名前規則に従う。
 
-使用時の`Item{a}`は、仮Originへ既存のOrigin式を位置順に代入した通常の完全型である。引数には`during`と同じOrigin atomを使い、交差は括弧で囲む。個数を一致させ、未適用・部分適用・`_`・引数省略は許さない。名前の変更では別の契約にせず、実行時の型計算やPlace型にもならない。
+型文脈の`Item(a)`は、仮Originへ既存のOrigin式を位置順に代入した通常の完全型である。引数には`during`と同じOrigin atomを使い、交差は`Item((a and b))`のように括弧で囲む。宣言・適用とも一つ以上の引数を要求し、個数を一致させる。未適用・部分適用・`_`・引数省略は許さない。名前の変更では別の契約にせず、実行時の呼び出し・型計算・Place型にもならない。
 
 #### 6.2.1. 形成条件の宣言と検査
 
-関連型要求の直下に、既存の`origin a outlives b`／`origin a == b`と、**`wellformed Type`**を一段下げて記述できる。wellformedはこの制約節だけの文脈語であり、指定した型に内在するOrigin形成条件を要求の定義域へ加える。型構造・Semantics・能力・長さの成立は囲む公開制約から先に証明し、wellformedからCopyなどの能力を推論しない。既存の型形成検査を再利用し、実行時操作や値の借用は行わない。Place結果はTypeに指定できない。
+新しい関連型要求の定義域には、囲む契約と付属する`origin`関係節を使う。右辺を完全型に固定する要求は、その公開された右辺のOrigin形成条件も自動的に含める。`is Iterator`などの能力制約は完全型の指定ではない。
+
+右辺を完全型に固定しない要求では、直下に**`wellformed Type`**を一段下げて記述し、必要な型のOrigin形成条件を公開できる。wellformedはこの節だけの文脈語であり、型構造・Semantics・能力・長さの成立は囲む公開制約から先に証明する。Copyなどの能力を推論せず、既存の型形成検査を再利用する。Place結果はTypeに指定できない。
 
 ```kimi
 // Eは囲むContractの完全型引数。
-associate View{a} is ref/E during a
-    wellformed ref/E during a
+associate View(a) is ref/E during a
 
-associate Item{step}
+associate Item(step)
     wellformed uniq/Self during step
 ```
 
-前者はE内部の観察可能なOriginがaの間有効であることを、後者はSelfをstepの間借用する型が形成可能であることを要求する。必要な既存Originを名前で指定できる場合は、同じ節へ`origin source outlives a`などを追加できる。型形成条件はLoanやアクセス権限を生成せず、実際の借用時にそれらを別途検査する。
+前者は右辺からE内部の観察可能なOriginがaをoutliveする条件を得る。後者はItemの型を固定せず、Selfの借用型が形成可能なstepを定義域とする。既存Originを名前で指定できる場合は、同じ節へ`origin source outlives a`などを付けられる。形成条件はLoanやアクセス権限を生成せず、実際の借用時に別途検査する。
 
-要求の条件は公開契約として固定し、使用側は代入後の条件を証明する。実装・精緻化は要求が許す全引数で結果型を形成できなければならず、右辺や本体から強い条件を追加して定義域を狭めない。実装側の付属節は継承条件から証明する義務である。条件がない要求は囲む契約が許すすべての仮Originを対象とする。閉じた矛盾、循環した自己証明、Unknownを成立扱いすることは拒否する。
+付属節は既存§15.3.3と同じ順に処理する。まず右辺の未束縛Originを等式などで束縛し、その完全型を確定する。例えば`Borrowed<Self>{view}`と`origin view.source == a`は、未束縛のsourceをaへ定める定義である。set名を付けただけではOriginを作り直さず、既に束縛済みの型は再束縛しない。
+
+新規要求では、確定した右辺と明示条件から定義域を公開し、使用側が代入後の条件を証明する。実装・継承要求の精緻化では、右辺の束縛後に残る条件と形成義務を継承した定義域から証明する。右辺や本体を理由に呼び出し条件を追加・強化しない。右辺も追加条件もない要求は、囲む契約が許すすべての仮Originを対象とする。閉じた矛盾、循環した自己証明、Unknownの成立扱いは拒否する。
 
 IteratorのItemには`wellformed uniq/Self during step`、Iterable／UniqIterableのIteratorTypeには対応する`ref/Self`／`uniq/Self during source`を記述する。標準型も同じ仕組みで扱い、返す型の内部依存を保持する。関連型の共変性は仮定せず、共有Originの短縮はoutlives、排他借用の短縮は適法な再借用に従う。条件・束縛・型形成義務は通常の静的メタデータに保存し、Origin引数で実行時表現を増やさない。
 
-Contractの精緻化でも、`associate Parent.Item{a} is E`で継承した関連型の等式を指定できる。aはこの等式の仮Originであり、親の定義域にあるすべてのaについて成立しなければならない。Eがaを使わなければ、Itemはその引数に依存しない。この等式だけで実際のLoanの独立性を証明したことにはならない。
+Contractの精緻化でも、`associate Parent.Item(a) is E`で継承した関連型の等式を指定できる。aはこの等式の仮Originであり、親の定義域にあるすべてのaについて成立しなければならない。Eがaを使わなければ、Itemはその引数に依存しない。この等式だけで実際のLoanの独立性を証明したことにはならない。
 
 #### 6.2.2. binding-set記法との境界
 
-型名・短縮名・修飾名を通常の規則で解決してから、宣言の種類で`{...}`の役割を確定する。空白や型検査の成否で解釈を切り替えない。
+役割を構文位置で確定し、空白・名前解決の結果・型検査の成否で切り替えない。
 
-| 解決した対象 | `{...}`の意味 |
+| 構文 | 意味 |
 | --- | --- |
-| Origin仮引数を持つ関連型 | 既存Originの適用。新しい名前を導入しない |
-| 通常の名前付き型、Origin仮引数のない関連型 | 既存§15.3.1のbinding-set命名。非空で既知のschemaを要求する |
-| 適用済みの関連型を指す合法な固定別名 | 通常型と同じ命名。束縛済みOriginを再束縛しない |
+| `associate Item(a)`の宣言・実装見出し | 仮Originの導入 |
+| 型文脈の`Self.Item(a)` | 既存Originの適用。解決先に対応する仮引数を要求する |
+| 名前付き型の`View<T>{v}` | 既存§15.3.1のbinding-set命名。非空で既知のschemaを要求する |
+| `Self.Item(a){v}` | 適用済みの型のbinding-set命名。内部schemaが既知の場合だけ許す |
 
-未適用の関連型の族を指す別名や、型引数としての族の受渡しは追加しない。適用済みの型へset名を付ける必要があれば、既存の別名規則で命名可能な型に固定してから使う。関連型適用へ二組目の波括弧を直結する記法は設けない。誤った個数、未知Origin、別名の不成立からbinding-set命名へ戻らない。
+型文脈の名前付き型に続く`(...)`だけをOrigin適用の接尾辞として追加する。単独の`(...)`による型の括弧・Tuple／Function Typeと、値文脈の関数呼び出しは既存どおりであり、相互に読み替えない。通常型へのOrigin適用、引数の誤り、未適用の関連型の族はエラーとする。型引数・別名へ未適用の族を渡さず、適用済みの合法な固定別名は既存の命名規則に従う。`{...}`をOriginの位置引数へ解釈する規則は設けない。
 
 ### 6.3. 要求の同定と実装照合
 
@@ -514,11 +522,11 @@ Contractにも完全型の型引数を許す。`Indexable<Key>`のように宣�
 
 要求は定義元Contractの宣言Identityと、型引数を含む束縛済み環境で識別する。`Indexable<isize>`と`Indexable<Index>`は別の適合であり、各Elementは独立して指定する。同じ要求への複数経路は、関連型・Origin条件・実装対応が同値の場合だけまとめる。独立した同名要求は同じ型を返しても同一視しない。
 
-完全修飾は`T.(Contract).Item{a}`とし、要求内の短縮名はその要求を指す。外部の短縮名は通常メンバーを優先し、要求が一意な場合だけ使える。名前・対象適合・実装宣言を先に確定し、結果型やLoan違反を理由に選び直さない。
+完全修飾は`T.(Contract).Item(a)`とし、要求内の短縮名はその要求を指す。外部の短縮名は通常メンバーを優先し、要求が一意な場合だけ使える。名前・対象適合・実装宣言を先に確定し、結果型やLoan違反を理由に選び直さない。
 
-既存の使用側の`T.Contract.Item`はこの完全修飾へ統一する。次段落の`associate Contract.Item`はSelfの実装指定であり、使用側の型投影とは区別する。Origin引数の例示表記は`Item{a}`に統一し、空白の有無で意味を変えない。
+既存の使用側の`T.Contract.Item`はこの完全修飾へ統一する。次段落の`associate Contract.Item`はSelfの実装指定であり、使用側の型投影とは区別する。Origin引数の例示表記は`Item(a)`に統一し、空白の有無で意味を変えない。
 
-型本体での関連型指定は`associate Contract.Item{a} is Type`とする。要求が一意ならContract修飾を省略できる。aは実装側の仮Originであり、要求の仮引数と位置で対応する。IterableとUniqIterableなど、独立した同名要求はそれぞれ修飾して指定する。
+型本体での関連型指定は`associate Contract.Item(a) is Type`とする。要求が一意ならContract修飾を省略できる。aは実装側の仮Originであり、要求の仮引数と位置で対応する。IterableとUniqIterableなど、独立した同名要求はそれぞれ修飾して指定する。
 
 既知の要求・明示指定・実装署名の型等式から一意に決まる情報だけ省略できる。署名の照合にはreceiver、完全型、Origin引数、結果カテゴリを含める。本体、暗黙適合、Copy判定、具体化時の偶然から推論しない。複数の要求の推論結果が一致しなければエラーとする。
 
@@ -597,9 +605,9 @@ contract UniqCursor: Cursor
     func currentUniq(self: uniq/Self) -> place(uniq, Element) during self
 
 contract Iterator
-    associate Item{step}
+    associate Item(step)
         wellformed uniq/Self during step
-    func next(self: uniq/Self during step) -> Option<Self.Item{step}>
+    func next(self: uniq/Self during step) -> Option<Self.Item(step)>
 ```
 
 Cursorは作成直後とadvanceがfalseの後にcurrentを持たず、current／currentUniqはAbortする。trueの後は次のadvanceまで同じ論理的要素を選ぶ。false後のadvanceで再びtrueを返してもよい。これは実装が守るAPI契約であり、コンパイラに状態機械の自動証明や実行時フラグの挿入は要求しない。要素の借用と競合するadvance・更新・破棄は通常のLoan検査で拒否する。
@@ -619,7 +627,7 @@ Iteratorは各nextのreceiver LoanとOriginをItemへ代入する。一般のIte
 ```kimi
 struct Countdown
     Self is Iterator
-    associate Iterator.Item{step} is i32
+    associate Iterator.Item(step) is i32
     var remaining: i32 = 3
 
     public func next(self: uniq/Self during step) -> Option<i32>
@@ -632,14 +640,14 @@ struct Countdown
 
 ```kimi
 contract Iterable
-    associate IteratorType{source} is Iterator
+    associate IteratorType(source) is Iterator
         wellformed ref/Self during source
-    func iterate(self: ref/Self during source) -> Self.IteratorType{source}
+    func iterate(self: ref/Self during source) -> Self.IteratorType(source)
 
 contract UniqIterable
-    associate IteratorType{source} is Iterator
+    associate IteratorType(source) is Iterator
         wellformed uniq/Self during source
-    func iterateUniq(self: uniq/Self during source) -> Self.IteratorType{source}
+    func iterateUniq(self: uniq/Self during source) -> Self.IteratorType(source)
 
 contract IntoIterable
     associate IteratorType is Iterator
@@ -650,18 +658,20 @@ contract IntoIterable
 
 UniqIterableはreceiverをuniqで借りる入口であり、Itemが排他参照であることや要素の変更可能性までは保証しない。UniqIndexable／UniqCursorでは個々の要求が排他Place結果も規定する。いずれも実際の型・権限は名前から推測せず、要求署名で決める。
 
-要素型は選択したIteratorTypeの`Iterator.Item{step}`で決まる。外側の列挙モードからItemのSemanticsを強制しない。同名メソッドによるduck typing、IteratorからIterableへの自動導出、参照型への自動列挙適合は行わない。
+要素型は選択したIteratorTypeの`Iterator.Item(step)`で決まる。外側の列挙モードからItemのSemanticsを強制しない。同名メソッドによるduck typing、IteratorからIterableへの自動導出、参照型への自動列挙適合は行わない。
 
 Iteratorと列挙入口の同時適合は禁止しない。標準Iteratorと§8.6の各アダプターは、自身を転送するIntoIterableと、`Borrowed<Self>`を返すUniqIterableに明示的に適合する。`for x in it@uniq`はIteratorを借りて進め、途中終了後に残りを再利用できる。`it@move`はIteratorの所有権と残部のcleanup責任を移す。全要素を必ず消費する保証ではない。
 
 ユーザー型には自動適合を与えず、同じ実装か§8.6のアダプターを使う。例えばCountdownの型本体に次を追加する。裸の一時SubjectをByValueへ変える特例や、共有借用でIteratorを進める標準適合は設けない。
+
+入口を型自身へ追加しない場合も、`for x in Kimi.Iteration.owned(it@move)@move`、または`for x in Kimi.Iteration.borrowed(it@uniq)@move`で使える。この用途だけの導出Contractや、Contractの既定本体は追加しない。
 
 ```kimi
 // Countdownの型本体へ追加する宣言。
 Self is IntoIterable
 Self is UniqIterable
 associate IntoIterable.IteratorType is Self
-associate UniqIterable.IteratorType{a} is Kimi.Iteration.Borrowed<Self>{view}
+associate UniqIterable.IteratorType(a) is Kimi.Iteration.Borrowed<Self>{view}
     origin view.source == a
 public func intoIterator(self: Self) -> Self
     return self@move
@@ -728,34 +738,40 @@ Eが`ref/Node during b`なら、共有Itemは`ref/(ref/Node during b) during a`�
 ```kimi
 contract IndependentIterator: Iterator
     associate StableItem
-    associate Iterator.Item{step} is StableItem
+    associate Iterator.Item(step) is StableItem
 ```
 
-`Kimi.IndependentIterator`は、取得済みItemが**nextのreceiver Loan・Iterator自身のStorageへの依存を理由に**後続のnext・Move・置換・破棄を妨げないことを保証する標準Contractとする。外部副作用との非競合までは保証しない。StableItemはstepに依存しない配送値の完全型であり、値の不変性を意味しない。格納要素を指すIndexable／CursorのElementとは区別する。`for`は引き続きIteratorだけを使う。
+`Kimi.IndependentIterator`は、**取得済みItemを保持したまま次のnextとIteratorのMoveを行える**ことを保証する標準Contractとする。StableItemはstepに依存しない配送値の完全型であり、値の不変性を意味しない。格納要素を指すIndexable／CursorのElementとは区別する。`for`は引き続きIteratorだけを使う。
 
-適合には、すべての有効なstepについて次を要求し、型等式と通常の所有権・Loan検査で検証する。
+適合には、すべての有効なstepと許された型束縛について、次を要求する。
 
 1. Itemの完全型はstepに依存しないStableItemである。
 2. 返却値は、nextのreceiver LoanやIterator自身のStorageに依存しない。外部source・所有者・必要な親Loanへの依存は保持する。
-3. 分割した排他領域では、返却済み結果と残部のanchorが非重複である。Iterator自身のStorageや残部を移動・破棄しても、返却済み領域を無効化しない。
+3. 分割した排他領域では、返却済み結果と残部のanchorが非重複である。Iterator自身のStorageを移動・解放しても返却済み領域を無効化しない。
+4. **nextの効果は、同じIteratorの返却済みItemが保持するLoanと競合しない。** 読み書き、借用、結果のLoan形成、static・captureへのアクセス、その呼び出し内のcleanupを含む。返却済みItemから通常の転送・再借用で維持されたLoanも対象とする。IteratorのMoveはこの保証を引き継ぐ。
 
-Iterator専用の効果体系は設けない。通常の所有権・Loan検査と§9.1の分割から上記の保証を得る。static・capture・要素の内部参照・cleanupが観察する外部Storageについては、実際の使用箇所で通常の効果検査を行う。例えば返却済み要素が借りるstatic Fieldを残部のdestructorが更新するなら、Itemを保持したままのIterator破棄は拒否する。関連型の等式や長いOrigin注釈でその競合を消さない。
+第4項をnextの公開Effect契約の上限とし、既存のroot・Loan・効果要約と§9.1の分割で適合時に検証する。すべての実装・特殊化と呼び出し先の効果を含め、証明できない実装は適合を公開できない。型等式や長いOriginだけではこの保証を得られない。専用の実行時台帳や一般の効果指定構文は追加しない。
 
-標準コレクションの§8.4に掲げた全Iteratorはこの契約に適合する。ユーザー型は`Self is IndependentIterator`で要求し、検証に成功した場合だけ公開できる。単なるIterator適合から自動導出しない。
+総称コードはこの上限をrequirementの公開要約として使い、実装本体を再解析せず、保持中のItemに対する後続nextを検証できる。これは純粋性の保証ではない。Itemと無関係な呼び出し側のLoan、明示した別の操作、結果の寿命は通常どおり検査する。
+
+標準コレクションの§8.4に掲げた全Iteratorはこの契約に適合する。nextは検証済みの走査・分離・転送だけを行い、利用者の比較・destructor・callbackを呼ばない。ユーザー型は`Self is IndependentIterator`で要求し、検証に成功した場合だけ公開できる。単なるIterator適合から自動導出しない。
 
 ```kimi
-var numbers: Array<i32> = [1, 2, 3]
-var iterator = numbers.iterateUniq()
-let first = iterator.next()
-let second = iterator.next() // 要素領域が非重複で、競合する外部効果もない。
-let pair = (first@move, second@move) // 両結果を同時に保持する。
+func nextPair<I>(iterator: uniq/I)
+    -> (Option<I.StableItem>, Option<I.StableItem>)
+    I is IndependentIterator
+    let first = iterator.next()
+    let second = iterator.next() // 公開された効果上限により、firstを保持できる。
+    return (first@move, second@move)
 ```
 
-任意のIから二要素を保持する総称関数も、`I is IndependentIterator`だけで無条件に成立するとはしない。公開された通常のLoan・効果情報から外部の非競合を証明できる必要があり、証明できない総称本体は定義時に拒否する。
+**Iterator全体の破棄・置換は、nextとは別の効果である。** 残部のdestructorが返却済みItemの借用先を更新する場合、その破棄は拒否する。Move先の旧値の破棄もMove自体の保証に含めない。標準の借用Iteratorのcleanupは借用ハンドルだけを終了し、所有Iteratorのcleanupは残る要素型の破棄要約を使う。
+
+したがって、借用したIteratorからItemを蓄積する総称処理は書けるが、所有引数を最後に破棄する`collect<I>(it: I)`の全経路まで、この契約だけで許可するものではない。所有する版には、返却結果とcleanupが非競合である証明も必要である。未知の破棄効果を空と扱ったり、本体から隠れた条件を追加して具体化時へ検査を遅らせたりしない。
 
 結果の外部Loanによる元コレクションの保護は、この契約でも終了しない。一般のIteratorを使う処理は、Itemを次のnextまでに使い終えるか、公開された依存契約から個別に非競合を証明する。
 
-ユーザー型やアダプターへの委譲にも共通の投影・転送・呼び出し効果の規則を使う。自分自身を借りる結果を加えたラッパーは独立性を失う。別コンパイル・間接呼び出しには型等式と通常の公開Loan・効果情報を渡し、Iterator専用の証明書は要求しない。
+ユーザー型やアダプターへの委譲にも共通の投影・転送・効果要約を使う。自分自身を借りる結果や、返却済みItemと競合するnextの副作用を加えたラッパーは独立性を失う。別コンパイル・間接呼び出しへも上限と実際の依存を渡し、保証を失う型消去で新しい権限を得ない。
 
 ### 8.6. 標準アダプターとDrain
 
@@ -763,14 +779,16 @@ let pair = (first@move, second@move) // 両結果を同時に保持する。
 
 | 操作 | 結果型（同group内） | 契約 |
 | --- | --- | --- |
-| `owned(iterator)` | `Owned<I>` | Iteratorを値で受け取り、その`Item{step}`と依存を転送する。Non-CopyのPlaceは呼び出し側で`@move`する |
+| `owned(iterator)` | `Owned<I>` | Iteratorを値で受け取り、その`Item(step)`と依存を転送する。Non-CopyのPlaceは呼び出し側で`@move`する |
 | `borrowed(iterator)` | `Borrowed<I>` | `uniq/I`を受け取って保持する。元のIteratorを進めるがMoveしない。ItemはIの契約を保つ |
 | `shared(cursor)` | `Shared<C>` | Cursorを値で受け取り、advance成功後のcurrentを借りて`ref/Element during step`を返す |
-| `mutable(cursor)` | `Mutable<C>` | UniqCursorを値で受け取り、advance成功後のcurrentUniqから`uniq/Element during step`を返す |
+| `uniq(cursor)` | `Uniq<C>` | UniqCursorを値で受け取り、advance成功後のcurrentUniqから`uniq/Element during step`を返す |
 
-BorrowedはOriginスロットsourceを持ち、入力の外側借用Originに結び付ける。各結果型はI／C内部の依存も保つ。borrowedのItemのstepは実際のnext再借用に対応する。OwnedとBorrowedは`I is IndependentIterator`の場合に限り同じStableItemでIndependentIteratorにも適合し、通常の型等式とLoan依存を転送する。SharedとMutableはstepに依存するlending型であり、この追加適合を持たない。CursorアダプターはPlaceをOptionに入れず、通常の参照をpayloadにする。
+uniqはSemantics位置だけの文脈語であるため、`Kimi.Iteration.uniq(cursor)`は通常の関数呼び出しであり、明示借用の`@uniq`とは別の操作である。
 
-Shared／Mutableは自身の終了状態を保持する。未終了ならadvanceを一度呼び、trueのときだけ対応するcurrentを呼ぶ。最初のfalseで終了状態に入り、その後はCursorを呼ばずNoneを返す。したがってCursor自身の終了後の挙動に依存せずfusedとなる。終了状態の表現は既存の位置情報と統合してよい。
+BorrowedはOriginスロットsourceを持ち、入力の外側借用Originに結び付ける。各結果型はI／C内部の依存も保つ。borrowedのItemのstepは実際のnext再借用に対応する。OwnedとBorrowedは`I is IndependentIterator`の場合に限り同じStableItemでIndependentIteratorにも適合し、型等式・Loan依存・nextの効果上限を転送する。SharedとUniqはstepに依存するlending型であり、この追加適合を持たない。CursorアダプターはPlaceをOptionに入れず、通常の参照をpayloadにする。
+
+Shared／Uniqは自身の終了状態を保持する。未終了ならadvanceを一度呼び、trueのときだけ対応するcurrentを呼ぶ。最初のfalseで終了状態に入り、その後はCursorを呼ばずNoneを返す。したがってCursor自身の終了後の挙動に依存せずfusedとなる。終了状態の表現は既存の位置情報と統合してよい。
 
 ```kimi
 // iteratorはUniqIterableに適合する書き込み可能な所有変数。
@@ -811,47 +829,58 @@ Iteratorや残部ハンドルの破棄は、返却済みの子Loanを終了さ�
 
 #### 9.1.2. 標準Storageの内部API
 
-標準Kimi実装だけが利用できる検証済み内部APIとして、`Kimi.Intrinsics`に二種類の不透明なNon-Copy型を設ける。利用者向けの排他Sliceや任意のraw pointer変換は追加しない。
+検証済みの内部APIを、Kimi直下の**`internal group Storage`**へ置く。型と操作もinternalとし、既存§9.3により同じKimi Kotonohaだけから利用できる。公開の`Kimi.Intrinsics`とは分離し、別名・再公開・同名宣言でアクセスや組み込みの権限を得られない。
+
+以下の三型は不透明なNon-Copy型とする。公開Iteratorはprivate Fieldとして保持できるが、公開結果・関連型にこれらの内部型を直接露出しない。利用者向けの排他Sliceやraw pointer変換は追加しない。
 
 | 型 | 保持する責任 |
 | --- | --- |
+| `RefRemainder<S>` | Originスロットsourceの共有Loanと未取得部分の走査位置。S自体は所有しない |
 | `UniqRemainder<S>` | Originスロットsourceの親Loanと未取得部分への排他アクセス。S自体は所有しない |
 | `OwnedRemainder<S>` | Sから移されたStorageと未返却要素の破棄責任。S内部の依存も保持する |
 
-Sは下表の三形式に限定する。各操作は表の形式ごとにE、K、V、必要なら`length N`を宣言したoverloadとして提供する。以下のS、B、Oは署名をまとめるための説明記号であり、未知のSに対する汎用適合や新しい型関数ではない。
+Sは下表の三形式に限定する。各操作は表の形式ごとにE、K、V、必要なら`length N`を宣言したoverloadとして提供する。S、R、U、Oは署名をまとめる説明記号であり、未知のSへの汎用適合や新しい型関数ではない。
 
-| S | 分離する借用値B(a) | 取り出す所有値O |
-| --- | --- | --- |
-| `Array<E>`、`[N of E]` | `uniq/E during a` | E |
-| `Dictionary<K,V>` | `(ref/K during a, uniq/V during a)` | `(K,V)` |
+| S | 共有結果R(a) | 排他結果U(a) | 所有結果O |
+| --- | --- | --- | --- |
+| `Array<E>`、`[N of E]` | `ref/E during a` | `uniq/E during a` | E |
+| `Dictionary<K,V>` | `(ref/K during a, ref/V during a)` | `(ref/K during a, uniq/V during a)` | `(K,V)` |
 
 | 操作の署名テンプレート | 契約 |
 | --- | --- |
+| `borrowStorage(value: ref/S during a) -> RefRemainder<S>{r}` | `origin r.source == a`。共有Loanを保持し、先頭から走査する |
 | `borrowStorage(value: uniq/S during a) -> UniqRemainder<S>{r}` | `origin r.source == a`。受け取った全体への権限を未取得部分へ移し、独立した全体アクセスを残さない |
 | `ownStorage(value: S) -> OwnedRemainder<S>` | 取得したSのStorageとcleanup責任を転送する |
-| `splitFirst(state: uniq/UniqRemainder<S>{r}) -> Option<B(r.source)>` | 未取得の先頭を子Loanとして分離し、残部を更新してから返す。結果はstateの短い借用・スロットに依存しない |
+| `splitFirst(state: uniq/RefRemainder<S>{r}) -> Option<R(r.source)>` | 未取得の先頭を共有で借り、走査位置を進める |
+| `splitFirst(state: uniq/UniqRemainder<S>{r}) -> Option<U(r.source)>` | 未取得の先頭を子Loanとして分離し、残部の権限を更新する |
 | `takeFirst(state: uniq/OwnedRemainder<S>) -> Option<O>` | 未返却の先頭をMoveし、未初期化状態と破棄責任を更新してから返す |
 
-例えばArray用の取り出し署名は次になる。辞書・固定配列にも表を展開した署名を使う。
+借用結果はsourceに依存し、stateの短い借用・スロットには依存しない。共有版は排他的な領域分割を要求せず、結果同士の重複も安全性違反にはしない。走査順序と一要素一回の配送は共有版にも適用する。例えばKimi.Storage内のArray用署名は次になる。
 
 ```kimi
-func splitFirst<E>(state: uniq/UniqRemainder<Array<E>>{r})
+internal func splitFirst<E>(state: uniq/RefRemainder<Array<E>>{r})
+    -> Option<ref/E during r.source>
+internal func splitFirst<E>(state: uniq/UniqRemainder<Array<E>>{r})
     -> Option<uniq/E during r.source>
-func takeFirst<E>(state: uniq/OwnedRemainder<Array<E>>)
+internal func takeFirst<E>(state: uniq/OwnedRemainder<Array<E>>)
     -> Option<E>
 ```
 
 構築時に、借用または所有する対象のCompletenessを検査する。型の内部表現・構築・複製・初期化状態の変更は上記の操作だけに閉じ、空のハンドルを含めて一般のField操作から権限を偽造できない。splitFirst／takeFirstは空ならNone、非空なら先頭を一度だけ返す。順序は§8.4に従い、利用者のcallbackを呼ばない。OwnedRemainderは未返却部分だけを保持する有効な値であり、取り出し後もハンドル自体はCompleteである。穴を含むS全体への安全な参照は公開しない。
 
-UniqRemainderの破棄は残部のアクセス権限だけを終了し、要素を破棄しない。OwnedRemainderは未返却部分を元のコレクションのcleanup順序で一度だけ破棄し、所有する領域を解放する。返却済み要素を再び破棄せず、残部のdestructorが持つ外部効果は通常の呼び出し側検査へ公開する。借用先へTakeを追加する操作ではなく、不透明な所有状態の契約に基づく取り出しである。
+RefRemainder／UniqRemainderの破棄はハンドルが保持する権限だけを終了し、要素も返却済み結果のLoanも破棄しない。OwnedRemainderは未返却部分を元のコレクションのcleanup順序で一度だけ破棄し、所有する領域を解放する。返却済み要素を再び破棄せず、残部のdestructorの外部効果を通常の破棄要約へ公開する。借用先へTakeを追加する操作ではなく、不透明な所有状態に基づく取り出しである。
 
-型束縛を固定したsplitFirst／takeFirstの管理処理は一回O(1)、借用ハンドルの構築・破棄と追加管理領域もO(1)とする。辞書は生存entryの順序情報を使いcapacityを走査しない。配列では先頭と残数などで残部を表せ、呼び出しごとの要素配列・ヒープ確保・実行時Loan記録は不要である。所有する元Storageの大きさ、要素の転送・cleanupは別に数える。
+型束縛を固定したsplitFirst／takeFirstの管理処理は、Array／固定配列では一回O(1)、Dictionaryでは償却O(1)とする。空・終了後はO(1)、走査全体は開始時の生存要素数nに対してO(1 + n)を維持する。借用ハンドルの構築・破棄と追加管理領域もO(1)とし、capacity走査や参照配列の事前生成は行わない。所有する元Storageの大きさ、要素の転送・cleanupは別に数える。
 
-この限定した組み込み境界だけが、安全なソースコードから導けない動的anchorの非重複と初期化状態の更新を保証する。実装は全経路で§9.1.1を満たし、アドレス・権限・依存を偽る実装は不正である。共有列挙は既存の読み取り投影を使い、非重複な排他領域の生成を必要としない。標準Iteratorの残りの処理とユーザーの委譲実装は、同じ通常のLoan規則で検査する。ユーザー定義の任意Storageへ同等の境界を登録する構文は、raw Storage APIの設計まで追加しない。
+Array／固定配列の共有・排他走査は、先頭と残数などで有効な未取得範囲を保持する。非空判定で次の一要素が有効と分かるため、公開indexの呼び出しや別の添字範囲検査を経由しない。空・終了判定は残し、サイズゼロも論理位置を進める。Dictionaryは内部の生存entryの順序情報を用いる。hash探索用のtombstoneと走査管理を区別し、償却という語でcapacityに比例する空き走査を許さない。
+
+この限定した組み込み境界が、Storageの有効性、動的anchorの非重複、初期化状態の更新を保証する。型・Loan・効果は標準の宣言Identityに結び付け、同じ綴りを根拠に権限を与えない。標準Iteratorの残りの処理とユーザーの委譲実装は通常のLoan規則で検査する。任意のユーザーStorageへ同等の境界を登録する構文は、raw Storage APIの設計まで追加しない。
 
 #### 9.1.3. 公開効果の伝達
 
 通常の関数と同じく、結果のanchor・親Loan・残部の非重複、static・capture・cleanupの効果を静的な公開情報へ含める。呼び出し側はその情報を合成し、別コンパイルや間接呼び出しでprivateな本体を再解析しない。不明な効果は保守的に扱い、関数型変換で保証を失っても既存Loanを消去しない。Unsafeという指定だけで独立性や長いOriginを作れない。
+
+IndependentIteratorのnextには§8.5の効果上限を含め、適合を使う総称呼び出しへ保持する。Iterator全体の破棄要約とは合算せず、各操作の実行地点で対応する効果を検査する。要素型に依存するcleanupは既存§4.7.5と同じ記号的要約を使う。
 
 ### 9.2. 表現と計算量
 
@@ -893,6 +922,8 @@ Rが`ref/T`・`uniq/T`・`obj/T`・`rc/T`・`arc/T`・`objref/T`・`objuniq/T`�
 
 格納先への直接構築・転送は、通常の関数結果・集約構築にも使える共通の最適化とする。元の格納先が以後観察されず、必要なアドレスの安定性、論理的な場所、Loan、初期化状態、cleanupの順序・回数を保てる場合だけ行う。利用者が指定したコピーや借用の意味を、最適化の都合でMoveへ変更しない。
 
+固定配列の`for x in array@move`にも同じ規則を使い、OwnedRemainderが移動元の物理領域を引き継いで、開始時の配列全体の転送を省略してよい。残部・束縛への転送とcleanupの責任は移す。Move済みという事実だけでは十分でなく、移動元の再初期化、アドレス観察、Iteratorの逸出を検査する。元の領域の有効期間を越える結果へスタックへのポインタだけを渡してはならず、条件を満たさない場合は通常の転送を行う。
+
 Tuple分解は選ばれた成分を直接配送できる。Wildcardでもnextと必要な破棄は省略せず、未束縛部分の破棄責任を保持する。標準の所有IteratorとOwnedアダプターは、配送のためだけの要素配列・ヒープ領域を作らない。
 
 ### 9.4. 共通最適化の対象
@@ -917,11 +948,11 @@ Tuple分解は選ばれた成分を直接配送できる。Wildcardでもnextと
 | 型・取得（第3、10、13、15章） | Placeの通常取得はCopy、移動は`@move`。所有分解と配送済み値の転送を区別。確定した期待型・結果源の共通適合、多層Scalar read、取得可能な候補間の優先順位とCopy変更の影響を規定。§10.3の適合範囲を置換し、寿命検査では再選択しない |
 | Field・配列・投影（第4、11、12、13章） | Indexable／UniqIndexable、検索引数借用・標準適合・範囲添字、暗黙再借用からのアクセサ選択。所有objのlet／var制約、payload保護、`@deref`と参照経路省略。§11.1・§4.7.7の旧境界を更新 |
 | 演算子・receiver（§7.3、§13.1、§13.4ほか） | 所有receiverの明示Move、`@deref`の後置level 1。比較の多層参照追跡と共有観察。代入・複合代入の右辺先行と暗黙Moveをしない旧値取得 |
-| 関数・契約（第7–10章、§15.3.1・§15.3.3–4） | Place結果。関連型のCore限定を撤廃し、完全型・Origin仮引数・wellformed形成条件・精緻化を追加。Contractの型引数、修飾投影、Origin適用とbinding-set命名の宣言別判定を規定 |
+| 関数・契約（第7–10章、§15.3.1・§15.3.3–4） | Place結果。関連型のCore限定を撤廃し、完全型・Origin仮引数・形成条件・精緻化を追加。Origin適用は`Item(a)`、binding-set命名は`{name}`と構文で区別。新規要求の公開右辺から条件を求め、実装は束縛後に残る義務を検査 |
 | Subject・Pattern（第14、15章、付録F） | 明示モード、一時Subjectの共有既定、Case・Tuple・Unit・Literalの参照追跡、共有束縛・guard候補。参照Tuple分解を統合し、ForSlotに`var Name`を追加。§14.9.1の結果源に共通適合を接続 |
-| 寿命・cleanup（第5、15、16、17章） | 部分Move、全早期終了、結果の連続保護。既存の子Loanへ動的分割の証明元を追加。標準Storageの内部API・公開効果を定義し、一般のraw pointer変換とは区別 |
-| 標準列挙（第4、22章ほか） | Iterator、Cursor／UniqCursor、三つの入口、UniqIterable、StableItem。receiverからの独立性と外部効果の検査を区別。標準Iterator・アダプターの二つの入口、fused保証、Dictionaryの生存数に対する走査保証 |
-| 表現・生成（第21章） | Place結果の参照相当ABI、限定したnonnull Option表現、配送領域の統合・共通最適化。既存の参照引数属性とScalar参照のアドレス観察・ABIを保持 |
+| 寿命・cleanup（第5、15、16、17章） | 部分Move、全早期終了、結果の連続保護。既存の子Loanへ動的分割の証明元を追加。internalなKimi.StorageにRef／Uniq／Ownedの残部と操作を定義し、一般のraw pointer変換とは区別 |
+| 標準列挙・効果（第4、12、15、22章ほか） | Iterator、Cursor／UniqCursor、三つの入口、StableItem。IndependentIteratorのnextの効果上限を適合時に検証し、総称呼び出しへ公開。全体の破棄効果は別途検査。標準型の二つの入口・fused・shared／uniqアダプター、Dictionaryの生存数に対する走査保証 |
+| 表現・生成（第21章） | Place結果の参照相当ABI、nonnull Option表現、配送領域の統合・固定配列の移動元領域の再利用。既存の参照属性・アドレス観察・ABIを保持し、総称本体の経路・操作選択は具体化後も固定 |
 | 保留項目・用語・文法（付録D／E／F） | 排他Subject、lending Iterator、共有Iterable、indexerの対象部分を保留から外す。用語と関連型・形成条件・Place結果・後置操作・forの文法を同期。任意Storage用Unsafe境界は保留 |
 
 既存の数値変換、object View・raw pointer・並行実行の規則は、明記した変更以外を維持する。Placeを返すcomputed Property、任意のraw pointerからの安全な参照生成、公開の排他Slice型、任意の演算子拡張は追加しない。
@@ -939,11 +970,12 @@ Tuple分解は選ばれた成分を直接配送できる。Wildcardでもnextと
 | 更新 | 単純・複合代入の右辺先行、自己Move復元、旧状態依存、accessor境界、不完全な場所への安全な借用の拒否 |
 | 部分Move | 全分岐での復元、return・try・continue・exit・defer・部分構築、内側destructor、Abortと二重破棄 |
 | Place結果 | 借用元と内部Origin、複数return、Never、Unit fallthrough、一時receiver、cleanup、Callable。既知の値／Place結果の適合、Scalar結果overloadの曖昧さ |
-| 関連型 | 仮Originのスコープ・個数、wellformed・outlivesの宣言／適用、実装の定義域縮小の拒否、内部Originの保持。短縮名・修飾名・固定別名での波括弧の役割、未適用の族の拒否 |
+| 関連型 | 仮Originのスコープ・個数、`Item(a)`と`{name}`の構文上の区別、新規要求の右辺からの形成条件。右辺の未束縛Originの定義と残る義務、完全型の再束縛・実装による定義域縮小・未適用の族の拒否 |
 | Pattern | 多層参照のTuple／enum／Unit／Literal、単独名では参照を外さないこと、共有上限、guardの型とLoan持出禁止、false guard・Wildcard。positiveOrZeroを確定したi32期待型で検査 |
 | Iterator・Cursor | refの裸Subject、letスロットのuniq拒否、for var、モードとItemの独立性。標準Iterator・アダプターのUniqIterableで途中終了・再開、IntoIterableの残部cleanup。一般Iterator／Cursorの再開と、標準Iterator／Cursorアダプターのfusedを区別 |
-| 独立性・領域分割 | StableItem、保持中のnext、外部static・capture・残部destructorとの競合の拒否。内部APIの入力Loan・source・残部、空・サイズゼロ・二重返却・key保護・破棄後の子Loan保持。任意Storageの権限偽造の拒否、別コンパイル・委譲への伝達 |
-| 表現・性能 | 参照相当ABI、nonnull OptionのSome／None・サイズゼロ・入れ子・cleanup、Scalar参照の観察と属性、大きいItemの直接配送、Tuple残部、疎なDictionary、O0／O2で同じ意味。共通最適化の測定は付録A |
+| 独立性・領域分割 | 総称nextPairと借用collect、競合するnext・特殊化の適合拒否、独立した破棄効果の検査。Ref／Uniq／Owned残部のLoan・空・サイズゼロ・順序・key保護・返却後の保護。Kimi外からの内部型利用・権限偽造の拒否、別コンパイルへの効果上限の伝達 |
+| 総称の経路 | 未確定T・関連型での停止、公開等式で既知の参照層の選択、具体化後の追加追跡の禁止。ref/f32へ具体化したEquatable比較でNaNの意味を変えないこと |
+| 表現・性能 | 参照相当ABI、nonnull OptionのSome／None・サイズゼロ・入れ子・cleanup、Scalar参照の観察と属性、大きいItemの直接配送、Tuple残部。固定配列の領域再利用と再初期化・逸出時の通常転送、共有走査の非空判定、疎なDictionaryの償却・全走査上限。測定は付録A |
 
 診断は、要求した操作、対象経路、失敗条件を示す。型不一致、適合不足、アクセス権限不足、未初期化／Incomplete、Loan競合、Origin不成立を区別する。修正案は実際に成立する場合だけ示す。
 
@@ -961,4 +993,4 @@ Tuple分解は選ばれた成分を直接配送できる。Wildcardでもnextと
 
 本節は実装作業の指針であり、実装言語を言語仕様への適合条件にはしない。Iterator・Dictionary・アダプターは可能な限りKimigayoで実装し、§9.1.2の低水準操作だけを必要な組み込み境界に置く。
 
-§9.4の効果は、Scalar配列、密／疎なDictionary、stepに依存するlending Iterator、大きい所有Itemを分けて測定する。forと意味が等しい直接ループを比較し、O0／O2の結果・cleanup回数を照合したうえで、最適化後の呼び出し・境界検査・中間格納、実行時間、追加確保を確認する。性能量は実測で記録し、文書だけで改善済みとは扱わない。
+§9.4の効果は、Scalar配列、密／疎なDictionary、lending Iterator、大きい所有Item・固定配列を分けて測定する。forと意味が等しい直接ループを比較し、O0／O2の結果・cleanup回数を照合する。共有・排他走査の非空判定と余分な添字検査、固定配列の開始時転送、呼び出し・中間格納、実行時間、追加確保を確認する。性能量は実測で記録し、文書だけで改善済みとは扱わない。
