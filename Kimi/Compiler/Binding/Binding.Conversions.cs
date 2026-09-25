@@ -52,11 +52,24 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
+    private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
+    {
+        if (IsBarePlace(conversion.Left) && this.ProveCopy(type, conversion) != ConstraintProof.Proven)
+        {
+            return Fail(conversion, BindingFailure.TransferRequired);
+        }
+
+        conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
+        return Complete(conversion, type);
+    }
+
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
-        if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
+        if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate ||
+            KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref })
         {
-            return Fail(conversion, BindingFailure.InvalidAssignment);
+            return Fail(conversion, BindingFailure.InvalidAssignment); // SPEC 15.1.5: a referent offers no Take.
         }
 
         // SPEC 11.1: consuming var storage requires its accessible standard setter,
@@ -137,6 +150,40 @@ public sealed partial class Binding
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope, BoundType? expected = null)
     {
         var syntax = ConversionTargetSyntax(conversion);
+        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.DerefOperation, HasOrigin: false })
+        {
+            // SPEC 13.5.5.1: E@deref selects the referent Place of a ref/uniq value, or the complete payload of a
+            // proven Sealed object handle. It reads only the reference and acquires nothing.
+            var reference = this.BindNode(conversion.Left, scope);
+            if (reference is null)
+            {
+                return Complete(conversion, null);
+            }
+
+            if (ReferenceEquals(reference, BoundType.Never))
+            {
+                conversion.ConversionBinding = ConversionBinding.Abrupt;
+                return Complete(conversion, reference);
+            }
+
+            if (reference is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                Complete(conversion.Right, reference.Components[0]);
+                conversion.ConversionBinding = ConversionBinding.Deref;
+                return Complete(conversion, reference.Components[0]);
+            }
+
+            if (IsObjectSemantics(reference.Semantics) && reference.Components.Count == 1 &&
+                this.RequestCapability(reference.Components[0], this.Library.Sealed, scope) == ConstraintProof.Proven)
+            {
+                Complete(conversion.Right, reference.Components[0]);
+                conversion.ConversionBinding = ConversionBinding.PayloadDeref;
+                return Complete(conversion, reference.Components[0]);
+            }
+
+            return Fail(conversion, BindingFailure.TypeMismatch);
+        }
+
         if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
         {
             var pattern = this.BindType(conversion.Right, scope, this.TypeContext(conversion.Right, scope) with { SuppressOuter = true });
@@ -158,12 +205,11 @@ public sealed partial class Binding
                 return this.BindObjectUpcast(conversion, scope, actual, pattern);
             }
 
-            if (IsObjectSemantics(actual.Semantics) && pattern.Origin is null &&
-                this.TryPayloadProjection(conversion.Left, pattern, actual, scope, out var payload))
+            // SPEC 13.5.5.2: a typed borrow names exactly the stored Type of the written slot; it selects no
+            // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @deref.
+            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && !ReferenceEquals(actual, pattern.Components[0]))
             {
-                Complete(conversion.Right, payload);
-                conversion.ConversionBinding = ConversionBinding.PayloadBorrow;
-                return Complete(conversion, payload);
+                return Fail(conversion, BindingFailure.TypeMismatch);
             }
 
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
@@ -230,11 +276,12 @@ public sealed partial class Binding
             }
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
-                (StructStorage.IsStruct(operandType) || Compiler.EnumStorage.IsEnum(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsStorage(operandType) ||
-                    ScalarTypes.Supports(operandType) || ReferenceEquals(operandType, BoundType.Unit) || ReferenceEquals(operandType, BoundType.String)))
+                (StructStorage.IsStruct(operandType) || Compiler.EnumStorage.IsEnum(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection || ReferenceTypes.IsStorage(operandType) ||
+                    ScalarTypes.Supports(operandType) || ReferenceEquals(operandType, BoundType.Unit) || ReferenceEquals(operandType, BoundType.String) || IsBorrow(operandType.Semantics) || IsObjectSemantics(operandType.Semantics)))
             {
-                var referent = IsBorrow(operandType.Semantics) ? operandType.Components[0] : operandType;
-                var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent]);
+                // SPEC 13.5.5.2: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
+                // reference is Reborrowed only through @deref or at a fixed expected Type (SPEC 10.2).
+                var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType]);
                 if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
                     return Fail(conversion, BindingFailure.InvalidAssignment);
@@ -245,7 +292,8 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            // SPEC 13.5.3: an owning-Semantics spelling that matches the operand's outer Semantics is the transfer.
+            // SPEC 13.5.3: an owning-Semantics spelling that matches the operand's outer Semantics is the ordinary
+            // same-Type acquisition: a Copy of a Copy value, the transfer of a temporary, never a transfer from a Place.
             if (semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && operandType.Semantics == semantics)
             {
                 for (var targetNode = conversion.Right; ;)
@@ -259,7 +307,7 @@ public sealed partial class Binding
                     targetNode = targetNode is ParenthesizedTypeKoto parentheses ? parentheses.Type : ((TypeSemanticsKoto)targetNode).Type!;
                 }
 
-                return this.CompleteTransfer(conversion, operandType, scope);
+                return this.CompleteIdentity(conversion, operandType);
             }
 
             Fail(conversion.Right, BindingFailure.Unsupported, true);
@@ -328,12 +376,12 @@ public sealed partial class Binding
             return Fail(conversion, BindingFailure.Unsupported, true);
         }
 
-        // An explicitly written owning Semantics transfers an unchanged Type,
-        // including numeric values; it is not the Type-only numeric conversion.
+        // SPEC 13.5.3: an explicitly written owning Semantics on an unchanged Type is the same-Type
+        // acquisition, including for numeric values; it is neither a transfer nor a numeric conversion.
         if (ReferenceEquals(source, target) && source.Semantics == SemanticsKind.Owner &&
             syntax is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
         {
-            return this.CompleteTransfer(conversion, target, scope);
+            return this.CompleteIdentity(conversion, target);
         }
 
         if (source.IsNumeric && target.IsNumeric)

@@ -43,7 +43,7 @@ public class DynamicArrayBorrowTest
     [Theory]
     [InlineData("func make() -> Array<i32> => [1]\nlet item = make()[0]@ref\nlet n: i32 = item")]
     [InlineData("var values: Array<i32> = [1]\nlet item = values[(index: do\n    values@uniq.clear()\n    exit to index: 0\n)]@ref\nlet n: i32 = item")]
-    [InlineData("var values: Array<i32> = [1]\nlet handle = values@uniq\nlet item = handle[0]@ref\nhandle@uniq.clear()\nlet n: i32 = item")]
+    [InlineData("var values: Array<i32> = [1]\nlet handle = values@uniq\nlet item = handle[0]@ref\nhandle@deref@uniq.clear()\nlet n: i32 = item")]
     public void RejectsExpiredAndConflictingDependencies(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

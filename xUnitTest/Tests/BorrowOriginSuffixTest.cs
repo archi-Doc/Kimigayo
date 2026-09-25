@@ -123,7 +123,7 @@ public class BorrowOriginSuffixTest
     [InlineData("func during(from: i32) -> i32 => from\nlet value = during(1)")]
     [InlineData("func f<T>(x: ref/T)\n    -> ref/T during x\n    return x")]
     [InlineData("func f<T>(x: ref/T)\n    -> (ref/T\n        during x)\n    return x")]
-    [InlineData("func f(x: ref/i32 during a, cb: ref/((ref/i32 during a) -> ref/i32 during a)) -> ref/((ref/i32 during a) -> ref/i32 during a) during cb => cb@ref/((ref/i32 during a) -> ref/i32 during a)")]
+    [InlineData("func f(x: ref/i32 during a, cb: ref/((ref/i32 during a) -> ref/i32 during a)) -> ref/((ref/i32 during a) -> ref/i32 during a) during cb => cb@deref@ref/((ref/i32 during a) -> ref/i32 during a)")]
     public void ContextualNamesAndExistingContinuationBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

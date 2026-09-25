@@ -21,7 +21,7 @@ public class LendingRuleTest
     [Theory]
     [InlineData("Ref", "let text = \"a\"\nConsole.writeLine(text)\nConsole.writeLine(text@ref)\nConsole.writeLine(text)", "a\na\na\n")]
     [InlineData("Move", "let text = \"a\"\nConsole.writeLine(text)\nConsole.writeLine(text@move)", "a\na\n")]
-    [InlineData("Chained", "let text = \"ok\"\nConsole.writeLine(text@((owner))@((string)))", "ok\n")]
+    [InlineData("Chained", "let text = \"ok\"\nConsole.writeLine(text@move@((owner))@((string)))", "ok\n")]
     public void StringArgumentsBorrowThroughEverySpelling(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("LendingRuleString" + name, source, stdout);
 

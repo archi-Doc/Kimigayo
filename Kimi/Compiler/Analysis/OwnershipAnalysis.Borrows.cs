@@ -42,6 +42,13 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } selected)
+        {
+            // SPEC 13.5.5.2: a Reborrow or payload borrow lends the referent's capability through the parent
+            // reference or handle, which is read but never moved; the borrowed address is the parent's value.
+            return this.BorrowStruct(selected.Left, type, reservation);
+        }
+
         if (unwrapped is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } dictionaryIndex && type.Semantics == SemanticsKind.Ref)
         {
             var depth = this.comparisonDepth++;
@@ -197,9 +204,10 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        // Secure the receiver and old value before evaluating the RHS. Keep the
-        // original SSA receiver even if later evaluation reads the same Place.
-        var receiver = this.BorrowStruct(root, root.BoundType!);
+        // SPEC 13.7.2: secure the RHS, then the receiver and old value. Keep the original SSA receiver
+        // even if later evaluation reads the same Place.
+        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
+        var receiver = right < 0 ? -1 : this.BorrowStruct(root, root.BoundType!);
         var receiverValue = this.Value(receiver);
         var previous = -1;
         if (receiver >= 0)
@@ -209,7 +217,11 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(previous, OwnershipValueKind.BorrowedField, [receiverValue]);
         }
 
-        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : previous >= 0 ? this.IncrementOne(source) : -1;
+        if (source is not BinaryKoto)
+        {
+            right = previous >= 0 ? this.IncrementOne(source) : -1;
+        }
+
         if (previous < 0 || right < 0 || !this.flow!.Nodes[source].CanCompleteNormally)
         {
             return -1;

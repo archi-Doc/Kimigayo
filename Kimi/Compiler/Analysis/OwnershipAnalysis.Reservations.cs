@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     private static bool IsDirectExclusiveBorrow(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.PayloadBorrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq };
+        => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq };
 
     private bool HasCallInspection(int place)
     {
@@ -39,7 +39,7 @@ public sealed partial class OwnershipAnalysis
             var direct = KotoHelper.UnwrapParentheses(source);
             // An explicit adaptation and its call-only reborrow are one preparation.
             // Never peel a call, selection, capture or storage boundary.
-            if (!this.compilation.Binding.ReadsReferent(source) && direct is ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.PayloadBorrow } conversion &&
+            if (!this.compilation.Binding.ReadsReferent(source) && direct is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion &&
                 conversion.BoundType?.Semantics == type.Semantics &&
                 ReferenceEquals(conversion.BoundType.Components[0], type.Components[0]))
             {

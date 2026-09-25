@@ -88,8 +88,6 @@ public class CopyPropertyEmissionTest
     [Theory]
     [InlineData("private set", "@move")]
     [InlineData("set(value: i32) -> () => storage = value", "@move")]
-    [InlineData("set(value: i32) -> () => storage = value", "@owner")]
-    [InlineData("set(value: i32) -> () => storage = value", "@owner/i32")]
     public void StorageTransferRequiresAnAccessibleStandardSetter(string setter, string transfer)
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public var item: i32 = 1\n        " + setter + "\nlet s = S.init()\nlet taken = s.item" + transfer);

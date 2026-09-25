@@ -6,8 +6,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 13.4: every safe value-reference layer of an operand is followed to the terminal Type.
     private static BoundType ComparisonReferent(BoundType type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? type.Components[0] : type;
+    {
+        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            type = type.Components[0];
+        }
+
+        return type;
+    }
 
     private BoundType? BindContractComparison(BinaryKoto binary, BoundType self, BindingScope scope)
     {

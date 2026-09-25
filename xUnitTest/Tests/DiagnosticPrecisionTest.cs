@@ -31,7 +31,7 @@ public class DiagnosticPrecisionTest
     [InlineData(9, "find<5, i32>", "find<4, i32>", "NoApplicableOverload_Kd")]
     [InlineData(11, "result = result + forward<T>(values[index]@ref/T)", "let copied: T = values[index]\n            result = result + forward<T>(values[index]@ref/T)", "TransferRequired_Kd")]
     [InlineData(12, "func [offset] ()", "func [] ()", "InvalidCaptureBinding_Kd")]
-    [InlineData(14, "accumulator@uniq/Pipeline.Accumulator", "accumulator@uniq/Pipeline.Job", "InvalidAssignment_Kd")]
+    [InlineData(14, "accumulator@deref@uniq", "accumulator@deref@uniq/Pipeline.Job", "TypeMismatch_Kd")]
     public void MilestoneFaultsHaveSpecificDiagnosticsWithoutDependentCascades(int number, string before, string after, string expected)
     {
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, $"../../../../milestones/Milestone{number}.kimi"));

@@ -183,7 +183,12 @@ public sealed partial class Binding
             var receiverType = this.BindNode(member.Left, scope);
             if (receiverType?.Kind == BoundTypeKind.Semantics && (IsBorrow(receiverType.Semantics) || IsObjectSemantics(receiverType.Semantics)))
             {
+                // SPEC 3.4.1: selection continues at the referent of each safe value-reference layer.
                 receiverType = receiverType.Components[0];
+                while (receiverType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+                {
+                    receiverType = receiverType.Components[0];
+                }
             }
 
             if (receiverType is not null)

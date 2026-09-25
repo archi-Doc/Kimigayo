@@ -54,8 +54,10 @@ public sealed partial class Binding
         source.SharedIterable = null;
         if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Slice or BoundTypeKind.ResolvedRange }] })
         {
-            // SPEC 14.6.2: a borrowed Slice or ResolvedRange is read as its Copy value and iterated as that value.
-            iterable = this.ReadReferent(source.Iterable, iterable);
+            // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy handle or
+            // interval is the entry receiver and is read once for the loop.
+            this.referentReads.Add(source.Iterable);
+            iterable = iterable.Components[0];
         }
 
         var sequence = iterable?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && IsBarePlace(source.Iterable) ? iterable :

@@ -50,6 +50,7 @@ public static partial class Parser
             [
                 TokenKind.Dot, TokenKind.OpenParenthesis, TokenKind.LessThan,
                 TokenKind.OpenBracket, TokenKind.PlusPlus, TokenKind.MinusMinus,
+                TokenKind.At, // Only @deref is postfix (SPEC 13.1); other @ operations keep their infix precedence.
             ]);
 
         Mark(
@@ -2914,14 +2915,16 @@ CloseParameters:
         var forToken = reader.Read();
         var bindings = new List<IdentifierNameKoto>(2);
         var isTupleBinding = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
+        ulong mutableSlots = 0;
 
         if (isTupleBinding)
         {
-            ParseForTupleBindings(ref reader, bindings);
+            ParseForTupleBindings(ref reader, bindings, ref mutableSlots);
         }
-        else if (TryParseForBinding(ref reader, out var binding))
+        else if (TryParseForBinding(ref reader, out var binding, out var mutable))
         {
             bindings.Add(binding);
+            mutableSlots = mutable ? 1UL : 0UL;
         }
         else
         {
@@ -2947,10 +2950,11 @@ CloseParameters:
             bindings,
             iterable,
             body,
-            isTupleBinding);
+            isTupleBinding,
+            mutableSlots);
     }
 
-    private static void ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings)
+    private static void ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings, ref ulong mutableSlots)
     {
         reader.Advance();
         var expectsBinding = true;
@@ -2999,8 +3003,20 @@ CloseParameters:
                 return;
             }
 
-            if (TryParseForBinding(ref reader, out var binding))
+            if (TryParseForBinding(ref reader, out var binding, out var mutable))
             {
+                if (mutable)
+                {
+                    if (bindings.Count < 64)
+                    {
+                        mutableSlots |= 1UL << bindings.Count;
+                    }
+                    else
+                    {
+                        reader.Diagnostic.Add(binding.Span, DiagnosticCode.UnexpectedToken_Kd, "var slot beyond the 64th binding");
+                    }
+                }
+
                 bindings.Add(binding);
                 expectsBinding = false;
             }
@@ -3014,9 +3030,21 @@ CloseParameters:
         reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
     }
 
+    // SPEC 14.6.1: ForSlot := Name | "var" Name | "_"; a bare Name is an immutable let binding.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryParseForBinding(ref TokenReader reader, [NotNullWhen(true)] out IdentifierNameKoto? binding)
+    private static bool TryParseForBinding(ref TokenReader reader, [NotNullWhen(true)] out IdentifierNameKoto? binding, out bool mutable)
     {
+        mutable = false;
+        if (reader.CurrentTokenKind == TokenKind.Var)
+        {
+            var varToken = reader.Read();
+            mutable = true;
+            if (reader.CurrentTokenKind == TokenKind.Underscore)
+            {
+                reader.Diagnostic.Add(varToken.Span, DiagnosticCode.UnexpectedToken_Kd, "var _");
+            }
+        }
+
         if (reader.CurrentTokenKind == TokenKind.Underscore)
         {
             binding = new IdentifierNameKoto(ref reader, reader.Read(), "_");
@@ -3505,7 +3533,7 @@ CloseParameters:
         var text = reader.GetSpan(token);
         if (!text.SequenceEqual(Constants.MoveOperation) && !CompilerHelper.TryParse(text, out _))
         {
-            return false;
+            return false; // deref is consumed as a postfix operation before this point (SPEC 13.1).
         }
 
         // A slash starts a full Semantics form, an Origin brace or an optional suffix keeps the diagnostics of
@@ -3570,10 +3598,34 @@ ProcessPrefix:
         return ParsePrimaryExpression(ref reader);
     }
 
+    /// <summary>
+    /// Determines whether the current <c>@</c> starts the postfix dereference <c>E@deref</c> (SPEC §13.5.5.1):
+    /// the next token spells <c>deref</c>. A following slash is division, never a Semantics prefix.
+    /// </summary>
+    private static bool IsDereferenceOperation(ref TokenReader reader)
+    {
+        var next = reader.PeekToken(1);
+        return next.Kind.IsIdentifierOrContextualKeyword() && reader.GetSpan(next).SequenceEqual(Constants.DerefOperation);
+    }
+
     private static bool TryParsePostfixExpression(ref TokenReader reader, ref Koto left)
     {
         switch (reader.CurrentTokenKind)
         {
+            case TokenKind.At:
+                {
+                    // SPEC 13.1: @deref is a level-1 postfix operation, so -r@deref.x is -((r@deref).x).
+                    if (!IsDereferenceOperation(ref reader))
+                    {
+                        return false;
+                    }
+
+                    reader.Advance();
+                    var target = new TypeSemanticsKoto(ref reader, reader.Read());
+                    left = new ConversionKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, target.Span.End), left, target);
+                    return true;
+                }
+
             case TokenKind.Dot:
                 {
                     var operatorRange = reader.CurrentTokenRange;

@@ -6,6 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 6.4, 14.6.1, 14.8.2: var locals, var Pattern bindings and var iteration slots are reassignable.
+    internal static bool IsMutableDeclaration(Koto? declaration)
+        => declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true } ||
+            (declaration is IdentifierNameKoto { Parent: ForKoto loop } slot && loop.IsMutableSlot(slot));
+
     private int defaultBindingDepth;
 
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
@@ -34,6 +39,22 @@ public sealed partial class Binding
             return false;
         }
 
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Deref } selected)
+        {
+            // SPEC 13.5.5.1: the referent of uniq/T offers Write; a shared layer on the path bounds it.
+            return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(selected.Left);
+        }
+
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadDeref } payload)
+        {
+            return payload.Left.BoundType?.Semantics switch
+            {
+                SemanticsKind.ObjUniq => !ReachedThroughShared(payload.Left),
+                SemanticsKind.Obj => Writable(payload.Left),
+                _ => false,
+            };
+        }
+
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(nested.Left.BoundType) &&
             ElementAccess.BorrowedPathRoot(nested) is { } root)
         {
@@ -60,7 +81,7 @@ public sealed partial class Binding
             }
         }
 
-        return node.BoundSymbol?.MutableCapture == true || node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true };
+        return node.BoundSymbol?.MutableCapture == true || IsMutableDeclaration(node.BoundSymbol?.Declaration);
     }
 
     // SPEC 7.7 acquisition positions currently supported by function-item Binding: a declaration

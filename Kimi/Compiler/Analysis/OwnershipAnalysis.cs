@@ -657,20 +657,21 @@ public sealed partial class OwnershipAnalysis
                     return this.Use(conversion, owner, PlaceUseKind.Consume, AcquisitionKind.Move);
                 }
 
-                if (conversion.ConversionBinding == ConversionBinding.PayloadBorrow)
-                {
-                    if ((ObjectTypes.IsOwner(conversion.Left.BoundType) || ObjectTypes.IsBorrow(conversion.Left.BoundType)) && ReferenceTypes.IsStorage(conversion.BoundType))
-                    {
-                        return this.BorrowStruct(conversion.Left, conversion.BoundType!);
-                    }
-
-                    this.Unsupported(conversion);
-                    return -1;
-                }
-
                 if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsBorrow(conversion.BoundType))
                 {
                     return this.BorrowStruct(conversion.Left, conversion.BoundType!);
+                }
+
+                if (conversion.ConversionBinding == ConversionBinding.Deref)
+                {
+                    // SPEC 13.5.5.1: a value use of a selected referent copies one proven-Copy layer.
+                    return this.LoadReferent(conversion.Left, 1);
+                }
+
+                if (conversion.ConversionBinding == ConversionBinding.PayloadDeref)
+                {
+                    this.Unsupported(conversion); // A bare Copy of a payload through its handle remains a boundary.
+                    return -1;
                 }
 
                 return this.ConversionValue(conversion);
@@ -785,6 +786,11 @@ public sealed partial class OwnershipAnalysis
             }
 
             target = this.compilation.Binding.StorageProjection(target) ?? target;
+            if (target is ConversionKoto { ConversionBinding: ConversionBinding.Deref } dereference)
+            {
+                return this.WriteReferent(binary, dereference);
+            }
+
             if (IsPointerPlace(target))
             {
                 return this.WritePointer(binary, target);
@@ -800,18 +806,7 @@ public sealed partial class OwnershipAnalysis
                 return binary.Akind == KotoKind.Equals ? this.AssignElement(binary, element) : this.UpdateElement(binary, element);
             }
 
-            var previous = -1;
-            var op = KotoHelper.CompoundOperation(binary.Akind);
-            if (binary.Akind != KotoKind.Equals)
-            {
-                previous = this.Value(this.Expression(binary.Left, PlaceUseKind.Read));
-                // SPEC 5.3: p += n and p -= n displace a pointer local like p + n and p - n.
-                if (!(binary.Left.BoundType?.IsNumeric == true || (ReferenceTypes.IsPointer(binary.Left.BoundType) && op is KotoKind.Plus or KotoKind.Minus)) || op == KotoKind.Invalid)
-                {
-                    this.Unsupported(binary);
-                }
-            }
-
+            // SPEC 13.7: simple and compound assignment secure the RHS before the target is located and read.
             var input = this.Expression(binary.Right);
             if (input < 0)
             {
@@ -821,6 +816,14 @@ public sealed partial class OwnershipAnalysis
 
             if (binary.Akind != KotoKind.Equals)
             {
+                var op = KotoHelper.CompoundOperation(binary.Akind);
+                var previous = this.Value(this.Expression(binary.Left, PlaceUseKind.Read));
+                // SPEC 5.3: p += n and p -= n displace a pointer local like p + n and p - n.
+                if (!(binary.Left.BoundType?.IsNumeric == true || (ReferenceTypes.IsPointer(binary.Left.BoundType) && op is KotoKind.Plus or KotoKind.Minus)) || op == KotoKind.Invalid)
+                {
+                    this.Unsupported(binary);
+                }
+
                 input = this.ComputeUpdate(binary, binary.Left.BoundType, previous, this.Value(input), op);
             }
 

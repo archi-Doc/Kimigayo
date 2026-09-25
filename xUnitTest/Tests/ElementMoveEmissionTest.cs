@@ -193,14 +193,16 @@ public class ElementMoveEmissionTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
+    // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the
+    // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
     [Theory]
-    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(work: do\n    let taken = a.0@move\n    exit to work: 0\n)] += 2")]
-    [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += work: do\n    let taken = a.0@move\n    exit to work: 2")]
-    public void MoveConflictsWithReceiverProtectionAndOverlappingExclusiveLoans(string source)
+    [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += work: do\n    let taken = a.0@move\n    exit to work: 2", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(work: do\n    let taken = a.0@move\n    exit to work: 0\n)] += 2", OwnershipFailure.ComparisonLoanConflict)]
+    public void MoveOfTheTargetInTheRightSideOrIndexIsRejected(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 

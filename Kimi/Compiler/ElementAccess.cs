@@ -89,8 +89,7 @@ internal static class ElementAccess
             return null;
         }
 
-        return symbol.Declaration is VariableKoto { VariableKind: VariableKind.Var } or
-            SyntaxFormKoto { Akind: KotoKind.BindingPattern, IsMutablePattern: true } ? root : null;
+        return Binding.IsMutableDeclaration(symbol.Declaration) ? root : null;
     }
 
     // SPEC 5.2, 12: an inline stored field/Tuple/fixed-array path rooted at *p or p[n].

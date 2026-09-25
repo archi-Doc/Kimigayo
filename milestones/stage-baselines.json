@@ -3,6 +3,6 @@
   { "Program": 25, "Stage": "Ownership", "Diagnostic": "UnsupportedOwnership_Kd", "Anchor": "value.count", "SupportedPrefixEnd": "public func main()" },
   { "Program": 26, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "func [value@move, visitor]() -> i32 => visitor(value@ref)", "SupportedPrefixEnd": "func inspectTwice" },
   { "Program": 27, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "Range", "SupportedPrefixEnd": "func tail" },
-  { "Program": 28, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "ref", "SupportedPrefixEnd": "struct Cursor" },
+  { "Program": 28, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "item.id", "SupportedPrefixEnd": "public func main" },
   { "Program": 33, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "view.extra", "SupportedPrefixEnd": "func inspect" }
 ]

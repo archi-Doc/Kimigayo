@@ -20,6 +20,8 @@ public class BorrowedFieldUpdateTest
     [InlineData("RhsReturn", Counter + "func change(counter: uniq/Counter) -> i32\n    counter.value += (return 7)\n    return 0\nvar counter = Counter.init()\nrequire change(counter@uniq) == 7 and counter.value == 1 else => $abort(\"transfer\")")]
     [InlineData("AssignRhsReturn", Counter + "func change(counter: uniq/Counter) -> i32\n    counter.value = (return 7)\n    return 0\nvar counter = Counter.init()\nrequire change(counter@uniq) == 7 and counter.value == 1 else => $abort(\"transfer\")")]
     [InlineData("Snapshot", "func change(pair: uniq/(i32, bool))\n    let previous = pair.0\n    pair.0 += previous\nvar pair: (i32, bool) = (21, true)\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")")]
+    [InlineData("SelfRead", "func change(pair: uniq/(i32, bool))\n    pair.0 += pair.0\nvar pair: (i32, bool) = (21, true)\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")")]
+    [InlineData("StructSelfRead", Counter + "func change(counter: uniq/Counter)\n    counter.value += counter.value\nvar counter = Counter.init()\ncounter.value = 21\nchange(counter@uniq)\nrequire counter.value == 42 else => $abort(\"value\")")]
     [InlineData("TupleOwnedCleanup", "func change(pair: uniq/(i32, string))\n    pair.0 += 41\nvar pair: (i32, string) = (1, \"owned\")\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")\nlet text = pair.1@move")]
     public void ExecutesExclusiveScalarUpdates(string name, string source)
         => ScalarEmissionTest.EmitFixture("BorrowedFieldUpdate" + name, source, string.Empty);
@@ -47,9 +49,7 @@ public class BorrowedFieldUpdateTest
 
     [Theory]
     [InlineData("var pair: (i32, bool) = (1, true)\nlet r = pair@uniq\nr.0 += (work: do\n    pair.0 = 9\n    exit to work: 1)")]
-    [InlineData("func change(pair: uniq/(i32, bool))\n    pair.0 += pair.0")]
-    [InlineData(Counter + "func change(counter: uniq/Counter)\n    counter.value += counter.value")]
-    public void KeepsTargetBorrowedAcrossRhs(string source)
+    public void RejectsOwnerWritesWhileTheBorrowIsLive(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));

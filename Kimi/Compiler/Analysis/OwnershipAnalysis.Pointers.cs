@@ -98,11 +98,23 @@ public sealed partial class OwnershipAnalysis
         return pointer < 0 ? -1 : this.LoadPointer(source, pointer);
     }
 
-    // SPEC 3.3: a Copy read. The reference expression is read, and its referent is loaded through that
-    // reference (a valid address by the reference's Origin, no new Loan) into a fresh Copy temporary.
-    // The referent stays initialized. The acquired Type retains nested Origins; the outer reference
-    // Origin is not attached to an independent snapshot.
+    // SPEC 3.5.3: a Scalar read follows every safe reference layer to its terminal Scalar and copies it.
     private int LoadReferent(Koto source)
+    {
+        var layers = 0;
+        for (var type = this.Concrete(source.BoundType); type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = this.Concrete(type.Components[0]))
+        {
+            layers++;
+        }
+
+        return this.LoadReferent(source, layers);
+    }
+
+    // SPEC 3.5.3, 13.5.5.1: the reference expression is read, and the referent is loaded through it (a valid
+    // address by the reference's Origin, no new Loan) into a fresh Copy temporary, once per layer. The referent
+    // stays initialized. The acquired Type retains nested Origins; the outer reference Origin is not attached
+    // to an independent snapshot.
+    private int LoadReferent(Koto source, int layers)
     {
         var reference = this.ExpressionCore(source, PlaceUseKind.Read, null);
         if (reference < 0)
@@ -110,17 +122,31 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (this.Concrete(source.BoundType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type ||
-            !this.SupportsCopySnapshot(type.Components[0], source))
+        if (layers <= 0)
         {
             this.Unsupported(source);
             return -1;
         }
 
-        var loaded = this.Place(source, type.Components[0], OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
-        this.Emit(OwnershipOperationKind.Produce, source, loaded);
-        this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(reference)]);
-        return this.RegisterTemporary(loaded);
+        var loaded = -1;
+        for (var type = this.Concrete(source.BoundType); layers > 0; layers--)
+        {
+            if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
+                !this.SupportsCopySnapshot(type.Components[0], source))
+            {
+                this.Unsupported(source);
+                return -1;
+            }
+
+            var pointer = loaded < 0 ? reference : loaded;
+            loaded = this.Place(source, type.Components[0], OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
+            this.Emit(OwnershipOperationKind.Produce, source, loaded);
+            this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(pointer)]);
+            this.RegisterTemporary(loaded);
+            type = this.Concrete(type.Components[0]);
+        }
+
+        return loaded;
     }
 
     private bool SupportsCopySnapshot(BoundType type, Koto source)
@@ -145,20 +171,17 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
+        // SPEC 13.7: the RHS is secured before the destination is located, for simple and compound forms.
         int value;
-        int pointer;
+        var right = this.Expression(assignment.Right);
+        var pointer = right < 0 ? -1 : this.PointerAddress(target);
         if (assignment.Akind == KotoKind.Equals)
         {
-            // SPEC 13.7.1: secure the RHS before evaluating the destination.
-            value = this.Expression(assignment.Right);
-            pointer = value < 0 ? -1 : this.PointerAddress(target);
+            value = right;
         }
         else
         {
-            // SPEC 13.7.2: secure the address and old value once, before the RHS.
-            pointer = this.PointerAddress(target);
             var loaded = pointer < 0 ? -1 : this.LoadPointer(target, pointer);
-            var right = this.Expression(assignment.Right);
             value = loaded >= 0 && right >= 0 && this.flow!.Nodes[assignment].CanCompleteNormally
                 ? this.ComputeUpdate(assignment, target.BoundType, this.Value(loaded), this.Value(right), KotoHelper.CompoundOperation(assignment.Akind)) : -1;
         }
@@ -170,6 +193,57 @@ public sealed partial class OwnershipAnalysis
 
         this.StorePointer(target, pointer, value);
         return this.Temporary(assignment);
+    }
+
+    // SPEC 13.5.5.1, 13.7: r@deref = v and r@deref op= v write the referent of a uniq reference through it,
+    // securing the RHS first. The stored value follows the borrowed-field rules: Copy scalars, references and pointers.
+    private int WriteReferent(Koto source, ConversionKoto dereference)
+    {
+        var reference = dereference.Left;
+        var type = dereference.BoundType;
+        var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
+        if (reference.BoundType?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
+            (operation != KotoKind.Equals && type?.IsNumeric != true))
+        {
+            this.Unsupported(source);
+            return -1;
+        }
+
+        var right = source is BinaryKoto binary ? this.Expression(binary.Right) : -1;
+        if (source is BinaryKoto && right < 0)
+        {
+            return -1;
+        }
+
+        var pointer = this.Value(this.Expression(reference, PlaceUseKind.Read));
+        if (pointer < 0)
+        {
+            return -1;
+        }
+
+        int value;
+        var previous = -1;
+        if (operation == KotoKind.Equals)
+        {
+            value = right;
+        }
+        else
+        {
+            var loaded = this.LoadReferent(reference, 1);
+            previous = this.Value(loaded);
+            var operand = source is BinaryKoto ? this.Value(right) : previous >= 0 ? this.IncrementOne(source) : -1;
+            value = loaded >= 0 && operand >= 0 && this.flow!.Nodes[source].CanCompleteNormally
+                ? this.ComputeUpdate(source, type, previous, operand, operation) : -1;
+        }
+
+        if (value < 0)
+        {
+            return -1;
+        }
+
+        var stored = this.Emit(OwnershipOperationKind.StorePointer, reference, value, acquisition: this.body.Places[value].Acquisition);
+        this.SetValue(stored, OwnershipValueKind.PointerStore, ScalarResult(type!) ? [pointer, this.Value(value)] : [pointer], constant: value);
+        return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
     private void StorePointer(Koto target, int pointer, int value)

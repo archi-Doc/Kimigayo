@@ -35,7 +35,7 @@ public class OriginRedesignTest
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    origin (a) outlives b\n    return x")]
     [InlineData("struct S {source}\n    let value: ref/i32 during source\n    let source: i32\n    func f(x: V<i32>) -> ref/i32 during source => $abort(\"unused\")")]
     [InlineData("func identity<T>(x: T) -> T => x@move\nfunc f(x: V<i32>)\n    let y = identity<V<i32>{v}>(x@move)\n        origin v.source == x.source")]
-    [InlineData("func f(x: ref/V<i32>)\n    let y = x@ref/V<i32>{v}\n        origin v.source == x.source")]
+    [InlineData("func f(x: ref/V<i32>)\n    let y = x@deref@ref/V<i32>{v}\n        origin v.source == x.source")]
     public void CompletesDeclarationOriginContracts(string source)
     {
         var c = Compilation.CreateForTest();

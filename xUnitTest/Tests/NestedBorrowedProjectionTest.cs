@@ -15,6 +15,7 @@ public class NestedBorrowedProjectionTest
     [InlineData("Siblings", Outer + "func f(p: uniq/Outer)\n    let a = p.inner.c@uniq\n    let b = p.inner.d@uniq\n    b.value += 2\n    a.value += b.value\n    p.tag = 0\nvar o = Outer.init()\nf(o@uniq)\nrequire o.inner.c.value == 4 and o.inner.d.value == 3 and o.tag == 0 else => $abort(\"value\")")]
     [InlineData("Tuple", Outer + "func f(p: uniq/(i32, (Counter, Counter)))\n    let a = p.1.0@uniq\n    let b = p.1.1@uniq\n    a.value += 1\n    b.value += p.0\nvar t: (i32, (Counter, Counter)) = (5, (Counter.init(), Counter.init()))\nf(t@uniq)\nrequire t.1.0.value == 2 and t.1.1.value == 6 else => $abort(\"value\")")]
     [InlineData("SiblingUpdate", Outer + "func f(p: uniq/Outer)\n    let a = p.inner.c@uniq\n    p.tag += a.value\n    p.inner.d.value += a.value\n    p.tag++\n    a.value += p.tag\nvar o = Outer.init()\nf(o@uniq)\nrequire o.tag == 9 and o.inner.d.value == 2 and o.inner.c.value == 10 else => $abort(\"value\")")]
+    [InlineData("SelfUpdate", Outer + "func f(p: uniq/Outer)\n    p.inner.c.value += p.inner.c.value\nvar o = Outer.init()\nf(o@uniq)\nrequire o.inner.c.value == 2 else => $abort(\"value\")")]
     public void ExecutesNestedExplicitBorrows(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -29,7 +30,6 @@ public class NestedBorrowedProjectionTest
     [InlineData(Outer + "func f(p: uniq/Outer)\n    let a = p.inner.c@uniq\n    let b = p.inner.c@ref\n    a.value += b.value")]
     [InlineData(Outer + "func f(p: uniq/Outer)\n    let a = p.inner.c@uniq\n    p.inner.c.value += 1\n    a.value += 1")]
     [InlineData(Outer + "func f(p: uniq/Outer)\n    let a = p.inner@ref\n    p.inner.d.value++\n    let x = a.c.value")]
-    [InlineData(Outer + "func f(p: uniq/Outer)\n    p.inner.c.value += p.inner.c.value")]
     public void RejectsOverlappingNestedBorrows(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

@@ -45,6 +45,14 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
+        // SPEC 13.7.2: the RHS is secured before the element is located and read. A transfer in the RHS
+        // leaves a checking continuation; the target is still checked there.
+        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
+        if (right < 0)
+        {
+            return -1;
+        }
+
         var depth = this.comparisonDepth++;
         var projection = this.LocateElement(target);
         if (projection >= 0)
@@ -53,9 +61,11 @@ public sealed partial class OwnershipAnalysis
         }
 
         var previous = this.Value(this.AcquireElement(target, projection));
-        // A transfer can leave a checking continuation; still check the written RHS there.
-        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right))
-            : previous >= 0 ? this.IncrementOne(source) : -1;
+        if (source is not BinaryKoto)
+        {
+            right = previous >= 0 ? this.IncrementOne(source) : -1;
+        }
+
         var updated = previous >= 0 && right >= 0 && this.flow!.Nodes[source].CanCompleteNormally
             ? this.ComputeUpdate(source, type, previous, right, operation) : -1;
         if (updated >= 0)

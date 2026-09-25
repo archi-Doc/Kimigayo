@@ -45,8 +45,6 @@ public class StringGuardEmissionTest
 
     [Theory]
     [InlineData("match 1\n    let s if (work: do\n        let saved = s@move\n        exit to work: true\n    ) => ()\n    _ => ()")]
-    [InlineData("match 1\n    let s if (work: do\n        let saved = s@owner\n        exit to work: true\n    ) => ()\n    _ => ()")]
-    [InlineData("match 1\n    let s if (work: do\n        let saved = s@owner/i32\n        exit to work: true\n    ) => ()\n    _ => ()")]
     [InlineData("func take(s: string) => ()\nmatch \"a\"\n    let s if (work: do\n        take(s@move)\n        exit to work: true\n    ) => ()\n    _ => ()")]
     [InlineData("match \"a\"\n    var s if (work: do\n        s = \"b\"\n        exit to work: true\n    ) => ()\n    _ => ()")]
     [InlineData("match \"a\"\n    let s if (work: do\n        let saved = s@move\n        exit to work: true\n    ) => ()\n    _ => ()")]

@@ -66,13 +66,16 @@ internal sealed partial class BodyLowering
         // SPEC 3.3: a Copy borrow's referent is loaded through the reference; the
         // operation's source is then the borrow itself, and its address needs no Unsafe obligation.
         var sourceType = SignatureType(this, operation.Source.BoundType);
-        var referent = !store && place.Acquisition == AcquisitionKind.Copy &&
-            sourceType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            ReferenceEquals(sourceType.Components[0], type);
+        var pointerType = ValueType(body, address);
+        // SPEC 3.5.3, 13.5.5.1: a load through a safe reference copies its referent layer by layer, and a
+        // referent write stores through a uniq reference; both use the reference value as the address.
+        var referent = pointerType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+            ReferenceEquals(pointerType.Components[0], type) &&
+            (store ? pointerType.Semantics == SemanticsKind.Uniq && ReferenceEquals(sourceType, pointerType) : place.Acquisition == AcquisitionKind.Copy);
         if ((place.Kind != OwnershipPlaceKind.Temporary && (!store || place.Kind != OwnershipPlaceKind.Result)) ||
             place.Acquisition is not (AcquisitionKind.Copy or AcquisitionKind.Move) ||
             (!referent && !ReferenceEquals(sourceType, type)) ||
-            ValueType(body, address) is not { } pointerType || !(referent ? ReferenceEquals(pointerType, sourceType) : ReferenceTypes.IsPointer(pointerType)) ||
+            pointerType is null || !(referent || ReferenceTypes.IsPointer(pointerType)) ||
             !ReferenceEquals(pointerType.Components[0], type) || (body.IsReachable(id) && !this.Dominates(address, id)))
         {
             return Fail("Pointer access requires a matching pointee and a dominating address.", out failure);

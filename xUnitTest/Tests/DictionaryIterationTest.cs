@@ -161,7 +161,7 @@ public class DictionaryIterationTest
                 value = 7
                 require reference == 42 else => $abort("origin")
             """;
-        var source = owning ? Source.Replace("in entries\n", "in entries@move\n", StringComparison.Ordinal) : Source;
+        var source = owning ? Source.Replace("in entries\n", "in entries@move\n", StringComparison.Ordinal) : Source.Replace("= stored\n", "= stored@deref\n", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);

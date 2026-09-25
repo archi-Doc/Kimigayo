@@ -62,7 +62,7 @@ public class ReferenceReadTest
     [Fact]
     public void AggregateReferentReadsCopyTheCompleteValue()
     {
-        const string Source = "let a: [2 of i32] = [1, 2]\nlet ra = a@ref\nlet b: [2 of i32] = ra\nrequire b[0] == 1 and b[1] == 2 else => $abort(\"aggregate\")";
+        const string Source = "let a: [2 of i32] = [1, 2]\nlet ra = a@ref\nlet b: [2 of i32] = ra@deref\nrequire b[0] == 1 and b[1] == 2 else => $abort(\"aggregate\")";
         NativeAllocationAudit.WriteFixture("ReferenceReadAggregate", Source, 0, 0, 0, string.Empty);
     }
 }

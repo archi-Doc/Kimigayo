@@ -24,8 +24,14 @@ public sealed partial class OwnershipAnalysis
             return this.UpdatePropertyPlace(source, target, storage, operation, getter, setter, name);
         }
 
-        // Keep the one located receiver across the read, RHS and write. Getter and
-        // setter keep their independent call boundaries and never borrow hidden storage.
+        // SPEC 13.7.2: secure the RHS, then keep the one located receiver across the read and write. Getter
+        // and setter keep their independent call boundaries and never borrow hidden storage.
+        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
+        if (right < 0)
+        {
+            return -1;
+        }
+
         var receiver = this.BorrowStruct(operation.Source, operation.ParameterType);
         if (receiver < 0)
         {
@@ -37,7 +43,11 @@ public sealed partial class OwnershipAnalysis
         {
             var previous = getter is null ? this.Value(this.ReadBorrowedField(storage))
                 : this.Value(this.Call(getter, preparedReceiver: this.ReborrowPropertyReceiver(getter, receiver)));
-            var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : this.IncrementOne(source);
+            if (source is not BinaryKoto)
+            {
+                right = this.IncrementOne(source);
+            }
+
             if (previous < 0 || right < 0 || !this.flow!.Nodes[source].CanCompleteNormally)
             {
                 return -1;

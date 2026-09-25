@@ -14,6 +14,7 @@ public class ElementUpdateEmissionTest
         { "Increment", "var a = (42, true)\nlet before = a.0++\nlet after = --a.0\nlet next = ++a.0\nlet last = a.0--\nif before == 42 and after == 42 and next == 43 and last == 43 and a.0 == 42 => Console.writeLine(\"ok\")" },
         { "Mixed", "var a: (string, [2 of i32]) = (\"held\", [40, 2])\nlet amount = a.1[1]\na.1[0] += amount\nif a.1[0] == 42 => Console.writeLine(\"ok\")" },
         { "Nested", "var a: [1 of [1 of i32]] = [[40]]\na[0][0] += 2\nif a[0][0] == 42 => Console.writeLine(\"ok\")" },
+        { "SelfRead", "var a: [1 of i32] = [21]\na[0] += a[0]\nif a[0] == 42 => Console.writeLine(\"ok\")" },
         { "SelfReadSnapshot", "var a: [1 of i32] = [21]\nlet amount = a[0]\na[0] += amount\nif a[0] == 42 => Console.writeLine(\"ok\")" },
         { "RhsUpdate", "var a = (40, true)\nvar b = (2, false)\na.0 += b.0++\nif a.0 == 42 and b.0 == 3 => Console.writeLine(\"ok\")" },
         { "IndexUpdate", "var a: [2 of i32] = [40, 0]\nvar i: [1 of isize] = [0]\na[i[0]++] += 2\nif a[0] == 42 and i[0] == 1 => Console.writeLine(\"ok\")" },
@@ -119,18 +120,38 @@ public class ElementUpdateEmissionTest
         ScalarEmissionTest.EmitFixture("ElementUpdateBounds" + name, source, string.Empty, 1, $"Hello.kimi:6:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
     }
 
+    // SPEC 13.7.2: the RHS, including its cleanup, completes before the element is located, read and written.
     [Theory]
     [InlineData("var a: [1 of i32] = [0]\na[0] += (work: do\n    a = [1]\n    exit to work: 42\n)")]
     [InlineData("var a: [1 of i32] = [0]\na[0] += a[0]++")]
     [InlineData("var a: [2 of i32] = [0, 0]\nlet i: isize = 1\na[0] += ++a[i]")]
-    [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    a[0]++\n    exit to work: 0\n)]++")]
     [InlineData("var a: [1 of i32] = [0]\na[0] += (work: do\n    defer => a[0] = 1\n    exit to work: 42\n)")]
-    [InlineData("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (work: do\n    take(a@move)\n    exit to work: 42\n)")]
-    public void AccessProtectionExtendsThroughTheRightSide(string source)
+    public void RightSideEffectsPrecedeTheAccessProtection(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+    }
+
+    // The located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
+    [Theory]
+    [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    a[0]++\n    exit to work: 0\n)]++")]
+    [InlineData("var a: [1 of i32] = [21]\nlet x = a[(work: do\n    a[0]++\n    exit to work: 0\n)]")]
+    public void IndexOperandsCannotMutateTheProtectedReceiver(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+    }
+
+    [Fact]
+    public void TargetMovedByTheRightSideIsRejected()
+    {
+        var c = MinimalEmissionTest.Analyze("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (work: do\n    take(a@move)\n    exit to work: 42\n)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
@@ -172,16 +193,13 @@ public class ElementUpdateEmissionTest
     [InlineData("var a: [2 of i32] = [21, 21]\na[0] += a[1 + 0]")]
     [InlineData("func count(a: [1 of i32]) -> i32 => a[0]\nvar a: [1 of i32] = [21]\na[0] += count(a)")]
     [InlineData("var a: [1 of i32] = [21]\na[0] += (work: do\n    defer => a[0]\n    exit to work: 21\n)")]
-    [InlineData("var a: [1 of i32] = [21]\nlet x = a[(work: do\n    a[0]++\n    exit to work: 0\n)]")]
-    [InlineData("func f()\n    return\n    var a: [1 of i32] = [21]\n    a[0] += a[0]")]
-    public void ExclusiveUpdateRejectsAliasedReads(string source)
+    [InlineData("func f()\n    return\n    var a: [1 of i32] = [21]\n    a[0] += a[0]\nf()")]
+    public void SelfReadsInTheRightSidePrecedeTheExclusiveUpdate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Theory]
@@ -302,22 +320,21 @@ public class ElementUpdateEmissionTest
     }
 
     [Fact]
-    public void LocationAndReadPrecedeTheRightSideAndStore()
+    public void RightSidePrecedesLocationReadAndStore()
     {
         const string Source = "func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nfunc rhs() -> i32\n    Console.writeLine(\"rhs\")\n    return 2\nvar a: [1 of i32] = [40]\na[index()] += rhs()\nif a[0] == 42 => Console.writeLine(\"ok\")";
-        ScalarEmissionTest.EmitFixture("ElementUpdateOrder", Source, "index\nrhs\nok\n");
+        ScalarEmissionTest.EmitFixture("ElementUpdateOrder", Source, "rhs\nindex\nok\n");
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[0];
         var update = Assert.Single(body.ElementUpdates);
         var plan = body.Projections[update.Projection];
-        Assert.True(plan.Operation < plan.Output && plan.Output < update.Right && update.Right < update.Computation && update.Computation < plan.Write);
+        Assert.True(update.Right < plan.Operation && plan.Operation < plan.Output && plan.Output < update.Computation && update.Computation < plan.Write);
         Assert.Equal(LoanRequirement.Ref, body.ComparisonLoans[plan.Loan].Mode);
         Assert.Equal(LoanRequirement.Uniq, body.ComparisonLoans[plan.Exclusive].Mode);
         Assert.Equal(plan.Loan, body.LoanInputs[plan.Operation]);
         Assert.Equal(plan.Exclusive, body.LoanStates[plan.Operation]);
         Assert.True(body.HasComparisonLoan(plan.Output, plan.Exclusive));
-        Assert.True(body.HasComparisonLoan(update.Right, plan.Exclusive));
         Assert.True(body.HasComparisonLoan(update.Computation, plan.Exclusive));
         Assert.True(body.HasComparisonLoan(plan.Write, plan.Exclusive));
         Assert.False(body.HasComparisonLoan(update.Result, plan.Exclusive));

@@ -30,7 +30,7 @@ func inspect(view: objref/Base)
     require view is Leaf and view.extra == 20 else => $abort("Leaf refinement failed")
     require view is not Other else => $abort("Unrelated Type test succeeded")
     let narrowed = view // Its inferred declaration Type is objref/Leaf.
-    let payload = narrowed@ref/Leaf // Leaf is Sealed; this is the complete payload.
+    let payload = narrowed@deref@ref // Leaf is Sealed; this is the complete payload.
     require payload.extra == 20 else => $abort("Shared payload projection failed")
     Console.writeLine("Base view refined to Leaf.")
 
@@ -42,7 +42,7 @@ func replacePayload(view: objuniq/Base)
     // A stable parameter refines without gaining authority: it was already exclusive.
     require view is Leaf else => $abort("Exclusive view refinement failed")
     do
-        let old = Kimi.Intrinsics.exchange(view@uniq/Leaf, with: Leaf.init(30, 40, 2))
+        let old = Kimi.Intrinsics.exchange(view@deref@uniq, with: Leaf.init(30, 40, 2))
         require old.baseValue == 10 and old.extra == 20 else => $abort("Old payload lost")
         // Dynamic Type refinement survives, but old let-Field contents do not.
         require view.baseValue == 30 and view.extra == 40 else => $abort("Payload contents were cached")
@@ -61,7 +61,7 @@ public func main()
         require observe(owner@objref/Base) is Leaf else => $abort("Call-result Type test failed")
         replacePayload(owner@objuniq/Base)
         require owner.baseValue == 30 and owner.extra == 40 else => $abort("Owner lost updated contents")
-        let moved: obj/Base = owner@obj/Base // Move the whole object through its base view.
+        let moved: obj/Base = owner@move@obj/Base // Move the whole object through its base view.
         require moved is Leaf and moved.extra == 40 else => $abort("Owning upcast lost Dynamic Type")
         Console.writeLine("Owning base view retains the complete Leaf.")
         // Destroy Leaf, its Resource and Base before releasing the original object storage.

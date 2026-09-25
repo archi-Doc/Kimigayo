@@ -14,6 +14,7 @@ public class ReturnedBorrowAncestryTest
     [InlineData("Nested", "func change(p: uniq/Counter)\n    relay(relay(p)).value += 1\n    p.value += 1\nvar counter = Counter.init()\nchange(counter@uniq)\nrequire counter.value == 3 else => $abort(\"value\")")]
     [InlineData("Slot", "func change(p: uniq/Counter, q: uniq/Counter)\n    second(q, p).value += 1\n    second(a: q, b: p).value += 1\n    p.value += q.value\nvar left = Counter.init()\nvar right = Counter.init()\nchange(left@uniq, right@uniq)\nrequire left.value == 4 and right.value == 1 else => $abort(\"value\")")]
     [InlineData("Local", "func change(p: uniq/Counter)\n    let r = relay(p)\n    r.value += 1\n    p.value += 1\nvar counter = Counter.init()\nchange(counter@uniq)\nrequire counter.value == 3 else => $abort(\"value\")")]
+    [InlineData("SelfUpdate", "func change(p: uniq/Counter)\n    relay(p).value += p.value\nvar counter = Counter.init()\nchange(counter@uniq)\nrequire counter.value == 2 else => $abort(\"value\")")]
     public void ReturnedExclusiveEndsBeforeParentUse(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(Counter + source);
@@ -24,7 +25,6 @@ public class ReturnedBorrowAncestryTest
     [Theory]
     [InlineData("func change(p: uniq/Counter)\n    let r = relay(p)\n    p.value += 1\n    r.value += 1")]
     [InlineData("func change(p: uniq/Counter)\n    let r = relay(p)\n    let s = relay(p)\n    r.value += 1")]
-    [InlineData("func change(p: uniq/Counter)\n    relay(p).value += p.value")]
     [InlineData("func change(p: uniq/Counter, q: uniq/Counter)\n    let r = second(q, p)\n    p.value += 1\n    r.value += 1")]
     [InlineData("func change(p: uniq/Counter)\n    let r = relay(relay(p))\n    p.value += 1\n    r.value += 1")]
     public void RejectsParentUseWhileReturnedLoanLives(string source)

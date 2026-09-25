@@ -84,8 +84,8 @@ internal sealed partial class BodyLowering
 
             if (ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type))
             {
-                var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadBorrow } conversion &&
-                    ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(SignatureType(this, conversion.BoundType), output);
+                var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadDeref, Parent: ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion } selected &&
+                    ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(conversion.Left, selected) && ReferenceEquals(SignatureType(this, conversion.BoundType), output);
                 var memberProjection = operation.Source.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } call } } &&
                     ReferenceEquals(call.Receiver, operation.Source) && call.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection &&
                     call.ReceiverOperation.ObjectCompatibility == ConstraintProof.Proven && ReferenceEquals(call.ReceiverOperation.ParameterType, output);

@@ -133,6 +133,7 @@ public sealed partial class Binding
         return source switch
         {
             IdentifierNameKoto => source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate,
+            ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } => true, // SPEC 13.5.5.1: a selected referent is a Place.
             MemberAccessKoto member => (member.BoundSymbol?.Property is { Getter.IsStandard: true } && StructStorage.IsStruct(member.Left.BoundType?.Kind == BoundTypeKind.Semantics ? member.Left.BoundType.Components[0] : member.Left.BoundType)) ||
                 ReferenceTypes.IsTuple(member.Left.BoundType) || member.Left.BoundType?.Kind == BoundTypeKind.Tuple,
             IndexKoto index => index.Left.BoundType?.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsArray(index.Left.BoundType),
@@ -145,7 +146,7 @@ public sealed partial class Binding
     private BoundType? RejectExclusiveSubject(Koto subject, BoundType? type)
     {
         if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ||
-            KotoHelper.UnwrapParentheses(subject) is not ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.PayloadBorrow or ConversionBinding.ObjectUpcast } conversion)
+            KotoHelper.UnwrapParentheses(subject) is not ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } conversion)
         {
             return type;
         }
@@ -166,15 +167,29 @@ public sealed partial class Binding
             return this.OriginAtom(source, OriginKind.Projection, 0);
         }
 
+        if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } selected)
+        {
+            // SPEC 13.5.5: a selected referent or payload keeps the dependencies of its reference or handle,
+            // so a Reborrow depends on the referent and the parent Loan, not on the slot holding the parent.
+            return selected.Left.BoundType?.Origin ?? this.PlaceOrigin(selected.Left);
+        }
+
         source = PlaceOriginSource(source);
         return source.BoundType?.Origin ?? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
-    // SPEC 3.3: one ref/T or uniq/T layer is read as its referent T when T is proved Copy; a Non-Copy
-    // referent is never extracted through a reference.
+    // SPEC 3.5.3 Scalar read: the safe value-reference layers of a value are followed to their terminal Type,
+    // which is read only when it is a Scalar. A non-Scalar referent, Copy or not, is never read implicitly.
     private BoundType? Referent(BoundType? type, Koto context)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            this.ProveCopy(type.Components[0], context) == ConstraintProof.Proven ? type.Components[0] : null;
+    {
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            return null;
+        }
+
+        var terminal = ComparisonReferent(type);
+        return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
+    }
 
     // An operand denotes its Copy referent (SPEC 13.4); the node keeps its reference Type.
     private BoundType? ReadReferent(Koto node, BoundType? type)
@@ -195,6 +210,26 @@ public sealed partial class Binding
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
     {
         source = KotoHelper.UnwrapParentheses(source);
+        if (source is ConversionKoto { ConversionBinding: ConversionBinding.Deref } dereference)
+        {
+            // SPEC 13.5.5.1: the referent of uniq/T offers Read and Write, that of ref/T Read only; a shared layer
+            // anywhere on the path bounds the capability to shared access.
+            return !exclusive || (dereference.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(dereference.Left));
+        }
+
+        if (source is ConversionKoto { ConversionBinding: ConversionBinding.PayloadDeref } payload)
+        {
+            // SPEC 13.5.5.1: an owning path inherits the root's mutability; rc/arc/objref paths are shared.
+            var handle = payload.Left.BoundType!;
+            return handle.Semantics switch
+            {
+                SemanticsKind.ObjRef => !exclusive,
+                SemanticsKind.ObjUniq => !exclusive || !ReachedThroughShared(payload.Left),
+                SemanticsKind.Obj => this.BorrowablePlace(payload.Left, scope, exclusive),
+                _ => !exclusive && this.BorrowablePlace(payload.Left, scope, false),
+            };
+        }
+
         if (source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice })
         {
             return !exclusive;
@@ -309,8 +344,31 @@ public sealed partial class Binding
 
         var target = pattern.Semantics;
         BoundType referent;
+        if (explicitBorrow && actual.Kind == BoundTypeKind.Semantics && actual.Semantics != SemanticsKind.Owner && ReferenceEquals(pattern.Components[0], actual))
+        {
+            // SPEC 13.5.5.2: an explicit @ref/@uniq on a slot storing a reference or handle borrows that slot and
+            // adds one layer; a temporary reference value is materialized first (SPEC 3.6.2).
+            var slotUnwrapped = KotoHelper.UnwrapParentheses(source);
+            if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) &&
+                (slotUnwrapped is IdentifierNameKoto || slotUnwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } || (target == SemanticsKind.Uniq && !(slotUnwrapped is InvocationKoto || IsGetterResult(source)))))
+            {
+                return false;
+            }
+
+            referent = actual;
+            quality = ArgumentAdaptation.CrossSemanticsBorrow;
+            kind = ArgumentOperationKind.Borrow;
+            adapted = this.InternType(BoundTypeKind.Semantics, null, target, [referent], origin: this.PlaceOrigin(source));
+            return true;
+        }
+
         if (actual.Kind == BoundTypeKind.Semantics && actual.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
+            if (!explicitBorrow && pattern.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && ReferenceEquals(pattern.Components[0], actual))
+            {
+                return false; // SPEC 10.2: no implicit borrow of a reference slot.
+            }
+
             if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || ReachedThroughShared(source)))
             {
                 return false;
@@ -345,11 +403,12 @@ public sealed partial class Binding
                     return false;
                 }
             }
-            else if (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
+            else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } ||
+                (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
                 (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
                 !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
                 unwrapped is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) &&
-                !(target == SemanticsKind.Ref && IsUnfittedLiteral(source)))
+                !(target == SemanticsKind.Ref && IsUnfittedLiteral(source))))
             {
                 return false;
             }

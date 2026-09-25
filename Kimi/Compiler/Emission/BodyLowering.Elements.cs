@@ -381,7 +381,7 @@ internal sealed partial class BodyLowering
             !ReferenceEquals(computation.Source, source) || !ReferenceEquals(body.Places[computation.Place].Source, source) ||
             body.Values[value] is not { Kind: OwnershipValueKind.Binary, Count: 2 } calculation || calculation.Operator != op ||
             Input(body, value, 0) != plan.Output || Input(body, value, 1) != update.Right ||
-            update.Right <= plan.Output || update.Right >= value ||
+            update.Right >= value || (unary ? update.Right <= plan.Output : update.Right >= plan.Operation) ||
             !ConsecutiveElementEdge(body, plan.Operation, plan.Output))
         {
             return Fail("Element update must calculate from its own single Copy read and RHS.", out failure);
@@ -460,8 +460,10 @@ internal sealed partial class BodyLowering
             if (plan.Update >= 0)
             {
                 var update = body.ElementUpdates[plan.Update];
-                if (!body.HasComparisonLoan(update.Right, plan.Exclusive) || !body.HasComparisonLoan(input, plan.Exclusive) ||
-                    (body.IsReachable(id) && (!this.Dominates(plan.Output, update.Right) || !this.Dominates(update.Right, input) || !this.Dominates(input, id))))
+                var unary = body.Operations[plan.Write].Source is UnaryKoto;
+                if ((unary && !body.HasComparisonLoan(update.Right, plan.Exclusive)) || !body.HasComparisonLoan(input, plan.Exclusive) ||
+                    (body.IsReachable(id) && (!(unary ? this.Dominates(plan.Output, update.Right) : this.Dominates(update.Right, plan.Operation)) ||
+                        !this.Dominates(update.Right, input) || !this.Dominates(input, id))))
                 {
                     return Fail("Element update requires ordered old/RHS/computed values under its access Loan.", out failure);
                 }

@@ -31,6 +31,15 @@ public enum PatternAccessMode : byte
 {
     Owned,
     Shared,
+    Exclusive,
+}
+
+/// <summary>SPEC 15.1.6: the acquisition of a match or for Subject, fixed by its outermost written operation.</summary>
+public enum SubjectMode : byte
+{
+    Shared,
+    Exclusive,
+    ByValue,
 }
 
 public enum PatternImplicitDeref : byte
