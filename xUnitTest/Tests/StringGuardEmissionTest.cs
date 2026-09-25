@@ -10,31 +10,31 @@ public class StringGuardEmissionTest
     private const string Same = "func same(a: ref/string, b: ref/string) -> bool => a == b\n";
 
     [Theory]
-    [InlineData("Candidate", "match \"a\"\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("Direct", "match \"a\"\n    let s if s == s => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("DirectLiteral", "match \"a\"\n    let s if s == \"a\" => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("LiteralBorrow", "match \"a\"\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("False", "match \"a\"\n    let s if same(s, \"b\") => Console.writeLine(\"bad\")\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("Wildcard", "match \"a\"\n    _ if false => ()\n    _ if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
-    [InlineData("Mismatch", "func bad() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch \"a\"\n    \"b\" if bad() => ()\n    \"a\" if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
-    [InlineData("BodyVar", "match \"a\"\n    var s if same(s, \"a\")\n        s = \"b\"\n        Console.writeLine(s)\n    _ => ()", "b\n")]
+    [InlineData("Candidate", "match \"a\"@move\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("Direct", "match \"a\"@move\n    let s if s == s => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("DirectLiteral", "match \"a\"@move\n    let s if s == \"a\" => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("LiteralBorrow", "match \"a\"@move\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("False", "match \"a\"@move\n    let s if same(s, \"b\") => Console.writeLine(\"bad\")\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("Wildcard", "match \"a\"@move\n    _ if false => ()\n    _ if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
+    [InlineData("Mismatch", "func bad() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch \"a\"@move\n    \"b\" if bad() => ()\n    \"a\" if true => Console.writeLine(\"ok\")\n    _ => ()", "ok\n")]
+    [InlineData("BodyVar", "match \"a\"@move\n    var s if same(s, \"a\")\n        s = \"b\"\n        Console.writeLine(s)\n    _ => ()", "b\n")]
     [InlineData("Return", "func choose(text: string, wanted: ref/string) -> string\n    return match text@move\n        let s if same(s, wanted) => s@move\n        _ => \"other\"\nConsole.writeLine(choose(\"a\", \"a\"))", "a\n")]
     [InlineData("CallSubject", "func echo(s: string) -> string => s@move\nmatch echo(\"a\")\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("Covered", "match \"a\"\n    _ => Console.writeLine(\"ok\")\n    let s if same(s, s) => Console.writeLine(s)", "ok\n")]
-    [InlineData("ShortCircuit", "match \"a\"\n    let s if false and same(s, s) => ()\n    let s if true or same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("Deferred", "defer\n    match \"a\"\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()\nConsole.writeLine(\"ok\")", "ok\na\n")]
-    [InlineData("Cleanup", "var flag = true\nmatch \"a\"\n    let s if (check: do\n        defer => flag = false\n        exit to check: same(s, s)\n    ) => if not flag => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("Transfer", "func run() -> string\n    match \"a\"\n        let s if (return \"ok\") => s@move\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
-    [InlineData("Loop", "var n = 0\nwhile n < 3\n    n += 1\n    match \"a\"\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()", "a\na\na\n")]
-    [InlineData("Nested", "match \"a\"\n    let outer if (match \"a\"\n        let inner if same(outer, inner) => true\n        _ => false\n    ) => Console.writeLine(outer)\n    _ => ()", "a\n")]
-    [InlineData("OuterLoan", "let text = \"a\"\nif text == (match \"a\"\n    let s if same(s, \"a\") => \"a\"\n    _ => \"b\"\n) => Console.writeLine(text)", "a\n")]
-    [InlineData("CheckingRead", "func run() -> string\n    match \"a\"\n        let s if (check: do\n            return \"ok\"\n            same(s, s)\n            exit to check: true\n        ) => s@move\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
+    [InlineData("Covered", "match \"a\"@move\n    _ => Console.writeLine(\"ok\")\n    let s if same(s, s) => Console.writeLine(s)", "ok\n")]
+    [InlineData("ShortCircuit", "match \"a\"@move\n    let s if false and same(s, s) => ()\n    let s if true or same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("Deferred", "defer\n    match \"a\"@move\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()\nConsole.writeLine(\"ok\")", "ok\na\n")]
+    [InlineData("Cleanup", "var flag = true\nmatch \"a\"@move\n    let s if (check: do\n        defer => flag = false\n        exit to check: same(s, s)\n    ) => if not flag => Console.writeLine(s)\n    _ => ()", "a\n")]
+    [InlineData("Transfer", "func run() -> string\n    match \"a\"@move\n        let s if (return \"ok\") => s@move\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
+    [InlineData("Loop", "var n = 0\nwhile n < 3\n    n += 1\n    match \"a\"@move\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()", "a\na\na\n")]
+    [InlineData("Nested", "match \"a\"@move\n    let outer if (match \"a\"@move\n        let inner if same(outer, inner) => true\n        _ => false\n    ) => Console.writeLine(outer)\n    _ => ()", "a\n")]
+    [InlineData("OuterLoan", "let text = \"a\"\nif text == (match \"a\"@move\n    let s if same(s, \"a\") => \"a\"\n    _ => \"b\"\n) => Console.writeLine(text)", "a\n")]
+    [InlineData("CheckingRead", "func run() -> string\n    match \"a\"@move\n        let s if (check: do\n            return \"ok\"\n            same(s, s)\n            exit to check: true\n        ) => s@move\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
     public void Execute(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("StringGuard" + name, Same + source, stdout);
 
     [Theory]
-    [InlineData("func forever() -> bool\n    loop => ()\nmatch \"held\"\n    let s if forever() => Console.writeLine(s)\n    _ => ()")]
-    [InlineData("func forever(a: ref/string) -> bool\n    loop => ()\nmatch \"held\"\n    let s if forever(s) => Console.writeLine(s)\n    _ => ()")]
+    [InlineData("func forever() -> bool\n    loop => ()\nmatch \"held\"@move\n    let s if forever() => Console.writeLine(s)\n    _ => ()")]
+    [InlineData("func forever(a: ref/string) -> bool\n    loop => ()\nmatch \"held\"@move\n    let s if forever(s) => Console.writeLine(s)\n    _ => ()")]
     public void DivergentGuardHasNoAcquisitionOrCleanup(string source)
     {
         var suffix = source.Contains("forever(s)", StringComparison.Ordinal) ? "Borrow" : "Plain";
@@ -45,9 +45,9 @@ public class StringGuardEmissionTest
 
     [Theory]
     [InlineData("match 1\n    let s if (work: do\n        let saved = s@move\n        exit to work: true\n    ) => ()\n    _ => ()")]
-    [InlineData("func take(s: string) => ()\nmatch \"a\"\n    let s if (work: do\n        take(s@move)\n        exit to work: true\n    ) => ()\n    _ => ()")]
-    [InlineData("match \"a\"\n    var s if (work: do\n        s = \"b\"\n        exit to work: true\n    ) => ()\n    _ => ()")]
-    [InlineData("match \"a\"\n    let s if (work: do\n        let saved = s@move\n        exit to work: true\n    ) => ()\n    _ => ()")]
+    [InlineData("func take(s: string) => ()\nmatch \"a\"@move\n    let s if (work: do\n        take(s@move)\n        exit to work: true\n    ) => ()\n    _ => ()")]
+    [InlineData("match \"a\"@move\n    var s if (work: do\n        s = \"b\"\n        exit to work: true\n    ) => ()\n    _ => ()")]
+    [InlineData("match \"a\"@move\n    let s if (work: do\n        let saved = s@move\n        exit to work: true\n    ) => ()\n    _ => ()")]
     public void InvalidOrUnsupportedCandidateUsePublishesNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -59,7 +59,7 @@ public class StringGuardEmissionTest
     [Fact]
     public void FalseGuardCleanupPrecedesAcquisitionAndDestroysEachOwnerOnce()
     {
-        const string Source = Same + "match \"subject\"\n    let s if same(s, \"other\") => ()\n    let s if same(s, \"subject\") => Console.writeLine(s)\n    _ => ()";
+        const string Source = Same + "match \"subject\"@move\n    let s if same(s, \"other\") => ()\n    let s if same(s, \"subject\") => Console.writeLine(s)\n    _ => ()";
         var ir = ScalarEmissionTest.EmitFixture("StringGuardLifetime", Source, "subject\n");
         StringEmissionTest.WriteAuditedFixture("StringGuardLifetime", Source, ir, "subject\n", "subject=2;other=1", order: [1, 0, 0]);
         var c = MinimalEmissionTest.Analyze(Source);
@@ -91,7 +91,7 @@ public class StringGuardEmissionTest
     [InlineData("read_move")]
     public void InvalidLoanPlansAreRejected(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Same + "match \"a\"\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze(Same + "match \"a\"@move\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()");
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var arm = body.MatchArms[0];
@@ -118,7 +118,7 @@ public class StringGuardEmissionTest
     [Fact]
     public void WarmCandidateBindingAndEmissionAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Same + "match \"a\"\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze(Same + "match \"a\"@move\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);
@@ -156,7 +156,7 @@ public class StringGuardEmissionTest
     {
         var source = temporary
             ? "func fail(a: ref/string) -> bool\n    let n: i32 = 2147483647 + 1\n    return true\nfail(\"held\")"
-            : "func fail() -> bool\n    let n: i32 = 2147483647 + 1\n    return true\nmatch \"held\"\n    let s if fail() => Console.writeLine(s)\n    _ => ()";
+            : "func fail() -> bool\n    let n: i32 = 2147483647 + 1\n    return true\nmatch \"held\"@move\n    let s if fail() => Console.writeLine(s)\n    _ => ()";
         const string Error = "Hello.kimi:2:18: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var name = temporary ? "StringGuardTemporaryAbort" : "StringGuardAbort";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, Error);

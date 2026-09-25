@@ -22,26 +22,26 @@ public class DictionaryOperationsTest
     {
         const string Source = """
             var entries: Dictionary<i32, i32> = [:]
-            match entries.tryInsert(1, 20)
+            match entries.tryInsert(1, 20)@move
                 .Ok(()) => ()
                 .Err(_) => $abort("insert")
-            match entries.tryInsert(1, 99)
+            match entries.tryInsert(1, 99)@move
                 .Ok(()) => $abort("duplicate")
                 .Err((let key, let value)) => require key == 1 and value == 99 else => $abort("inputs")
-            match entries.insertOrReplace(1, 22)
+            match entries.insertOrReplace(1, 22)@move
                 .Some(let old) => require old == 20 else => $abort("replace")
                 .None => $abort("absent")
-            match entries.tryGet(1)
+            match entries.tryGet(1)@move
                 .Some(let found) => require found == 22 else => $abort("lookup")
                 .None => $abort("absent")
-            match entries.remove(1)
+            match entries.remove(1)@move
                 .Some((let key, let value)) => require key == 1 and value == 22 else => $abort("remove")
                 .None => $abort("absent")
             require entries.length == 0 else => $abort("length")
-            match entries.remove(1)
+            match entries.remove(1)@move
                 .None => ()
                 .Some(_) => $abort("absent removal")
-            match entries.tryGet(1)
+            match entries.tryGet(1)@move
                 .None => ()
                 .Some(_) => $abort("absent lookup")
             entries.clear()
@@ -93,7 +93,7 @@ public class DictionaryOperationsTest
             var entries: Dictionary<Key, i32> = [:]
             _ = entries.tryInsert(Key.init(7, 1), 20)
             _ = entries.insertOrReplace(Key.init(7, 9), 22)
-            match entries.remove(Key.init(7, 0))
+            match entries.remove(Key.init(7, 0))@move
                 .Some((let key, let value)) => require key.tag == 1 and value == 22 else => $abort("stored key")
                 .None => $abort("missing")
             """;
@@ -137,10 +137,10 @@ public class DictionaryOperationsTest
             let nan: f64 = 0.0 / 0.0
             var entries: Dictionary<(f64, i32), i32> = [:]
             _ = entries.tryInsert((nan, 7), 42)
-            match entries.tryInsert((-nan, 7), 99)
+            match entries.tryInsert((-nan, 7), 99)@move
                 .Err((_, let rejected)) => require rejected == 99 else => $abort("inputs")
                 .Ok(()) => $abort("NaN key")
-            match entries.tryGet((nan, 7))
+            match entries.tryGet((nan, 7))@move
                 .Some(let found) => require found == 42 else => $abort("lookup")
                 .None => $abort("missing")
             require not (nan == nan) else => $abort("IEEE operator")
@@ -157,7 +157,7 @@ public class DictionaryOperationsTest
             _ = entries.tryInsert("key", "value")
             let result = entries.tryGet(search())
             match result
-                .Some(let found) => Console.writeLine(found)
+                .Some(let found) => Console.writeLine(found@deref)
                 .None => $abort("missing")
             entries.clear()
             """;

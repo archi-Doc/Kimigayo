@@ -12,7 +12,7 @@ public class DictionaryEntryStorageTest
         const string Source = """
             var entries: Dictionary<(), ()> = [:]
             _ = entries.tryInsert((), ())
-            match entries.tryInsert((), ())
+            match entries.tryInsert((), ())@move
                 .Err(((), ())) => ()
                 .Ok(()) => $abort("duplicate")
             require entries.length == 1 else => $abort("length")
@@ -29,10 +29,10 @@ public class DictionaryEntryStorageTest
             var entries: Dictionary<bool, bool> = [:]
             _ = entries.tryInsert(true, false)
             _ = entries.tryInsert(false, true)
-            match entries.tryGet(false)
+            match entries.tryGet(false)@move
                 .Some(let value) => require value else => $abort("bool")
                 .None => $abort("missing")
-            match entries.insertOrReplace(true, true)
+            match entries.insertOrReplace(true, true)@move
                 .Some(let old) => require not old else => $abort("replace")
                 .None => $abort("missing")
             """;
@@ -48,7 +48,7 @@ public class DictionaryEntryStorageTest
                 return entries.tryInsert(key@move, value@move)
             var entries: Dictionary<(i32, i32), string> = [:]
             _ = insert(entries@uniq, (1, 2), "value")
-            match entries.tryGet((1, 2))
+            match entries.tryGet((1, 2))@move
                 .Some(let value) => Console.writeLine(value)
                 .None => $abort("missing")
             """;

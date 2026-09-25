@@ -22,12 +22,12 @@ public class DictionaryShrinkTest
             _ = entries.remove(3)
             entries.shrinkToFit()
             require entries.length == 2 and entries.capacity >= 2 else => $abort("capacity")
-            match entries.tryGet(4)
+            match entries.tryGet(4)@move
                 .Some(let value) => require value == 40 else => $abort("value")
                 .None => $abort("missing")
             _ = entries.remove(1)
             _ = entries.tryInsert(5, 50)
-            match entries.remove(5)
+            match entries.remove(5)@move
                 .Some((let key, let value)) => require key == 5 and value == 50 else => $abort("reuse")
                 .None => $abort("missing")
             """;

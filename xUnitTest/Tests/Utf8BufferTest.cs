@@ -32,7 +32,7 @@ public class Utf8BufferTest
                 let bytes = buffer.bytes()
                 require bytes.length == 2 and bytes[0] == 65 and bytes[1] == 66 else => $abort("bytes")
                 return .Ok(())
-            match run()
+            match run()@move
                 .Ok(_) => Console.writeLine("ok")
                 .Err(_) => $abort("full")
             """;
@@ -57,7 +57,7 @@ public class Utf8BufferTest
     [InlineData("[0x80@u8]", false)]
     public void StrictValidation(string bytes, bool valid)
     {
-        var source = $"let data = {bytes}\nlet valid = match Text.validateUtf8(data[..])\n    .Ok(_) => true\n    .Err(_) => false\nrequire valid == {valid.ToString().ToLowerInvariant()} else => $abort(\"validation\")\nConsole.writeLine(\"ok\")";
+        var source = $"let data = {bytes}\nlet valid = match Text.validateUtf8(data[..])@move\n    .Ok(_) => true\n    .Err(_) => false\nrequire valid == {valid.ToString().ToLowerInvariant()} else => $abort(\"validation\")\nConsole.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("Utf8BufferValidation" + bytes.Replace("@u8", string.Empty, StringComparison.Ordinal).Replace(" ", string.Empty, StringComparison.Ordinal).Replace(",", "_", StringComparison.Ordinal).Trim('[', ']'), source, "ok\n");
     }
 
@@ -71,14 +71,14 @@ public class Utf8BufferTest
                 try (window@uniq).push(65)
                 try (window@uniq).push(66)
                 _ = (window@move).commit()
-                match buffer.text()
+                match buffer.text()@move
                     .Ok(let text) => Console.writeLine(text)
                     .Err(_) => $abort("utf8")
-                match (buffer@move).intoString()
+                match (buffer@move).intoString()@move
                     .Ok(let text) => Console.writeLine(text)
                     .Err(_) => $abort("utf8")
                 return .Ok(())
-            match run()
+            match run()@move
                 .Ok(_) => ()
                 .Err(_) => $abort("full")
             """;
@@ -95,12 +95,12 @@ public class Utf8BufferTest
                 let bytes: [2 of u8] = [65, 66]
                 var window = try (buffer@uniq).reserve(0)
                 try (window@uniq).append(bytes[..])
-                match (window@uniq).append(bytes[..])
+                match (window@uniq).append(bytes[..])@move
                     .Ok(_) => $abort("overflow")
                     .Err(_) => ()
                 require window.written == 2 and window.remaining == 1 else => $abort("atomic")
                 var limited = (window@move).limit(2)
-                match (limited@uniq).push(67)
+                match (limited@uniq).push(67)@move
                     .Ok(_) => $abort("limit")
                     .Err(_) => ()
                 _ = limited@move
@@ -108,13 +108,13 @@ public class Utf8BufferTest
                 var next = try (buffer@uniq).reserve(2)
                 try (next@uniq).append(bytes[..])
                 _ = (next@move).commit()
-                match buffer.text()
+                match buffer.text()@move
                     .Ok(let text) => Console.writeLine(text)
                     .Err(_) => $abort("utf8")
                 (buffer@uniq).clear()
                 require buffer.capacity == 3 and buffer.length == 0 else => $abort("clear")
                 return .Ok(())
-            match run()
+            match run()@move
                 .Ok(_) => ()
                 .Err(_) => $abort("full")
             """;
@@ -139,14 +139,14 @@ public class Utf8BufferTest
                 try (second@uniq).push(67)
                 _ = (second@move).commit()
                 require buffer.length == 3 and buffer.capacity == 4 else => $abort("growth")
-                match (buffer@uniq).validate()
+                match (buffer@uniq).validate()@move
                     .Ok(_) => ()
                     .Err(_) => $abort("utf8")
-                match (buffer@move).intoString()
+                match (buffer@move).intoString()@move
                     .Ok(let text) => Console.writeLine(text)
                     .Err(_) => $abort("utf8")
                 return .Ok(())
-            match run()
+            match run()@move
                 .Ok(_) => ()
                 .Err(_) => $abort("full")
             """;

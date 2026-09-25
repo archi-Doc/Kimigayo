@@ -67,7 +67,7 @@ public class DictionaryIndexTest
 
     [Theory]
     [InlineData("entries[entries[1]] = 7")]
-    [InlineData("match entries.tryGet(1)\n    .Some(let key) => entries[key] = 7\n    .None => ()")]
+    [InlineData("match entries.tryGet(1)@move\n    .Some(let key) => entries[key] = 7\n    .None => ()")]
     public void KeyLoanCannotEndBeforeReplacement(string replacement)
     {
         var source = "var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 1)\n" + replacement;

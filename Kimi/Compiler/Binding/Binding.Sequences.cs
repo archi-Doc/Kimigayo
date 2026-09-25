@@ -50,7 +50,7 @@ public sealed partial class Binding
 
     private BoundType? BindIteration(ForKoto source, BindingScope scope)
     {
-        var iterable = this.RejectExclusiveSubject(source.Iterable, this.BindNode(source.Iterable, scope));
+        var iterable = this.BindNode(source.Iterable, scope);
         source.SharedIterable = null;
         if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Slice or BoundTypeKind.ResolvedRange }] })
         {

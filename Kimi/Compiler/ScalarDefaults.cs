@@ -14,13 +14,19 @@ internal static class ScalarDefaults
             SupportsExpression(expression, function, parameterIndex);
     }
 
-    internal static bool SupportsValue(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit);
+    internal static bool SupportsValue(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && SupportsValue(type.Components[0]));
 
     internal static bool SupportsPatternValue(BoundType? type)
     {
         if (SupportsValue(type))
         {
             return true;
+        }
+
+        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            return SupportsPatternValue(type.Components[0]);
         }
 
         if (type is not { Kind: BoundTypeKind.Tuple, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0 })
@@ -167,6 +173,12 @@ internal static class ScalarDefaults
         if (subject is ParenthesizedKoto parentheses)
         {
             return SupportsMatchSubject(parentheses.Operand, function, parameterIndex);
+        }
+
+        if (subject is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer)
+        {
+            // SPEC 15.1.6: a ByValue Subject of a prepared scalar-only tuple is a Copy.
+            return SupportsMatchSubject(transfer.Left, function, parameterIndex);
         }
 
         if (subject is TupleLiteralKoto tuple)

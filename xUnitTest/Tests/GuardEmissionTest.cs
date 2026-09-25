@@ -14,13 +14,13 @@ public class GuardEmissionTest
         { "Duplicate", "func test() -> bool\n    Console.writeLine(\"guard\")\n    return false\nmatch 0\n    0 if test() => ()\n    0 => Console.writeLine(\"ok\")\n    _ => ()", "guard\nok\n" },
         { "Mismatch", "func test() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch 1\n    0 if test() => ()\n    _ => Console.writeLine(\"ok\")", "ok\n" },
         { "Mutation", "var state = 0\nmatch 1\n    _ if (check: do\n        state = 7\n        exit to check: false\n    ) => ()\n    _ => if state == 7 => Console.writeLine(\"ok\")", "ok\n" },
-        { "Snapshot", "var value = 7\nmatch value\n    let n if (check: do\n        value = 9\n        exit to check: n == 7\n    ) => if n == 7 and value == 9 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "Snapshot", "var value = 7\nmatch value@move\n    let n if (check: do\n        value = 9\n        exit to check: n == 7\n    ) => if n == 7 and value == 9 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Unit", "match ()\n    let n if true => ()\n    () => ()\nConsole.writeLine(\"ok\")", "ok\n" },
         { "Boolean", "match false\n    true if true => ()\n    false if false => ()\n    true => ()\n    false => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Return", "func f() -> string\n    match 1\n        let n if (return \"ok\") => \"bad\"\n        _ => \"other\"\n    return \"after\"\nConsole.writeLine(f())", "ok\n" },
         { "StringCondition", "func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "ShortCircuit", "func test() -> bool\n    Console.writeLine(\"bad\")\n    return true\nmatch 1\n    _ if false and test() => ()\n    _ if true or test() => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
-        { "BodyVar", "match 1\n    var n if n == 1\n        n += 1\n        if n == 2 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
+        { "BodyVar", "match 1@move\n    var n if n == 1\n        n += 1\n        if n == 2 => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Nested", "match 1\n    let n if (match n\n        let x if x == 1 => true\n        _ => false\n    ) => Console.writeLine(\"ok\")\n    _ => ()", "ok\n" },
         { "Loop", "var n = 0\nwhile n < 3\n    n += 1\n    match n\n        let x if x == 1 => continue\n        let x if x == 2 => Console.writeLine(\"two\")\n        _ => exit", "two\n" },
         { "Covered", "match 1\n    _ => Console.writeLine(\"ok\")\n    let x if x == 1 => Console.writeLine(\"bad\")", "ok\n" },
@@ -59,7 +59,7 @@ public class GuardEmissionTest
     [Fact]
     public void CandidateIdentityAndStorage()
     {
-        var c = MinimalEmissionTest.Analyze("match 7\n    let n if n == 7 => if n == 7 => ()\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze("match 7@move\n    let n if n == 7 => if n == 7 => ()\n    _ => ()");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single();
         var pattern = body.Matches[0].Binding.Positions[0];

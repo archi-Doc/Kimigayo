@@ -8,12 +8,37 @@ internal sealed partial class BodyLowering
 {
     private int[] patternProjectionRoots = [];
 
-    private bool IsCompositeSubject(BoundType type) => (type.Semantics == SemanticsKind.Ref && ReferenceTypes.IsStorage(type)) ||
+    // The selected layers of a structural position are safe value references (SPEC 14.8.1).
+    private static bool ValidDereferences(BoundPattern pattern)
+    {
+        var type = pattern.MatchedType;
+        for (var layer = 0; layer < pattern.ImplicitDerefs; layer++)
+        {
+            if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                return false;
+            }
+
+            type = type.Components[0];
+        }
+
+        return true;
+    }
+
+    private bool IsCompositeSubject(BoundType type) => (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ReferenceTypes.IsStorage(type)) ||
         ((type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type)) &&
         this.aggregateLayouts.Get(type) is { } layout && (!layout.NeedsDestruction || MatchTypes.SupportsOwnedPatternValue(type, this.ownedPatternTypes)));
 
     private BoundType PatternType(BoundPattern pattern)
-        => this.Matched(pattern.ImplicitDeref == PatternImplicitDeref.SharedOnce ? pattern.MatchedType.Components[0] : pattern.MatchedType);
+    {
+        var type = pattern.MatchedType;
+        for (var layer = 0; layer < pattern.ImplicitDerefs; layer++)
+        {
+            type = type.Components[0];
+        }
+
+        return this.Matched(type);
+    }
 
     private int PatternOffset(BoundMatch match, int position)
     {
@@ -52,7 +77,7 @@ internal sealed partial class BodyLowering
         for (var level = depth - 1; level >= 0; level--)
         {
             var parent = match.Positions[ancestors[level]];
-            if (parent.ImplicitDeref == PatternImplicitDeref.SharedOnce)
+            for (var layer = 0; layer < parent.ImplicitDerefs; layer++)
             {
                 if (offset > int.MaxValue || count == dereferences.Length)
                 {
@@ -130,8 +155,8 @@ internal sealed partial class BodyLowering
         {
             var node = match.Positions[i];
             if (node.End <= i || node.End > end ||
-                (node.AccessMode == PatternAccessMode.Shared) != (node.ImplicitDeref == PatternImplicitDeref.SharedOnce || (node.Parent >= 0 && match.Positions[node.Parent].AccessMode == PatternAccessMode.Shared)) ||
-                (node.ImplicitDeref == PatternImplicitDeref.SharedOnce && node.MatchedType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 }) ||
+                (node.AccessMode != PatternAccessMode.Owned) != (node.ImplicitDerefs > 0 || (node.Parent >= 0 && match.Positions[node.Parent].AccessMode != PatternAccessMode.Owned)) ||
+                !ValidDereferences(node) ||
                 node.Source.BindingState != BindingState.Resolved || node.Source.AttributeChain is not null || this.PatternOffset(match, i) < 0)
             {
                 return false;
@@ -213,7 +238,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (pattern.AccessMode == PatternAccessMode.Shared)
+        if (pattern.AccessMode != PatternAccessMode.Owned)
         {
             for (var i = index; i < pattern.End; i++)
             {

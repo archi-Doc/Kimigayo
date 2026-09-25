@@ -72,8 +72,9 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        // SPEC 15.1.6 subject rule: an owned Non-Copy Place is shared-borrowed for the match.
-        var input = plan!.SharedSubject is { } borrowed ? this.BorrowStruct(syntax.Expression, borrowed) : this.Expression(syntax.Expression);
+        // SPEC 15.1.6 subject rule: a bare Place or temporary is shared-borrowed and a bare exclusive borrow
+        // value Reborrowed for the match; a written borrow or transfer is acquired as it is.
+        var input = plan!.SubjectBorrow is { } borrowed ? this.BorrowStruct(syntax.Expression, borrowed) : this.Expression(syntax.Expression);
         if (this.current < 0 || !this.flow!.Nodes[syntax.Expression].CanCompleteNormally)
         {
             this.current = -1;
@@ -88,7 +89,7 @@ public sealed partial class OwnershipAnalysis
         var tempMark = this.temporaries.Count;
         var localMark = this.locals.Count;
         var output = this.ResultPlace(syntax);
-        var subject = this.Place(syntax.Expression, plan.SharedSubject ?? syntax.Expression.BoundType, OwnershipPlaceKind.Subject, false, this.body.PlaceStorage[input].Acquisition);
+        var subject = this.Place(syntax.Expression, plan.SubjectBorrow ?? syntax.Expression.BoundType, OwnershipPlaceKind.Subject, false, this.body.PlaceStorage[input].Acquisition);
         this.PrepareDecompositionSlots();
         this.Emit(OwnershipOperationKind.Declare, syntax, subject);
         this.Emit(OwnershipOperationKind.InitializeSubject, syntax, subject, input);
@@ -468,7 +469,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var pattern = plan.Positions[index];
-        if (pattern.AccessMode == PatternAccessMode.Shared)
+        if (pattern.AccessMode != PatternAccessMode.Owned)
         {
             for (var i = index; i < pattern.End; i++)
             {

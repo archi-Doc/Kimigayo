@@ -76,7 +76,7 @@ public class GuardedMatchContinuationTest
     [Fact]
     public void ScalarTupleDecompositionKeepsCandidateAndBodyIdentities()
     {
-        var source = Source("var x = 1", "(let flag, var n) if flag\n                    n += 1\n                    return\n                (_, let n) => x = n", "x = 3", "let y = x", "(c, 2)");
+        var source = Source("var x = 1", "(let flag, var n) if flag\n                    n += 1\n                    return\n                (_, let n) => x = n", "x = 3", "let y = x", "(c, 2)@move");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);

@@ -40,7 +40,7 @@ public class ContinuationVerificationTest
     public void PreparedTupleCopiesPreserveNamedAndReturnedArgumentSnapshots()
     {
         const string Source = "func pair(n: i32) -> (i32, bool) => (n, true)\n" +
-            "func choose(a: (i32, bool), b: (i32, bool), x: i32 = (match a\n    var saved\n        saved.0 += b.0\n        yield saved.0\n), y: i32 = (match (b, x)\n    ((let n, _), let value) if n > 0 => n + value\n    _ => x\n)) -> i32 => y\n" +
+            "func choose(a: (i32, bool), b: (i32, bool), x: i32 = (match a\n    let saved => saved.0 + b.0\n), y: i32 = (match (b, x)@move\n    ((let n, _), let value) if n > 0 => n + value\n    _ => x\n)) -> i32 => y\n" +
             "var value = (3, true)\nif choose(b: pair(4), a: value) != 11 or value.0 != 3 => $abort(\"snapshot\")\n" +
             "if choose(pair(2), pair(5), y: 19) != 19 => $abort(\"supplied\")\n" +
             "var i = 0\nvar sum = 0\nwhile i < 4\n    sum += choose(pair(i), pair(2))\n    i += 1\nif sum != 22 => $abort(\"repeated\")\nConsole.writeLine(\"ok\")";
@@ -66,7 +66,7 @@ public class ContinuationVerificationTest
     public void TupleDefaultReadsEveryPreparedStorageSource(string name, string argument)
     {
         var source = "func pair(n: i32) -> (i32, bool) => (n, true)\n" +
-            "func read(a: (i32, bool), b: (i32, bool), result: i32 = (match a\n    var saved\n        saved.0 += b.0\n        yield saved.0 + a.0\n)) -> i32 => result\n" +
+            "func read(a: (i32, bool), b: (i32, bool), result: i32 = (match a\n    let saved => saved.0 + b.0 + a.0\n)) -> i32 => result\n" +
             "func forward(value: (i32, bool)) -> i32 => read(b: pair(4), a: value)\n" +
             "var value = (3, true)\nif read(b: pair(4), a: (" + argument + ")) != 10 or forward(value) != 10 or value.0 != 3 => $abort(\"prepared tuple\")";
         ScalarEmissionTest.EmitFixture("VerificationContinuation" + Configuration + name, source, string.Empty);
@@ -199,7 +199,7 @@ public class ContinuationVerificationTest
         File.WriteAllText(Path.Combine(path, Configuration + "-growth.json"), System.Text.Json.JsonSerializer.Serialize(results));
     }
 
-    private const string MixedSource = "func stop() -> Never => $abort(\"stop\")\nfunc same(a: ref/string, b: ref/string) -> bool => a == b\nfunc f(c: bool)\n    var x = 1\n    do\n        loop\n            if c => return else => exit\n            choice: match \"subject\"\n                let text if (guard: do\n                    x += 1\n                    exit to guard: same(text, \"subject\")\n                )\n                    Console.writeLine(text)\n                    yield to choice\n                _ => return\n            match (c, x)\n                (true, var n) if n > 0\n                    n += 1\n                    return\n                (_, let n) => x = n\n            x = 3\n        stop()\n    let result = x";
+    private const string MixedSource = "func stop() -> Never => $abort(\"stop\")\nfunc same(a: ref/string, b: ref/string) -> bool => a == b\nfunc f(c: bool)\n    var x = 1\n    do\n        loop\n            if c => return else => exit\n            choice: match \"subject\"\n                let text if (guard: do\n                    x += 1\n                    exit to guard: same(text, \"subject\")\n                )\n                    Console.writeLine(text)\n                    yield to choice\n                _ => return\n            match (c, x)@move\n                (true, var n) if n > 0\n                    n += 1\n                    return\n                (_, let n) => x = n\n            x = 3\n        stop()\n    let result = x";
 
 #if DEBUG
     private const string Configuration = "Debug";

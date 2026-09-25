@@ -48,13 +48,13 @@ public class Utf8UserFormatTest
             var bytes = [4 of 0@u8]
             var buffer = Text.fixed(bytes@uniq)
             var writer = Text.writer(buffer@uniq)
-            match (writer@uniq).write(Value.init())
+            match (writer@uniq).write(Value.init())@move
                 .Ok(_) => $abort("user failure")
                 .Err(_) => ()
-            match writer.status()
+            match writer.status()@move
                 .Ok(_) => $abort("sticky status")
                 .Err(_) => ()
-            match (writer@uniq).write("")
+            match (writer@uniq).write("")@move
                 .Ok(_) => $abort("sticky empty")
                 .Err(_) => ()
             """;
@@ -78,13 +78,13 @@ public class Utf8UserFormatTest
                 return Text.writer(value)
             var destination = Destination<i32>.init(42)
             var writer = make(destination@uniq)
-            match (writer@uniq).write("")
+            match (writer@uniq).write("")@move
                 .Ok(_) => ()
                 .Err(_) => $abort("empty")
-            match (writer@uniq).write(123)
+            match (writer@uniq).write(123)@move
                 .Ok(_) => $abort("expected full")
                 .Err(_) => ()
-            match (writer@uniq).write(456)
+            match (writer@uniq).write(456)@move
                 .Ok(_) => $abort("sticky")
                 .Err(_) => ()
             require destination.count == 1 else => $abort("reservation count")
@@ -108,12 +108,12 @@ public class Utf8UserFormatTest
                     self.count += 1
             """ + "\n        " + reserve + "\n" + """
                 public func output(self: ref/Self)
-                    match self.buffer.text()
+                    match self.buffer.text()@move
                         .Ok(let view) => Console.writeLine(view)
                         .Err(_) => $abort("utf8")
             var destination = Destination.init()
             var writer = Text.writer(destination@uniq)
-            match (writer@uniq).write("abc")
+            match (writer@uniq).write("abc")@move
             """ + (valid ? "\n    .Ok(_) => ()\n    .Err(_) => $abort(\"valid window\")" : "\n    .Ok(_) => $abort(\"malformed window\")\n    .Err(_) => ()") + "\nrequire destination.count == 1 else => $abort(\"reserve once\")\ndestination.output()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
@@ -127,11 +127,11 @@ public class Utf8UserFormatTest
                 var buffer = Text.fixed(bytes@uniq)
                 var writer = Text.writer(buffer@uniq)
             """ + "\n    " + operation + "\n" + """
-                match (buffer@move).intoText()
+                match (buffer@move).intoText()@move
                     .Ok(let view) => Console.writeLine(view)
                     .Err(_) => $abort("utf8")
                 return .Ok(())
-            match run()
+            match run()@move
                 .Ok(_) => ()
                 .Err(_) => $abort("full")
             """;

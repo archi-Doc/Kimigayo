@@ -31,7 +31,7 @@ public class Utf8FloatTest
     [InlineData("NaN", "0.0 / 0.0", "NaN")]
     public void CanonicalNotationFitsItsExactByteCount(string name, string expression, string expected)
     {
-        var source = "var bytes = [" + expected.Length + " of 0@u8]\nmatch Text.tryFormat(" + expression + ", bytes@uniq)\n    .Ok(let text) => Console.writeLine(text)\n    .Err(_) => $abort(\"exact size\")";
+        var source = "var bytes = [" + expected.Length + " of 0@u8]\nmatch Text.tryFormat(" + expression + ", bytes@uniq)@move\n    .Ok(let text) => Console.writeLine(text)\n    .Err(_) => $abort(\"exact size\")";
         NativeAllocationAudit.WriteFixture("Utf8Float" + name, source, 0, 0, 0, expected + "\n");
     }
 

@@ -154,21 +154,9 @@ public sealed partial class Binding
         }
         else
         {
-            subject = this.RejectExclusiveSubject(match.Expression, subject);
-            if (subject is { Semantics: SemanticsKind.Owner } && IsBarePlace(match.Expression) && this.ProveCopy(subject, match.Expression) != ConstraintProof.Proven)
-            {
-                // SPEC 15.1.6 subject rule: an owned Place is shared-borrowed; a proven-Copy Place is copied instead,
-                // which is observationally the same and keeps no Loan. Consuming a Place is written match x@move.
-                subject = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [subject], origin: this.PlaceOrigin(match.Expression));
-                plan.SharedSubject = subject;
-            }
-            else if (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 })
-            {
-                // SPEC 15.1.6: an exclusive borrow value is shared-reborrowed for the match; it is neither
-                // consumed nor granted exclusive Pattern bindings.
-                subject = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [subject.Components[0]], origin: subject.Origin);
-                plan.SharedSubject = subject;
-            }
+            subject = this.AcquireSubject(match.Expression, subject, out var borrow, out var mode);
+            plan.SubjectBorrow = borrow;
+            plan.Mode = mode;
         }
 
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
@@ -181,7 +169,7 @@ public sealed partial class Binding
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
-            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, null);
+            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, PatternAccessMode.Owned, null);
             plan.ArmStorage.Add(new(arm, root));
             this.MarkPatternTree(arm.Pattern);
         }
@@ -256,11 +244,50 @@ public sealed partial class Binding
         return plan.ResultType;
     }
 
-    private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, BoundOrigin? sharedOrigin)
+    // SPEC 15.1.6 subject rule: the outermost written operation fixes the Subject mode. A bare Place or temporary
+    // is shared-borrowed for the construct, an explicit borrow or transfer keeps its written mode, and a bare
+    // exclusive borrow value is Reborrowed exclusively; any other borrow value is acquired as it is.
+    private BoundType? AcquireSubject(Koto expression, BoundType? type, out BoundType? borrow, out SubjectMode mode)
+    {
+        borrow = null;
+        mode = SubjectMode.Shared;
+        if (type is null || ReferenceEquals(type, BoundType.Never))
+        {
+            return type;
+        }
+
+        var written = KotoHelper.UnwrapParentheses(expression);
+        if (written is ConversionKoto { ConversionBinding: ConversionBinding.Transfer })
+        {
+            mode = SubjectMode.ByValue;
+            return type;
+        }
+
+        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
+        {
+            mode = SubjectMode.Exclusive;
+            if (written is not ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } && IsBarePlace(expression))
+            {
+                borrow = type;
+            }
+
+            return type;
+        }
+
+        if (type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
+        {
+            borrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression));
+            return borrow;
+        }
+
+        return type;
+    }
+
+    private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, PatternAccessMode access, BoundOrigin? origin)
     {
         if (syntax is ParenthesizedKoto grouping)
         {
-            var grouped = this.BindPattern(grouping.Operand, matched, outer, plan, parent, element, sharedOrigin);
+            var grouped = this.BindPattern(grouping.Operand, matched, outer, plan, parent, element, access, origin);
             Complete(grouping, matched);
             return grouped;
         }
@@ -277,12 +304,18 @@ public sealed partial class Binding
         var type = matched;
         var structural = syntax is not IdentifierNameKoto { IdentifierName: "_" } and not SyntaxFormKoto { Akind: KotoKind.BindingPattern };
         var unsupported = false;
-        var implicitDeref = PatternImplicitDeref.None;
-        if (structural && type.Semantics == SemanticsKind.Ref && type.Kind == BoundTypeKind.Semantics)
+        var layers = 0;
+        if (structural)
         {
-            type = type.Components[0];
-            sharedOrigin = matched.Origin;
-            implicitDeref = PatternImplicitDeref.SharedOnce;
+            // SPEC 14.8.1, 3.4.1: a structural Pattern selects the referent of every safe value-reference layer
+            // that lacks its structure; a shared layer anywhere on the path bounds every descendant to shared access.
+            while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                access = type.Semantics == SemanticsKind.Ref || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
+                origin = type.Origin ?? origin;
+                type = type.Components[0];
+                layers++;
+            }
         }
 
         if (structural && type.Semantics != SemanticsKind.Owner)
@@ -298,13 +331,23 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Wildcard, WholePosition = true };
                 break;
             case SyntaxFormKoto { Akind: KotoKind.BindingPattern, BoundSymbol: { } symbol } binding:
-                symbol.Type = sharedOrigin is null ? matched : this.SharedReadType(matched, sharedOrigin, binding);
+                // SPEC 15.1.6: a part of the acquired owned Subject is bound as its stored Type; a Place reached
+                // with shared or exclusive access binds ref/T or uniq/T, also for a Copy T. A whole-Subject binding
+                // of a reference-valued Subject copies that reference and never selects the internal slot.
+                symbol.Type = access == PatternAccessMode.Owned ? matched
+                    : this.InternType(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: origin);
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };
                 if (this.symbols.TryGetValue(binding.Operands[0], out var candidate) && candidate.Kind == BindingSymbolKind.PatternCandidate)
                 {
-                    candidate.Type = this.SharedReadType(matched, this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot), binding);
+                    // SPEC 14.8.3: a guard candidate is a shared reference to its Place whatever the mode and Copy capability.
+                    var candidateOrigin = this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot);
+                    candidate.Type = parent < 0 && matched is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+                        ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
+                        : parent < 0 && (ScalarTypes.Supports(matched) || ReferenceEquals(matched, BoundType.Unit))
+                        ? matched // A whole Scalar or Unit ByValue Subject is read by its candidate (STATUS: candidate reference boundary).
+                        : this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: candidateOrigin);
                     position = position with { CandidateSymbol = candidate };
                 }
 
@@ -317,7 +360,7 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Tuple, WholePosition = true };
                 for (var i = 0; i < tuple.Operands.Length; i++)
                 {
-                    var child = this.BindPattern(tuple.Operands[i], type.Components[i], outer, plan, index, i, sharedOrigin);
+                    var child = this.BindPattern(tuple.Operands[i], type.Components[i], outer, plan, index, i, access, origin);
                     position = position with { WholePosition = position.WholePosition && plan.PositionStorage[child].WholePosition };
                 }
 
@@ -343,7 +386,7 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        this.BindPattern(children[i], payload, outer, plan, index, i, sharedOrigin);
+                        this.BindPattern(children[i], payload, outer, plan, index, i, access, origin);
                     }
                 }
 
@@ -360,8 +403,8 @@ public sealed partial class Binding
         position = position with
         {
             End = plan.PositionStorage.Count,
-            AccessMode = sharedOrigin is not null ? PatternAccessMode.Shared : PatternAccessMode.Owned,
-            ImplicitDeref = implicitDeref,
+            AccessMode = access,
+            ImplicitDerefs = layers,
         };
         plan.PositionStorage[index] = position;
         if (position.Kind == BoundPatternKind.Invalid)
@@ -491,9 +534,11 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var proof = this.ProveCopy(position.MatchedType, position.Source);
-                var acquisition = proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted
-                    ? position.AccessMode == PatternAccessMode.Shared ? PatternAcquisition.Borrow : PatternAcquisition.Move
+                // SPEC 15.1.6: a binding reached through a reference layer borrows its Place; an owned part is
+                // copied or transferred by its complete stored Type.
+                var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
+                var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
+                    : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
                     : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
                 plan.PositionStorage[i] = position with { Acquisition = acquisition };
                 if (proof == ConstraintProof.Error)
@@ -535,7 +580,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 })
+        while (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
             subject = subject.Components[0];
         }

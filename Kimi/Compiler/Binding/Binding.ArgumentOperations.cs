@@ -33,11 +33,17 @@ public sealed partial class Binding
     private readonly ScratchBuffers<BoundArgumentOperation> argumentOperationScratch = new();
     private readonly Dictionary<Koto, BoundArgumentOperation> receiverOperations = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<Koto> referentReads = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, BoundType> implicitReborrows = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>Gets whether an expression of Type <c>ref/T</c> or <c>uniq/T</c> is read as its Copy referent where a <c>T</c> is expected (SPEC 3.3).</summary>
     /// <param name="node">The bound expression; its BoundType remains the reference Type.</param>
     /// <returns>Whether the expression's value is the copied referent.</returns>
     public bool ReadsReferent(Koto node) => this.referentReads.Contains(node);
+
+    /// <summary>Gets the Reborrow Type of a bare uniq value at a fixed expected reference Type (SPEC 10.2), or null.</summary>
+    /// <param name="node">The expression.</param>
+    /// <returns>The reference Type formed by the implicit Reborrow, or null when the value is acquired as it is.</returns>
+    public BoundType? ImplicitReborrow(Koto node) => this.implicitReborrows.GetValueOrDefault(node);
 
     /// <summary>Gets a selected receiver/storage operation, including an unresolved projected-use proof obligation.</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
@@ -139,20 +145,6 @@ public sealed partial class Binding
             IndexKoto index => index.Left.BoundType?.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsArray(index.Left.BoundType),
             _ => false,
         };
-    }
-
-    // SPEC 15.1.6 subject rule: a match Subject or for iterable is acquired with shared access only, so an
-    // exclusive borrow written as one is rejected. Binding continues with the shared reborrow the rule performs.
-    private BoundType? RejectExclusiveSubject(Koto subject, BoundType? type)
-    {
-        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ||
-            KotoHelper.UnwrapParentheses(subject) is not ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } conversion)
-        {
-            return type;
-        }
-
-        Fail(conversion, BindingFailure.ExclusiveSubject);
-        return this.InternType(BoundTypeKind.Semantics, null, type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef, [type.Components[0]], origin: type.Origin);
     }
 
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,

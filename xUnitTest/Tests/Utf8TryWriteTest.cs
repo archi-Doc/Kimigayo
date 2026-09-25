@@ -9,7 +9,7 @@ namespace XunitTest;
 public class Utf8TryWriteTest
 {
     private const string Setup = "var bytes = [64 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)\nvar writer = Text.writer(buffer@uniq)\n";
-    private const string Print = "match buffer.text()\n    .Ok(let text) => Console.writeLine(text)\n    .Err(_) => $abort(\"utf8\")\n";
+    private const string Print = "match buffer.text()@move\n    .Ok(let text) => Console.writeLine(text)\n    .Err(_) => $abort(\"utf8\")\n";
 
     [Theory]
     [InlineData("Plain", "\"abc\"", "abc\n")]

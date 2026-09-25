@@ -22,7 +22,7 @@ public class PatternBindingTest
     [InlineData("func f(x: char) -> i32 => match x\n    'A' => 1\n    _ => 0")]
     [InlineData("func f(x: Option<Option<i32>>) -> i32 => match x\n    .Some(.Some(let n)) => n\n    .Some(_) => 1\n    .None => 0")]
     [InlineData("func f(x: Option<(i32, bool)>) -> i32 => match x\n    .Some((let n, _)) => n\n    .None => 0")]
-    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0")]
+    [InlineData("func f(x: Option<i32>) -> i32 => match x@move\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32\n    return match x\n        .Some(let n)\n            yield n\n        .None\n            yield 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => if n > 0 => n else => 0\n    .None => 0")]
     [InlineData("func f(x: Option<i32>)\n    match x\n        .Some(_)\n            ()\n        .None => ()")]
@@ -52,11 +52,8 @@ public class PatternBindingTest
     [InlineData("func f(x: (i32, i32)) => match x\n    (let n,) => ()")]
     [InlineData("func f<T>(x: Option<T>) => match x\n    .Some(1) => ()\n    _ => ()")]
     [InlineData("func f(x: i32) => match x\n    true => ()")]
-    [InlineData("func f(x: ref/(ref/i32 during static) during static) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("func f(x: unsafe/i32) => match x\n    0 => ()\n    _ => ()")]
-    [InlineData("func f(x: Option<uniq/i32 during a>) => match x\n    .Some(0) => ()\n    _ => ()")]
     [InlineData("struct Data\nfunc f(x: obj/Data) => match x\n    () => ()\n    _ => ()")]
-    [InlineData("func f(x: ref/(uniq/i32 during b) during a) => match x\n    0 => ()\n    _ => ()")]
     public void InvalidPatternsSuppressCoverageCascades(string source)
     {
         var c = Parse(source);
@@ -69,15 +66,18 @@ public class PatternBindingTest
     }
 
     [Theory]
-    [InlineData("func f(x: ref/i32 during static) => match x\n    0 => ()\n    _ => ()")]
-    [InlineData("func f(x: Option<ref/i32 during static>) => match x\n    .Some(0) => ()\n    _ => ()")]
-    [InlineData("func f(x: Option<i32>) => match x@ref\n    .Some(_) => ()\n    .None => ()")]
-    public void SharedStructuralInspectionHasCompleteCoverage(string source)
+    [InlineData("func f(x: ref/i32 during static) => match x\n    0 => ()\n    _ => ()", 1)]
+    [InlineData("func f(x: Option<ref/i32 during static>) => match x\n    .Some(0) => ()\n    _ => ()", 1)]
+    [InlineData("func f(x: Option<i32>) => match x@ref\n    .Some(_) => ()\n    .None => ()", 1)]
+    [InlineData("func f(x: ref/(ref/i32 during static) during static) => match x\n    0 => ()\n    _ => ()", 2)]
+    [InlineData("func f(x: Option<uniq/i32 during a>) => match x\n    .Some(0) => ()\n    _ => ()", 1)]
+    [InlineData("func f(x: ref/(uniq/i32 during b) during a) => match x\n    0 => ()\n    _ => ()", 2)]
+    public void SharedStructuralInspectionHasCompleteCoverage(string source, int layers)
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
-        Assert.Contains(Plan(c).Positions, x => x.ImplicitDeref == PatternImplicitDeref.SharedOnce);
+        Assert.Contains(Plan(c).Positions, x => x.ImplicitDerefs == layers);
     }
 
     [Theory]
@@ -243,19 +243,21 @@ public class PatternBindingTest
     }
 
     [Fact]
-    public void SharedAccessCopiesTheCompleteCopyPayloadType()
+    public void SharedAccessBindsAReferenceToTheCopyPayload()
     {
+        // SPEC 15.1.6: a Place reached with shared access binds ref/T, also for a Copy T.
         var c = Parse("func f(x: ref/Option<i32> during static) => match x\n    .Some(let n) => n\n    .None => 0");
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
         var plan = Plan(c);
         var root = plan.Positions[plan.Arms[0].Pattern];
         Assert.Equal(PatternAccessMode.Shared, root.AccessMode);
-        Assert.Equal(PatternImplicitDeref.SharedOnce, root.ImplicitDeref);
+        Assert.Equal(1, root.ImplicitDerefs);
         var binding = Assert.Single(plan.Positions, p => p.Kind == BoundPatternKind.Binding);
         Assert.Equal(PatternAccessMode.Shared, binding.AccessMode);
-        Assert.Equal(PatternImplicitDeref.None, binding.ImplicitDeref);
-        Assert.Equal(PatternAcquisition.Copy, binding.Acquisition);
-        Assert.Same(BoundType.I32, binding.BodySymbol!.Type);
+        Assert.Equal(0, binding.ImplicitDerefs);
+        Assert.Equal(PatternAcquisition.Borrow, binding.Acquisition);
+        Assert.Equal(SemanticsKind.Ref, binding.BodySymbol!.Type!.Semantics);
+        Assert.Same(BoundType.I32, binding.BodySymbol.Type.Components[0]);
         Assert.Equal(BindingState.Resolved, plan.Syntax.Arms[0].Body.BindingState);
     }
 
@@ -266,7 +268,7 @@ public class PatternBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var binding = Assert.Single(Plan(c).Positions, p => p.Kind == BoundPatternKind.Binding);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
-        Assert.Equal(PatternImplicitDeref.None, binding.ImplicitDeref);
+        Assert.Equal(0, binding.ImplicitDerefs);
         Assert.Equal(PatternAcquisition.Copy, binding.Acquisition);
         Assert.NotNull(binding.MatchedType.Origin);
         Assert.Same(binding.MatchedType, binding.BodySymbol!.Type);
@@ -347,7 +349,7 @@ public class PatternBindingTest
         var c = Parse("func f(x: bool) -> i32 => match x\n    true\n        ()\n    false => 0");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, i => i.Code == DiagnosticCode.TypeMismatch_Kd);
-        var immutable = Parse("func f(x: i32) => match x\n    let n\n        n = 2");
+        var immutable = Parse("func f(x: i32) => match x@move\n    let n\n        n = 2");
         Assert.False(immutable.Bind().IsComplete);
         Assert.Contains(immutable.Binding.Issues, i => i.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
@@ -356,18 +358,19 @@ public class PatternBindingTest
     [InlineData("i32", "x", PatternAcquisition.Copy)]
     [InlineData("string", "x@move", PatternAcquisition.Move)]
     [InlineData("ref/i32 during static", "x", PatternAcquisition.Copy)]
-    [InlineData("uniq/i32", "x", PatternAcquisition.Copy)]
-    [InlineData("uniq/i32", "x@move", PatternAcquisition.Copy)]
+    [InlineData("uniq/i32", "x", PatternAcquisition.Move)]
+    [InlineData("uniq/i32", "x@move", PatternAcquisition.Move)]
     public void OwnedBindingAcquisitionUsesTheCompleteStoredType(string type, string subject, PatternAcquisition acquisition)
     {
-        // SPEC 15.1.6: a bare Non-Copy Place is shared-borrowed; the owned subject needs x@move.
-        // A borrow value, even a transferred one, is shared-reborrowed, so its whole binding Copies a ref.
+        // SPEC 15.1.6: a bare Place is shared-borrowed and its whole binding Copies that reference; the owned
+        // subject needs x@move. A bare exclusive borrow value is Reborrowed exclusively, and a transferred one is
+        // acquired as it is, so its whole binding transfers the uniq reference.
         var c = Parse($"func f(x: {type}) => match {subject}\n    let value => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var binding = Assert.Single(Plan(c).Positions);
         Assert.Equal(acquisition, binding.Acquisition);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
-        Assert.Equal(PatternImplicitDeref.None, binding.ImplicitDeref);
+        Assert.Equal(0, binding.ImplicitDerefs);
     }
 
     [Theory]

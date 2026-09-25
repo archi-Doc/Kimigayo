@@ -87,6 +87,8 @@ public sealed partial class OwnershipBody
                 { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
                 { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
                 { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
+                { Kind: OwnershipOperationKind.InitializeSubject, Place: >= 0 } subject => subject.Place,
+                { Kind: OwnershipOperationKind.AcquirePattern, Input: >= 0 } binding => binding.Input,
                 _ => -1,
             };
 
@@ -289,7 +291,9 @@ public sealed partial class OwnershipBody
                     }
                 }
 
-                for (var root = 0; root < count; root++)
+                // A parameter's Projection Origin is bound by its function and resolves through SymbolPlaces above;
+                // the function's Result place shares that Source and is never the borrowed storage.
+                for (var root = 0; root < count && origin.Binder is not Parsing.FunctionKoto; root++)
                 {
                     var candidate = this.Places[root];
                     if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (ReferenceEquals(candidate.Type, BoundType.String) || StructStorage.IsStruct(candidate.Type) || EnumStorage.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary || ScalarTypes.Supports(candidate.Type)) &&
@@ -803,16 +807,20 @@ public sealed partial class OwnershipBody
             {
                 // An immutable reference local retains the ancestry of its one
                 // initialization. Follow the actual stored value, never merely
-                // a matching Origin (which could name a sibling Loan).
-                if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 &&
-                    this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsBorrow(local.Type))
+                // a matching Origin (which could name a sibling Loan). A pattern
+                // binding continues at its Subject, a Subject at its source.
+                var stored = operation.Kind switch
                 {
-                    var definition = this.borrowDefinitions[operation.Place];
-                    if (definition >= 0 && definition < value)
-                    {
-                        value = definition;
-                        continue;
-                    }
+                    OwnershipOperationKind.Read when operation.Place >= 0 &&
+                        this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsBorrow(local.Type) => operation.Place,
+                    OwnershipOperationKind.AcquirePattern => operation.Place,
+                    OwnershipOperationKind.InitializeSubject => operation.Input,
+                    _ => -1,
+                };
+                if (stored >= 0 && this.borrowDefinitions[stored] is >= 0 and var definition && definition < value)
+                {
+                    value = definition;
+                    continue;
                 }
 
                 return false;

@@ -26,9 +26,9 @@ public class MatchOwnershipTest
     [InlineData("func f(x: u128) -> i32 => match x\n    340282366920938463463374607431768211455 => 1\n    _ => 0")]
     [InlineData("func f(x: char) -> i32 => match x\n    'A' => 1\n    _ => 0")]
     [InlineData("func f(x: Option<i8>) -> i8 => match x\n    (Option<i8>.Some(let n,)) => n\n    (::Kimi.Option<i8>.None) => -128")]
-    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None\n        yield 0")]
-    [InlineData("func f()\n    match Option<string>.Some(\"text\")\n        .None\n            ()\n        .Some(_) => ()")]
-    [InlineData("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s)\n                Console.writeLine(s)\n                continue\n            .None\n                exit")]
+    [InlineData("func f(x: Option<i32>) -> i32 => match x@move\n    .Some(var n)\n        n = 2\n        yield n\n    .None\n        yield 0")]
+    [InlineData("func f()\n    match Option<string>.Some(\"text\")@move\n        .None\n            ()\n        .Some(_) => ()")]
+    [InlineData("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")@move\n            .Some(let s)\n                Console.writeLine(s)\n                continue\n            .None\n                exit")]
     [InlineData("func f(c: bool, x: Option<string>)\n    match x@move\n        .Some(let s)\n            while c\n                continue\n            Console.writeLine(s)\n        .None\n            ()")]
     [InlineData("func f(x: string) => match x@move\n    let s => Console.writeLine(s)")]
     [InlineData("func f(x: Option<i32>)\n    match x\n        let copy\n            ()\n    let again = x")]
@@ -109,7 +109,7 @@ public class MatchOwnershipTest
     [Fact]
     public void CopyBindingAlsoHasADecomposedInitializedInput()
     {
-        var c = Parse("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0");
+        var c = Parse("func f(x: Option<i32>) -> i32 => match x@move\n    .Some(let n) => n\n    .None => 0");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var acquire = body.Operations.Select((o, i) => (o, i)).Single(x => x.o.Kind == OwnershipOperationKind.AcquirePattern);
@@ -166,7 +166,7 @@ public class MatchOwnershipTest
     [Fact]
     public void SubjectAndPayloadsHaveFreshLifetimesInsideLoops()
     {
-        var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s)\n                Console.writeLine(s)\n            .None\n                ()");
+        var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")@move\n            .Some(let s)\n                Console.writeLine(s)\n            .None\n                ()");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var match = Assert.Single(body.Matches);
@@ -245,7 +245,7 @@ public class MatchOwnershipTest
     [Fact]
     public void OuterLoopContinueCleansTheSelectedSubject()
     {
-        var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s)\n                continue\n            .None\n                ()");
+        var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")@move\n            .Some(let s)\n                continue\n            .None\n                ()");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var local = body.Places.Single(p => p.Kind == OwnershipPlaceKind.Local && p.Source is SyntaxFormKoto { Akind: KotoKind.BindingPattern });

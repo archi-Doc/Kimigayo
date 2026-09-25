@@ -27,7 +27,7 @@ public func main()
     match $tryWrite(writer@uniq, "君: \(text)")
         .Ok(_) => ()
         .Err(_) => $abort("buffer full")
-    match buffer.text()
+    match buffer.text()@move
         .Ok(let view) => Console.writeLine(view)
         .Err(_) => $abort("invalid UTF-8")
 
@@ -36,7 +36,7 @@ public func main()
     match $tryWrite(reused@uniq, "done=\(true)")
         .Ok(_) => ()
         .Err(_) => $abort("buffer full")
-    match buffer.text()
+    match buffer.text()@move
         .Ok(let view) => Console.writeLine(view)
         .Err(_) => $abort("invalid UTF-8")
     Console.writeLine("My number is \(42@i64)")

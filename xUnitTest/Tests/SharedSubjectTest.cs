@@ -7,8 +7,8 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 14.6.2 and 15.1.6 subject rule: a match Subject or for iterable is acquired with shared access or by value.
-/// Borrow values are shared-reborrowed; an exclusive borrow written as the Subject is rejected.</summary>
+/// <summary>SPEC 14.6.2 and 15.1.6 subject rule: a bare match Subject or for iterable is shared-borrowed, @move transfers
+/// it, and an explicit or existing exclusive borrow keeps its exclusive mode.</summary>
 public class SharedSubjectTest
 {
     private const string Message = "enum Message\n    Write(string)\n    Quit\n";
@@ -81,7 +81,7 @@ public class SharedSubjectTest
     [Theory]
     [InlineData("UniqMatch", UniqMatchSource, "hi\nhi\nhi\nhi\n")]
     [InlineData("UniqLiteral", UniqLiteralSource, "ok\n")]
-    public void ExclusiveBorrowValuesAreMatchedThroughASharedReborrow(string name, string source, string stdout)
+    public void ExclusiveBorrowValuesKeepTheirMode(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedSubject" + name, source, stdout);
 
     [Theory]
@@ -102,15 +102,13 @@ public class SharedSubjectTest
     [InlineData(Message + "var message: Message = .Write(\"hi\")\nmatch message@uniq\n    .Write(let text) => Console.writeLine(text)\n    .Quit => ()")]
     [InlineData(Message + "var message: Message = .Write(\"hi\")\nmatch (message@uniq)\n    .Write(let text) => Console.writeLine(text)\n    .Quit => ()")]
     [InlineData(Message + "var message: Message = .Write(\"hi\")\nmatch message@uniq/Message\n    .Write(let text) => Console.writeLine(text)\n    .Quit => ()")]
-    [InlineData(Message + "func edit(m: uniq/Message)\n    match m@uniq\n        .Write(let text) => Console.writeLine(text)\n        .Quit => ()")]
+    [InlineData(Message + "func edit(m: uniq/Message)\n    match m@deref@uniq\n        .Write(let text) => Console.writeLine(text)\n        .Quit => ()")]
     [InlineData("struct Cell\n    public var value: i32 = 1\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nmatch o@objuniq\n    _ => ()")]
-    [InlineData("struct Cell\n    public var value: i32 = 1\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nmatch o@uniq/Cell\n    _ => ()")]
-    public void ExclusiveBorrowSubjectsAreRejectedWithoutCascades(string source)
+    [InlineData("struct Cell\n    public var value: i32 = 1\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nmatch o@deref@uniq\n    _ => ()")]
+    public void ExclusiveBorrowSubjectsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.NotEmpty(c.Binding.Issues);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.ExclusiveSubject_Kd, x.Code));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

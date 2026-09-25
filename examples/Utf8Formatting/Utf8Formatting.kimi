@@ -20,18 +20,18 @@ var writer = Text.writer(buffer@uniq)
 match $tryWrite(writer@uniq, "君: \(point)")
     .Ok(_) => ()
     .Err(_) => $abort("buffer full")
-match buffer.text()
+match buffer.text()@move
     .Ok(let text) => Console.writeLine(text)
     .Err(_) => $abort("invalid UTF-8")
 
 buffer.clear()
 var reused = Text.writer(buffer@uniq)
 _ = $tryWrite(reused@uniq, "ready=\(true)")
-match buffer.text()
+match buffer.text()@move
     .Ok(let text) => Console.writeLine(text)
     .Err(_) => $abort("invalid UTF-8")
 
 var exact = [3 of 0@u8]
-match Text.tryFormat(123, exact@uniq)
+match Text.tryFormat(123, exact@uniq)@move
     .Ok(let text) => Console.writeLine(text)
     .Err(_) => $abort("buffer full")

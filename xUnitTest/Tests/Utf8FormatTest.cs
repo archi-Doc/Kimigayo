@@ -61,20 +61,20 @@ public class Utf8FormatTest
             var bytes = [3 of 0@u8]
             var buffer = Text.fixed(bytes@uniq)
             var writer = Text.writer(buffer@uniq)
-            match (writer@uniq).write("ab")
+            match (writer@uniq).write("ab")@move
                 .Ok(_) => ()
                 .Err(_) => $abort("first")
-            match (writer@uniq).write(12)
+            match (writer@uniq).write(12)@move
                 .Ok(_) => $abort("overflow")
                 .Err(_) => ()
-            match (writer@uniq).write("")
+            match (writer@uniq).write("")@move
                 .Ok(_) => $abort("empty must fail")
                 .Err(_) => ()
-            match writer.status()
+            match writer.status()@move
                 .Ok(_) => $abort("sticky status")
                 .Err(_) => ()
             require buffer.length == 2 else => $abort("partial prefix")
-            match (buffer@move).intoText()
+            match (buffer@move).intoText()@move
                 .Ok(let view) => Console.writeLine(view)
                 .Err(_) => $abort("utf8")
             """;
@@ -88,11 +88,11 @@ public class Utf8FormatTest
                 var buffer = Text.fixed(bytes@uniq)
                 var writer = Text.writer(buffer@uniq)
             """ + "\n    " + operation + "\n" + """
-                match (buffer@move).intoText()
+                match (buffer@move).intoText()@move
                     .Ok(let view) => Console.writeLine(view)
                     .Err(_) => $abort("utf8")
                 return .Ok(())
-            match run()
+            match run()@move
                 .Ok(_) => ()
                 .Err(_) => $abort("full")
             """;

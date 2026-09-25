@@ -42,12 +42,6 @@ public enum SubjectMode : byte
     ByValue,
 }
 
-public enum PatternImplicitDeref : byte
-{
-    None,
-    SharedOnce,
-}
-
 public enum PatternLiteralKind : byte
 {
     None,
@@ -59,11 +53,13 @@ public enum PatternLiteralKind : byte
 
 public readonly record struct PatternLiteral(PatternLiteralKind Kind, UInt128 Magnitude = default, bool Negative = false, string? Text = null);
 
-/// <summary>A preorder position; direct children are walked by advancing to each child's End.</summary>
+/// <summary>A preorder position; direct children are walked by advancing to each child's End. A structural position selects
+/// the referent of <see cref="ImplicitDerefs"/> safe value-reference layers of its matched Type (SPEC 14.8.1), and
+/// <see cref="AccessMode"/> is the access its path grants to the selected value.</summary>
 public readonly record struct BoundPattern(Koto Source, BoundType MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
     BoundEnumCase? Case = null, BindingSymbol? BodySymbol = null, PatternAcquisition Acquisition = PatternAcquisition.None,
     bool WholePosition = false, PatternLiteral Literal = default,
-    PatternAccessMode AccessMode = PatternAccessMode.Owned, PatternImplicitDeref ImplicitDeref = PatternImplicitDeref.None,
+    PatternAccessMode AccessMode = PatternAccessMode.Owned, int ImplicitDerefs = 0,
     BindingSymbol? CandidateSymbol = null);
 
 public readonly record struct BoundMatchArm(MatchArmKoto Syntax, int Pattern);
@@ -96,8 +92,12 @@ public sealed class BoundMatch
 
     internal bool Pending { get; set; }
 
-    /// <summary>Gets or sets the shared borrow Type of an owned Non-Copy Place Subject (SPEC 15.1.6 subject rule), or null for an owned Subject.</summary>
-    internal BoundType? SharedSubject { get; set; }
+    /// <summary>Gets or sets the borrow that acquires the Subject (SPEC 15.1.6 subject rule): the shared borrow of a bare Place or temporary,
+    /// or the exclusive Reborrow of a bare exclusive borrow value; null when the written Subject value itself is acquired.</summary>
+    internal BoundType? SubjectBorrow { get; set; }
+
+    /// <summary>Gets or sets the Subject mode fixed by the outermost written operation.</summary>
+    internal SubjectMode Mode { get; set; }
 
     internal void Reset(MatchKoto? syntax)
     {
@@ -105,7 +105,8 @@ public sealed class BoundMatch
         this.IsCurrent = syntax is not null;
         this.Coverage = default;
         this.Invalid = this.Pending = false;
-        this.SharedSubject = null;
+        this.SubjectBorrow = null;
+        this.Mode = SubjectMode.Shared;
         this.ExpectedType = null;
         this.ResultType = null;
         this.PositionStorage.Clear();

@@ -543,6 +543,12 @@ public sealed partial class OwnershipAnalysis
             return this.LoadReferent(node);
         }
 
+        // SPEC 10.2: a uniq value at a fixed expected reference Type is Reborrowed through its parent reference.
+        if (use == PlaceUseKind.Consume && acquisition is null && this.compilation.Binding.ImplicitReborrow(node) is { } reborrow)
+        {
+            return this.BorrowStruct(node, reborrow);
+        }
+
         if (node.ErasedFunctionType is { } erased)
         {
             var source = this.ExpressionCore(node, PlaceUseKind.Consume, acquisition);

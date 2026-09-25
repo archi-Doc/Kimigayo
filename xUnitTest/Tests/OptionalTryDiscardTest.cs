@@ -297,7 +297,7 @@ public class OptionalTryDiscardTest
     [InlineData("GroupedOptional", "(ref/S during a)?")]
     [InlineData("Expanded", "Option<ref/S during a>")]
     public void OptionalAdaptationRetainsExistingPayloadOrigins(string name, string target)
-        => EmitChecked("OptionalTryAdaptation" + name, $"struct S\n    public var n: i32 = 8\nfunc identity(x: ref/S? during a) -> ref/S? during a => x@{target}\nfunc wrap(x: ref/S) -> ref/S? during x => .Some(x)\nlet s = S.init()\nmatch identity(wrap(s))\n    .Some(let r) => require r.n == 8 else => $abort(\"payload\")\n    .None => $abort(\"none\")", string.Empty);
+        => EmitChecked("OptionalTryAdaptation" + name, $"struct S\n    public var n: i32 = 8\nfunc identity(x: ref/S? during a) -> ref/S? during a => x@{target}\nfunc wrap(x: ref/S) -> ref/S? during x => .Some(x)\nlet s = S.init()\nmatch identity(wrap(s))@move\n    .Some(let r) => require r.n == 8 else => $abort(\"payload\")\n    .None => $abort(\"none\")", string.Empty);
 
     [Fact]
     public void OptionalIdentityAcquisitionMovesOwnedPayload()

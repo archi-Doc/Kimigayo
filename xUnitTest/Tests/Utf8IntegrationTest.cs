@@ -40,7 +40,7 @@ public class Utf8IntegrationTest
                 origin r.source == bytes
                 return Text.tryFormat(value, bytes)
             var bytes = [3 of 0@u8]
-            match format(123, bytes@uniq)
+            match format(123, bytes@uniq)@move
                 .Ok(let view) => Console.writeLine(view)
                 .Err(_) => $abort("full")
             """;

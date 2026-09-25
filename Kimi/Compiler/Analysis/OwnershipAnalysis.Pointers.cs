@@ -131,8 +131,10 @@ public sealed partial class OwnershipAnalysis
         var loaded = -1;
         for (var type = this.Concrete(source.BoundType); layers > 0; layers--)
         {
+            // An inner layer is read only for its address; the terminal referent is a Copy snapshot.
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-                !this.SupportsCopySnapshot(type.Components[0], source))
+                (!(layers > 1 && type.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }) &&
+                    !this.SupportsCopySnapshot(type.Components[0], source)))
             {
                 this.Unsupported(source);
                 return -1;

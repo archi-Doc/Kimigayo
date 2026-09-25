@@ -242,12 +242,24 @@ public sealed partial class Binding
             return expected;
         }
 
-        // SPEC 3.3: where a T is expected, a value of Type ref/T or uniq/T with a Copy referent is read as that referent.
+        // SPEC 3.5.3: where a Scalar is expected, a value of reference layers ending in that Scalar is read as it.
         if (expected is not null && actual is not null && node.ErasedFunctionType is null && !Compatible(actual, expected) &&
             this.Referent(actual, node) is { } referent && Compatible(referent, expected))
         {
             this.referentReads.Add(node);
             return referent;
+        }
+
+        // SPEC 10.2, 13.5.5.2: at a fixed expected ref/T or uniq/T, a bare uniq/T value is Reborrowed, never moved;
+        // a shared layer on its path bounds the Reborrow to shared access.
+        if (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+            actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } && node.ErasedFunctionType is null &&
+            ReferenceEquals(actual.Components[0], expected.Components[0]) && IsBarePlace(node) &&
+            (expected.Semantics == SemanticsKind.Ref || !ReachedThroughShared(node)))
+        {
+            var reborrow = this.InternType(BoundTypeKind.Semantics, null, expected.Semantics, [actual.Components[0]], origin: actual.Origin);
+            this.implicitReborrows[node] = reborrow;
+            return reborrow;
         }
 
         return node.ErasedFunctionType ?? actual;

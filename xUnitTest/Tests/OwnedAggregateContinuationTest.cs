@@ -34,7 +34,7 @@ public class OwnedAggregateContinuationTest
     {
         var source = Source("E<(string, i32)>", ".Some((\"payload\", 2))", ".Some((_, let n)) if (return) => x = n\n                .Some((let text, _)) => Console.writeLine(text)\n                .None => exit") +
             "\nfunc route(selected: bool)\n    let value: E<(string, i32)> = .Some((\"active\", 3))\n    match value@move\n        .Some((_, let n)) if selected and n > 0 => Console.writeLine(\"selected\")\n        .Some((let text, _)) => Console.writeLine(text)\n        .None => ()\nroute(true)\nroute(false)\n" +
-            "func choose(consume: bool) -> string\n    return match (\"chosen\", \"remaining\")\n        (var text, _)\n            if consume => Console.writeLine(text)\n            text = \"replacement\"\n            yield text@move\nConsole.writeLine(choose(true))\nConsole.writeLine(choose(false))";
+            "func choose(consume: bool) -> string\n    return match (\"chosen\", \"remaining\")@move\n        (var text, _)\n            if consume => Console.writeLine(text)\n            text = \"replacement\"\n            yield text@move\nConsole.writeLine(choose(true))\nConsole.writeLine(choose(false))";
         const string Name = "OwnedAggregateWindowCleanup";
         const string Output = "selected\nactive\nchosen\nreplacement\nreplacement\n";
         var ir = ScalarEmissionTest.EmitFixture(Name, source, Output);

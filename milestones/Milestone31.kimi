@@ -65,11 +65,11 @@ public func main()
             Console.writeLine("Replacement returned item 10.")
         .None => $abort("Replacement appended an entry")
     entries[Key.init(1, 0)] = Item.init(12) // Existing-key assignment destroys Item 11.
-    match entries.tryGet(Key.init(1, 0))
+    match entries.tryGet(Key.init(1, 0))@move
         .Some(let found)
             require found.id == 12 else => $abort("Lookup failed")
         .None => $abort("Existing key is missing")
-    match entries.tryGet(Key.init(9, 0))
+    match entries.tryGet(Key.init(9, 0))@move
         .Some(_) => $abort("Absent key was found")
         .None => ()
 

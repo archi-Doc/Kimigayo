@@ -56,6 +56,15 @@ internal sealed partial class BodyLowering
 
             if (ObjectTypes.IsBorrow(output))
             {
+                if (ReferenceTypes.IsStorage(type) && type.Components[0] is { } storedHandle && (ObjectTypes.IsOwner(storedHandle) || ObjectTypes.IsBorrow(storedHandle)) &&
+                    output.Semantics == SemanticsKind.ObjRef && value.Count == 1 && ReferenceEquals(storedHandle.Components[0], output.Components[0]) &&
+                    ReferenceEquals(ValueType(body, Input(body, id, 0)), type) && (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
+                {
+                    // SPEC 13.5.5.2: @objref of an object handle selected through a reference reads the handle at that address.
+                    function.AddScalar(EmissionOpcode.ObjectBorrow, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
+                    return true;
+                }
+
                 var upcast = (ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type)) &&
                     operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
                     ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(SignatureType(this, conversion.BoundType), output) &&
@@ -213,12 +222,35 @@ internal sealed partial class BodyLowering
                 function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, input)], slot.ComputationType, place: operation.Place, representation: slot);
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
             }
+            else if (body.Places[operation.Place].Kind == OwnershipPlaceKind.Parameter && ScalarTypes.Supports(type) && function.SlotAddresses[operation.Place].Kind != EmissionOperandKind.SlotAddress)
+            {
+                if (value.Count != 0 || !ReferenceEquals(type, output.Components[0]))
+                {
+                    return Fail("Scalar parameter borrow does not match its stored Type.", out failure);
+                }
+
+                // A by-value Scalar parameter arrives as a value; its slot is materialized once when it is borrowed,
+                // and every later borrow of the parameter reads that same slot (SPEC 3.6.2, 10.2).
+                var scalar = WindowsLowering.GetValue(type)!;
+                var slot = function.SlotAddresses.Count;
+                function.SlotAddresses.Add(new(EmissionOperandKind.SlotAddress, slot));
+                function.Slots.Add(new(slot, scalar));
+                function.AddScalar(EmissionOpcode.StoreScalar, id, [function.SlotAddresses[operation.Place]], scalar.ComputationType, place: slot, representation: scalar);
+                function.SlotAddresses[operation.Place] = new(EmissionOperandKind.SlotAddress, slot);
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, slot)]);
+            }
             else
             {
                 if (value.Count != 0 || !ReferenceTypes.StorageMatches(type, output.Components[0]) ||
-                    (this.aggregatePlaces[operation.Place] is null && !ReferenceEquals(type, BoundType.Unit) && !this.IsStringStorage(body.Places[operation.Place]) && !(ScalarTypes.Supports(type) && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local)))
+                    (this.aggregatePlaces[operation.Place] is null && !ReferenceEquals(type, BoundType.Unit) && !this.IsStringStorage(body.Places[operation.Place]) && !(ScalarTypes.Supports(type) && body.Places[operation.Place].Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter)))
                 {
                     return Fail("Borrow source has no matching aggregate storage.", out failure);
+                }
+
+                if (operation.Source is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter } symbol } &&
+                    body.Places[operation.Place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && !this.IsPreparedArgument(body, id, symbol, operation.Place))
+                {
+                    return Fail("A prepared argument borrow must address its own acquired slot.", out failure);
                 }
 
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);

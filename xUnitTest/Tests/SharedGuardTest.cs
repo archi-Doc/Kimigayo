@@ -18,7 +18,7 @@ public class SharedGuardTest
             var original = ("hello", Pair.init(42))
             match original
                 (let text, let pair) if text == "hello" and pair.number == 42
-                    let saved = pair@ref
+                    let saved = pair@deref
                     original = ("new", Pair.init(7))
                     require saved.number == 42 else => $abort("snapshot")
                 (_, _) => $abort("missing")
@@ -70,7 +70,7 @@ public class SharedGuardTest
         const string Source = """
             func get(value: ref/(ref/string during source, i32)) -> ref/string during source
                 match value
-                    (let text, _) if (return text) => ()
+                    (let text, _) if (return text@deref) => ()
                     (_, _) => ()
                 $abort("none")
             let text = "hello"

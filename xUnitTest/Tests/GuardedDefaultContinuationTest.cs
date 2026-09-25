@@ -11,7 +11,7 @@ public class GuardedDefaultContinuationTest
     [Theory]
     [InlineData("let n => n + 2", "7", 9)]
     [InlineData("let n if n > 0 => n + 1\n    let n => -n", "-3", 3)]
-    [InlineData("var n if n > 0\n        n += 2\n        yield n\n    _ => 0", "7", 9)]
+    [InlineData("let n if n > 0\n        var total: i32 = n\n        total += 2\n        yield total\n    _ => 0", "7", 9)]
     [InlineData("let n if n > 0 => n + 1\n    _ => 0", "2147483647, 17", 17)]
     public void DefaultsReadCandidatesAndAcquireBodyBindings(string arms, string arguments, int expected)
     {
@@ -25,7 +25,7 @@ public class GuardedDefaultContinuationTest
     [Fact]
     public void FalseGuardKeepsDefaultLocalEffectsAndCandidateSnapshot()
     {
-        const string Source = "func f(x: i32, y: i32 = (scope: do\n    var total = 1\n    let value = match x\n        let n if (check: do\n            total += n\n            exit to check: false\n        ) => 0\n        var n\n            n += total\n            yield n\n    exit to scope: value\n)) -> i32 => y\nif f(3) != 7 => $abort(\"effects lost\")";
+        const string Source = "func f(x: i32, y: i32 = (scope: do\n    var total = 1\n    let value = match x\n        let n if (check: do\n            total += n\n            exit to check: false\n        ) => 0\n        let n => n + total\n    exit to scope: value\n)) -> i32 => y\nif f(3) != 7 => $abort(\"effects lost\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
@@ -43,10 +43,10 @@ public class GuardedDefaultContinuationTest
 
     [Theory]
     [InlineData("pair", "(let n, true) if n > 0 => n + 2\n    (let n, _) => -n")]
-    [InlineData("(pair.0, pair.1)", "(var n, true)\n        n += 2\n        yield n\n    (let n, _) => -n")]
-    [InlineData("(pair, 2)", "((let n, true), let extra) => n + extra\n    ((let n, _), _) => -n")]
+    [InlineData("(pair.0, pair.1)@move", "(var n, true)\n        n += 2\n        yield n\n    (let n, _) => -n")]
+    [InlineData("(pair, 2)@move", "((let n, true), let extra) => n + extra\n    ((let n, _), _) => -n")]
     [InlineData("pair", "let saved => if saved.1 => saved.0 + 2 else => -saved.0")]
-    [InlineData("pair", "var saved\n        if saved.1 => saved.0 += 2 else => saved.0 = -saved.0\n        yield saved.0")]
+    [InlineData("pair", "let saved\n        var first: i32 = saved.0\n        if saved.1 => first += 2 else => first = -first\n        yield first")]
     public void ScalarTupleSubjectsUseCopyPreparedStorage(string subject, string arms)
     {
         var source = "func f(pair: (i32, bool), result: i32 = (match " + subject + "\n    " + arms + "\n)) -> i32 => result\n" +
@@ -80,7 +80,7 @@ public class GuardedDefaultContinuationTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var source = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Consume && x.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter).Source;
+        var source = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter).Source;
         var original = source.BoundSymbol!;
         source.BoundSymbol = c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));

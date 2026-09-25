@@ -38,7 +38,7 @@ public class Utf8ConversionTest
     [InlineData("User", User, "Value.init()", 4, "word")]
     public void FixedConversionReturnsAnAllocationFreeView(string name, string prefix, string value, int capacity, string expected)
     {
-        var source = prefix + "var bytes = [" + capacity + " of 0@u8]\nmatch Text.tryFormat(" + value + ", bytes@uniq)\n    .Ok(let view) => Console.writeLine(view)\n    .Err(_) => $abort(\"full\")";
+        var source = prefix + "var bytes = [" + capacity + " of 0@u8]\nmatch Text.tryFormat(" + value + ", bytes@uniq)@move\n    .Ok(let view) => Console.writeLine(view)\n    .Err(_) => $abort(\"full\")";
         NativeAllocationAudit.WriteFixture("Utf8ConversionFixed" + name, source, 0, 0, 0, expected + "\n");
     }
 
@@ -53,7 +53,7 @@ public class Utf8ConversionTest
                     try writer.write("ab")
                     return writer.write("cd")
             var bytes = [3 of 0@u8]
-            match Text.tryFormat(Value.init(), bytes@uniq)
+            match Text.tryFormat(Value.init(), bytes@uniq)@move
                 .Ok(_) => $abort("must fail")
                 .Err(_) => ()
             require bytes[0] == 97@u8 and bytes[1] == 98@u8 and bytes[2] == 0@u8 else => $abort("partial prefix")

@@ -12,7 +12,7 @@ public class Utf8WriterTest
     [InlineData("Heap", "var destination = Text.heap(0)")]
     [InlineData("User", "struct Destination\n    Self is BufferWriter\n    public init() => ()\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull> => .Err(BufferFull.init())\nvar destination = Destination.init()")]
     public void CreatingAnAdapterDoesNotAllocateOrReserve(string name, string source)
-        => NativeAllocationAudit.WriteFixture("Utf8WriterCreate" + name, source + "\nlet writer = Text.writer(destination@uniq)\nmatch writer.status()\n    .Ok(_) => ()\n    .Err(_) => $abort(\"initial status\")", 0, 0, 0);
+        => NativeAllocationAudit.WriteFixture("Utf8WriterCreate" + name, source + "\nlet writer = Text.writer(destination@uniq)\nmatch writer.status()@move\n    .Ok(_) => ()\n    .Err(_) => $abort(\"initial status\")", 0, 0, 0);
 
     [Fact]
     public void GenericFactoryUsesConcreteStandardDispatch()
@@ -23,7 +23,7 @@ public class Utf8WriterTest
                 return Text.writer(destination)
             var destination = Text.heap(0)
             let writer = make(destination@uniq)
-            match writer.status()
+            match writer.status()@move
                 .Ok(_) => ()
                 .Err(_) => $abort("initial status")
             """;

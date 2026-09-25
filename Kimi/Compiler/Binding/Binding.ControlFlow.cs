@@ -15,6 +15,20 @@ public sealed partial class Binding
     private StructuralCompletion? resultStructure;
     private int resultCursor;
 
+    /// <summary>Gets the terminal Scalar of a chain of safe value-reference layers (SPEC 3.5.3).</summary>
+    /// <param name="type">The source Type.</param>
+    /// <returns>The terminal Scalar Type, or null when the chain does not end in a Scalar.</returns>
+    internal static BoundType? ScalarReferent(BoundType type)
+    {
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            return null;
+        }
+
+        var terminal = ComparisonReferent(type);
+        return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
+    }
+
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.1).</summary>
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
@@ -34,6 +48,25 @@ public sealed partial class Binding
             if (fitsAll)
             {
                 return candidate;
+            }
+        }
+
+        // SPEC 3.5.3, 14.9.1: a source whose Type is reference layers ending in a Scalar supplies that Scalar by
+        // a Scalar read where the other sources fit it.
+        for (var i = 0; i < types.Count; i++)
+        {
+            if (types[i] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && ScalarReferent(types[i]) is { } terminal)
+            {
+                var readsAll = true;
+                for (var j = 0; j < types.Count && readsAll; j++)
+                {
+                    readsAll = FitsType(types[j], terminal) || (ScalarReferent(types[j]) is { } read && FitsType(read, terminal));
+                }
+
+                if (readsAll)
+                {
+                    return terminal;
+                }
             }
         }
 
@@ -101,6 +134,7 @@ public sealed partial class Binding
         }
 
         var context = this.resultPool[this.resultCursor++];
+        context.HasLiteral = false;
         context.Expected = expected;
         context.Invalid = context.Pending = false;
         context.Sources.Clear();
@@ -118,6 +152,13 @@ public sealed partial class Binding
     {
         this.FindResultEvidence(target, scope, context);
         context.Expected = this.SelectCommonType(context.Evidence, out var conflict);
+        if (context.HasLiteral && context.Expected is { } common && ScalarReferent(common) is { } terminal)
+        {
+            // SPEC 3.5.3, 14.9.1: an unfitted literal is fitted to the terminal Scalar of the reference sources,
+            // which then supply that Scalar by a Scalar read.
+            context.Expected = terminal;
+        }
+
         context.Invalid |= conflict;
         context.Evidence.Clear();
     }
@@ -242,6 +283,10 @@ public sealed partial class Binding
         {
             context.Evidence.Add(evidence);
         }
+        else if (evidence is null && IsUnfittedLiteral(expression))
+        {
+            context.HasLiteral = true;
+        }
     }
 
     private void TransferEvidence(Koto node, Koto target, BindingScope scope, ResultContext context)
@@ -278,7 +323,8 @@ public sealed partial class Binding
         var item = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
         if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
         {
-            context.Sources.Add(item.BoundType);
+            // SPEC 3.5.3: a source read as its terminal Scalar supplies that Scalar.
+            context.Sources.Add(this.ReadsReferent(item) && item.BoundType is { } read ? ComparisonReferent(read) : item.BoundType);
         }
         else if (structural.CanComplete(body))
         {
@@ -382,5 +428,7 @@ public sealed partial class Binding
         internal bool Pending { get; set; }
 
         internal bool Invalid { get; set; }
+
+        internal bool HasLiteral { get; set; }
     }
 }

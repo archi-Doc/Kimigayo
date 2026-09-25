@@ -95,7 +95,7 @@ internal sealed partial class BodyLowering
         var text = ReferenceEquals(type, BoundType.String);
         var representation = layout?.Value ?? WindowsLowering.GetValue(type);
         if (representation is null ||
-            (layout is null && !text && !ScalarTypes.Supports(type) && !ReferenceTypes.IsPointer(type) && !ReferenceEquals(type, BoundType.Unit)))
+            (layout is null && !text && !ScalarTypes.Supports(type) && !ReferenceTypes.IsPointer(type) && !ReferenceTypes.IsBorrow(type) && !ReferenceEquals(type, BoundType.Unit)))
         {
             return Fail("Pointer access requires a supported Owned representation.", out failure);
         }
