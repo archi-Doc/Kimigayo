@@ -67,6 +67,19 @@ public class SharedSubjectTest
         "func f(x: uniq/i32) -> i32 => match x\n    0 => 10\n    _ => 20\n" +
         "var n: i32 = 0\nrequire f(n@uniq) == 10 else => $abort(\"zero\")\nn = 3\nrequire f(n@uniq) == 20 and n == 3 else => $abort(\"other\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 14.6.2: values@uniq and an exclusive borrow value enumerate uniq/E items; Tuple items decompose into
+    // uniq components; a Dictionary yields (ref/K, uniq/V); reborrows inside the body suspend the item.
+    private const string UniqIterationSource =
+        "func bump(values: uniq/Array<i32>)\n    for v in values\n        v@deref += 100\n" +
+        "var values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    v@deref += 1\n    let w = v@deref@ref\n    require w == v else => $abort(\"reborrow\")\n" +
+        "bump(values@uniq)\nvar fixed: [2 of i32] = [10, 20]\nfor v in fixed@uniq\n    v@deref *= 2\n" +
+        "var pairs: Array<(i32, i32)> = [(1, 2), (3, 4)]\nfor (a, b) in pairs@uniq\n    a@deref += b\nfor pair in pairs@uniq\n    pair.1 += pair.0\n" +
+        "var named: [2 of (i32, string)] = [(1, \"a\"), (2, \"b\")]\nfor (n, text) in named@uniq\n    n@deref += 1\n    Console.writeLine(text)\n" +
+        "var d: Dictionary<i32, i32> = [:]\n_ = d.tryInsert(1, 10)\n_ = d.tryInsert(2, 20)\nfor (k, v) in d@uniq\n    v@deref += k\n" +
+        "var total: i32 = 0\nfor v in values\n    total += v\nfor v in fixed\n    total += v\nfor (a, b) in pairs\n    total += a + b\nfor (n, _) in named\n    total += n\nfor (_, v) in d\n    total += v\n" +
+        "for var m in values@move\n    m += 1\n    total += m\n" +
+        "require total == 309 + 60 + 26 + 5 + 33 + 312 else => $abort(\"total\")\nConsole.writeLine(\"ok\")";
+
     [Theory]
     [InlineData("RefArray", RefArraySource, "ok\n")]
     [InlineData("UniqArray", UniqArraySource, "ok\n")]
@@ -81,8 +94,32 @@ public class SharedSubjectTest
     [Theory]
     [InlineData("UniqMatch", UniqMatchSource, "hi\nhi\nhi\nhi\n")]
     [InlineData("UniqLiteral", UniqLiteralSource, "ok\n")]
+    [InlineData("UniqIteration", UniqIterationSource, "a\nb\nok\n")]
     public void ExclusiveBorrowValuesKeepTheirMode(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedSubject" + name, source, stdout);
+
+    [Theory]
+    [InlineData("var values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    values.append(4)")]
+    [InlineData("var values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    let first = values[0]")]
+    [InlineData("var d: Dictionary<i32, i32> = [:]\nfor (k, v) in d@uniq\n    let n = d.length")]
+    public void ExclusiveIterationKeepsItsLoan(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+    }
+
+    [Theory]
+    [InlineData("var values: Array<i32> = [1, 2, 3]\nfor v in values\n    v@deref += 1")]
+    [InlineData("func f(values: ref/Array<i32>)\n    for v in values\n        v@deref = 1")]
+    [InlineData("let values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    v@deref += 1")]
+    public void SharedItemsCannotBeWritten(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidAssignment_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd);
+    }
 
     [Theory]
     [InlineData("func total(values: uniq/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move\n        sum += v\n    values.append(4)\n    return sum")]

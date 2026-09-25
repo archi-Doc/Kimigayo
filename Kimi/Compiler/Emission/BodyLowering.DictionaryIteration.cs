@@ -92,8 +92,10 @@ internal sealed partial class BodyLowering
         function.AddScalar(EmissionOpcode.Sequence, id, operands, place: operation.Place, op: code, representation: representation);
         return true;
 
+        // SPEC 14.6.2: a borrowed key is ref/K; a borrowed value is ref/V for shared and uniq/V for exclusive enumeration.
         bool Matches(BoundType actual, BoundType stored) => borrowed
-            ? actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } &&
+            ? actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+                (actual.Semantics == SemanticsKind.Ref || (ReferenceEquals(stored, dictionary.Components[1]) && body.Places[plan.Receiver].Type.Semantics == SemanticsKind.Uniq)) &&
                 ReferenceEquals(actual.Components[0], stored) && ReferenceEquals(actual.Origin, body.Places[plan.Receiver].Type.Origin)
             : ReferenceEquals(actual, stored);
     }

@@ -52,48 +52,56 @@ public sealed partial class Binding
     {
         var iterable = this.BindNode(source.Iterable, scope);
         source.SharedIterable = null;
+        source.Mode = SubjectModeOf(source.Iterable, iterable);
         if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Slice or BoundTypeKind.ResolvedRange }] })
         {
             // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy handle or
-            // interval is the entry receiver and is read once for the loop.
+            // interval is the entry receiver and is read once for the loop. Exclusive enumeration of a
+            // Slice lends only the handle, so its elements stay shared.
             this.referentReads.Add(source.Iterable);
             iterable = iterable.Components[0];
         }
 
+        var exclusive = source.Mode == SubjectMode.Exclusive;
         var sequence = iterable?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && IsBarePlace(source.Iterable) ? iterable :
             ReferenceTypes.IsArray(iterable) || ReferenceTypes.IsDynamicArray(iterable) ? iterable!.Components[0] : null;
         if (sequence is not null)
         {
-            // SPEC 14.6.2 subject rule: a bare array Place is shared-borrowed and a borrow value of an array is
-            // shared-reborrowed; both iterate as the Slice values[..], yielding ref/T during source. values@move
-            // or a temporary consumes the array instead.
-            source.SharedIterable = this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: this.PlaceOrigin(source.Iterable));
+            // SPEC 14.6.2 subject rule: a bare array Place is shared-borrowed and a shared borrow value of an array is
+            // reborrowed; both iterate as the Slice values[..], yielding ref/T during source. values@uniq and an
+            // exclusive borrow value lend the array exclusively and yield uniq/T; values@move or a temporary
+            // consumes the array instead.
+            source.SharedIterable = exclusive
+                ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [sequence], origin: this.PlaceOrigin(source.Iterable))
+                : this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: this.PlaceOrigin(source.Iterable));
         }
 
         var dictionary = ReferenceTypes.IsDictionary(iterable) ? iterable!.Components[0] : iterable?.Kind == BoundTypeKind.Dictionary ? iterable : null;
         if (dictionary is not null && (ReferenceTypes.IsDictionary(iterable) || IsBarePlace(source.Iterable)))
         {
-            source.SharedIterable = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [dictionary], origin: iterable!.Origin ?? this.PlaceOrigin(source.Iterable));
+            source.SharedIterable = this.InternType(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [dictionary], origin: iterable!.Origin ?? this.PlaceOrigin(source.Iterable));
         }
 
         var view = source.SharedIterable ?? iterable;
         var element = view is null ? null : view.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? view.Components[0] : view.Kind == BoundTypeKind.Slice
-            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : view.Kind == BoundTypeKind.ResolvedRange ? BoundType.ISize : null;
+            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : view.Kind == BoundTypeKind.ResolvedRange ? BoundType.ISize
+            : exclusive && (ReferenceTypes.IsArray(view) || ReferenceTypes.IsDynamicArray(view)) ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [view.Components[0].Components[0]], origin: view.Origin) : null;
         if (dictionary is not null)
         {
-            // SPEC 14.6.2: shared Dictionary iteration yields a pair of references,
+            // SPEC 14.6.2: shared Dictionary iteration yields (ref/K, ref/V) and exclusive iteration (ref/K, uniq/V),
             // including for Copy components; owned iteration yields a pair of values.
             var key = dictionary.Components[0];
             var value = dictionary.Components[1];
             if (source.SharedIterable is { } shared)
             {
                 key = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: shared.Origin);
-                value = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [value], origin: shared.Origin);
+                value = this.InternType(BoundTypeKind.Semantics, null, shared.Semantics, [value], origin: shared.Origin);
             }
 
             element = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [key, value]);
         }
 
+        // SPEC 14.6.2: a Tuple item reached through a reference decomposes into references of the same capability.
         var sharedTuple = source.IsTupleBinding && ReferenceTypes.IsTuple(element);
         var tuple = sharedTuple ? element!.Components[0] : element;
         var result = this.BeginResult(source, scope, BoundType.Unit);
@@ -105,7 +113,7 @@ public sealed partial class Binding
             var slot = source.IsTupleBinding && tuple?.Kind == BoundTypeKind.Tuple && i < tuple.Components.Count ? tuple.Components[i] : element;
             if (sharedTuple && slot is not null)
             {
-                slot = this.SharedReadType(slot, element!.Origin!, name);
+                slot = this.InternType(BoundTypeKind.Semantics, null, element!.Semantics, [slot], origin: element.Origin);
             }
 
             name.BoundSymbol!.Type = slot;
@@ -128,7 +136,8 @@ public sealed partial class Binding
             return Fail(source, BindingFailure.TypeMismatch);
         }
 
-        if (dictionary is null && view?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
+        if (dictionary is null && view?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) &&
+            !(exclusive && (ReferenceTypes.IsArray(view) || ReferenceTypes.IsDynamicArray(view))))
         {
             return Fail(source, BindingFailure.Unsupported);
         }

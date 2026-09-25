@@ -26,6 +26,12 @@ public sealed partial class Binding
     /// <returns>Whether the current Binding pass indexed this match.</returns>
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
 
+    // SPEC 15.1.6 subject rule: the outermost written operation of a match or for Subject fixes its mode.
+    private static SubjectMode SubjectModeOf(Koto expression, BoundType? type)
+        => KotoHelper.UnwrapParentheses(expression) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ? SubjectMode.ByValue
+            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ? SubjectMode.Exclusive
+            : SubjectMode.Shared;
+
     private static bool ContainsPattern(BoundMatch plan, int earlier, int later)
     {
         var a = plan.PositionStorage[earlier];
@@ -250,23 +256,15 @@ public sealed partial class Binding
     private BoundType? AcquireSubject(Koto expression, BoundType? type, out BoundType? borrow, out SubjectMode mode)
     {
         borrow = null;
-        mode = SubjectMode.Shared;
-        if (type is null || ReferenceEquals(type, BoundType.Never))
+        mode = SubjectModeOf(expression, type);
+        if (type is null || ReferenceEquals(type, BoundType.Never) || mode == SubjectMode.ByValue)
         {
             return type;
         }
 
-        var written = KotoHelper.UnwrapParentheses(expression);
-        if (written is ConversionKoto { ConversionBinding: ConversionBinding.Transfer })
+        if (mode == SubjectMode.Exclusive)
         {
-            mode = SubjectMode.ByValue;
-            return type;
-        }
-
-        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
-        {
-            mode = SubjectMode.Exclusive;
-            if (written is not ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } && IsBarePlace(expression))
+            if (KotoHelper.UnwrapParentheses(expression) is not ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } && IsBarePlace(expression))
             {
                 borrow = type;
             }

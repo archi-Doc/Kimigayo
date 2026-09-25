@@ -89,6 +89,7 @@ public sealed partial class OwnershipBody
                 { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
                 { Kind: OwnershipOperationKind.InitializeSubject, Place: >= 0 } subject => subject.Place,
                 { Kind: OwnershipOperationKind.AcquirePattern, Input: >= 0 } binding => binding.Input,
+                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } item when this.Values[id].Kind == OwnershipValueKind.Sequence => item.Place,
                 _ => -1,
             };
 
@@ -204,7 +205,8 @@ public sealed partial class OwnershipBody
                             var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
                             if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
-                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
+                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p) &&
+                                !this.IsSiblingComponent(accessId, p))
                             {
                                 conflict = true;
                             }
@@ -803,6 +805,13 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
+            if (node.Kind == OwnershipValueKind.Sequence && node.Count == 1 && operation.Kind == OwnershipOperationKind.Produce)
+            {
+                // SPEC 14.6.2, 4.6: an element borrowed or read through a sequence receiver descends from that receiver.
+                value = this.ValueOperands[node.Start];
+                continue;
+            }
+
             if (node.Kind is not (OwnershipValueKind.Alias or OwnershipValueKind.Address) || node.Count != 1)
             {
                 // An immutable reference local retains the ancestry of its one
@@ -830,6 +839,58 @@ public sealed partial class OwnershipBody
         }
 
         return false;
+    }
+
+    // SPEC 14.6.2, 15.6.2: the Tuple components of one iteration item are disjoint element paths
+    // below the same receiver, so their borrows coexist whatever their modes.
+    private bool IsSiblingComponent(int access, int place)
+    {
+        var current = this.ComponentSequence(access);
+        var other = current < 0 || (uint)place >= (uint)this.borrowDefinitions.Length ? -1 : this.ComponentSequence(this.borrowDefinitions[place]);
+        if (current < 0 || other < 0)
+        {
+            return false;
+        }
+
+        var component = this.Sequences[current];
+        var sibling = this.Sequences[other];
+        return sibling.Receiver == component.Receiver && sibling.Element != component.Element &&
+            ReferenceEquals(this.Operations[component.Operation].Source, this.Operations[sibling.Operation].Source);
+    }
+
+    // The Tuple-component sequence plan behind a value: through a stored binding, a read of it and a Reborrow.
+    private int ComponentSequence(int value)
+    {
+        for (var remaining = 8; remaining > 0 && (uint)value < (uint)this.Values.Count; remaining--)
+        {
+            var operation = this.Operations[value];
+            var node = this.Values[value];
+            if (operation.Kind == OwnershipOperationKind.Produce && node.Kind == OwnershipValueKind.Sequence)
+            {
+                return this.Sequences[(int)node.Constant].Element >= 0 ? (int)node.Constant : -1;
+            }
+
+            if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0)
+            {
+                var definition = this.borrowDefinitions[operation.Place];
+                if (definition < 0 || definition >= value)
+                {
+                    return -1;
+                }
+
+                value = definition;
+            }
+            else if (operation.Kind is OwnershipOperationKind.Write or OwnershipOperationKind.Borrow && node.Kind is OwnershipValueKind.Alias or OwnershipValueKind.Address && node.Count == 1)
+            {
+                value = this.ValueOperands[node.Start];
+            }
+            else
+            {
+                return -1;
+            }
+        }
+
+        return -1;
     }
 
     private bool HasSingleBorrowDefinition(int place)

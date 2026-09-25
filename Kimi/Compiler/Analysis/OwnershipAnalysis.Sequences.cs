@@ -155,6 +155,7 @@ public sealed partial class OwnershipAnalysis
     private void Iterate(ForKoto source)
     {
         var shared = source.SharedIterable;
+        var exclusive = source.Mode == SubjectMode.Exclusive && shared is not null;
         var dictionary = source.Iterable.BoundType?.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(source.Iterable.BoundType);
         var array = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
         var dynamicArray = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.Array;
@@ -173,8 +174,9 @@ public sealed partial class OwnershipAnalysis
         }
 
         int iterable;
-        if (dictionary && shared is not null)
+        if (shared is not null && (dictionary || exclusive))
         {
+            // SPEC 14.6.2: a Dictionary and an exclusively enumerated array are borrowed for the loop in the Subject mode.
             iterable = this.BorrowStruct(source.Iterable, shared);
         }
         else if (shared is not null)
@@ -220,6 +222,9 @@ public sealed partial class OwnershipAnalysis
         this.current = enter;
         var bindingMark = this.locals.Count;
         this.loops.Add(new(source, head, exit, bindingMark, this.temporaries.Count, Comparisons: this.comparisonDepth));
+        // SPEC 14.6.2: a borrowed Dictionary reads its next link before the entry's components are borrowed;
+        // the advance touches no component, so exclusive component Loans never conflict with it.
+        var next = dictionary && shared is not null ? this.SequenceValue(source, BoundType.ISize, SequenceOperation.DictionaryNext, iterable, index: this.Value(current)) : -1;
         // Each slot has the ordinary iteration lifetime, including unnamed slots.
         // Fixed-array elements are Copy; the owning Array iterator instead transfers
         // one element before the body and keeps responsibility only for its remaining tail.
@@ -227,7 +232,7 @@ public sealed partial class OwnershipAnalysis
         {
             var name = source.Bindings[slot];
             var slotType = name.BoundType!;
-            var binding = this.LocalPlace(name.BoundSymbol, name, slotType, false);
+            var binding = this.LocalPlace(name.BoundSymbol, name, slotType, source.IsMutableSlot(slot));
             this.locals.Add(new(binding, name, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, name, binding);
             int item;
@@ -245,9 +250,8 @@ public sealed partial class OwnershipAnalysis
             }
             else if (slice)
             {
-                var stored = source.IsTupleBinding ? this.body.Places[iterable].Type.Components[0].Components[slot] : null;
-                var copied = stored is not null && (ReferenceEquals(slotType, stored) || SharedReadTypes.ReadsStoredPointer(stored, slotType));
-                item = this.SequenceValue(source, slotType, copied ? SequenceOperation.Read : SequenceOperation.Borrow, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
+                // SPEC 14.6.2: every borrowed item and Tuple component is a reference into the backing storage.
+                item = this.SequenceValue(source, slotType, SequenceOperation.Borrow, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
             }
             else
             {
@@ -260,9 +264,13 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.Write, name, binding, item);
         }
 
-        // The last advance reaches end (at most maximum isize), never end + 1.
-        var next = dictionary ? this.SequenceValue(source, BoundType.ISize, shared is null ? SequenceOperation.DictionaryTakeNext : SequenceOperation.DictionaryNext, iterable, index: this.Value(current))
-            : this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(this.SequenceConstant(source, BoundType.ISize, 1)), KotoKind.Plus);
+        if (next < 0)
+        {
+            // The last advance reaches end (at most maximum isize), never end + 1.
+            next = dictionary ? this.SequenceValue(source, BoundType.ISize, SequenceOperation.DictionaryTakeNext, iterable, index: this.Value(current))
+                : this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(this.SequenceConstant(source, BoundType.ISize, 1)), KotoKind.Plus);
+        }
+
         this.Emit(OwnershipOperationKind.Write, source, cursor, next);
         var seeds = this.terminalSeeds.Count;
         this.Block(source.Body, out var continuation);
