@@ -1,6 +1,7 @@
 # Coding Guidelines
 
 - Minimize memory allocations and optimize code for performance wherever practical.
+- Implement Kimi's core libraries, including Iterator and Dictionary, in Kimigayo rather than hand-written LLVM IR whenever possible.
 - Update `SPEC.md` and `STATUS.md` as needed to reflect the changes made. Write all updates in English.
 - Do not automatically update files in the `draft` folder unless explicitly instructed.
 - Do not run NativeAOT tests unless explicitly specified.
