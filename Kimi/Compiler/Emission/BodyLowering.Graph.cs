@@ -30,7 +30,7 @@ internal sealed partial class BodyLowering
         _ => ArithmeticCheckKind.None,
     };
 
-    private static void Grow(ref int[] array, int count)
+    private static void Grow<T>(ref T[] array, int count)
     {
         if (array.Length < count)
         {
@@ -279,7 +279,7 @@ internal sealed partial class BodyLowering
                 }
             }
 
-            if ((value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Subject || IsMaterializedScalar(body, p) || this.IsArrayPayload(body, p)))
+            if ((value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Subject || this.IsMaterializedScalar(p) || this.IsArrayPayload(body, p)))
             {
                 function.Slots.Add(new(p, value));
             }
@@ -553,6 +553,13 @@ internal sealed partial class BodyLowering
 
                 function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, Input(body, id, 0))], llvm, place: operation.Place, representation: representation);
                 return true;
+        }
+
+        if (value.Kind == OwnershipValueKind.Parameter && operation.Kind == OwnershipOperationKind.Produce && this.IsMaterializedScalar(operation.Place))
+        {
+            // A borrowed by-value Scalar parameter is stored once at entry; reads keep using the argument value.
+            function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, id)], llvm, place: operation.Place, representation: representation);
+            return true;
         }
 
         if (value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Parameter)

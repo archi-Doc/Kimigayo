@@ -28,6 +28,8 @@ internal sealed partial class BodyLowering
             function.SlotAddresses.Add(new(EmissionOperandKind.SlotAddress, p));
         }
 
+        this.PrepareMaterializedScalars(body);
+
         // Parameter Produce operations form the entry prefix, after reserved Exit markers.
         var producer = 1;
         while (producer < body.Operations.Count && body.Operations[producer].Kind == OwnershipOperationKind.Exit)
@@ -51,7 +53,7 @@ internal sealed partial class BodyLowering
                 return Fail("Parameter storage does not match its logical signature.", out failure);
             }
 
-            if (FunctionAbi.GetValue(place.Type, this.aggregateLayouts)?.Layout.Size > 0 && !ReferenceTypes.IsString(place.Type))
+            if (FunctionAbi.GetValue(place.Type, this.aggregateLayouts)?.Layout.Size > 0 && !ReferenceTypes.IsString(place.Type) && !this.IsMaterializedScalar(place.Id))
             {
                 function.SlotAddresses[place.Id] = new(EmissionOperandKind.Argument, i);
             }

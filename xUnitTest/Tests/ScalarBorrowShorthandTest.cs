@@ -22,6 +22,9 @@ public class ScalarBorrowShorthandTest
     [InlineData("BorrowedBase", P + "func f(p: uniq/P)\n    bump(p.tag@uniq)\n    bump(p.tag@uniq)\n    let t = p.tag@uniq\n    p.flag = false\n    bump(t)\nvar o = P.init()\nf(o@uniq)\nrequire not o.flag and o.tag == 7 else => $abort(\"value\")")]
     [InlineData("SharedBase", P + "func f(p: ref/P) -> bool => read(p.tag)\nlet o = P.init()\nrequire f(o@ref) else => $abort(\"value\")")]
     [InlineData("TupleElement", P + "var t: (i32, bool) = (1, true)\nbump(t.0@uniq)\nbump(t.0@uniq)\nrequire t.1 else => $abort(\"value\")")]
+    [InlineData("ParameterTwice", "func f(x: i32) -> i32\n    let r = x@ref\n    let s = x@ref\n    return r + s\nrequire f(5) == 10 else => $abort(\"twice\")")]
+    [InlineData("ParameterBranches", "func f(x: i32, c: bool) -> i32\n    if c\n        let r = x@ref\n        return r + 1\n    let s: ref/i32 = x\n    return s + 100\nrequire f(5, true) == 6 and f(7, false) == 107 else => $abort(\"branches\")")]
+    [InlineData("ParameterLoop", "func f(x: i64, n: i32) -> i64\n    var total: i64 = 0\n    var i = 0\n    while i < n\n        let r = x@ref\n        total += r\n        i += 1\n    return total\nrequire f(3, 4) == 12 and f(3, 0) == 0 else => $abort(\"loop\")")]
     public void ExecutesScalarShorthandBorrows(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

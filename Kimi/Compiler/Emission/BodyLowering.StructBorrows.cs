@@ -6,24 +6,26 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    // A scalar temporary receives a slot only when a borrow materializes it.
-    private static bool IsMaterializedScalar(OwnershipBody body, int place)
-    {
-        if (body.Places[place] is not { Kind: OwnershipPlaceKind.Temporary } temporary || !ScalarTypes.Supports(temporary.Type))
-        {
-            return false;
-        }
+    private bool[] materializedScalars = [];
 
+    // A scalar temporary or by-value parameter receives a slot only when it is borrowed (SPEC 3.6.2, 10.2).
+    // A temporary is stored at its borrow from its one prepared value; a parameter is stored once at its
+    // entry Produce, which dominates every borrow, so repeated and branch-local borrows share that slot.
+    private void PrepareMaterializedScalars(OwnershipBody body)
+    {
+        Grow(ref this.materializedScalars, body.Places.Count);
+        this.materializedScalars.AsSpan(0, body.Places.Count).Clear();
         for (var i = 0; i < body.Operations.Count; i++)
         {
-            if (body.Operations[i] is { Kind: OwnershipOperationKind.Borrow } borrow && borrow.Place == place)
+            if (body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Place: >= 0 } borrow && borrow.Place < body.Places.Count &&
+                body.Places[borrow.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Parameter } place && ScalarTypes.Supports(place.Type))
             {
-                return true;
+                this.materializedScalars[borrow.Place] = true;
             }
         }
-
-        return false;
     }
+
+    private bool IsMaterializedScalar(int place) => this.materializedScalars[place];
 
     private bool LowerStructBorrow(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
@@ -222,27 +224,11 @@ internal sealed partial class BodyLowering
                 function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, input)], slot.ComputationType, place: operation.Place, representation: slot);
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
             }
-            else if (body.Places[operation.Place].Kind == OwnershipPlaceKind.Parameter && ScalarTypes.Supports(type) && function.SlotAddresses[operation.Place].Kind != EmissionOperandKind.SlotAddress)
-            {
-                if (value.Count != 0 || !ReferenceEquals(type, output.Components[0]))
-                {
-                    return Fail("Scalar parameter borrow does not match its stored Type.", out failure);
-                }
-
-                // A by-value Scalar parameter arrives as a value; its slot is materialized once when it is borrowed,
-                // and every later borrow of the parameter reads that same slot (SPEC 3.6.2, 10.2).
-                var scalar = WindowsLowering.GetValue(type)!;
-                var slot = function.SlotAddresses.Count;
-                function.SlotAddresses.Add(new(EmissionOperandKind.SlotAddress, slot));
-                function.Slots.Add(new(slot, scalar));
-                function.AddScalar(EmissionOpcode.StoreScalar, id, [function.SlotAddresses[operation.Place]], scalar.ComputationType, place: slot, representation: scalar);
-                function.SlotAddresses[operation.Place] = new(EmissionOperandKind.SlotAddress, slot);
-                function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, slot)]);
-            }
             else
             {
                 if (value.Count != 0 || !ReferenceTypes.StorageMatches(type, output.Components[0]) ||
-                    (this.aggregatePlaces[operation.Place] is null && !ReferenceEquals(type, BoundType.Unit) && !this.IsStringStorage(body.Places[operation.Place]) && !(ScalarTypes.Supports(type) && body.Places[operation.Place].Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter)))
+                    (this.aggregatePlaces[operation.Place] is null && !ReferenceEquals(type, BoundType.Unit) && !this.IsStringStorage(body.Places[operation.Place]) &&
+                        !(ScalarTypes.Supports(type) && (body.Places[operation.Place].Kind == OwnershipPlaceKind.Local || this.IsMaterializedScalar(operation.Place)))))
                 {
                     return Fail("Borrow source has no matching aggregate storage.", out failure);
                 }
