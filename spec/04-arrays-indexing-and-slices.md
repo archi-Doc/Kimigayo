@@ -424,7 +424,7 @@ shared[0] = 20 // Error: Slice elements are read-only.
 
 ### 4.6.7. Slice iteration and nested Origins
 
-`Slice` conforms to `Iterable`, `UniqIterable` and `IntoIterable` with the item `ref/T during source` in every mode, including for Copy elements, in index order (§14.6.2). The iterator keeps a handle and a position, not owned elements; exclusive enumeration lends the handle and leaves the elements shared. Items borrow the backing slots, not the iterator's receiver or storage, so they may be retained across later `next` calls; the iterator conforms to `IndependentIterator` (§22.1.2) and stays exhausted after `None`.
+`Slice` conforms to `Iterable`, `UniqIterable` and `IntoIterable` with the item `ref/T during source` in every mode, including for Copy elements, in index order (§14.6.2). The iterator keeps a handle and a position, not owned elements; exclusive enumeration lends the handle and leaves the elements shared. Items borrow the backing slots, not the iterator's receiver or storage, so they may be retained across later `next` calls; the iterator is an Iterator (§22.1.2.4) and stays exhausted after `None`.
 
 Element-internal Origins are kept separate from slot-borrow Origins:
 

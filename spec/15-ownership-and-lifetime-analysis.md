@@ -195,15 +195,22 @@ Getter results are acquired as results, never by moving hidden storage. An alrea
 
 ### 15.1.6. Match acquisition and lifetime
 
-`match E` and `for` evaluate their Subject expression `E` once and initialize an internal **Subject Place** under the **subject rule**. The outermost written operation fixes the **Subject mode**; parentheses change nothing, and inner operations are ordinary expressions:
+`match E` and `for` evaluate their Subject expression `E` once and initialize an internal **Subject Place** under the **subject rule**: the Subject is acquired by the ordinary acquisition of `E` (§3.5, §13.5), except that a bare Place, which bare acquisition would Copy or reject, is borrowed in place. Parentheses change nothing, and inner operations are ordinary expressions:
 
-| Subject `E` | Mode | Subject Place |
-| --- | --- | --- |
-| Bare Place, `E@ref`, or a bare temporary | Shared | A shared borrow of the Place; a bare temporary is stored in an internal owned local for the construct's lifetime and borrowed |
-| `E@uniq`, `E@objuniq`, or a typed exclusive slot borrow | Exclusive | An exclusive borrow of that slot |
-| `E@move`, or an existing exclusive borrow value at the Subject | ByValue for `@move`; a borrow value keeps its own mode | The transferred value; a transferred `@move` is ByValue even for a Copy Type |
+| Subject `E` | Subject Place |
+| --- | --- |
+| A bare Place | A shared borrow of the Place; when the Place stores `ref/T` or `uniq/T`, a Reborrow of that reference in its own mode |
+| Any other expression: an explicit borrow such as `E@ref`, `E@uniq`, `E@objuniq` or a typed slot borrow, `E@move`, a temporary, or an acquisition such as `E@owner` | The value that this acquisition produces: `@move` transfers even a Copy Type, a temporary is transferred as is, and a same-Type acquisition copies a Copy Place and leaves it usable |
 
-A typed slot borrow such as `E@ref/T` has the same mode after its Type check. The mode never depends on `var`, Copy capability, an available conformance or the body. An explicit borrow applies to the immediately written slot (§13.5.5.2), so `values@uniq` on `let values: uniq/Array<T>` is an error, and the referent is enumerated exclusively with `values@deref@uniq`; a shared layer anywhere on the path bounds the mode to Shared. `E@move` on a reference transfers the reference value, never the referent's ownership. `for` selects its iteration entry from the mode (§14.6.2); `match` does not itself dereference the Subject, and structural Patterns select the Places they need under §14.8.1.
+The **Subject mode** is the access that the Subject Place grants to its first layer that is not a safe reference:
+
+| Subject Place | Mode |
+| --- | --- |
+| A shared borrow, or a `ref` or `objref` value | Shared |
+| An exclusive borrow, or a `uniq` or `objuniq` value | Exclusive |
+| An owned value | ByValue |
+
+The mode never depends on `var`, Copy capability, an available conformance or the body. An explicit borrow applies to the immediately written slot (§13.5.5.2), so `values@uniq` on `let values: uniq/Array<T>` is an error, and the referent is enumerated exclusively with the bare `values` or `values@deref@uniq`; a shared layer anywhere on the path bounds the mode to Shared. `E@move` on a reference transfers the reference value, never the referent's ownership, so the Subject keeps that reference's mode. `for` selects its iteration entry from the mode (§14.6.2); `match` does not itself dereference the Subject, and structural Patterns select the Places they need under §14.8.1.
 
 The Subject Place is initialized before arm selection, regardless of bindings, Wildcards, or whether any arm succeeds, and optimization cannot change the original Place's Move state, lifetime or Loans. A Shared Subject of a proven-Copy Place may be implemented by a Copy of its value: its bindings are shared views of an unchanging value, so the two are observationally equivalent and no Loan is required. A custom, computed or required `get` subject invokes its getter once; a standard stored `get` uses the permitted Place operation. A borrowed Subject's Loan follows the uses of its bindings: an arm without a live borrowed binding may assign to or transfer the original Place.
 
@@ -223,12 +230,19 @@ match message@move                  // Owned Subject: payloads are transferred.
     _ => ()
 // use(message)                     // Error: the whole value was transferred.
 
+match makeMessage()                 // A temporary is an owned Subject without a spelling.
+    .Write(let text) => store(text@move)
+    _ => ()
+
+match count@owner                   // count: i32. A Copy acquisition: ByValue, count stays usable.
+    var n => n += 1                 // n: i32
+
 match counter@uniq                  // Exclusive Subject.
     .Count(let n) => n@deref += 1   // n: uniq/i32
     _ => ()
 ```
 
-**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected immediately on Pattern success; a guarded arm additionally requires successful guard cleanup. `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. Binding the whole Subject borrows the original Place, never the internal reference slot.
+**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected immediately on Pattern success; a guarded arm additionally requires successful guard cleanup. `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. On a shared or exclusive path a `var` binding is therefore a reassignable reference, and assigning a value of its referent Type to it is an error whose diagnostic names the Subject mode and suggests `@deref` for an exclusive referent, or a ByValue Subject such as `E@owner` or `E@move` for a local value. Binding the whole Subject borrows the original Place, never the internal reference slot.
 
 | Selected Place | Value bound |
 | --- | --- |

@@ -292,7 +292,7 @@ ForBinding := ForSlot | "(" List<ForSlot> ")"
 ForSlot    := Name | "var" Name | "_"
 ```
 
-A `for` binding is one slot or a parenthesized Tuple of slots, not a general Pattern or nested decomposition. A bare Name is an immutable `let` iteration binding, `var Name` is a reassignable iteration local, and each `_` is a separate unnamed immutable binding that cannot be referenced or captured; `var _` is invalid. Named slots must be distinct. Conditions follow §14.2.3, including cleanup before branching and the ban on condition-binding syntax.
+A `for` binding is one slot or a parenthesized Tuple of slots, not a general Pattern or nested decomposition. A bare Name is an immutable `let` iteration binding, `var Name` is a reassignable iteration local, and each `_` is a separate unnamed immutable binding that cannot be referenced or captured; `var _` is invalid. Named slots must be distinct. Conditions follow §14.2.3, including cleanup before branching and the ban on condition-binding syntax. A `var` slot bound to a reference item is a reassignable reference, with the diagnostic of §15.1.6.
 
 ```kimi
 for (key, value) in dictionary => process(key, value)
@@ -307,13 +307,13 @@ while ready => process()
 
 `for` uses only the [Iterator Contract](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and the three iteration entries. The Subject `E` is evaluated once and acquired under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime); the Subject mode selects the entry, and the entry's receiver is acquired under the [reference-path selection](03-types-and-values.md#341-reference-path-selection) of the complete Subject Type:
 
-| Subject | Mode | Entry |
+| Subject mode | Typical Subjects | Entry |
 | --- | --- | --- |
-| `E`, `E@ref` | Shared | `Iterable.iterate` |
-| `E@uniq` | Exclusive | `UniqIterable.iterateUniq` |
-| `E@move` | ByValue; a Copy Subject is transferred too | `IntoIterable.intoIterator` |
+| Shared | `values`, `values@ref`, a `ref/C` value | `Iterable.iterate` |
+| Exclusive | `values@uniq`, a `uniq/C` value | `UniqIterable.iterateUniq` |
+| ByValue | `values@move`, a temporary such as `makeValues()`, `values@owner` | `IntoIterable.intoIterator` |
 
-For `values: ref/Array<T>`, `for value in values` selects Array's shared entry through the reference. The mode is never changed by the selection, and an explicit borrow must be valid on the immediately written slot before the entry is searched: `values@uniq` on `let values: uniq/Array<T>` is an error, and `values@deref@uniq` enumerates the referent exclusively. ByValue uses the `IntoIterable` conformance of the acquired complete Type and never takes ownership of a referent. Missing or ambiguous conformances are errors; there is no method-name duck typing, no automatic conformance of references or arbitrary iterators, and no fallback protocol. A user Iterator without an entry conformance is enumerated through the standard adapters, `Kimi.Iteration.owned(it@move)@move` or `Kimi.Iteration.borrowed(it@uniq)@move` (§22.1.2).
+For `values: ref/Array<T>`, `for value in values` selects Array's shared entry through the reference. The mode is never changed by the selection, and an explicit borrow must be valid on the immediately written slot before the entry is searched: `values@uniq` on `let values: uniq/Array<T>` is an error, and `values@deref@uniq` enumerates the referent exclusively. ByValue uses the `IntoIterable` conformance of the acquired complete Type and never takes ownership of a referent. Missing or ambiguous conformances are errors; there is no method-name duck typing, no automatic conformance of references or arbitrary iterators, and no fallback protocol. A user Iterator without an entry conformance is enumerated through the standard adapters, whose results are owned temporaries: `Kimi.Iteration.owned(it@move)` or `Kimi.Iteration.borrowed(it@uniq)` (§22.1.2).
 
 ~~~text
 subject  := acquire(E) in its mode
@@ -328,7 +328,7 @@ repeat:
 clean up the iteration scope, the iterator and the internal Subject on every loop exit
 ~~~
 
-The **item Type** is `Iterator.Item(step)` of the selected iterator Type, where `step` is bound to the receiver borrow of each `next` call; the entry mode does not force `ref`, `uniq` or an owned item. A single slot binds the item as that Type, without a Copy- or reference-dependent Type change. A parenthesized binding requires an item that is a Tuple of exactly that many elements, or a safe reference to one selected under §14.8.1, and binds each component under the owned decomposition rules: components of an owned `(A, B)` are transferred, components reached through `ref/(A, B)` bind as `ref/A` and `ref/B`, and components reached through `uniq/(A, B)` bind as `uniq/A` and `uniq/B`. General match Patterns are not accepted here. `_` still requests the item and cleans it up; binding shape determines the unit: `for _ in pairs` acquires one Tuple, `for (_, _) in pairs` its components.
+The **item Type** is `LendingIterator.LentItem(step)` of the selected iterator Type, where `step` is bound to the receiver borrow of each `next` call, and is the step-independent `Iterator.Item` when that Type is an Iterator; the entry mode does not force `ref`, `uniq` or an owned item. A single slot binds the item as that Type, without a Copy- or reference-dependent Type change. A parenthesized binding requires an item that is a Tuple of exactly that many elements, or a safe reference to one selected under §14.8.1, and binds each component under the owned decomposition rules: components of an owned `(A, B)` are transferred, components reached through `ref/(A, B)` bind as `ref/A` and `ref/B`, and components reached through `uniq/(A, B)` bind as `uniq/A` and `uniq/B`. General match Patterns are not accepted here. `_` still requests the item and cleans it up; binding shape determines the unit: `for _ in pairs` acquires one Tuple, `for (_, _) in pairs` its components.
 
 | Enumerated value | `Iterable` item | `UniqIterable` item | `IntoIterable` item |
 | --- | --- | --- | --- |
@@ -337,7 +337,7 @@ The **item Type** is `Iterator.Item(step)` of the selected iterator Type, where 
 | `Slice<E>` | `ref/E during s` | `ref/E during s` | `ref/E during s` |
 | `ResolvedRange` | `isize` | `isize` | `isize` |
 
-Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`; element-internal Origins are kept separately, so an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Array, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order; all of them keep returning `None` after the first `None`, and every standard iterator conforms to `IndependentIterator` (§22.1.2). Exclusive enumeration of a Slice lends the handle; its elements stay shared. `Range` is not enumerable; resolve it first (§4.6.3).
+Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`; element-internal Origins are kept separately, so an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Array, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order; all of them keep returning `None` after the first `None`, and every standard iterator is an Iterator (§22.1.2.4). Exclusive enumeration of a Slice lends the handle; its elements stay shared. `Range` is not enumerable; resolve it first (§4.6.3).
 
 ```kimi
 for item in items            // Shared iteration; items remains usable.
@@ -551,7 +551,7 @@ match "hello"
     _ => ()
 ```
 
-The bare temporary is a Shared Subject held in an internal local, so `text` is `ref/string` in the guard and in the body, and the literal argument is also borrowed for the call. The guard may equivalently compare `text == "hello"` directly: comparisons inspect the Non-Copy referent under the common operand rule (§13.4). To take the string by value, write `match makeText()@move`.
+The literal is a temporary, so the Subject is owned: `text` is `ref/string` in the guard, like every candidate, and an owned `string` in the body, where `Console.writeLine` borrows it. The literal argument is borrowed for the call. The guard may equivalently compare `text == "hello"` directly: comparisons inspect the Non-Copy referent under the common operand rule (§13.4). A bare Place Subject such as `match greeting` instead binds `ref/string` in the body too.
 
 **Guard syntax.** A guard is one expression whose normal result is `bool`. Parentheses are optional, and `and`, `or` and `not` keep their ordinary semantics. There are no `let` conditions, comma-separated condition lists or guard chains. The arm's Body start, either `=>` or the indented body, ends the guard. Nested body-bearing expressions in a guard require grouping under §2.2.
 
@@ -691,9 +691,15 @@ Syntax, Names, target and operand restrictions, local Types and match coverage a
 The **Target Result Type** constrains the results supplied to a target. It is determined independently of source traversal order:
 
 1. Use the declaration or the fixed Type from §14.2; otherwise use a fixed outer expectation.
-2. If it is still unknown, collect the independently typable source constraints together and find one common Type. Never alone supplies no concrete Type candidate.
+2. If it is still unknown, collect the independently typable source constraints together and find one common Type. Never alone supplies no concrete Type candidate. When the source Types differ only in safe reference layers over one Scalar Type, or are unfitted literals of it, that Scalar Type is the common Type and each reference source is Scalar-read (§3.5.3).
 3. Propagate the fixed Type to sources checkable against it; apply numeric literal defaults only after all other available evidence.
 4. Check every source for fitting. If an unresolved call, anonymous function or empty literal still needs a Type, require an annotation or explicit Type arguments.
+
+```kimi
+let count = match maybe          // maybe: Option<i32>, a bare Place.
+    .Some(let n) => n            // n: ref/i32; Scalar-read.
+    .None => 0                   // count: i32
+```
 
 Nested result expressions use the same expected-Type propagation. An inner result that depends on numeric defaults is not committed before available outer constraints are processed. Parentheses, labels and body nesting alone do not commit defaults, and an already typed binding is not reinferred from later uses. The call, lambda and try boundaries of §10.5 and the complete-Type inference rules of §10.8 apply. Combinations of unresolved sources, common bases, numeric conversion chains and overload candidates are never searched by rechecking bodies.
 

@@ -38,7 +38,7 @@ pair(second: 3)    // first = 1, second = 3.
 
 ## 10.2. Common adaptation at expected types
 
-This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or the ordinary common-Type inference; it is never derived backward from a borrow or a Scalar read. When `ref/i32` and `i32` result sources have no common Type, an annotation or an explicit `@deref` is required. The call form, explicit Type arguments and aliases do not change the rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
+This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or the ordinary common-Type inference; it is never derived backward from a borrow or a Scalar read. Result sources whose Types differ only in safe reference layers over one Scalar Type have that Scalar Type as their common Type, and each reference source is Scalar-read (§14.9.1); other sources without a common Type, such as `ref/Node` and `Node`, need an annotation or an explicit `@deref`. The call form, explicit Type arguments and aliases do not change the rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
 
 In the table, `U` is the complete immediate referent Type.
 
@@ -46,15 +46,26 @@ In the table, `U` is the complete immediate referent Type.
 | --- | --- | --- |
 | Readable Place storing `U` | `ref/U` | New shared borrow |
 | Owner `U` temporary | `ref/U` | Materialize once and shared-borrow |
-| `ref/U` | `ref/U` | Copy of the shared reference with permitted Origin shortening |
+| Safe value-reference layers ending in `U` | `ref/U` | One shared reference to `U` (below) |
 | `uniq/U` | `uniq/U` | Exclusive Reborrow for the required extent |
-| `uniq/U` | `ref/U` | Shared Reborrow |
 | Readable owning object handle | The corresponding `objref/U` | Shared object borrow |
 | `objuniq/U` | `objuniq/U` or `objref/U` | The corresponding object Reborrow |
 | Safe value-reference layers ending in a Scalar `U` | `U` | Scalar read (§3.5.3) |
 | Any other value or Place | Its complete Type | Bare acquisition, explicit transfer, or transfer of a temporary (§3.5) |
 
-Exactly one table operation, plus ordinary Origin fitting, is selected; adaptations are never chained, and the Scalar read counts as one operation however many layers it follows. A same-Type temporary is transferred as is. The Copy and Reborrow rows operate on the existing reference value and add no dependency on a temporary slot holding it. There is no implicit borrow of a reference or handle slot, no implicit payload dereference of an object, no implicit `rc`/`arc` or exclusive-temporary borrow, and no implicit object upcast, numeric, integer/float or user conversion. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value expectation; an explicit `@move` is executed first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
+Exactly one table operation, plus ordinary Origin fitting, is selected; adaptations are never chained, and the shared reference and Scalar read rows each count as one operation however many layers they follow. A same-Type temporary is transferred as is. The shared reference and Reborrow rows operate on the existing reference values and add no dependency on a temporary slot holding them.
+
+**One shared reference through layers.** For an input whose Type is safe reference layers ending in `U`, the adaptation yields one `ref/U`. The stored reference of the innermost `ref` layer is Copied with its own Origin, each `uniq` layer below it is Reborrowed as shared, and the result's Origin is the meet of the Origins of those layers; the layers above the innermost `ref` layer add no dependency, because a shared reference is Copy and reading it only requires them to be valid at that moment. Without a `ref` layer, the result is a shared Reborrow through every layer, whose Origin is the meet of all of them. A single `ref/U` is thus Copied with permitted Origin shortening, and a single `uniq/U` is shared-Reborrowed. Every layer is checked for initialization, capability and Loans, as for the Scalar read.
+
+```kimi
+func validate(node: ref/Node) -> () => ()
+func visit(nodes: ref/Array<uniq/Node>, found: Option<ref/Node during nodes>)
+    for node in nodes            // node: ref/(uniq/Node)
+        validate(node)           // Shared Reborrow through both layers.
+    match found                  // A bare Place: Shared.
+        .Some(let hit) => validate(hit) // hit: ref/(ref/Node); the inner reference is Copied.
+        .None => ()
+``` There is no implicit borrow of a reference or handle slot, no implicit payload dereference of an object, no implicit `rc`/`arc` or exclusive-temporary borrow, and no implicit object upcast, numeric, integer/float or user conversion. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value expectation; an explicit `@move` is executed first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
 
 A new exclusive borrow of an owned Place requires `@uniq`/`@objuniq`; only a Receiver Expression acquires it implicitly ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). An annotation, assignment or result never adds lifetime or capability. A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and no candidate switch arises from implicit exclusive borrowing.
 

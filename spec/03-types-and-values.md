@@ -582,7 +582,7 @@ Proof may depend on declared constraints, but successful individual instantiatio
 
 ### 3.5.3. Scalar read
 
-At a position that requires a Scalar Type `T` (§3.1), a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **Scalar read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to built-in operator operands and to `bool` conditions. An operator selects its operation from the terminal Scalar Type of each operand. An unknown generic Type is never assumed to be a Scalar.
+At a position that requires a Scalar Type `T` (§3.1), a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **Scalar read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to result sources whose common Type is that Scalar (§14.9.1), to built-in operator operands and to `bool` conditions. An operator selects its operation from the terminal Scalar Type of each operand. An unknown generic Type is never assumed to be a Scalar.
 
 ```kimi
 for number in numbers        // numbers: Array<i32>; number: ref/i32.
