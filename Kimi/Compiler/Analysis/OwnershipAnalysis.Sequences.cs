@@ -26,6 +26,7 @@ public sealed partial class OwnershipAnalysis
         if (ReferenceTypes.IsStorage(source.BoundType) && source.BoundType!.Semantics == SemanticsKind.Ref &&
             sequence?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice && ReferenceEquals(source.BoundType.Components[0], sequence.Components[0]))
         {
+            // SPEC 3.4.1: a member selected below the element reaches it through a shared borrow of the slot.
             if (acquisition == AcquisitionKind.Move)
             {
                 this.Unsupported(source);

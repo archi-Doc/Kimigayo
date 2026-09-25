@@ -10,10 +10,11 @@ public class DynamicArraySharedReadTest
     private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"drop\")\n";
 
     [Theory]
-    [InlineData("Owner", "let item = values[0]")]
-    [InlineData("SharedHandle", "let handle = values@ref\nlet item = handle[0]")]
-    [InlineData("ExclusiveHandle", "let handle = values@uniq\nlet item = handle[0]")]
-    [InlineData("Slice", "let view = values[..]\nlet item = view[0]")]
+    [InlineData("Owner", "let item = values[0]@ref")]
+    [InlineData("SharedHandle", "let handle = values@ref\nlet item = handle[0]@ref")]
+    [InlineData("ExclusiveHandle", "let handle = values@uniq\nlet item = handle[0]@ref")]
+    [InlineData("Slice", "let view = values[..]\nlet item = view[0]@ref")]
+    [InlineData("Annotated", "let item: ref/Task = values[0]")]
     public void AConcreteNonCopyStructReadBorrowsItsSlot(string name, string access)
         => ScalarEmissionTest.EmitFixture("DynamicArraySharedRead" + name, Task + "var values: Array<Task> = [Task.init(42)]\n" + access + "\nrequire item.id == 42 else => $abort(\"value\")\nvalues@uniq.clear()\nConsole.writeLine(\"done\")", "drop\ndone\n");
 
@@ -27,7 +28,7 @@ public class DynamicArraySharedReadTest
 
     [Fact]
     public void AChainedWriteStillTargetsTheStoredField()
-        => ScalarEmissionTest.EmitFixture("DynamicArraySharedReadFieldWrite", Task.Replace("public let id", "public var id", StringComparison.Ordinal) + "var values: Array<Task> = [Task.init(41)]\nvalues[0].id += 1\nlet item = values[0]\nrequire item.id == 42 else => $abort(\"value\")", "drop\n");
+        => ScalarEmissionTest.EmitFixture("DynamicArraySharedReadFieldWrite", Task.Replace("public let id", "public var id", StringComparison.Ordinal) + "var values: Array<Task> = [Task.init(41)]\nvalues[0].id += 1\nlet item = values[0]@ref\nrequire item.id == 42 else => $abort(\"value\")", "drop\n");
 
     [Theory]
     [InlineData("SliceField", "values[..][0].id")]
@@ -37,7 +38,7 @@ public class DynamicArraySharedReadTest
         => ScalarEmissionTest.EmitFixture("DynamicArraySharedRead" + name, Task + "var values: Array<Task> = [Task.init(42)]\nrequire " + read + " == 42 else => $abort(\"value\")", "drop\n");
 
     [Theory]
-    [InlineData("func make() -> Array<Task> => [Task.init(42)]\nlet item = make()[0]\nlet id = item.id")]
+    [InlineData("func make() -> Array<Task> => [Task.init(42)]\nlet item = make()[0]@ref\nlet id = item.id")]
     [InlineData("func inspect(item: ref/Task, ignored: ()) => ()\nvar values: Array<Task> = [Task.init(42)]\ninspect(values[0], values@uniq.clear())")]
     public void RejectsExpiredOrInvalidatedSharedReads(string source)
     {
@@ -53,7 +54,7 @@ public class DynamicArraySharedReadTest
     [InlineData("let moved = values@move")]
     public void ASharedReadRetainsTheArrayLoan(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze(Task + "var values: Array<Task> = [Task.init(42)]\nlet item = values[0]\n" + mutation + "\nlet id = item.id");
+        var c = MinimalEmissionTest.Analyze(Task + "var values: Array<Task> = [Task.init(42)]\nlet item = values[0]@ref\n" + mutation + "\nlet id = item.id");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
@@ -62,6 +63,8 @@ public class DynamicArraySharedReadTest
     [Theory]
     [InlineData("let item = values[0]@move")]
     [InlineData("func take(value: Task) => ()\ntake(values[0])")]
+    [InlineData("let item = values[0]")]
+    [InlineData("let item = values[..][0]")]
     public void AnElementReadNeverTransfersItsNonCopyPayload(string use)
     {
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\n" + use);

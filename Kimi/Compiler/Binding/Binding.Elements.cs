@@ -6,10 +6,24 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 4.6.6 / 15.1.6: Copy preserves the complete stored Type and its Origins;
-    // a shared read of a Non-Copy owned value borrows that storage.
-    private BoundType? SharedReadType(BoundType element, BoundOrigin origin, Koto source)
+    // SPEC 4.6.6, 4.6.9: an element expression designates the element Place with its stored complete Type; a bare
+    // read Copies a proven-Copy element, @ref borrows the slot and a fixed expected ref/T borrows it implicitly
+    // (SPEC 10.2). A member or index selected below an element of a Slice or borrowed array reaches it through
+    // an implicit shared borrow of that element (SPEC 3.4.1); an owned array element is projected in place.
+    private BoundType? ElementPlaceType(BinaryKoto source, BoundType element)
     {
+        var target = (Koto)source;
+        while (target.Parent is ParenthesizedKoto parentheses)
+        {
+            target = parentheses;
+        }
+
+        var chain = (target.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, target)) || (target.Parent is IndexKoto index && ReferenceEquals(index.Left, target));
+        if (!chain || source.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray)
+        {
+            return element;
+        }
+
         var proof = this.ProveCopy(element, source);
         if (proof == ConstraintProof.Proven)
         {
@@ -18,8 +32,9 @@ public sealed partial class Binding
 
         if (proof == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
         {
-            var target = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
-            return this.InternType(BoundTypeKind.Semantics, null, semantics, [target], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin);
+            var origin = this.PlaceOrigin(source.Left);
+            var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
+            return this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin);
         }
 
         return Fail(source, BindingFailure.Unsupported);
@@ -65,8 +80,7 @@ public sealed partial class Binding
             if ((ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver)) && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);
-                var borrowedElement = receiver!.Components[0].Components[0];
-                return Complete(source, ReferenceTypes.IsDynamicArray(receiver) ? this.SequenceReadType(source, borrowedElement) : borrowedElement);
+                return Complete(source, this.ElementPlaceType(source, receiver!.Components[0].Components[0]));
             }
 
             var sequence = ReferenceTypes.IsDynamicArray(receiver) ? receiver!.Components[0] : receiver;
@@ -89,7 +103,7 @@ public sealed partial class Binding
             if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);
-                return Complete(source, this.SequenceReadType(source, receiver.Components[0]));
+                return Complete(source, this.ElementPlaceType(source, receiver.Components[0]));
             }
 
             if (receiver is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !ReferenceEquals(receiver, BoundType.Never))
@@ -122,20 +136,5 @@ public sealed partial class Binding
         }
 
         return Complete(source, element);
-    }
-
-    private BoundType? SequenceReadType(BinaryKoto source, BoundType element)
-    {
-        // SPEC 4.6.6: element reads use the same acquisition as shared patterns.
-        // Chained projections, assignment and explicit acquisition instead retain the Place.
-        var target = (Koto)source;
-        while (target.Parent is ParenthesizedKoto parentheses)
-        {
-            target = parentheses;
-        }
-
-        var place = target.Parent is ConversionKoto || (source.Left.BoundType?.Kind == BoundTypeKind.Array && target.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, target)) ||
-            (target.Parent is BinaryKoto assignment && ReferenceEquals(assignment.Left, target) && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals);
-        return place ? element : this.SharedReadType(element, this.PlaceOrigin(source.Left), source);
     }
 }

@@ -73,10 +73,13 @@ public sealed partial class OwnershipAnalysis
         if (unwrapped is IndexKoto slice && type.Semantics == SemanticsKind.Ref &&
             (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType)))
         {
+            // A shared Reborrow of a stored exclusive reference or handle loads the stored pointer (SPEC 10.2);
+            // any other shared borrow takes the element slot's address.
+            var reborrow = slice.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type);
             var depth = this.comparisonDepth++;
             var handle = this.SequenceReceiver(slice.Left, out var projection);
             var subscript = this.Value(this.Expression(slice.Right));
-            var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(slice, type, SequenceOperation.Borrow, handle, projection, index: subscript);
+            var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(slice, type, reborrow ? SequenceOperation.Read : SequenceOperation.Borrow, handle, projection, index: subscript);
             this.EndComparisonLoans(depth, slice);
             this.comparisonDepth = depth;
             return borrowedElement;

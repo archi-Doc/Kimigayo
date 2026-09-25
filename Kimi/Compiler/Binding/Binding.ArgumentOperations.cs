@@ -142,7 +142,8 @@ public sealed partial class Binding
             ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } => true, // SPEC 13.5.5.1: a selected referent is a Place.
             MemberAccessKoto member => (member.BoundSymbol?.Property is { Getter.IsStandard: true } && StructStorage.IsStruct(member.Left.BoundType?.Kind == BoundTypeKind.Semantics ? member.Left.BoundType.Components[0] : member.Left.BoundType)) ||
                 ReferenceTypes.IsTuple(member.Left.BoundType) || member.Left.BoundType?.Kind == BoundTypeKind.Tuple,
-            IndexKoto index => index.Left.BoundType?.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsArray(index.Left.BoundType),
+            IndexKoto index => index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
+                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType), // SPEC 4.6.9
             _ => false,
         };
     }

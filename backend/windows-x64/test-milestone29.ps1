@@ -20,7 +20,7 @@ $variants = [ordered]@{
     IndexValues = @{ source = (Edit-KimiSource $original 'insert(^0,' 'insert(Index.init(0, fromEnd: true),' 'remove(^1)' 'remove(Index.init(1, fromEnd: true))'); stdout = $expected }
     CompleteIteration = @{ source = $complete; stdout = $completeOutput }
     Capacity = @{ source = (Edit-KimiSource $original '    Console.writeLine("Cleared the spare tasks.")' $capacityChecks); stdout = $expected }
-    SharedReads = @{ source = (Edit-KimiSource $original '    match tasks.pop()' ('    let item = tasks[0]' + "`n" + '    let explicit = tasks[0]@ref' + "`n" + '    require item.id == 5 and explicit.id == 5 else => $abort("Shared read")' + "`n" + '    match tasks@uniq.pop()')); stdout = $expected }
+    SharedReads = @{ source = (Edit-KimiSource $original '    match tasks.pop()' ('    let item: ref/Task = tasks[0]' + "`n" + '    let explicit = tasks[0]@ref' + "`n" + '    require item.id == 5 and explicit.id == 5 else => $abort("Shared read")' + "`n" + '    match tasks@uniq.pop()')); stdout = $expected }
     SharedSliceIteration = @{ source = (Edit-KimiSource $original '    var spare: Array<Task>' ('    let view = tasks[..]' + "`n" + '    require view.length == 2 and view[0].id == 5 else => $abort("Slice")' + "`n" + '    var total = 0' + "`n" + '    for item in tasks => total += item.id' + "`n" + '    require total == 7 else => $abort("Shared iteration")' + "`n" + '    var spare: Array<Task>')); stdout = $expected }
     ResultIteration = @{ source = (Edit-KimiSource $original 'for task in tasks@move' 'for task in (if true => tasks@move else => tasks@move)'); stdout = $expected }
     ClearAbort = @{ source = "struct Task`n    public let id: i32`n    public init(id: i32) => self.id = id`n    deinit`n        if self.id == 2 => `$abort(`"stop`")`n        Console.writeLine(`"drop`")`nvar values: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]`nvalues@uniq.clear()`nConsole.writeLine(`"after`")`n"; stdout = "drop`n"; exit = 1; stderr = '{name}.kimi:5:28: abort KIMI_E_ABORT: stop' + "`n" }
@@ -39,9 +39,10 @@ $invalid = [ordered]@{
     SharedMutation = @{ source = (Edit-KimiSource $original 'tasks.append(Task.init(1))' 'tasks@ref.append(Task.init(1))'); diagnostic = 'NoApplicableOverload_Kd' }
     ElementMove = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let invalid = tasks[0]@move' + "`n" + '    tasks[0] = Task.init(5)')); diagnostic = 'UnsupportedOwnership_Kd' }
     LiveBorrow = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks@ref' + "`n" + '    tasks[0] = Task.init(5)' + "`n" + '    let invalid = view.length')); diagnostic = 'ComparisonLoanConflict_Kd' }
-    LiveElement = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks[0]' + "`n" + '    tasks[0] = Task.init(5)' + "`n" + '    let invalid = view.id')); diagnostic = 'ComparisonLoanConflict_Kd' }
+    LiveElement = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks[0]@ref' + "`n" + '    tasks[0] = Task.init(5)' + "`n" + '    let invalid = view.id')); diagnostic = 'ComparisonLoanConflict_Kd' }
     # Valid forms outside the verified generation boundary: rejected by ownership analysis, never at generation.
     ZeroSizedElement = @{ source = (Edit-KimiSource $original '    Console.writeLine("Array run finished.")' ('    let units: Array<()> = [()]' + "`n" + '    Console.writeLine("Array run finished.")')); diagnostic = 'UnsupportedOwnership_Kd' }
+    BareElementRead = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let invalid = tasks[0]' + "`n" + '    tasks[0] = Task.init(5)')); diagnostic = 'TransferRequired_Kd' }
     LiveEmptySlice = @{ source = (Edit-KimiSource $original '    tasks[0] = Task.init(5)' ('    let view = tasks[0..0]' + "`n" + '    tasks.reserve(0)' + "`n" + '    let invalid = view.length' + "`n" + '    tasks[0] = Task.init(5)')); diagnostic = 'CallActivationConflict_Kd' }
 }
 Complete-Milestone $invalid

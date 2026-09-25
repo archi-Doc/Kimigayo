@@ -33,7 +33,7 @@ public class SharedElementReadTest
     {
         const string Source = """
             var values: Array<string> = ["hello"]
-            let saved = values[0]
+            let saved = values[0]@ref
             Console.writeLine(saved)
             values[0] = "after"
             Console.writeLine(values[0])
@@ -54,14 +54,48 @@ public class SharedElementReadTest
             require saved == 42 else => $abort("reference")
             number = 7
             """;
-        var source = exclusive ? Source.Replace("ref/i32", "uniq/i32", StringComparison.Ordinal).Replace("number@ref", "number@uniq", StringComparison.Ordinal) : Source;
+        // A stored uniq/i32 is Non-Copy: the shared Reborrow of its referent is explicit (SPEC 13.5.5.2).
+        var source = exclusive ? Source.Replace("ref/i32", "uniq/i32", StringComparison.Ordinal).Replace("number@ref", "number@uniq", StringComparison.Ordinal).Replace("values[..][0]", "values[..][0]@deref@ref", StringComparison.Ordinal) : Source;
         NativeAllocationAudit.WriteFixture("SharedElementReference" + exclusive, source, 1, 1, 32);
+    }
+
+    [Fact]
+    public void ImplicitBorrowsAtExpectedReferences()
+    {
+        // SPEC 10.2: a readable owned Place at a fixed expected ref/U is shared-borrowed at an annotated
+        // initializer, an argument and a by-value result; a Copy element is read bare.
+        const string Source = """
+            func first(values: ref/Array<string>) -> ref/string during values => values[0]
+            var values: Array<string> = ["hello"]
+            let saved: ref/string = values[0]
+            Console.writeLine(saved)
+            Console.writeLine(values[0])
+            Console.writeLine(first(values@ref))
+            var number: i32 = 5
+            let view: ref/i32 = number
+            let numbers: [1 of i32] = [7]
+            let copied = numbers[..][0]
+            require view == 5 and copied == 7 else => $abort("scalar")
+            """;
+        NativeAllocationAudit.WriteFixture("SharedElementExpectedReference", Source, 1, 1, 96, "hello\nhello\nhello\n");
+    }
+
+    [Theory]
+    [InlineData("var values: Array<string> = [\"hello\"]\nlet saved = values[0]")]
+    [InlineData("var values: Array<string> = [\"hello\"]\nlet saved = values[..][0]")]
+    [InlineData("var number = 42\nlet values: Array<uniq/i32> = [number@uniq]\nlet saved = values[..][0]")]
+    public void BareNonCopyElementReadsAreRejected(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.TransferRequired);
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
     public void BorrowedStringPreventsReplacementBeforeLastUse()
     {
-        var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"hello\"]\nlet saved = values[0]\nvalues[0] = \"new\"\nConsole.writeLine(saved)");
+        var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"hello\"]\nlet saved = values[0]@ref\nvalues[0] = \"new\"\nConsole.writeLine(saved)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));

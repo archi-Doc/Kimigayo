@@ -262,6 +262,15 @@ public sealed partial class Binding
             return reborrow;
         }
 
+        // SPEC 10.2: at a fixed expected ref/U, a readable owned Place storing U is shared-borrowed.
+        if (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && actual is { Semantics: SemanticsKind.Owner } &&
+            node.ErasedFunctionType is null && !Compatible(actual, expected) && Compatible(actual, expected.Components[0]) && IsBarePlace(node))
+        {
+            var borrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [actual], origin: this.PlaceOrigin(node));
+            this.implicitReborrows[node] = borrow;
+            return borrow;
+        }
+
         return node.ErasedFunctionType ?? actual;
     }
 
