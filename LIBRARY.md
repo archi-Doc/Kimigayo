@@ -222,11 +222,12 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `swapRemove(self: uniq/Self, index: isize) -> T` | Removes the element; the last element takes its position. O(1), order not preserved. |
 | `truncate(self: uniq/Self, length: isize) -> ()` | Destroys the elements from `length` in decreasing index order; a negative length Aborts. |
 | `appendAll(self: uniq/Self, other: Array<T>) -> ()` | Moves every element of `other` to the end in order. |
+| `appendCopies(self: uniq/Self, values: Slice<T>) -> ()`, `T is Copy` | Copies each element of `values` to the end in order. |
 | `reverse(self: uniq/Self) -> ()` | Reverses the order. O(1 + n). |
 | `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. Callback arguments await P26. |
 | `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | Heapsort by `by`; not stable, no allocation. Callback arguments await P26. |
 
-Specified but not yet provided: `init(! repeating:count:)`, the `first`/`last` Properties (Origin-carrying getter results, P24), `appendCopies`, `sort()` and the Slice `firstIndex(matching:)` operation (Callable arguments, P26). Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+Specified but not yet provided: `init(! repeating:count:)`, the `first`/`last` Properties (Origin-carrying getter results, P24), `sort()` (a Comparable heapsort) and the Slice `firstIndex(matching:)` operation (Callable arguments, P26). Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 

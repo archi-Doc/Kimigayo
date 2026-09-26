@@ -65,6 +65,13 @@ public struct Array<T>
                 .Some(let value) => self.append(value@move)
                 .None => return
 
+    /// Copies each element of `values` to the end, in order.
+    public func appendCopies(self: uniq/Self, values: Slice<T>)
+        T is Copy
+        self.reserve(additional: values.length)
+        for value in values
+            self.append(value@follow)
+
     /// Removes the elements for which `matching` returns true and keeps the order of the others.
     ///
     /// `matching` is called once per element in increasing index order with a shared reference. The removed

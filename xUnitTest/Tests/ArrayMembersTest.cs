@@ -93,8 +93,16 @@ public class ArrayMembersTest
         "    require tags.capacity >= 3 and names[0] == \"a\" else => $abort(\"generic\")\n" +
         "    Console.writeLine(\"Capacity ok.\")\n";
 
+    // SPEC 4.7.2, 7.4: appendCopies exists for Copy elements and leaves the source unchanged.
+    private const string Copies =
+        "public func main()\n    var values: Array<i32> = [1, 2]\n    let more: Array<i32> = [3, 4]\n    values.appendCopies(more[..])\n" +
+        "    values.appendCopies(more[1..])\n" +
+        "    require values.length == 5 and values[3] == 4 and values[4] == 4 and more.length == 2 else => $abort(\"copies\")\n" +
+        "    Console.writeLine(\"Copies ok.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Copies", Copies, "Copies ok.\n" },
         { "Capacity", Capacity, "Capacity ok.\nTag dropped.\n" },
         { "Field", Field, "Bag ready.\nDropped.\nDropped.\n" },
         { "Access", Access, "Out of range.\nEmpty has no first.\nAccess ok.\n" },
@@ -127,6 +135,7 @@ public class ArrayMembersTest
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nvalues.swap(first: 0, second: 0)\nlet n = view.length")]
     [InlineData("let values: Array<i32> = [1]\nvalues.truncate(0)")]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nvalues.reverse()\nlet n = view.length")]
+    [InlineData("var values: Array<string> = []\nlet more: Array<string> = [\"a\"]\nvalues.appendCopies(more[..])")]
     public void Rejects(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
