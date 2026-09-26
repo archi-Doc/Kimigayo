@@ -7,6 +7,10 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<MatchKoto, BoundMatch> matches = new(ReferenceEqualityComparer.Instance);
+
+    // A match keeps its plan object across rebinds, so a retained plan never starts describing another match while its
+    // own syntax is still selected; only the plans of removed matches return to the pool.
+    private readonly Dictionary<MatchKoto, BoundMatch> matchPlans = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundMatch> matchPool = new();
     private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<Koto> previousPatternNodes = new();
@@ -147,15 +151,41 @@ public sealed partial class Binding
 
     private void IndexMatch(MatchKoto match)
     {
-        var index = this.matches.Count;
-        if (index == this.matchPool.Count)
+        if (!this.matchPlans.TryGetValue(match, out var plan))
         {
-            this.matchPool.Add(new());
+            var last = this.matchPool.Count - 1;
+            if (last >= 0)
+            {
+                plan = this.matchPool[last];
+                this.matchPool.RemoveAt(last);
+            }
+            else
+            {
+                plan = new();
+            }
+
+            this.matchPlans.Add(match, plan);
         }
 
-        var plan = this.matchPool[index];
         plan.Reset(match);
         this.matches.Add(match, plan);
+    }
+
+    private void PruneMatchPlans()
+    {
+        if (this.matchPlans.Count == this.matches.Count)
+        {
+            return;
+        }
+
+        foreach (var (match, plan) in this.matchPlans)
+        {
+            if (!this.matches.ContainsKey(match))
+            {
+                this.matchPlans.Remove(match);
+                this.matchPool.Add(plan);
+            }
+        }
     }
 
     private void MarkPatternTree(Koto pattern)

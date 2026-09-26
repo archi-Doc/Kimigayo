@@ -250,6 +250,7 @@ public sealed partial class Binding
             }
 
             this.PrunePatternScopes();
+            this.PruneMatchPlans();
             this.ClearCapabilityResults();
             this.ValidateOriginRelations();
             this.ValidateCopyDeclarations(mode);
