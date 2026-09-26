@@ -101,29 +101,30 @@ public sealed partial class Binding
         return this.WithOrigins(left, this.Meet(a, b), []);
     }
 
+    // SPEC 14.9.1: result sources whose reference layers over one Scalar differ in number or kind unify to that Scalar;
+    // sources with the same layers keep the ordinary common-borrow rule.
     private static BoundType? ScalarUnification(List<BoundType> types)
     {
         BoundType? scalar = null;
-        var layers = -1;
         var differ = false;
         for (var i = 0; i < types.Count; i++)
         {
-            var count = 0;
             var terminal = types[i];
+            var first = types[0];
             while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
             {
+                differ |= first is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || first.Semantics != terminal.Semantics;
                 terminal = terminal.Components[0];
-                count++;
+                first = first is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? first.Components[0] : first;
             }
 
+            differ |= first is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
             if (terminal.Kind != BoundTypeKind.Primitive || !ScalarTypes.Supports(terminal) || (scalar is not null && !ReferenceEquals(scalar, terminal)))
             {
                 return null;
             }
 
             scalar = terminal;
-            differ |= layers >= 0 && layers != count;
-            layers = count;
         }
 
         return differ ? scalar : null;
