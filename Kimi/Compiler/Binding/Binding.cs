@@ -574,6 +574,7 @@ public sealed partial class Binding
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
                     BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
                     BindingFailure.ExclusivePathTake => DiagnosticCode.ExclusivePathTake_Kd,
+                    BindingFailure.PlaceRequired => DiagnosticCode.PlaceRequired_Kd,
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
                     BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
                     BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,

@@ -457,6 +457,16 @@ public sealed partial class Binding
                 return payload is null ? null : this.InternType(BoundTypeKind.Constructed, this.Library.Option, SemanticsKind.Owner, [payload]);
             case ParenthesizedTypeKoto parentheses:
                 return this.BindType(parentheses.Type, scope, context);
+            case PlaceResultKoto place:
+                // SPEC 7.1.1: a Place result is a result category of a named function or requirement. It binds as the
+                // reference that @ref or @uniq on the published Place produces; a call selects the referent (STATUS:
+                // Function Types and anonymous functions with Place results remain a boundary).
+                if (place.Parent is not FunctionKoto { IsAnonymous: false } owner || !ReferenceEquals(owner.ReturnType, place))
+                {
+                    return Fail(place, BindingFailure.Unsupported);
+                }
+
+                return this.BindType(place.Type, scope, context);
             case TypeSemanticsKoto semantics:
                 if (semantics.Type is not null)
                 {

@@ -122,6 +122,7 @@ internal enum BindingFailure : byte
     // SPEC 3.4, 15.1.5: the layer of a Place's path that denies the requested capability.
     SharedPathAccess,
     ExclusivePathTake,
+    PlaceRequired,
 
     // SPEC 7.3: one receiver shape per function group fixed by member lookup.
     ReceiverShapeMismatch,

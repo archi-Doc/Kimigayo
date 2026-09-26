@@ -236,6 +236,100 @@ public sealed partial class OwnershipAnalysis
 
     // SPEC 13.5.5.1, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it,
     // securing the RHS first. The stored value follows the borrowed-field rules: Copy scalars, references and pointers.
+    // SPEC 7.1.1: a value use of a published Place reads the referent through the reference the call returns, like a
+    // selected referent: a Copy snapshot of a proven-Copy stored Type, never a Move.
+    private int ReadPlaceCall(InvocationKoto call, AcquisitionKind? acquisition)
+    {
+        var stored = this.Concrete(call.BoundType);
+        if (acquisition == AcquisitionKind.Move || stored is null || !this.SupportsCopySnapshot(stored, call))
+        {
+            if (acquisition is null && call.BoundType is { } element && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
+            {
+                this.body.ReportIssue(new(call, OwnershipFailure.TransferRequired));
+            }
+            else
+            {
+                this.Unsupported(call);
+            }
+
+            return -1;
+        }
+
+        var reference = this.PlaceCallReference(call);
+        if (reference < 0)
+        {
+            return -1;
+        }
+
+        var loaded = this.Place(call, stored, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
+        this.Emit(OwnershipOperationKind.Produce, call, loaded);
+        this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(reference)]);
+        return this.RegisterTemporary(loaded);
+    }
+
+    // Evaluates a Place call as the reference it returns.
+    private int PlaceCallReference(InvocationKoto call)
+    {
+        this.referenceCalls.Add(call);
+        var reference = this.ExpressionCore(call, PlaceUseKind.Read, null);
+        this.referenceCalls.Remove(call);
+        return reference;
+    }
+
+    // SPEC 7.1.1, 13.7: an assignment or compound update through a place uniq/T result secures the right-hand side,
+    // evaluates the call once as its reference, and stores through it.
+    private int WritePlaceCall(Koto source, InvocationKoto call)
+    {
+        var type = call.BoundType;
+        var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
+        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
+            (operation != KotoKind.Equals && type?.IsNumeric != true))
+        {
+            this.Unsupported(source);
+            return -1;
+        }
+
+        var right = source is BinaryKoto binary ? this.Expression(binary.Right) : -1;
+        if (source is BinaryKoto && right < 0)
+        {
+            return -1;
+        }
+
+        var address = this.PlaceCallReference(call);
+        var pointer = this.Value(address);
+        if (pointer < 0)
+        {
+            return -1;
+        }
+
+        int value;
+        var previous = -1;
+        if (operation == KotoKind.Equals)
+        {
+            value = right;
+        }
+        else
+        {
+            var loaded = this.Place(call, type, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
+            this.Emit(OwnershipOperationKind.Produce, call, loaded);
+            this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [pointer]);
+            this.RegisterTemporary(loaded);
+            previous = this.Value(loaded);
+            var operand = source is BinaryKoto ? this.Value(right) : previous >= 0 ? this.IncrementOne(source) : -1;
+            value = operand >= 0 && this.flow!.Nodes[source].CanCompleteNormally
+                ? this.ComputeUpdate(source, type, previous, operand, operation) : -1;
+        }
+
+        if (value < 0)
+        {
+            return -1;
+        }
+
+        var stored = this.Emit(OwnershipOperationKind.StorePointer, call, value, acquisition: this.body.Places[value].Acquisition);
+        this.SetValue(stored, OwnershipValueKind.PointerStore, ScalarResult(type!) ? [pointer, this.Value(value)] : [pointer], constant: value);
+        return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
+    }
+
     private int WriteReferent(Koto source, ConversionKoto followed)
     {
         var reference = followed.Left;

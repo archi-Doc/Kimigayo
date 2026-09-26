@@ -65,7 +65,8 @@ internal sealed partial class BodyLowering
         var address = Input(body, id, 0);
         // SPEC 3.3: a Copy borrow's referent is loaded through the reference; the
         // operation's source is then the borrow itself, and its address needs no Unsafe obligation.
-        var sourceType = SignatureType(this, operation.Source.BoundType);
+        // SPEC 7.1.1: a write through a Place call stores through the reference the call returns.
+        var sourceType = SignatureType(this, ElementAccess.PlaceCallReference(operation.Source) ?? operation.Source.BoundType);
         var pointerType = ValueType(body, address);
         // SPEC 3.5.3, 13.5.5.1: a load through a safe reference copies its referent layer by layer, and a
         // referent write stores through a uniq reference; both use the reference value as the address.

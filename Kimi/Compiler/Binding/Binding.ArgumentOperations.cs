@@ -41,6 +41,9 @@ public enum ExpectedAdaptationKind : byte
     /// <summary>Several reference layers yield one reference to their final referent: shared under SPEC 10.2, or exclusive when a
     /// receiver is selected through exclusive layers only (SPEC 3.4.1).</summary>
     ReferenceRead,
+
+    /// <summary>A bare Place is exclusively borrowed as the operand of a place uniq/T result (SPEC 7.1.1).</summary>
+    ExclusiveBorrow,
 }
 
 /// <summary>The one recorded adaptation of an expression and the Type it supplies; the node keeps its own Type.</summary>
@@ -108,6 +111,10 @@ public sealed partial class Binding
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PlaceOrigin(source));
 
+    // SPEC 4.6.9, 4.5: an exclusive borrow of a dynamic Array element lends the whole owned Array exclusively first.
+    internal BoundType ExclusiveArrayHandle(Koto array)
+        => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [array.BoundType!], origin: this.PlaceOrigin(array));
+
     /// <summary>
     /// SPEC 10.2: safe reference layers ending in <paramref name="referent"/> yield one shared reference to it. A <c>ref</c>
     /// layer is Copied with its own Origin, so it restarts the dependency; each <c>uniq</c> layer below it is shared-Reborrowed
@@ -163,6 +170,9 @@ public sealed partial class Binding
                     next = selected.Left;
                     layer = selected.Left.BoundType?.Semantics;
                     break;
+                case InvocationKoto call when ElementAccess.PlaceCallReference(call) is { } published:
+                    // SPEC 7.1.1: a published Place has the capability of the returned reference and never Take.
+                    return published.Semantics == SemanticsKind.Ref ? SemanticsKind.Ref : SemanticsKind.Uniq;
                 case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.Slice ||
                     index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
                     return SemanticsKind.Ref; // SPEC 4.6.6: a Slice element Place is shared.
@@ -222,8 +232,29 @@ public sealed partial class Binding
                 ReferenceTypes.IsTuple(receiver) || receiver?.Kind == BoundTypeKind.Tuple), // SPEC 3.4.1: also through the receiver's recorded reference.
             IndexKoto index => index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
                 ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType), // SPEC 4.6.9
+            InvocationKoto call => ElementAccess.IsPlaceCall(call), // SPEC 7.1.1: a published Place.
             _ => false,
         };
+    }
+
+    // SPEC 7.1.1: whether the expression is the operand of a return, or the single-item body, of a function with a
+    // place uniq/T result; only there does an owned Place adapt to an exclusive expectation without @uniq.
+    private static bool IsExclusivePlaceResultSource(Koto node)
+    {
+        var parent = node.Parent;
+        while (parent is ParenthesizedKoto)
+        {
+            parent = parent.Parent;
+        }
+
+        var function = parent switch
+        {
+            ReturnKoto jump => KotoHelper.ResolveTransferTarget(jump) as FunctionKoto,
+            CodeBlockKoto { IsExpressionBody: true, Parent: FunctionKoto owner } => owner,
+            FunctionKoto owner when ReferenceEquals(owner.ExpressionBody, node) => owner,
+            _ => null,
+        };
+        return function is { ReturnType: PlaceResultKoto { IsExclusive: true } };
     }
 
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
@@ -342,6 +373,13 @@ public sealed partial class Binding
                 : actual.Semantics == SemanticsKind.Uniq ? new(ExpectedAdaptationKind.Reborrow, shared) : null;
         }
 
+        if (expected.Semantics == SemanticsKind.Uniq && actual.Semantics == SemanticsKind.Owner && Compatible(actual, target) && IsBarePlace(node) &&
+            IsExclusivePlaceResultSource(node) && PathAuthority(node) != SemanticsKind.Ref)
+        {
+            // SPEC 7.1.1: the operand of a place uniq/T result designates a Place that is borrowed exclusively.
+            return new(ExpectedAdaptationKind.ExclusiveBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [actual], origin: this.PlaceOrigin(node)));
+        }
+
         return expected.Semantics == SemanticsKind.Ref && actual.Semantics == SemanticsKind.Owner && Compatible(actual, target) && IsBarePlace(node)
             ? new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [actual], origin: this.PlaceOrigin(node))) : null;
     }
@@ -358,6 +396,11 @@ public sealed partial class Binding
             // SPEC 13.5.5: a selected referent or payload keeps the dependencies of its reference or handle,
             // so a Reborrow depends on the referent and the parent Loan, not on the slot holding the parent.
             return selected.Left.BoundType?.Origin ?? this.PlaceOrigin(selected.Left);
+        }
+
+        if (ElementAccess.PlaceCallReference(source) is { Origin: { } published })
+        {
+            return published; // SPEC 7.1.1: a published Place keeps the dependencies of the returned reference.
         }
 
         source = PlaceOriginSource(source);
@@ -408,6 +451,11 @@ public sealed partial class Binding
                 SemanticsKind.Obj => this.BorrowablePlace(payload.Left, scope, exclusive),
                 _ => !exclusive && this.BorrowablePlace(payload.Left, scope, false),
             };
+        }
+
+        if (source is InvocationKoto placeCall && ElementAccess.PlaceCallReference(placeCall) is { } publishedReference)
+        {
+            return !exclusive || publishedReference.Semantics == SemanticsKind.Uniq; // SPEC 7.1.1
         }
 
         if (source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice })
@@ -601,7 +649,7 @@ public sealed partial class Binding
                     return false;
                 }
             }
-            else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } ||
+            else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } || ElementAccess.IsPlaceCall(unwrapped) ||
                 (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
                 (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
                 !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&

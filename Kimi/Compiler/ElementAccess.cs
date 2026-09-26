@@ -19,6 +19,16 @@ internal static class ElementAccess
     internal static bool IsSharedElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
         (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType));
 
+    // SPEC 7.1.1: a call of a function that publishes a Place. The call expression designates the referent of the
+    // reference the callee returns, with that reference's capabilities and Origin; its Type is the stored Type.
+    internal static bool IsPlaceCall(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is InvocationKoto { BoundCall.Target.Declaration: FunctionKoto { ReturnType: PlaceResultKoto } };
+
+    // The reference a Place call returns physically (ref/T or uniq/T with the published Origin), or null.
+    internal static BoundType? PlaceCallReference(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is InvocationKoto { BoundCall: { } plan } && plan.Target.Declaration is FunctionKoto { ReturnType: PlaceResultKoto } &&
+            plan.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } reference ? reference : null;
+
     // SPEC 4.6.9: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
     internal static bool IsBorrowedReceiver(BoundType? receiver)

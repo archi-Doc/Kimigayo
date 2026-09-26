@@ -642,6 +642,12 @@ public sealed partial class Binding
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             (call.CallStorage ??= new()).Set(this.CompilerRequirementTarget(winner, self), result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            if (selected.ReturnType is PlaceResultKoto && result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } published)
+            {
+                // SPEC 7.1.1: the call designates the published Place; its Type is the stored Type, and the plan keeps the reference.
+                return Complete(call, published.Components[0]);
+            }
+
             return Complete(call, result);
         }
         finally
@@ -871,7 +877,17 @@ public sealed partial class Binding
         }
 
         // Established input types cannot change; expectations only fill unresolved slots.
-        if (expected is not null && function.BoundSymbol?.Type is { } returnPattern)
+        // SPEC 7.1.1, 10.3: a Place result publishes its stored Type; the use position borrows or reads it, so the
+        // expectation is compared with the referent and the Place result's own Origin is never matched against it.
+        var placeExpected = function.ReturnType is PlaceResultKoto && expected is not null
+            ? expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? expected.Components[0] : expected
+            : null;
+        if (placeExpected is not null && function.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } placePattern)
+        {
+            var stored = this.MemberType(self is null ? placePattern.Components[0] : this.ContractType(placePattern.Components[0], scope, self), declaringType)!;
+            this.Infer(stored, placeExpected, function, arguments, lengths: lengths);
+        }
+        else if (expected is not null && function.BoundSymbol?.Type is { } returnPattern)
         {
             // Result expectations use the selected receiver's container Origins, just like inputs.
             // An abstract container binder must not become a rigid call-site lifetime constraint.
@@ -1069,7 +1085,14 @@ public sealed partial class Binding
             result = declaringType!;
         }
 
-        if (expected is not null && !this.FitsTypeAt(result, this.ContractType(expected, scope), call))
+        if (placeExpected is not null && result is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } placeResult)
+        {
+            if (!this.FitsTypeAt(placeResult.Components[0], this.ContractType(placeExpected, scope), call))
+            {
+                return CandidateApplicability.Inapplicable;
+            }
+        }
+        else if (expected is not null && !this.FitsTypeAt(result, this.ContractType(expected, scope), call))
         {
             return CandidateApplicability.Inapplicable;
         }

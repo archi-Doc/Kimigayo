@@ -122,6 +122,7 @@ public enum DiagnosticCode
     ExclusiveBindingAssignment_Kd,
     SharedPathAccess_Kd,
     ExclusivePathTake_Kd,
+    PlaceRequired_Kd,
     ReceiverShapeMismatch_Kd,
     BareOwningShorthand_Kd,
     NonCopyOperand_Kd,

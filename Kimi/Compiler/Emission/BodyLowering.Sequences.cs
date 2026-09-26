@@ -194,8 +194,10 @@ internal sealed partial class BodyLowering
             var sameOrigin = receiver.Kind == BoundTypeKind.Slice || borrowedArray
                 ? ReferenceEquals(reference?.Origin, receiverPlace.Type.Origin)
                 : reference?.Origin is { Kind: OriginKind.Projection } origin && ReferenceEquals(origin.Binder, Binding.PlaceOriginBinder(originSource)) && origin.Slot == Binding.PlaceOriginSlot(originSource);
-            // SPEC 14.6.2: exclusive enumeration addresses the elements through the loop's uniq array reference.
-            var exclusiveElements = borrowedArray && operation.Source is ForKoto { Mode: SubjectMode.Exclusive } && receiverPlace.Type.Semantics == SemanticsKind.Uniq;
+            // SPEC 14.6.2, 4.6.9: exclusive enumeration and an exclusive element borrow address the elements through a uniq
+            // array reference.
+            var exclusiveElements = borrowedArray && receiverPlace.Type.Semantics == SemanticsKind.Uniq &&
+                (operation.Source is ForKoto { Mode: SubjectMode.Exclusive } || (operation.Source is IndexKoto && reference?.Semantics == SemanticsKind.Uniq));
             var fixedElements = receiver.Kind == BoundTypeKind.FixedArray && exclusiveElements;
             if ((receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array) && !fixedElements) || !ReferenceTypes.IsStorage(reference) ||
                 reference!.Semantics != (exclusiveElements ? SemanticsKind.Uniq : SemanticsKind.Ref) ||

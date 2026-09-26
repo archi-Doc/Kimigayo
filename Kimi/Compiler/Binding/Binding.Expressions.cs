@@ -64,6 +64,11 @@ public sealed partial class Binding
             };
         }
 
+        if (node is InvocationKoto placeCall && ElementAccess.PlaceCallReference(placeCall) is { } published)
+        {
+            return published.Semantics == SemanticsKind.Uniq; // SPEC 7.1.1: place uniq/T offers Write; place ref/T does not.
+        }
+
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(nested.Left)) &&
             ElementAccess.BorrowedPathRoot(nested) is { } root)
         {
@@ -501,6 +506,12 @@ public sealed partial class Binding
                     Fail(jump, BindingFailure.TypeMismatch);
                 }
 
+                if (jump is ReturnKoto && target is FunctionKoto { ReturnType: PlaceResultKoto place } && jump.Expression is { } placeOperand &&
+                    (actual is null || !ReferenceEquals(actual, BoundType.Never)))
+                {
+                    this.CheckPlaceResultOperand(placeOperand, place, jump);
+                }
+
                 if (jump is not ContinueKoto)
                 {
                     targetResult?.Sources.Add(actual);
@@ -596,6 +607,12 @@ public sealed partial class Binding
         {
             var discards = KotoHelper.DiscardsFunctionBody(function);
             var result = this.BindNode(expression, scope, discards ? null : symbol?.Type);
+            var placeItem = expression is CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } single ? single.Items[0] : expression;
+            if (function.ReturnType is PlaceResultKoto place && !discards && (result is null || !ReferenceEquals(result, BoundType.Never)))
+            {
+                this.CheckPlaceResultOperand(placeItem, place, ReferenceEquals(placeItem, expression) ? function : expression);
+            }
+
             if (symbol is not null)
             {
                 var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
@@ -687,6 +704,20 @@ public sealed partial class Binding
         }
 
         return Complete(variable, symbol.Type);
+    }
+
+    // SPEC 7.1.1: the operand of a Place result designates a Place, never a value, temporary, if, match or do, and an
+    // exclusive Place result is never reached through a shared layer.
+    private void CheckPlaceResultOperand(Koto operand, PlaceResultKoto place, Koto report)
+    {
+        if (!IsBarePlace(operand))
+        {
+            Fail(operand.BindingState == BindingState.Invalid ? report : operand, BindingFailure.PlaceRequired);
+        }
+        else if (place.IsExclusive && PathAuthority(operand) == SemanticsKind.Ref)
+        {
+            Fail(operand, BindingFailure.SharedPathAccess);
+        }
     }
 
     private BoundType? BindName(IdentifierNameKoto node, BindingScope scope)

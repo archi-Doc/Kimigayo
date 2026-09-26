@@ -42,6 +42,13 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (unwrapped is InvocationKoto placeCall && ElementAccess.IsPlaceCall(placeCall))
+        {
+            // SPEC 7.1.1: a borrow of a published Place is a Reborrow through the reference the call returns; the call is
+            // evaluated as that reference below, and the borrowed address is its value.
+            this.referenceCalls.Add(placeCall);
+        }
+
         if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected)
         {
             // SPEC 13.5.5.2: a Reborrow or payload borrow lends the referent's capability through the parent
@@ -68,6 +75,23 @@ public sealed partial class OwnershipAnalysis
             this.EndComparisonLoans(depth, source);
             this.comparisonDepth = depth;
             return this.RegisterTemporary(elementReference);
+        }
+
+        if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&
+            (element.Left.BoundType?.Kind == BoundTypeKind.Array || (ReferenceTypes.IsDynamicArray(element.Left.BoundType) && element.Left.BoundType!.Semantics == SemanticsKind.Uniq)))
+        {
+            // SPEC 4.6.9, 4.5: an exclusive borrow of a dynamic Array element lends the whole Array exclusively (an owned
+            // Array is borrowed like an exclusive receiver; an exclusive reference is read) and splits the element off
+            // through that reference, as exclusive enumeration does; the element keeps the reference's dependency.
+            var depth = this.comparisonDepth++;
+            var handle = element.Left.BoundType!.Kind == BoundTypeKind.Array
+                ? this.BorrowStruct(element.Left, this.compilation.Binding.ExclusiveArrayHandle(element.Left))
+                : this.Expression(element.Left, PlaceUseKind.Read);
+            var subscript = handle < 0 ? -1 : this.Value(this.Expression(element.Right));
+            var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(element, type, SequenceOperation.Borrow, handle, index: subscript);
+            this.EndComparisonLoans(depth, element);
+            this.comparisonDepth = depth;
+            return borrowedElement;
         }
 
         if (unwrapped is IndexKoto slice && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef &&

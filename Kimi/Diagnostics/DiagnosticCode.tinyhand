@@ -383,6 +383,9 @@
   + Name="ExclusivePathTake_Kd"
     Message="This Place is reached through an exclusive reference, which grants Read and Write but not Take; exchange or replace the value with Kimi.Intrinsics instead of moving it"
 
+  + Name="PlaceRequired_Kd"
+    Message="A function with a place ref/T or place uniq/T result returns a Place: a Place expression or a call with a compatible Place result, never a value, temporary, if, match or do"
+
   + Name="ReceiverShapeMismatch_Kd"
     Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
 
