@@ -69,6 +69,11 @@ internal sealed partial class BodyLowering
             (body.Places[body.Constructions[this.payloadOwners[place]].Place].Type.Kind == BoundTypeKind.Array ||
              body.Places[body.Constructions[this.payloadOwners[place]].Place].Source is ArrayLiteralKoto { FillLength: not null });
 
+    // SPEC 4.5, 16.3.2: the drop helper that destroys an Array field's elements and releases its buffer with the containing struct.
+    private string? ArrayFieldDrop(BoundType array)
+        => array.Kind == BoundTypeKind.Array && array.Components.Count == 1 && this.TryGetArrayElement(array.Components[0], out var element)
+            ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi.Name : null;
+
     private bool TryGetArrayElement(BoundType type, out ArrayElement element, bool allowEmpty = false)
     {
         element = default;

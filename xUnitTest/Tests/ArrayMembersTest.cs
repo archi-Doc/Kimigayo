@@ -68,8 +68,19 @@ public class ArrayMembersTest
         "    require numbers[0] == 9 and numbers[1] == 8 and numbers[7] == 1 else => $abort(\"sort by\")\n" +
         "    Console.writeLine(\"Callables ok.\")\n";
 
+    // SPEC 4.5, 16.3.2: an Array field is destroyed with its struct, elements before the buffer, once.
+    private const string Field =
+        "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped.\")\n" +
+        "struct Bag\n    var items: Array<Tracked>\n    public init(items: Array<Tracked>) => self.items = items@move\n    public func count(self) -> isize => self.items.length\n" +
+        "func make() -> Bag\n    var items: Array<Tracked> = []\n    items.append(Tracked.init(1))\n    items.append(Tracked.init(2))\n    return Bag.init(items@move)\n" +
+        "public func main()\n" +
+        "    let bag = make()\n" +
+        "    require bag.count() == 2 else => $abort(\"count\")\n" +
+        "    Console.writeLine(\"Bag ready.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Field", Field, "Bag ready.\nDropped.\nDropped.\n" },
         { "Access", Access, "Out of range.\nEmpty has no first.\nAccess ok.\n" },
         { "Mutation", Mutation, "Mutation ok.\n" },
         { "Owned", Owned, "Truncating.\nDropped.\nDropped.\nTruncated.\nDropped.\nDropped.\n" },

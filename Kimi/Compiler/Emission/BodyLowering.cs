@@ -34,6 +34,12 @@ internal sealed partial class BodyLowering
     private BoundCall? instance;
     private GenericStoragePlan.CallEntry? instanceEntry;
 
+    internal BodyLowering()
+    {
+        // Array fields are destroyed through the element-specific drop helper of this lowering (SPEC 16.3.2).
+        this.aggregateLayouts.CollectionDrop = this.ArrayFieldDrop;
+    }
+
     // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1);
     // the entry binds the body's forwarded generic calls to their own instances.
     internal void SetInstance(Binding? binding, BoundCall? call, GenericStoragePlan.CallEntry? entry)

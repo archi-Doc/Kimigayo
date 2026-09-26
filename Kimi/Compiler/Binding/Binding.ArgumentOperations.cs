@@ -329,8 +329,10 @@ public sealed partial class Binding
     {
         // An owned Array element that stores a reference or handle is not an inline part either: its member is reached
         // through the stored view.
+        // A Non-Copy element published by a user index (SPEC 4.6.9) is likewise read through one shared borrow of its Place.
         if (KotoHelper.UnwrapParentheses(left) is IndexKoto index &&
-            (ElementAccess.IsSharedElement(index) || (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))))
+            (ElementAccess.IsSharedElement(index) || ElementAccess.IsUserIndex(index) ||
+                (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))))
         {
             this.SharedElement(left, index.Left, element);
         }
@@ -639,6 +641,13 @@ public sealed partial class Binding
             ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source))
         {
             adapted = this.PreparedBorrowType(source, pattern);
+            quality = ArgumentAdaptation.CrossSemanticsBorrow;
+            kind = ArgumentOperationKind.Borrow;
+            return true;
+        }
+
+        if (receiver && !projected && this.TryPairReceiver(source, pattern, actual, scope, out adapted))
+        {
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;
             return true;

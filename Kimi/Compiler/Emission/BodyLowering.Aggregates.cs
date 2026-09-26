@@ -31,6 +31,11 @@ internal sealed partial class BodyLowering
             }
         }
 
+        foreach (var field in this.aggregateLayouts.UsedCollectionFields)
+        {
+            module.Aggregates.Add(field);
+        }
+
         // Bodies register separately; a helper used by several bodies is defined once per module.
         foreach (var helper in this.arrayHelpers.Values)
         {

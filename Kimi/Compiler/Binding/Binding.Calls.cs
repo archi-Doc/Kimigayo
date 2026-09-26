@@ -185,17 +185,28 @@ public sealed partial class Binding
             this.ReceiverElement(member.Left, receiverType);
             // SPEC 3.4.1: selection continues at the referent of each safe value-reference layer and, under the
             // object view rules, at the payload of an object handle or view.
-            while (receiverType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && (IsBorrow(receiverType.Semantics) || IsObjectSemantics(receiverType.Semantics)))
+            while (true)
             {
-                receiverType = receiverType.Components[0];
-            }
+                while (receiverType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && (IsBorrow(receiverType.Semantics) || IsObjectSemantics(receiverType.Semantics)))
+                {
+                    receiverType = receiverType.Components[0];
+                }
 
-            if (receiverType is not null)
-            {
-                // A nominal member takes priority over a requirement member of the same receiver.
-                valueMember = this.RequirementMember(member, scope, receiverType, false);
-                valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName, scope, receiverType);
-                valueMember = valueSelection.Member ?? valueMember ?? valueSelection.Hidden;
+                if (receiverType is not null)
+                {
+                    // A nominal member takes priority over a requirement member of the same receiver.
+                    valueMember = this.RequirementMember(member, scope, receiverType, false);
+                    valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName, scope, receiverType);
+                    valueMember = valueSelection.Member ?? valueMember ?? valueSelection.Hidden;
+                }
+
+                // SPEC 3.4.1: a qualifying pair layer without the member, declared or published, continues at its target.
+                if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) == SemanticsMask.None)
+                {
+                    break;
+                }
+
+                receiverType = pairTarget;
             }
         }
 

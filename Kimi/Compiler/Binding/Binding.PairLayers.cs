@@ -9,6 +9,9 @@ public sealed partial class Binding
     // The admitted set of every pair layer followed in this pass (SPEC 13.5.5.1), keyed by the @follow node.
     private readonly Dictionary<Koto, SemanticsMask> pairFollows = new(ReferenceEqualityComparer.Instance);
 
+    // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.1, 7.3), with their admitted sets.
+    private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
+
     /// <summary>Decomposes a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, stored as the pair's whole Type, or an
     /// application <c>s/U</c> to another Type. The pair target <c>T</c> alone is not a pair layer.</summary>
     /// <param name="type">The normalized Type.</param>
@@ -41,10 +44,23 @@ public sealed partial class Binding
     /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
     internal SemanticsMask PairAdmitted(Koto node) => this.pairFollows.GetValueOrDefault(node);
 
-    /// <summary>Gets the shared reference Type to <paramref name="referent"/>, whose Origin ownership analysis infers.</summary>
+    /// <summary>Gets the shared reference Type to <paramref name="referent"/>.</summary>
     /// <param name="referent">The borrowed Type.</param>
+    /// <param name="origin">The reference's Origin, or null when ownership analysis infers it.</param>
     /// <returns>The interned <c>ref/referent</c>.</returns>
-    internal BoundType SharedReference(BoundType referent) => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent]);
+    internal BoundType SharedReference(BoundType referent, BoundOrigin? origin = null) => this.Reference(SemanticsKind.Ref, referent, origin);
+
+    /// <summary>Gets the shared or exclusive reference Type to <paramref name="referent"/>.</summary>
+    /// <param name="semantics">Ref or Uniq.</param>
+    /// <param name="referent">The borrowed Type.</param>
+    /// <param name="origin">The reference's Origin, or null when ownership analysis infers it.</param>
+    /// <returns>The interned reference Type.</returns>
+    internal BoundType Reference(SemanticsKind semantics, BoundType referent, BoundOrigin? origin = null) => this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
+
+    /// <summary>Gets the admitted set of a pair layer that selection follows implicitly at a receiver (SPEC 3.4.1, 7.3), or None.</summary>
+    /// <param name="node">The receiver operand whose stored pair layer is followed.</param>
+    /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
+    internal SemanticsMask ImplicitPairAdmitted(Koto node) => this.implicitPairFollows.GetValueOrDefault(node);
 
     // SPEC 13.5.5.1: the admitted set of a pair layer that may be followed, or None.
     private SemanticsMask FollowablePair(BoundType type, BindingScope scope, out BoundType target)
@@ -61,15 +77,39 @@ public sealed partial class Binding
     // SPEC 13.5.5.1: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability,
     // uniq grants Write also through a let slot but never through a shared path, and ref grants Read only.
     private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
+        => this.PairCapability(followed.Left, this.PairAdmitted(followed), scope, exclusive);
+
+    private bool PairCapability(Koto operand, SemanticsMask admitted, BindingScope? scope, bool exclusive)
     {
         if (!exclusive)
         {
-            return (this.PairAdmitted(followed) & SemanticsMask.Owner) == 0 || scope is null || this.BorrowablePlace(followed.Left, scope, false);
+            return (admitted & SemanticsMask.Owner) == 0 || scope is null || this.BorrowablePlace(operand, scope, false);
         }
 
-        var admitted = this.PairAdmitted(followed);
         return (admitted & SemanticsMask.Ref) == 0 &&
-            ((admitted & SemanticsMask.Uniq) == 0 || !ReachedThroughShared(followed.Left)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? Writable(followed.Left) : this.BorrowablePlace(followed.Left, scope, true)));
+            ((admitted & SemanticsMask.Uniq) == 0 || !ReachedThroughShared(operand)) &&
+            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? Writable(operand) : this.BorrowablePlace(operand, scope, true)));
+    }
+
+    // SPEC 7.3, 13.5.5.1: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
+    // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability.
+    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, out BoundType adapted)
+    {
+        adapted = actual;
+        if (pattern is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            return false;
+        }
+
+        var admitted = this.FollowablePair(actual, scope, out var target);
+        if (admitted == SemanticsMask.None || !FitsType(target, pattern.Components[0]) || !this.PairCapability(source, admitted, scope, pattern.Semantics == SemanticsKind.Uniq))
+        {
+            return false;
+        }
+
+        this.implicitPairFollows[source] = admitted;
+        var origin = (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(source) : actual.Origin ?? this.PlaceOrigin(source);
+        adapted = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [target], origin: origin);
+        return true;
     }
 }

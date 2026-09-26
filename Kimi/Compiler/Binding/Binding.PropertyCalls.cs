@@ -121,12 +121,18 @@ public sealed partial class Binding
 
     private bool BindPropertyCall(Koto node, BoundAccessor accessor, BindingScope scope, Koto? input)
     {
+        // A member of a generic struct is called under the receiver's Type arguments, like its methods.
+        var declaringType = node is MemberAccessKoto selected && this.memberSelections.TryGetValue(selected, out var memberSelection) &&
+            memberSelection.DeclaringType is { Kind: BoundTypeKind.Constructed } constructed ? constructed : null;
+
         // Ownership-bearing results/inputs, requirement dispatch and inherited/object
         // receiver projections retain their own execution milestones.
-        if (accessor.Declaration?.Body is null || accessor.Result is not { CarriesOrigin: false } result ||
+        if (accessor.Declaration?.Body is null || accessor.Result is not { CarriesOrigin: false } declaredResult ||
+            (declaringType is null ? declaredResult : this.MemberType(declaredResult, declaringType)) is not { } result ||
             this.ProveCopy(result, node) != ConstraintProof.Proven ||
             (accessor.Input is { } value && (value.CarriesOrigin || this.ProveCopy(value, node) != ConstraintProof.Proven)) ||
-            (accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind != BoundTypeKind.Nominal)))
+            (accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
+                (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null))))
         {
             Fail(node, BindingFailure.Unsupported, true);
             return false;
@@ -134,7 +140,7 @@ public sealed partial class Binding
 
         var receiver = accessor.Receiver is null ? null : (node as MemberAccessKoto)?.Left;
         BoundArgumentOperation receiverOperation = default;
-        if (accessor.Receiver is { } required)
+        if (accessor.Receiver is { } declaredReceiver && (declaringType is null ? declaredReceiver : this.MemberType(declaredReceiver, declaringType)) is { } required)
         {
             if (receiver?.BoundType is not { } actual ||
                 (node is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) && selection.Path is not null) ||
@@ -177,7 +183,7 @@ public sealed partial class Binding
             operations[count++] = receiverOperation;
         }
 
-        call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], operations: operations.AsSpan(0, count));
+        call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], declaringType: declaringType, operations: operations.AsSpan(0, count));
         this.argumentOperationScratch.Return(operations, clearArray: true);
         Complete(call, result);
         return true;

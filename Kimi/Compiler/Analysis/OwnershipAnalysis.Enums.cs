@@ -162,8 +162,8 @@ public sealed partial class OwnershipAnalysis
             for (var i = 0; i < StructStorage.Count(type) && supported; i++)
             {
                 var field = this.compilation.Binding.StoredType(StructStorage.Field(type, i), type);
-                // An Array field would need its buffer released by the container's destruction (PLAN P29).
-                supported = field is not null && field.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
+                // An Array field is destroyed with the struct (SPEC 16.3.2); a Dictionary field waits for its own drop plan.
+                supported = field is not null && field.Kind is not BoundTypeKind.Dictionary && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
                 type.StoredFields[i] = field!;
             }
 

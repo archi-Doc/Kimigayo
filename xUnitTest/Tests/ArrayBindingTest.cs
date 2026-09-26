@@ -33,10 +33,11 @@ public class ArrayBindingTest
             "func make() -> Array<i32> => []\nfunc take(values: Array<i32>) -> isize => values.length\nlet a = make()\nrequire a.length == 0 else => $abort(\"make\")\nlet b: Array<i32> = []\nrequire take(b@move) == 0 and take(make()) == 0 else => $abort(\"take\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
-    // An aggregate holding an Array would have to release the buffer during its own destruction (PLAN P29).
+    // A Tuple or Dictionary field holding a handle would have to release it during its own destruction; struct Array
+    // fields are destroyed with the struct (ArrayMembersTest).
     [Theory]
-    [InlineData("struct Bag\n    var items: Array<i32> = []\nlet bag = Bag.init()")]
     [InlineData("let pair: (Array<i32>, i32) = ([], 1)")]
+    [InlineData("struct Table\n    var entries: Dictionary<i32, i32> = [:]\nlet table = Table.init()")]
     public void AggregatesHoldingHandlesAreNotGeneratedYet(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

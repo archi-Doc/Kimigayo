@@ -155,6 +155,14 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
+        if (aggregate.CollectionDrop is { } drop)
+        {
+            output.Write("  call void @");
+            output.Write(drop);
+            output.Write("(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n");
+            return;
+        }
+
         if (aggregate.FunctionHandle)
         {
             output.Write("  %word = load i64, ptr %slot, align 8\n  %tableSlot = getelementptr i8, ptr %slot, i64 8\n  %table = load ptr, ptr %tableSlot, align 8\n  %dropSlot = getelementptr i8, ptr %table, i64 16\n  %drop = load ptr, ptr %dropSlot, align 8\n  %present = icmp ne ptr %drop, null\n  br i1 %present, label %destroy, label %done\ndestroy:\n  %contextSlot = getelementptr i8, ptr %table, i64 8\n  %context = load ptr, ptr %contextSlot, align 8\n  call void %drop(i64 %word, ptr %context, ptr %location, i64 %length)\n  br label %done\ndone:\n  ret void\n}\n");

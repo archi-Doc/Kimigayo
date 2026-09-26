@@ -42,6 +42,11 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = this.SelectedPlace(KotoHelper.UnwrapParentheses(source));
+        if (this.ImplicitlyFollowsReference(unwrapped, type))
+        {
+            return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation); // SPEC 7.3: a receiver through a pair layer.
+        }
+
         if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)
         {
             return this.BorrowStruct(indexer, type, reservation); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
@@ -111,7 +116,7 @@ public sealed partial class OwnershipAnalysis
             // pointer (SPEC 10.2, 4.6.9); any other shared borrow takes the element slot's address.
             var reborrow = slice.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type);
             var depth = this.comparisonDepth++;
-            var handle = this.SequenceReceiver(slice.Left, out var projection);
+            var handle = this.SequenceReceiver(slice.Left, out var projection, type.Origin);
             var subscript = this.Value(this.Expression(ElementAccess.KeySyntax(slice)));
             var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(slice, type, reborrow ? SequenceOperation.Read : SequenceOperation.Borrow, handle, projection, index: subscript);
             this.EndComparisonLoans(depth, slice);

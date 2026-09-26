@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1402 // Physical aggregate descriptors and their reusable pool.
 
 /// <summary>A syntax-free aggregate representation. Fields remain in logical acquisition/destruction order.</summary>
-internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false, bool CLayout = false, AggregateLayout? Base = null)
+internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 }
@@ -27,8 +27,17 @@ internal sealed class AggregateLayoutPool
     private readonly List<AggregateLayout?> children = new();
     private readonly List<AggregateLayout> enumCases = new();
     private readonly Dictionary<FunctionKoto, int> destructors = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, AggregateLayout> collectionFields = new(StringComparer.Ordinal);
+    private readonly List<AggregateLayout> usedCollectionFields = new();
     private AggregateLayout? functionHandle;
     private AggregateLayout? objectHandle;
+
+    /// <summary>Gets or sets the source of the element-specific drop helper that an Array field's destruction calls; it
+    /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
+    internal Func<BoundType, string?>? CollectionDrop { get; set; }
+
+    /// <summary>Gets the Array field layouts of the current body, whose destructors release the buffers.</summary>
+    internal List<AggregateLayout> UsedCollectionFields => this.usedCollectionFields;
 
     internal void RegisterDestructor(FunctionKoto function, int ordinal) => this.destructors[function] = ordinal;
 
@@ -42,12 +51,36 @@ internal sealed class AggregateLayoutPool
     internal void Clear()
     {
         this.resolved.Clear();
+        this.usedCollectionFields.Clear();
         this.ResourceLimitFailure = null;
     }
 
     internal AggregateLayout? Get(BoundType type) => this.Get(type, 0);
 
     private static long Align(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
+
+    // An Array field: the handle layout of the Array, destroyed through the element-specific drop helper.
+    private AggregateLayout? CollectionField(BoundType array, int depth)
+    {
+        if (this.CollectionDrop?.Invoke(array) is not { } drop || this.Get(array, depth + 1) is not { } handle)
+        {
+            return null;
+        }
+
+        if (!this.collectionFields.TryGetValue(drop, out var field))
+        {
+            field = new(this.pool.Count, handle.Value, [], [], 0, false, true, CollectionDrop: drop);
+            this.pool.Add(field);
+            this.collectionFields.Add(drop, field);
+        }
+
+        if (!this.usedCollectionFields.Contains(field))
+        {
+            this.usedCollectionFields.Add(field);
+        }
+
+        return field;
+    }
 
     private AggregateLayout? ExceedLimit(BoundType type, bool depth = false)
     {
@@ -148,13 +181,23 @@ internal sealed class AggregateLayoutPool
             for (var i = 0; i < fieldCount; i++)
             {
                 var component = sequence ? BoundType.ISize : structure ? StructStorage.FieldType(type, i)! : type.Components[i];
+                AggregateLayout? child;
                 if (component.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
                 {
-                    this.resolved[type] = null; // An Array field would need its buffer released by the container's destruction (PLAN P29).
-                    return null;
+                    // SPEC 4.5, 16.3.2: a struct's Array field is destroyed with the struct, releasing its elements and buffer.
+                    if (!structure || component.Kind == BoundTypeKind.Dictionary || this.CollectionField(component, depth) is not { } collection)
+                    {
+                        this.resolved[type] = null;
+                        return null;
+                    }
+
+                    child = collection;
+                }
+                else
+                {
+                    child = this.Get(component, depth + 1);
                 }
 
-                var child = this.Get(component, depth + 1);
                 var value = type.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary && i == 0 ? WindowsLowering.StringReference : child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
                 if (value is null || (cLayout && (value.Layout.Size == 0 || value.Layout.Alignment > 16)))
                 {

@@ -100,6 +100,7 @@ public sealed partial class Binding
             this.receiverOperations.Clear();
             this.adaptations.Clear();
             this.pairFollows.Clear();
+            this.implicitPairFollows.Clear();
             foreach (var construction in this.enumConstructions.Values)
             {
                 construction.IsValid = false;

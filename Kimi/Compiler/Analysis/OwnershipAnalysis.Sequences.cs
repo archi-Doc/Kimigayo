@@ -85,7 +85,7 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(result);
     }
 
-    private int SequenceReceiver(Koto source, out int projection)
+    private int SequenceReceiver(Koto source, out int projection, BoundOrigin? elementOrigin = null)
     {
         projection = -1;
         var receiver = KotoHelper.UnwrapParentheses(source);
@@ -99,6 +99,14 @@ public sealed partial class OwnershipAnalysis
         {
             projection = this.LocateElement(element);
             return projection < 0 ? -1 : this.body.Projections[projection].Root;
+        }
+
+        if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && receiver is MemberAccessKoto field &&
+            !Binding.IsGetterResult(field) && !this.SpecialField(field) && ElementAccess.BorrowedPathRoot(field) is not null)
+        {
+            // SPEC 4.6.1: a collection field reached through a reference is shared-borrowed in place for the operation; an
+            // element borrowed through it keeps the Origin of that borrow.
+            return this.BorrowStruct(field, this.compilation.Binding.SharedReference(source.BoundType, elementOrigin));
         }
 
         if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)

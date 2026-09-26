@@ -105,9 +105,32 @@ public sealed partial class OwnershipAnalysis
         => conversion.ConversionBinding == ConversionBinding.PairFollow && this.instance is not null &&
             KotoHelper.UnwrapParentheses(conversion.Left) is not IdentifierNameKoto && this.FollowsReference(conversion);
 
-    private int StoredReference(ConversionKoto pair)
+    // SPEC 3.4.1, 7.3: a receiver selected through a pair layer lends through the reference stored in it in a ref or uniq
+    // instance; the universal verification and an owner instance borrow the receiver Place itself.
+    private bool ImplicitlyFollowsReference(Koto node, BoundType type)
+        => this.instance is not null && this.compilation.Binding.ImplicitPairAdmitted(node) != SemanticsMask.None &&
+            !ReferenceEquals(type.Components[0], node.BoundType) &&
+            this.Concrete(node.BoundType) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
+
+    private int StoredReference(ConversionKoto pair) => this.StoredReference(KotoHelper.UnwrapParentheses(pair.Left), SemanticsKind.Ref);
+
+    private int StoredReference(Koto left, SemanticsKind mode)
     {
-        var left = KotoHelper.UnwrapParentheses(pair.Left);
+        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left))
+        {
+            // A published element Place is borrowed, in the mode its selection published, only to load the stored reference.
+            var slot = this.BorrowStruct(left, this.compilation.Binding.Reference(mode, left.BoundType!));
+            if (slot < 0)
+            {
+                return -1;
+            }
+
+            var pointer = this.Place(left, left.BoundType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+            this.Emit(OwnershipOperationKind.Produce, left, pointer);
+            this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(slot)]);
+            return this.RegisterTemporary(pointer);
+        }
+
         if (left is MemberAccessKoto field && !Binding.IsGetterResult(field) && ElementAccess.BorrowedPathRoot(field) is { } root)
         {
             // The stored reference is loaded from the field for the Reborrow; it is not a Copy of an exclusive reference.
@@ -128,15 +151,18 @@ public sealed partial class OwnershipAnalysis
 
     // SPEC 13.5.5.2: a Reborrow of the referent through a stored reference; the borrowed address is the reference's value.
     private int BorrowStoredReference(ConversionKoto pair, BoundType type, int reservation)
+        => this.BorrowStoredReference(pair, KotoHelper.UnwrapParentheses(pair.Left), type, reservation);
+
+    private int BorrowStoredReference(Koto source, Koto left, BoundType type, int reservation)
     {
-        var reference = this.StoredReference(pair);
+        var reference = this.StoredReference(left, type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Ref);
         if (reference < 0)
         {
             return -1;
         }
 
-        var result = this.Place(pair, type, OwnershipPlaceKind.Temporary, false);
-        var operation = this.Emit(OwnershipOperationKind.Borrow, pair, reference, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
+        var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+        var operation = this.Emit(OwnershipOperationKind.Borrow, source, reference, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
         this.SetValue(operation, OwnershipValueKind.Address, [this.Value(reference)], constant: reference);
         return this.RegisterTemporary(result);
     }
