@@ -79,6 +79,28 @@ public sealed partial class OwnershipAnalysis
         => this.Concrete(operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } &&
             ReferenceEquals(referent, this.Concrete(target));
 
+    // The number of concrete safe reference layers of an operand above a target in an instance, or -1 when they do not end
+    // in it (SPEC 13.5.5.1: nested pair layers exist only for their ref or uniq bindings).
+    private int ReferenceLayers(BoundType? operand, BoundType? target)
+    {
+        var terminal = this.Concrete(target);
+        var layers = 0;
+        for (var type = this.Concrete(operand); type is not null && layers < 16; type = type.Components[0], layers++)
+        {
+            if (ReferenceEquals(type, terminal))
+            {
+                return layers;
+            }
+
+            if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                break;
+            }
+        }
+
+        return -1;
+    }
+
     // SPEC 13.5.5.1: universal verification of a value use through a pair layer. Every admitted case reads the direct target
     // from the selected Place, so the operand is shared-borrowed for the read and a Copy of the target is produced; the stored
     // pair Type itself need not be Copy. A Copy-unproven target keeps the operand's own acquisition.
@@ -160,11 +182,12 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStoredReference(Koto source, Koto left, BoundType type, int reservation)
     {
         var reference = this.StoredReference(left, type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Ref);
-        if (reference < 0)
-        {
-            return -1;
-        }
+        return reference < 0 ? -1 : this.BorrowThrough(source, reference, type, reservation);
+    }
 
+    // A Reborrow through an evaluated reference: the borrowed address is the reference's value.
+    private int BorrowThrough(Koto source, int reference, BoundType type, int reservation)
+    {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
         var operation = this.Emit(OwnershipOperationKind.Borrow, source, reference, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
         this.SetValue(operation, OwnershipValueKind.Address, [this.Value(reference)], constant: reference);

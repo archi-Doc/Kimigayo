@@ -102,6 +102,11 @@ public sealed partial class Binding
         }
 
         var admitted = this.FollowablePair(actual, scope, out var target);
+        if (admitted != SemanticsMask.None && !FitsType(target, pattern.Components[0]) && pattern.Semantics == SemanticsKind.Ref)
+        {
+            target = this.PairTerminal(target, scope); // A shared receiver also reads below further pair layers (s/(t/U)).
+        }
+
         if (admitted == SemanticsMask.None || !FitsType(target, pattern.Components[0]) || !this.PairCapability(source, admitted, scope, pattern.Semantics == SemanticsKind.Uniq))
         {
             return false;

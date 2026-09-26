@@ -183,7 +183,7 @@ public sealed partial class OwnershipAnalysis
 
         result = this.Concrete(result)!;
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None &&
-            this.Concrete(source.BoundType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref }] })
+            (this.instance is null || this.ReferenceLayers(source.BoundType, result.Components[0]) == 1))
         {
             // SPEC 13.5.5.1, 10.2: the inner reference below a pair layer is Copied from the Place itself in the universal
             // verification and an owner instance; a ref or uniq instance loads it through the stored reference below.

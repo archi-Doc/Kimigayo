@@ -156,8 +156,20 @@ public class PairFollowTest
         "    require once(v, z) == 12 and once(v@ref, z@ref) == 12 and once(v@uniq, w@uniq) == 12 else => $abort(\"once\")\n" +
         "    Console.writeLine(\"Followed.\")\n";
 
+    // SPEC 3.4.1, 7.3: a shared receiver below two pair layers; each instance reads through the layers it has.
+    private const string NestedReceiver =
+        "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n    public func load(self: ref/Self) -> i32 => self.weight\n" +
+        "func weigh<s/T, t/U>(x: s/(t/Node during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    return x.load()\n" +
+        "public func main()\n" +
+        "    let node = Node.init(6)\n    let z: i32 = 0\n    var w: i32 = 0\n    let r = node@ref\n" +
+        "    require weigh(node@ref, z, z@ref) == 6 and weigh(r@ref, z@ref, z@ref) == 6 else => $abort(\"ref\")\n" +
+        "    var v = Node.init(7)\n    var q = v@uniq\n" +
+        "    require weigh(q@ref, z@ref, w@uniq) == 7 else => $abort(\"uniq\")\n" +
+        "    Console.writeLine(\"Nested receiver.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "NestedReceiver", NestedReceiver, "Nested receiver.\n" },
         { "Followed", Followed, "Followed.\n" },
         { "Nested", Nested, "Nested.\n" },
         { "Inner", Inner, "Inner.\n" },
