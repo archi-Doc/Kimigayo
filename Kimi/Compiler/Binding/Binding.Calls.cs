@@ -855,6 +855,7 @@ public sealed partial class Binding
         var next = 0;
         var named = false;
         var contextualInputs = false;
+        var waiting = 0UL;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             if (!function.TryMapArgument(call.GetArgumentLabel(i), ref next, ref named, used, out var slot))
@@ -870,7 +871,21 @@ public sealed partial class Binding
                 return CandidateApplicability.Pending;
             }
 
+            if (i < 64 && this.FormedApplication(type, function, arguments).Kind == BoundTypeKind.SemanticsApplication)
+            {
+                waiting |= 1UL << i; // SPEC 10.2: solved together; s/U is matched once another argument fixes s.
+                continue;
+            }
+
             if (call.ArgumentNodes[i].BoundType is { } actual && !InferInput(type, actual, call.ArgumentNodes[i]))
+            {
+                return CandidateApplicability.Inapplicable;
+            }
+        }
+
+        for (var i = 0; waiting != 0 && i < call.ArgumentNodes.Count; i++)
+        {
+            if ((waiting & (1UL << i)) != 0 && call.ArgumentNodes[i].BoundType is { } actual && !InferInput(function.Parameters[mapping[i]].Type.BoundType!, actual, call.ArgumentNodes[i]))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1184,6 +1199,7 @@ public sealed partial class Binding
                 return false;
             }
 
+            pattern = this.FormedApplication(pattern, function, arguments);
             this.MatchInputOrigins(pattern, actual, function, origins, inputs);
             if (pattern.CarriesOrigin && actual.CarriesOrigin)
             {
@@ -1207,6 +1223,36 @@ public sealed partial class Binding
 
             return true;
         }
+    }
+
+    // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms: U for owner, one reference layer with
+    // the occurrence's outer-Origin slot for ref or uniq. An application whose s is still open is returned as it is.
+    private BoundType FormedApplication(BoundType pattern, Koto function, BoundType?[] arguments)
+    {
+        for (var depth = 0; depth < 16; depth++)
+        {
+            if (pattern is not { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } ||
+                ContainerSlot(function, selector) is not (>= 0 and var slot) || slot >= arguments.Length || arguments[slot] is not { } whole)
+            {
+                break;
+            }
+
+            if (whole.Semantics == SemanticsKind.Owner)
+            {
+                pattern = target;
+            }
+            else if (whole.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+            {
+                pattern = this.InternType(BoundTypeKind.Semantics, null, whole.Semantics, [target], origin: pattern.Origin);
+                break;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return pattern;
     }
 
     private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false)

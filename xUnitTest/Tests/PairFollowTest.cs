@@ -134,8 +134,20 @@ public class PairFollowTest
         "    var n: i32 = 0\n    require kept.weight == 9 and inner(holder@uniq, n@uniq).weight == 9 else => $abort(\"borrow\")\n" +
         "    Console.writeLine(\"Inner.\")\n";
 
+    // SPEC 13.5.5.1, 3.5.3: a Scalar read through two pair layers; an s/U argument is matched once s is inferred, whatever
+    // the argument order, so each instance has exactly the layers its bindings form.
+    private const string Nested =
+        "func twice<s/T, t/U>(x: s/(t/i32 during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    return x * 2\n" +
+        "public func main()\n" +
+        "    var v: i32 = 4\n    let z: i32 = 0\n    var w: i32 = 0\n" +
+        "    require twice(v@ref, z, z@ref) == 8 and twice(v@uniq, z, w@uniq) == 8 else => $abort(\"owner\")\n" +
+        "    let r = v@ref\n    require twice(r@ref, z@ref, z@ref) == 8 else => $abort(\"ref\")\n" +
+        "    var q = v@uniq\n    require twice(q@ref, z@ref, w@uniq) == 8 else => $abort(\"uniq\")\n" +
+        "    Console.writeLine(\"Nested.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Nested", Nested, "Nested.\n" },
         { "Inner", Inner, "Inner.\n" },
         { "Spent", Spent, "Spent.\n" },
         { "Matched", Matched, "Matched.\n" },

@@ -127,6 +127,17 @@ public sealed partial class Binding
         return this.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, target, this.PairOrigin(node, type, admitted));
     }
 
+    // SPEC 13.5.5.1: the Type below every further qualifying pair layer of a pair target.
+    private BoundType PairTerminal(BoundType target, BindingScope scope)
+    {
+        for (var depth = 0; depth < 16 && this.FollowablePair(target, scope, out var next) != SemanticsMask.None; depth++)
+        {
+            target = next;
+        }
+
+        return target;
+    }
+
     // SPEC 13.5.5.1: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow) and
     // otherwise on the stored reference (Reborrow).
     private BoundOrigin PairOrigin(Koto node, BoundType pair, SemanticsMask admitted)
