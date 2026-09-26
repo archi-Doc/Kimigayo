@@ -43,9 +43,9 @@ public sealed partial class Binding
             return true;
         }
 
-        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
+        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate || ReachedThroughShared(node))
         {
-            return false;
+            return false; // SPEC 3.4, 15.6.2: a shared layer anywhere on the path grants Read only.
         }
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.Deref } selected)

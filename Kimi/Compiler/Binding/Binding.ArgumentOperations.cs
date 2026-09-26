@@ -239,7 +239,7 @@ public sealed partial class Binding
         }
 
         var terminal = actual;
-        var exclusive = true;
+        var exclusive = !ReachedThroughShared(left);
         while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
             exclusive &= terminal.Semantics == SemanticsKind.Uniq;
@@ -384,6 +384,11 @@ public sealed partial class Binding
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
     {
         source = KotoHelper.UnwrapParentheses(source);
+        if (exclusive && ReachedThroughShared(source))
+        {
+            return false; // SPEC 15.6.2: a shared layer anywhere on the path denies an exclusive borrow.
+        }
+
         if (source is ConversionKoto { ConversionBinding: ConversionBinding.Deref } dereference)
         {
             // SPEC 13.5.5.1: the referent of uniq/T offers Read and Write, that of ref/T Read only; a shared layer

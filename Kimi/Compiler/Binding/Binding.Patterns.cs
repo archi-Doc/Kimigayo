@@ -27,12 +27,37 @@ public sealed partial class Binding
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
 
     // SPEC 15.1.6 subject rule: the Subject mode is the access that the Subject Place grants to its first layer that
-    // is not a safe reference. A uniq/objuniq value is Exclusive, a ref/objref value and a bare Place (borrowed in
-    // place) are Shared, and any other acquisition, including @move and a temporary, yields an owned ByValue Subject.
+    // is not a safe reference. Reference layers that are all uniq/objuniq give Exclusive, and a ref/objref layer, or a
+    // shared layer on the path of a bare Place, bounds the mode to Shared. A bare Place (borrowed in place) is Shared,
+    // and any other acquisition, including @move and a temporary, yields an owned ByValue Subject.
     private static SubjectMode SubjectModeOf(Koto expression, BoundType? type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ? SubjectMode.Exclusive
-            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef, Components.Count: 1 } || IsBarePlace(expression) ? SubjectMode.Shared
-            : SubjectMode.ByValue;
+    {
+        var bare = IsBarePlace(expression);
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 })
+        {
+            return bare ? SubjectMode.Shared : SubjectMode.ByValue;
+        }
+
+        if (bare && ReachedThroughShared(expression))
+        {
+            return SubjectMode.Shared;
+        }
+
+        for (var layer = type; layer is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; layer = layer.Components[0])
+        {
+            if (layer.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
+            {
+                return SubjectMode.Shared;
+            }
+
+            if (layer.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq))
+            {
+                break;
+            }
+        }
+
+        return SubjectMode.Exclusive;
+    }
 
     private static bool ContainsPattern(BoundMatch plan, int earlier, int later)
     {
@@ -268,6 +293,15 @@ public sealed partial class Binding
         {
             borrow = type;
             return type;
+        }
+
+        if (type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)
+        {
+            // SPEC 15.1.6, 15.6.2: a stored exclusive reference reached through a shared layer is shared-Reborrowed.
+            var origin = type.Origin is { } stored ? this.Meet(this.PlaceOrigin(expression), stored) : this.PlaceOrigin(expression);
+            var semantics = type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef;
+            borrow = this.InternType(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
+            return borrow;
         }
 
         if (type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
