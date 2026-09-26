@@ -2,7 +2,9 @@
 
 These files ship as resources in the compiler assembly. They are the source of
 the currently implemented Kimi declarations, not the complete required library.
-SPEC Chapter 22 and its references remain authoritative.
+SPEC Chapter 22 and its references remain authoritative. The public API is
+summarized in [LIBRARY.md](../../LIBRARY.md); this file covers how the sources are
+embedded, validated and implemented.
 
 - Put ordinary types, Contracts and method bodies in `.kimi` files, subject to the
   Text implementation policy below. Add new source
