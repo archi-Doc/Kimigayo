@@ -1098,6 +1098,13 @@ public sealed partial class Binding
                 : Fail(binary, BindingFailure.TypeMismatch);
         }
 
+        if (comparison)
+        {
+            // SPEC 13.4, 3.4.1: qualifying pair layers are among the followed layers.
+            left = this.ComparisonThroughPairs(binary.Left, left);
+            right = this.ComparisonThroughPairs(binary.Right, right);
+        }
+
         // SPEC 13.4: a comparison reads through every safe reference layer of either operand; a Unit referent is read like a Scalar.
         if (comparison && (ComparisonReferent(left).Kind != BoundTypeKind.Primitive || ComparisonReferent(right).Kind != BoundTypeKind.Primitive ||
             !ReferenceEquals(ComparisonReferent(left), left) || !ReferenceEquals(ComparisonReferent(right), right)))

@@ -433,6 +433,15 @@ public sealed partial class Binding
             return new(ExpectedAdaptationKind.ExclusiveBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [actual], origin: this.PlaceOrigin(node)));
         }
 
+        if (expected.Semantics == SemanticsKind.Ref && IsBarePlace(node) && TryPairLayer(actual, out _, out _) &&
+            this.FollowablePair(actual, this.ConstraintScope(node), out var pairTarget) is var admitted && admitted != SemanticsMask.None && Compatible(pairTarget, target))
+        {
+            // SPEC 10.2, 13.5.5.1: one shared reference through the pair layer; each admitted case keeps its own dependencies.
+            this.implicitPairFollows[node] = admitted;
+            var origin = (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : actual.Origin ?? this.PlaceOrigin(node);
+            return new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [pairTarget], origin: origin));
+        }
+
         return expected.Semantics == SemanticsKind.Ref && actual.Semantics == SemanticsKind.Owner && Compatible(actual, target) && IsBarePlace(node)
             ? new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [actual], origin: this.PlaceOrigin(node))) : null;
     }
@@ -468,8 +477,10 @@ public sealed partial class Binding
             return publishedElement; // SPEC 4.6.9: the element Place depends on the receiver under its contract.
         }
 
+        // A pair layer's Origin is the dependency of the reference it may hold; the Place itself is its own dependency.
         source = PlaceOriginSource(source);
-        return source.BoundType?.Origin ?? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
+        return source.BoundType is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) ? origin
+            : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
     // SPEC 3.5.3 Scalar read: the safe value-reference layers of an operand are followed to their terminal Type, which
@@ -656,7 +667,9 @@ public sealed partial class Binding
             return true;
         }
 
-        if (receiver && !projected && this.TryPairReceiver(source, pattern, actual, scope, out adapted))
+        // SPEC 7.3, 10.2: a receiver through a pair layer, or one shared reference to its target at a fixed ref/U; an
+        // exclusive borrow of an owned argument keeps its explicit spelling (SPEC 15.1.5).
+        if (!projected && (receiver || pattern.Semantics == SemanticsKind.Ref) && this.TryPairReceiver(source, pattern, actual, scope, out adapted))
         {
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;

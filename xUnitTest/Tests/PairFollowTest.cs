@@ -67,8 +67,29 @@ public class PairFollowTest
         "    require scaled(other@uniq, four@uniq) == 24 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Scaled.\")\n";
 
+    // SPEC 13.4, 10.2, 7.3: comparisons, fixed ref/U parameters and a returned index access through pair layers.
+    private const string Positions = Collection +
+        "struct Point\n    Self is Equatable\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
+        "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.x == other.x\n" +
+        "func equal<s/T>(a: s/T, b: s/T) -> bool\n    s is value or valueborrow\n    T is Equatable\n    return a == b\n" +
+        "func peek<s/T>(c: ref/Collection<s/T>, i: isize) -> ref/T during c\n    s is value or valueborrow\n    return c[i]\n" +
+        "func twice(n: ref/i32) -> i32 => n * 2\n" +
+        "func show<s/T>(item: s/T, factor: s/i32) -> i32\n    s is value or valueborrow\n    return twice(factor)\n" +
+        "public func main()\n" +
+        "    require equal(Point.init(1), Point.init(1)) else => $abort(\"owner\")\n" +
+        "    let p = Point.init(2)\n    let q = Point.init(3)\n" +
+        "    require not equal(p@ref, q@ref) else => $abort(\"ref\")\n" +
+        "    var owned = Collection<Node>.init([Node.init(1), Node.init(2)])\n" +
+        "    require peek(owned, 1).weight == 2 else => $abort(\"peek\")\n" +
+        "    let a = Node.init(10)\n    let refs = Collection<ref/Node>.init([a@ref])\n" +
+        "    require peek(refs, 0).weight == 10 else => $abort(\"peek ref\")\n" +
+        "    let three: i32 = 3\n" +
+        "    require show(Node.init(0), 4) == 8 and show(a@ref, three@ref) == 6 else => $abort(\"show\")\n" +
+        "    Console.writeLine(\"Positions.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Positions", Positions, "Positions.\n" },
         { "Explicit", Explicit, "Owned followed.\nShared followed.\nExclusive followed.\n" },
         { "Scaled", Scaled, "Scaled.\n" },
         { "Collected", Collected, "Owned elements total 6.\nBorrowed elements total 30.\nExclusive elements total 73.\n" },
@@ -139,6 +160,17 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let refs = Collection<ref/Node>.init([])\n    let n = refs.indices.length");
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Theory]
+    [InlineData("func same<s/T>(item: s/T, left: s/i32, right: s/i32) -> bool\n    s is value or valueborrow\n    return left == right")]
+    [InlineData("func equal<s/T>(a: s/T, b: s/T) -> bool\n    s is value or valueborrow\n    T is Equatable\n    return a == b")]
+    [InlineData("func peek<s/T>(c: ref/Collection<s/T>, i: isize) -> ref/T during c\n    s is value or valueborrow\n    return c[i]")]
+    [InlineData("func twice(n: ref/i32) -> i32 => n * 2\nfunc show<s/T>(item: s/T, factor: s/i32) -> i32\n    s is value or valueborrow\n    return twice(factor)")]
+    public void PairPositionsVerify(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(Collection + source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // SPEC 3.5.3, 13.5.5.1: without s is value or valueborrow the pair layer is not followed, so no Scalar is read.

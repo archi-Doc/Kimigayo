@@ -17,6 +17,24 @@ public sealed partial class Binding
         return type;
     }
 
+    // SPEC 13.4, 13.5.5.1: the Type a comparison operand denotes once its qualifying pair layers are followed; the operand is
+    // then shared-borrowed through the layer where a reference to it is required.
+    private BoundType ComparisonThroughPairs(Koto operand, BoundType type)
+    {
+        for (var depth = 0; depth < 8; depth++)
+        {
+            var terminal = ComparisonReferent(type);
+            if (!TryPairLayer(terminal, out _, out _) || this.FollowablePair(terminal, this.ConstraintScope(operand), out var target) == SemanticsMask.None)
+            {
+                return depth == 0 ? type : terminal;
+            }
+
+            type = target;
+        }
+
+        return type;
+    }
+
     private BoundType? BindContractComparison(BinaryKoto binary, BoundType self, BindingScope scope)
     {
         var equality = binary.Akind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
