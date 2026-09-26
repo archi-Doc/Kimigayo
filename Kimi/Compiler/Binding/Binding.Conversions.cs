@@ -67,7 +67,7 @@ public sealed partial class Binding
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
         if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate ||
-            KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } ||
+            KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } ||
             (IsBarePlace(conversion.Left) && PathAuthority(conversion.Left) != SemanticsKind.Owner))
         {
             return Fail(conversion, AccessFailure(conversion.Left, take: true)); // SPEC 15.1.5: only an owned path offers Take.
@@ -151,9 +151,9 @@ public sealed partial class Binding
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope, BoundType? expected = null)
     {
         var syntax = ConversionTargetSyntax(conversion);
-        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.DerefOperation, HasOrigin: false })
+        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.FollowOperation, HasOrigin: false })
         {
-            // SPEC 13.5.5.1: E@deref selects the referent Place of a ref/uniq value, or the complete payload of a
+            // SPEC 13.5.5.1: E@follow selects the referent Place of a ref/uniq value, or the complete payload of a
             // proven Sealed object handle. It reads only the reference and acquires nothing.
             var reference = this.BindNode(conversion.Left, scope);
             if (reference is null)
@@ -170,7 +170,7 @@ public sealed partial class Binding
             if (reference is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
             {
                 Complete(conversion.Right, reference.Components[0]);
-                conversion.ConversionBinding = ConversionBinding.Deref;
+                conversion.ConversionBinding = ConversionBinding.Follow;
                 return Complete(conversion, reference.Components[0]);
             }
 
@@ -178,7 +178,7 @@ public sealed partial class Binding
                 this.RequestCapability(reference.Components[0], this.Library.Sealed, scope) == ConstraintProof.Proven)
             {
                 Complete(conversion.Right, reference.Components[0]);
-                conversion.ConversionBinding = ConversionBinding.PayloadDeref;
+                conversion.ConversionBinding = ConversionBinding.PayloadFollow;
                 return Complete(conversion, reference.Components[0]);
             }
 
@@ -207,7 +207,7 @@ public sealed partial class Binding
             }
 
             // SPEC 13.5.5.2: a typed borrow names exactly the stored Type of the written slot; it selects no
-            // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @deref.
+            // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && !ReferenceEquals(actual, pattern.Components[0]))
             {
                 return Fail(conversion, BindingFailure.TypeMismatch);
@@ -281,7 +281,7 @@ public sealed partial class Binding
                     ScalarTypes.Supports(operandType) || ReferenceEquals(operandType, BoundType.Unit) || ReferenceEquals(operandType, BoundType.String) || IsBorrow(operandType.Semantics) || IsObjectSemantics(operandType.Semantics)))
             {
                 // SPEC 13.5.5.2: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
-                // reference is Reborrowed only through @deref or at a fixed expected Type (SPEC 10.2).
+                // reference is Reborrowed only through @follow or at a fixed expected Type (SPEC 10.2).
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType]);
                 if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {

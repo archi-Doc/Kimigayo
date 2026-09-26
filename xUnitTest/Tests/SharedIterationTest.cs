@@ -62,7 +62,7 @@ public class SharedIterationTest
             let input = value@ref
             let pairs: [1 of (ref/i32 during input, i32)] = [(input, 1)]
             for (reference, number) in pairs
-                let copied: ref/i32 = reference@deref // SPEC 14.6.2: reference is ref/(ref/i32 during input); the stored reference is Copied.
+                let copied: ref/i32 = reference@follow // SPEC 14.6.2: reference is ref/(ref/i32 during input); the stored reference is Copied.
                 require copied == 42 and number == 1 else => $abort("stored reference")
             """;
         var c = MinimalEmissionTest.Analyze(Source);
@@ -81,7 +81,7 @@ public class SharedIterationTest
             let pairs: [1 of (Pair, i32)] = [(Pair.init(42), 1)]
             let view = pairs[..]
             for (value, number) in view
-                var copied = value@deref // SPEC 14.6.2: value is ref/Pair; the Copy snapshot is explicit.
+                var copied = value@follow // SPEC 14.6.2: value is ref/Pair; the Copy snapshot is explicit.
                 copied.number = 7
                 require value.number == 42 and copied.number == 7 and number == 1 else => $abort("snapshot")
             """;

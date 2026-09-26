@@ -159,7 +159,7 @@ public sealed partial class Binding
             {
                 case IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate }:
                     return SemanticsKind.Ref;
-                case ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } selected:
+                case ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected:
                     next = selected.Left;
                     layer = selected.Left.BoundType?.Semantics;
                     break;
@@ -216,7 +216,7 @@ public sealed partial class Binding
         return source switch
         {
             IdentifierNameKoto => source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate,
-            ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } => true, // SPEC 13.5.5.1: a selected referent is a Place.
+            ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } => true, // SPEC 13.5.5.1: a selected referent is a Place.
             MemberAccessKoto member => ElementAccess.AccessType(member.Left) is var receiver &&
                 ((member.BoundSymbol?.Property is { Getter.IsStandard: true } && StructStorage.IsStruct(receiver?.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver)) ||
                 ReferenceTypes.IsTuple(receiver) || receiver?.Kind == BoundTypeKind.Tuple), // SPEC 3.4.1: also through the receiver's recorded reference.
@@ -353,7 +353,7 @@ public sealed partial class Binding
             return this.OriginAtom(source, OriginKind.Projection, 0);
         }
 
-        if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } selected)
+        if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected)
         {
             // SPEC 13.5.5: a selected referent or payload keeps the dependencies of its reference or handle,
             // so a Reborrow depends on the referent and the parent Loan, not on the slot holding the parent.
@@ -390,14 +390,14 @@ public sealed partial class Binding
             return false; // SPEC 15.6.2: a shared layer anywhere on the path denies an exclusive borrow.
         }
 
-        if (source is ConversionKoto { ConversionBinding: ConversionBinding.Deref } dereference)
+        if (source is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed)
         {
             // SPEC 13.5.5.1: the referent of uniq/T offers Read and Write, that of ref/T Read only; a shared layer
             // anywhere on the path bounds the capability to shared access.
-            return !exclusive || (dereference.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(dereference.Left));
+            return !exclusive || (followed.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(followed.Left));
         }
 
-        if (source is ConversionKoto { ConversionBinding: ConversionBinding.PayloadDeref } payload)
+        if (source is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
         {
             // SPEC 13.5.5.1: an owning path inherits the root's mutability; rc/arc/objref paths are shared.
             var handle = payload.Left.BoundType!;
@@ -538,7 +538,7 @@ public sealed partial class Binding
             // adds one layer; a temporary reference value is materialized first (SPEC 3.6.2).
             var slotUnwrapped = KotoHelper.UnwrapParentheses(source);
             if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) &&
-                (slotUnwrapped is IdentifierNameKoto || slotUnwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } || (target == SemanticsKind.Uniq && !(slotUnwrapped is InvocationKoto || IsGetterResult(source)))))
+                (slotUnwrapped is IdentifierNameKoto || slotUnwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } || (target == SemanticsKind.Uniq && !(slotUnwrapped is InvocationKoto || IsGetterResult(source)))))
             {
                 return false;
             }
@@ -601,7 +601,7 @@ public sealed partial class Binding
                     return false;
                 }
             }
-            else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } ||
+            else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } ||
                 (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
                 (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
                 !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&

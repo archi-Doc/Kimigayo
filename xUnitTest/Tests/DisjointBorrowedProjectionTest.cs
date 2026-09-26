@@ -15,8 +15,8 @@ public class DisjointBorrowedProjectionTest
     [InlineData("Fields", Pair + "func both(p: uniq/Pair)\n    let a = p.left@uniq\n    let b = p.right@uniq\n    a.value += 1\n    b.value += 2\n    a.value += b.value\nvar pair = Pair.init()\nboth(pair@uniq)\nrequire pair.left.value == 5 and pair.right.value == 3 else => $abort(\"value\")")]
     [InlineData("Tuple", Pair + "func both(p: uniq/(Counter, Counter))\n    let a = p.0@uniq\n    let b = p.1@uniq\n    b.value += 1\n    a.value += 1\nvar pair = (Counter.init(), Counter.init())\nboth(pair@uniq)\nrequire pair.0.value == 2 and pair.1.value == 2 else => $abort(\"value\")")]
     [InlineData("SharedPair", Pair + "func same(p: uniq/Pair) -> bool\n    let a = p.left@ref\n    let b = p.left@ref\n    return a.value == b.value\nvar pair = Pair.init()\nrequire same(pair@uniq) else => $abort(\"value\")")]
-    [InlineData("ParentRead", Pair + "func read(p: uniq/Counter) -> i32\n    let r = p@deref@ref\n    let n = p.value\n    return n + r.value\nvar counter = Counter.init()\nrequire read(counter@uniq) == 2 else => $abort(\"value\")")]
-    [InlineData("ArrayParentRead", "var a: [1 of i32] = [1]\nlet b = a@uniq\nlet r = b@deref@ref\nlet n = b[0]\nrequire n + r[0] == 2 else => $abort(\"value\")")]
+    [InlineData("ParentRead", Pair + "func read(p: uniq/Counter) -> i32\n    let r = p@follow@ref\n    let n = p.value\n    return n + r.value\nvar counter = Counter.init()\nrequire read(counter@uniq) == 2 else => $abort(\"value\")")]
+    [InlineData("ArrayParentRead", "var a: [1 of i32] = [1]\nlet b = a@uniq\nlet r = b@follow@ref\nlet n = b[0]\nrequire n + r[0] == 2 else => $abort(\"value\")")]
     public void AcceptsDisjointOrSharedAccess(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -27,11 +27,11 @@ public class DisjointBorrowedProjectionTest
     [Theory]
     [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p.left@uniq\n    let b = p.left@uniq\n    a.value += 1")]
     [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p.left@ref\n    let b = p.left@uniq\n    b.value += a.value")]
-    [InlineData(Pair + "func f(p: uniq/Counter)\n    let r = p@deref@ref\n    p.value = 2\n    let m = r.value")]
-    [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p.left@uniq\n    let b = p@deref@uniq\n    a.value += 1")]
+    [InlineData(Pair + "func f(p: uniq/Counter)\n    let r = p@follow@ref\n    p.value = 2\n    let m = r.value")]
+    [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p.left@uniq\n    let b = p@follow@uniq\n    a.value += 1")]
     [InlineData(Pair + "func g(p: uniq/Pair)\n    ()\nfunc f(p: uniq/Pair)\n    let a = p.left@uniq\n    g(p)\n    a.value += 1")]
-    [InlineData("func f(p: uniq/(i32, i32))\n    let a = p@deref@ref\n    p.0 = 3\n    let x = a.0")]
-    [InlineData("var a: [1 of i32] = [1]\nlet b = a@uniq\nlet r = b@deref@ref\nlet c = b@deref@uniq\nlet m = r[0]")]
+    [InlineData("func f(p: uniq/(i32, i32))\n    let a = p@follow@ref\n    p.0 = 3\n    let x = a.0")]
+    [InlineData("var a: [1 of i32] = [1]\nlet b = a@uniq\nlet r = b@follow@ref\nlet c = b@follow@uniq\nlet m = r[0]")]
     public void RejectsOverlappingConflicts(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -58,7 +58,7 @@ public class DisjointBorrowedProjectionTest
     [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p.left@uniq\n    p.left.value = 3\n    a.value += 1")]
     [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p.left@ref\n    p.left.value = 3\n    let x = a.value")]
     [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p.left@uniq\n    let x = p.left.value\n    a.value += x")]
-    [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p@deref@ref\n    p.right.value = 3\n    let x = a.left.value")]
+    [InlineData(Pair + "func f(p: uniq/Pair)\n    let a = p@follow@ref\n    p.right.value = 3\n    let x = a.left.value")]
     public void RejectsOverlappingNestedPaths(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

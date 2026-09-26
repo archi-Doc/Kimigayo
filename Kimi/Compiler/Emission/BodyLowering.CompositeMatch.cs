@@ -12,7 +12,7 @@ internal sealed partial class BodyLowering
     private static bool ValidDereferences(BoundPattern pattern)
     {
         var type = pattern.MatchedType;
-        for (var layer = 0; layer < pattern.ImplicitDerefs; layer++)
+        for (var layer = 0; layer < pattern.ImplicitFollows; layer++)
         {
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
             {
@@ -32,7 +32,7 @@ internal sealed partial class BodyLowering
     private BoundType PatternType(BoundPattern pattern)
     {
         var type = pattern.MatchedType;
-        for (var layer = 0; layer < pattern.ImplicitDerefs; layer++)
+        for (var layer = 0; layer < pattern.ImplicitFollows; layer++)
         {
             type = type.Components[0];
         }
@@ -77,7 +77,7 @@ internal sealed partial class BodyLowering
         for (var level = depth - 1; level >= 0; level--)
         {
             var parent = match.Positions[ancestors[level]];
-            for (var layer = 0; layer < parent.ImplicitDerefs; layer++)
+            for (var layer = 0; layer < parent.ImplicitFollows; layer++)
             {
                 if (offset > int.MaxValue || count == dereferences.Length)
                 {
@@ -155,7 +155,7 @@ internal sealed partial class BodyLowering
         {
             var node = match.Positions[i];
             if (node.End <= i || node.End > end ||
-                (node.AccessMode != PatternAccessMode.Owned) != (node.ImplicitDerefs > 0 || (node.Parent >= 0 && match.Positions[node.Parent].AccessMode != PatternAccessMode.Owned)) ||
+                (node.AccessMode != PatternAccessMode.Owned) != (node.ImplicitFollows > 0 || (node.Parent >= 0 && match.Positions[node.Parent].AccessMode != PatternAccessMode.Owned)) ||
                 !ValidDereferences(node) ||
                 node.Source.BindingState != BindingState.Resolved || node.Source.AttributeChain is not null || this.PatternOffset(match, i) < 0)
             {

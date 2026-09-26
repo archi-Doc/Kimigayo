@@ -123,7 +123,7 @@ public class BorrowOriginSuffixTest
     [InlineData("func during(from: i32) -> i32 => from\nlet value = during(1)")]
     [InlineData("func f<T>(x: ref/T)\n    -> ref/T during x\n    return x")]
     [InlineData("func f<T>(x: ref/T)\n    -> (ref/T\n        during x)\n    return x")]
-    [InlineData("func f(x: ref/i32 during a, cb: ref/((ref/i32 during a) -> ref/i32 during a)) -> ref/((ref/i32 during a) -> ref/i32 during a) during cb => cb@deref@ref/((ref/i32 during a) -> ref/i32 during a)")]
+    [InlineData("func f(x: ref/i32 during a, cb: ref/((ref/i32 during a) -> ref/i32 during a)) -> ref/((ref/i32 during a) -> ref/i32 during a) during cb => cb@follow@ref/((ref/i32 during a) -> ref/i32 during a)")]
     public void ContextualNamesAndExistingContinuationBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -136,8 +136,8 @@ public class BorrowOriginSuffixTest
     [InlineData("func f(x: i32) => x@ref{a}/i32", "outer Origin must be inferred")]
     [InlineData("func f<T>(x: ref/i32 during a, y: ref/i32 during b)\n    T is ref/i32 during a and b\n    ()", "intersection requires parentheses")]
     [InlineData("struct View {source}\n    let item: ref/i32 during source\nfunc f<T>(x: ref/i32 during a, view: View{v})\n    T is ref/i32 during a and v.source\n    ()", "intersection requires parentheses")]
-    [InlineData("func f(x: ref/i32? during a) -> ref/i32\n    return match x\n        .Some(let value) => value@deref\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
-    [InlineData("struct V {source}\n    let value: ref/i32 during source\nfunc f(view: V, x: ref/i32? during view.source) -> ref/i32\n    return match x\n        .Some(let value) => value@deref\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
+    [InlineData("func f(x: ref/i32? during a) -> ref/i32\n    return match x\n        .Some(let value) => value@follow\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
+    [InlineData("struct V {source}\n    let value: ref/i32 during source\nfunc f(view: V, x: ref/i32? during view.source) -> ref/i32\n    return match x\n        .Some(let value) => value@follow\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
     public void InvalidUsesKeepTheirFailureAndExplainTheOriginRule(string source, string hint)
     {
         var c = MinimalEmissionTest.Analyze(source);

@@ -23,7 +23,7 @@ struct Pair {left, right}
 
 func add(target: uniq/Cell, amount: i32)
     do
-        let child = target@deref@uniq
+        let child = target@follow@uniq
         child.value = child.value + amount
         // The parent cannot be used while this child still requires its Loan.
     target.value = target.value + 1 // Parent access resumes after reborrowing.

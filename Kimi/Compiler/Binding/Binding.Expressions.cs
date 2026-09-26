@@ -48,13 +48,13 @@ public sealed partial class Binding
             return false; // SPEC 3.4, 15.6.2: a shared layer anywhere on the path grants Read only.
         }
 
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Deref } selected)
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Follow } selected)
         {
             // SPEC 13.5.5.1: the referent of uniq/T offers Write; a shared layer on the path bounds it.
             return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(selected.Left);
         }
 
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadDeref } payload)
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
         {
             return payload.Left.BoundType?.Semantics switch
             {

@@ -70,15 +70,16 @@ An unchanged target run compiles the checked-in program without test-specific ed
 A specification change may require a completed program to be re-spelled. The program
 keeps DONE when its unchanged target run and harness pass on the re-spelled source, and
 its row names the re-spelling. The 2026-09-25 place, borrowing and iteration change
-re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33:
+re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and the
+2026-09-26 rename of `@deref` to `@follow` re-spelled 14, 16 and 33 again:
 
 | Program | Re-spelling | Specification |
 | --- | --- | --- |
 | 13 | `associate Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1 |
-| 14 | `accumulator@deref@uniq` replaces `accumulator@uniq/Pipeline.Accumulator` | SPEC 13.5.5.2 |
-| 16 | `target@deref@uniq` replaces `target@uniq/Cell` | SPEC 13.5.5.2 |
+| 14 | `accumulator@follow@uniq` replaces `accumulator@uniq/Pipeline.Accumulator` | SPEC 13.5.5.2 |
+| 16 | `target@follow@uniq` replaces `target@uniq/Cell` | SPEC 13.5.5.2 |
 | 28 | `IntoIterable` with `IteratorType` and `intoIterator` replaces `Iterable`; `Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1, 22.1.2.2 |
-| 33 | `@deref@ref`/`@deref@uniq` payload borrows; `owner@move@obj/Base` transfers the bare Place | SPEC 3.5, 13.5.5.2, 13.5.7 |
+| 33 | `@follow@ref`/`@follow@uniq` payload borrows; `owner@move@obj/Base` transfers the bare Place | SPEC 3.5, 13.5.5.2, 13.5.7 |
 
 | Program | Created | Binding | Build | Tests | Implementation | Evidence / boundary |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -95,9 +96,9 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33:
 | 11 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 12 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 13 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25: `Iterator.Item`), O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
-| 14 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 (re-spelled 2026-09-25: `@deref@uniq` reborrows) |
+| 14 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 (re-spelled 2026-09-25 and 2026-09-26: `@follow@uniq` reborrows) |
 | 15 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
-| 16 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25: `@deref@uniq` reborrow), O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
+| 16 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25 and 2026-09-26: `@follow@uniq` reborrow), O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
 | 17 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
 | 18 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
 | 19 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program19-completion) |
@@ -114,7 +115,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33:
 | 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../PLAN_HISTORY.md#review-remediation). |
 | 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; public generic API/capacity source migration, nonempty runtime literals, borrowed indexing and nested owning storage remain. [Evidence](../PLAN_HISTORY.md#p31-kimigayo-library). |
 | 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
-| 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 (`@deref` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
+| 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 and 2026-09-26 (`@follow` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
 | 34 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
 | 35 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
 | 36 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |

@@ -234,12 +234,12 @@ public sealed partial class OwnershipAnalysis
         return this.Temporary(assignment);
     }
 
-    // SPEC 13.5.5.1, 13.7: r@deref = v and r@deref op= v write the referent of a uniq reference through it,
+    // SPEC 13.5.5.1, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it,
     // securing the RHS first. The stored value follows the borrowed-field rules: Copy scalars, references and pointers.
-    private int WriteReferent(Koto source, ConversionKoto dereference)
+    private int WriteReferent(Koto source, ConversionKoto followed)
     {
-        var reference = dereference.Left;
-        var type = dereference.BoundType;
+        var reference = followed.Left;
+        var type = followed.BoundType;
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
         if (reference.BoundType?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
             (operation != KotoKind.Equals && type?.IsNumeric != true))

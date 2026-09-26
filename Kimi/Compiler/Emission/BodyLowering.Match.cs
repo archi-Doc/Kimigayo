@@ -235,7 +235,7 @@ internal sealed partial class BodyLowering
 
                 var pattern = binding.Positions[arm.Pattern];
                 var composite = this.IsCompositeSubject(this.Matched(pattern.MatchedType));
-                if (pattern.Parent != -1 || (!composite && (pattern.End != arm.Pattern + 1 || arm.DecompositionCount != 0 || pattern.AccessMode != PatternAccessMode.Owned || pattern.ImplicitDerefs != 0)) ||
+                if (pattern.Parent != -1 || (!composite && (pattern.End != arm.Pattern + 1 || arm.DecompositionCount != 0 || pattern.AccessMode != PatternAccessMode.Owned || pattern.ImplicitFollows != 0)) ||
                     !ReferenceEquals(this.Matched(pattern.MatchedType), body.Places[match.Subject].Type) ||
                     body.Operations[arm.Test].Kind != OwnershipOperationKind.PatternTest || body.Operations[arm.Test].Place != match.Subject ||
                     body.OperationSteps[arm.Test] != armIndex || !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[arm.Test].Source), pattern.Source) || !this.PureMatchTest(body, arm.Test))

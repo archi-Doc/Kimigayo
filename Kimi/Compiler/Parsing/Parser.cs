@@ -50,7 +50,7 @@ public static partial class Parser
             [
                 TokenKind.Dot, TokenKind.OpenParenthesis, TokenKind.LessThan,
                 TokenKind.OpenBracket, TokenKind.PlusPlus, TokenKind.MinusMinus,
-                TokenKind.At, // Only @deref is postfix (SPEC 13.1); other @ operations keep their infix precedence.
+                TokenKind.At, // Only @follow is postfix (SPEC 13.1); other @ operations keep their infix precedence.
             ]);
 
         Mark(
@@ -3533,7 +3533,7 @@ CloseParameters:
         var text = reader.GetSpan(token);
         if (!text.SequenceEqual(Constants.MoveOperation) && !CompilerHelper.TryParse(text, out _))
         {
-            return false; // deref is consumed as a postfix operation before this point (SPEC 13.1).
+            return false; // follow is consumed as a postfix operation before this point (SPEC 13.1).
         }
 
         // A slash starts a full Semantics form, an Origin brace or an optional suffix keeps the diagnostics of
@@ -3599,13 +3599,13 @@ ProcessPrefix:
     }
 
     /// <summary>
-    /// Determines whether the current <c>@</c> starts the postfix dereference <c>E@deref</c> (SPEC §13.5.5.1):
-    /// the next token spells <c>deref</c>. A following slash is division, never a Semantics prefix.
+    /// Determines whether the current <c>@</c> starts the postfix follow operation <c>E@follow</c> (SPEC §13.5.5.1):
+    /// the next token spells <c>follow</c>. A following slash is division, never a Semantics prefix.
     /// </summary>
-    private static bool IsDereferenceOperation(ref TokenReader reader)
+    private static bool IsFollowOperation(ref TokenReader reader)
     {
         var next = reader.PeekToken(1);
-        return next.Kind.IsIdentifierOrContextualKeyword() && reader.GetSpan(next).SequenceEqual(Constants.DerefOperation);
+        return next.Kind.IsIdentifierOrContextualKeyword() && reader.GetSpan(next).SequenceEqual(Constants.FollowOperation);
     }
 
     private static bool TryParsePostfixExpression(ref TokenReader reader, ref Koto left)
@@ -3614,8 +3614,8 @@ ProcessPrefix:
         {
             case TokenKind.At:
                 {
-                    // SPEC 13.1: @deref is a level-1 postfix operation, so -r@deref.x is -((r@deref).x).
-                    if (!IsDereferenceOperation(ref reader))
+                    // SPEC 13.1: @follow is a level-1 postfix operation, so -r@follow.x is -((r@follow).x).
+                    if (!IsFollowOperation(ref reader))
                     {
                         return false;
                     }

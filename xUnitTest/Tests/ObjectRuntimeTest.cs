@@ -114,9 +114,9 @@ public class ObjectRuntimeTest
             func update(view: objuniq/Counter)
                 require view is Counter else => $abort("exclusive Type")
                 do
-                    let old = Kimi.Intrinsics.exchange(view@deref@uniq, with: Counter.init(2))
+                    let old = Kimi.Intrinsics.exchange(view@follow@uniq, with: Counter.init(2))
                     require old.value == 1 else => $abort("old payload")
-                    let payload = view@deref@ref
+                    let payload = view@follow@ref
                     require payload.value == 2 else => $abort("new payload")
                 require view is Counter else => $abort("changed identity")
             var owner = Kimi.Intrinsics.makeObj(Counter.init(1))

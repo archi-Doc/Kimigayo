@@ -437,7 +437,7 @@ public sealed partial class Binding
         {
             End = plan.PositionStorage.Count,
             AccessMode = access,
-            ImplicitDerefs = layers,
+            ImplicitFollows = layers,
         };
         plan.PositionStorage[index] = position;
         if (position.Kind == BoundPatternKind.Invalid)

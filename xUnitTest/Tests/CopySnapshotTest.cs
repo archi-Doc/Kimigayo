@@ -12,7 +12,7 @@ public class CopySnapshotTest
     [InlineData(true)]
     public void NestedReferencesRetainTheirOwnLoans(bool conflict)
     {
-        var source = "func copy<T>(value: ref/T) -> T\n    T is Copy\n    return value@deref\nvar value = 7\nlet pair = (value@ref, 1)\nlet borrowed = pair@ref\nlet snapshot = copy(borrowed)\n" +
+        var source = "func copy<T>(value: ref/T) -> T\n    T is Copy\n    return value@follow\nvar value = 7\nlet pair = (value@ref, 1)\nlet borrowed = pair@ref\nlet snapshot = copy(borrowed)\n" +
             (conflict ? "value = 9\n" : string.Empty) + "let read: i32 = snapshot.0\nrequire read == 7 else => $abort(\"nested origin\")";
         if (conflict)
         {
@@ -34,7 +34,7 @@ public class CopySnapshotTest
                 Self is Copy
                 A(i32)
                 B
-            func read(value: ref/Choice) -> Choice => value@deref
+            func read(value: ref/Choice) -> Choice => value@follow
             var value: Choice = .A(7)
             let snapshot = read(value@ref)
             value = .B
@@ -110,7 +110,7 @@ public class CopySnapshotTest
     [InlineData("Array", "[2 of i32]", "[7, 8]", "[9, 10]", "snapshot[0] == 7 and value[0] == 9")]
     public void ReturnedSnapshotHasIndependentStorage(string name, string type, string initial, string replacement, string condition)
     {
-        var source = $"func read(value: ref/{type}) -> {type} => value@deref\nvar value: {type} = {initial}\nlet snapshot = read(value@ref)\nvalue = {replacement}\nrequire {condition} else => $abort(\"snapshot\")";
+        var source = $"func read(value: ref/{type}) -> {type} => value@follow\nvar value: {type} = {initial}\nlet snapshot = read(value@ref)\nvalue = {replacement}\nrequire {condition} else => $abort(\"snapshot\")";
         ScalarEmissionTest.EmitFixture("CopySnapshot" + name, source, string.Empty);
     }
 }

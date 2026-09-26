@@ -372,10 +372,10 @@
     Message="An owned Place is not lent exclusively without @uniq or @objuniq, except as the receiver of a call"
 
   + Name="SharedBindingAssignment_Kd"
-    Message="This binding is a shared reference because its match or for Subject is Shared; bind a value from a ByValue Subject such as E@owner or E@move, or copy the referent into a local with @deref"
+    Message="This binding is a shared reference because its match or for Subject is Shared; bind a value from a ByValue Subject such as E@copy or E@move, or copy the referent into a local with @follow"
 
   + Name="ExclusiveBindingAssignment_Kd"
-    Message="This binding is an exclusive reference because its match or for Subject is Exclusive; update the referent with @deref, or bind a value from a ByValue Subject such as E@owner or E@move"
+    Message="This binding is an exclusive reference because its match or for Subject is Exclusive; update the referent with @follow, or bind a value from a ByValue Subject such as E@copy or E@move"
 
   + Name="SharedPathAccess_Kd"
     Message="This Place is reached through a shared layer (a ref reference, a Slice element, an objref, rc or arc view, or a guard candidate), which grants Read only; a write, Move or exclusive borrow needs an owned or exclusive path"

@@ -17,9 +17,9 @@ internal enum ConversionBinding : byte
     Borrow,
     ObjectUpcast,
 
-    // SPEC 13.5.5.1: E@deref selects the Place a ref/uniq value points to, or a proven complete Sealed payload.
-    Deref,
-    PayloadDeref,
+    // SPEC 13.5.5.1: E@follow selects the Place a ref/uniq value points to, or a proven complete Sealed payload.
+    Follow,
+    PayloadFollow,
 
     // SPEC 5.4-5.5: between raw pointer Types, or a raw pointer and usize.
     Pointer,

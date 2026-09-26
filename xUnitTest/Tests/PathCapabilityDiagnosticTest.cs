@@ -19,12 +19,12 @@ public class PathCapabilityDiagnosticTest
     [Theory]
     [InlineData("var values: Array<string> = [\"a\"]\nlet view = values[..]\nlet m = view[0]@move", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: uniq/S) -> string => r.f@move", DiagnosticCode.ExclusivePathTake_Kd)]
-    [InlineData("func f(r: uniq/string) -> string => r@deref@move", DiagnosticCode.ExclusivePathTake_Kd)]
-    [InlineData("func f(v: ref/i32) => v@deref = 3", DiagnosticCode.SharedPathAccess_Kd)]
-    [InlineData("func f(v: ref/i32) => v@deref += 3", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func f(r: uniq/string) -> string => r@follow@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func f(v: ref/i32) => v@follow = 3", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func f(v: ref/i32) => v@follow += 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: ref/S) => r.n = 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: ref/S) -> uniq/i32 during r => r.n@uniq", DiagnosticCode.SharedPathAccess_Kd)]
-    [InlineData("func f(v: ref/i32) -> uniq/i32 during v => v@deref@uniq", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func f(v: ref/i32) -> uniq/i32 during v => v@follow@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nview[0] = 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: ref/S) -> string => r.f@move", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func f(x: i32) => x = 2", DiagnosticCode.InvalidAssignment_Kd)]
@@ -33,7 +33,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Layers + "func f(r: ref/Outer{o}) => r.inner.n = 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Layers + "func f(r: ref/Outer{o}) => r.inner.n += 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Layers + "func f(r: ref/Outer{o})\n    let u = r.inner.n@uniq", DiagnosticCode.SharedPathAccess_Kd)]
-    [InlineData(Layers + "func f(r: ref/Outer{o})\n    match r.slot\n        .Some(let x) => x@deref += 1\n        .None => ()", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(Layers + "func f(r: ref/Outer{o})\n    match r.slot\n        .Some(let x) => x@follow += 1\n        .None => ()", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Layers + "func f(r: ref/Outer{o})\n    let s = r.slot@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     public void TheDenyingLayerIsReported(string source, DiagnosticCode code)
     {
@@ -47,14 +47,14 @@ public class PathCapabilityDiagnosticTest
     public void AFieldThroughSeveralLayersIsABarePlaceSubject()
     {
         // SPEC 15.1.6, 3.4.1: `r.n` through `ref/(ref/S)` is a Place, so the Subject is Shared and binds `ref/i32`.
-        var c = MinimalEmissionTest.Analyze(S + "func f(r: ref/(ref/S during a)) -> i32\n    match r.n\n        let v => return v@deref");
+        var c = MinimalEmissionTest.Analyze(S + "func f(r: ref/(ref/S during a)) -> i32\n    match r.n\n        let v => return v@follow");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
     [InlineData(S + "let o = S.init(\"a\")\nlet t = o.f@move")]
     [InlineData(S + "func f(r: uniq/S) => r.n = 3")]
-    [InlineData("func f(r: uniq/i32) => r@deref += 1")]
+    [InlineData("func f(r: uniq/i32) => r@follow += 1")]
     [InlineData("func f(r: uniq/string) -> uniq/string => r@move")]
     public void OwnedAndExclusivePathsKeepTheirCapabilities(string source)
     {

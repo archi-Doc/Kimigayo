@@ -97,8 +97,8 @@ public static class Constants
     /// <summary>The transfer operation written after <c>@</c> (SPEC §13.5.3); an ordinary Name elsewhere.</summary>
     public const string MoveOperation = "move";
 
-    /// <summary>The postfix dereference written after <c>@</c> (SPEC §13.5.5.1); an ordinary Name elsewhere.</summary>
-    public const string DerefOperation = "deref";
+    /// <summary>The postfix follow operation written after <c>@</c> (SPEC §13.5.5.1); an ordinary Name elsewhere.</summary>
+    public const string FollowOperation = "follow";
 
     public const char LfChar = '\n';
     public const char CrChar = '\r';

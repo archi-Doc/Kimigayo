@@ -677,13 +677,13 @@ public sealed partial class OwnershipAnalysis
                     return this.BorrowStruct(conversion.Left, conversion.BoundType!);
                 }
 
-                if (conversion.ConversionBinding == ConversionBinding.Deref)
+                if (conversion.ConversionBinding == ConversionBinding.Follow)
                 {
                     // SPEC 13.5.5.1: a value use of a selected referent copies one proven-Copy layer.
                     return this.LoadReferent(conversion.Left, 1);
                 }
 
-                if (conversion.ConversionBinding == ConversionBinding.PayloadDeref)
+                if (conversion.ConversionBinding == ConversionBinding.PayloadFollow)
                 {
                     this.Unsupported(conversion); // A bare Copy of a payload through its handle remains a boundary.
                     return -1;
@@ -801,9 +801,9 @@ public sealed partial class OwnershipAnalysis
             }
 
             target = this.compilation.Binding.StorageProjection(target) ?? target;
-            if (target is ConversionKoto { ConversionBinding: ConversionBinding.Deref } dereference)
+            if (target is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed)
             {
-                return this.WriteReferent(binary, dereference);
+                return this.WriteReferent(binary, followed);
             }
 
             if (IsPointerPlace(target))

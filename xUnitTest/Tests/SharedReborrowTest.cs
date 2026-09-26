@@ -53,8 +53,8 @@ public class SharedReborrowTest
             var owner = Kimi.Intrinsics.makeObj<Item>(Item.init(42))
             let value = (owner@move, 1)
             match value
-                (let view, let tag) if (view@deref@objref).value == 42 and tag == 1
-                    require (view@deref@objref).value == 42 else => $abort("body")
+                (let view, let tag) if (view@follow@objref).value == 42 and tag == 1
+                    require (view@follow@objref).value == 42 else => $abort("body")
                 (_, _) => $abort("missing")
             Console.writeLine("done")
             """;

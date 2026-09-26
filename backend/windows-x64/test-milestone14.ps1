@@ -109,7 +109,7 @@ $invalid = [ordered]@{
     SharedConstraint = @{ source = (Edit-KimiSource $original 'Callable<uniq,' 'Callable<ref,'); diagnostic = 'NoApplicableOverload_Kd' }
     StrongerInput = @{ source = (Edit-KimiSource $original '(job: ref/Pipeline.Job)' '(job: uniq/Pipeline.Job)'); diagnostic = 'NoApplicableOverload_Kd' }
     ConflictingOwner = @{ source = (Edit-KimiSource $original '        let accepted =' "        accumulator.read()`n        let accepted ="); diagnostic = 'ComparisonLoanConflict_Kd' }
-    WrongProjection = @{ source = (Edit-KimiSource $original 'accumulator@deref@uniq' 'accumulator@deref@uniq/Pipeline.Job'); diagnostic = 'TypeMismatch_Kd' }
+    WrongProjection = @{ source = (Edit-KimiSource $original 'accumulator@follow@uniq' 'accumulator@follow@uniq/Pipeline.Job'); diagnostic = 'TypeMismatch_Kd' }
     ImplicitCapture = @{ source = (Edit-KimiSource $original 'func [target@move]' 'func'); diagnostic = 'TransferRequired_Kd' }
 }
 foreach ($entry in $invalid.GetEnumerator()) {

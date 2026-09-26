@@ -177,10 +177,10 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
-            KotoHelper.UnwrapParentheses(unary.Operand) is ConversionKoto { ConversionBinding: ConversionBinding.Deref } dereference)
+            KotoHelper.UnwrapParentheses(unary.Operand) is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed)
         {
-            // SPEC 13.7.2: `r@deref++` updates the referent Place like `r@deref += 1`.
-            return this.WriteReferent(unary, dereference);
+            // SPEC 13.7.2: `r@follow++` updates the referent Place like `r@follow += 1`.
+            return this.WriteReferent(unary, followed);
         }
 
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&

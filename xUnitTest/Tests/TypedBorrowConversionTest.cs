@@ -12,7 +12,7 @@ public class TypedBorrowConversionTest
     [Theory]
     [InlineData("Shared", Counter + "func read(c: ref/Counter) -> i32 => c.value\nlet c = Counter.init()\nrequire read(c@ref/Counter) == 0 else => $abort(\"value\")")]
     [InlineData("Exclusive", Counter + "func write(c: uniq/Counter) => c.value = 42\nvar c = Counter.init()\nwrite(c@uniq/Counter)\nrequire c.value == 42 else => $abort(\"value\")")]
-    [InlineData("Returned", Counter + "func view(c: ref/Counter) -> ref/Counter during c => c@deref@ref/Counter\nlet c = Counter.init()\nrequire view(c).value == 0 else => $abort(\"value\")")]
+    [InlineData("Returned", Counter + "func view(c: ref/Counter) -> ref/Counter during c => c@follow@ref/Counter\nlet c = Counter.init()\nrequire view(c).value == 0 else => $abort(\"value\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("TypedBorrow" + name, source, string.Empty);
 

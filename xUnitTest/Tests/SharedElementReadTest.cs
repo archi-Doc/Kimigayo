@@ -55,7 +55,7 @@ public class SharedElementReadTest
             number = 7
             """;
         // A stored uniq/i32 is Non-Copy: the shared Reborrow of its referent is explicit (SPEC 13.5.5.2).
-        var source = exclusive ? Source.Replace("ref/i32", "uniq/i32", StringComparison.Ordinal).Replace("number@ref", "number@uniq", StringComparison.Ordinal).Replace("values[..][0]", "values[..][0]@deref@ref", StringComparison.Ordinal) : Source;
+        var source = exclusive ? Source.Replace("ref/i32", "uniq/i32", StringComparison.Ordinal).Replace("number@ref", "number@uniq", StringComparison.Ordinal).Replace("values[..][0]", "values[..][0]@follow@ref", StringComparison.Ordinal) : Source;
         NativeAllocationAudit.WriteFixture("SharedElementReference" + exclusive, source, 1, 1, 32);
     }
 

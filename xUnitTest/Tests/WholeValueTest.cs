@@ -42,13 +42,13 @@ public class WholeValueTest
     [InlineData("arc", "uniq", false)]
     public void GenericPayloadProjectionRequiresCapability(string source, string target, bool expected)
     {
-        var c = Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed and ObjectPayload\n    return x@deref@{target}");
+        var c = Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed and ObjectPayload\n    return x@follow@{target}");
         Assert.Equal(expected, c.Bind().IsComplete);
     }
 
     [Theory]
-    [InlineData("func f<T>(x: objref/T) -> ref/T during x => x@deref@ref")]
-    [InlineData("open struct S\nfunc f(x: objref/S) -> ref/S during x => x@deref@ref")]
+    [InlineData("func f<T>(x: objref/T) -> ref/T during x => x@follow@ref")]
+    [InlineData("open struct S\nfunc f(x: objref/S) -> ref/S during x => x@follow@ref")]
     [InlineData("struct S\nfunc read(x: ref/S) => ()\nfunc f(x: objref/S) => read(x)")]
     [InlineData("struct S\n    Self is Sealed")]
     [InlineData("contract C: Sealed\nopen struct S\n    Self is C")]
@@ -112,14 +112,14 @@ public class WholeValueTest
     [InlineData("(i32, string)")]
     public void ObjectsMayHaveNonStructPayloads(string type)
     {
-        var c = Parse($"func f(x: objref/{type}) -> ref/{type} during x => x@deref@ref");
+        var c = Parse($"func f(x: objref/{type}) -> ref/{type} during x => x@follow@ref");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]
     public void SealedBorrowedPayloadHasCheckedRuntimeSupport()
     {
-        var c = MinimalEmissionTest.Analyze("struct S\nfunc f(x: objref/S) -> ref/S during x => x@deref@ref\n()");
+        var c = MinimalEmissionTest.Analyze("struct S\nfunc f(x: objref/S) -> ref/S during x => x@follow@ref\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.True(c.Ownership.Result.IsVerified);
         Assert.True(c.Emission.Validate(out var error), error);
@@ -156,7 +156,7 @@ public class WholeValueTest
     [InlineData("not Sealed and ObjectPayload", false)]
     public void ProjectionUsesDeclaredProofRules(string constraint, bool expected)
     {
-        var c = Parse($"func f<T>(x: objref/T) -> ref/T during x\n    T is {constraint}\n    return x@deref@ref");
+        var c = Parse($"func f<T>(x: objref/T) -> ref/T during x\n    T is {constraint}\n    return x@follow@ref");
         Assert.Equal(expected, c.Bind().IsComplete);
     }
 
@@ -222,8 +222,8 @@ public class WholeValueTest
     }
 
     [Theory]
-    [InlineData("func f(x: objref/Cell<i32>) -> ref/Cell<i64> during x => x@deref@ref/Cell<i64>")]
-    [InlineData("func f(x: objref/Cell<i32>) -> ref/Cell<i32> during x => x@deref@(ref/Cell<i32> during x)")]
+    [InlineData("func f(x: objref/Cell<i32>) -> ref/Cell<i64> during x => x@follow@ref/Cell<i64>")]
+    [InlineData("func f(x: objref/Cell<i32>) -> ref/Cell<i32> during x => x@follow@(ref/Cell<i32> during x)")]
     public void PayloadProjectionDoesNotConvertInternalTypesOrAcceptTargetOrigin(string function)
     {
         var c = Parse("struct Cell<T>\n    let item: T\n" + function);

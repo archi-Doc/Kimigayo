@@ -157,7 +157,7 @@ public class DictionaryOperationsTest
             _ = entries.tryInsert("key", "value")
             let result = entries.tryGet(search())
             match result
-                .Some(let found) => Console.writeLine(found@deref)
+                .Some(let found) => Console.writeLine(found@follow)
                 .None => $abort("missing")
             entries.clear()
             """;

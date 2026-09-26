@@ -12,7 +12,7 @@ public class DynamicArraySliceTest
     [InlineData("Partial", "let values: Array<i32> = [10, 20, 22, 30]\nlet view = values[1..3]\nlet again = view[..]\nrequire again.length == 2 and again[0] + again[1] == 42 else => $abort(\"partial\")")]
     [InlineData("SharedIteration", "var values: Array<i32> = [10, 20, 12]\nvar total = 0\nfor value in values => total += value\nrequire total == 42 and values.length == 3 else => $abort(\"shared\")\nvalues@uniq.clear()")]
     [InlineData("Borrowed", "func sum(values: ref/Array<i32>) -> i32\n    let view = values[..]\n    return view[0] + view[1]\nlet values: Array<i32> = [20, 22]\nrequire sum(values@ref) == 42 else => $abort(\"borrowed\")")]
-    [InlineData("Exclusive", "var values: Array<i32> = [20, 22]\nlet handle = values@uniq\nlet view = handle[..]\nrequire view[0] + view[1] == 42 else => $abort(\"exclusive\")\nhandle@deref@uniq.clear()")]
+    [InlineData("Exclusive", "var values: Array<i32> = [20, 22]\nlet handle = values@uniq\nlet view = handle[..]\nrequire view[0] + view[1] == 42 else => $abort(\"exclusive\")\nhandle@follow@uniq.clear()")]
     [InlineData("Temporary", "func make() -> Array<i32> => [20, 22]\nrequire make()[..][1] == 22 else => $abort(\"temporary\")")]
     [InlineData("UnusedTemporary", "func make() -> Array<i32> => [20, 22]\nlet unused = make()[..]\nConsole.writeLine(\"\")")]
     [InlineData("Empty", "let values: Array<i32> = []\nlet view = values[..]\nrequire view.length == 0 and view.isEmpty else => $abort(\"empty\")\nfor value in values => $abort(\"iteration\")")]

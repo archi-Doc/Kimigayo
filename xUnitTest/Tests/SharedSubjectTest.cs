@@ -68,7 +68,7 @@ public class SharedSubjectTest
     private const string SubjectAcquisitionSource =
         Message + "func make() -> Message => .Write(\"made\")\nfunc makeAll() -> Array<string> => [\"a\", \"b\"]\n" +
         "func same(a: ref/string, b: ref/string) -> bool => a == b\n" +
-        "func total(values: uniq/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move\n        v@deref += 1\n        sum += v\n    return sum\n" +
+        "func total(values: uniq/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move\n        v@follow += 1\n        sum += v\n    return sum\n" +
         "match make()\n    .Write(let text)\n        let owned: string = text@move\n        Console.writeLine(owned)\n    .Quit => ()\n" +
         "var count: i32 = 5\nmatch count@owner\n    var n\n        n += 1\n        require n == 6 else => $abort(\"copy\")\nrequire count == 5 else => $abort(\"count\")\n" +
         "for s in makeAll()\n    let owned: string = s@move\n    Console.writeLine(owned)\n" +
@@ -89,12 +89,12 @@ public class SharedSubjectTest
     // SPEC 14.6.2: values@uniq and an exclusive borrow value enumerate uniq/E items; Tuple items decompose into
     // uniq components; a Dictionary yields (ref/K, uniq/V); reborrows inside the body suspend the item.
     private const string UniqIterationSource =
-        "func bump(values: uniq/Array<i32>)\n    for v in values\n        v@deref += 100\n" +
-        "var values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    v@deref += 1\n    let w = v@deref@ref\n    require w == v else => $abort(\"reborrow\")\n" +
-        "bump(values@uniq)\nvar fixed: [2 of i32] = [10, 20]\nfor v in fixed@uniq\n    v@deref *= 2\n" +
-        "var pairs: Array<(i32, i32)> = [(1, 2), (3, 4)]\nfor (a, b) in pairs@uniq\n    a@deref += b\nfor pair in pairs@uniq\n    pair.1 += pair.0\n" +
-        "var named: [2 of (i32, string)] = [(1, \"a\"), (2, \"b\")]\nfor (n, text) in named@uniq\n    n@deref += 1\n    Console.writeLine(text)\n" +
-        "var d: Dictionary<i32, i32> = [:]\n_ = d.tryInsert(1, 10)\n_ = d.tryInsert(2, 20)\nfor (k, v) in d@uniq\n    v@deref += k\n" +
+        "func bump(values: uniq/Array<i32>)\n    for v in values\n        v@follow += 100\n" +
+        "var values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    v@follow += 1\n    let w = v@follow@ref\n    require w == v else => $abort(\"reborrow\")\n" +
+        "bump(values@uniq)\nvar fixed: [2 of i32] = [10, 20]\nfor v in fixed@uniq\n    v@follow *= 2\n" +
+        "var pairs: Array<(i32, i32)> = [(1, 2), (3, 4)]\nfor (a, b) in pairs@uniq\n    a@follow += b\nfor pair in pairs@uniq\n    pair.1 += pair.0\n" +
+        "var named: [2 of (i32, string)] = [(1, \"a\"), (2, \"b\")]\nfor (n, text) in named@uniq\n    n@follow += 1\n    Console.writeLine(text)\n" +
+        "var d: Dictionary<i32, i32> = [:]\n_ = d.tryInsert(1, 10)\n_ = d.tryInsert(2, 20)\nfor (k, v) in d@uniq\n    v@follow += k\n" +
         "var total: i32 = 0\nfor v in values\n    total += v\nfor v in fixed\n    total += v\nfor (a, b) in pairs\n    total += a + b\nfor (n, _) in named\n    total += n\nfor (_, v) in d\n    total += v\n" +
         "for var m in values@move\n    m += 1\n    total += m\n" +
         "require total == 309 + 60 + 26 + 5 + 33 + 312 else => $abort(\"total\")\nConsole.writeLine(\"ok\")";
@@ -152,9 +152,9 @@ public class SharedSubjectTest
     }
 
     [Theory]
-    [InlineData("var values: Array<i32> = [1, 2, 3]\nfor v in values\n    v@deref += 1")]
-    [InlineData("func f(values: ref/Array<i32>)\n    for v in values\n        v@deref = 1")]
-    [InlineData("let values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    v@deref += 1")]
+    [InlineData("var values: Array<i32> = [1, 2, 3]\nfor v in values\n    v@follow += 1")]
+    [InlineData("func f(values: ref/Array<i32>)\n    for v in values\n        v@follow = 1")]
+    [InlineData("let values: Array<i32> = [1, 2, 3]\nfor v in values@uniq\n    v@follow += 1")]
     public void SharedItemsCannotBeWritten(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -180,9 +180,9 @@ public class SharedSubjectTest
     [InlineData(Message + "var message: Message = .Write(\"hi\")\nmatch message@uniq\n    .Write(let text) => Console.writeLine(text)\n    .Quit => ()")]
     [InlineData(Message + "var message: Message = .Write(\"hi\")\nmatch (message@uniq)\n    .Write(let text) => Console.writeLine(text)\n    .Quit => ()")]
     [InlineData(Message + "var message: Message = .Write(\"hi\")\nmatch message@uniq/Message\n    .Write(let text) => Console.writeLine(text)\n    .Quit => ()")]
-    [InlineData(Message + "func edit(m: uniq/Message)\n    match m@deref@uniq\n        .Write(let text) => Console.writeLine(text)\n        .Quit => ()")]
+    [InlineData(Message + "func edit(m: uniq/Message)\n    match m@follow@uniq\n        .Write(let text) => Console.writeLine(text)\n        .Quit => ()")]
     [InlineData("struct Cell\n    public var value: i32 = 1\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nmatch o@objuniq\n    _ => ()")]
-    [InlineData("struct Cell\n    public var value: i32 = 1\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nmatch o@deref@uniq\n    _ => ()")]
+    [InlineData("struct Cell\n    public var value: i32 = 1\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nmatch o@follow@uniq\n    _ => ()")]
     public void ExclusiveBorrowSubjectsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

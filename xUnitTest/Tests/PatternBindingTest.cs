@@ -77,7 +77,7 @@ public class PatternBindingTest
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
-        Assert.Contains(Plan(c).Positions, x => x.ImplicitDerefs == layers);
+        Assert.Contains(Plan(c).Positions, x => x.ImplicitFollows == layers);
     }
 
     [Theory]
@@ -251,10 +251,10 @@ public class PatternBindingTest
         var plan = Plan(c);
         var root = plan.Positions[plan.Arms[0].Pattern];
         Assert.Equal(PatternAccessMode.Shared, root.AccessMode);
-        Assert.Equal(1, root.ImplicitDerefs);
+        Assert.Equal(1, root.ImplicitFollows);
         var binding = Assert.Single(plan.Positions, p => p.Kind == BoundPatternKind.Binding);
         Assert.Equal(PatternAccessMode.Shared, binding.AccessMode);
-        Assert.Equal(0, binding.ImplicitDerefs);
+        Assert.Equal(0, binding.ImplicitFollows);
         Assert.Equal(PatternAcquisition.Borrow, binding.Acquisition);
         Assert.Equal(SemanticsKind.Ref, binding.BodySymbol!.Type!.Semantics);
         Assert.Same(BoundType.I32, binding.BodySymbol.Type.Components[0]);
@@ -268,7 +268,7 @@ public class PatternBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var binding = Assert.Single(Plan(c).Positions, p => p.Kind == BoundPatternKind.Binding);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
-        Assert.Equal(0, binding.ImplicitDerefs);
+        Assert.Equal(0, binding.ImplicitFollows);
         Assert.Equal(PatternAcquisition.Copy, binding.Acquisition);
         Assert.NotNull(binding.MatchedType.Origin);
         Assert.Same(binding.MatchedType, binding.BodySymbol!.Type);
@@ -370,7 +370,7 @@ public class PatternBindingTest
         var binding = Assert.Single(Plan(c).Positions);
         Assert.Equal(acquisition, binding.Acquisition);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
-        Assert.Equal(0, binding.ImplicitDerefs);
+        Assert.Equal(0, binding.ImplicitFollows);
     }
 
     [Theory]

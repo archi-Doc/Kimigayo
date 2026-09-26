@@ -22,7 +22,7 @@ public class PatternLayerOriginTest
 
     [Theory]
     [InlineData("func f(" + Parameter + ") -> ref/i32 during (a and b)\n    match r\n        .Some(let v) => return v\n        .None => $abort(\"none\")")]
-    [InlineData("func f(r: ref/(ref/Option<i32> during b) during a) -> ref/i32 during b\n    match r\n        .Some(let v) => return v@deref@ref\n        .None => $abort(\"none\")")]
+    [InlineData("func f(r: ref/(ref/Option<i32> during b) during a) -> ref/i32 during b\n    match r\n        .Some(let v) => return v@follow@ref\n        .None => $abort(\"none\")")]
     public void TheMeetOfTheGrantingLayersIsAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

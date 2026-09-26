@@ -54,12 +54,12 @@ public enum PatternLiteralKind : byte
 public readonly record struct PatternLiteral(PatternLiteralKind Kind, UInt128 Magnitude = default, bool Negative = false, string? Text = null);
 
 /// <summary>A preorder position; direct children are walked by advancing to each child's End. A structural position selects
-/// the referent of <see cref="ImplicitDerefs"/> safe value-reference layers of its matched Type (SPEC 14.8.1), and
+/// the referent of <see cref="ImplicitFollows"/> safe value-reference layers of its matched Type (SPEC 14.8.1), and
 /// <see cref="AccessMode"/> is the access its path grants to the selected value.</summary>
 public readonly record struct BoundPattern(Koto Source, BoundType MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
     BoundEnumCase? Case = null, BindingSymbol? BodySymbol = null, PatternAcquisition Acquisition = PatternAcquisition.None,
     bool WholePosition = false, PatternLiteral Literal = default,
-    PatternAccessMode AccessMode = PatternAccessMode.Owned, int ImplicitDerefs = 0,
+    PatternAccessMode AccessMode = PatternAccessMode.Owned, int ImplicitFollows = 0,
     BindingSymbol? CandidateSymbol = null);
 
 public readonly record struct BoundMatchArm(MatchArmKoto Syntax, int Pattern);

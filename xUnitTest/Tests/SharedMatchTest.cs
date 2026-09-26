@@ -22,7 +22,7 @@ public class SharedMatchTest
             let value = (Pair.init(42), Item.init(7))
             match value
                 (let pair, let item)
-                    var copied = pair@deref
+                    var copied = pair@follow
                     copied.number = 0
                     require copied.number == 0 and pair.number == 42 and item.number == 7 else => $abort("bindings")
             require value.0.number == 42 else => $abort("snapshot")
@@ -87,7 +87,7 @@ public class SharedMatchTest
                 .Some(("wrong", _)) => $abort("wrong")
                 .Some((let saved, let number))
                     require number == 42 else => $abort("number")
-                    Console.writeLine(saved@deref)
+                    Console.writeLine(saved@follow)
                 .None => $abort("none")
             """;
         var source = explicitIntersection ? Source.Replace("during input>", "during (input and savedText)>", StringComparison.Ordinal) : Source;
