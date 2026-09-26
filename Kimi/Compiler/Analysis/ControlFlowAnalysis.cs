@@ -1524,7 +1524,11 @@ public sealed class ControlFlowAnalysis
 
             if (node is IndexKoto)
             {
-                this.Constrain(binary.Right, IsizeType);
+                if (binary.BindingState != BindingState.Invalid)
+                {
+                    this.Constrain(binary.Right, IsizeType); // A failed index reported its own diagnostic.
+                }
+
                 return null; // Complete element Types come from Binding, never from the receiver Type.
             }
 

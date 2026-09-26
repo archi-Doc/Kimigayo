@@ -54,4 +54,15 @@ public class ReferenceLayerAdaptationTest
         var c = MinimalEmissionTest.Analyze("func f(x: uniq/i32) => ()\nvar a: i32 = 1\nlet r = a@uniq\nf(r@move)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
+
+    [Theory]
+    [InlineData("func get(m: ref/Dictionary<i32, i32>) -> i32 => m[1]")]
+    [InlineData("func at(a: ref/(ref/[2 of i32] during b)) -> i32 => a[1]")]
+    public void IndexingThroughSeveralLayersReportsOnlyItsBoundary(string source)
+    {
+        // STATUS boundary: indexing through several reference layers stops at Binding with one diagnostic.
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.Empty(c.AnalyzeControlFlow().Issues);
+    }
 }
