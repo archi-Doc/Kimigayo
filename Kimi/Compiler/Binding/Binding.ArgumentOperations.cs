@@ -256,6 +256,20 @@ public sealed partial class Binding
         return reference;
     }
 
+    // SPEC 3.4.1, 4.6.6: a member selected below a Non-Copy element of a Slice or borrowed array is reached through one
+    // shared borrow of that element Place. The element keeps its stored Type; the borrow is the receiver's adaptation.
+    private void ReceiverElement(Koto left, BoundType? element)
+    {
+        if (KotoHelper.UnwrapParentheses(left) is IndexKoto index && index.Right is not RangeKoto && element is not null &&
+            (index.Left.BoundType?.Kind is BoundTypeKind.Slice || ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType)) &&
+            this.ProveCopy(element, left) == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
+        {
+            var origin = this.PlaceOrigin(index.Left);
+            var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
+            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin));
+        }
+    }
+
     // SPEC 10.2: the implicit rows of the common adaptation for a value at a fixed expected Type. Exactly one operation
     // is selected, and it is recorded once for control flow, ownership and generation. Arguments select the same rows
     // through AdaptInput; explicit borrows, projections and receivers are separate operations.

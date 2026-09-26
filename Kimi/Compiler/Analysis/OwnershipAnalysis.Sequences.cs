@@ -22,20 +22,6 @@ public sealed partial class OwnershipAnalysis
 
     private int ReadSlice(IndexKoto source, AcquisitionKind? acquisition)
     {
-        var sequence = ReferenceTypes.IsDynamicArray(source.Left.BoundType) ? source.Left.BoundType!.Components[0] : source.Left.BoundType;
-        if (ReferenceTypes.IsStorage(source.BoundType) && source.BoundType!.Semantics == SemanticsKind.Ref &&
-            sequence?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice && ReferenceEquals(source.BoundType.Components[0], sequence.Components[0]))
-        {
-            // SPEC 3.4.1: a member selected below the element reaches it through a shared borrow of the slot.
-            if (acquisition == AcquisitionKind.Move)
-            {
-                this.Unsupported(source);
-                return -1;
-            }
-
-            return this.BorrowStruct(source, source.BoundType);
-        }
-
         var depth = this.comparisonDepth++;
         var dynamicArray = source.Left.BoundType?.Kind == BoundTypeKind.Array;
         // Snapshot a Copy Slice/reference, but keep an owned Array in its Place. Protect

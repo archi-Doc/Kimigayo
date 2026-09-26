@@ -6,40 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 4.6.6, 4.6.9: an element expression designates the element Place with its stored complete Type; a bare
-    // read Copies a proven-Copy element, @ref borrows the slot and a fixed expected ref/T borrows it implicitly
-    // (SPEC 10.2). A member or index selected below an element of a Slice or borrowed array reaches it through
-    // an implicit shared borrow of that element (SPEC 3.4.1); an owned array element is projected in place.
-    private BoundType? ElementPlaceType(BinaryKoto source, BoundType element)
-    {
-        var target = (Koto)source;
-        while (target.Parent is ParenthesizedKoto parentheses)
-        {
-            target = parentheses;
-        }
-
-        var chain = (target.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, target)) || (target.Parent is IndexKoto index && ReferenceEquals(index.Left, target));
-        if (!chain || source.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray)
-        {
-            return element;
-        }
-
-        var proof = this.ProveCopy(element, source);
-        if (proof == ConstraintProof.Proven)
-        {
-            return element;
-        }
-
-        if (proof == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
-        {
-            var origin = this.PlaceOrigin(source.Left);
-            var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
-            return this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin);
-        }
-
-        return Fail(source, BindingFailure.Unsupported);
-    }
-
     private BoundType? BindElement(BinaryKoto source, BindingScope scope)
     {
         var receiver = this.BindNode(source.Left, scope);
@@ -80,7 +46,8 @@ public sealed partial class Binding
             if ((ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver)) && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);
-                return Complete(source, this.ElementPlaceType(source, receiver!.Components[0].Components[0]));
+                // SPEC 4.6.9: the element Place keeps its stored complete Type.
+                return Complete(source, receiver!.Components[0].Components[0]);
             }
 
             var sequence = ReferenceTypes.IsDynamicArray(receiver) ? receiver!.Components[0] : receiver;
@@ -103,7 +70,7 @@ public sealed partial class Binding
             if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);
-                return Complete(source, this.ElementPlaceType(source, receiver.Components[0]));
+                return Complete(source, receiver.Components[0]); // SPEC 4.6.6: the shared element Place.
             }
 
             if (receiver is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !ReferenceEquals(receiver, BoundType.Never))
@@ -119,6 +86,12 @@ public sealed partial class Binding
             // A tuple selector is syntax, not a separately evaluated integer operand.
             Complete(source.Right, BoundType.ISize);
             receiver = this.ReceiverThroughLayers(source.Left, receiver) ?? receiver;
+            this.ReceiverElement(source.Left, receiver);
+            if (this.adaptations.TryGetValue(source.Left, out var selection) && selection.Kind == ExpectedAdaptationKind.SharedBorrow)
+            {
+                receiver = selection.Type;
+            }
+
             if (ReferenceTypes.IsTuple(receiver))
             {
                 return ElementAccess.TryBorrowedTupleElement(source, out var borrowedElement, out _)

@@ -182,6 +182,7 @@ public sealed partial class Binding
         {
             var receiverType = this.BindNode(member.Left, scope);
             this.ReceiverThroughLayers(member.Left, receiverType);
+            this.ReceiverElement(member.Left, receiverType);
             // SPEC 3.4.1: selection continues at the referent of each safe value-reference layer and, under the
             // object view rules, at the payload of an object handle or view.
             while (receiverType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && (IsBorrow(receiverType.Semantics) || IsObjectSemantics(receiverType.Semantics)))

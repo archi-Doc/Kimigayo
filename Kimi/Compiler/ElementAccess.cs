@@ -112,12 +112,14 @@ internal static class ElementAccess
 
     /// <summary>
     /// SPEC 3.4.1: the Type through which a member or Tuple element of <paramref name="left"/> is selected. Through several
-    /// reference layers it is the one reference to the declaring Type that Binding recorded as the receiver's adaptation.
+    /// reference layers, or below a shared element Place, it is the one reference that Binding recorded as the receiver's
+    /// adaptation.
     /// </summary>
     /// <param name="left">The receiver expression.</param>
     /// <returns>The receiver's selection Type.</returns>
     internal static BoundType? ReceiverType(Koto left)
-        => left.CodeContext.Compilation.Binding.TryGetAdaptation(left, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.ReferenceRead ? adaptation.Type : left.BoundType;
+        => left.CodeContext.Compilation.Binding.TryGetAdaptation(left, out var adaptation) && adaptation.Kind is ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow
+            ? adaptation.Type : left.BoundType;
 
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the

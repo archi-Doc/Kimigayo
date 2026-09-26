@@ -105,7 +105,7 @@ public sealed partial class OwnershipAnalysis
         if (unwrapped is MemberAccessKoto field && !Binding.IsGetterResult(field) && !this.SpecialField(field) && !ReferenceTypes.IsStorage(field.BoundType) &&
             ElementAccess.BorrowedPathRoot(field) is { } root)
         {
-            var receiver = this.Expression(root, PlaceUseKind.Read);
+            var receiver = this.Receiver(root);
             if (receiver < 0)
             {
                 return -1;
@@ -151,9 +151,14 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(result);
     }
 
+    // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
+    private int Receiver(Koto root)
+        => this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow
+            ? this.BorrowStruct(root, adaptation.Type) : this.Expression(root, PlaceUseKind.Read);
+
     private int ReadBorrowedField(MemberAccessKoto field)
     {
-        var receiver = this.Expression(ElementAccess.BorrowedPathRoot(field)!, PlaceUseKind.Read);
+        var receiver = this.Receiver(ElementAccess.BorrowedPathRoot(field)!);
         if (receiver < 0)
         {
             return -1;
@@ -186,7 +191,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var input = this.Expression(assignment.Right);
-        var receiver = this.Expression(root, PlaceUseKind.Read);
+        var receiver = this.Receiver(root);
         if (input < 0 || receiver < 0)
         {
             return -1;

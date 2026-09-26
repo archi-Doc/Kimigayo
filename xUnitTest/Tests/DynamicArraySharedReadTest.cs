@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -61,6 +62,21 @@ public class DynamicArraySharedReadTest
     }
 
     [Theory]
+    [InlineData("let id = view[0].id")]
+    [InlineData("let item = view[0]@ref")]
+    [InlineData("let id = values[0].id")]
+    public void AnElementKeepsItsStoredTypeWhateverFollowsIt(string use)
+    {
+        // SPEC 4.6.6, 4.6.9, 3.4.1: the element expression has the stored Type; a member below it records the shared
+        // borrow as the receiver's adaptation instead of changing the element's Type.
+        var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\nlet view = values[..]\n" + use);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var element = Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().Single(x => x.Right is not RangeKoto);
+        Assert.Equal("Task", element.BoundType!.Name);
+        Assert.Equal(SemanticsKind.Owner, element.BoundType.Semantics);
+    }
+
+    [Theory]
     [InlineData("let item = values[0]@move")]
     [InlineData("func take(value: Task) => ()\ntake(values[0])")]
     [InlineData("let item = values[0]")]
@@ -70,5 +86,17 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\n" + use);
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+    }
+
+    private static IEnumerable<Koto> Walk(Koto node)
+    {
+        yield return node;
+        foreach (var child in node.ChildNodes)
+        {
+            foreach (var nested in Walk(child))
+            {
+                yield return nested;
+            }
+        }
     }
 }
