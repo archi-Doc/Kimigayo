@@ -33,6 +33,10 @@ public class BorrowOriginSuffixTest
     [InlineData("ref/T during (static)")]
     [InlineData("ref/T during during")]
     [InlineData("ref/T during from")]
+    [InlineData("View<T> during a")]
+    [InlineData("View<T>? during a")]
+    [InlineData("Kimi.Text.Utf8Slice during value.source")]
+    [InlineData("Slice<ref/T during b> during a")]
     public void AttachmentSurvivesWritingAndReload(string type)
     {
         var tree = ParseTestHelper.ParseSuccess($"func f(x: {type}) => ()");
@@ -48,12 +52,13 @@ public class BorrowOriginSuffixTest
     [Theory]
     [InlineData("ref{a}/T")]
     [InlineData("s{a}/T")]
-    [InlineData("T during a")]
     [InlineData("(ref/T)? during a")]
     [InlineData("(ref/T?) during a")]
     [InlineData("(ref/T during a) during b")]
     [InlineData("(ref/T during a)? during b")]
-    [InlineData("Option<ref/T> during a")]
+    [InlineData("View<T>{v} during a")]
+    [InlineData("i32 during a")]
+    [InlineData("(View<T>) during a")]
     [InlineData("ref/T during a during b")]
     [InlineData("ref/T during a?")]
     [InlineData("ref/T during (a and b)?")]

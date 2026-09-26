@@ -381,7 +381,7 @@ func identity<T>(value: View<T>) -> View<T>{result}
     return value
 ```
 
-**Single-slot binding.** A named Type whose known schema has exactly one slot may bind that slot with a trailing `during`, attached as in §3.3.6: `Slice<T> during source` binds Slice's `source` slot to `source`, like `Slice<T>{v}` with `origin v.source == source`. It adds no borrow layer and names no set. In a signature, an unbound simple name there introduces a quantified Origin exactly as in a borrow annotation (§15.3.4). A Type with no slots, several slots or a schema unknown at definition rejects the shorthand; name its set and relate each slot instead.
+**Single-slot binding.** A named Type whose known schema has exactly one slot may bind that slot with a trailing `during`, attached as in §3.3.6: `Slice<T> during source` binds Slice's `source` slot to `source`, like `Slice<T>{v}` with `origin v.source == source`. It adds no borrow layer, names no set and cannot follow a binding-set suffix. In a signature, an unbound simple name there introduces a quantified Origin exactly as in a borrow annotation (§15.3.4). A Type with no slots, several slots or a schema unknown at definition rejects the shorthand; name its set and relate each slot instead.
 
 ```kimi
 func tail<T>(values: Slice<T> during source) -> Slice<T> during source
@@ -400,11 +400,11 @@ Structs and enums can declare their own Origin slots in a header after the gener
 
 | Header | Own slots |
 | --- | --- |
-| Absent | At most one distinct scalar Origin is inferred from directly written storage borrow annotations. |
+| Absent | At most one distinct scalar Origin is inferred from directly written storage borrow annotations and single-slot bindings. |
 | `{source}` or `{left, right}` | Exactly the listed slots; no implicit additions. |
 | `{}` | No own slots; no implicit additions. Inherited and complete-Type dependencies remain. |
 
-A written header **closes the schema**. Without one, simple Origin names are collected from the whole selected storage schema: instance Fields, enum payloads and bases, including borrow annotations written inside Type arguments. Repeated occurrences of one name are one candidate; two different candidates reject the whole Type, whatever the traversal order. `static`, set names, inherited dependency metadata and dependencies already bound inside a complete Type argument are not counted, and collection does not cross nested declarations or callable boundaries. This limit does not restrict a function's scalar or anonymous input Origins.
+A written header **closes the schema**. Without one, simple Origin names are collected from the whole selected storage schema: instance Fields, enum payloads and bases, including borrow annotations and single-slot bindings written inside Type arguments. Repeated occurrences of one name are one candidate; two different candidates reject the whole Type, whatever the traversal order. `static`, set names, inherited dependency metadata and dependencies already bound inside a complete Type argument are not counted, and collection does not cross nested declarations or callable boundaries. This limit does not restrict a function's scalar or anonymous input Origins.
 
 ```kimi
 struct View<T>

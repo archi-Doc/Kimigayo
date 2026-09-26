@@ -80,6 +80,13 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
     internal bool IsTransparentWrapper => this.isTransparentWrapper;
 
+    /// <summary>Gets a value indicating whether this node is a named Type written directly, simple, qualified or generic, so that a
+    /// trailing <c>during</c> binds the only slot of its schema (SPEC §15.3.1).</summary>
+    internal bool IsNamedType => this.Type is null ? !this.coreTypeToken.IsPrimitiveType() : this.isTransparentWrapper && this.Type is not TypeKoto;
+
+    /// <summary>Gets a value indicating whether a trailing <c>during</c> binds this named Type's only slot.</summary>
+    internal bool IsSlotBinding => this.origin is { IsSlotBinding: true };
+
     /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a simple named or primitive type with owner semantics.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="typeToken">The type name token.</param>
@@ -180,7 +187,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
             builder.Append(this.Identifier);
         }
 
-        if (this.Type is null || this.isTransparentWrapper || writeBorrowOrigin)
+        if (writeBorrowOrigin || ((this.Type is null || this.isTransparentWrapper) && !this.IsSlotBinding))
         {
             this.WriteOriginTo(ref builder);
         }
@@ -190,6 +197,12 @@ public sealed class TypeSemanticsKoto : TypeKoto
     {
         this.SetOrigin(expression, null, sourceSpan.End);
         this.origin!.SourceSpan = sourceSpan;
+    }
+
+    internal void SetSlotBinding(Koto expression, SourceSpan sourceSpan)
+    {
+        this.SetBorrowOrigin(expression, sourceSpan);
+        this.origin!.IsSlotBinding = true;
     }
 
     internal void SetOrigin(string originName, int end)
@@ -233,7 +246,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
             return;
         }
 
-        var bindingSet = this.origin.IsBindingSet || this.Type is null || this.isTransparentWrapper;
+        var bindingSet = !this.origin.IsSlotBinding && (this.origin.IsBindingSet || this.Type is null || this.isTransparentWrapper);
         var intersection = !bindingSet && this.OriginExpression is AndKoto;
         builder.Append(bindingSet ? "{" : " during ");
         if (intersection)
@@ -349,6 +362,8 @@ public sealed class TypeSemanticsKoto : TypeKoto
         public bool IsBindingSet { get; set; }
 
         public bool FollowedBySlash { get; set; }
+
+        public bool IsSlotBinding { get; set; }
 
         public SourceSpan SourceSpan { get; set; }
 

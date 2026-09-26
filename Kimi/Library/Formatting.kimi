@@ -50,10 +50,8 @@ public group Text
 
     public struct Utf8Slice {source}
         Self is Copy
-        let value: Slice<u8>{bytes}
-            origin bytes.source == source
+        let value: Slice<u8> during source
         public computed length: isize
             get() -> isize => self.value.length
-        public func bytes(self: Self) -> Slice<u8>{r}
-            origin r.source == self.source
+        public func bytes(self: Self) -> Slice<u8> during self.source
             return self.value

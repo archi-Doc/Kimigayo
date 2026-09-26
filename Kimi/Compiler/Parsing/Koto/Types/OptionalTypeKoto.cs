@@ -33,7 +33,7 @@ public sealed class OptionalTypeKoto : TypeKoto
         }
 
         var annotated = body as TypeSemanticsKoto;
-        if (annotated is { IsTransparentWrapper: false, Type: not null, HasOrigin: true })
+        if (annotated is { IsTransparentWrapper: false, Type: not null, HasOrigin: true } or { IsSlotBinding: true })
         {
             annotated.WriteTypeTo(ref builder, writeBorrowOrigin: false);
         }

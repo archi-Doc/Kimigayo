@@ -118,11 +118,6 @@ public sealed partial class Binding
         }
         else
         {
-            if (written)
-            {
-                return Fail(use, BindingFailure.InvalidOrigin);
-            }
-
             var target = type;
             var objectLayer = type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc;
             if (objectLayer)
@@ -132,7 +127,11 @@ public sealed partial class Binding
 
             var schema = target.Symbol?.Schema;
             var count = schema?.Origins.Count ?? 0;
-            if (written && count == 0)
+
+            // SPEC 15.3.1: a trailing during binds the only slot of a one-slot schema. It adds no borrow layer and never
+            // rebinds a complete Type; several slots need a binding set and relations.
+            if (written && (objectLayer || count != 1 || annotation!.OriginArguments is not null ||
+                (target.OriginArguments.Count == 1 && target.OriginArguments[0] is not null)))
             {
                 return Fail(use, BindingFailure.InvalidOrigin);
             }
@@ -146,6 +145,17 @@ public sealed partial class Binding
                     for (var i = 0; i < target.OriginArguments.Count; i++)
                     {
                         arguments[i] = target.OriginArguments[i];
+                    }
+
+                    if (written)
+                    {
+                        var slot = annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
+                        if (slot is null)
+                        {
+                            return null;
+                        }
+
+                        arguments[0] = slot;
                     }
 
                     for (var i = 0; i < count; i++)

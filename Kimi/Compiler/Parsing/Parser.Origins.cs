@@ -124,17 +124,26 @@ public static partial class Parser
             reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "an Origin intersection requires parentheses: 'during (a and b)'");
         }
 
-        if (type is not TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false } target)
+        var span = SourceSpan.FromBounds(keyword.Span.Start, Math.Max(keyword.Span.End, expression.Span.End));
+        if (type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false } target)
         {
-            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, "during requires the first explicit Semantics in the same Type; use 'ref/T? during a', not '(ref/T)? during a'");
-        }
-        else
-        {
-            target.SetBorrowOrigin(expression, SourceSpan.FromBounds(keyword.Span.Start, Math.Max(keyword.Span.End, expression.Span.End)));
+            target.SetBorrowOrigin(expression, span);
             if (target.SemanticsParameter is null && target.SemanticsKind is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.Unsafe)
             {
                 reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, "during requires safe borrow Semantics");
             }
+        }
+        else if (type is TypeSemanticsKoto { IsNamedType: true, HasOrigin: false } named)
+        {
+            // SPEC 3.3.6, 15.3.1: after a named Type, during binds the only slot of a one-slot schema; Binding checks the schema.
+            named.SetSlotBinding(expression, span);
+        }
+        else
+        {
+            var detail = type is TypeSemanticsKoto { IsNamedType: true }
+                ? "a named Type takes a binding set or a single-slot during, not both"
+                : "during requires the first explicit Semantics or a named Type in the same Type; use 'ref/T? during a', not '(ref/T)? during a'";
+            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, detail);
         }
 
         // Consume malformed repetitions locally without changing the first annotation.
