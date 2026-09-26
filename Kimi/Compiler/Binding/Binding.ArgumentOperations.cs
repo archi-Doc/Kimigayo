@@ -479,6 +479,16 @@ public sealed partial class Binding
     {
         if (ScalarReferent(type) is not { } referent)
         {
+            // A qualifying pair layer is one of the followed layers (SPEC 3.4.1): the read is recorded as its implicit follow.
+            if (type is not null && TryPairLayer(type, out _, out _) &&
+                this.FollowablePair(type, this.ConstraintScope(node), out var target) is var admitted && admitted != SemanticsMask.None &&
+                (target.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(target) ? target : ScalarReferent(target)) is { } scalar)
+            {
+                this.implicitPairFollows[node] = admitted;
+                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, scalar);
+                return scalar;
+            }
+
             return type;
         }
 

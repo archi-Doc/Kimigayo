@@ -77,11 +77,11 @@ public sealed partial class OwnershipAnalysis
     // SPEC 13.5.5.1: universal verification of a value use through a pair layer. Every admitted case reads the direct target
     // from the selected Place, so the operand is shared-borrowed for the read and a Copy of the target is produced; the stored
     // pair Type itself need not be Copy. A Copy-unproven target keeps the operand's own acquisition.
-    private int CopyPairTarget(ConversionKoto pair)
+    private int CopyPairTarget(ConversionKoto pair) => this.CopyThroughPair(pair, KotoHelper.UnwrapParentheses(pair.Left), pair.BoundType!);
+
+    private int CopyThroughPair(Koto source, Koto left, BoundType target)
     {
-        var target = pair.BoundType!;
-        var left = KotoHelper.UnwrapParentheses(pair.Left);
-        if (this.compilation.Binding.ProveCopy(target, pair) != ConstraintProof.Proven || left.BoundType is not { } stored)
+        if (this.compilation.Binding.ProveCopy(target, source) != ConstraintProof.Proven || left.BoundType is not { } stored)
         {
             return this.ExpressionCore(left, PlaceUseKind.Consume, null);
         }
@@ -92,8 +92,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var loaded = this.Place(pair, target, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
-        this.Emit(OwnershipOperationKind.Produce, pair, loaded);
+        var loaded = this.Place(source, target, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
+        this.Emit(OwnershipOperationKind.Produce, source, loaded);
         this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(reference)]);
         return this.RegisterTemporary(loaded);
     }

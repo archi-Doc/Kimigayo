@@ -107,6 +107,23 @@ public sealed partial class OwnershipAnalysis
             layers++;
         }
 
+        if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None && this.compilation.Binding.TryGetAdaptation(source, out var read))
+        {
+            // SPEC 3.5.3, 13.5.5.1: a Scalar read through a pair layer. Owner reads the operand itself; ref and uniq load
+            // through the stored reference; the universal verification reads through a shared borrow of the operand.
+            var operand = KotoHelper.UnwrapParentheses(source);
+            if (layers == 0)
+            {
+                return this.instance is null ? this.CopyThroughPair(source, operand, read.Type) : this.ExpressionCore(operand, PlaceUseKind.Consume, null);
+            }
+
+            if (this.instance is not null && operand is not IdentifierNameKoto)
+            {
+                var stored = this.StoredReference(operand, SemanticsKind.Ref);
+                return stored < 0 ? -1 : this.LoadThrough(source, stored, layers);
+            }
+        }
+
         return this.LoadReferent(source, layers);
     }
 

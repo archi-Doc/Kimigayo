@@ -56,9 +56,21 @@ public class PairFollowTest
         "    require view(uniqs, 1).weight == 40 and total(uniqs) == 73 else => $abort(\"exclusive\")\n" +
         "    Console.writeLine(\"Exclusive elements total 73.\")\n";
 
+    // SPEC 3.5.3: a Scalar read and a receiver through pair layers whose outer Origins are independent.
+    private const string Scaled = Collection +
+        "func scaled<s/T>(item: s/T, factor: s/i32) -> i32\n    s is value or valueborrow\n    T is Loaded\n    return item.load() * factor\n" +
+        "public func main()\n" +
+        "    require scaled(Node.init(2), 5) == 10 else => $abort(\"owner\")\n" +
+        "    let node = Node.init(4)\n    let three: i32 = 3\n" +
+        "    require scaled(node@ref, three@ref) == 12 else => $abort(\"ref\")\n" +
+        "    var other = Node.init(6)\n    var four: i32 = 4\n" +
+        "    require scaled(other@uniq, four@uniq) == 24 else => $abort(\"uniq\")\n" +
+        "    Console.writeLine(\"Scaled.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "Explicit", Explicit, "Owned followed.\nShared followed.\nExclusive followed.\n" },
+        { "Scaled", Scaled, "Scaled.\n" },
         { "Collected", Collected, "Owned elements total 6.\nBorrowed elements total 30.\nExclusive elements total 73.\n" },
     };
 
@@ -127,6 +139,14 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let refs = Collection<ref/Node>.init([])\n    let n = refs.indices.length");
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 3.5.3, 13.5.5.1: without s is value or valueborrow the pair layer is not followed, so no Scalar is read.
+    [Fact]
+    public void ScalarReadNeedsAFollowablePair()
+    {
+        var c = MinimalEmissionTest.Analyze(Box + "func f<s/T>(item: s/T, factor: s/i32) -> i32\n    return factor * 2");
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
