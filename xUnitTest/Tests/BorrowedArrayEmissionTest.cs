@@ -18,6 +18,7 @@ public class BorrowedArrayEmissionTest
     [InlineData("Forward", "func first(a: ref/[1 of i32]) -> i32 => a[0]\nfunc forward(a: ref/[1 of i32]) -> i32 => first(a)\nlet a: [1 of i32] = [42]\nrequire forward(a@ref) == 42 else => $abort(\"forward\")")]
     [InlineData("Temporary", "func first(a: ref/[1 of i32]) -> i32 => a[0]\nfunc make() -> [1 of i32] => [42]\nrequire first(make()@ref) == 42 else => $abort(\"temporary\")")]
     [InlineData("Returned", "func view(a: ref/[1 of i32]) -> ref/[1 of i32] during a => a\nlet a: [1 of i32] = [42]\nrequire view(a@ref)[0] == 42 else => $abort(\"returned\")")]
+    [InlineData("StringElement", "func same(x: ref/string, y: ref/string) -> bool => x == y\nlet a: [1 of string] = [\"owned\"]\nlet b = a@ref\nrequire same(b[0], \"owned\") and b[0] == \"owned\" else => $abort(\"string\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("BorrowedArray" + name, source, string.Empty);
 
@@ -27,7 +28,6 @@ public class BorrowedArrayEmissionTest
     [InlineData("let a: [1 of i32] = [1]\nlet b = a@ref\nb[0] = 2")]
     [InlineData("func escape() -> ref/[1 of i32]\n    let a: [1 of i32] = [1]\n    return a@ref")]
     [InlineData("let a: [1 of i32] = [1]\nlet b = a@ref/[2 of i32]")]
-    [InlineData("let a: [1 of string] = [\"owned\"]\nlet b = a@ref\nConsole.writeLine(b[0])")]
     [InlineData("var a: [1 of i32] = [1]\nlet b = a@ref\nlet n = b[(work: do\n    a[0] = 2\n    exit to work: 0)]")]
     [InlineData("var a: [1 of i32] = [1]\nlet b = a@uniq\nlet r = b@ref\nlet c = b@uniq\nlet m = r[0]")]
     [InlineData("func make() -> [1 of i32] => [42]\nlet b = make()@ref\nlet n = b[0]")]

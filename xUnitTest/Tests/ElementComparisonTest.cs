@@ -8,7 +8,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>SPEC 13.4, 4.6.9: a string comparison reads each operand in place. An operand selected by a dynamic key, below
-/// an element or through a reference is shared-borrowed, and a Copy element below a shared element is read as its root.</summary>
+/// an element or through a reference is shared-borrowed, like a string argument or a receiver below a shared element, and a
+/// Copy element below a shared element is read as its root.</summary>
 public class ElementComparisonTest
 {
     private const string Task =
@@ -31,8 +32,13 @@ public class ElementComparisonTest
         "let dynamic: Array<[2 of i32]> = [[5, 6]]\nrequire dynamic[0][1] == 6 else => $abort(\"array\")\n" +
         "func pick(r: ref/[2 of [2 of i32]]) -> i32 => r[1][1]\nrequire pick(grid) == 4 else => $abort(\"reference\")\nConsole.writeLine(\"ok\")";
 
+    private const string BelowSharedElementsSource =
+        "let words: Array<[2 of string]> = [[\"a\", \"b\"]]\nlet rows = words[..]\nConsole.writeLine(rows[0][1])\nlet kept = rows[0][0]@ref\nConsole.writeLine(kept)\n" +
+        "let pairs: Array<[2 of (i32, string)]> = [[(1, \"x\"), (2, \"y\")]]\nlet grid = pairs[..]\nrequire grid[0][1].0 == 2 else => $abort(\"leaf\")\nConsole.writeLine(grid[0][0].1)";
+
     [Theory]
     [InlineData("Elements", ElementsSource, "ok\n")]
+    [InlineData("BelowSharedElements", BelowSharedElementsSource, "b\na\nx\n")]
     [InlineData("Fields", FieldsSource, "found\nok\n")]
     [InlineData("NestedCopy", NestedCopySource, "ok\n")]
     public void OperandsAreReadInPlace(string name, string source, string stdout)

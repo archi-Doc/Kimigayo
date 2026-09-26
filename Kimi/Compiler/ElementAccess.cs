@@ -14,9 +14,28 @@ internal static class ElementAccess
     internal static bool SupportsMoveRoot(OwnershipPlace place)
         => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter && SupportsBorrowRoot(place);
 
-    // SPEC 4.6.6, 4.6.9: an element of a Slice or of a referenced array, which no owned root holds.
+    // SPEC 4.6.6, 4.6.9: an element of a Slice or of a referenced array, including a fixed array reached through a
+    // borrowed receiver; no owned root holds it.
     internal static bool IsSharedElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
-        (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(element.Left.BoundType) || ReferenceTypes.IsDynamicArray(element.Left.BoundType));
+        (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType));
+
+    // SPEC 4.6.9: whether a selection reaches its Place through a Slice, a dynamic Array or a reference on its path rather
+    // than through static selectors of an owner.
+    internal static bool IsBorrowedSelection(Koto source)
+    {
+        for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
+            !Binding.IsGetterResult(selection); depth++)
+        {
+            if (AccessType(selection.Left) is { } receiver && (receiver.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsBorrow(receiver)))
+            {
+                return true;
+            }
+
+            source = selection.Left;
+        }
+
+        return false;
+    }
 
     internal static bool IsSyntax(Koto source) => source is IndexKoto or MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && StructStorage.IsStruct(type));

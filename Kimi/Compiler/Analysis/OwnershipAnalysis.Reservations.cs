@@ -20,8 +20,8 @@ public sealed partial class OwnershipAnalysis
 
     private int PrepareCallArgument(InvocationKoto call, Koto source, BoundArgumentOperation argument, bool immediate = false)
     {
-        var stringElement = BorrowedArgumentSource(source) is IndexKoto index &&
-            (index.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(index.Left.BoundType));
+        // SPEC 4.6.9: a string element reached through a sequence or a reference is borrowed through the common element borrow.
+        var stringElement = ElementAccess.IsBorrowedSelection(BorrowedArgumentSource(source));
         if (argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType) && !stringElement && !this.SpecialField(BorrowedArgumentSource(source)))
         {
             // Preserve the call-wide inspection plan for implicit string arguments.
