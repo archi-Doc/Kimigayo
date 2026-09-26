@@ -13,6 +13,13 @@ public sealed partial class Binding
 
     private int defaultBindingDepth;
 
+    // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a value of its referent Type
+    // assigned to it names that mode and the spellings that bind or update a value instead.
+    private static BindingFailure? ReferenceBindingAssignment(Koto target)
+        => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
+            symbol.Declaration is SyntaxFormKoto { Akind: KotoKind.BindingPattern } or IdentifierNameKoto { Parent: ForKoto }
+            ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
+
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
     private static bool Writable(Koto node)
@@ -895,6 +902,12 @@ public sealed partial class Binding
                     return Fail(unary, BindingFailure.InvalidAssignment);
                 }
 
+                if (ElementAccess.DestinationType(unary.Operand, operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
+                    ReferenceBindingAssignment(unary.Operand) is { } referenceBinding)
+                {
+                    return Fail(unary, referenceBinding);
+                }
+
                 if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
                 {
                     return Fail(unary, BindingFailure.InvalidAssignment);
@@ -948,8 +961,22 @@ public sealed partial class Binding
             left = this.BindNode(binary.Left, scope, logical ? BoundType.Boolean : comparison || assignment ? null : expected);
             left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
 
+            // SPEC 15.1.6: a compound update of a reference binding, or a literal assigned to it, is fitted to the referent
+            // so that the one diagnostic names the binding's mode instead of a literal mismatch.
+            if (assignment && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+                (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
+            {
+                this.BindNode(binary.Right, scope, left.Components[0]);
+                return Fail(binary, referenceBinding);
+            }
+
             // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
             right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && left?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : left);
+            if (assignment && kind == KotoKind.Equals && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+                right is not null && !Compatible(right, left) && Compatible(right, left.Components[0]) && ReferenceBindingAssignment(binary.Left) is { } valueBinding)
+            {
+                return Fail(binary, valueBinding);
+            }
         }
 
         if (!assignment)

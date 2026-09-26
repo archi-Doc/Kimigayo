@@ -115,6 +115,10 @@ internal enum BindingFailure : byte
     TransferRequired,
     ExclusiveBorrowRequired,
 
+    // SPEC 15.1.6: a value assigned to a pattern or for binding that is a reference into a Shared or Exclusive Subject.
+    SharedBindingAssignment,
+    ExclusiveBindingAssignment,
+
     // SPEC 7.3: one receiver shape per function group fixed by member lookup.
     ReceiverShapeMismatch,
     MissingSpecializationTarget,

@@ -371,8 +371,11 @@
   + Name="ExclusiveBorrowRequired_Kd"
     Message="An owned Place is not lent exclusively without @uniq or @objuniq, except as the receiver of a call"
 
-  + Name="ExclusiveSubject_Kd"
-    Message="A match subject or for iterable is acquired with shared access only; write it bare or with @ref to inspect it, or @move to consume it, instead of @uniq or @objuniq"
+  + Name="SharedBindingAssignment_Kd"
+    Message="This binding is a shared reference because its match or for Subject is Shared; bind a value from a ByValue Subject such as E@owner or E@move, or copy the referent into a local with @deref"
+
+  + Name="ExclusiveBindingAssignment_Kd"
+    Message="This binding is an exclusive reference because its match or for Subject is Exclusive; update the referent with @deref, or bind a value from a ByValue Subject such as E@owner or E@move"
 
   + Name="ReceiverShapeMismatch_Kd"
     Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
