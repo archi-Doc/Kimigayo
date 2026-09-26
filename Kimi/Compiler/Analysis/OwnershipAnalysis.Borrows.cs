@@ -22,15 +22,15 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
-            // A well-formed borrowed input guarantees its nested stored Origins
-            // outlive that input. Call-site borrow formation checks the concrete
+            // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
+            // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete
             // nested dependencies, including deinit uses, in VerifyBorrows.
             if (obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins ||
                 obligation.Shorter is not { Kind: OriginKind.Input, Binder: FunctionKoto function } outer ||
                 (uint)outer.Slot >= (uint)function.Parameters.Count ||
-                function.Parameters[outer.Slot].Type.BoundType is not { } input || !ReferenceTypes.IsStruct(input) ||
+                function.Parameters[outer.Slot].Type.BoundType is not { } input || !(ReferenceTypes.IsStruct(input) || Binding.TryPairLayer(input, out _, out _)) ||
                 !ReferenceEquals(input.Origin, outer) || !ReferenceEquals(input.Components[0], obligation.Type) ||
-                !input.Components[0].OriginArguments.Contains(obligation.Longer!))
+                !(input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer)))
             {
                 return false;
             }

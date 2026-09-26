@@ -434,11 +434,21 @@ public sealed partial class Binding
         }
 
         if (expected.Semantics == SemanticsKind.Ref && IsBarePlace(node) && TryPairLayer(actual, out _, out _) &&
-            this.FollowablePair(actual, this.ConstraintScope(node), out var pairTarget) is var admitted && admitted != SemanticsMask.None && Compatible(pairTarget, target))
+            this.FollowablePair(actual, this.ConstraintScope(node), out var pairTarget) is var admitted && admitted != SemanticsMask.None)
         {
-            // SPEC 10.2, 13.5.5.1: one shared reference through the pair layer; each admitted case keeps its own dependencies.
-            this.implicitPairFollows[node] = admitted;
-            return new(ExpectedAdaptationKind.SharedBorrow, this.SharedReference(pairTarget, this.PairOrigin(node, actual, admitted)));
+            if (Compatible(pairTarget, target))
+            {
+                // SPEC 10.2, 13.5.5.1: one shared reference through the pair layer; each admitted case keeps its own dependencies.
+                this.implicitPairFollows[node] = admitted;
+                return new(ExpectedAdaptationKind.SharedBorrow, this.SharedReference(pairTarget, this.PairOrigin(node, actual, admitted)));
+            }
+
+            if (pairTarget is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && this.SharedReferenceThroughLayers(pairTarget, target, out _) is { } inner)
+            {
+                // SPEC 13.5.5.1: an inner ref layer is Copied in every case, so the result depends only on its dependencies.
+                this.implicitPairFollows[node] = admitted;
+                return new(ExpectedAdaptationKind.ReferenceRead, inner);
+            }
         }
 
         return expected.Semantics == SemanticsKind.Ref && actual.Semantics == SemanticsKind.Owner && Compatible(actual, target) && IsBarePlace(node)

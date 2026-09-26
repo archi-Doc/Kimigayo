@@ -122,8 +122,21 @@ public class PairFollowTest
         "    var d = Coin.init(5)\n    var n: i32 = 0\n    require spend(d@uniq, n@uniq) == 5 and d.n == 5 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Spent.\")\n";
 
+    // SPEC 13.5.5.1, 10.2: adapting s/(ref/V during a) to ref/V Copies the inner ref, so the result depends only on a and the
+    // slot holding the reference may change while the result is live.
+    private const string Inner =
+        "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n" +
+        "func inner<s/T>(x: s/(ref/Node during a), marker: s/T) -> ref/Node during a\n    s is value or valueborrow\n    return x\n" +
+        "public func main()\n" +
+        "    let node = Node.init(9)\n    let z: i32 = 0\n    var holder = node@ref\n" +
+        "    require inner(holder, z).weight == 9 else => $abort(\"owner\")\n" +
+        "    let kept = inner(holder@ref, z@ref)\n    holder = node@ref\n" +
+        "    var n: i32 = 0\n    require kept.weight == 9 and inner(holder@uniq, n@uniq).weight == 9 else => $abort(\"borrow\")\n" +
+        "    Console.writeLine(\"Inner.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Inner", Inner, "Inner.\n" },
         { "Spent", Spent, "Spent.\n" },
         { "Matched", Matched, "Matched.\n" },
         { "Iterated", Iterated, "Iterated.\n" },

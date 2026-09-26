@@ -602,6 +602,27 @@ public sealed partial class Binding
             return;
         }
 
+        if (pattern is { Kind: BoundTypeKind.SemanticsApplication, Components: [var target] })
+        {
+            // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow. An argument that already has U's shape is the
+            // owner case, which has no layer; otherwise the argument's outer reference is the pair layer.
+            if (target.Kind == actual.Kind && target.Semantics == actual.Semantics && ReferenceEquals(target.Symbol, actual.Symbol) && target.Components.Count == actual.Components.Count)
+            {
+                this.MatchInputOrigins(target, actual, binder, origins, inputs);
+            }
+            else if (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] })
+            {
+                if (pattern.Origin is { } slot && actual.Origin is { } layer)
+                {
+                    this.MatchInputOrigin(slot, layer, binder, origins, inputs);
+                }
+
+                this.MatchInputOrigins(target, referent, binder, origins, inputs);
+            }
+
+            return;
+        }
+
         if (pattern.Origin is { } p && actual.Origin is { } a)
         {
             this.MatchInputOrigin(p, a, binder, origins, inputs);
