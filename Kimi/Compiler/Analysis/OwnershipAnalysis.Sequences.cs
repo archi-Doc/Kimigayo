@@ -103,6 +103,13 @@ public sealed partial class OwnershipAnalysis
             return pair;
         }
 
+        if (receiver is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PairFollow } followed && this.FollowsReference(followed) &&
+            source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
+        {
+            // SPEC 13.5.5, 14.6.2: a followed reference to a collection is used through that reference, like the bare reference.
+            return this.Expression(KotoHelper.UnwrapParentheses(followed.Left), PlaceUseKind.Read);
+        }
+
         if (receiver is IndexKoto && this.compilation.Binding.TryGetAdaptation(receiver, out var view) && view.Kind == ExpectedAdaptationKind.SharedBorrow)
         {
             // SPEC 4.6.6: a view of a fixed-array element reached through a Slice or a borrow selects through the borrowed element.
@@ -125,11 +132,12 @@ public sealed partial class OwnershipAnalysis
 
         if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
-            // SPEC 4.6.1: an owned Array shares access for the operation and is never consumed by it.
+            // SPEC 4.6.1: an owned Array shares access for the operation and is never consumed by it. An owner pair layer
+            // followed explicitly locates the Place it selects (SPEC 13.5.5.1).
             var root = this.Expression(source, PlaceUseKind.Read);
             if (root >= 0)
             {
-                this.Emit(OwnershipOperationKind.LocateReceiver, receiver, root);
+                this.Emit(OwnershipOperationKind.LocateReceiver, this.SelectedPlace(receiver), root);
                 this.BeginSharedLoan(root, access: true);
             }
 
@@ -141,7 +149,7 @@ public sealed partial class OwnershipAnalysis
             var root = receiver is IdentifierNameKoto ? this.Local(receiver) : this.Expression(source);
             if (root >= 0)
             {
-                this.Emit(OwnershipOperationKind.LocateReceiver, receiver, root);
+                this.Emit(OwnershipOperationKind.LocateReceiver, this.SelectedPlace(receiver), root);
                 this.BeginSharedLoan(root, access: true);
             }
 

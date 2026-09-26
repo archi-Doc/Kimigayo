@@ -54,6 +54,13 @@ internal sealed partial class BodyLowering
             _ => null,
         };
         var receiverPlace = body.Places[plan.Receiver];
+        if (syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PairFollow } followed &&
+            !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source), syntaxReceiver))
+        {
+            // SPEC 13.5.5: a followed collection is reached through its reference, or is the operand Place for an owner layer.
+            syntaxReceiver = ElementAccess.ValueSource(followed.Left);
+        }
+
         var acquiredSource = syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow &&
             (ReferenceTypes.IsArray(receiverPlace.Type) || ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, SignatureType(this, borrow.BoundType))
             ? ElementAccess.ValueSource(borrow.Left) : syntaxReceiver;

@@ -167,8 +167,38 @@ public class PairFollowTest
         "    require weigh(q@ref, z@ref, w@uniq) == 7 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Nested receiver.\")\n";
 
+    // SPEC 13.5.5.1: explicit follows as comparison operands and Subjects, and an annotated ref/T local.
+    private const string Combined = Collection +
+        "struct Point\n    Self is Equatable\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
+        "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.x == other.x\n" +
+        "func eq<s/T>(a: s/T, b: s/T) -> bool\n    s is value or valueborrow\n    T is Equatable\n    return a@follow == b@follow\n" +
+        "func keep<s/T>(a: s/T) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let r: ref/T = a\n    return r.load()\n" +
+        "func first<s/T>(o: s/Option<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    match o@follow\n        .Some(let v) => return v\n        .None => return 0\n" +
+        "func sum<s/T>(items: s/Array<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    var total: i32 = 0\n    for x in items@follow\n        total += x\n    return total\n" +
+        "public func main()\n" +
+        "    let p = Point.init(1)\n    let z: i32 = 0\n    var w: i32 = 0\n" +
+        "    require eq(Point.init(1), Point.init(1)) and not eq(p@ref, Point.init(2)@ref) else => $abort(\"eq\")\n" +
+        "    let n = Node.init(5)\n    var m = Node.init(6)\n" +
+        "    require keep(Node.init(4)) == 4 and keep(n@ref) == 5 and keep(m@uniq) == 6 else => $abort(\"keep\")\n" +
+        "    let some = Option<i32>.Some(8)\n    var other = Option<i32>.Some(9)\n" +
+        "    require first(Option<i32>.Some(7), z) == 7 and first(some@ref, z@ref) == 8 and first(other@uniq, w@uniq) == 9 else => $abort(\"first\")\n" +
+        "    var owned: Array<i32> = [1, 2]\n    let values: Array<i32> = [3, 4]\n    var more: Array<i32> = [5, 6]\n" +
+        "    require sum(owned@move, z) == 3 and sum(values@ref, z@ref) == 7 and sum(more@uniq, w@uniq) == 11 else => $abort(\"sum\")\n" +
+        "    Console.writeLine(\"Combined.\")\n";
+
+    // SPEC 13.5.5, 14.6.2: a followed reference to an Array is iterated through that reference, shared for a bare Place.
+    private const string FollowedIteration =
+        "func total(values: ref/Array<i32>) -> i32\n    var sum: i32 = 0\n    for x in values@follow\n        sum += x\n    return sum\n" +
+        "func peek(values: uniq/Array<i32>) -> i32\n    var sum: i32 = 0\n    for x in values@follow\n        sum += x\n    return sum\n" +
+        "public func main()\n" +
+        "    var a: Array<i32> = [1, 2]\n" +
+        "    require total(a@ref) == 3 and peek(a@uniq) == 3 else => $abort(\"followed\")\n" +
+        "    Console.writeLine(\"Followed iteration.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "FollowedIteration", FollowedIteration, "Followed iteration.\n" },
+        { "Combined", Combined, "Combined.\n" },
         { "NestedReceiver", NestedReceiver, "Nested receiver.\n" },
         { "Followed", Followed, "Followed.\n" },
         { "Nested", Nested, "Nested.\n" },
@@ -262,6 +292,10 @@ public class PairFollowTest
     [InlineData("func keep<s/T, t/U>(x: s/(t/i32 during b), m: s/T, n: t/U)\n    s is value or valueborrow\n    t is valueborrow\n    let r = x@follow@ref\n    let q = x@ref")]
     [InlineData("func keep<s/T>(x: s/i32, m: s/T)\n    s is value or valueborrow\n    let r = x@ref")]
     [InlineData("func same<s/T>(c: ref/Collection<s/T>) -> bool\n    s is value or valueborrow\n    T is Equatable\n    return c[0] == c[1]")]
+    [InlineData("func eq<s/T>(a: s/T, b: s/T) -> bool\n    s is value or valueborrow\n    T is Equatable\n    return a@follow == b@follow")]
+    [InlineData("func keep<s/T>(a: s/T) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let r: ref/T = a\n    return r.load()")]
+    [InlineData("func first<s/T>(o: s/Option<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    match o@follow\n        .Some(let v) => return v\n        .None => return 0")]
+    [InlineData("func sum<s/T>(items: s/Array<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    var total: i32 = 0\n    for x in items@follow\n        total += x\n    return total")]
     public void PairPositionsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
