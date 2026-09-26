@@ -235,17 +235,17 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        foreach (var argument in type.OriginArguments)
+        for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (argument.Kind == OriginKind.Inference)
+            if (type.OriginArguments[i].Kind == OriginKind.Inference)
             {
                 return true;
             }
         }
 
-        foreach (var component in type.Components)
+        for (var i = 0; i < type.Components.Count; i++)
         {
-            if (HasInferenceOrigin(component))
+            if (HasInferenceOrigin(type.Components[i]))
             {
                 return true;
             }

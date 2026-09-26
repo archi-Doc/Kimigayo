@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -21,7 +22,15 @@ internal sealed partial class GenericStoragePlan
     [ThreadStatic]
     private static int substitutionSetLimitOverride;
 
-    private readonly Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
+    // Warm emission reuses the previous emission's templates and entries when they are unchanged, so an unchanged program
+    // rebuilds no entry, entry name or physical signature; the current and previous sets rotate at each Clear.
+    private readonly List<BoundCall> directScratch = new();
+    private readonly List<string> entryNameCache = new();
+    private Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<FunctionKoto, Template> previousTemplates = new(ReferenceEqualityComparer.Instance);
+    private List<CallEntry> entries = new();
+    private List<CallEntry> previousEntries = new();
+    private BoundType[] parameterScratch = new BoundType[8];
     private readonly Dictionary<BoundCall, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundCall, FunctionAbi> formattingCalls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionAbi, FunctionAbi> formattingWrites = new(ReferenceEqualityComparer.Instance);
@@ -39,7 +48,7 @@ internal sealed partial class GenericStoragePlan
         set => substitutionSetLimitOverride = value;
     }
 
-    internal IReadOnlyDictionary<BoundCall, CallEntry> Calls => this.calls;
+    internal Dictionary<BoundCall, CallEntry> Calls => this.calls; // The concrete type enumerates without allocation.
 
     internal IReadOnlyDictionary<BoundCall, FunctionAbi> FormattingCalls => this.formattingCalls;
 
@@ -51,7 +60,18 @@ internal sealed partial class GenericStoragePlan
 
     internal void Clear()
     {
+        if (this.templates.Count != 0)
+        {
+            (this.templates, this.previousTemplates) = (this.previousTemplates, this.templates);
+        }
+
+        if (this.entries.Count != 0)
+        {
+            (this.entries, this.previousEntries) = (this.previousEntries, this.entries);
+        }
+
         this.templates.Clear();
+        this.entries.Clear();
         this.calls.Clear();
         this.formattingCalls.Clear();
         this.formattingWrites.Clear();
@@ -83,7 +103,7 @@ internal sealed partial class GenericStoragePlan
                 return Fail("Generic generation requires a verified ordinary definition without captures or declaration attributes.", out failure);
             }
 
-            this.templates.Add(body.Function, CreateTemplate(body));
+            this.templates.Add(body.Function, this.GetTemplate(body));
         }
 
         for (var b = 0; b < compilation.Ownership.Bodies.Count; b++)
@@ -136,12 +156,15 @@ internal sealed partial class GenericStoragePlan
     private static bool IsFormattingCallback(BoundCall call)
         => Binding.HasFormattingCallback(call);
 
-    // The template records the calls its instances forward; each instance resolves them under its substitution.
-    private static Template CreateTemplate(OwnershipBody body)
+    // The template records the calls its instances forward; each instance resolves them under its substitution. The previous
+    // emission's template is reused when its body and forwarded calls are unchanged.
+    private Template GetTemplate(OwnershipBody body)
     {
-        var calls = new List<BoundCall>();
-        foreach (var operation in body.Operations)
+        var calls = this.directScratch;
+        calls.Clear();
+        for (var i = 0; i < body.Operations.Count; i++)
         {
+            var operation = body.Operations[i];
             if (operation.Kind == OwnershipOperationKind.Call && operation.Source is InvocationKoto { BoundCall: { } call } &&
                 (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || KimiLibraryCatalog.IsDictionaryOperation(call.Target.CompilerFunction) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) && !calls.Contains(call))
             {
@@ -149,7 +172,18 @@ internal sealed partial class GenericStoragePlan
             }
         }
 
-        return new(body, calls.ToArray());
+        return this.previousTemplates.TryGetValue(body.Function, out var previous) && ReferenceEquals(previous.Body, body) &&
+            previous.DirectCalls.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(calls)) ? previous : new(body, calls.ToArray());
+    }
+
+    private string EntryName(int index)
+    {
+        while (this.entryNameCache.Count <= index)
+        {
+            this.entryNameCache.Add("__kimi_generic_entry" + this.entryNameCache.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        return this.entryNameCache[index];
     }
 
     private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth = 0)
@@ -192,7 +226,13 @@ internal sealed partial class GenericStoragePlan
 
         var target = template.Body.Function;
         var binding = compilation.Binding;
-        var parameters = new BoundType[target.Parameters.Count];
+        if (this.parameterScratch.Length < target.Parameters.Count)
+        {
+            this.parameterScratch = new BoundType[Math.Max(target.Parameters.Count, this.parameterScratch.Length * 2)];
+        }
+
+        // The scratch is read only until the entry exists; nested entries prepared below reuse it.
+        var parameters = this.parameterScratch.AsSpan(0, target.Parameters.Count);
         var result = call.ReturnType;
         var noReturn = ReferenceEquals(result, BoundType.Never);
         if (FunctionAbi.GetValue(result, layouts) is null && !noReturn)
@@ -217,7 +257,7 @@ internal sealed partial class GenericStoragePlan
         foreach (var existing in this.calls.Values)
         {
             if (ReferenceEquals(existing.Template, template) && ReferenceEquals(existing.Result, result) &&
-                existing.Parameters.AsSpan().SequenceEqual(parameters) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) && existing.Arguments.AsSpan().SequenceEqual(call.TypeArguments) && existing.Lengths.AsSpan().SequenceEqual(call.LengthArguments))
+                existing.Parameters.AsSpan().SequenceEqual((ReadOnlySpan<BoundType>)parameters) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) && existing.Arguments.AsSpan().SequenceEqual(call.TypeArguments) && existing.Lengths.AsSpan().SequenceEqual(call.LengthArguments))
             {
                 entry = existing;
                 this.calls.Add(call, entry);
@@ -235,8 +275,6 @@ internal sealed partial class GenericStoragePlan
         }
 
         this.entryCounts[function] = count + 1;
-        // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
-        var abi = FunctionAbiPool.Build("__kimi_generic_entry" + this.entryNames++, result, parameters, resultSlot, layouts);
         var selected = binding.SelectSpecialization(call);
         var selectedAbi = selected is null ? null : this.functions!.GetValueOrDefault(selected);
         if (selected is not null && selectedAbi is null)
@@ -244,10 +282,14 @@ internal sealed partial class GenericStoragePlan
             return Fail("Selected specialization has no verified implementation ABI.", out failure);
         }
 
-        entry = new(template, abi, selectedAbi, parameters, result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
-        {
-            ConcreteCalls = new BoundCall[template.DirectCalls.Length],
-        };
+        // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
+        var name = this.EntryName(this.entryNames++);
+        entry = this.PreviousEntry(name, template, parameters, result, resultSlot, call, selectedAbi, layouts) ??
+            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
+            {
+                ConcreteCalls = new BoundCall[template.DirectCalls.Length],
+            };
+        this.entries.Add(entry);
         this.calls.Add(call, entry);
         if (selected is not null)
         {
@@ -264,7 +306,8 @@ internal sealed partial class GenericStoragePlan
 
         for (var i = 0; i < template.DirectCalls.Length; i++)
         {
-            var inner = binding.InstantiateForwardedCall(template.DirectCalls[i], call);
+            entry.Direct[i] = null;
+            var inner = binding.InstantiateForwardedCall(template.DirectCalls[i], call, entry.ConcreteCalls[i]);
             if (inner?.Target.Declaration is not FunctionKoto innerTarget)
             {
                 return Fail("Concrete requirement call lacks a verified implementation mapping.", out failure);
@@ -384,6 +427,23 @@ internal sealed partial class GenericStoragePlan
     }
 
     /// <summary>A universally verified generic body and the calls its instances forward.</summary>
+    // The previous emission's entry of the same name, template and substitution whose physical signature still holds.
+    private CallEntry? PreviousEntry(string name, Template template, ReadOnlySpan<BoundType> parameters, BoundType result, bool resultSlot, BoundCall call, FunctionAbi? selected, AggregateLayoutPool layouts)
+    {
+        foreach (var previous in this.previousEntries)
+        {
+            if (ReferenceEquals(previous.Abi.Name, name) && ReferenceEquals(previous.Template, template) && ReferenceEquals(previous.Result, result) &&
+                ReferenceEquals(previous.Selected, selected) && ReferenceEquals(previous.DeclaringType, call.DeclaringType) &&
+                previous.Parameters.AsSpan().SequenceEqual(parameters) && previous.Arguments.AsSpan().SequenceEqual(call.TypeArguments) &&
+                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts))
+            {
+                return previous;
+            }
+        }
+
+        return null;
+    }
+
     internal sealed record Template(OwnershipBody Body, BoundCall[] DirectCalls);
 
     /// <summary>

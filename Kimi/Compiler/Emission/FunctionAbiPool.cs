@@ -41,6 +41,40 @@ internal sealed class FunctionAbiPool
         return new FunctionAbi(name, FunctionAbi.ResultType(result, layouts)!, physical.ToArray(), ReferenceEquals(result, BoundType.Never), resultSlot);
     }
 
+    /// <summary>Whether an ABI made by <see cref="Build"/> still describes the signature under the current layouts.</summary>
+    /// <param name="abi">A previously built ABI.</param>
+    /// <param name="result">The result Type.</param>
+    /// <param name="parameters">The substituted parameter Types.</param>
+    /// <param name="resultSlot">Whether the result is returned through a slot.</param>
+    /// <param name="layouts">The current aggregate layouts.</param>
+    /// <returns>Whether <see cref="Build"/> would produce the same physical signature.</returns>
+    internal static bool Matches(FunctionAbi abi, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts)
+    {
+        if (abi.ResultSlot != resultSlot || abi.NoReturn != ReferenceEquals(result, BoundType.Never) || abi.Result != FunctionAbi.ResultType(result, layouts))
+        {
+            return false;
+        }
+
+        var physical = resultSlot ? 1 : 0;
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var shape = Shape(parameters[i], layouts);
+            if (shape.Type is null)
+            {
+                continue;
+            }
+
+            if (physical >= abi.Parameters.Length || abi.Parameters[physical].Type != shape.Type || abi.Parameters[physical].Kind != shape.Kind || abi.Parameters[physical].LogicalIndex != i)
+            {
+                return false;
+            }
+
+            physical++;
+        }
+
+        return physical == abi.Parameters.Length;
+    }
+
     internal FunctionAbi Get(int ordinal, FunctionKoto function, AggregateLayoutPool? layouts = null)
     {
         var result = function.BoundSymbol!.Type!;

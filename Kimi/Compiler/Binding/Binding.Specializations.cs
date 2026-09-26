@@ -7,6 +7,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, Specialization> specializations = new(ReferenceEqualityComparer.Instance);
+
+    // The intermediate call of a forwarded requirement call, before its witness is resolved into the destination.
+    private readonly BoundCall forwardedRequirement = new();
     // SPEC 8.8.3: selection is keyed by the original; each original lists its verified specializations.
     private readonly Dictionary<BindingSymbol, List<FunctionKoto>> specializationsByOriginal = new(ReferenceEqualityComparer.Instance);
 
@@ -15,36 +18,43 @@ public sealed partial class Binding
     internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
         => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
 
-    internal BoundCall? InstantiateForwardedCall(BoundCall inner, BoundCall outer)
+    /// <summary>Instantiates a call forwarded by a generic body under the closed context of its caller.</summary>
+    /// <param name="inner">The call in the generic body.</param>
+    /// <param name="outer">The closed call context.</param>
+    /// <param name="destination">A call to overwrite, such as the previous emission's result for the same position, or null.</param>
+    /// <returns>The concrete call, or null when the context has no complete instantiation.</returns>
+    internal BoundCall? InstantiateForwardedCall(BoundCall inner, BoundCall outer, BoundCall? destination = null)
     {
-        var types = new BoundType?[inner.TypeArguments.Length];
-        var lengths = new BoundLength?[inner.LengthArguments.Length];
-        for (var i = 0; i < types.Length; i++)
-        {
-            if (inner.TypeArguments[i] is { } type && (types[i] = this.InstantiateStorageType(type, outer)) is null)
-            {
-                return null;
-            }
-        }
-
-        for (var i = 0; i < lengths.Length; i++)
-        {
-            if (inner.LengthArguments[i] is { } length && (lengths[i] = this.SubstituteLength(length, outer.Target.Declaration, outer.LengthArguments)) is null)
-            {
-                return null;
-            }
-        }
-
-        var result = this.InstantiateStorageType(inner.ReturnType, outer);
-        var declaring = inner.DeclaringType is { } owner ? this.InstantiateStorageType(owner, outer) : null;
-        if (result is null || (inner.DeclaringType is not null && declaring is null))
-        {
-            return null;
-        }
-
+        var types = this.typeScratch.Rent(inner.TypeArguments.Length);
+        var lengths = this.lengthScratch.Rent(inner.LengthArguments.Length);
+        var origins = this.originScratch.Rent(inner.Origins.Length);
+        var inputs = this.originScratch.Rent(inner.InputOrigins.Length);
         var defaults = this.defaultArgumentScratch.Rent(inner.DefaultArguments.Length);
         try
         {
+            for (var i = 0; i < inner.TypeArguments.Length; i++)
+            {
+                if (inner.TypeArguments[i] is { } type && (types[i] = this.InstantiateStorageType(type, outer)) is null)
+                {
+                    return null;
+                }
+            }
+
+            for (var i = 0; i < inner.LengthArguments.Length; i++)
+            {
+                if (inner.LengthArguments[i] is { } length && (lengths[i] = this.SubstituteLength(length, outer.Target.Declaration, outer.LengthArguments)) is null)
+                {
+                    return null;
+                }
+            }
+
+            var result = this.InstantiateStorageType(inner.ReturnType, outer);
+            var declaring = inner.DeclaringType is { } owner ? this.InstantiateStorageType(owner, outer) : null;
+            if (result is null || (inner.DeclaringType is not null && declaring is null))
+            {
+                return null;
+            }
+
             for (var i = 0; i < inner.DefaultArguments.Length; i++)
             {
                 var omitted = inner.DefaultArguments[i];
@@ -56,40 +66,42 @@ public sealed partial class Binding
                 defaults[i] = omitted with { ParameterType = parameterType };
             }
 
-            var call = new BoundCall();
-            call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types, conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: Origins(inner.Origins), inputOrigins: Origins(inner.InputOrigins), operations: inner.ArgumentOperations, receiverOperation: inner.ReceiverOperation, lengthArguments: lengths, defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
-            call.TupleOperator = inner.TupleOperator;
-            if (inner.Target.Declaration is FunctionKoto { IsRequirement: true })
-            {
-                return this.InstantiateRequirementCall(call, outer);
-            }
+            Origins(inner.Origins, origins);
+            Origins(inner.InputOrigins, inputs);
 
-            return call;
+            // A requirement call is resolved from an intermediate call into the destination, so the two never share storage.
+            var requirement = inner.Target.Declaration is FunctionKoto { IsRequirement: true };
+            var call = requirement ? this.forwardedRequirement : destination ?? new BoundCall();
+            call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types.AsSpan(0, inner.TypeArguments.Length), conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: origins.AsSpan(0, inner.Origins.Length), inputOrigins: inputs.AsSpan(0, inner.InputOrigins.Length), operations: inner.ArgumentOperations, receiverOperation: inner.ReceiverOperation, lengthArguments: lengths.AsSpan(0, inner.LengthArguments.Length), defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
+            call.TupleOperator = inner.TupleOperator;
+            return requirement ? this.InstantiateRequirementCall(call, outer, destination) : call;
         }
         finally
         {
             this.defaultArgumentScratch.Return(defaults, clearArray: true);
+            this.originScratch.Return(inputs, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
+            this.lengthScratch.Return(lengths, clearArray: true);
+            this.typeScratch.Return(types, clearArray: true);
         }
 
-        BoundOrigin[] Origins(ReadOnlySpan<BoundOrigin> origins)
+        void Origins(ReadOnlySpan<BoundOrigin> source, Span<BoundOrigin> values)
         {
-            var values = origins.ToArray();
-            for (var i = 0; i < values.Length; i++)
+            for (var i = 0; i < source.Length; i++)
             {
-                if (values[i] is not { } origin)
+                if (source[i] is not { } origin)
                 {
+                    values[i] = null!;
                     continue;
                 }
 
                 if (outer.DeclaringType is { Symbol: { } symbol } container)
                 {
-                    origin = this.SubstituteStoredOrigin(origin, symbol.Declaration, container.Kind == BoundTypeKind.Slice && container.Origin is { } source ? [source] : (BoundOrigin[])container.OriginArguments);
+                    origin = this.SubstituteStoredOrigin(origin, symbol.Declaration, container.Kind == BoundTypeKind.Slice && container.Origin is { } source2 ? [source2] : (BoundOrigin[])container.OriginArguments);
                 }
 
                 values[i] = this.SubstituteStoredOrigin(origin, outer.Target.Declaration, outer.Origins, outer.InputOrigins);
             }
-
-            return values;
         }
     }
 

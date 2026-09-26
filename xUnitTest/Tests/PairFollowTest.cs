@@ -236,14 +236,17 @@ public class PairFollowTest
         }
     }
 
-    // PLAN P39: warm rebinding of the Program 39 shape allocates nothing (instance ownership and emission: PLAN G25).
+    // PLAN P39, G25: warm rebinding, per-instance ownership analysis and emission of the Program 39 shape allocate nothing.
     [Fact]
-    public void WarmPairLayerRebindingAllocatesNothing()
+    public void WarmPairLayerCompilationAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Collected);
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);
+            c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
+            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -253,8 +256,18 @@ public class PairFollowTest
             success &= c.Bind().IsComplete;
         }
 
+        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
+        before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 128; i++)
+        {
+            success &= c.Ownership.Analyze().IsVerified;
+            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+        }
+
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.True(success);
+        Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);
     }
 
