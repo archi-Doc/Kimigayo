@@ -1533,7 +1533,8 @@ public sealed class ControlFlowAnalysis
                 return node is LessThanLessThanEqualsKoto or GreaterThanGreaterThanEqualsKoto ? ControlFlowType.Unit : left.ExpressionType;
             }
 
-            if (left.ExpressionType is { } type)
+            // A binary that failed Binding has reported its operand mismatch; a dependent result error would repeat it.
+            if (left.ExpressionType is { } type && binary.BindingState != BindingState.Invalid)
             {
                 this.Constrain(binary.Right, type);
             }

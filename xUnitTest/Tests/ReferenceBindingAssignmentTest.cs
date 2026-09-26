@@ -21,6 +21,9 @@ public class ReferenceBindingAssignmentTest
         var c = MinimalEmissionTest.Analyze(source);
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal(code, issue.Code);
+
+        // The failed assignment reports no dependent control-flow mismatch for its right operand.
+        Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 
     [Theory]
