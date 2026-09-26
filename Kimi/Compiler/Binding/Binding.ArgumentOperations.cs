@@ -163,7 +163,7 @@ public sealed partial class Binding
             }
 
             root = KotoHelper.UnwrapParentheses(root);
-            switch (root.BoundType?.Semantics)
+            switch (ElementAccess.ReceiverType(root)?.Semantics)
             {
                 case SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc:
                     return SemanticsKind.Ref;
@@ -199,6 +199,35 @@ public sealed partial class Binding
     // so a call without applicable candidates names the required spelling (SPEC 15.1.5).
     private bool transferRequired;
     private bool lendingRequired;
+
+    // SPEC 3.4.1: a member or Tuple element selected through several reference layers is reached through one reference
+    // to the Type that declares it: shared when any layer is shared, exclusive otherwise, with the Origins of 10.2. The
+    // receiver keeps its own Type; the recorded reference is what ownership loads and generation addresses.
+    private BoundType? ReceiverThroughLayers(Koto left, BoundType? actual)
+    {
+        if (actual is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
+            actual.Components[0] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            return null;
+        }
+
+        var terminal = actual;
+        var exclusive = true;
+        while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            exclusive &= terminal.Semantics == SemanticsKind.Uniq;
+            terminal = terminal.Components[0];
+        }
+
+        if ((terminal is not { Kind: BoundTypeKind.Tuple } && !StructStorage.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual, terminal, out _) is not { } shared)
+        {
+            return null;
+        }
+
+        var reference = exclusive ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [terminal], origin: shared.Origin) : shared;
+        this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, reference);
+        return reference;
+    }
 
     // SPEC 10.2: the implicit rows of the common adaptation for a value at a fixed expected Type. Exactly one operation
     // is selected, and it is recorded once for control flow, ownership and generation. Arguments select the same rows

@@ -69,10 +69,12 @@ internal sealed partial class BodyLowering
         var pointerType = ValueType(body, address);
         // SPEC 3.5.3, 13.5.5.1: a load through a safe reference copies its referent layer by layer, and a
         // referent write stores through a uniq reference; both use the reference value as the address.
-        // SPEC 10.2: a stored ref or uniq reference may be loaded as one shared reference to the same referent.
+        // SPEC 10.2, 3.4.1: a stored ref or uniq reference may be loaded as one reference to the same referent, shared,
+        // or exclusive when the stored reference is exclusive; ownership has checked the combined Origin and capability.
         var sharedRead = !store && pointerType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             pointerType.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } storedReference &&
-            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && ReferenceEquals(storedReference.Components[0], type.Components[0]);
+            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+            (type.Semantics == SemanticsKind.Ref || storedReference.Semantics == SemanticsKind.Uniq) && ReferenceEquals(storedReference.Components[0], type.Components[0]);
         var referent = pointerType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             (ReferenceEquals(pointerType.Components[0], type) || sharedRead) &&
             (store ? pointerType.Semantics == SemanticsKind.Uniq && ReferenceEquals(sourceType, pointerType) : place.Acquisition == AcquisitionKind.Copy);

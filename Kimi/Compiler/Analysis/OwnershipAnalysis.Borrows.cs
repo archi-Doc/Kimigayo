@@ -178,7 +178,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        if (root.BoundType?.Semantics != SemanticsKind.Uniq ||
+        if (ElementAccess.ReceiverType(root)?.Semantics != SemanticsKind.Uniq ||
             !ReferenceTypes.IsValue(field.BoundType))
         {
             this.Unsupported(assignment);
@@ -201,7 +201,8 @@ public sealed partial class OwnershipAnalysis
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        if (root.BoundType?.Semantics != SemanticsKind.Uniq || field.BoundType?.IsNumeric != true || operation == KotoKind.Invalid)
+        var receiverType = ElementAccess.ReceiverType(root);
+        if (receiverType?.Semantics != SemanticsKind.Uniq || field.BoundType?.IsNumeric != true || operation == KotoKind.Invalid)
         {
             this.Unsupported(source);
             return -1;
@@ -210,7 +211,7 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.7.2: secure the RHS, then the receiver and old value. Keep the original SSA receiver
         // even if later evaluation reads the same Place.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
-        var receiver = right < 0 ? -1 : this.BorrowStruct(root, root.BoundType!);
+        var receiver = right < 0 ? -1 : this.BorrowStruct(root, receiverType);
         var receiverValue = this.Value(receiver);
         var previous = -1;
         if (receiver >= 0)

@@ -545,9 +545,16 @@ public sealed partial class OwnershipAnalysis
                 return this.LoadReferent(node);
             }
 
+            // A reference read also serves a receiver that is read for member selection (SPEC 3.4.1); a borrow
+            // adaptation is formed only where the value is acquired.
+            if (adaptation.Kind == ExpectedAdaptationKind.ReferenceRead && acquisition is null && use is PlaceUseKind.Consume or PlaceUseKind.Read)
+            {
+                return this.ReadReference(node, adaptation.Type);
+            }
+
             if (use == PlaceUseKind.Consume && acquisition is null)
             {
-                return adaptation.Kind == ExpectedAdaptationKind.ReferenceRead ? this.ReadReference(node, adaptation.Type) : this.BorrowStruct(node, adaptation.Type);
+                return this.BorrowStruct(node, adaptation.Type);
             }
         }
 

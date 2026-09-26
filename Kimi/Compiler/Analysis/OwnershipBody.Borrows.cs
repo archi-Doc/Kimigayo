@@ -805,9 +805,27 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
-            if (node.Kind == OwnershipValueKind.Sequence && node.Count == 1 && operation.Kind == OwnershipOperationKind.Produce)
+            if (node.Kind == OwnershipValueKind.Sequence && operation.Kind == OwnershipOperationKind.Produce)
             {
-                // SPEC 14.6.2, 4.6: an element borrowed or read through a sequence receiver descends from that receiver.
+                // SPEC 14.6.2, 4.6: an element borrowed or read through a sequence descends from its receiver: a borrowed
+                // receiver value, or the owned receiver Place of a view such as the implicit Slice of a loop.
+                if (this.Sequences[(int)node.Constant].Receiver == place)
+                {
+                    return true;
+                }
+
+                if (node.Count != 1)
+                {
+                    return false;
+                }
+
+                value = this.ValueOperands[node.Start];
+                continue;
+            }
+
+            if (node.Kind == OwnershipValueKind.PointerLoad && node.Count == 1)
+            {
+                // SPEC 3.4.1, 10.2: a reference loaded through another reference descends from that reference.
                 value = this.ValueOperands[node.Start];
                 continue;
             }

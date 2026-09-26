@@ -110,6 +110,15 @@ internal static class ElementAccess
         return false;
     }
 
+    /// <summary>
+    /// SPEC 3.4.1: the Type through which a member or Tuple element of <paramref name="left"/> is selected. Through several
+    /// reference layers it is the one reference to the declaring Type that Binding recorded as the receiver's adaptation.
+    /// </summary>
+    /// <param name="left">The receiver expression.</param>
+    /// <returns>The receiver's selection Type.</returns>
+    internal static BoundType? ReceiverType(Koto left)
+        => left.CodeContext.Compilation.Binding.TryGetAdaptation(left, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.ReferenceRead ? adaptation.Type : left.BoundType;
+
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the
     // reference-typed base, or null for other forms.
@@ -122,7 +131,8 @@ internal static class ElementAccess
                 return null;
             }
 
-            if (ReferenceTypes.IsStruct(field.Left.BoundType) || ReferenceTypes.IsTuple(field.Left.BoundType) || ObjectTypes.IsBorrow(field.Left.BoundType))
+            var receiver = ReceiverType(field.Left);
+            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || ObjectTypes.IsBorrow(receiver))
             {
                 return field.Left;
             }
@@ -169,7 +179,7 @@ internal static class ElementAccess
     // The stored position of one path level and the aggregate that contains it.
     internal static int PathSelector(BinaryKoto field, out BoundType? owner, out BoundType? element)
     {
-        var left = field.Left.BoundType;
+        var left = ReceiverType(field.Left);
         element = null;
         if (ReferenceTypes.IsTuple(left))
         {
@@ -200,11 +210,12 @@ internal static class ElementAccess
     {
         element = null;
         position = -1;
-        if (ReferenceTypes.IsTuple(source.Left.BoundType) && source is MemberAccessKoto { Right: NumberLiteralKoto number } &&
-            number.IsInteger && number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)source.Left.BoundType!.Components[0].Components.Count)
+        var receiver = ReceiverType(source.Left);
+        if (ReferenceTypes.IsTuple(receiver) && source is MemberAccessKoto { Right: NumberLiteralKoto number } &&
+            number.IsInteger && number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)receiver!.Components[0].Components.Count)
         {
             position = (int)magnitude;
-            element = source.Left.BoundType.Components[0].Components[position];
+            element = receiver.Components[0].Components[position];
             return true;
         }
 

@@ -62,15 +62,21 @@ public sealed partial class Binding
             };
         }
 
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(nested.Left.BoundType) &&
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.ReceiverType(nested.Left)) &&
             ElementAccess.BorrowedPathRoot(nested) is { } root)
         {
-            return root.BoundType!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
+            return ElementAccess.ReceiverType(root)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
         }
 
-        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType))
+        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(ElementAccess.ReceiverType(tupleElement.Left)))
         {
-            return tupleElement.Left.BoundType!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
+            return ElementAccess.ReceiverType(tupleElement.Left)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
+        }
+
+        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
+            node.CodeContext.Compilation.Binding.TryGetAdaptation(throughLayers.Left, out var receiver) && receiver.Kind == ExpectedAdaptationKind.ReferenceRead)
+        {
+            return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.1: a shared layer bounds the path to shared access.
         }
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field && StructStorage.IsStruct(field.Left.BoundType) &&

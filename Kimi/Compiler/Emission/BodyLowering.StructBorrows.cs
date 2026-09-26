@@ -150,7 +150,7 @@ internal sealed partial class BodyLowering
                 ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
             {
                 if (!this.TryBorrowedPathOffset(projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
-                    !ReferenceEquals(type, SignatureType(this, projectedRoot.BoundType)) ||
+                    !ReferenceEquals(type, SignatureType(this, ElementAccess.ReceiverType(projectedRoot))) ||
                     !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
                     !ReferenceEquals(SignatureType(this, projected.BoundType), output.Components[0]) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
@@ -259,7 +259,7 @@ internal sealed partial class BodyLowering
         // without interpreting padding as typed values.
         var handle = fieldType is not null ? this.aggregateLayouts.Get(fieldType) : null;
         if (field is null || root is null ||
-            (!ReferenceEquals(ValueType(body, receiver), SignatureType(this, root.BoundType)) &&
+            (!ReferenceEquals(ValueType(body, receiver), SignatureType(this, ElementAccess.ReceiverType(root))) &&
                 !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !(ReferenceTypes.IsValue(fieldType) || ReferenceEquals(fieldType, BoundType.Unit) || handle is not null) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
@@ -300,7 +300,7 @@ internal sealed partial class BodyLowering
         else
         {
             var input = Input(body, id, 1);
-            if (handle is not null || operation.Kind != OwnershipOperationKind.WriteBorrowedField || SignatureType(this, root.BoundType)!.Semantics != SemanticsKind.Uniq ||
+            if (handle is not null || operation.Kind != OwnershipOperationKind.WriteBorrowedField || SignatureType(this, ElementAccess.ReceiverType(root))!.Semantics != SemanticsKind.Uniq ||
                 !ReferenceEquals(ValueType(body, input), fieldType) || (body.IsReachable(id) && !this.Dominates(input, id)))
             {
                 return Fail("Borrowed field write requires exclusive access and a matching secured value.", out failure);
@@ -326,7 +326,7 @@ internal sealed partial class BodyLowering
     private bool TryBorrowedPathOffset(BinaryKoto field, Koto root, out int offset)
     {
         // Object views point at the allocation header; ordinary borrows point at payload storage.
-        offset = ObjectTypes.IsBorrow(SignatureType(this, root.BoundType)) ? 16 : 0;
+        offset = ObjectTypes.IsBorrow(SignatureType(this, ElementAccess.ReceiverType(root))) ? 16 : 0;
         for (var level = field; ;)
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);
