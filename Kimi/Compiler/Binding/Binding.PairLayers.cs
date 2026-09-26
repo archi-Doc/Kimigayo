@@ -108,8 +108,27 @@ public sealed partial class Binding
         }
 
         this.implicitPairFollows[source] = admitted;
-        var origin = (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(source) : actual.Origin ?? this.PlaceOrigin(source);
-        adapted = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [target], origin: origin);
+        adapted = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [target], origin: this.PairOrigin(source, actual, admitted));
         return true;
     }
+
+    // SPEC 15.1.6, 14.6.2: a bare Subject Place that is a qualifying pair layer is followed like a borrow value. The Subject
+    // is a reference to the pair target in the weakest mode over the admitted cases: Shared unless only uniq is admitted,
+    // and Shared on any shared path.
+    private BoundType? PairSubject(Koto node, BoundType? type, BindingScope scope)
+    {
+        if (type is null || !IsBarePlace(node) || (this.FollowablePair(type, scope, out var target) is var admitted && admitted == SemanticsMask.None))
+        {
+            return null;
+        }
+
+        this.implicitPairFollows[node] = admitted;
+        var exclusive = admitted == SemanticsMask.Uniq && !ReachedThroughShared(node);
+        return this.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, target, this.PairOrigin(node, type, admitted));
+    }
+
+    // SPEC 13.5.5.1: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow) and
+    // otherwise on the stored reference (Reborrow).
+    private BoundOrigin PairOrigin(Koto node, BoundType pair, SemanticsMask admitted)
+        => (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : pair.Origin ?? this.PlaceOrigin(node);
 }

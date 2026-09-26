@@ -1217,8 +1217,13 @@ public sealed partial class Binding
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
-            ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length && arguments[selectorSlot] is { } whole)
+            ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length)
         {
+            if (arguments[selectorSlot] is not { } whole)
+            {
+                return true; // SPEC 10.2: solved together; the substituted parameter is checked once another argument fixes s/T.
+            }
+
             if (whole.Semantics == SemanticsKind.Owner)
             {
                 return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins);

@@ -89,6 +89,20 @@ public sealed partial class OwnershipAnalysis
     {
         projection = -1;
         var receiver = KotoHelper.UnwrapParentheses(source);
+        if (this.compilation.Binding.ImplicitPairAdmitted(receiver) != SemanticsMask.None)
+        {
+            // SPEC 14.6.2, 13.5.5.1: a pair Subject in a ref or uniq instance is read as the reference it holds; the universal
+            // verification and an owner instance share the Place itself for the loop.
+            var pair = this.Expression(source, PlaceUseKind.Read);
+            if (pair >= 0 && !ReferenceTypes.IsBorrow(this.body.Places[pair].Type))
+            {
+                this.Emit(OwnershipOperationKind.LocateReceiver, receiver, pair);
+                this.BeginSharedLoan(pair, access: true);
+            }
+
+            return pair;
+        }
+
         if (receiver is IndexKoto && this.compilation.Binding.TryGetAdaptation(receiver, out var view) && view.Kind == ExpectedAdaptationKind.SharedBorrow)
         {
             // SPEC 4.6.6: a view of a fixed-array element reached through a Slice or a borrow selects through the borrowed element.

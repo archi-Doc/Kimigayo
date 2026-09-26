@@ -438,8 +438,7 @@ public sealed partial class Binding
         {
             // SPEC 10.2, 13.5.5.1: one shared reference through the pair layer; each admitted case keeps its own dependencies.
             this.implicitPairFollows[node] = admitted;
-            var origin = (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : actual.Origin ?? this.PlaceOrigin(node);
-            return new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [pairTarget], origin: origin));
+            return new(ExpectedAdaptationKind.SharedBorrow, this.SharedReference(pairTarget, this.PairOrigin(node, actual, admitted)));
         }
 
         return expected.Semantics == SemanticsKind.Ref && actual.Semantics == SemanticsKind.Owner && Compatible(actual, target) && IsBarePlace(node)

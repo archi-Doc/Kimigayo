@@ -52,6 +52,8 @@ public sealed partial class Binding
     {
         var iterable = this.BindNode(source.Iterable, scope);
         source.SharedIterable = null;
+        var followed = this.PairSubject(source.Iterable, iterable, scope);
+        iterable = followed ?? iterable;
         source.Mode = SubjectModeOf(source.Iterable, iterable);
         if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Slice } or { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
         {
@@ -71,9 +73,10 @@ public sealed partial class Binding
             // reborrowed; both iterate as the Slice values[..], yielding ref/T during source. values@uniq and an
             // exclusive borrow value lend the array exclusively and yield uniq/T; values@move or a temporary
             // consumes the array instead.
+            var origin = followed?.Origin ?? this.PlaceOrigin(source.Iterable);
             source.SharedIterable = exclusive
-                ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [sequence], origin: this.PlaceOrigin(source.Iterable))
-                : this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: this.PlaceOrigin(source.Iterable));
+                ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [sequence], origin: origin)
+                : this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: origin);
         }
 
         var dictionary = ReferenceTypes.IsDictionary(iterable) ? iterable!.Components[0] : iterable?.Kind == BoundTypeKind.Dictionary ? iterable : null;

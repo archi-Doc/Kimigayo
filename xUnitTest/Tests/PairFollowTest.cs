@@ -87,8 +87,20 @@ public class PairFollowTest
         "    require show(Node.init(0), 4) == 8 and show(a@ref, three@ref) == 6 else => $abort(\"show\")\n" +
         "    Console.writeLine(\"Positions.\")\n";
 
+    // SPEC 15.1.6, 14.6.2: a pair Subject iterates in the weakest mode over the admitted cases.
+    private const string Iterated =
+        "func sum<s/T>(items: s/Array<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    var total: i32 = 0\n    for x in items\n        total += x\n    return total\n" +
+        "func bump<s/T>(items: s/Array<i32>, marker: s/T)\n    s is uniq\n    for x in items\n        x@follow += 1\n" +
+        "public func main()\n" +
+        "    var owned: Array<i32> = [1, 2, 3]\n    let z: i32 = 0\n    require sum(owned@move, z) == 6 else => $abort(\"owner\")\n" +
+        "    let values: Array<i32> = [4, 5]\n    let m: i32 = 0\n    require sum(values@ref, m@ref) == 9 else => $abort(\"ref\")\n" +
+        "    var more: Array<i32> = [7, 8]\n    var n: i32 = 0\n    bump(more@uniq, n@uniq)\n" +
+        "    require sum(more@uniq, n@uniq) == 17 and more[1] == 9 else => $abort(\"uniq\")\n" +
+        "    Console.writeLine(\"Iterated.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Iterated", Iterated, "Iterated.\n" },
         { "Positions", Positions, "Positions.\n" },
         { "Explicit", Explicit, "Owned followed.\nShared followed.\nExclusive followed.\n" },
         { "Scaled", Scaled, "Scaled.\n" },
@@ -167,10 +179,24 @@ public class PairFollowTest
     [InlineData("func equal<s/T>(a: s/T, b: s/T) -> bool\n    s is value or valueborrow\n    T is Equatable\n    return a == b")]
     [InlineData("func peek<s/T>(c: ref/Collection<s/T>, i: isize) -> ref/T during c\n    s is value or valueborrow\n    return c[i]")]
     [InlineData("func twice(n: ref/i32) -> i32 => n * 2\nfunc show<s/T>(item: s/T, factor: s/i32) -> i32\n    s is value or valueborrow\n    return twice(factor)")]
+    [InlineData("func sum<s/T>(items: s/Array<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    var total: i32 = 0\n    for x in items\n        total += x\n    return total")]
+    [InlineData("contract Bump\n    func bump(self: uniq/Self)\nstruct Cell\n    Self is Bump\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func bump(self: uniq/Self) => self.n += 1\nfunc bumpAll<s/T>(c: uniq/Collection<s/T>)\n    s is owner or uniq\n    T is Bump\n    for i in c.indices\n        c[i].bump()")]
+    [InlineData("contract Bump\n    func bump(self: uniq/Self)\nfunc bumpOne<s/T>(item: s/T)\n    s is uniq\n    T is Bump\n    item.bump()")]
+    [InlineData("func sumAll<s/T>(c: ref/Collection<s/T>) -> i32\n    s is value or valueborrow\n    T is Loaded\n    var total: i32 = 0\n    for i in c.indices\n        match c[i].load()\n            let w => total += w\n    return total")]
+    [InlineData("func bump<s/T>(items: s/Array<i32>, marker: s/T)\n    s is uniq\n    for x in items\n        x@follow += 1")]
     public void PairPositionsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 10.2: s/U parameters are solved together with the other arguments, whatever their order, and must agree on s.
+    [Fact]
+    public void PairApplicationsAgreeOnSemantics()
+    {
+        var c = MinimalEmissionTest.Analyze("func sum<s/T>(items: s/Array<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0\n" +
+            "public func main()\n    let values: Array<i32> = [4, 5]\n    var m: i32 = 0\n    let r = sum(values@ref, m@uniq)");
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 
     // SPEC 3.5.3, 13.5.5.1: without s is value or valueborrow the pair layer is not followed, so no Scalar is read.
