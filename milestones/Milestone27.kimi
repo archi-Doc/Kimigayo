@@ -7,6 +7,29 @@ func endBound() -> Index
     Console.writeLine("End evaluated.")
     return ^1
 
+// A user Type publishes its stored Places through the Indexable Contracts (SPEC 4.6.9, 7.1.1).
+struct Pair<T>
+    Self is UniqIndexable<isize>
+    associate Element is T
+    var first: T
+    var second: T
+    public init(first: T, second: T)
+        self.first = first@move
+        self.second = second@move
+    public func index(self, key: ref/isize) -> place ref/T during self
+        if key == 0 => return self.first
+        return self.second
+    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self
+        if key == 0 => return self.first
+        return self.second
+
+// A generic Constraint forwards a Place result without acquiring a value.
+func firstPlace<S>(items: ref/S) -> place ref/S.Element during items
+    S is Indexable<isize>
+    return items[0]
+
+func show(text: ref/string) => Console.writeLine(text)
+
 func tail<T>(values: Slice<T>) -> Slice<T>{result}
     origin result.source == values.source
     return values[1..]
@@ -47,3 +70,11 @@ public func main()
         exit to reference: handles[0] // Copy the inner reference, not a reference to the handle.
     require copied == 42 else => $abort("Element Origin was lost")
     Console.writeLine("Slice Origins preserved.")
+
+    var names = Pair<string>.init("Pair first.", "Pair second.")
+    show(names[1]) // index selects the second Place; the ref/string parameter borrows it.
+    let retained = names[0]@ref // One search keeps one reference.
+    var counts = Pair<i32>.init(1, 2)
+    counts[0] = counts[1] + 40 // indexUniq replaces the first value in place.
+    require counts[0] == 42 and firstPlace(counts) == 42 and firstPlace(names) == retained else => $abort("Place checks failed")
+    Console.writeLine("Pair replaced.")

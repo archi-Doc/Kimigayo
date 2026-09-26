@@ -1461,11 +1461,12 @@ owner. A `Slice<ref/i32>` read copies the inner reference with its original
 dependency, distinct from the Slice's backing-slot dependency.
 
 `Pair<T>` publishes its two stored Places through `Indexable<isize>` and
-`UniqIndexable<isize>` (§4.6.9, §7.1.1): `pair[1]` at a `ref/string` parameter
-selects `index` and borrows the second Place; `pair[0] = ...` selects `indexUniq`
-and replaces the first value in place; `pair[0]@ref` keeps one reference from one
-search; and the generic `firstPlace` forwards a Place result through the Contract
-requirement without acquiring a value.
+`UniqIndexable<isize>` (§4.6.9, §7.1.1): `names[1]` at a `ref/string` parameter
+selects `index` and borrows the second Place; `counts[0] = ...` selects `indexUniq`
+and replaces the first Copy value in place (a Non-Copy replacement through a Place
+shares the reference-write boundary, STATUS); `names[0]@ref` keeps one reference
+from one search; and the generic `firstPlace` forwards a Place result through the
+Contract requirement without acquiring a value, for `Pair<i32>` and `Pair<string>`.
 
 Expected stdout (specification-derived; native execution is blocked):
 
