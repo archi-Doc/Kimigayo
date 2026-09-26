@@ -679,6 +679,13 @@ public sealed partial class Binding
 
         var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
         symbol.Resolving = false;
+        if (declared is null && inferred is not null && this.originDeclarations.TryGetValue(variable, out var initializerOrigins) &&
+            initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
+        {
+            // SPEC 15.4.4: Origins omitted in the initializer's own Type expressions are resolved into the local's Type.
+            inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, scope);
+        }
+
         if (symbol.Kind == BindingSymbolKind.Local && declared is not null && inferred is not null)
         {
             // Select the Copy-read shape before inferring omitted Origins. Comparing the
@@ -887,7 +894,7 @@ public sealed partial class Binding
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
-        if (expected is not null && actual is not null && !Compatible(actual, expected))
+        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node))
         {
             Fail(node, BindingFailure.TypeMismatch);
         }

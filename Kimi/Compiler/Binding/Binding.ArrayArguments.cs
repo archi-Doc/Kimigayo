@@ -220,6 +220,6 @@ public sealed partial class Binding
         }
 
         return source.BoundType is not { } actual ? CandidateApplicability.Pending :
-            FitsType(actual, expected) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+            this.FitsTypeAt(actual, expected, source) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
     }
 }

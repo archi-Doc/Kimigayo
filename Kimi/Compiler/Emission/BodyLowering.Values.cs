@@ -221,8 +221,38 @@ internal sealed partial class BodyLowering
 
     // Origin restriction changes lifetime contracts, never storage, including nested
     // reference components. Require both physical agreement and the semantic proof.
+    // A value fits its destination's storage and Origin contract. An Origin omitted in an initializer's Type expression is
+    // inferred after that Type was formed (SPEC 15.4.4); Binding proves its relations at the BodyOrigins deadline, so its
+    // unresolved atom is not compared here.
     private static bool FitsValue(BoundType? source, BoundType? target)
-        => ReferenceEquals(source, target) || (ReferenceTypes.StorageMatches(source, target) && Binding.FitsType(source!, target!));
+        => ReferenceEquals(source, target) ||
+            (ReferenceTypes.StorageMatches(source, target) && (Binding.FitsType(source!, target!) || HasInferenceOrigin(source!) || HasInferenceOrigin(target!)));
+
+    private static bool HasInferenceOrigin(BoundType type)
+    {
+        if (type.Origin?.Kind == OriginKind.Inference)
+        {
+            return true;
+        }
+
+        foreach (var argument in type.OriginArguments)
+        {
+            if (argument.Kind == OriginKind.Inference)
+            {
+                return true;
+            }
+        }
+
+        foreach (var component in type.Components)
+        {
+            if (HasInferenceOrigin(component))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :

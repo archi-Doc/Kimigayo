@@ -36,6 +36,21 @@ public sealed partial class Binding
         return false;
     }
 
+    // The still-open Origin declaration of the local whose initializer contains an inference atom's Type expression.
+    private OriginDeclaration? OpenInitializerInference(BoundOrigin atom)
+    {
+        for (var node = atom.Binder; node is not null; node = node.Parent)
+        {
+            if (node is VariableKoto { TypeKoto: null, InitializerKoto: { } initializer } variable && IsWithin(atom.Binder!, initializer))
+            {
+                var declaration = this.OriginDeclarationFor(variable);
+                return declaration.State < 2 ? declaration : null;
+            }
+        }
+
+        return null;
+    }
+
     private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use)
     {
         for (var node = use; node is not null; node = node.Parent)
@@ -55,6 +70,16 @@ public sealed partial class Binding
         shorter = this.OriginAtUse(shorter, use);
         if (OriginOutlives(longer, shorter))
         {
+            return true;
+        }
+
+        if (shorter.Kind == OriginKind.Inference && this.OpenInitializerInference(shorter) is { } pending)
+        {
+            // SPEC 15.4.4: an Origin omitted in a local's initializer Type expression, such as a construction qualifier, is
+            // inferred from the values fitted to it: each one bounds it, and the relation is proven again once the local's
+            // initializer has been bound and the Origin resolved.
+            pending.Replacements[shorter] = pending.Replacements.TryGetValue(shorter, out var previous) ? this.Meet(previous, longer) : longer;
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, longer, shorter));
             return true;
         }
 

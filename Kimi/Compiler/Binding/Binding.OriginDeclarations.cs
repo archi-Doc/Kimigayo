@@ -651,6 +651,23 @@ public sealed partial class Binding
         }
     }
 
+    private BoundType ResolveInitializerOrigins(BoundType type, OriginDeclaration declaration, BindingScope scope)
+    {
+        declaration.Scope = scope;
+        declaration.State = 3;
+        for (var i = this.obligations.Count - 1; i >= 0; i--)
+        {
+            var obligation = this.obligations[i];
+            if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending && declaration.Replacements.ContainsKey(pending))
+            {
+                this.obligationSet.Remove(obligation);
+                this.obligations.RemoveAt(i);
+            }
+        }
+
+        return this.RewriteOrigins(type, declaration);
+    }
+
     private BoundType InferLocalOrigins(BoundType declared, BoundType actual, VariableKoto owner, BindingScope scope)
     {
         if (!declared.CarriesOrigin || !actual.CarriesOrigin)

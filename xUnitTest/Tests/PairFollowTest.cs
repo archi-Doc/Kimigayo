@@ -37,22 +37,21 @@ public class PairFollowTest
         "    Console.writeLine(\"Exclusive followed.\")\n";
 
     private const string Collected = Collection +
-        "func wrap<E>(items: Array<E>) -> Collection<E>\n    return Collection<E>.init(items@move)\n" +
         "func view<s/T>(c: ref/Collection<s/T>, i: isize) -> ref/T during c\n    s is value or valueborrow\n    return c[i]@follow@ref\n" +
         "func viewUniq<s/T>(c: uniq/Collection<s/T>, i: isize) -> uniq/T during c\n    s is owner or uniq\n    return c[i]@follow@uniq\n" +
         "func total<s/T>(c: ref/Collection<s/T>) -> i32\n    s is value or valueborrow\n    T is Loaded\n    var sum: i32 = 0\n    for i in c.indices\n        sum += c[i].load()\n    return sum\n" +
         "public func main()\n" +
-        "    var owned = wrap([Node.init(1), Node.init(2)])\n" +
+        "    var owned = Collection<Node>.init([Node.init(1), Node.init(2)])\n" +
         "    require view(owned, 0).weight == 1 else => $abort(\"owned view\")\n" +
         "    let slot = viewUniq(owned@uniq, 1)\n    slot.weight = 5\n" +
         "    require owned[1].weight == 5 and total(owned) == 6 else => $abort(\"owned\")\n" +
         "    Console.writeLine(\"Owned elements total 6.\")\n" +
         "    let a = Node.init(10)\n    let b = Node.init(20)\n" +
-        "    let shared: Array<ref/Node> = [a@ref, b@ref]\n    let refs = wrap(shared@move)\n" +
+        "    let refs = Collection<ref/Node>.init([a@ref, b@ref])\n" +
         "    require view(refs, 1).weight == 20 and total(refs) == 30 else => $abort(\"shared\")\n" +
         "    Console.writeLine(\"Borrowed elements total 30.\")\n" +
         "    var c = Node.init(30)\n    var d = Node.init(40)\n" +
-        "    let exclusive: Array<uniq/Node> = [c@uniq, d@uniq]\n    var uniqs = wrap(exclusive@move)\n" +
+        "    var uniqs = Collection<uniq/Node>.init([c@uniq, d@uniq])\n" +
         "    let target = viewUniq(uniqs@uniq, 0)\n    target.weight = 33\n" +
         "    require view(uniqs, 1).weight == 40 and total(uniqs) == 73 else => $abort(\"exclusive\")\n" +
         "    Console.writeLine(\"Exclusive elements total 73.\")\n";
@@ -110,6 +109,24 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Theory]
+    [InlineData("public func main()\n    let a = Node.init(10)\n    let b = Node.init(20)\n    let refs = Collection<ref/Node>.init([a@ref, b@ref])\n    let n = refs.indices.length")]
+    [InlineData("public func main()\n    var c = Node.init(30)\n    var d = Node.init(40)\n    var uniqs = Collection<uniq/Node>.init([c@uniq, d@uniq])\n    let n = uniqs.indices.length")]
+    [InlineData("public func main()\n    var owned = Collection<Node>.init([Node.init(1), Node.init(2)])\n    require owned[1].weight == 2 else => $abort(\"x\")")]
+    public void ConstructionQualifierOriginsAreInferred(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(Collection + source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 15.4.4: an omitted Origin that nothing constrains is not invented; the local is rejected.
+    [Fact]
+    public void UnconstrainedQualifierOriginIsRejected()
+    {
+        var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let refs = Collection<ref/Node>.init([])\n    let n = refs.indices.length");
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
