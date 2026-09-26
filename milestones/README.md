@@ -42,7 +42,7 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
 | [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
 | [Milestone27](Milestone27.kimi) | Saved Index/Range resolution, nested/sub-Slice views, splitting, empty views and backing/element Origins |
-| [Milestone28](Milestone28.kimi) | User Iterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
+| [Milestone28](Milestone28.kimi) | User IntoIterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
 | [Milestone30](Milestone30.kimi) | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
 | [Milestone31](Milestone31.kimi) | Dictionary duplicate rejection, retained equal keys, replacement/removal, insertion-order iteration and exact entry cleanup |
@@ -67,6 +67,18 @@ unreached parts of a pending program.
 
 Affected programs now use postfix `during` annotations with the same intended behavior.
 An unchanged target run compiles the checked-in program without test-specific edits.
+A specification change may require a completed program to be re-spelled. The program
+keeps DONE when its unchanged target run and harness pass on the re-spelled source, and
+its row names the re-spelling. The 2026-09-25 place, borrowing and iteration change
+re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33:
+
+| Program | Re-spelling | Specification |
+| --- | --- | --- |
+| 13 | `associate Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1 |
+| 14 | `accumulator@deref@uniq` replaces `accumulator@uniq/Pipeline.Accumulator` | SPEC 13.5.5.2 |
+| 16 | `target@deref@uniq` replaces `target@uniq/Cell` | SPEC 13.5.5.2 |
+| 28 | `IntoIterable` with `IteratorType` and `intoIterator` replaces `Iterable`; `Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1, 22.1.2.2 |
+| 33 | `@deref@ref`/`@deref@uniq` payload borrows; `owner@move@obj/Base` transfers the bare Place | SPEC 3.5, 13.5.5.2, 13.5.7 |
 
 | Program | Created | Binding | Build | Tests | Implementation | Evidence / boundary |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -82,10 +94,10 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 10 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 11 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 12 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 13 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
-| 14 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 13 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25: `Iterator.Item`), O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
+| 14 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 (re-spelled 2026-09-25: `@deref@uniq` reborrows) |
 | 15 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
-| 16 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
+| 16 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25: `@deref@uniq` reborrow), O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
 | 17 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
 | 18 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
 | 19 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program19-completion) |
@@ -97,12 +109,12 @@ An unchanged target run compiles the checked-in program without test-specific ed
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
 | 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
 | 27 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnresolvedBinding_Kd` at `Range`; general Slice/Range support remains. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
-| 28 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | `Kimi.Iterable` is declared in source, so `Drain<T>`, `Batch<T>`, `Cursor<T>` and `View<T>` now bind, including the generic Slice element borrow `self.values[index]@ref`; Binding first reports `UnresolvedBinding_Kd` at `item.id` because `for item in batch@move` over a user `IntoIterable` conformance is not yet bound. User `for` protocols, Origin-related associated iterators and generic iterator-state ownership remain. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
+| 28 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Re-spelled 2026-09-25 for `Kimi.IntoIterable`. `Drain<T>`, `Batch<T>`, `Cursor<T>` and `View<T>` bind, including the generic Slice element borrow `self.values[index]@ref`; Binding first reports `UnresolvedBinding_Kd` at `item.id` because `for item in batch@move` over a user `IntoIterable` conformance is not yet bound. User `for` protocols, Origin-related associated iterators and generic iterator-state ownership remain. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
 | 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (123 checks per configuration); shared string iteration is a positive case, while zero-sized Array elements retain an ownership-stage unsupported diagnostic. Allocation/cost probes pass. |
 | 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../PLAN_HISTORY.md#review-remediation). |
 | 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; public generic API/capacity source migration, nonempty runtime literals, borrowed indexing and nested owning storage remain. [Evidence](../PLAN_HISTORY.md#p31-kimigayo-library). |
 | 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
-| 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
+| 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 (`@deref` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
 | 34 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
 | 35 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
 | 36 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
