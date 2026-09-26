@@ -274,10 +274,6 @@ public sealed class FunctionKoto : DeclarationKoto
         return false;
     }
 
-    internal bool HasGenericDeclaringType => this.DeclaringContainer is StructKoto or EnumKoto && this.DeclaringContainer.GenericParameterNodes.Count > 0;
-
-    internal DeclarationContainerKoto? DeclaringContainer { get; set; }
-
     /// <summary>Gets the generic parameters.</summary>
     public IReadOnlyList<TypeKoto> GenericArguments
         => (IReadOnlyList<TypeKoto>?)this.genericArguments ?? [];
@@ -288,6 +284,10 @@ public sealed class FunctionKoto : DeclarationKoto
 
     /// <summary>Gets a value indicating whether conditional attributes exclude this function.</summary>
     public bool IsExcluded { get; }
+
+    internal bool HasGenericDeclaringType => this.DeclaringContainer is StructKoto or EnumKoto && this.DeclaringContainer.GenericParameterNodes.Count > 0;
+
+    internal DeclarationContainerKoto? DeclaringContainer { get; set; }
 
     /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

@@ -26,17 +26,17 @@ internal sealed partial class GenericStoragePlan
     // rebuilds no entry, entry name or physical signature; the current and previous sets rotate at each Clear.
     private readonly List<BoundCall> directScratch = new();
     private readonly List<string> entryNameCache = new();
-    private Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<FunctionKoto, Template> previousTemplates = new(ReferenceEqualityComparer.Instance);
-    private List<CallEntry> entries = new();
-    private List<CallEntry> previousEntries = new();
-    private BoundType[] parameterScratch = new BoundType[8];
     private readonly Dictionary<BoundCall, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundCall, FunctionAbi> formattingCalls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionAbi, FunctionAbi> formattingWrites = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(FunctionAbi Write, CompilerFunctionKind Kind), FunctionAbi> formattingConversions = new();
     private readonly Dictionary<FunctionKoto, int> chainCounts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionKoto, int> entryCounts = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<FunctionKoto, Template> previousTemplates = new(ReferenceEqualityComparer.Instance);
+    private List<CallEntry> entries = new();
+    private List<CallEntry> previousEntries = new();
+    private BoundType[] parameterScratch = new BoundType[8];
     private IReadOnlyDictionary<FunctionKoto, FunctionAbi>? functions;
     private int entryNames;
 
@@ -307,7 +307,7 @@ internal sealed partial class GenericStoragePlan
         for (var i = 0; i < template.DirectCalls.Length; i++)
         {
             entry.Direct[i] = null;
-            var inner = binding.InstantiateForwardedCall(template.DirectCalls[i], call, entry.ConcreteCalls[i]);
+            var inner = binding.InstantiateForwardedCall(template.DirectCalls[i], call, entry.ConcreteCalls![i]);
             if (inner?.Target.Declaration is not FunctionKoto innerTarget)
             {
                 return Fail("Concrete requirement call lacks a verified implementation mapping.", out failure);
