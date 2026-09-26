@@ -53,7 +53,7 @@ public sealed partial class Binding
         IdentifierNameKoto => true,
         MemberAccessKoto member => IsPlaceSyntax(member.Left),
         IndexKoto index => IsPlaceSyntax(index.Left),
-        ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } followed => IsPlaceSyntax(followed.Left),
+        ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } followed => IsPlaceSyntax(followed.Left),
         _ => false,
     };
 

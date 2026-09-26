@@ -109,7 +109,7 @@ public sealed partial class OwnershipAnalysis
             return true;
         }
 
-        if (type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.AssociatedProjection)
+        if (type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
         {
             return true;
         }

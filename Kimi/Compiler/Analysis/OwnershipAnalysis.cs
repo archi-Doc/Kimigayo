@@ -353,7 +353,7 @@ public sealed partial class OwnershipAnalysis
         this.body.PlaceStorage.Add(new(id, source, type, kind, mutable, acquisition));
         this.placeValues.Add(-1);
         this.resultDeclarations.Add(-1);
-        this.body.IsConcrete &= type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection);
+        this.body.IsConcrete &= type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication);
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
         {
             this.Unsupported(source);
@@ -589,6 +589,14 @@ public sealed partial class OwnershipAnalysis
 
     private int ExpressionCore(Koto node, PlaceUseKind use, AcquisitionKind? acquisition)
     {
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair && !this.FollowsReference(pair))
+        {
+            // SPEC 13.5.5.1: owner selects the operand itself. The universal verification reads a Copy of the direct target
+            // through a shared borrow of the operand, since the stored pair Type need not be Copy.
+            return this.instance is null && use != PlaceUseKind.Read ? this.CopyPairTarget(pair)
+                : this.ExpressionCore(KotoHelper.UnwrapParentheses(pair.Left), use, acquisition);
+        }
+
         if (this.propertyReceivers.TryGetValue(node, out var preparedReceiver))
         {
             return preparedReceiver;
@@ -699,7 +707,13 @@ public sealed partial class OwnershipAnalysis
                     return this.BorrowStruct(conversion.Left, conversion.BoundType!);
                 }
 
-                if (conversion.ConversionBinding == ConversionBinding.Follow)
+                if (this.ReadsStoredReference(conversion))
+                {
+                    var stored = this.StoredReference(conversion);
+                    return stored < 0 ? -1 : this.LoadThrough(conversion.Left, stored, 1);
+                }
+
+                if (this.FollowsReference(conversion))
                 {
                     // SPEC 13.5.5.1: a value use of a selected referent copies one proven-Copy layer.
                     return this.LoadReferent(conversion.Left, 1);
@@ -822,8 +836,8 @@ public sealed partial class OwnershipAnalysis
                 return this.Call(setter);
             }
 
-            target = this.compilation.Binding.StorageProjection(target) ?? target;
-            if (target is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed)
+            target = this.SelectedPlace(this.compilation.Binding.StorageProjection(target) ?? target);
+            if (target is ConversionKoto followed && this.FollowsReference(followed))
             {
                 return this.WriteReferent(binary, followed);
             }

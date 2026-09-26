@@ -54,6 +54,11 @@ public sealed partial class Binding
             return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(selected.Left);
         }
 
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
+        {
+            return pair.CodeContext.Compilation.Binding.PairCapability(pair, null, true); // SPEC 13.5.5.1 pair layers
+        }
+
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
         {
             return payload.Left.BoundType?.Semantics switch

@@ -71,10 +71,12 @@ public sealed partial class Binding
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
         if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate ||
-            KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } ||
+            KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } ||
             (IsBarePlace(conversion.Left) && PathAuthority(conversion.Left) != SemanticsKind.Owner))
         {
-            return Fail(conversion, AccessFailure(conversion.Left, take: true)); // SPEC 15.1.5: only an owned path offers Take.
+            // SPEC 15.1.5: only an owned path offers Take; a followed pair layer never does, even for owner (SPEC 13.5.5.1).
+            var failure = AccessFailure(conversion.Left, take: true);
+            return Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
         }
 
         // SPEC 11.1: consuming var storage requires its accessible standard setter,
@@ -184,6 +186,20 @@ public sealed partial class Binding
                 Complete(conversion.Right, reference.Components[0]);
                 conversion.ConversionBinding = ConversionBinding.PayloadFollow;
                 return Complete(conversion, reference.Components[0]);
+            }
+
+            if (TryPairLayer(reference, out _, out _))
+            {
+                // SPEC 13.5.5.1: a pair layer is followed only when its admitted set lies in value or valueborrow.
+                if (this.FollowablePair(reference, scope, out var pairTarget) is var admitted && admitted == SemanticsMask.None)
+                {
+                    return Fail(conversion, BindingFailure.UnprovenConstraint);
+                }
+
+                this.pairFollows[conversion] = admitted;
+                Complete(conversion.Right, pairTarget);
+                conversion.ConversionBinding = ConversionBinding.PairFollow;
+                return Complete(conversion, pairTarget);
             }
 
             return Fail(conversion, BindingFailure.TypeMismatch);
@@ -306,7 +322,7 @@ public sealed partial class Binding
             }
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
-                (StructStorage.IsStruct(operandType) || Compiler.EnumStorage.IsEnum(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection || ReferenceTypes.IsStorage(operandType) ||
+                (StructStorage.IsStruct(operandType) || Compiler.EnumStorage.IsEnum(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ReferenceTypes.IsStorage(operandType) ||
                     ScalarTypes.Supports(operandType) || ReferenceEquals(operandType, BoundType.Unit) || ReferenceEquals(operandType, BoundType.String) || IsBorrow(operandType.Semantics) || IsObjectSemantics(operandType.Semantics)))
             {
                 // SPEC 13.5.5.2: @ref/@uniq borrow the immediately written slot whatever it stores; a stored

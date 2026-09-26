@@ -184,6 +184,12 @@ public sealed partial class Binding
                     next = selected.Left;
                     layer = selected.Left.BoundType?.Semantics;
                     break;
+                case ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair:
+                    // SPEC 13.5.5.1: the weakest admitted layer. An admitted owner keeps the operand's own path.
+                    next = pair.Left;
+                    var admitted = pair.CodeContext.Compilation.Binding.PairAdmitted(pair);
+                    layer = (admitted & SemanticsMask.Ref) != 0 ? SemanticsKind.Ref : (admitted & SemanticsMask.Owner) == 0 ? SemanticsKind.Uniq : null;
+                    break;
                 case InvocationKoto call when ElementAccess.PlaceCallReference(call) is { } published:
                     // SPEC 7.1.1: a published Place has the capability of the returned reference and never Take.
                     return published.Semantics == SemanticsKind.Ref ? SemanticsKind.Ref : SemanticsKind.Uniq;
@@ -251,7 +257,7 @@ public sealed partial class Binding
         return source switch
         {
             IdentifierNameKoto => source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate,
-            ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } => true, // SPEC 13.5.5.1: a selected referent is a Place.
+            ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => true, // SPEC 13.5.5.1: a selected referent is a Place.
             MemberAccessKoto member => ElementAccess.AccessType(member.Left) is var receiver &&
                 ((member.BoundSymbol?.Property is { Getter.IsStandard: true } && StructStorage.IsStruct(receiver?.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver)) ||
                 ReferenceTypes.IsTuple(receiver) || receiver?.Kind == BoundTypeKind.Tuple), // SPEC 3.4.1: also through the receiver's recorded reference.
@@ -436,6 +442,13 @@ public sealed partial class Binding
             return this.OriginAtom(source, OriginKind.Projection, 0);
         }
 
+        if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
+        {
+            // SPEC 13.5.5.1: an admitted owner selects the operand Place itself; with only borrows admitted, the selected
+            // referent keeps the dependencies of the stored reference, like a Reborrow.
+            return (this.PairAdmitted(pair) & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(pair.Left) : pair.Left.BoundType?.Origin ?? this.PlaceOrigin(pair.Left);
+        }
+
         if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected)
         {
             // SPEC 13.5.5: a selected referent or payload keeps the dependencies of its reference or handle,
@@ -488,6 +501,11 @@ public sealed partial class Binding
             // SPEC 13.5.5.1: the referent of uniq/T offers Read and Write, that of ref/T Read only; a shared layer
             // anywhere on the path bounds the capability to shared access.
             return !exclusive || (followed.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(followed.Left));
+        }
+
+        if (source is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
+        {
+            return this.PairCapability(pair, scope, exclusive); // SPEC 13.5.5.1: the weakest admitted capability.
         }
 
         if (source is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
@@ -641,7 +659,7 @@ public sealed partial class Binding
             // adds one layer; a temporary reference value is materialized first (SPEC 3.6.2).
             var slotUnwrapped = KotoHelper.UnwrapParentheses(source);
             if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) &&
-                (slotUnwrapped is IdentifierNameKoto || slotUnwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } || (target == SemanticsKind.Uniq && !(slotUnwrapped is InvocationKoto || IsGetterResult(source)))))
+                (slotUnwrapped is IdentifierNameKoto || slotUnwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } || (target == SemanticsKind.Uniq && !(slotUnwrapped is InvocationKoto || IsGetterResult(source)))))
             {
                 return false;
             }
@@ -704,7 +722,7 @@ public sealed partial class Binding
                     return false;
                 }
             }
-            else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } || ElementAccess.IsPlaceCall(unwrapped) ||
+            else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } || ElementAccess.IsPlaceCall(unwrapped) ||
                 (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)) || // SPEC 4.6.9: a published element Place is never a temporary.
                 (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
                 (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&

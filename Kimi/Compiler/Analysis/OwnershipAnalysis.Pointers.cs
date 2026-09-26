@@ -191,7 +191,7 @@ public sealed partial class OwnershipAnalysis
     private bool SupportsCopySnapshot(BoundType type, Koto source)
         => this.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Proven &&
         (ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) ||
-            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
+            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
 
     private int LoadPointer(Koto source, int pointer)
     {
@@ -333,9 +333,9 @@ public sealed partial class OwnershipAnalysis
     private int WriteReferent(Koto source, ConversionKoto followed)
     {
         var reference = followed.Left;
-        var type = followed.BoundType;
+        var type = this.Concrete(followed.BoundType);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (reference.BoundType?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
+        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
             (operation != KotoKind.Equals && type?.IsNumeric != true))
         {
             this.Unsupported(source);

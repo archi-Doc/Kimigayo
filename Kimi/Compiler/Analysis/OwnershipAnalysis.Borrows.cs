@@ -41,7 +41,7 @@ public sealed partial class OwnershipAnalysis
 
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
-        var unwrapped = KotoHelper.UnwrapParentheses(source);
+        var unwrapped = this.SelectedPlace(KotoHelper.UnwrapParentheses(source));
         if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)
         {
             return this.BorrowStruct(indexer, type, reservation); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
@@ -54,7 +54,12 @@ public sealed partial class OwnershipAnalysis
             this.referenceCalls.Add(placeCall);
         }
 
-        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected)
+        if (unwrapped is ConversionKoto storedFollow && this.ReadsStoredReference(storedFollow))
+        {
+            return this.BorrowStoredReference(storedFollow, type, reservation); // SPEC 13.5.5.1: a Reborrow through the stored reference.
+        }
+
+        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } selected)
         {
             // SPEC 13.5.5.2: a Reborrow or payload borrow lends the referent's capability through the parent
             // reference or handle, which is read but never moved; the borrowed address is the parent's value.
