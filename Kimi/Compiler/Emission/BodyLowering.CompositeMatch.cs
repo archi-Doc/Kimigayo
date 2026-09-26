@@ -26,7 +26,7 @@ internal sealed partial class BodyLowering
     }
 
     private bool IsCompositeSubject(BoundType type) => (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ReferenceTypes.IsStorage(type)) ||
-        ((type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type)) &&
+        ((type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type) || StructStorage.IsStruct(type)) &&
         this.aggregateLayouts.Get(type) is { } layout && (!layout.NeedsDestruction || MatchTypes.SupportsOwnedPatternValue(type, this.ownedPatternTypes)));
 
     private BoundType PatternType(BoundPattern pattern)

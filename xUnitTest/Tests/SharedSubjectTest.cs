@@ -110,7 +110,17 @@ public class SharedSubjectTest
     public void SharedIterationReadsThroughBorrowValuesAndFields(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedSubjectIteration" + name, source, stdout);
 
+    // SPEC 14.8.3, 15.1.6: a whole owned struct or Tuple Subject is a Subject Place; its guard candidate borrows it, and
+    // an owned Subject is destroyed after the match while a bare Place Subject is only borrowed.
+    private const string WholeSubjectSource =
+        "struct R\n    public let id: i32\n    public let name: string\n    public init(id: i32, name: string)\n        self.id = id\n        self.name = name@move\n" +
+        "    deinit => Console.writeLine(\"drop\")\nfunc make(id: i32) -> R => R.init(id, \"made\")\n" +
+        "match make(1)\n    let r if r.id == 1 => Console.writeLine(r.name)\n    _ => ()\nmatch make(2)\n    let r if r.id == 1 => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"other\")\n" +
+        "let kept = make(3)\nmatch kept\n    let r if r.id == 3 => Console.writeLine(\"borrowed\")\n    _ => ()\n" +
+        "match (5, \"x\")\n    let q if q.0 == 5 and q.1 == \"x\" => Console.writeLine(q.1)\n    _ => ()\nConsole.writeLine(\"ok\")";
+
     [Theory]
+    [InlineData("WholeSubject", WholeSubjectSource, "made\ndrop\nother\ndrop\nborrowed\nx\nok\ndrop\n")]
     [InlineData("UniqMatch", UniqMatchSource, "hi\nhi\nhi\nhi\n")]
     [InlineData("UniqLiteral", UniqLiteralSource, "ok\n")]
     [InlineData("Acquisition", SubjectAcquisitionSource, "made\na\nb\nhello\nok\n")]

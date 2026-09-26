@@ -568,11 +568,10 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 if (source.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } candidateReference &&
-                    this.body.Places[candidate.Subject].Type is var subjectType && ReferenceEquals(subjectType, this.Concrete(candidateReference.Components[0])) &&
-                    (ScalarTypes.Supports(subjectType) || ReferenceEquals(subjectType, BoundType.Unit)))
+                    this.body.Places[candidate.Subject].Type is var subjectType && ReferenceEquals(subjectType, this.Concrete(candidateReference.Components[0])))
                 {
-                    // SPEC 14.8.3: a candidate of a whole owned Scalar or Unit Subject is a shared reference to the Subject
-                    // Place; the Scalar value is materialized in the Subject's slot at the borrow.
+                    // SPEC 14.8.3: a candidate of a whole owned Subject is a shared reference to the Subject Place; a
+                    // Scalar value is materialized in the Subject's slot at the borrow.
                     var reference = this.Place(source, candidateReference, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
                     var borrow = this.Emit(OwnershipOperationKind.Borrow, source, candidate.Subject, reference, loanMode: LoanRequirement.Ref);
                     this.body.OperationSteps[borrow] = candidate.Arm;
@@ -581,24 +580,6 @@ public sealed partial class OwnershipAnalysis
                     this.placeValues[candidate.Subject] = candidate.Value;
                     return this.RegisterTemporary(reference);
                 }
-
-                var read = this.Emit(OwnershipOperationKind.Read, source, candidate.Subject);
-                this.body.OperationSteps[read] = candidate.Arm;
-                if (ScalarTypes.Supports(source.BoundType))
-                {
-                    this.SetValue(read, OwnershipValueKind.Alias, [candidate.Value]);
-                }
-
-                this.placeValues[candidate.Subject] = candidate.Value;
-                // A Copy read acquires a value, not the Subject's responsibility.
-                // Its logical temporary has no scalar alloca or physical copy.
-                var value = this.Temporary(source);
-                if (ScalarTypes.Supports(source.BoundType))
-                {
-                    this.SetValue(this.Value(value), OwnershipValueKind.Alias, [read]);
-                }
-
-                return value;
             }
         }
 
