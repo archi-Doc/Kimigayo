@@ -70,7 +70,7 @@ Operands are evaluated once, from left to right, unless a construct specifies an
 | `start()..end()` | Start boundary, end boundary. |
 | `"\(a()) / \(b())"` | Each interpolation is evaluated and written in source order; failure stops later expressions. |
 
-`and`, `or` and selections evaluate only the required operands or branches. [Simple and compound assignment](13-operators-and-assignment.md#137-assignment) evaluate and secure their right-hand side before locating the target. Type arguments, length arguments and adaptation-target Type formation are not evaluated at runtime.
+`and`, `or` and selections evaluate only the required operands or branches. [Simple and compound assignment](13-operators-and-assignment.md#137-assignment) evaluate their right-hand side first. Type arguments, length arguments and adaptation-target Type formation are not evaluated at runtime.
 
 An abrupt Completion, divergence or Abort prevents evaluation of later operands and of the enclosing operation. Unevaluated syntax still undergoes name, Type and transfer-target checks; syntax excluded by `#if`/`#switch` follows [conditional compilation](19-compile-time-directives.md#19-compile-time-directives). [Temporary lifetimes](03-types-and-values.md#36-temporary-values-places-and-lifetimes) and scope-exit rules govern retained values.
 
@@ -92,11 +92,9 @@ let d = a + c@i64       // Convert an already typed operand explicitly.
 let minimum: i8 = -128
 ```
 
-There are no implicit conversions between `bool`, `char` and numbers, and conditions require `bool`, not an integer or pointer. Borrowing and reborrowing are separate adaptations governed by the ownership rules.
+There are no implicit conversions between `bool`, `char` and numbers, and conditions require `bool`, not an integer or pointer. Borrowing and reborrowing are separate adaptations (§10.2, §13.5.5).
 
-During [overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference), unresolved literals are fitted independently to candidates before defaulting, and numeric defaults do not break ties. Expected Types and nested-call and function inference are limited by the [inference boundaries](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization). Locals never infer backward from later uses.
-
-For control-flow results, all source constraints, including available constraints from enclosing result expressions (§14.9.1), are collected before defaulting. Body nesting, labels and grouping alone do not force an earlier numeric default.
+[Overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference) fits unresolved literals to each candidate before defaulting (§10.2). Expected Types, nested calls, function inference and local Types are limited by the [inference boundaries](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization), and control-flow results collect all source constraints before defaulting (§14.9.1).
 
 ### 12.3.2. Names, literals, and grouping
 
@@ -155,7 +153,7 @@ If key evaluation, duplicate checking or value evaluation does not complete norm
 
 Each equality call uses the stored key as `self` and the candidate or search key as `other`: `stored.equals(search)`. Candidate visitation order and the number of equality calls are unspecified, independently of the required insertion, iteration and destruction order. Implementations may filter candidates using internal hashes. Every equality call that is made keeps its ordinary effects, Loans, failure and nontermination behavior; the collection API does not make equality pure. Programs must not use equality-call order or counts as an insertion-order observation. The key-stability obligation below applies to every storage and search strategy.
 
-The intrinsic Equatable mapping for `f32`/`f64` treats all NaN values of the same Type as equal and treats both signed zeros as equal; other values follow numeric equality. This makes floating keys usable without changing the built-in IEEE `==`/`!=` operators or adding Comparable. Equatable mappings for shared borrows and Tuples compose these Contract mappings, while their built-in comparison expressions still follow §13.4. Internal hashes, when used, must agree for all NaNs and for both zeros. Floating keys undergo runtime duplicate checking even when written as literals.
+The intrinsic Equatable mapping for `f32`/`f64` treats all NaN values of the same Type as equal and treats both signed zeros as equal; other values follow numeric equality. This makes floating keys usable without changing the built-in IEEE `==`/`!=` operators or adding Comparable; borrow and Tuple mappings compose it under §13.4.1. Internal hashes, when used, must agree for all NaNs and for both zeros. Floating keys undergo runtime duplicate checking even when written as literals.
 
 **Key stability.** User-defined key equality must be an equivalence relation. The key Type must also guarantee that a key's logical equality and hash value do not change while the Dictionary holds it, and, for a candidate key, from the start of duplicate checking through completion of insertion, including evaluation of its value expression.
 
@@ -165,11 +163,11 @@ These equality and stability laws are semantic API obligations, not a compiler p
 
 ### 12.4.1. Member access
 
-`expression.name` selects a member. [Qualified lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. When the operand is a safe value reference without that member, the member is selected in its referent under the [reference-path selection](03-types-and-values.md#341-reference-path-selection); the same applies to index expressions and method receivers. The right side of an ordinary member-access `.` must be a member Name or an in-range decimal integer literal that selects a Tuple element; `pair.0` selects the first element. Dynamic member lookup with an arbitrary expression is not defined.
+`expression.name` selects a member. [Qualified lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. When a safe value reference lacks the member, selection continues in its referent under the [reference-path selection](03-types-and-values.md#341-reference-path-selection), which also covers index expressions and method receivers. The right side of an ordinary member-access `.` must be a member Name or an in-range decimal integer literal that selects a Tuple element; `pair.0` selects the first element. Dynamic member lookup with an arbitrary expression is not defined.
 
 Type-side qualifiers and construction paths use [bound Container paths](09-names-signatures-and-access.md#961-bound-container-paths), including arguments at each segment and `(Path{...}).member`; they create no runtime value. The reserved `.init(...)` suffix forms a [construction expression](06-declarations-and-containers.md#623-constructors) with a Type qualifier and never falls back to an ordinary value-member call.
 
-Property selection follows Chapter 11: standard `get` exposes the permitted Place operations, while custom, computed and required `get` produce a result. Assignment uses an accessible `set`. Each operation and receiver is checked, and getter results never expose hidden storage. Tuple and fixed-array Places keep the Move Path rules. Raw pointers are not dereferenced automatically: use `(*pointer).name` in an Unsafe Block.
+Property selection follows Chapter 11: standard `get` exposes the permitted Place operations, custom, computed and required `get` produce a result that never exposes hidden storage, and assignment uses an accessible `set`. Each operation and receiver is checked. Tuple and fixed-array Places keep the Move Path rules. Raw pointers are not dereferenced automatically: use `(*pointer).name` in an Unsafe Block.
 
 ```kimi
 let count = collection.count
@@ -210,7 +208,7 @@ Direct standard `get`/`set` remain Place operations, checked by acquisition and 
 | Proven | Allowed if the ordinary call, access, Type, Origin and Loan checks pass |
 | NotProven | Error on protected object/base paths; ordinary complete-value calls, including a proven Sealed payload dereference, follow their normal rules |
 
-NotProven means the absence of a common proof, not a refutation for every binding. Additional caller premises, favorable Type arguments, the exact Dynamic Type or one selected specialization cannot strengthen the status, and a failed use never excludes a candidate or causes overload reselection. Unknown is internal pending work, never a published status. Invalid bodies, missing mandatory artifact information and unimplemented verification cannot be hidden as NotProven.
+NotProven means the absence of a common proof, not a refutation for every binding. Additional caller premises, favorable Type arguments, the exact Dynamic Type or one selected specialization cannot strengthen the status, and a failed use never causes reselection (§12.4.4). Unknown is internal pending work, never a published status. Invalid bodies, missing mandatory artifact information and unimplemented verification cannot be hidden as NotProven.
 
 #### 12.4.4.2. Effect verification
 

@@ -1,6 +1,6 @@
 # UTF-8 formatting and interpolation
 
-This normative profile is part of §22. It owns UTF-8 formatting, the standard byte buffers and their compiler/runtime requirements. General argument acquisition (§10.2), Origins (§15.3–4), Loans (§15.6), destruction (§16) and failure propagation (§17) still apply.
+This normative profile is part of §22. It owns UTF-8 formatting, the standard byte buffers and their compiler and runtime requirements. General argument acquisition (§10.2), Origins (§15.3–4), Loans (§15.6), destruction (§16) and failure propagation (§17) still apply.
 
 ## 1. Contracts and declarations
 
@@ -31,15 +31,15 @@ The following declarations are required. The default Kimi alias makes `Text` vis
 | `Kimi.Text` | `Utf8Slice {source}` | Ordinary Copy struct with a private `Slice<u8>`; required Loan `ref` |
 | `Kimi.Text` | `InvalidUtf8` | Ordinary, stateless Copy struct; public `init()` |
 
-Only the error types expose initializers. The other types are obtained through the operations below. Intrinsic Origin slots and permissions are fixed compiler metadata (§15.3.5); raw pointers and a source-declared phantom Origin cannot reproduce their authority. Window, view and adapter management performs no heap allocation, reference-count update or management callback; the three ObjectPayload opt-outs forbid making these Loan-bound adapters object payloads, while the no-allocation requirement remains a requirement on the operations.
+Only the error types expose initializers; the other types are obtained through the operations below. Intrinsic Origin slots and permissions are fixed compiler metadata (§15.3.5), and neither raw pointers nor a source-declared phantom Origin can reproduce their authority. Window, view and adapter management performs no heap allocation, reference-count update or management callback. The three ObjectPayload opt-outs forbid making these Loan-bound adapters object payloads; the no-allocation requirement is a separate requirement on the operations.
 
 ### 1.2. Effects and erasure
 
 `BufferWriter.reserve` may use only authority supplied through `self`; it cannot acquire access to mutable state from the ambient environment. Conformance checking (§8.4.5) rejects an implementation whose transitive effect summary includes access through a mutable static Field, including called functions, lazy initialization or destruction, or a call with unknown effects. Access through a borrowed Field of `self` uses ordinary Loan checking, even when its referent has static storage.
 
-`Utf8Writer` erases the concrete Writer Type. Standard `FixedBuffer` and `HeapBuffer` reservations use direct calls, including inside a non-generic `format` body. A user Writer uses one function-pointer call per reservation. The implementation may inline capacity checks and share growth/copy routines. Different Writer Types do not require separate `format` instances.
+`Utf8Writer` erases the concrete Writer Type. Standard `FixedBuffer` and `HeapBuffer` reservations use direct calls, including inside a non-generic `format` body, and a user Writer uses one function-pointer call per reservation. The implementation may inline capacity checks and share growth and copy routines. Different Writer Types do not require separate `format` instances.
 
-The adapter neither owns, moves nor exposes the Writer and invokes only `reserve`. The original value retains its Loans. Well-formedness of `uniq/W during target` requires all dependencies of `W` to outlive `target`; erasure cannot extend that lifetime. Erased-call effects are checked against the Contract's fixed upper bound, without per-value effect tracking or runtime lifetime/borrow tags.
+The adapter neither owns, moves nor exposes the Writer, and invokes only `reserve`; the original value keeps its Loans. Well-formedness of `uniq/W during target` requires all dependencies of `W` to outlive `target`, and erasure cannot extend that lifetime. Erased-call effects are checked against the Contract's fixed upper bound, without per-value effect tracking or runtime lifetime or borrow tags.
 
 ## 2. Text operations
 
@@ -100,7 +100,7 @@ Both buffers implement `BufferWriter` and expose the following operations:
 
 An unallocated empty HeapBuffer becomes a Static string. An allocated buffer retains its original pointer and Heap release kind even when its length is zero. Optional in-place shrinking is specified in §3.4.
 
-`intoText()` depends on the original array, not the consumed local buffer, and retains the original exclusive Loan. It can return a caller-dependent view, but cannot let local source storage escape. Conflicting views, Windows and adapters prevent mutation, movement, growth and destruction. No general mutable Slice is introduced.
+`intoText()` depends on the original array, not the consumed local buffer, and keeps the original exclusive Loan. It can return a view that depends on the caller's array, but cannot let local source storage escape. Conflicting views, Windows and adapters prevent mutation, movement, growth and destruction. No general mutable Slice is introduced.
 
 ### 2.2. UTF-8 views
 
@@ -200,7 +200,7 @@ After successful validation and before transferring ownership, `intoString()` ma
 
 ## 4. Formatting
 
-`format` borrows its input and leaves no output dependency on that borrow or the Writer. Successful output is the complete representation and must be the same for the same value and external state, regardless of destination Type or capacity. A Writer must report `BufferFull` rather than successfully abbreviate a value. This user law is not an optimization assumption. User formatting may have side effects or allocate; it runs once, without a size pre-pass or retry.
+`format` borrows its input and leaves no output dependency on that borrow or on the Writer. Successful output is the complete representation and must be the same for the same value and external state, whatever the destination Type or capacity. A Writer must report `BufferFull` instead of successfully abbreviating a value. This user law is not an optimization assumption. User formatting may have side effects or allocate; it runs once, without a size pre-pass or retry.
 
 ### 4.1. Failure and writes
 
@@ -227,7 +227,7 @@ Built-in formatting checks status, computes the exact encoded byte length, reser
 
 For a finite nonzero float, choose the decimal representation with the fewest significant digits that rounds to the original value in its original width using nearest-even rounding. Among equal-length candidates choose the closest to the exact value, then an even final significant digit to break a tie. `f32` uses its own rounding interval. Let `e` be the normalized decimal exponent: use fixed notation for `-4 <= e < 16`, scientific notation otherwise. Omit unnecessary fractional trailing zeros and decimal points. Use `.`, lowercase `e`, no exponent `+` and no leading exponent zeros. Special values are `0`, `-0`, `Infinity`, `-Infinity` and `NaN`; NaN sign and payload are ignored.
 
-Borrow Types do not forward conformance. Argument Adaptation selects the referent Type (§5.2). Object handles, object borrows and pointers do not implicitly format; diagnostics suggest an explicit payload dereference `@deref` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance.
+Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly, and diagnostics suggest an explicit payload dereference `@deref` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance.
 
 ## 5. Interpolation and internal adapters
 
@@ -264,9 +264,9 @@ The lexical syntax is §2.9. Each embedded expression fits `write<T>(value: ref/
 | `ref/U` | Exact | U |
 | `uniq/U` | Shared Reborrow | U |
 
-A bare expression does not Move its source. `\(x@move)` borrows the transferred temporary. Literals use normal default Types, without an expected `string` Type.
+A bare expression does not Move its source, and `\(x@move)` borrows the transferred temporary. Literals use the normal default Types, without an expected `string` Type.
 
-Lowering creates the internal adapter, then writes left to right. Evaluate each expression once and complete its write before evaluating the next, subject only to §5.1 and §6. The first failure Aborts with `KIMI_E_FORMAT: Formatting failed`. On success, end adapter uses and consume the HeapBuffer into an owning string. This buffer is always fully validated; completion performs no scan and has no validation-failure branch. Value borrows end at the end of each write; existing temporary destruction boundaries remain unchanged.
+Lowering creates the internal adapter, then writes left to right. Evaluate each expression once and complete its write before evaluating the next, subject only to §5.1 and §6. The first failure Aborts with `KIMI_E_FORMAT: Formatting failed`. On success, end the adapter's uses and consume the HeapBuffer into an owning string. This buffer is always fully validated, so completion performs no scan and has no validation-failure branch. Value borrows end at the end of each write; the existing temporary destruction boundaries are unchanged.
 
 ```kimi
 let message = "My number is \(self.number)"
@@ -276,9 +276,9 @@ let message = "My number is \(self.number)"
 
 `$tryWrite(writer, literal)` is a Composition Root operation, not a Function value. Its result is `Result<(), BufferFull>` and it creates no combined string.
 
-The first operand is acquired as `uniq/Utf8Writer`; it is an operand, not a Receiver Expression (§7.3), so a bare owned Place is rejected, whatever its access path, with a suggestion to use `@uniq`, and a borrowed value reborrows normally. The second operand must syntactically be an ordinary or raw string literal, with or without substitutions. Use `write` for an arbitrary string value.
+The first operand is acquired as `uniq/Utf8Writer`. It is an operand, not a Receiver Expression (§7.3), so a bare owned Place is rejected, whatever its access path, with a suggestion to use `@uniq`, while a borrow value is Reborrowed normally. The second operand must syntactically be an ordinary or raw string literal, with or without substitutions; use `write` for an arbitrary string value.
 
-Evaluate the first operand once and activate its exclusive borrow immediately, before any embedded expression. Call borrow reservations (§15.6.7) do not apply. Write segments and values left to right using §5.2 Adaptation. At the first failure stop without evaluating later expressions; an adapter already failed at entry skips all expressions. Still check every expression's Types, conformance and control-transfer targets statically. Embedded expressions cannot read the borrowed adapter or its source. Preserve original temporary scopes and the targets of `return`, `exit` and `yield`. Drop uncommitted Windows and retain committed output.
+Evaluate the first operand once and activate its exclusive borrow immediately, before any embedded expression; call borrow reservations (§15.6.7) do not apply. Write segments and values left to right using the adaptation of §5.2. At the first failure, stop without evaluating later expressions; an adapter that has already failed at entry skips all expressions. Every expression's Types, conformance and control-transfer targets are still checked statically. Embedded expressions cannot read the borrowed adapter or its source. Preserve the original temporary scopes and the targets of `return`, `exit` and `yield`. Drop uncommitted Windows and keep committed output.
 
 ```kimi
 struct Point
@@ -290,7 +290,7 @@ struct Point
         return $tryWrite(writer, "(\(self.x), \(self.y))")
 ```
 
-Passing an interpolated literal directly to `Utf8Writer.write` first completes ordinary owning interpolation. Warn and suggest `$tryWrite`, without changing its meaning. This warning is independent of Result-discard diagnostic priority (§17.4).
+Passing an interpolated literal directly to `Utf8Writer.write` first completes ordinary owning interpolation. Warn and suggest `$tryWrite` without changing the meaning; this warning is independent of the Result-discard diagnostic priority (§17.4).
 
 ## 6. Optimization and output
 

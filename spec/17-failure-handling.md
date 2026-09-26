@@ -20,7 +20,7 @@ These categories are not a severity ranking: `None` represents expected absence,
 
 The examples use the [enum construction](06-declarations-and-containers.md#632-case-construction-and-resolution) and [Pattern](14-control-flow.md#1481-patterns) rules; their APIs are illustrative.
 
-Explicit try propagates Kimi Option/Result failure (§17.2.4). Value postfix ? and user-defined propagation are not defined. The [require statement](14-control-flow.md#1411-require-statement), including `require condition else => return`, is explicit control flow and performs no automatic Option/Result unwrapping or propagation.
+Explicit `try` propagates Kimi Option/Result failure (§17.2.4); there is no postfix `?` operator. The [require statement](14-control-flow.md#1411-require-statement), including `require condition else => return`, is explicit control flow and performs no automatic Option/Result unwrapping or propagation.
 
 ## 17.2. Absence and failure as values
 
@@ -51,7 +51,7 @@ match findUser(id)
 
 `Result<T, E>` represents success or failure with a reason. `E` is an ordinary Type; no exception object hierarchy is required.
 
-This is the compiler-recognized Kimi `Result` declaration (§22.1), and the enum below shows its required shape. The discarded-Result warning refers to that Symbol identity, including through aliases, not to every user Type spelled `Result`.
+This is the compiler-recognized Kimi `Result` declaration (§22.1); the enum below shows its required shape.
 
 ```kimi
 enum Result<T, E>
@@ -99,9 +99,9 @@ func loadSize(path: string) -> Result<usize, FileError>
 
 The return Type describes contractual absence or recoverable failure; a function returning `Result` may still Abort on an invariant violation or unrecoverable condition.
 
-Discarding a Kimi `Result` expression in Discard Context is allowed but produces a compile-time warning, independently of Copy capability and of the runtime `Ok`/`Err` state. The value is identified by its Kimi Symbol, including through equivalent resolved paths. [Warning priority](#174-warnings) selects one report if several apply to the same discard. The warning does not change control flow; a caller can intentionally ignore the outcome with `_ = expression` (§14.2.4), or by handling both variants with `match`. There is no special warning for discarding `Option`.
+Discarding a Kimi `Result` expression in Discard Context is allowed but produces a compile-time warning, whatever its Copy capability and runtime `Ok`/`Err` state. The warning identifies the value by the Kimi `Result` Symbol, including through aliases and equivalent resolved paths; it does not apply to every user Type spelled `Result`. [Warning priority](#174-warnings) selects one report if several apply to the same discard. The warning does not change control flow; a caller can intentionally ignore the outcome with `_ = expression` (§14.2.4) or handle both variants with `match`. Discarding `Option` has no special warning.
 
-Returning a recoverable failure follows the normal [Scope Exit](16-scope-exit-and-destruction.md#162-scope-exit-destruction) rules, including the requirement that earlier cleanup completes normally before the remaining cleanup and result delivery. Use this path for ordinary failures that need resource cleanup.
+Returning a recoverable failure follows the normal [Scope Exit](16-scope-exit-and-destruction.md#162-scope-exit-destruction) rules; use this path for ordinary failures that need resource cleanup.
 
 ### 17.2.4. Try propagation
 
@@ -129,7 +129,7 @@ Only one layer is extracted. The normal result is a value of complete Type T, no
 
 **Target and cleanup.** The semantics correspond to a match with ordinary `return .None`/`return .Err(error)` at the same position, without textual duplication or a hidden Closure. Reuse that return's lexical target and barriers; do not search an outer target after a Type mismatch. Functions, Closures and getters have their own targets. Selections, loops, do and unsafe introduce none. Outward transfers forbidden from defer, defaults or verification messages remain forbidden. Main, init, set and deinit have Unit targets; source top-level items have no return target. Separate nested functions keep their own boundaries. Check targets and Types even in unreachable code or for known Some/Ok.
 
-Secure the successful payload or return value before ordinary temporary and Scope Exit cleanup. Transferred payloads are not destroyed twice; sources retain ordinary Moved states and are not reset to None. Failure during argument/aggregate evaluation skips remaining evaluation and cleans acquired parts in ordinary order. Abort, divergence and other transfers keep their rules; incomplete cleanup prevents pending return delivery. Returning a borrowed payload cannot let dependencies escape cleanup.
+Secure the successful payload or return value before ordinary temporary and Scope Exit cleanup. Transferred payloads are not destroyed twice; sources retain ordinary Moved states and are not reset to None. Failure during argument or aggregate evaluation skips the remaining evaluation and cleans up acquired parts in ordinary order (§16.2.1). Abort, divergence and other transfers keep their rules, and pending return delivery follows §16.2.3. Returning a borrowed payload cannot let dependencies escape cleanup.
 
 **Inference.** Resolve the operand from its receiver, arguments and explicit Type information under existing inference and overload rules. Then fit its known success Type to any expectation on the try expression and check the failure return. Neither expectation nor return target feeds back into operand inference or retries overload selection. Require explicit Type arguments or an annotated intermediate when unresolved.
 
@@ -184,7 +184,7 @@ func tryAllocate(size: usize) -> Option<Buffer>
 
 func allocateRequired(size: usize) -> Buffer
     return match tryAllocate(size)
-        .Some(let buffer) => buffer
+        .Some(let buffer) => buffer@move
         .None => $abort("Required memory could not be allocated")
 ```
 
@@ -205,13 +205,13 @@ func requireValue(value: Option<i32>) -> i32
         .None => $abort("Required value is missing")
 ```
 
-Abort itself is not a control transfer and produces no Completion; it is distinct from a transfer during argument evaluation. The [evaluation outcomes](14-control-flow.md#141-completions) are Completion, divergence and Abort Termination.
+Abort itself is not a control transfer and produces no [Completion](14-control-flow.md#141-completions); it is distinct from a transfer during argument evaluation.
 
 ### 17.3.3. Termination, diagnostics, and cleanup
 
 Once Abort Termination begins, ordinary program execution never resumes and no Scope Exit is performed before the entire process terminates. This rule sets no wall-clock bound on argument evaluation or termination. Abort cannot be caught, recovered from or resumed, and performs no stack unwinding.
 
-Abort does not start Scope Exit processing. If it begins during Scope Exit, that processing stops immediately: the remaining Deferred Blocks, automatic destruction, and the rest of an executing Deferred Block or `deinit` do not run. Completed cleanup effects are not rolled back. Pending `return`, `exit`, `continue` and `yield` are abandoned, secured results are not delivered, and no additional cleanup destroys them.
+If Abort begins during Scope Exit, that processing stops immediately: the remaining Deferred Blocks, automatic destruction, and the rest of an executing Deferred Block or `deinit` do not run. Completed cleanup effects are not rolled back. Pending `return`, `exit`, `continue` and `yield` are abandoned, secured results are not delivered, and no additional cleanup destroys them.
 
 ```kimi
 func process()
@@ -252,7 +252,7 @@ func parse(source: string) -> Result<ParseReport<Syntax>, ParseError>
 
 This API returns warnings with successful results. To preserve warnings on failure, include them in the error value or in an outer report containing the `Result`.
 
-The following subsections define compiler warnings, not returned API values; they change neither Type fitting, execution nor overload choice. For the same value at the same discard occurrence, emit only the highest applicable warning: **unintended Unit inference > Kimi Result discard > try success discard > effect-free value discard**. Keep each warning's existing triggering conditions; independent occurrences and unrelated diagnostics remain independent. Explicit discard (§14.2.4) suppresses only the discarded result's warning.
+The following subsections define compiler warnings, not returned API values; they change neither Type fitting, execution nor overload choice. For the same value at the same discard occurrence, emit only the highest applicable warning: **unintended Unit inference > Kimi Result discard > try success discard > effect-free value discard**. Priority does not change each warning's triggering conditions; independent occurrences and unrelated diagnostics remain independent. Explicit discard suppresses only the discarded result's warning (§14.2.4).
 
 ### 17.4.1. Unintended Unit inference
 
@@ -290,11 +290,11 @@ if ready => 1                     // Warn on the discarded body value.
 func cleanup() => handle.close()  // Do not assume a call is effect-free.
 ```
 
-The explicit no-op Unit value `()` receives no warning. The diagnostic should suggest a return annotation or a use of the value and never deletes the expression automatically. Diagnostics for `defer` placement and `while true` follow §16.1 and §14.9.2.
+The explicit no-op Unit value `()` receives no warning. The diagnostic should suggest a return annotation or a use of the value and never deletes the expression automatically. Diagnostics for `defer` placement and `while true` follow §16.1.3 and §14.9.2.
 
 ### 17.4.3. Try success and intentional discard
 
-Warn when the try expression's result itself is in Discard Context, is not provably Unit, and is not Never. A Result payload instead receives the higher-priority Result warning, including Result<(), E>. Option<()> success is Unit and excluded; discarding an entire Option adds no Type-specific warning.
+Warn when the try expression's result itself is in Discard Context, is not provably Unit, and is not Never. A `Result` payload instead receives the higher-priority Result warning, including `Result<(), E>`. `Option<()>` success is Unit and excluded; discarding an entire `Option` adds no Type-specific warning.
 
 Use existing Value/Discard Context propagation, including parentheses and branch bodies, without tracking value provenance. Initializing a local, passing an argument, returning or using the result in another operation is use; later nonuse is not a try warning. The operand's outer Result is processed by try and is not itself discarded. At generic definition time, warn unless Unit or Never is proved by existing normalization and evidence; do not rediagnose per instantiation.
 
@@ -338,7 +338,7 @@ condition -> secure bool
 
 Condition temporaries have the common `bool`-condition lifetime (§14.2.3). Message evaluation is modeled only on the failure branch, including its Move and initialization effects on later checking. A true verification creates no diagnostic strings, failure records or success events, and failures from nested verifications remain independent. Resource and reporting bounds follow §22.6.5 and never omit language evaluation.
 
-A transfer, Abort or divergence before the `bool` is secured follows its existing rules and is not an invented verification failure. Once `false` is secured, a subsequent Abort or divergence in cleanup or message evaluation cannot erase the failure, and the termination reason is kept too. `$require` initiates its Abort only after condition and message temporary cleanup completes normally; an `$expect` failure during that cleanup adds a failure. Once Abort starts, the enclosing scopes' `defer` bodies do not run, remaining locals are not destroyed and normal static shutdown is not performed; an Abort during cleanup stops its remaining work under §17.3.
+A transfer, Abort or divergence before the `bool` is secured follows its existing rules and is not an invented verification failure. Once `false` is secured, a subsequent Abort or divergence in cleanup or message evaluation cannot erase the failure, and the termination reason is kept too. `$require` initiates its Abort only after condition and message temporary cleanup completes normally; an `$expect` failure during that cleanup adds a failure. Once Abort starts, Abort Termination applies (§17.3.3): the enclosing scopes' `defer` bodies do not run, remaining locals are not destroyed, and normal static shutdown is not performed.
 
 The `$require` Abort identifies the failed verification site. It reuses the Abort termination path without reevaluating the condition or message and without creating a second verification failure for the same check. The parent runner keeps both the verification failure and the actual termination reason (§22.6.4). The Abort terminates this case's child process; it does not itself terminate the parent runner or other cases.
 

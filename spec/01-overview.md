@@ -6,9 +6,9 @@
 
 **Kimigayo** is a programming language built from scratch to be consistent, fast, simple, fun, and safe.
 
-This specification defines the intended language. Language rules, compiler requirements and the recorded implementation status are distinct; see [implementation status](../STATUS.md).
+This specification defines the intended language. Language rules, compiler requirements and the recorded [implementation status](../STATUS.md) are separate concerns.
 
-Kimigayo prioritizes consistency and language quality over compatibility between versions. A reproducible build must pin the compiler build, sources, dependencies and configuration; a language-version label alone does not identify a pre-alpha compiler.
+Kimigayo puts consistency and language quality ahead of compatibility between versions. A reproducible build must pin the compiler build, sources, dependencies and configuration; a language-version label alone does not identify a pre-alpha compiler.
 
 **Basic example.**
 
@@ -42,26 +42,26 @@ public group Program
 
 ## 1.2. Conventions and notation
 
-User-defined Types, Contracts and Declaration Containers conventionally use PascalCase; built-in Type keywords keep their specified spellings. Functions, Fields, Properties, local bindings, parameters and other value names generally use camelCase.
+User-defined Types, Contracts and Declaration Containers conventionally use PascalCase; built-in Type keywords keep their specified spellings. Functions, Fields, Properties, local bindings, parameters and other value names conventionally use camelCase.
 
 | Notation | Meaning and uses |
 | --- | --- |
 | `[]` | Array and Dictionary construction, fixed-array Types, indexing, Range-based slicing, and anonymous-function Capture Lists. |
-| `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions, and operator precedence. |
+| `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions and operator precedence. |
 | `<>` | Type arguments and [function length arguments](04-arrays-indexing-and-slices.md#44-function-length-parameters). |
-| `{...}` | Closed struct/enum Origin schema (possibly empty), or a fresh binding-set name after a named Type. Borrow annotations use `during` (§3.3.6). Not a body or collection. |
-| `=` | Initialization, parameter defaults, or assignment, depending on context. Acquisition follows [Copy and Move](03-types-and-values.md#35-copy-and-move). |
-| `@` | Explicit Type/Semantics adaptation; see [explicit operations](13-operators-and-assignment.md#135-explicit-operations). |
+| `{...}` | A closed struct or enum Origin schema (possibly empty), or a fresh binding-set name after a named Type (§15.3). Never a body or collection. Borrow annotations use `during` (§3.3.6). |
+| `=` | Initialization, parameter default or assignment, depending on context. Acquisition follows [Copy and Move](03-types-and-values.md#35-copy-and-move). |
+| `@` | An explicit operation: Type/Semantics adaptation, transfer (`@move`) or dereference (`@deref`); see [explicit operations](13-operators-and-assignment.md#135-explicit-operations). |
 | `->` | Introduces the result Type of a function declaration or Function Type. |
-| `=>` | Introduces a single-item executable Body, a parameter-name mapping, or a Container-alias target, according to context. |
-| `:` | Separates names from Types, argument names from values, Dictionary keys from values, labels from constructs, and named transfer targets from values. It also introduces structure bases, Contract parents and constructor `: base(...)`, but never an executable Body. In Origin relations, `a : b` means that `a` outlives `b`, including equal lifetimes. |
+| `=>` | Introduces a single-item executable Body, a parameter-name mapping or a Container-alias target, depending on context. |
+| `:` | Separates names from Types, argument names from values, Dictionary keys from values, labels from constructs, and named transfer targets from values. Also introduces structure bases, Contract parents and constructor `: base(...)`; never an executable Body. In the specification's Origin-constraint notation, `a : b` means that `a` outlives `b`, including equal lifetimes; source relations use `origin a outlives b` (§15.3.3). |
 | `#` | A compile-time construct. Lowercase reserved directives such as `#if` differ from PascalCase Attributes such as `#Inline`. |
 | `$` | Selects a language-provided Composition Root operation; see [§13.8](13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |
 | `;` | Forbidden outside comments and literals; never a statement or Type separator. |
 
 A Type combines Semantics, a Core or object View Target, and Origins; see [Types and values](03-types-and-values.md#3-types-and-values).
 
-Examples are independent unless explicitly connected. Application-specific Types and APIs in examples are assumed, not required library interfaces. API examples may show signatures without implementations; this does not permit bodyless source definitions. `text` code blocks may show conceptual notation, and lines marked `Error` intentionally violate a rule.
+Examples are independent unless explicitly connected. Application-specific Types and APIs in examples are assumed; they are not required library interfaces. An API example may show a signature without an implementation; this does not permit bodyless source definitions. `text` code blocks may show conceptual notation, and lines marked `Error` intentionally violate a rule.
 
 ## 1.3. Reading the rules
 
@@ -70,8 +70,8 @@ Examples are independent unless explicitly connected. Application-specific Types
 | must / must not | Mandatory requirement or prohibition. The feature defines whether a violation is a compile-time error, an Abort, or an Unsafe contract violation. |
 | may | Permission within all stated constraints. |
 | should | Recommendation; not a condition of language conformance. |
-| is planned | Implementation work is intended; this is not a language rule. |
-| is deferred | In a design-status note: the design is postponed. It grants no language permission. |
+| is planned | Implementation work is intended; not a language rule. |
+| is deferred | In a design-status note, the design is postponed; this grants no language permission. |
 | implementation-defined | The implementation chooses within the stated limits and must document its choice. |
 | unspecified | Any result within the stated limits is permitted, and the choice need not be documented. This does not imply undefined behavior. |
 

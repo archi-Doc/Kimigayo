@@ -6,9 +6,9 @@ A fixed array `[N of T]` has a compile-time length `N` and a complete element Ty
 
 ## 4.1. Fixed-array identity and layout
 
-Type identity includes the evaluated length and the complete element Type. Thus `[3 of i32]` differs from `[4 of i32]`, while `[(2 + 2) of i32]` equals `[4 of i32]`. There are no implicit conversions between arrays of different lengths, between fixed arrays and Array, or between owning arrays and Slice.
+Type identity includes the evaluated length and the complete element Type: `[3 of i32]` differs from `[4 of i32]`, while `[(2 + 2) of i32]` equals `[4 of i32]`. There is no implicit conversion between arrays of different lengths, between fixed arrays and Array, or between owning arrays and Slice.
 
-Elements are stored inline in index order, without implicit heap allocation for the array's own element storage. Nested arrays apply this rule recursively, with the innermost index varying contiguously. Where the enclosing value is stored, and any allocation performed by individual elements, follow their own rules.
+Elements are stored inline in index order; the array's own element storage uses no implicit heap allocation. Nested arrays apply this rule recursively, with the innermost index varying contiguously. Where the enclosing value is stored, and any allocation by individual elements, follow their own rules.
 
 The element layout must be finite and valid. Let `d = stride(T)`; Slice uses the same element spacing. These are specification quantities, not source operators, and follow the [common layout rules](21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi).
 
@@ -24,7 +24,7 @@ Size, stride and padding calculations are checked against the target's layout li
 
 ## 4.2. Length constants
 
-A length is a nonnegative compile-time integer representable in the target's `isize`. A generic length remains symbolic until instantiation. A length is written as an integer literal, a possibly qualified constant name, a length parameter, or a parenthesized integer constant expression; any compound expression requires parentheses around the entire length.
+A length is a nonnegative compile-time integer representable in the target's `isize`. A generic length remains symbolic until instantiation. A length is written as an integer literal, a possibly qualified constant name, a length parameter, or a parenthesized integer constant expression; a compound expression requires parentheses around the entire length.
 
 The initial evaluator admits integer literals, length parameters, **Constant-readable Bindings**, grouping, unary `+` and `-`, and binary `+`, `-`, `*`, `/` and `%`. A Constant-readable Binding is an integer `let` local, or a static stored Property with accessible standard `get`, whose declaration initializer can be evaluated recursively using only these forms, after the normal lookup, access and initialization checks. Parameters, `var`, instance Fields, custom and computed accessors, calls and cyclic initializers are excluded. This is a semantic classification; it neither treats `let` as a general constant nor adds `const` syntax.
 
@@ -57,11 +57,11 @@ A length expression may then use `Dimensions.Width`. Reading it at compile time 
 
 **Separate compilation and access.** Separate-compilation artifacts keep folded integer values and their Types, or verified slot-dependent expressions and formation obligations. They record the referenced declaration identities and dependencies; a change invalidates dependent artifacts and recomputes Type, layout and selection keys. Length changes have no ABI compatibility guarantee.
 
-Constant accessibility is checked at the definition. A private constant need not become public when its value can be exported without private-name lookup: it is expanded at the definition, and conditions checkable by clients are exported. The expanded value then becomes part of every public API Type or formation condition that uses it. Private access protects the declaration's Name, not the secrecy or compatibility of an exported value; changing the value may break callers and requires dependent invalidation and rebuilding. This exception is intentional, because a folded length contains an integer rather than a private Type or a client-side reference to the private declaration. No compatibility warning is mandated; an implementation may offer an API-change diagnostic. Ordinary API accessibility still applies to element Types and other signature contents.
+Constant accessibility is checked at the definition. A private constant need not become public when its value can be exported without private-name lookup: it is expanded at the definition, and conditions checkable by clients are exported. The expanded value then becomes part of every public API Type or formation condition that uses it. Private access protects the declaration's Name, not the secrecy or compatibility of an exported value; changing the value may break callers and requires dependent invalidation and rebuilding. This exception is intentional: a folded length is an integer, not a private Type or a client-side reference to the private declaration. No compatibility warning is mandated; an implementation may offer an API-change diagnostic. Ordinary API accessibility still applies to element Types and other signature contents.
 
 ## 4.3. Initialization and inference
 
-With an expected fixed-array Type, an array literal constructs that Type and must contain exactly `N` elements; there is no padding or truncation. Elements are acquired in source order by bare acquisition or transfer (§3.5). A local binding annotation may use `[N of _]`, recursively for nested arrays, to infer only the element Type from its initializer; a unique Type is required at the declaration. The placeholder is forbidden in lengths, signatures and explicit generic arguments.
+With an expected fixed-array Type, an array literal constructs that Type and must contain exactly `N` elements; there is no padding or truncation. Elements are acquired in source order under the ordinary acquisition rules (§3.5). A local binding annotation may use `[N of _]`, recursively for nested arrays, to infer only the element Type from its initializer; a unique Type is required at the declaration. The placeholder is forbidden in lengths, signatures and explicit generic arguments.
 
 Without a fixed-array expectation, an independent array literal constructs an Array. A literal in a call argument remains subject to candidate-local fitting under [length-argument inference](#44-function-length-parameters) and is not first defaulted to Array. An empty literal requires an expected element Type. Numeric element defaults follow ordinary inference.
 
@@ -69,7 +69,7 @@ An independent literal may form an Array with safe-borrow elements. Complete ele
 
 An annotation-only declaration remains Uninitialized: there is no zero fill or default element construction. Initial construction requires a whole-array initializer or one whole-array assignment; element-by-element writes into an unconstructed array are forbidden. After construction has completed and a Partial Move has occurred, missing elements may be reinitialized through eligible static Move Paths with ordinary write permissions. Whole-value reads and borrows require completeness.
 
-**Fill construction.** `[Length of value]` always constructs a fixed array, with or without an expected Type. An `Array<T>` expectation is a Type mismatch, not a conversion. `Length` follows §4.2, including parentheses around a compound length. The element Type follows ordinary expectation and literal rules and must be Copy. Evaluate and acquire `value` exactly once, even for length zero, then Copy it into all N elements. A bare Place is acquired by Copy. This introduces neither generator/default construction nor borrowing of uninitialized storage. Fill-store elimination follows the [formatting optimization rules](utf8-formatting.md#6-optimization-and-output) and must preserve evaluation and acquisition of the value.
+**Fill construction.** `[Length of value]` always constructs a fixed array, with or without an expected Type; an `Array<T>` expectation is a Type mismatch, not a conversion. `Length` follows §4.2, including parentheses around a compound length. The element Type follows the ordinary expectation and literal rules and must be Copy. `value` is evaluated and acquired exactly once, even for length zero, and then copied into all `N` elements; a bare Place is acquired by Copy. Fill construction introduces neither generator/default construction nor borrowing of uninitialized storage. Fill-store elimination follows the [formatting optimization rules](utf8-formatting.md#6-optimization-and-output) and must preserve the evaluation and acquisition of `value`.
 
 ```kimi
 let zeros: [64 of u8] = [64 of 0]
@@ -152,15 +152,15 @@ func reordered<length N>(value: [(N + 4) of u8]) -> [(4 + N) of u8] => value
 
 ## 4.5. Operations and ownership
 
-Fixed arrays and Array expose public read-only `length: isize` and `indices: ResolvedRange`, under the [metadata acquisition rules](#461-access-and-length-metadata). Fixed arrays have no resizing operation. Element writes obey ordinary `var`, `let` and borrowed-access permissions.
+Fixed arrays and Array expose the [length metadata](#461-access-and-length-metadata) `length` and `indices`. Fixed arrays have no resizing operation. Element writes obey ordinary `var`, `let` and borrowed-access permissions.
 
-A fixed array is Copy exactly when its complete element Type is Copy. Owned is derived, and element Origins and Loans are retained, recursively. Partial Move follows [Move Paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move). [Aggregate cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup) destroys the remaining initialized elements in decreasing index order, including abandoned construction on an ordinary control transfer; Uninitialized and Moved parts are skipped, and partly built elements are cleaned recursively. Abort does not guarantee cleanup.
+A fixed array is Copy exactly when its complete element Type is Copy (§3.5.1). Owned is derived, and element Origins and Loans are retained, recursively. Partial Move follows [Move Paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move). [Aggregate cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup) destroys the remaining initialized elements in decreasing index order, including abandoned construction on an ordinary control transfer; Uninitialized and Moved parts are skipped, and partly built elements are cleaned recursively. Abort does not guarantee cleanup.
 
-Array is Non-Copy and accepts any valid complete element Type with a representable element layout; neither Owned nor Copy is required. Its Type preserves `T`'s Origin dependencies and Loan requirements, and its values keep the acquired elements' Loans under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), including after removal, replacement and clear (§4.7.5). To obtain a shared view of either owning array form, slice it explicitly.
+Array is Non-Copy and accepts any valid complete element Type with a representable element layout; neither Owned nor Copy is required. Its Type preserves `T`'s Origin dependencies and Loan requirements, and its values keep the acquired elements' Loans under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), including after removal, replacement and clear (§4.7.5). A shared view of either owning array form requires explicit slicing.
 
-The element position preserves Origin variance, and nested variance composes normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. No covariance between different element Cores is added. The Kimi dynamic mutation operations (§4.7) require exclusive access to the whole Array, independently of reallocation. Ordinary indexing gains no Non-Copy Move operation.
+The element position preserves Origin variance, and nested variance composes normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. No covariance between different element Cores is added. The Kimi dynamic mutation operations (§4.7) require exclusive access to the whole Array, whether or not they reallocate.
 
-**Mutation boundary.** Slice has no mutable or exclusive-element form in this revision. Initialized array elements are mutated through authorized access to the owning array, a `uniq` borrow of the whole array, an exclusive element Place selected by indexing (§4.6.9) or exclusive enumeration `for element in values@uniq` (§14.6.2); `uniq/Slice<T>` changes only the handle, never element permissions. To process a mutable subrange, pass an exclusive borrow of the whole array plus bounds and index the array, or iterate saved indices while accessing each element. Bounds validation, active Loans and ordinary initialization checks still apply, and no public disjoint mutable subviews are implied.
+**Mutation boundary.** A Slice never grants element mutation (§4.6.5). Initialized array elements are mutated through authorized access to the owning array, a `uniq` borrow of the whole array, an exclusive element Place selected by indexing (§4.6.9) or exclusive enumeration `for element in values@uniq` (§14.6.2). To process a mutable subrange, pass an exclusive borrow of the whole array plus bounds and index the array, or iterate saved indices while accessing each element. Bounds validation, active Loans and ordinary initialization checks still apply, and no public disjoint mutable subviews are implied.
 
 ```kimi
 var values: [4 of i32] = [10, 20, 30, 40]
@@ -173,7 +173,7 @@ let middle: Slice<i32> = values[1..3] // Infer the borrow of values' storage.
 
 ### 4.6.1. Access and length metadata
 
-The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`. Element indexing accepts `isize` or `Index`; range indexing accepts `Range` or `ResolvedRange`. Dictionary indexing takes keys instead. Every single-element index expression, including user Types, resolves through the [Indexable Contracts](#469-indexable-contracts). [Raw pointers](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing) keep signed `isize` offsets without safe sequence bounds checks and accept neither `Index` nor `Range`. String indexing units are not introduced.
+The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`. Element indexing accepts `isize` or `Index`; range indexing accepts `Range` or `ResolvedRange`. Dictionary indexing takes keys instead. Every single-element index expression, including one on a user Type, resolves through the [Indexable Contracts](#469-indexable-contracts). [Raw pointers](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing) keep signed `isize` offsets without safe sequence bounds checks and accept neither `Index` nor `Range`. String indexing units are not introduced.
 
 | Core | Meaning |
 | --- | --- |
@@ -184,7 +184,7 @@ The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`.
 
 These names are not keywords; `::Kimi.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
 
-**Length metadata.** Fixed arrays and Array provide `length` and `indices`; Slice additionally provides `isEmpty`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
+**Length metadata.** Fixed arrays, Array and Slice provide public read-only `length: isize` and `indices: ResolvedRange`; Slice also provides `isEmpty: bool`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
 
 | Receiver | Acquisition |
 | --- | --- |
@@ -194,7 +194,7 @@ These names are not keywords; `::Kimi.Index`, for example, disambiguates a hidde
 
 The returned integers, Booleans and `ResolvedRange` values acquire no receiver or source Origin or Loan; this does not release existing Loans. `indices` is a snapshot of `[0, L)` at acquisition. Resizing an Array does not update a saved snapshot; later accesses check the length current at that time.
 
-**Element Places.** Binding the receiver and index Types, resolving bounds and checking access produce an element Place carrying the complete stored Type `T`, its source location and its capabilities: `place(ref, T)` for reads and `place(uniq, T)` for updates (§4.6.9, §7.1.1). Forming the Place performs no element Copy or Move. Chained access such as `matrix[1][2] = 10` keeps Places without copying an intermediate inner array.
+**Element Places.** Binding the receiver and index Types, resolving bounds and checking access produce an element Place. It carries the complete stored Type `T`, its source location and its capabilities: `place(ref, T)` for reads and `place(uniq, T)` for updates (§4.6.9, §7.1.1). Forming the Place performs no element Copy or Move. Chained access such as `matrix[1][2] = 10` keeps Places without copying an intermediate inner array.
 
 | Use | Operation after locating the Place |
 | --- | --- |
@@ -203,7 +203,7 @@ The returned integers, Booleans and `ResolvedRange` values acquire no receiver o
 | `values[i]@move` | Transfer, only through an eligible static Move Path of an owned fixed array |
 | Bare value read | Copy for a proven-Copy element; a Non-Copy element is an error without an expected borrow Type. A bare read never Moves |
 
-Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, `Index` values and paths through borrows never become movable. `@ref` borrows the element Place regardless of the index form, and a fixed expected `ref/T` borrows it implicitly (§10.2); an exclusive borrow of an owned element needs `@uniq`, while a stored reference or handle is Reborrowed from that Place under the same table. Slice Places are shared-only.
+Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, `Index` values and paths through borrows never become movable. `@ref` borrows the element Place whatever the index form, and a fixed expected `ref/T` borrows it implicitly (§10.2). An exclusive borrow of an owned element needs `@uniq`. An element that stores a reference or handle is instead adapted under the same table, for example Reborrowed; its slot is not borrowed implicitly. Slice element Places are shared-only (§4.6.6).
 
 ```kimi
 // resources is an owned fixed array of Non-Copy value Type Resource.
@@ -263,7 +263,7 @@ let end = ^0         // Valid Index; values[end] is out of bounds.
 
 `ResolvedRange` implements Equatable by start and end. It retains no storage Origin or Loan, and applying it to an array or Slice rechecks the target bounds. Neither range Type implements Comparable, and there is no implicit conversion or cross-Type equality between them.
 
-**Iteration.** `ResolvedRange` conforms to `Iterable`, `UniqIterable` and `IntoIterable` with the item `isize` in every mode: it yields `start` through `end - 1` in unit steps, nothing for an empty interval, and stays exhausted after `None`. It never computes beyond `end`, including at maximum `isize`. `Range` is never enumerable, even with absolute boundaries, because conformance cannot depend on spelling or value; use `values.indices` or explicitly construct or resolve intervals. Infinite, descending, stepped and negative ranges and dedicated `ResolvedRange` syntax are unavailable.
+**Iteration.** `ResolvedRange` conforms to `Iterable`, `UniqIterable` and `IntoIterable` with the item `isize` in every mode (§14.6.2). It yields `start` through `end - 1` in unit steps, nothing for an empty interval, and stays exhausted after `None`; it never computes beyond `end`, including at maximum `isize`. `Range` is never enumerable, even with absolute boundaries, because conformance cannot depend on spelling or value; use `values.indices`, or construct or resolve an interval explicitly. Infinite, descending, stepped and negative ranges and dedicated `ResolvedRange` syntax are unavailable.
 
 ```kimi
 let inner: Range = 1..^1
@@ -322,7 +322,7 @@ let failed = shortArray[r]              // Abort if executed.
 
 Ordinary element and range indexing initiates Abort on invalid bounds; use `Slice.tryGet`/`trySlice` for expected input failures. A try-prefixed API converts only its own length or bounds failure to `None`, not failures in argument evaluation or other operations: `slice.tryGet(^(-1))` aborts during `Index` construction, while `slice.tryGet(-1)` returns `None`. A successful try-prefixed API returns `Some`.
 
-**Evaluation order.** The receiver and index are each evaluated once under the [evaluation order](12-expressions.md#122-evaluation-order). A range expression evaluates its start, then its end, and then checks integer boundaries for nonnegativity in the same order. A failure inside a boundary expression, including `^` construction, stops subsequent evaluation immediately. These are independent failure examples:
+**Evaluation order.** The receiver and index are each evaluated once under the [evaluation order](12-expressions.md#122-evaluation-order). A range expression evaluates its start, then its end, and then checks integer boundaries for nonnegativity in the same order. A failure inside a boundary expression, including `^` construction, stops subsequent evaluation immediately. Two independent examples:
 
 ```kimi
 func sideEffect() -> isize
@@ -352,7 +352,7 @@ A Slice owns no elements; copying or destroying the handle neither copies nor de
 
 **Storage and escape.** A Slice may be kept in local aggregates, Array elements and concrete object payloads under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), preserving its backing Loan and nested element dependencies. Static storage requires Owned and a valid static source under the [static storage rules](11-properties.md#1132-static-storage). Copying or storing a Slice never extends the backing lifetime.
 
-Borrowing a temporary never extends its [lifetime](03-types-and-values.md#36-temporary-values-places-and-lifetimes). An unused binding is not rejected solely because it contains a temporary borrow; the check is whether a later use, return or retention requires the expired dependency.
+Slicing a temporary never extends its [lifetime](03-types-and-values.md#36-temporary-values-places-and-lifetimes). An unused binding is not rejected solely because it holds a borrow of a temporary; only a later use, return or retention that requires the expired dependency is rejected.
 
 ```kimi
 func makeArray() -> Array<i32> => [1, 2, 3]
@@ -370,7 +370,7 @@ A `var` Slice permits only handle reassignment, and `uniq/Slice<T>` exclusively 
 
 ### 4.6.6. Slice operations and element results
 
-For `s: Slice<T>`, members receive and Copy the handle by value. Element and partial-Slice results retain `s.source` rather than borrowing the handle variable used in the call. All listed operations are public. In the table, each resulting Slice keeps that same source binding.
+For `s: Slice<T>`, members receive and Copy the handle by value. Element and partial-Slice results retain `s.source` rather than borrowing the handle variable used in the call. All listed operations are public.
 
 | Operation | Result and conditions |
 | --- | --- |
@@ -385,7 +385,7 @@ For `s: Slice<T>`, members receive and Copy the handle by value. Element and par
 
 Both split operations have `isize` and `Index` overloads and accept the boundaries zero and length. Invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`; `tryGet` and `trySlice` likewise return `None` on their own invalid bounds. `tryGet` deliberately has a fixed reference result, independent of `T`'s Copy capability.
 
-A Slice element Place is shared: a bare read Copies a proven-Copy `T`, `@ref` borrows the slot, a fixed expected `ref/T` borrows it implicitly (§10.2), and writes, Moves and exclusive borrows through a Slice are rejected. There is no Copy-dependent result Type: for an unknown `T`, `s[0]` in a value position needs `T is Copy`, and `s[0]@ref` works for every `T`.
+A Slice element Place follows the element Place rules of §4.6.1 but is shared-only: writes, Moves and exclusive borrows through a Slice are rejected. No result Type depends on Copy: for an unknown `T`, a by-value `s[0]` needs `T is Copy`, while `s[0]@ref` works for every `T`.
 
 ```kimi
 func first<T>(s: Slice<T>) -> T
@@ -396,7 +396,7 @@ func firstRef<T>(s: Slice<T>) -> ref/T during s.source
     return s[0]@ref // Borrow the slot regardless of T's Copy capability.
 
 func head<T, E>(s: Slice<Result<T, E>>) -> ref/Result<T, E> during s.source
-    return s[0]@ref // A bare s[0] would need Copy evidence.
+    return s[0]@ref // A bare s[0] borrows the same slot at this expected ref Type (§10.2).
 
 let values: [4 of i32] = [10, 20, 30, 40]
 let s = values[1..]     // Length 3; s[0] is 20.
@@ -424,7 +424,7 @@ shared[0] = 20 // Error: Slice elements are read-only.
 
 ### 4.6.7. Slice iteration and nested Origins
 
-`Slice` conforms to `Iterable`, `UniqIterable` and `IntoIterable` with the item `ref/T during source` in every mode, including for Copy elements, in index order (§14.6.2). The iterator keeps a handle and a position, not owned elements; exclusive enumeration lends the handle and leaves the elements shared. Items borrow the backing slots, not the iterator's receiver or storage, so they may be retained across later `next` calls; the iterator is an Iterator (§22.1.2.4) and stays exhausted after `None`.
+`Slice` conforms to `Iterable`, `UniqIterable` and `IntoIterable`. In every mode, including for Copy elements, the item is `ref/T during source`, in index order (§14.6.2). The iterator holds a handle and a position, not owned elements, so exclusive enumeration lends only the handle and the elements stay shared. Items borrow the backing slots, not the iterator's receiver or Storage, so they may be retained across later `next` calls. The iterator is a standard Iterator (§22.1.2.3–4).
 
 Element-internal Origins are kept separate from slot-borrow Origins:
 
@@ -442,7 +442,7 @@ The outer references from `tryGet` and iteration borrow the slots of `refs`, whi
 
 ### 4.6.8. Representation and performance
 
-Construction, resolution and Copy of `Index`, `Range` and `ResolvedRange`, and creation, Copy, reslicing, splitting and address calculation of Slices, take O(1) time in the element count and require no additional element storage, heap allocation or reference-count update. Forming or forwarding an element Place is O(1) and requires no heap allocation, element Copy, temporary element storage or reference-count update of its own; searches, projection arithmetic, the actual acquisition and user code are charged separately. Element Copy and user-code costs are separate.
+Construction, resolution and Copy of `Index`, `Range` and `ResolvedRange`, and creation, Copy, reslicing, splitting and address calculation of Slices, take O(1) time in the element count and require no additional element storage, heap allocation or reference-count update. Forming or forwarding an element Place is O(1) and requires no heap allocation, element Copy, temporary element storage or reference-count update of its own. Searches, projection arithmetic, the actual acquisition, including any element Copy, and user code are charged separately.
 
 For a fixed Type binding, let `n` be the number of live elements or entries at the start of an enumeration. The standard iterators of borrowed Array, fixed arrays and Dictionary, of Slice and of ResolvedRange satisfy:
 
@@ -454,7 +454,7 @@ For a fixed Type binding, let `n` be the number of live elements or entries at t
 | Enumeration up to the first `None` | O(1 + n) |
 | Additional iterator storage | O(1), with no heap allocation or reference-count update |
 
-For a Dictionary, `n` is the number of live entries, not the capacity: no capacity scan or element-reference array is built at creation, and sparse Dictionaries keep the bound. Owning iterators obey the same bounds for their traversal management; holding and transferring the source storage, transferring and cleaning up elements, and the results and body the user retains are charged separately. User iterators have no required complexity. Iteration takes O(1) extra storage; an array of iteration values is never materialized first.
+For a Dictionary, `n` is the number of live entries, not the capacity: no capacity scan or element-reference array is built at creation, and sparse Dictionaries keep the bound. Owning iterators obey the same bounds for their traversal management; holding and transferring the source storage, transferring and cleaning up elements, and the results and body the user retains are charged separately. User iterators have no required complexity. Iteration never materializes an array of iteration values first.
 
 A Slice's semantic representation keeps the backing-element location or equivalent provenance, a nonnegative `isize` length, and static Origins and Loans. Element spacing is `stride(T)`. Empty Slices and zero-sized elements keep source provenance. No universal pointer-plus-length ABI, runtime lifetime tag or pointer to a disappearing handle variable is required. Implementations use logical counts and positions rather than subtracting element pointers to recover a length, and never form invalid pointers before checking.
 
@@ -462,7 +462,7 @@ Checks may be eliminated, shared or hoisted out of loops only when safety is pro
 
 ### 4.6.9. Indexable contracts
 
-Single-element indexing is the [Kimi Contract](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) family below. `Key` and `Element` are complete Types; a search key is shared-borrowed and never consumed, small keys need no heap allocation, and a key whose Type is a reference or object handle is written `key@ref`, since §10.2 borrows no slot implicitly.
+Single-element indexing is the [Kimi Contract](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) family below. `Key` and `Element` are complete Types. A search key is shared-borrowed and never consumed, and small keys need no heap allocation. A key whose Type is a reference or object handle is written `key@ref`, because §10.2 never borrows such a slot implicitly.
 
 ```kimi
 contract Indexable<Key>
@@ -475,7 +475,7 @@ contract UniqIndexable<Key>: Indexable<Key>
         -> place(uniq, Element) during self
 ```
 
-Both requirements share one `Element`, and the same key selects the same element. `UniqIndexable` provides exclusive access to the element Place; it does not change the stored Type to `uniq/Element`. An index expression `receiver[key]` is resolved statically in this order, without changing runtime evaluation:
+Both requirements share one `Element`, and the same key selects the same element. `UniqIndexable` grants exclusive access to the element Place; it does not change the stored Type to `uniq/Element`. An index expression `receiver[key]` is resolved statically in this order, without changing runtime evaluation:
 
 1. Determine the `Indexable<Key>` conformance and `Element` from the receiver, after [reference-path selection](03-types-and-values.md#341-reference-path-selection), and the key Type; `Key` is never inferred from the expected result.
 2. Determine the capability the use requires from its acquisition or update plan, including an exclusive Reborrow that §10.2 requires of the element's stored reference.
@@ -486,7 +486,7 @@ Both requirements share one `Element`, and the same key selects the same element
 normalize(refs[0]) // Parameter uniq/Node: indexUniq selects the slot and the stored reference is Reborrowed.
 ```
 
-A shared path cannot satisfy an exclusive requirement; ordinary functions and getters keep their declared result modes, and a capability or Loan failure never reselects a mode, a candidate or a layer. The receiver and key are evaluated once each in the ordinary call order; assignment evaluates its right-hand side first (§13.7). Every input, including the key, stays Loaned during the call, and the result depends on the receiver under its contract; a result that depends on the key's borrow does not satisfy the contract.
+A shared path cannot satisfy an exclusive requirement. Ordinary functions and getters keep their declared result modes, and a capability or Loan failure never reselects a mode, a candidate or a layer. The receiver and key are evaluated once each in the ordinary call order; assignment evaluates its right-hand side first (§13.7). Every input, including the key, stays Loaned during the call. The result depends on the receiver under its contract; a result that depends on the key's borrow does not satisfy the contract.
 
 **Standard indexing.** `a` is the receiver borrow Origin and `s` the Slice's external source; element-internal Origins are kept separately.
 
@@ -498,17 +498,17 @@ A shared path cannot satisfy an exclusive requirement; ordinary functions and ge
 | `Array<E>`, `[N of E]` range | `Range` or `ResolvedRange` by value | An ordinary `Slice<E>` | The element storage |
 | `Slice<E>` range | `Range` or `ResolvedRange` by value | An ordinary `Slice<E>` | `s` |
 
-Array and fixed arrays conform to `UniqIndexable<isize>` and `UniqIndexable<Index>`, Dictionary to `UniqIndexable<K>`, and Slice to `Indexable<isize>` and `Indexable<Index>`; conformances distinguished by Type arguments and their associated Types are identified under §8.4.9. Out-of-range elements and absent keys Abort; the try-prefixed operations return ordinary `Option` values. The Slice implementation publishes `during self.source`, which is stronger than the required `during self`; a generic `S is Indexable<Key>` assumes only the requirement. Range indexing is not part of the Indexable family: it forms a Slice, whose temporary storage is not a Place inside the collection, and no whole-range assignment or exclusive Slice exists.
+Array and fixed arrays conform to `UniqIndexable<isize>` and `UniqIndexable<Index>`, Dictionary to `UniqIndexable<K>`, and Slice to `Indexable<isize>` and `Indexable<Index>`; conformances distinguished by Type arguments and their associated Types are identified under §8.4.9. Out-of-range indices (§4.6.4) and absent keys (§4.7.3) Abort; the try-prefixed operations return `Option` values instead. The Slice implementation publishes `during self.source`, which is stronger than the required `during self`; a generic `S is Indexable<Key>` assumes only the requirement. Range indexing is not part of the Indexable family: it forms a Slice, whose temporary storage is not a Place inside the collection, and no whole-range assignment exists (§4.6.5).
 
-A direct fixed-array element is a built-in projection selected with the same inputs and rules, not a call that borrows the whole array: with an in-range integer literal it keeps its Take capability (§15.1.5), so a Partial Move, later use of the remaining elements and reinitialization of the missing element are possible. Abstract Indexable conformances and ordinary Place results publish neither Take nor Uninitialized Storage. Field access keeps the standard `get`/`set` permissions of §11.1.
+A direct fixed-array element is a built-in projection selected with the same inputs and rules, not a call that borrows the whole array. With an in-range integer literal index it keeps its Take capability (§15.1.5), so a Partial Move, later use of the remaining elements and reinitialization of the missing element are possible. Abstract Indexable conformances and ordinary Place results publish neither Take nor Uninitialized Storage. Field access keeps the standard `get`/`set` permissions of §11.1.
 
 ## 4.7. Dynamic collection mutation
 
 ### 4.7.1. Common acquisition and outcomes
 
-`Array<T>` and `Dictionary<K, V>` are Non-Copy owning collections. They accept valid complete stored Types without blanket Copy or Owned constraints. Dictionary requires `K is Equatable` and the key stability of §12.3.4, not a public Hash constraint. Types and Origins are fixed at the declaration; mutation never restarts inference.
+`Array<T>` and `Dictionary<K, V>` are Non-Copy owning collections. Like Array (§4.5), Dictionary accepts valid complete stored Types without blanket Copy or Owned constraints. Dictionary requires `K is Equatable` and the key stability of §12.3.4, not a public Hash constraint. Types and Origins are fixed at the declaration; mutation never restarts inference.
 
-The operations below are public instance APIs. Mutations use `self: uniq/Self` unless stated otherwise, so a collection in receiver position is acquired exclusively without a spelling (`values.append(...)`, [§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), whether it is directly owned or reached through an exclusive reference, provided its lending point is exclusively writable (§15.1.5); passing a collection to a `uniq` parameter still needs `@uniq`. Value parameters are acquired once by bare acquisition or transfer, without deep cloning or implicit count increments. A rejected Move is not restored; returned inputs can be recovered from a `Result`. Removal transfers the stored responsibility, even for Copy elements. Owning a reference value neither owns nor extends its referent's lifetime.
+The operations below are public instance APIs. Mutations use `self: uniq/Self` unless stated otherwise. A collection in receiver position is therefore acquired exclusively without a spelling (`values.append(...)`, [§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), whether it is directly owned or reached through an exclusive reference, provided its lending point is exclusively writable (§15.1.5). Passing an owned collection Place to a `uniq` parameter still needs `@uniq` (§10.2). Value parameters are acquired once under the ordinary acquisition rules (§3.5), without deep cloning or implicit count increments. A rejected Move is not restored; returned inputs can be recovered from a `Result`. Removal transfers the stored responsibility, even for Copy elements. Owning a reference value neither owns nor extends its referent's lifetime.
 
 Precondition failures Abort. Ordinary absence uses `Option`, and recoverable rejection that returns its inputs uses `Result`. A try-prefixed API name promises only its specified recoverable outcome, not propagation by a try expression (§17.2.4); a corresponding Abort API need not exist. A discarded `Result` follows the normal warning rule.
 
@@ -545,7 +545,7 @@ These postconditions do not roll back external effects of arguments, equality or
 
 The index is resolved once in the body against the entry length `L`. For a from-end `Index`, `offset <= L` is required before `p = L - offset`. Insert requires `0 <= p <= L` and remove requires `0 <= p < L`; invalid indices Abort. There is no implicit `isize`/`Index` conversion and no Range overload.
 
-`insert(^0, value)` appends, including to an empty Array. On a nonempty Array, `insert(^1, value)` inserts before the last element and `remove(^1)` removes it; `remove(^0)` is always invalid. A failure constructing an `Index` prevents later argument evaluation. Indexed reading still cannot Move a Non-Copy dynamic element, and indexed assignment destroys the old value, unlike `remove`.
+`insert(^0, value)` appends, including to an empty Array. On a nonempty Array, `insert(^1, value)` inserts before the last element and `remove(^1)` removes it; `remove(^0)` is always invalid. A failure constructing an `Index` prevents later argument evaluation. Unlike `remove`, indexed reading never Moves a dynamic element (§4.6.1), and indexed assignment destroys the old value.
 
 ```kimi
 var values: Array<i32> = []
@@ -575,14 +575,14 @@ A duplicate is the only `Err` outcome of `tryInsert`; no dedicated error Type is
 
 `tryGet` always returns `ref/V`, including for a Copy `V`. It never copies, moves or removes a stored value. Its result protects the whole Dictionary storage and preserves `V`'s dependencies, with no operation-only Loan on the search key. A lookup, or a saved Boolean observation, reserves no future access.
 
-`map[key]` selects the value Place of an existing key through `UniqIndexable<K>` (§4.6.9): `place(ref, V)` for reads and `place(uniq, V)` for updates; absence Aborts. `map[key] = value` replaces an existing value and returns Unit. It shared-borrows the key as `ref/K` rather than consuming it:
+`map[key]` selects the value Place of an existing key through `UniqIndexable<K>` (§4.6.9); absence Aborts. `map[key] = value` replaces an existing value and returns Unit. It shared-borrows the key as `ref/K` rather than consuming it:
 
 1. Evaluate and acquire the right-hand `V` once.
 2. Identify the receiver and evaluate the key, left to right and once each.
 3. Search with shared access, and Abort if the key is absent.
 4. Obtain exclusive access to the value slot, destroy the old value and place the new one.
 
-From receiver identification through placement, structural mutation, Move and destruction of the Dictionary are prevented. Shared access is kept during lookup, and all Loans, including the key's, are checked before writing; that borrow is not treated as ended early. Temporary lifetimes follow §3.6 and §10.2. Replacement is rejected if destroying the old value would invalidate dependencies of the secured right-hand side or of retained temporaries. Abort or nontermination during that destruction prevents placement. Compound assignment follows the right-hand-side-first order of §13.7, with one search, read and write.
+From receiver identification through placement, structural mutation, Move and destruction of the Dictionary are prevented. Shared access is kept during lookup, and all Loans, including the key's, are checked before writing; the key's borrow is not treated as ended early. Temporary lifetimes follow §3.6 and §10.2. Replacement is rejected if destroying the old value would invalidate dependencies of the secured right-hand side or of retained temporaries. Abort or nontermination during that destruction prevents placement. Compound assignment follows the right-hand-side-first order of §13.7, with one search, read and write.
 
 ```kimi
 var names: Dictionary<i32, string> = [:]

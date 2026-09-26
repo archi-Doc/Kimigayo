@@ -6,14 +6,14 @@
 
 This is the normative Markdown profile for [§2.3.4–6](02-source-and-lexical-structure.md#234-markdown-and-links). Use [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/) for adopted syntax unless this profile explicitly changes a rule; full CommonMark compatibility is not required.
 
-[§2.3.1–3](02-source-and-lexical-structure.md#231-documentation-text) still owns `///` recognition, text extraction, declaration association, configuration selection and publication scope. Documentation does not change name resolution, Type checking or execution. Unless marked `kimi`, examples below show extracted Markdown without `///`; tables used to explain this specification do not add table syntax to the profile.
+[§2.3.1–3](02-source-and-lexical-structure.md#231-documentation-text) owns `///` recognition, text extraction, declaration association, configuration selection and publication scope. Documentation does not change name resolution, Type checking or execution. Unless marked `kimi`, the examples below show extracted Markdown without `///`; the tables that explain this specification add no table syntax to the profile.
 
 ## 2. Syntax
 
 ### 2.1. Common parsing rules
 
 - Count indentation columns from each extracted line's start, even after consuming outer list or quote prefixes. Use CommonMark space/tab rules; U+0020 indentation is recommended. This does not change the ban on tabs in executable source.
-- Retain CommonMark's block precedence, paragraph-interruption conditions and at-most-three-column start indentation after outer containers. Omitted block rules neither start blocks nor terminate paragraphs or suppress other syntax.
+- Keep CommonMark's block precedence, paragraph-interruption conditions and at-most-three-column start indentation after outer containers. Omitted block rules neither start blocks, terminate paragraphs nor suppress other syntax.
 - Parse inline content after its paragraph or heading boundary and content are settled. Eager, incremental and lazy processing must produce the same completed result; publication rules are in [§5.2](#52-completion-concurrency-and-reuse).
 - Do not reparse decoded escapes or character references as Markdown. Item extraction is a separate operation on parsed content.
 - Interpret U+0000 as U+FFFD before applying Markdown rules, including link recognition and delimiter classification. Preserve the extracted input and its UTF-16 coordinates; HTML must not emit NUL characters.
@@ -75,7 +75,7 @@ Every nonempty continuation line must meet the item's indentation. Close each it
 This line is outside the list.
 ````
 
-Retain CommonMark tight/loose list classification from blank lines and child-block placement. Tight item paragraphs omit HTML `<p>` wrappers; loose ones retain them. Classification is per list; child lists are independent. Simple paragraph items without separating blank lines are tight; separating blank lines make them loose.
+Keep CommonMark's tight/loose list classification from blank lines and child-block placement. Tight item paragraphs omit HTML `<p>` wrappers, and loose ones keep them. Classification is per list, and child lists are independent. Simple paragraph items without separating blank lines are tight; separating blank lines make them loose.
 
 #### 2.2.4. Quotes
 
@@ -213,7 +213,7 @@ Receiver roles follow [§7.3](07-functions-and-callable-values.md#73-explicit-re
 
 ### 4.1. Escaping and display
 
-Raw HTML is neither a block nor inline syntax. Escape body text, code and attributes appropriately without changing the tree. HTML-looking text must not suppress subsequent Markdown. For example, `<T>` followed by `*description*` displays the literal tag and emphasis. Autolink angle brackets remain distinct from HTML syntax.
+Raw HTML is neither block nor inline syntax. Escape body text, code and attributes appropriately without changing the tree. HTML-looking text must not suppress subsequent Markdown (see the `<T>` example in §2.4). Autolink angle brackets remain distinct from HTML syntax.
 
 Unresolved, disallowed or rewrite-disabled ordinary links retain their label and formatting. Disabled autolinks retain their escaped original spelling including angle brackets, such as `<Foo::bar>` under the default policy. Do not automatically link code names to declarations or introduce `kimi:` links. Renderers define stable anchors/output organization; recognizing `#anchor` does not prove that the anchor exists.
 
@@ -278,7 +278,7 @@ These rules prevent reference-kind/scheme confusion; they do not promise identic
 
 ### 5.1. Read-only syntax and source positions
 
-The product uses an internal parser and independent public types, with no Markdig type dependency. If retained for comparison, Markdig belongs only in tests/benchmarks. Expose completed results as read-only, preserving heading levels, list kind/start/tightness, destinations/titles and code language information needed for display and extraction.
+The product uses an internal parser and independent public types, with no dependency on Markdig types; Markdig, if kept for comparison, belongs only in tests and benchmarks. Expose completed results as read-only, preserving the heading levels, list kind, start and tightness, destinations and titles, and code language information needed for display and extraction.
 
 Summary/item node identity must remain stable within one parsed document. Object references or document-plus-node IDs are both valid; neither .NET reference identity nor per-node allocation is required. Do not reuse identities across parsed documents.
 

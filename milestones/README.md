@@ -466,7 +466,7 @@ Try each of these independently as a compile-time rejection exercise:
   by `return local@ref`: a local lifetime cannot satisfy the caller's Origin.
 
 Focus: [Origins](../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
-[Loans and lifetimes](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing),
+[Loans and lifetimes](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting),
 and [destruction lifetime checking](../spec/15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking).
 
 Milestone 5 is verified through native execution. Reproduce with the pinned
@@ -967,7 +967,7 @@ dependencies or universal-region checking.
 Focus: [Origin intersections](../spec/15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection),
 [abstract Origins](../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
 [call propagation](../spec/15-ownership-and-lifetime-analysis.md#1564-calls-and-origin-propagation),
-and [reborrowing](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing).
+and [reborrowing](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting).
 
 ## Milestone 17: repair, replacement and ordered cleanup
 
@@ -1612,7 +1612,7 @@ allocate zero bytes. Debug/Release full suites and all 26 Release harnesses now 
 [completion session](../PLAN_HISTORY.md#review-remediation). The [earlier failed probes](../PLAN_HISTORY.md#p30-session1) are historical evidence.
 
 Focus: [comparison mapping](../spec/13-operators-and-assignment.md#1341-contract-comparison-mapping),
-[floating key equality](../spec/12-expressions.md#1234-dictionary-literals),
+[floating key equality](../spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys),
 [Contracts](../spec/08-generics-constraints-and-contracts.md), and
 [required declarations](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations).
 
@@ -1713,7 +1713,7 @@ Focus: [object views](../spec/03-types-and-values.md#335-object-views-and-identi
 [upcasts](../spec/13-operators-and-assignment.md#1357-object-upcasts),
 [runtime tests](../spec/13-operators-and-assignment.md#1361-runtime-is-tests),
 [refinement](../spec/14-control-flow.md#1410-type-refinement),
-[payload projection](../spec/13-operators-and-assignment.md#13551-complete-object-payload-projection)
+[payload projection](../spec/13-operators-and-assignment.md#13551-dereference)
 and [dynamic release](../spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
 
 ### Programs 22–24 authoring verification (2026-09-22)

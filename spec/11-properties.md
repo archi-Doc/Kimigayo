@@ -47,7 +47,7 @@ public var resource: Resource
     private set
 ```
 
-Standard `get` exposes permitted operations on the storage. Bare value acquisition Copies a proven-Copy `T`, and `@move` transfers from a Movable Place (§15.1.5). Borrowing follows the existing adaptation rules without first acquiring the value. Standard `set` directly initializes or replaces the storage under the ordinary state and cleanup rules.
+Standard `get` exposes the permitted Place operations on the storage: acquisition follows §3.5 and §15.1.5, and borrowing follows the ordinary adaptation rules without first acquiring the value. Standard `set` directly initializes or replaces the storage under the ordinary state and cleanup rules.
 
 | Direct storage operation | Required accessible standard accessors |
 | --- | --- |
@@ -66,7 +66,7 @@ Every row additionally requires valid receiver capabilities, initialization and 
 | Standard `get` + custom `set` | Storage Copy or shared borrow; no direct Move or exclusive borrow | Call `set` |
 | Custom `get` + custom `set` | Getter result; no direct storage access | Call `set` |
 
-Borrows keep the semantics of §13.5.5. For a slot of Type `F = ref/U`, both `@ref` and `@ref/F` borrow the slot as `ref/(ref/U)`; the stored reference is copied by bare acquisition or at an expected `ref/U`, and its referent is Reborrowed with `@deref@ref` or at an expected borrow Type.
+Borrows follow §13.5.5. For a slot of Type `F = ref/U`, `@ref` and `@ref/F` both borrow the slot as `ref/(ref/U)`; bare acquisition or an expected `ref/U` Copies the stored reference (§10.2), and `@deref@ref` Reborrows its referent.
 
 ### 11.1.1. Access and mutability
 
@@ -131,7 +131,7 @@ struct AssignedBox<T>
 
 `AssignedBox` cannot supply an unconstrained `T` by value through standard `get`, because its Non-Copy case would require a forbidden storage Move; shared borrowing remains available.
 
-When Copy is unproven, a bare read of the slot is an error (§8.9): constrain `T is Copy`, borrow the slot, or transfer it with `@move`, which leaves the aggregate incomplete for every `T`. The result Type remains `T`. Overload selection is not retried after a Move or Loan failure.
+When Copy is unproven, a bare read of the slot is an error (§8.9): constrain `T is Copy`, borrow the slot, or transfer it with `@move`, which leaves the aggregate incomplete for every `T`. The result Type remains `T`, and a Move or Loan failure never retries overload selection (§10.6).
 
 ```kimi
 func test<T>(box: Box<T>) -> ()
@@ -144,7 +144,7 @@ func test<T>(box: Box<T>) -> ()
 
 Custom and computed accessors declare their input and result Types explicitly; only the receiver may use the fixed shorthand below, and bodies infer none of these Types. Both accessors use the common Body (§14.2). A single-item getter follows its fixed declared return Type; a setter discards its single-item expression and completes with Unit. Explicit returns must still fit the declared result. Parameter defaults and `!` boundaries are forbidden; Property access supplies the receiver and setter value through its dedicated syntax, without ordinary argument labels. Static accessors have no receiver. A setter's `value` parameter is an initialized immutable binding with ordinary argument acquisition and cleanup.
 
-**Receiver shorthand.** In an instance Property, an accessor signature without a written receiver gets `self: ref/Self` inserted for `get`, and `self: uniq/Self` before `value` for `set`. This applies to stored custom accessors, computed accessors and explicit Contract requirement signatures: `get() -> T` and `set(value: U) -> ()` keep an instance receiver and bind contextual `self` in their bodies and Origin annotations. The containing Property determines instance or static kind, so group and rootgroup accessors remain receiverless. An explicit receiver Type remains available and must satisfy the accessor restrictions. Parameter lists, setter input Types and result Types are still required in custom and explicit requirement signatures; bare `get`/`set` keep their standard-accessor rules. No receiver Type is inferred from the body, and operations needing a stronger receiver do not change the default. Origin completion, signature matching and call/borrow behavior are those of the expanded signature, with the receiver as input slot zero.
+**Receiver shorthand.** In an instance Property, an accessor signature without a written receiver gets `self: ref/Self` inserted for `get`, and `self: uniq/Self` before `value` for `set`. This applies to stored custom accessors, computed accessors and explicit Contract requirement signatures: `get() -> T` and `set(value: U) -> ()` keep an instance receiver and bind contextual `self` in their bodies and Origin annotations. The containing Property determines instance or static kind, so group and rootgroup accessors remain receiverless. An explicit receiver Type remains available and must satisfy the accessor restrictions. Parameter lists, setter input Types and result Types remain required in custom and explicit requirement signatures; bare `get`/`set` keep their standard-accessor rules. The body never changes the receiver Type, even when its operations need a stronger receiver. Origin completion, signature matching and call/borrow behavior are those of the expanded signature, with the receiver as input slot zero.
 
 A stored instance custom `get` uses `self: ref/Self` and returns the storage Type `T`, which must be Copy. A custom `set` uses `self: uniq/Self, value: T` and returns Unit. The static forms are `get() -> T` and `set(value: T) -> ()`.
 
@@ -210,7 +210,7 @@ struct Holder
             return self.item@move // Only with valid partial Move/deinit conditions.
 ```
 
-Non-Copy results must be legally created or acquired; a shared receiver cannot supply an owned Non-Copy field by extraction. An owning getter consumes the complete receiver, which is therefore written `holder@move.result` (§7.3); a later setter cannot reuse it. An owning setter's receiver is likewise written `holder@move.item = value` unless `Self` is Copy. No hidden duplication, restoration or get/set round-trip equality is promised.
+Non-Copy results must be legally created or acquired; a shared receiver cannot supply an owned Non-Copy field by extraction. An owning getter or setter consumes the complete receiver, so unless `Self` is Copy an owned Place receiver is written `holder@move.result` or `holder@move.item = value` (§7.3), and a later setter cannot reuse a consumed receiver. No hidden duplication, restoration or get/set round-trip equality is promised.
 
 ### 11.2.3. Getter results and temporaries
 
@@ -237,7 +237,7 @@ identity(object.position).x = 10 // Ordinary function temporary rules.
 // Neither example writes back to object.position.
 ```
 
-Value acquisition, shared borrowing and legal ownership transfer remain allowed. Materialization and borrowing never extend a temporary's lifetime. The required borrow duration is inferred from uses, returns and retention, and a borrow is rejected if its referent cannot live that long. No blanket rejection of an unused borrow binding is added.
+Value acquisition, shared borrowing and legal ownership transfer remain allowed. Materialization and borrowing never extend a temporary's lifetime (§3.6.2): the required borrow duration is inferred from uses, returns and retention, and a borrow is rejected if its referent cannot live that long. An unused borrow binding is not rejected for that reason alone.
 
 ```kimi
 // visible has a custom getter returning i32.
@@ -252,7 +252,7 @@ For a standard `i32` `get`, `@ref` instead borrows the storage.
 
 ### 11.2.4. Non-Copy custom setters
 
-A custom setter receives ownership of a Non-Copy `value` and may replace the storage. Assigning to `storage` secures its right-hand side, destroys any old value and installs the new one without calling the setter again; the ordinary assignment and cleanup failure rules apply. An exclusive receiver cannot directly Move an old Non-Copy value out: inspect it by shared borrowing, or use an authorized initialization-preserving operation. Conflicting Loans must end before replacement, and the setter must return with a complete receiver.
+A custom setter receives ownership of a Non-Copy `value` and may replace the storage. Assigning to `storage` is an ordinary assignment (§13.7.1): it destroys any old value and installs the new one, without calling the setter again. An exclusive receiver cannot directly Move an old Non-Copy value out: inspect it by shared borrowing, or use an authorized initialization-preserving operation. Conflicting Loans must end before replacement, and the setter must return with a complete receiver.
 
 ```kimi
 struct Holder
@@ -268,11 +268,11 @@ let edit = holder.item@uniq/Resource // Error: direct exclusive access.
 
 A setter may return without updating the storage. Unconsumed input is destroyed normally; transferred input is neither destroyed twice nor automatically restored to the caller. Use a result-returning function when acceptance or rejection must be reported. These restrictions do not prohibit a legal whole-receiver Move or destruction. Initial placement does not invoke validation (§11.3.1).
 
-Explicit accessor signatures introduce per-call scalar Origins through their borrow annotations, following §15.3.4. There is no list after `get` or `set`. Their attached `origin` clauses precede executable items; a Property's own clauses precede its accessor declarations. Inherited names cannot be redeclared. The same rules apply to explicit Contract requirement signatures.
-
 ## 11.3. Types and Origins
 
 A stored Type may be inferred only from its declaration initializer; otherwise an annotation is required. It is never inferred from accessors or later assignments. Storage explicitly binds the required Origins, including nested dependencies (§15.4); `self` does not create a self-borrowing storage contract.
+
+Explicit accessor signatures introduce per-call scalar Origins through their borrow annotations (§15.3.4); there is no Origin list after `get` or `set`. Their attached `origin` clauses precede executable items, and a Property's own clauses precede its accessor declarations. Inherited names cannot be redeclared. Explicit Contract requirement signatures follow the same rules.
 
 Complete an accessor from an existing storage contract before applying function elision. A stored custom value input or result inherits omitted Origins from the corresponding complete storage Type `T`; explicit bindings are checked, not overwritten. The receiver retains its independent per-call Origin. Verify complete Type correspondence and the body afterward. No new accessor parameter may narrow the calls required by storage.
 
@@ -312,15 +312,15 @@ self.level = 300     // Error: construction cannot call custom set.
 
 If only one branch initialized `level`, a subsequent unconditional write would also be rejected for a custom `set`. A declaration initializer such as `level = 999` also bypasses validation; callers needing validated initial values must arrange it explicitly.
 
-Construction keeps base-first order, declaration-order initializers, the ban on `self` and constructor parameters in declaration initializers, definite initialization, and completion checks after cleanup (§6.2.3); no zero initialization is added. Layout, Copy derivation, implicit construction, partial Move and destruction use stored slots and base components only. Computed Properties contribute none, and automatic destruction invokes no accessors.
+All other construction rules of §6.2.3 apply unchanged, and no zero initialization is added. Layout, Copy derivation, implicit construction, partial Move and destruction use stored slots and base components only. Computed Properties contribute none, and automatic destruction invokes no accessors.
 
 ### 11.3.2. Static storage
 
 Group and rootgroup stored Properties require an initializer, an Owned complete storage Type (§15.2.3), and the per-slot lazy state machine of §22.2. Safe shared borrows of eligible immutable static storage may be retained, including inside aggregates. Acquisition, initialization and destruction dependencies are checked separately; Owned supplies no Loan or pointer-validity evidence.
 
-Safe code cannot form a `{static}` borrow of mutable static storage, including an inline subplace or backing data that safe mutation can invalidate. A new borrow of such storage has a finite, use-bounded Origin and cannot be fitted to `static`, including through generic substitution or an accessor result. A function or custom getter can expose it only through a result Origin bounded by a borrowed input under §15.4, keeping the Field anchor in its effect summary (§15.6.4); a result Origin elided to `static` is an error. Copying an already stored reference preserves its original referent and Origin; it is not a borrow of the mutable slot. An eligible static borrow must be anchored in initialized immutable storage whose referenced path stays protected from safe mutation. Local Loans and shutdown checks remain necessary (§15.6.4, §22.2.3).
+Safe code cannot form a borrow `during static` of mutable static storage, including an inline subplace or backing data that safe mutation can invalidate. A new borrow of such storage has a finite, use-bounded Origin and cannot be fitted to `static`, including through generic substitution or an accessor result. A function or custom getter can expose it only through a result Origin bounded by a borrowed input under §15.4, keeping the Field anchor in its effect summary (§15.6.4); a result Origin elided to `static` is an error. Copying an already stored reference preserves its original referent and Origin; it is not a borrow of the mutable slot. An eligible static borrow must be anchored in initialized immutable storage whose referenced path stays protected from safe mutation. Local Loans and shutdown checks remain necessary (§15.6.4, §22.2.3).
 
-Actual slot access triggers initialization. Calling a custom or computed accessor initializes only the slots actually touched by its execution or callees, not every summarized effect. A standard write initializes the slot first and then replaces its value; a static `let` permits no external initialization or replacement. A custom `set` follows its function effects and may never touch the storage. Unused initializers still require validation. Static accessors have no `self`.
+Actual slot access triggers initialization. Calling a custom or computed accessor initializes only the slots actually touched by its execution or callees, not every summarized effect. A standard write initializes the slot first and then replaces its value; a static `let` permits no external initialization or replacement. A custom `set` follows its function effects and may never touch the storage. Unused initializers still require validation.
 
 ## 11.4. Contract property requirements
 

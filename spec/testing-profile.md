@@ -1,6 +1,6 @@
 # Test execution profile
 
-This normative supplement to [§20.9](20-compilation-configuration.md#209-test-command-and-discovery) and [§22.6](22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting) defines the initial Windows x64 test interface. The owning chapters define language semantics; this file defines configuration, identity, transport and output.
+This normative supplement to [§20.9](20-compilation-configuration.md#209-test-command-and-discovery) and [§22.6](22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting) defines the initial Windows x64 test interface: configuration, identity, transport and output. The owning chapters define the language semantics.
 
 ## Inputs and selection
 
@@ -45,15 +45,15 @@ Selection, scheduling, environment and retention settings are recorded in the ru
 
 Capture the parent's environment once, apply each project's `Test.Environment`, then create a private copy for each child. Only reserved case settings differ between cases of the same project. Set `TMP` and `TEMP` to an existing unique absolute temporary directory. The working directory remains the case's project root. Close stdin so that reads see EOF. Do not invoke a shell.
 
-`Kimi.Test` is a compiler-provided public nongeneric group containing `tempDirectory() -> string`. The safe, receiver-free function returns an independently owned string containing the current case's absolute temporary directory, without a required trailing separator. Its path is valid throughout initialization, body, cleanup and shutdown. It is available only in test-only bodies and is misuse without an active case. It does not create a second directory. FFI libraries may use `TMP`/`TEMP`; libraries ignoring those variables are not redirected.
+`Kimi.Test` is a compiler-provided public nongeneric group containing `tempDirectory() -> string`. This safe, receiver-free function returns an independently owned string holding the current case's absolute temporary directory, without a required trailing separator. The path is valid throughout initialization, body, cleanup and shutdown. The function is available only in test-only bodies, is misuse without an active case, and creates no second directory. FFI libraries may use `TMP`/`TEMP`; libraries that ignore those variables are not redirected.
 
-The parent reclaims the temporary directory after success, failure or cancellation. No keep-temporary-files option is provided. User-created files outside it are not rolled back. Diagnostic budgets do not bound user-created files or user-code allocations. Failure to recover resources within grace is reported; no deletion follows links outside the owned directory.
+The parent reclaims the temporary directory after success, failure or cancellation; there is no option to keep temporary files. User-created files outside it are not rolled back, and diagnostic budgets bound neither user-created files nor user-code allocations. A failure to recover resources within the grace period is reported, and no deletion follows links outside the owned directory.
 
 ## Process management
 
 Use a separate Windows Job Object per case, assigned when the process is created, with kill-on-last-handle-close and no permitted breakaway. The parent owns its non-inherited job handle. The result channel and stdout/stderr handles are inherited or connected only as required; descendants must not inherit the result writer. Assignment failure is an execution error, never fallback to unmanaged execution. Terminate and recover managed descendants even after the case process exits normally. Parent shutdown must not leave managed cases running.
 
-The parent's monotonic execution deadline starts before launch and excludes build and queue time. Recovery uses one absolute grace deadline across process termination, channel draining and temporary cleanup; each stage does not get a fresh grace period. Preserve the original exit/Abort/timeout reason alongside recovery errors.
+The parent's monotonic execution deadline starts before launch and excludes build and queue time. Recovery uses one absolute grace deadline across process termination, channel draining and temporary cleanup; no stage gets a fresh grace period. Preserve the original exit, Abort or timeout reason alongside recovery errors.
 
 ## Identity
 

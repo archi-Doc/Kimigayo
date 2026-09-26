@@ -2,13 +2,11 @@
 
 [Specification index](../../SPEC.md)
 
-**Non-normative.** All algorithms in this appendix are optional. Any alternative must preserve the language and Appendix A, including excluded-syntax validation and committed lookup decisions.
+**Non-normative.** All algorithms in this appendix are optional. An alternative must preserve the language and Appendix A, including excluded-syntax validation and committed lookup decisions.
 
 ## B.1. Build pipeline reference model
 
-Pass boundaries and scheduling are implementation choices; semantic dependencies remain mandatory.
-
-The logical compilation pipeline is:
+Pass boundaries and scheduling are implementation choices; semantic dependencies remain mandatory. The logical compilation pipeline is:
 
 ```text
 Solution -> Project -> Compilation(inputs)
@@ -29,13 +27,11 @@ Solution -> Project -> Compilation(inputs)
     -> Manual native linking -> executable -> execution validation
 ```
 
-Before publication, verify §12.4.4's common implementation-family guarantee; selecting one concrete implementation cannot strengthen it. Concrete generation then analyzes the selected body's substituted CFG/effects. Early shared-body planning/caching is allowed; executable lowering waits for resolved effects, Loans, and cleanup. Sharing preserves the finalized operations (§21.3); no unverified body may be emitted. The initial output boundary is §20.8: generic sharing, external Library ABI, and automated linking/running are not implied by this pipeline.
+Before publication, verify §12.4.4's common implementation-family guarantee; selecting one concrete implementation cannot strengthen it. Concrete generation then analyzes the selected body's substituted CFG and effects. Shared-body planning and caching may start early, but executable lowering waits for resolved effects, Loans and cleanup. Sharing preserves the finalized operations (§21.3), and no unverified body is emitted. The initial output boundary is §20.8: this pipeline implies no generic sharing, external Library ABI or automated linking and running.
 
 ## B.2. Directive processing sequence
 
-This schedule preserves §19’s source selection and validation rules.
-
-The evaluation and Syntax-processing sequence is:
+This evaluation and Syntax-processing sequence preserves the source selection and validation rules of §19:
 
 ```text
 Parse a directive Condition
@@ -55,7 +51,7 @@ Parse a directive Condition
 
 ## B.3. Borrow checking reference algorithm
 
-One possible borrow-checking sequence is shown below. Type checking uses the Structural Completion, Runtime Reachability, and unreachable-code rules in §14.9–§14.10; the sequence does not infer Types from optimized CFG reachability. Implementations may interleave these tasks to resolve their dependencies.
+One possible borrow-checking sequence follows. Type checking uses the Structural Completion, Runtime Reachability and unreachable-code rules of §14.9–§14.10; the sequence infers no Types from optimized CFG reachability. Implementations may interleave these tasks to resolve their dependencies.
 
 ```text
 1. Type-check and generate subtype constraints.
@@ -72,15 +68,15 @@ The region and Loan analyses may be implemented using Datalog or an equivalent f
 
 ## B.4. Callable and object implementation strategies
 
-**Non-normative strategy notes.** Use the concrete environment and common-function storage/entry contracts of §21.2.5. Keep logical capture initialization/destruction order separate from physical offsets. Direct resolution and allocation removal are optimizations under those contracts, not changes to typing.
+Use the concrete environment and common-function storage and entry contracts of §21.2.5. Keep the logical order of capture initialization and destruction separate from physical offsets. Direct resolution and allocation removal are optimizations under those contracts, not changes to typing.
 
-Implement §12.4.4's required abstract verification with worklists or equivalent fixed-point algorithms. A statically selected method/accessor may have an ordinary entry and a receiver-adjusting adapter. The adapter implements an already permitted call; it supplies neither a new public guarantee nor an unrestricted exclusive receiver. Summary encoding and physical entry sharing are implementation choices.
+Implement the abstract verification that §12.4.4 requires with worklists or equivalent fixed-point algorithms. A statically selected method or accessor may have an ordinary entry and a receiver-adjusting adapter. The adapter implements an already permitted call; it supplies neither a new public guarantee nor an unrestricted exclusive receiver. Summary encoding and physical entry sharing are implementation choices.
 
 Descriptor sharing/canonicalization may permit address comparison when it preserves language identity; distinct physical descriptors may still denote one Runtime Type Identity.
 
 ## B.5. Type relation and operation plans
 
-**Non-normative.** A Binder can map the [normative relation table](../03-types-and-values.md#38-type-relations-and-expression-operations) to separate APIs such as the following. Names and signatures are illustrative, not language requirements.
+A Binder can map the [normative relation table](../03-types-and-values.md#38-type-relations-and-expression-operations) to separate APIs such as the following. Names and signatures are illustrative.
 
 | Illustrative API | Responsibility |
 | --- | --- |
@@ -91,7 +87,7 @@ Descriptor sharing/canonicalization may permit address comparison when it preser
 | `CanExplicitlyAdapt(expression, target, context)` | Select one operation admitted by the resolved explicit target. |
 | `CanAcquire(expression, access, state)` | Check the selected access against Place, initialization, ownership, and Loan state. |
 
-Adaptation/acquisition APIs can return plans containing the selected operation, complete result Type, Origins, access, Copy/Move/Loan effects, and deferred obligations. Static relations can return proven, rejected, or unresolved judgments. Isolate candidate plans until commitment, then validate/lower the selected plan in evaluation order. Runtime checks remain part of that operation, never reasons to seek another conversion.
+Adaptation and acquisition APIs can return plans with the selected operation, complete result Type, Origins, access, Copy/Move/Loan effects and deferred obligations. Static relations can return proven, rejected or unresolved judgments. Isolate candidate plans until commitment, then validate and lower the selected plan in evaluation order. Runtime checks remain part of that operation and are never a reason to seek another conversion.
 
 ## B.6. Match binding plan
 
@@ -99,16 +95,16 @@ An implementation may attach the following information to bound Pattern position
 
 | Information | Meaning |
 | --- | --- |
-| `MatchedType` | Complete Type at the position before implicit dereference |
-| `AccessMode` | `Owned` / `Shared` / `Exclusive` after this position's referent selections |
+| `MatchedType` | Complete Type at the position before referent selection |
+| `AccessMode` | `ByValue` / `Shared` / `Exclusive` after this position's referent selections |
 | `ImplicitDeref` | The number of safe reference layers selected at this position |
 | `MovePath` | Subject position with owned initialization/destruction tracking, when applicable |
-| `CandidateSymbol` / `GuardReadType` | Binding position's candidate Identity and shared-read Type |
-| `BodySymbol` / `BodyBindingType` | Distinct body-local Identity and acquired Type |
+| `CandidateSymbol` / `GuardReadType` | Binding position's candidate Identity and its guard Type `ref/T` |
+| `BodySymbol` / `BodyBindingType` | Distinct body-local Identity and its bound Type |
 
-AccessMode describes the path, not the value's Semantics or the Owned capability. The internal label `Owned` denotes by-value access. Selecting through a `ref` layer bounds the position and its descendants to `Shared`; a `uniq` layer keeps `Exclusive` only on an exclusive path. A single-name binding selects no referent, while a Case Pattern inspecting the referent of a `ref/E` position selects one layer. Guard reading is shared in every mode.
+AccessMode describes the path, not the value's Semantics or the Owned capability; it starts from the Subject mode (§15.1.6). Selecting through a `ref` layer bounds the position and its descendants to `Shared`; a `uniq` layer keeps `Exclusive` only on an exclusive path. A single-name binding selects no referent, while a Case Pattern inspecting the referent of a `ref/E` position selects one layer. Guard reading is shared in every mode.
 
-Retain Candidate positions, Origin/Loan dependencies, and Copy/Move/Borrow/Reborrow plans alongside these facts. Candidate/body Symbols and binding Types are needed only at Binding positions. Shared position tracking gives no Move authority. Do not reconstruct access effects solely from MatchedType or reuse an instantiation's plan when its effects differ.
+Keep Candidate positions, Origin/Loan dependencies and Copy/Move/Borrow/Reborrow plans alongside these facts. Candidate and body Symbols and binding Types are needed only at Binding positions. Shared position tracking gives no Move authority. Do not reconstruct access effects from MatchedType alone, and do not reuse an instantiation's plan when its effects differ.
 
 ## B.7. Generic generation and specialization strategy
 

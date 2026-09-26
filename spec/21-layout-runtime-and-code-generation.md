@@ -4,9 +4,9 @@
 
 Physical representation and code sharing must preserve Type identity, ownership, evaluation and cleanup. This chapter separates language-wide requirements, Windows storage contracts and compiler-controlled function passing.
 
-UTF-8 buffers and interpolation additionally follow the [formatting optimization and cost requirements](utf8-formatting.md#6-optimization-and-output). Only the profile's private resource-failure exception permits changes in allocation-failure timing; ordinary user effects and semantic checks remain ordered.
+UTF-8 buffers and interpolation also follow the [formatting optimization and cost requirements](utf8-formatting.md#6-optimization-and-output). Only that profile's private resource-failure exception permits changes in allocation-failure timing; ordinary user effects and semantic checks keep their order.
 
-The Windows storage and metadata contracts below are normative for this profile. They keep the capture and call restrictions of §7.6 and the compiler-controlled function passing of §21.4.2. Adoption in this specification does not establish implementation coverage (STATUS.md).
+The Windows storage and metadata contracts below are normative for this profile. They keep the capture and call restrictions of §7.6 and the compiler-controlled function passing of §21.4.2. Their adoption in this specification does not establish implementation coverage (STATUS.md).
 
 ## 21.1. Structure layout and ABI
 
@@ -18,7 +18,7 @@ For a storable Type `T`, `size(T)` is the number of inline bytes it reserves, in
 
 Fixed arrays have size and stride `N * stride(T)`, element offset `i * stride(T)` and alignment `alignment(T)`, including when `N = 0`. Unit has size 0, alignment 1 and stride 0. Zero-sized values keep their evaluation, initialization, ownership, Loans and destruction, and shared addresses do not merge logical Places. Positive-sized components cannot overlap, and nested padding cannot be reused by outer Fields. Padding has no guaranteed content, even in an initialized value; permitted byte transfers may include it, but typed reads, comparisons and integer coercions must not treat it as a value.
 
-Layout uses the selected, merged storage declarations after Mods, Type substitution and storage classification. A struct contains its own Fields and its direct inline base, if any; computed members add no storage, and custom stored accessors do not change the slot count. Infinite inline storage cycles are rejected; borrows, raw pointers and object handles do not embed their referents. Reordering cannot change Field identity, logical initialization order, Partial Move, Loans or destruction order. The same compiler, target, settings and selected inputs must reproduce the layout.
+Layout uses the selected, merged storage declarations after Mods, Type substitution and storage classification. A struct contains its own Fields and its direct inline base, if any; computed members add no storage, and custom stored accessors do not change the slot count. Infinite inline storage cycles are rejected; borrows, raw pointers and object handles do not embed their referents. Physical reordering cannot change Field identity, access identity, logical initialization order, Partial Move, Loans or destruction order at any optimization level. The same compiler, target, settings and selected inputs must reproduce the layout.
 
 ### 21.1.2. Layout Attribute and fragments
 
@@ -53,7 +53,7 @@ struct Invalid
 
 The Windows algorithm reserves the complete direct base at offset zero, then places the own Fields in **descending natural alignment**, breaking ties by logical order. Each component is aligned and the total rounded up to the maximum alignment, with checked arithmetic; size equals stride. Base and nested tail padding are never reused. If all components are zero-sized, size and stride are zero and the alignment is their maximum, or 1 when there are none.
 
-The same alignment-sorted algorithm applies to concrete Closure captures, Tuple elements and each enum Case payload. It reorders neither C fields, array positions, the base nor an enum tag. Logical initialization, access identities, Partial Move and reverse destruction order stay unchanged at every optimization level. Generic offsets depend on the whole instantiated layout, including fields with fixed declared Types.
+The same alignment-sorted algorithm lays out concrete Closure captures (§21.2.5.1), Tuple elements and each enum Case payload (§21.1.5). It never reorders C fields, array positions, the base or an enum tag, and the logical order rules of §21.1.1 still apply. Generic offsets depend on the whole instantiated layout, including fields with fixed declared Types.
 
 ```text
 Logical components: a: u8, b: u64, c: u8, d: u64
@@ -129,7 +129,9 @@ This table does not authorize every operation or FFI use. Safe borrow and object
 
 Tuples use the alignment-sorted aggregate algorithm of §21.1.3, keeping logical indices and evaluation and destruction order separate from physical offsets. All-zero-sized elements yield size and stride zero. Tuples have no Layout Attribute and no C ABI. For example, `(u8, u64)` has logical-element offsets 8 and 0, size and stride 16, and alignment 8.
 
-Enums use an explicit `i32` tag and an aligned payload area, with one exception: the **nonnull Option representation**. After alias normalization, `Option<R>` with `R` one of `ref/T`, `uniq/T`, `obj/T`, `rc/T`, `arc/T`, `objref/T` or `objuniq/T` is stored as one pointer-sized word with the size, alignment and stride of `R` (8/8/8 on windows-x64-v1): null is `None`, and every valid nonnull representation of `R` is `Some`. A zero-sized referent keeps its nonnull substitute address (§21.2.4). `None` holds no payload and carries no destruction or reference-count responsibility; `Some` follows `R`'s ordinary ownership, Loans and cleanup. Construction, Case tests, placement, cleanup and generation caches use this representation; it is not generalized to `Option<Option<R>>`, to Tuples or structs containing references, or to any other enum, and the function ABI still follows the selected generation method rather than the storage size alone. Selected Cases of other enums are numbered from zero in declaration order; more than 2^32 Cases is unsupported. These internal tags introduce no source discriminants or integer conversions.
+Enums use an explicit `i32` tag and an aligned payload area, with one exception: the **nonnull Option representation**. After alias normalization, `Option<R>` with `R` one of `ref/T`, `uniq/T`, `obj/T`, `rc/T`, `arc/T`, `objref/T` or `objuniq/T` is stored as one pointer-sized word with the size, alignment and stride of `R` (8/8/8 on windows-x64-v1). Null is `None`, and every valid nonnull representation of `R` is `Some`. A zero-sized referent keeps its nonnull substitute address (§21.2.4). `None` holds no payload and carries no destruction or reference-count responsibility; `Some` follows `R`'s ordinary ownership, Loans and cleanup. Construction, Case tests, placement, cleanup and generation caches use this representation. It is not generalized to `Option<Option<R>>`, to Tuples or structs containing references, or to any other enum. The function ABI still follows the selected generation method, not the storage size alone.
+
+Selected Cases of other enums are numbered from zero in declaration order; more than 2^32 Cases is unsupported. These internal tags introduce no source discriminants or integer conversions.
 
 Each Case payload is laid out with the alignment-sorted algorithm of §21.1.3, without moving the enum tag. Let `A` be the maximum payload alignment and `P` the maximum payload size rounded up to `A`; if all payloads are empty, `A = 1` and `P = 0`. The payload starts at `alignUp(4, A)`, the enum alignment is `max(4, A)`, and the total size and stride are rounded up to that alignment. Only a selected tag paired with its valid active payload is a valid enum value. Initialization, Move, match and cleanup use that active Case, never unused payload bytes.
 
@@ -237,7 +239,7 @@ Partial cleanup may batch only contiguous complete segments compatible with the 
 
 For a Sealed object View Target, the Dynamic Type equals that target. Whole payload updates preserve the descriptor, header, allocation and Identity, and a content-destruction operation such as `destroyValues` never frees or final-releases the containing object (§15.7.3).
 
-Each view must reach the original identity, valid receiver and cast adjustments, and complete dynamic destruction and storage release, while preserving Origins and Loans. Descriptor addresses are not Type identity. Dynamic Array/Dictionary and Slice still require their own complete storage and element-state plans before emission; §4.7 does not prescribe their ABI. The value-borrow and callable layouts below are specified, with no implicit unsupported one-pointer fallback.
+Each view must reach the original identity, valid receiver and cast adjustments, and complete dynamic destruction and storage release, while preserving Origins and Loans. Dynamic Array/Dictionary and Slice still require their own complete storage and element-state plans before emission; §4.7 does not prescribe their ABI. The value-borrow and callable layouts below are specified, with no implicit unsupported one-pointer fallback.
 
 ### 21.2.3. Windows x64 object and weak profile
 
@@ -299,7 +301,9 @@ On CAS failure, the latest representation is rechecked; a failure that discovers
 
 ### 21.2.4. Value-borrow storage
 
-`ref/V` and `uniq/V` point to the storage of the **immediate complete `V`**, without implicit dereference. On windows-x64-v1 each is one nonnull address-space-0 pointer with size, alignment and stride 8/8/8, aligned for `V`. It contains no metadata, length, count, Origin or Loan ID. A borrow of an Array or Slice points to its complete handle. `ref/(rc/T)` points to a handle slot, while `objref/T` points to the original object header; `uniq/(rc/T)` grants exclusive access to the handle slot, not unique payload ownership. Nested dependencies stay distinct: `@ref` on a reference slot yields a pointer to that slot, a Reborrow reuses the loaded referent address, and `@deref` loads nothing beyond the address it selects. A Place result `place(ref, T)` or `place(uniq, T)` has exactly the ABI of `ref/T` or `uniq/T` under the same Type binding, generation method and contract, for direct and indirect calls, Callable values and Contract entries and adapters; this is an ABI equality, not a Type identity.
+`ref/V` and `uniq/V` point to the storage of the **immediate complete `V`**, without implicit dereference. On windows-x64-v1 each is one nonnull address-space-0 pointer with size, alignment and stride 8/8/8, aligned for `V`. It contains no metadata, length, count, Origin or Loan ID. A borrow of an Array or Slice points to its complete handle. `ref/(rc/T)` points to a handle slot, while `objref/T` points to the original object header; `uniq/(rc/T)` grants exclusive access to the handle slot, not unique payload ownership. Nested dependencies stay distinct: `@ref` on a reference slot yields a pointer to that slot, a Reborrow reuses the loaded referent address, and `@deref` loads nothing beyond the address it selects.
+
+A Place result (§7.1.1) `place(ref, T)` or `place(uniq, T)` has exactly the ABI of `ref/T` or `uniq/T` under the same Type binding, generation method and contract. This holds for direct and indirect calls, Callable values, and Contract entries and adapters. It is an ABI equality, not a Type identity.
 
 A zero-sized `V` keeps its logical initialization, Loans and destruction. It uses nonnull aligned substitute storage that stays alive for the required uses; one static substitute per alignment may serve several distinct Places. Pointer equality merges neither those Places nor their logical overlap. Size and stride remain zero, lifetimes are not extended, and substitute bytes justify no positive `dereferenceable` attribute; `noalias` follows the call contract of §21.5.5, not substitute addresses.
 
@@ -313,7 +317,7 @@ A borrow of a proven Sealed payload selected with `@deref` uses the ordinary `re
 
 A concrete Closure environment `E` is a direct aggregate of its complete captured Types. Binding Identity, logical capture order, mutability, Move Paths and Origin/Loan information are kept separate from physical offsets, and the alignment-sorted aggregate layout of §21.1.3 applies. `E` has no embedded call pointer or header, user `deinit`, public fields or reflection members. Parameters, results and aggregate storage do not force it onto the heap. `E` is Copy exactly when all captured complete Types are Copy. An empty `E` and Function Items have size, alignment and stride 0/1/0; zero-sized captures keep their maximum alignment. Function Item identity, bound arguments and the selected implementation are static information.
 
-Calls use the Shared `ref/E`, Exclusive `uniq/E` or Consuming `owner/E` receiver of §7.6.3. An owning Callable contract acquires `E` normally before adapting to a weaker implementation requirement. Shared and Exclusive calls neither own nor destroy `E` and cannot Move owned captures. Consuming calls clean up only the remaining initialized captures, in reverse logical acquisition order: the implicit owned `E` binding precedes the explicit parameters, so the result is secured, then body locals and `defer` are cleaned, then the parameters, and finally the remaining `E`. Partial environments use CFG state, with flags only where joins require them, not a mandatory per-Closure bitmap; an incomplete `E` can never be acquired, erased or called. Zero-sized captures still run every required destructor.
+Calls use the Shared `ref/E`, Exclusive `uniq/E` or Consuming `owner/E` receiver of §7.6.3. An owning Callable contract acquires `E` normally before adapting to a weaker implementation requirement. Shared and Exclusive calls neither own nor destroy `E` and cannot Move owned captures. Consuming calls clean up only the remaining initialized captures, in reverse logical acquisition order. The implicit owned `E` binding precedes the explicit parameters, so the result is secured first, then body locals and `defer` are cleaned up, then the parameters, and finally the remaining `E`. Partial environments use CFG state, with flags only where joins require them, not a mandatory per-Closure bitmap; an incomplete `E` can never be acquired, erased or called. Zero-sized captures still run every required destructor.
 
 #### 21.2.5.2. Common function storage and entries
 
@@ -361,7 +365,15 @@ The rules here and in §21.4.6 define generic sharing and specialization; [Appen
 
 **Initial profile: monomorphization.** The initial windows-x64-v1 implementation generates one concrete body for each closed substitution selected for generation, after explicit-specialization selection (§8.8), and lowers it under the concrete rules of §21.4.1–21.4.5. **Generic code sharing is deferred** ([Appendix D](appendices/D-deferred-features.md)). It is the required future generation method, and its settled design is retained here: the baseline sharing plan of step 4 below, shared operations and Type policies (§21.3.3), shared entry/context connections (§21.3.6.1 beyond fixed callees, §21.3.6.2), optional growth budgets and code merging (§21.3.5), and generic scratch storage and fixed frames (§21.4.6). Those parts are not requirements of the initial profile.
 
-Independently of the generation method, steps 1–3 below, universal body verification (§8.10), closed explicit-specialization selection and invalidation (§21.3.4), mandatory finite generation limits and resource diagnostics (§21.3.5), acquisition and cleanup at the logical callee entry (§21.3.6.3), and product/test separation (§21.3.7) remain required. Under monomorphization, product and test regions own per-substitution bodies instead of sharing classes and budgets. Monomorphization never changes acceptance, selected implementations, results, evaluation and effect order, checks, ownership or cleanup.
+Whatever the generation method, these remain required:
+
+- steps 1–3 below, including universal body verification (§8.10);
+- closed explicit-specialization selection and invalidation (§21.3.4);
+- mandatory finite generation limits and resource diagnostics (§21.3.5);
+- acquisition and cleanup at the logical callee entry (§21.3.6.3);
+- product/test separation (§21.3.7).
+
+Under monomorphization, product and test regions own per-substitution bodies instead of sharing classes and budgets.
 
 Generation has these logical dependencies, without prescribing compiler passes:
 
@@ -370,7 +382,7 @@ Generation has these logical dependencies, without prescribing compiler passes:
 3. Substitute the verified plan and resolve concrete layout, acquisition, effects and cleanup.
 4. Build a correct baseline sharing plan, then apply bounded optional optimization.
 
-Sharing and budget changes preserve semantic acceptance, selected implementations, results, evaluation and effect order, checks, ownership and cleanup. Runtime metadata executes verified operations; it never performs lookup, proves Constraints or validates source Loans. Origins stay in semantic proofs and dependencies even when generation keys erase them. Pattern coverage and required unreachable-code diagnostics are unchanged.
+Neither the generation method nor any sharing or budget choice changes semantic acceptance, selected implementations, results, evaluation and effect order, checks, ownership or cleanup. Runtime metadata executes verified operations; it never performs lookup, proves Constraints or validates source Loans. Origins stay in semantic proofs and dependencies even when generation keys erase them. Pattern coverage and required unreachable-code diagnostics are unchanged.
 
 | Generation choice | Condition |
 | --- | --- |
@@ -479,7 +491,7 @@ A direct integer needs one slot read, and a fully dynamic operation pair at most
 
 #### 21.3.3.3. Type metadata, schemas and cycles
 
-ValueMetadata keeps the 48-byte format of §21.2.2. TypeContext serves the **Type operation entry** and may hold Field offsets, element and Case metadata, and selected operation pairs; a fixed-array TypeContext includes `elementMetadata` and `N`. The entire derived TypeLayout is computed from the closed substitution, and body integer slots are derived from the same plan instead of rebuilding layout at runtime. Handle metadata cannot substitute for object payload metadata.
+ValueMetadata and TypeContext keep the formats of §21.2.2; TypeContext serves the **Type operation entry**. The entire derived TypeLayout is computed from the closed substitution, and body integer slots are derived from the same plan instead of rebuilding layout at runtime.
 
 A schema describes reader requirements, definition-side bindings, normalized Type and length expressions, operations and slot Types. It is deduplicated and ordered by stable structural requirement keys, keeping each dynamic operation pair adjacent; source occurrence, registration order and parallel completion do not determine the schema. A callee's internal schema is not part of the caller's schema.
 
@@ -541,7 +553,7 @@ arrayDestroy(first, count, arrayMetadata, location):
 
 A complete contiguous range may become one `count * N` element-destruction call only when the metadata, range, reverse order and failure location agree. If that product exceeds the count width, the original loops are kept, without adding an Abort. All logical destruction effects are preserved, even at zero stride.
 
-Inherited group static storage is another supplied operation: it ensures initialization and reaches the Field's normalized storage key (§22.2.4). It uses a fixed operation or an existing entry/context pair, preserving one mutable state per key and an immutable operation context. Touching such a Field alone does not require separate machine-code bodies.
+Inherited group static storage is another supplied operation: it ensures initialization and reaches the Field's normalized storage key, under the operation and context rules of §22.2.4. Touching such a Field alone does not require separate machine-code bodies.
 
 ### 21.3.4. Artifacts, verification, and invalidation
 
@@ -565,11 +577,17 @@ The operations, selected implementations, schemas and constants actually used by
 
 **Mandatory generation resource limits** are separate from **optional optimization growth budgets**. Identical inputs, compiler and profile, and settings reproduce the logical plans and budget allocation independently of enumeration, parallel completion and cache presence. This does not promise identical behavior under actual OS resource exhaustion.
 
-Required closed substitutions, layouts, metadata, contexts and plans must fit finite generation limits. Finite graph cycles, growth of distinct keys such as `T -> Box<T>`, and invalid infinite inline layout are distinguished. Body sharing alone does not bound metadata generation. Existing logical plans are reused for already registered keys; the full Cartesian product of arguments is never enumerated, and fake pointers are never used for missing facts.
+Required closed substitutions, layouts, metadata, contexts and plans must fit finite generation limits. Finite graph cycles are distinguished from growth of distinct keys, such as `T -> Box<T>`, and from invalid infinite inline layout. Body sharing alone does not bound metadata generation. Existing logical plans are reused for already registered keys; the full Cartesian product of arguments is never enumerated, and fake pointers are never used for missing facts.
 
 Failed or exhausted optional exploration keeps the verified baseline and cannot by itself reject source. If required baseline generation also exceeds the limits, a resource diagnostic is issued, separately from semantic or representation errors. Required checks and unsupported-feature diagnostics are kept even for definitions with no emitted machine code. Budgets never replace an explicit specialization with the ordinary body.
 
-Three outcomes are therefore distinguished by three diagnostics: an invalid infinite inline layout (a Type that contains itself by value without indirection) is a semantic error of the declaration; an exceeded mandatory generation limit, including growing keys, context expansion depth, the number of closed contexts of one body and inline layout nesting depth, is a resource diagnostic; and a representation the profile cannot generate is a generation failure. The numeric limits are implementation-defined and documented with the implementation, never part of this specification. An implementation invariant that is violated during analysis or generation is reported as an internal diagnostic in every build configuration and never produces an artifact; a Debug build must not accept or reject more inputs than a Release build.
+Three outcomes have three distinct diagnostics:
+
+- an invalid infinite inline layout (a Type that contains itself by value without indirection) is a semantic error of the declaration;
+- an exceeded mandatory generation limit, including growing keys, context expansion depth, the number of closed contexts of one body and inline layout nesting depth, is a resource diagnostic;
+- a representation the profile cannot generate is a generation failure.
+
+The numeric limits are implementation-defined and documented with the implementation, never part of this specification. A violated implementation invariant during analysis or generation is reported as an internal diagnostic in every build configuration and never produces an artifact; a Debug build must not accept or reject more inputs than a Release build.
 
 Equivalent code and entries may merge only while preserving identity, results, effects, failures, ownership and cleanup. Needed immutable metadata, operation and context records are emitted as private `unnamed_addr` constants when their addresses are unobservable. Constant folding and direct calls keep the typed plan and the consumer contract. TypeLayout, ValueLowering, FunctionAbi and CleanupPlan are reused rather than cloning syntax.
 
@@ -658,7 +676,7 @@ Unused nongeneric bodies, and unexecuted branches within generated bodies, still
 
 ### 21.4.2. Physical function signatures
 
-The internal function ABI is compiler-controlled within a final generation and deliberately unfixed. Source dependencies may participate in that common generation, and no external ABI is needed between their separately verified semantic plans. The ABI applies to user functions, Kimi and private runtime helpers, in Application and Library inspection output. No physical calling convention, parameter or result representation or ordering, hidden-context position, symbol spelling or stable ABI version is a language guarantee. The compiler may choose different physical signatures across builds, targets and generated functions without a language-version change, subject to language and external contracts. Within a scheme, generic callers use the entry contracts of §21.3.6: optional budgets change implementations, not the caller-facing entry ABI. Independently generated modules or compiler builds have no promised binary compatibility.
+The internal function ABI is compiler-controlled within a final generation and deliberately unfixed. Source dependencies may participate in that common generation, and no external ABI is needed between their separately verified semantic plans. The ABI applies to user functions, Kimi and private runtime helpers, in Application and Library inspection output. No physical calling convention, parameter or result representation or ordering, hidden-context position, symbol spelling or stable ABI version is a language guarantee. The compiler may choose different physical signatures across builds, targets and generated functions without a language-version change, subject to language and external contracts. Within a scheme, generic callers use the entry contracts of §21.3.6. Independently generated modules or compiler builds have no promised binary compatibility.
 
 Within the entry rules of §21.3.6, direct or indirect passing, aggregate splitting and coercion, result storage, omitted slots, calling conventions such as LLVM `ccc` or `fastcc`, and ABI attributes such as `byval` or `sret` are compiler choices. Storage layouts defined elsewhere, including those of Scalars, `string`, object handles and `Kimi.Weak<S>`, do not fix function passing. Unit still has its logical value and effects, and Never still has no normal result or return edge. Every emitted representation requires an implemented ValueLowering and its complete validity, ownership and cleanup operations; implementation freedom never permits guessing an unsupported representation.
 
@@ -690,7 +708,7 @@ entry:
 
 The following responsibilities are language semantics, independent of the physical ABI. Argument temporaries and secured results are logical values; the compiler need not allocate a separate physical slot for each. The table also describes a caller-provided result slot when one is used.
 
-Arguments are acquired once, in source order. A Copy preserves its source, and a Move transfers responsibility into the argument temporary; allocating a slot is not a Copy. A Copy source cannot share mutable storage with the callee's acquired value when that would expose consumption or modification of the source.
+Each argument is acquired once, in source order (§21.4.2). A Copy preserves its source, and a Move transfers responsibility into the argument temporary; allocating a slot is not a Copy. A Copy source cannot share mutable storage with the callee's acquired value when that would expose consumption or modification of the source.
 
 | Point | Acquired argument values | Secured result / optional result storage |
 | --- | --- | --- |
@@ -717,7 +735,7 @@ let ok = divisor != 0 and (100 / divisor > 1)
 // Division and its checks run only on the true edge of divisor != 0.
 ```
 
-**Joins.** Short-circuit operators, branches, match guards and loops use CFG edges, and conditions and subjects are evaluated once. Scalar joins use `phi` from the actual normal predecessor blocks, which are the blocks after cleanup. Aggregate joins use a common, initially uninitialized result slot, secured on every normally arriving path. A path may secure its result directly in that slot before its required cleanup; this does not deliver the result to the enclosing expression until cleanup completes and the path arrives. If cleanup Aborts or diverges, the enclosing expression neither reads nor destroys the secured result. This avoids an additional transfer on the arrival edge while preserving the acquisition, cleanup and delivery order of §16.2. Unit needs no `phi`, and Never supplies no fictional value or edge. `select` may replace conditional evaluation only when evaluating both alternatives early is proven legal.
+**Joins.** Short-circuit operators, branches, match guards and loops use CFG edges, and conditions and subjects are evaluated once. Scalar joins use `phi` from the actual normal predecessor blocks, which are the blocks after cleanup. Aggregate joins use a common, initially uninitialized result slot, secured on every normally arriving path. A path may secure its result directly in that slot before its required cleanup. The slot then holds secured bytes, but the result is not delivered to the enclosing expression, and its consumers do not use it, until cleanup completes and the path arrives. If cleanup Aborts or diverges, the enclosing expression neither reads nor destroys the secured result. This avoids an additional transfer on the arrival edge while preserving the acquisition, cleanup and delivery order of §16.2. Unit needs no `phi`, and Never supplies no fictional value or edge. `select` may replace conditional evaluation only when evaluating both alternatives early is proven legal.
 
 A non-Never Expression Type does not guarantee a normal CFG predecessor, because required cleanup may prevent delivery (§14.9); no incoming value is manufactured, and the checked Type is not changed to Never in that case.
 
@@ -738,7 +756,7 @@ let saved = work: do
 // saved receives the pair secured before defer. pair holds ("later", 3).
 ```
 
-The result slot may contain secured bytes while cleanup runs, but consumers of the enclosing expression wait for normal arrival. Reusing a slot for another evaluation starts a new logical lifetime; a previous evaluation's arrival does not authorize consumption in the new lifetime.
+Reusing a result slot for another evaluation starts a new logical lifetime; a previous evaluation's arrival does not authorize consumption in the new lifetime.
 
 ### 21.4.5. Cleanup and physical transfer
 
@@ -768,7 +786,7 @@ This subsection belongs to deferred generic code sharing (§21.3.1). Monomorphiz
 
 #### 21.4.6.1. Reuse and lifetime
 
-Direct result construction, reuse of acquired owned-argument storage and removal of intermediate transfers are preferred, under the evaluation, alias, Loan, storage-identity and cleanup conditions of §21.4.4. A Copy source is kept separate from the callee's acquired value, and a live replacement target is never written early.
+Direct result construction, reuse of acquired owned-argument storage and removal of intermediate transfers are preferred, under the evaluation, alias, Loan, storage-identity and cleanup conditions of §21.4.4. The Copy-source separation of §21.4.3 applies, and a live replacement target is never written early.
 
 After an owned argument has been Moved, its storage may be reused only when no old responsibility or reference remains and the capacity and alignment fit; this does not permit assignment to an immutable source parameter. Values with overlapping lifetimes, including cleanup and final references, need distinct regions. Loop temporaries may reuse a region across nonoverlapping iterations without moving destruction to the last read.
 
@@ -800,7 +818,7 @@ Scratch is never stored in a shared context, and no borrow into it may escape in
 
 The initial fixed-stack path supports alignment of at most 16. A Type's alignment is never reduced; an unsupported representation is diagnosed when no valid path exists. Required Windows stack probes and unwind information are generated for fixed frames.
 
-Zero-sized values use the aligned substitute storage of §21.2.4 while keeping their state, Loans and destruction counts; substitute addresses prove neither positive `dereferenceable` ranges nor `noalias`. Exact capacity describes the planned reservation, not the final machine frame including spills and call areas.
+Zero-sized values use the aligned substitute storage of §21.2.4, under its rules for state, Loans, destruction and attributes. Exact capacity describes the planned reservation, not the final machine frame including spills and call areas.
 
 Dynamic `alloca`, a heap fallback for scratch, and new stack-exhaustion or allocation-failure contracts are not introduced. The existing Library output boundary is preserved, and unknown substitutions are outside this generation scope.
 
