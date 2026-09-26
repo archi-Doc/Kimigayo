@@ -205,6 +205,8 @@ public sealed partial class Binding
             _ => BindingFailure.InvalidAssignment,
         };
 
+    private static bool IsTransfer(Koto source) => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer };
+
     // SPEC 3.5: a bare Place, as opposed to a Temporary Value or an explicit @ operation. Only a Place's
     // acquisition is restricted by the lending rule; a temporary transfers its ownership freely.
     private static bool IsBarePlace(Koto source)
@@ -301,6 +303,11 @@ public sealed partial class Binding
     // through AdaptInput; explicit borrows, projections and receivers are separate operations.
     private BoundAdaptation? ExpectedAdaptation(Koto node, BoundType actual, BoundType expected)
     {
+        if (IsTransfer(node) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
+        {
+            return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
+        }
+
         if (this.Referent(actual, node) is { } referent && Compatible(referent, expected))
         {
             return new(ExpectedAdaptationKind.ReferentRead, referent);
@@ -471,6 +478,14 @@ public sealed partial class Binding
         if (ReferenceEquals(actual, BoundType.Never))
         {
             return true; // A noncompleting argument forms no borrow or reference value.
+        }
+
+        if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&
+            ((pattern.Kind == BoundTypeKind.Semantics && !ReferenceTypes.StorageMatches(actual, pattern)) || pattern.Kind == BoundTypeKind.Primitive))
+        {
+            // SPEC 10.2: an explicit @move runs first and is not corrected by a later adaptation, so a transferred
+            // reference is passed only to an expectation of its own Type.
+            return false;
         }
 
         var projected = path is not null;

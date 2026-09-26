@@ -36,4 +36,22 @@ public class ReferenceLayerAdaptationTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Ownership.Result.IsVerified);
     }
+
+    [Theory]
+    [InlineData("func f(x: ref/i32) => ()\nvar a: i32 = 1\nlet r = a@uniq\nf(r@move)")]
+    [InlineData("var a: i32 = 1\nlet r = a@uniq\nlet v: ref/i32 = r@move")]
+    [InlineData("func f(x: i32) => ()\nvar a: i32 = 1\nlet r = a@uniq\nf(r@move)")]
+    public void ATransferredReferenceIsNotAdaptedAfterwards(string source)
+    {
+        // SPEC 10.2: an explicit @move runs first and is not corrected by a later Reborrow or Scalar read.
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Fact]
+    public void ATransferredReferenceFitsItsOwnType()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(x: uniq/i32) => ()\nvar a: i32 = 1\nlet r = a@uniq\nf(r@move)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
 }
