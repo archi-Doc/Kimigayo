@@ -50,6 +50,13 @@ internal static class ElementAccess
 
     internal static bool IsUserIndex(Koto source) => KotoHelper.UnwrapParentheses(source) is IndexKoto index && IndexerCall(index, false) is not null;
 
+    // SPEC 4.6.1, 4.6.4: the evaluated key of a built-in selection. An Index or Range key is resolved against the
+    // receiver's length by a synthesized call; an isize or ResolvedRange key is applied as written.
+    internal static Koto KeySyntax(IndexKoto index) => index.CodeContext.Compilation.Binding.ResolvedKeyCall(index) ?? index.Right;
+
+    // SPEC 4.6.4: a range selection applied through one ResolvedRange value rather than two isize boundaries.
+    internal static bool IsResolvedSlice(Koto source) => source is IndexKoto index && index.CodeContext.Compilation.Binding.IsResolvedSlice(index);
+
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
     internal static int StaticSelector(BinaryKoto source)
     {

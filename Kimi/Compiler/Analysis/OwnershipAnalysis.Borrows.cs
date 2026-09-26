@@ -92,7 +92,7 @@ public sealed partial class OwnershipAnalysis
             var handle = element.Left.BoundType!.Kind == BoundTypeKind.Array
                 ? this.BorrowStruct(element.Left, this.compilation.Binding.ExclusiveArrayHandle(element.Left))
                 : this.Expression(element.Left, PlaceUseKind.Read);
-            var subscript = handle < 0 ? -1 : this.Value(this.Expression(element.Right));
+            var subscript = handle < 0 ? -1 : this.Value(this.Expression(ElementAccess.KeySyntax(element)));
             var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(element, type, SequenceOperation.Borrow, handle, index: subscript);
             this.EndComparisonLoans(depth, element);
             this.comparisonDepth = depth;
@@ -107,7 +107,7 @@ public sealed partial class OwnershipAnalysis
             var reborrow = slice.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type);
             var depth = this.comparisonDepth++;
             var handle = this.SequenceReceiver(slice.Left, out var projection);
-            var subscript = this.Value(this.Expression(slice.Right));
+            var subscript = this.Value(this.Expression(ElementAccess.KeySyntax(slice)));
             var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(slice, type, reborrow ? SequenceOperation.Read : SequenceOperation.Borrow, handle, projection, index: subscript);
             this.EndComparisonLoans(depth, slice);
             this.comparisonDepth = depth;
@@ -129,7 +129,7 @@ public sealed partial class OwnershipAnalysis
 
                 var depth = this.comparisonDepth++;
                 var handle = this.Expression(index.Left, PlaceUseKind.Read);
-                var position = handle < 0 ? -1 : this.Value(this.Expression(index.Right));
+                var position = handle < 0 ? -1 : this.Value(this.Expression(ElementAccess.KeySyntax(index)));
                 var read = position < 0 ? -1 : this.SequenceValue(index, type, SequenceOperation.Read, handle, index: position);
                 this.EndComparisonLoans(depth, index);
                 this.comparisonDepth = depth;
@@ -144,7 +144,7 @@ public sealed partial class OwnershipAnalysis
 
             var receiver = this.Receiver(index.Left);
             var receiverValue = this.Value(receiver);
-            var subscript = this.Expression(index.Right);
+            var subscript = this.Expression(ElementAccess.KeySyntax(index));
             if (receiver < 0 || subscript < 0)
             {
                 return -1;

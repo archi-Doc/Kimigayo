@@ -43,6 +43,11 @@ public sealed partial class Binding
                     ? Complete(source, receiver!.Components[0]) : Fail(source, BindingFailure.TypeMismatch);
             }
 
+            if (receiver is not null && this.TryBindKeyedSelection((IndexKoto)source, scope, receiver, out var keyed))
+            {
+                return keyed; // SPEC 4.6.1: an Index, Range or ResolvedRange key.
+            }
+
             if ((ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver)) && source.Right is not RangeKoto)
             {
                 this.RequireType(source.Right, scope, BoundType.ISize);

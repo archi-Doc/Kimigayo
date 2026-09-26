@@ -13,6 +13,14 @@ public sealed partial class Binding
     private readonly Dictionary<RangeKoto, InvocationKoto> rangeCalls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, InvocationKoto> boundaryCalls = new(ReferenceEqualityComparer.Instance);
 
+    // SPEC 4.6.1, 4.6.4: an Index or Range key of a built-in selection is resolved against the receiver's length by a
+    // synthesized key.resolve(receiver.length) call whose length argument shares the receiver Place, so the receiver is
+    // restricted to a Place written as a path; a ResolvedRange key is applied as written and rechecked by the selection.
+    private readonly Dictionary<IndexKoto, InvocationKoto> resolvedKeys = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<IndexKoto> resolvedSlices = new(ReferenceEqualityComparer.Instance);
+
+    private BoundType ResolvedRangeType => this.InternType(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
+
     /// <summary>Gets the synthesized Range construction of a range expression outside an index position, or null.</summary>
     /// <param name="node">The range expression.</param>
     /// <returns>The bound call, or null for an index-position range or an unbound expression.</returns>
@@ -20,7 +28,16 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(node) is RangeKoto range && range.BindingState == BindingState.Resolved &&
             this.rangeCalls.TryGetValue(range, out var call) && call.BindingState == BindingState.Resolved ? call : null;
 
-    private BoundType ResolvedRangeType => this.InternType(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
+    /// <summary>Gets the synthesized resolution call of an Index or Range key, or null for an isize or ResolvedRange key.</summary>
+    /// <param name="node">The selection expression.</param>
+    /// <returns>The bound call, or null.</returns>
+    internal InvocationKoto? ResolvedKeyCall(Koto node)
+        => node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedKeys.TryGetValue(index, out var call) && call.BindingState == BindingState.Resolved ? call : null;
+
+    /// <summary>Gets a value indicating whether the selection applies one ResolvedRange value, written or resolved from a Range.</summary>
+    /// <param name="node">The selection expression.</param>
+    /// <returns>Whether the selection is a resolved range selection.</returns>
+    internal bool IsResolvedSlice(Koto node) => node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
 
     private static void ResetSynthetic(Koto node)
     {
@@ -28,6 +45,106 @@ public sealed partial class Binding
         node.BoundType = null;
         node.BoundSymbol = null;
         node.BindingFailure = BindingFailure.None;
+    }
+
+    // A receiver written as a path: its shared use by the synthesized length read and the selection evaluates no call twice.
+    private static bool IsPlaceSyntax(Koto node) => KotoHelper.UnwrapParentheses(node) switch
+    {
+        IdentifierNameKoto => true,
+        MemberAccessKoto member => IsPlaceSyntax(member.Left),
+        IndexKoto index => IsPlaceSyntax(index.Left),
+        ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } followed => IsPlaceSyntax(followed.Left),
+        _ => false,
+    };
+
+    private bool TryBindKeyedSelection(IndexKoto source, BindingScope scope, BoundType receiver, out BoundType? result)
+    {
+        result = null;
+        this.resolvedSlices.Remove(source);
+        var core = receiver is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? receiver.Components[0] : receiver;
+        if (core.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
+        {
+            return false;
+        }
+
+        BoundType? key;
+        if (source.Right is RangeKoto range)
+        {
+            if (!range.IsInclusive && !this.IsIndexBoundary(range.Start, scope) && !this.IsIndexBoundary(range.End, scope))
+            {
+                return false; // Two isize boundaries select directly.
+            }
+
+            key = this.BindRangeValue(range, scope);
+            if (key is null)
+            {
+                result = Complete(source, null);
+                return true;
+            }
+        }
+        else
+        {
+            // A key whose Type its declaration fixes binds as written; any other integer form keeps the isize expectation.
+            var declared = KotoHelper.UnwrapParentheses(source.Right) is IdentifierNameKoto or MemberAccessKoto or InvocationKoto or FromEndIndexKoto or IndexKoto;
+            key = IsUnfittedLiteral(source.Right) ? null : this.BindNode(source.Right, scope, declared ? null : BoundType.ISize);
+        }
+
+        var index = key is { Kind: BoundTypeKind.Nominal } && ReferenceEquals(key.Symbol, this.Library.Index);
+        var unresolved = key is { Kind: BoundTypeKind.Nominal } && ReferenceEquals(key.Symbol, this.Library.Range);
+        if (!index && !unresolved && !ReferenceTypes.IsResolvedRange(key))
+        {
+            return false;
+        }
+
+        if (!IsPlaceSyntax(source.Left))
+        {
+            result = Fail(source, BindingFailure.Unsupported);
+            return true;
+        }
+
+        if ((index || unresolved) && this.ResolveKeyCall(source, scope) is null)
+        {
+            result = Complete(source, null);
+            return true;
+        }
+
+        var element = core.Components[0];
+        if (index)
+        {
+            if (receiver is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner })
+            {
+                this.ReceiverElement(source.Left, receiver);
+            }
+
+            result = Complete(source, element);
+            return true;
+        }
+
+        this.resolvedSlices.Add(source);
+        result = Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
+        return true;
+    }
+
+    private bool IsIndexBoundary(Koto? boundary, BindingScope scope)
+        => boundary is not null && !IsUnfittedLiteral(boundary) && this.BindNode(boundary, scope) is { Kind: BoundTypeKind.Nominal } type && ReferenceEquals(type.Symbol, this.Library.Index);
+
+    private InvocationKoto? ResolveKeyCall(IndexKoto source, BindingScope scope)
+    {
+        if (!this.resolvedKeys.TryGetValue(source, out var call))
+        {
+            var length = new MemberAccessKoto(source, source.Left, new IdentifierNameKoto(source, "length"));
+            call = new InvocationKoto(source, new MemberAccessKoto(source, source.Right, new IdentifierNameKoto(source, "resolve")), [length]);
+            this.resolvedKeys[source] = call;
+        }
+
+        var callee = (MemberAccessKoto)call.Method;
+        var lengthArgument = (MemberAccessKoto)call.ArgumentNodes[0];
+        ResetSynthetic(call);
+        ResetSynthetic(callee);
+        ResetSynthetic(callee.Right);
+        ResetSynthetic(lengthArgument);
+        ResetSynthetic(lengthArgument.Right);
+        return this.BindCall(call, scope, null) is null ? null : call;
     }
 
     private BoundType? BindRangeValue(RangeKoto range, BindingScope scope)

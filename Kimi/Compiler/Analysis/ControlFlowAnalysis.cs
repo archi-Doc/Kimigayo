@@ -416,6 +416,11 @@ public sealed class ControlFlowAnalysis
                 // boundary arguments may themselves be synthesized Index constructions.
                 flow = this.Visit(rangeValue, reachable) with { Type = this.types.GetExpressionType(node) };
                 break;
+            case IndexKoto keyed when node.CodeContext.Compilation.Binding.ResolvedKeyCall(keyed) is { } resolvedKey:
+                // SPEC 4.6.4: an Index or Range key is resolved by a synthesized call that reads the receiver's length
+                // and the key; the selection completes as that call does.
+                flow = this.Visit(resolvedKey, reachable) with { Type = this.types.GetExpressionType(node) };
+                break;
             case IdentifierNameKoto when node.CodeContext.Compilation.Binding.StorageProjection(node) is { } storage:
                 flow = this.Visit(storage, reachable);
                 break;

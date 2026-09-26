@@ -239,7 +239,7 @@ internal sealed partial class BodyLowering
             {
                 var keyType = source is IndexKoto { DictionaryKeyReference: { } keyReference } ? SignatureType(this, keyReference) : BoundType.ISize;
                 if ((uint)plan.Index >= (uint)body.Values.Count || !ReferenceEquals(ValueType(body, plan.Index), keyType) ||
-                    !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(source.Right)) ||
+                    !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(ElementAccess.KeySyntax((IndexKoto)source))) ||
                     (keyType == BoundType.ISize ? body.Operations[plan.Index].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Branch) : body.Operations[plan.Index].Kind != OwnershipOperationKind.Borrow))
                 {
                     return Fail("Element selection requires its evaluated isize index or Dictionary key borrow.", out failure);

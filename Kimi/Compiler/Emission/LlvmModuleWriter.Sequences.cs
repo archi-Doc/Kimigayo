@@ -148,20 +148,37 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        if (instruction.ScalarOperator == "SliceRange")
+        if (instruction.ScalarOperator is "SliceRange" or "SliceResolved")
         {
-            Name(output, "  %slicestart", id);
-            output.Write(" = or i64 0, ");
-            WriteOperand(output, operands[2]);
-            Name(output, "\n  %slicefinish", id);
-            output.Write(" = or i64 0, ");
-            if (operands[4].Value != 0)
+            if (instruction.ScalarOperator == "SliceResolved")
             {
-                End();
+                // SPEC 4.6.4: a ResolvedRange key supplies both absolute boundaries from its {start, end} value.
+                Name(output, "  %slicestart", id);
+                output.Write(" = load i64, ptr ");
+                WriteSlot(output, function, (int)operands[2].Value);
+                Name(output, ", align 8\n  %sliceendptr", id);
+                output.Write(" = getelementptr i8, ptr ");
+                WriteSlot(output, function, (int)operands[2].Value);
+                Name(output, ", i64 8\n  %slicefinish", id);
+                output.Write(" = load i64, ptr ");
+                Name(output, "%sliceendptr", id);
+                output.Write(", align 8");
             }
             else
             {
-                WriteOperand(output, operands[3]);
+                Name(output, "  %slicestart", id);
+                output.Write(" = or i64 0, ");
+                WriteOperand(output, operands[2]);
+                Name(output, "\n  %slicefinish", id);
+                output.Write(" = or i64 0, ");
+                if (operands[4].Value != 0)
+                {
+                    End();
+                }
+                else
+                {
+                    WriteOperand(output, operands[3]);
+                }
             }
 
             Name(output, "\n  %reversed", id);

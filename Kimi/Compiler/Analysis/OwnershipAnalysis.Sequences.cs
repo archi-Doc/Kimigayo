@@ -10,11 +10,22 @@ public sealed partial class OwnershipAnalysis
     {
         var depth = this.comparisonDepth++;
         var receiver = this.SequenceReceiver(source.Left, out var projection);
-        var range = (RangeKoto)source.Right;
-        var start = range.Start is { } begin ? this.Value(this.Expression(begin)) : -1;
-        var end = range.End is { } finish ? this.Value(this.Expression(finish)) : -1;
-        var result = receiver < 0 || (range.Start is not null && start < 0) || (range.End is not null && end < 0)
-            ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, start, end);
+        int result;
+        if (ElementAccess.IsResolvedSlice(source))
+        {
+            // SPEC 4.6.4: a ResolvedRange key, written or resolved from an Index-bounded or inclusive range, is one value.
+            var key = receiver < 0 ? -1 : this.Value(this.Expression(ElementAccess.KeySyntax(source)));
+            result = receiver < 0 || key < 0 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, key);
+        }
+        else
+        {
+            var range = (RangeKoto)source.Right;
+            var start = range.Start is { } begin ? this.Value(this.Expression(begin)) : -1;
+            var end = range.End is { } finish ? this.Value(this.Expression(finish)) : -1;
+            result = receiver < 0 || (range.Start is not null && start < 0) || (range.End is not null && end < 0)
+                ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, start, end);
+        }
+
         this.EndComparisonLoans(depth, source);
         this.comparisonDepth = depth;
         return result;
@@ -34,7 +45,7 @@ public sealed partial class OwnershipAnalysis
             this.BeginSharedLoan(receiver, access: true);
         }
 
-        var index = this.Value(this.Expression(source.Right));
+        var index = this.Value(this.Expression(ElementAccess.KeySyntax(source)));
         if (receiver < 0 || index < 0)
         {
             this.EndComparisonLoans(depth, source);

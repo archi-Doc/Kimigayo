@@ -272,8 +272,15 @@ internal sealed partial class BodyLowering
             // A whole-range Slice is written values[..] or implied by bare iteration over an array Place (SPEC 14.6.2).
             Koto? startSyntax = null;
             Koto? endSyntax = null;
+            Koto? resolvedKey = null;
             BoundType? sliceType = null;
-            if (operation.Source is IndexKoto { Right: RangeKoto { IsInclusive: false } rangeSyntax } source)
+            if (operation.Source is IndexKoto keyed && ElementAccess.IsResolvedSlice(keyed))
+            {
+                // SPEC 4.6.4: one ResolvedRange value, written or resolved from a Range, supplies both boundaries.
+                resolvedKey = ElementAccess.KeySyntax(keyed);
+                sliceType = SignatureType(this, keyed.BoundType);
+            }
+            else if (operation.Source is IndexKoto { Right: RangeKoto { IsInclusive: false } rangeSyntax } source)
             {
                 startSyntax = rangeSyntax.Start;
                 endSyntax = rangeSyntax.End;
@@ -293,6 +300,23 @@ internal sealed partial class BodyLowering
             if (receiver.Kind == BoundTypeKind.FixedArray && this.aggregateLayouts.Get(receiver)!.Value.Layout.Size == 0)
             {
                 address = new(EmissionOperandKind.NullAddress, 0);
+            }
+
+            if (resolvedKey is not null)
+            {
+                if (plan.End != -1 || (uint)plan.Index >= (uint)id || !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(resolvedKey)) ||
+                    !ReferenceTypes.IsResolvedRange(ValueType(body, plan.Index)) || (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
+                    FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } resolvedElement ||
+                    !this.TryGetLocation(operation.Source, directory, constants, out var resolvedLocation))
+                {
+                    return Fail("Slice application requires its evaluated ResolvedRange key.", out failure);
+                }
+
+                ReadOnlySpan<EmissionOperand> resolvedBounds = [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1),
+                    new(EmissionOperandKind.SlotAddress, ValuePlace(body.Operations[plan.Index])), new(EmissionOperandKind.Integer, 0), new(EmissionOperandKind.Integer, 0),
+                    new(EmissionOperandKind.Integer, body.Operations.Count + id)];
+                function.AddScalar(EmissionOpcode.Sequence, id, resolvedBounds, place: operation.Place, location: resolvedLocation, op: "SliceResolved", check: ArithmeticCheckKind.Bounds, representation: resolvedElement);
+                return true;
             }
 
             if (!Endpoint(startSyntax, plan.Index) || !Endpoint(endSyntax, plan.End) ||

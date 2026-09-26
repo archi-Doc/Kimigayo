@@ -722,7 +722,7 @@ public sealed partial class OwnershipAnalysis
                 return this.ReadBorrowedField(member);
             case IndexKoto element when ReferenceTypes.IsPointer(element.Left.BoundType):
                 return this.ReadPointer(element, use);
-            case IndexKoto slice when slice.BoundType?.Kind == BoundTypeKind.Slice && slice.Right is RangeKoto:
+            case IndexKoto slice when slice.BoundType?.Kind == BoundTypeKind.Slice && (slice.Right is RangeKoto || ElementAccess.IsResolvedSlice(slice)):
                 return this.CreateSlice(slice);
             case IndexKoto element when element.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array:
                 return this.ReadSlice(element, acquisition);
