@@ -30,7 +30,7 @@ public class ElementUpdateEmissionTest
         { "IndexTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "IncrementTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "ShiftTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[0] <<= (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
-        { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += (return 1)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += (return 1)\n    return 0\nif f() == 1 => Console.writeLine(\"ok\")" }, // SPEC 13.7.2: the right-hand side transfers first.
         { "MixedShift", "var a: [1 of i8] = [-128]\nlet wide: u128 = 7\na[0] >>= wide\nvar b: [1 of u64] = [1]\nlet narrow: i8 = 63\nb[0] <<= narrow\nif a[0] == -1 and b[0] == 9223372036854775808 => Console.writeLine(\"ok\")" },
     };
 
@@ -113,11 +113,12 @@ public class ElementUpdateEmissionTest
     [Theory]
     [InlineData("Compound", "a[0] += rhs()")]
     [InlineData("Increment", "++a[0]")]
-    public void BoundsFailurePrecedesTheRightSideAndCleanup(string name, string expression)
+    public void BoundsFailureFollowsTheRightSideAndPrecedesCleanup(string name, string expression)
     {
-        var source = $"func rhs() -> i32\n    Console.writeLine(\"bad\")\n    return 1\nvar a: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\n{expression}";
+        // SPEC 13.7.2: the right-hand side runs before the element is located; Abort runs no cleanup.
+        var source = $"func rhs() -> i32\n    Console.writeLine(\"rhs\")\n    return 1\nvar a: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\n{expression}";
         var column = name == "Increment" ? 3 : 1;
-        ScalarEmissionTest.EmitFixture("ElementUpdateBounds" + name, source, string.Empty, 1, $"Hello.kimi:6:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+        ScalarEmissionTest.EmitFixture("ElementUpdateBounds" + name, source, name == "Compound" ? "rhs\n" : string.Empty, 1, $"Hello.kimi:6:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
     }
 
     // SPEC 13.7.2: the RHS, including its cleanup, completes before the element is located, read and written.

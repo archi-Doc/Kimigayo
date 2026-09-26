@@ -18,7 +18,7 @@ public class BitwiseEmissionTest
         { "BitwiseShiftLimits", "var x = -2147483648\nif (1 << 31) == x and (x << 1) == 0 and (-1 << 1) == -2 and (2147483647 << 1) == -2 and (x << 0) == x and (x >> 31) == -1 and (2147483647 >> 31) == 0 and (-3 >> 1) == -2 and (x >> 0) == x => Console.writeLine(\"ok\")" },
         { "BitwiseCompound", "var x = 10\nlet unit = (x &= 6)\nx |= 8\nx ^= 6\nx <<= 2\nx >>= 3\nif x == 6 => Console.writeLine(\"ok\")" },
         { "BitwiseOrder", "var x = 1\nlet y = x++ << x++\nlet z = x++ | x++\nlet a = x++ ^ x++\nlet b = x++ & x++\nif y == 4 and z == 7 and a == 3 and b == 0 and x == 9 => Console.writeLine(\"ok\")" },
-        { "BitwiseCompoundOrder", "var x = 2\nx <<= x++\nvar y = 7\ny &= y++\nvar z = 1\nz |= z++\nvar a = 5\na ^= a++\nvar b = 8\nb >>= b++ - 6\nif x == 8 and y == 7 and z == 1 and a == 0 and b == 2 => Console.writeLine(\"ok\")" },
+        { "BitwiseCompoundOrder", "var x = 2\nx <<= x++\nvar y = 7\ny &= y++\nvar z = 1\nz |= z++\nvar a = 5\na ^= a++\nvar b = 8\nb >>= b++ - 6\nif x == 12 and y == 0 and z == 3 and a == 3 and b == 2 => Console.writeLine(\"ok\")" }, // SPEC 13.7.2: the increment in the right-hand side runs first.
         { "BitwiseShortCircuit", "var n = 32\nif n < 32 and (1 << n) == 0 => Console.writeLine(\"bad\")\nif true or (1 >> -1) == 0 => ()\nif false => 1 << 32\nloop\n    exit\n    1 >> -2147483648\nConsole.writeLine(\"ok\")" },
         { "BitwisePhi", "var c = true\nvar x = 3\nlet y = if c => x << 2 else => x >> 1\nlet z = if c\n    yield y | 1\nelse\n    yield 0\nif y == 12 and z == 13 => Console.writeLine(\"ok\")" },
         { "BitwiseSnapshot", Snapshot },

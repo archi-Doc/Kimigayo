@@ -56,13 +56,14 @@ public class CopyPropertyEmissionTest
         => ScalarEmissionTest.EmitFixture("CopyPropertyOrder", Meter + "func receiver(m: uniq/Meter during source) -> uniq/Meter during source\n    Console.writeLine(\"receiver\")\n    return m\nfunc input() -> i32\n    Console.writeLine(\"input\")\n    return 8\nvar m = Meter.init()\nreceiver(m@uniq).level = input()\nrequire m.level == 8 else => $abort(\"level\")", "input\nreceiver\nset\nget\n");
 
     [Theory]
-    [InlineData("Both", "get() -> i32\n            Console.writeLine(\"get\")\n            return storage\n        set(value: i32) -> ()\n            Console.writeLine(\"set\")\n            storage = value", "get\ninput\nset\nget\n")]
-    [InlineData("Get", "get() -> i32\n            Console.writeLine(\"get\")\n            return storage", "get\ninput\nget\n")]
-    [InlineData("Set", "set(value: i32) -> ()\n            Console.writeLine(\"set\")\n            storage = value", "input\nset\n")]
+    [InlineData("Both", "get() -> i32\n            Console.writeLine(\"get\")\n            return storage\n        set(value: i32) -> ()\n            Console.writeLine(\"set\")\n            storage = value", "get\nset\nget\n")]
+    [InlineData("Get", "get() -> i32\n            Console.writeLine(\"get\")\n            return storage", "get\nget\n")]
+    [InlineData("Set", "set(value: i32) -> ()\n            Console.writeLine(\"set\")\n            storage = value", "set\n")]
     public void CompoundUpdateLocatesReceiverOnce(string name, string accessors, string output)
     {
         var source = "struct S\n    public var item: i32 = 3\n        " + accessors + "\nfunc receiver(s: uniq/S during source) -> uniq/S during source\n    Console.writeLine(\"receiver\")\n    return s\nfunc input() -> i32\n    Console.writeLine(\"input\")\n    return 4\nvar s = S.init()\nreceiver(s@uniq).item += input()\nrequire s.item == 7 else => $abort(\"result\")";
-        ScalarEmissionTest.EmitFixture("CopyPropertyCompound" + name, source, "receiver\n" + output);
+        // SPEC 13.7.2: the right-hand side runs before the receiver is located once.
+        ScalarEmissionTest.EmitFixture("CopyPropertyCompound" + name, source, "input\nreceiver\n" + output);
     }
 
     [Fact]
