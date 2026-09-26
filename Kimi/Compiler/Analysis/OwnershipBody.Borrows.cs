@@ -205,8 +205,7 @@ public sealed partial class OwnershipBody
                             var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
                             if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
-                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p) &&
-                                !this.IsSiblingComponent(accessId, p))
+                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
                             {
                                 conflict = true;
                             }
@@ -859,58 +858,6 @@ public sealed partial class OwnershipBody
         return false;
     }
 
-    // SPEC 14.6.2, 15.6.2: the Tuple components of one iteration item are disjoint element paths
-    // below the same receiver, so their borrows coexist whatever their modes.
-    private bool IsSiblingComponent(int access, int place)
-    {
-        var current = this.ComponentSequence(access);
-        var other = current < 0 || (uint)place >= (uint)this.borrowDefinitions.Length ? -1 : this.ComponentSequence(this.borrowDefinitions[place]);
-        if (current < 0 || other < 0)
-        {
-            return false;
-        }
-
-        var component = this.Sequences[current];
-        var sibling = this.Sequences[other];
-        return sibling.Receiver == component.Receiver && sibling.Element != component.Element &&
-            ReferenceEquals(this.Operations[component.Operation].Source, this.Operations[sibling.Operation].Source);
-    }
-
-    // The Tuple-component sequence plan behind a value: through a stored binding, a read of it and a Reborrow.
-    private int ComponentSequence(int value)
-    {
-        for (var remaining = 8; remaining > 0 && (uint)value < (uint)this.Values.Count; remaining--)
-        {
-            var operation = this.Operations[value];
-            var node = this.Values[value];
-            if (operation.Kind == OwnershipOperationKind.Produce && node.Kind == OwnershipValueKind.Sequence)
-            {
-                return this.Sequences[(int)node.Constant].Element >= 0 ? (int)node.Constant : -1;
-            }
-
-            if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0)
-            {
-                var definition = this.borrowDefinitions[operation.Place];
-                if (definition < 0 || definition >= value)
-                {
-                    return -1;
-                }
-
-                value = definition;
-            }
-            else if (operation.Kind is OwnershipOperationKind.Write or OwnershipOperationKind.Borrow && node.Kind is OwnershipValueKind.Alias or OwnershipValueKind.Address && node.Count == 1)
-            {
-                value = this.ValueOperands[node.Start];
-            }
-            else
-            {
-                return -1;
-            }
-        }
-
-        return -1;
-    }
-
     private bool HasSingleBorrowDefinition(int place)
         => this.borrowDefinitions[place] >= 0 &&
         (this.Places[place].Kind == OwnershipPlaceKind.Temporary || this.Places[place] is { Kind: OwnershipPlaceKind.Local, Mutable: false });
@@ -1018,6 +965,20 @@ public sealed partial class OwnershipBody
         {
             var operation = this.Operations[value];
             var node = this.Values[value];
+            if (operation.Kind == OwnershipOperationKind.Produce && node.Kind == OwnershipValueKind.Sequence &&
+                this.Sequences[(int)node.Constant] is { Element: >= 0 } component)
+            {
+                // SPEC 14.6.2, 15.6.2: a Tuple component of an iteration item is a static element path below the item
+                // of its receiver; distinct components are disjoint whatever the item's index.
+                if (depth == selectors.Length)
+                {
+                    return -1;
+                }
+
+                selectors[depth++] = component.Element;
+                return component.Receiver;
+            }
+
             if (operation.Kind == OwnershipOperationKind.Borrow && node.Kind == OwnershipValueKind.Address)
             {
                 if (node.Count == 0)
