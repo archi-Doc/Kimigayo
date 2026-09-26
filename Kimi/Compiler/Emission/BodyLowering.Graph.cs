@@ -27,6 +27,9 @@ internal sealed partial class BodyLowering
         OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => type is not null && ScalarTypes.Signed(type) ? ArithmeticCheckKind.Division : ArithmeticCheckKind.UnsignedDivision,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => ArithmeticCheckKind.Overflow,
         OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => ArithmeticCheckKind.Overflow,
+
+        // An element of a fixed array borrowed through a reference takes a bounds-checked address (SPEC 4.6.9).
+        OwnershipValueKind.Address when value.Count == 2 => ArithmeticCheckKind.Bounds,
         _ => ArithmeticCheckKind.None,
     };
 

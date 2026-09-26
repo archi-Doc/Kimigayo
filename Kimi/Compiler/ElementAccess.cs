@@ -14,6 +14,10 @@ internal static class ElementAccess
     internal static bool SupportsMoveRoot(OwnershipPlace place)
         => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter && SupportsBorrowRoot(place);
 
+    // SPEC 4.6.6, 4.6.9: an element of a Slice or of a referenced array, which no owned root holds.
+    internal static bool IsSharedElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
+        (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(element.Left.BoundType) || ReferenceTypes.IsDynamicArray(element.Left.BoundType));
+
     internal static bool IsSyntax(Koto source) => source is IndexKoto or MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && StructStorage.IsStruct(type));
 
@@ -111,15 +115,15 @@ internal static class ElementAccess
     }
 
     /// <summary>
-    /// SPEC 3.4.1: the Type through which a member or Tuple element of <paramref name="left"/> is selected. Through several
-    /// reference layers, or below a shared element Place, it is the one reference that Binding recorded as the receiver's
-    /// adaptation.
+    /// SPEC 3.4.1, 13.4: the Type through which a Place expression read in place, a receiver or a string comparison
+    /// operand, is accessed. Through several reference layers, or for a shared element Place, it is the one reference
+    /// that Binding recorded as the expression's adaptation.
     /// </summary>
-    /// <param name="left">The receiver expression.</param>
-    /// <returns>The receiver's selection Type.</returns>
-    internal static BoundType? ReceiverType(Koto left)
-        => left.CodeContext.Compilation.Binding.TryGetAdaptation(left, out var adaptation) && adaptation.Kind is ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow
-            ? adaptation.Type : left.BoundType;
+    /// <param name="node">The expression read in place.</param>
+    /// <returns>The access Type.</returns>
+    internal static BoundType? AccessType(Koto node)
+        => node.CodeContext.Compilation.Binding.TryGetAdaptation(node, out var adaptation) && adaptation.Kind is ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow
+            ? adaptation.Type : node.BoundType;
 
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the
@@ -133,7 +137,7 @@ internal static class ElementAccess
                 return null;
             }
 
-            var receiver = ReceiverType(field.Left);
+            var receiver = AccessType(field.Left);
             if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || ObjectTypes.IsBorrow(receiver))
             {
                 return field.Left;
@@ -181,7 +185,7 @@ internal static class ElementAccess
     // The stored position of one path level and the aggregate that contains it.
     internal static int PathSelector(BinaryKoto field, out BoundType? owner, out BoundType? element)
     {
-        var left = ReceiverType(field.Left);
+        var left = AccessType(field.Left);
         element = null;
         if (ReferenceTypes.IsTuple(left))
         {
@@ -212,7 +216,7 @@ internal static class ElementAccess
     {
         element = null;
         position = -1;
-        var receiver = ReceiverType(source.Left);
+        var receiver = AccessType(source.Left);
         if (ReferenceTypes.IsTuple(receiver) && source is MemberAccessKoto { Right: NumberLiteralKoto number } &&
             number.IsInteger && number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)receiver!.Components[0].Components.Count)
         {

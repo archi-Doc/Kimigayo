@@ -67,10 +67,12 @@ internal sealed partial class BodyLowering
 
     private bool ValidateStringInspection(OwnershipBody body, int id, int place, int loan, Koto operand, int reference)
     {
-        if (ReferenceTypes.IsString(SignatureType(this, operand.BoundType)))
+        // SPEC 13.4: a string reference, or an operand inspected through its shared borrow.
+        var inspected = SignatureType(this, ElementAccess.AccessType(operand));
+        if (ReferenceTypes.IsString(inspected))
         {
             return loan == -1 && this.ValidateReferenceUse(body, reference, id) && ValuePlace(body.Operations[reference]) == place &&
-                ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), SignatureType(this, operand.BoundType));
+                ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), inspected);
         }
 
         if (reference >= 0 && (uint)reference < (uint)body.Operations.Count && ReferenceTypes.IsPointer(ValueType(body, reference)))

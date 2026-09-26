@@ -56,6 +56,14 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
+        if (this.compilation.Binding.TryGetAdaptation(source, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)
+        {
+            // SPEC 13.4: an operand without an owned static path is inspected through its one shared borrow.
+            var shared = this.BorrowStruct(source, adaptation.Type);
+            reference = this.Value(shared);
+            return shared;
+        }
+
         if (KotoHelper.UnwrapParentheses(source) is BinaryKoto element && ElementAccess.IsSyntax(element))
         {
             var borrowed = this.BorrowStringElement(element, null, null, out loan);

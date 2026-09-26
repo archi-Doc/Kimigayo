@@ -203,7 +203,7 @@ public sealed partial class OwnershipAnalysis
         var root = -1;
         var loan = -1;
         var receiver = KotoHelper.UnwrapParentheses(source.Left);
-        if (receiver is BinaryKoto nested && !Binding.IsGetterResult(nested) && ElementAccess.IsSyntax(nested))
+        if (receiver is BinaryKoto nested && !Binding.IsGetterResult(nested) && ElementAccess.IsSyntax(nested) && !ElementAccess.IsSharedElement(nested))
         {
             parent = this.LocateElement(nested);
             if (parent >= 0)
@@ -214,6 +214,7 @@ public sealed partial class OwnershipAnalysis
         }
         else
         {
+            // SPEC 4.6.6, 4.6.9: a shared element Place is not part of an owned root; a Copy element is read as the root.
             root = receiver is IdentifierNameKoto && receiver.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter
                 ? this.Local(receiver) : this.Expression(receiver, PlaceUseKind.Read);
             if (root >= 0)

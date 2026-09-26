@@ -85,10 +85,11 @@ public sealed partial class OwnershipAnalysis
             return borrowedElement;
         }
 
-        if (unwrapped is IndexKoto index && ReferenceTypes.IsArray(index.Left.BoundType) &&
-            index.Left.BoundType!.Semantics == SemanticsKind.Ref && type.Semantics == SemanticsKind.Ref)
+        if (unwrapped is IndexKoto index && ElementAccess.AccessType(index.Left) is { Semantics: SemanticsKind.Ref } array && ReferenceTypes.IsArray(array) &&
+            type.Semantics == SemanticsKind.Ref)
         {
-            var receiver = this.Expression(index.Left, PlaceUseKind.Read);
+            // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver.
+            var receiver = this.Receiver(index.Left);
             var receiverValue = this.Value(receiver);
             var subscript = this.Expression(index.Right);
             if (receiver < 0 || subscript < 0)
@@ -183,7 +184,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        if (ElementAccess.ReceiverType(root)?.Semantics != SemanticsKind.Uniq ||
+        if (ElementAccess.AccessType(root)?.Semantics != SemanticsKind.Uniq ||
             !ReferenceTypes.IsValue(field.BoundType))
         {
             this.Unsupported(assignment);
@@ -206,7 +207,7 @@ public sealed partial class OwnershipAnalysis
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        var receiverType = ElementAccess.ReceiverType(root);
+        var receiverType = ElementAccess.AccessType(root);
         if (receiverType?.Semantics != SemanticsKind.Uniq || field.BoundType?.IsNumeric != true || operation == KotoKind.Invalid)
         {
             this.Unsupported(source);

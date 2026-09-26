@@ -80,6 +80,7 @@ public sealed partial class Binding
             }
 
             this.RequireType(source.Right, scope, BoundType.ISize);
+            this.ReceiverElement(source.Left, receiver);
         }
         else
         {

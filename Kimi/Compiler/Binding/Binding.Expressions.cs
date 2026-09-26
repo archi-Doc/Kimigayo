@@ -64,15 +64,15 @@ public sealed partial class Binding
             };
         }
 
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.ReceiverType(nested.Left)) &&
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(nested.Left)) &&
             ElementAccess.BorrowedPathRoot(nested) is { } root)
         {
-            return ElementAccess.ReceiverType(root)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
+            return ElementAccess.AccessType(root)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
         }
 
-        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(ElementAccess.ReceiverType(tupleElement.Left)))
+        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(ElementAccess.AccessType(tupleElement.Left)))
         {
-            return ElementAccess.ReceiverType(tupleElement.Left)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
+            return ElementAccess.AccessType(tupleElement.Left)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
         }
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
@@ -1020,6 +1020,8 @@ public sealed partial class Binding
         if (comparison && (ReferenceTypes.IsString(left) || ReferenceEquals(left, BoundType.String) || ReferenceEquals(left, BoundType.Never)) &&
             (ReferenceTypes.IsString(right) || ReferenceEquals(right, BoundType.String) || ReferenceEquals(right, BoundType.Never)))
         {
+            this.CompareInPlace(binary.Left);
+            this.CompareInPlace(binary.Right);
             return Complete(binary, BoundType.Boolean);
         }
 

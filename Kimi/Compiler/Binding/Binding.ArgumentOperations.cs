@@ -171,7 +171,7 @@ public sealed partial class Binding
                     break;
                 case MemberAccessKoto member when ElementAccess.BorrowedPathRoot(member) is { } root:
                     next = root;
-                    layer = ElementAccess.ReceiverType(KotoHelper.UnwrapParentheses(root))?.Semantics;
+                    layer = ElementAccess.AccessType(KotoHelper.UnwrapParentheses(root))?.Semantics;
                     break;
                 case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
                     next = part.Left; // An inline part shares its owner's path.
@@ -260,13 +260,39 @@ public sealed partial class Binding
     // shared borrow of that element Place. The element keeps its stored Type; the borrow is the receiver's adaptation.
     private void ReceiverElement(Koto left, BoundType? element)
     {
-        if (KotoHelper.UnwrapParentheses(left) is IndexKoto index && index.Right is not RangeKoto && element is not null &&
-            (index.Left.BoundType?.Kind is BoundTypeKind.Slice || ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType)) &&
-            this.ProveCopy(element, left) == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
+        if (KotoHelper.UnwrapParentheses(left) is IndexKoto index && ElementAccess.IsSharedElement(index))
         {
-            var origin = this.PlaceOrigin(index.Left);
+            this.SharedElement(left, index.Left, element);
+        }
+    }
+
+    // SPEC 13.4, 4.6.9: a string comparison reads each operand in place. An operand selected by a dynamic key, below an
+    // element or through a reference has no owned static path, so it is shared-borrowed like a receiver element; each
+    // receiver on its path that is such a selection is borrowed the same way.
+    private void CompareInPlace(Koto operand)
+    {
+        if (KotoHelper.UnwrapParentheses(operand) is not BinaryKoto selection || selection is not (IndexKoto { Right: not RangeKoto } or MemberAccessKoto) ||
+            IsGetterResult(selection) || ElementAccess.OwnedPathRoot(selection) is not null)
+        {
+            return;
+        }
+
+        this.CompareInPlace(selection.Left);
+        if (ElementAccess.AccessType(selection.Left) is { } receiver &&
+            (receiver.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsBorrow(receiver)))
+        {
+            this.SharedElement(operand, selection.Left, selection.BoundType);
+        }
+    }
+
+    // Records the one shared borrow of a Non-Copy element Place that is read in place below its receiver.
+    private void SharedElement(Koto node, Koto receiver, BoundType? element)
+    {
+        if (element is not null && this.ProveCopy(element, node) == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
+        {
+            var origin = this.PlaceOrigin(receiver);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
-            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin));
+            this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin));
         }
     }
 
