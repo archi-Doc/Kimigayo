@@ -305,13 +305,13 @@ while ready => process()
 
 ### 14.6.2. Iteration protocol and acquisition
 
-`for` uses only the [LendingIterator Contract](22-core-execution-and-foreign-functions.md#22121-iterator-and-cursor), which every Iterator refines, and the three [iteration entries](22-core-execution-and-foreign-functions.md#22122-iteration-entries). The Subject `E` is evaluated once and acquired under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime); the Subject mode selects the entry, and the entry's receiver is acquired under the [reference-path selection](03-types-and-values.md#341-reference-path-selection) of the complete Subject Type:
+`for` uses only the [LendingIterator Contract](22-core-execution-and-foreign-functions.md#22121-lendingiterator-and-iterator), which every Iterator refines, and the three [iteration entries](22-core-execution-and-foreign-functions.md#22122-iteration-entries). The Subject `E` is evaluated once and acquired under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime); the Subject mode selects the entry, and the entry's receiver is acquired under the [reference-path selection](03-types-and-values.md#341-reference-path-selection) of the complete Subject Type:
 
 | Subject mode | Typical Subjects | Entry |
 | --- | --- | --- |
 | Shared | `values`, `values@ref`, a `ref/C` value | `Iterable.iterate` |
 | Exclusive | `values@uniq`, a `uniq/C` value | `UniqIterable.iterateUniq` |
-| ByValue | `values@move`, a temporary such as `makeValues()`, or `range@owner` for a Copy Subject | `IntoIterable.intoIterator` |
+| ByValue | `values@move`, a temporary such as `makeValues()`, or `range@copy` for a Copy Subject | `IntoIterable.intoIterator` |
 
 For `values: ref/Array<T>`, `for value in values` selects Array's shared entry through the reference. The selection never changes the mode, and an explicit borrow must be valid on the immediately written slot before the entry is searched (§15.1.6). ByValue uses the `IntoIterable` conformance of the acquired complete Type and never takes ownership of a referent. Missing or ambiguous conformances are errors; there is no method-name duck typing, no automatic conformance of references or arbitrary iterators, and no fallback protocol. A user LendingIterator without an entry conformance is enumerated through a standard adapter, whose result is an owned temporary: `Kimi.Iteration.owned(it@move)` or `Kimi.Iteration.borrowed(it@uniq)` (§22.1.2.3).
 
@@ -347,7 +347,7 @@ for item in items@uniq       // Exclusive iteration.
 for item in items@move       // Consuming iteration.
     store(item@move)
 for (a, b) in rows@uniq      // a, b: uniq/i32
-    a@deref += b
+    a@follow += b
 for (a, b) in pairs          // pairs: Array<(i32, i32)>
     total += a + b           // ref/(i32, i32) is decomposed; a, b: ref/i32
 for (key, value) in dictionary@uniq
@@ -483,7 +483,7 @@ enum Box {source}
     Value(uniq/Option<i32> during source)
 
 match box@uniq
-    .Value(.Some(let x)) => x@deref += 1 // x: uniq/i32 through the exclusive path.
+    .Value(.Some(let x)) => x@follow += 1 // x: uniq/i32 through the exclusive path.
     .Value(.None) => ()
     _ => ()
 
@@ -539,7 +539,7 @@ match packet@move
     .End => ()
 ```
 
-Here the first `data` is `ref/Data` in the guard and `Data` in the body; writing `data@ref` in the guard borrows the candidate's reference slot as `ref/(ref/Data)`, and `data@deref@ref` borrows the payload again.
+Here the first `data` is `ref/Data` in the guard and `Data` in the body; writing `data@ref` in the guard borrows the candidate's reference slot as `ref/(ref/Data)`, and `data@follow@ref` borrows the payload again.
 
 ```kimi
 func same(a: ref/string, b: ref/string) -> bool => a == b
@@ -557,14 +557,14 @@ The literal is a temporary, so the Subject is owned: `text` is `ref/string` in t
 
 | Value obtained in the guard | Escape from the guard |
 | --- | --- |
-| Scalar read, or a Copy taken with `candidate@deref`, without Candidate or Subject lifetime dependence | Permitted by the ordinary rules |
-| Copy of a stored reference taken with `candidate@deref` | Permitted when the existing Origins and Loans and the destination allow |
+| Scalar read, or a Copy of the referent such as `candidate@follow@copy`, without Candidate or Subject lifetime dependence | Permitted by the ordinary rules |
+| Copy of a stored reference, `candidate@follow@copy` when the candidate is `ref/(ref/U)` | Permitted when the existing Origins and Loans and the destination allow |
 | The candidate reference, a new Borrow/Reborrow of the candidate Place, or any value depending on it | Forbidden; its Loan must end inside the guard |
 | Copy aggregate with an existing Subject dependency | Its Origins and Loans are checked; it cannot outlive the Subject |
 
 Copying a stored value keeps its existing dependencies; the candidate reference adds no new dependency to it. These rules apply transitively through aliases, retained values and callees, including indirect calls and wrapping values.
 
-Ordinary capture acquires values by Binding Identity, but a candidate Identity is never a capture source, explicitly or implicitly. A value read into a separate ordinary local or parameter may be saved or captured under the table and the normal rules: `func [x] () => use(x)` directly capturing a candidate is invalid, while passing its read value to `saveCopy(x)` may let the callee store it. There is no capture spelling such as `@copy`.
+Ordinary capture acquires values by Binding Identity, but a candidate Identity is never a capture source, explicitly or implicitly. A value read into a separate ordinary local or parameter may be saved or captured under the table and the normal rules: `func [x] () => use(x)` directly capturing a candidate is invalid, while a Copy read into an ordinary local, such as `let saved = x@follow@copy`, may be captured, and passing a read value to `saveCopy(x)` may let the callee store it.
 
 **Subject protection.** From Pattern testing through guard cleanup, the Subject and traversed referents are protected with shared access: aliases and callees cannot change or consume them in a way that invalidates the Case or candidate positions. Independent side effects are allowed and are not rolled back on a false guard.
 

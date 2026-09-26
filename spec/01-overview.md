@@ -6,7 +6,7 @@
 
 **Kimigayo** is a programming language built from scratch to be consistent, fast, simple, fun, and safe.
 
-This specification defines the intended language. Language rules, compiler requirements and the recorded [implementation status](../STATUS.md) are separate concerns.
+This specification defines the intended language. The [implementation specification](../IMPLEMENTATION.md) defines the build, runtime and code-generation contracts and the compiler requirements of the initial implementation, and [STATUS.md](../STATUS.md) records what is implemented; these are separate concerns.
 
 Kimigayo puts consistency and language quality ahead of compatibility between versions. A reproducible build must pin the compiler build, sources, dependencies and configuration; a language-version label alone does not identify a pre-alpha compiler.
 
@@ -51,10 +51,10 @@ User-defined Types, Contracts and Declaration Containers conventionally use Pasc
 | `<>` | Type arguments and [function length arguments](04-arrays-indexing-and-slices.md#44-function-length-parameters). |
 | `{...}` | A closed struct or enum Origin schema (possibly empty), or a fresh binding-set name after a named Type (§15.3). Never a body or collection. Borrow annotations use `during` (§3.3.6). |
 | `=` | Initialization, parameter default or assignment, depending on context. Acquisition follows [Copy and Move](03-types-and-values.md#35-copy-and-move). |
-| `@` | An explicit operation: Type/Semantics adaptation, transfer (`@move`) or dereference (`@deref`); see [explicit operations](13-operators-and-assignment.md#135-explicit-operations). |
+| `@` | An explicit operation: Type/Semantics adaptation, transfer (`@move`), copy (`@copy`) or follow (`@follow`); see [explicit operations](13-operators-and-assignment.md#135-explicit-operations). |
 | `->` | Introduces the result Type of a function declaration or Function Type. |
 | `=>` | Introduces a single-item executable Body, a parameter-name mapping or a Container-alias target, depending on context. |
-| `:` | Separates names from Types, argument names from values, Dictionary keys from values, labels from constructs, and named transfer targets from values. Also introduces structure bases, Contract parents and constructor `: base(...)`; never an executable Body. In the specification's Origin-constraint notation, `a : b` means that `a` outlives `b`, including equal lifetimes; source relations use `origin a outlives b` (§15.3.3). |
+| `:` | Separates names from Types, argument names from values, Dictionary keys from values, labels from constructs, and named transfer targets from values. Also introduces structure bases, Contract parents and constructor `: base(...)`; never an executable Body. |
 | `#` | A compile-time construct. Lowercase reserved directives such as `#if` differ from PascalCase Attributes such as `#Inline`. |
 | `$` | Selects a language-provided Composition Root operation; see [§13.8](13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |
 | `;` | Forbidden outside comments and literals; never a statement or Type separator. |
@@ -77,7 +77,7 @@ Examples are independent unless explicitly connected. Application-specific Types
 
 Unqualified declarative rules and imperative requirements are normative even without `must`. Examples illustrate ordinary use, boundaries or intentional errors; they add no rules and never override the rules they illustrate.
 
-Compiler requirements (Appendix A) preserve required information and invariants. A **non-normative reference model** (Appendix B) is an optional algorithm, not an alternative semantics.
+In the implementation specification, compiler requirements (Appendix A) preserve required information and invariants, and a **non-normative reference model** (Appendix B) is an optional algorithm, not an alternative semantics.
 
 Design-status labels:
 

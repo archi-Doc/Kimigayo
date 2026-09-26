@@ -136,7 +136,7 @@ records of their own inputs. In particular, the old combined program-20 result
 is not evidence for new program 20 or 21. The current table uses the new audit.
 
 Each file is a separate Application; do not combine them into one project.
-Under [single-source input rules](../spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
+Under [single-source input rules](../impl/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
 the intended build/run commands, once the required features are implemented, are:
 
 ```powershell
@@ -282,7 +282,7 @@ Owning clauses: [Properties](../spec/11-properties.md),
 [sequences and collections](../spec/04-arrays-indexing-and-slices.md),
 [interpolation](../spec/12-expressions.md#1233-interpolation-formatting),
 [comparison and objects](../spec/13-operators-and-assignment.md),
-[generation/runtime representation](../spec/21-layout-runtime-and-code-generation.md),
+[generation/runtime representation](../impl/21-layout-runtime-and-code-generation.md),
 and [startup/static storage](../spec/22-core-execution-and-foreign-functions.md).
 These scopes partition work; neither source brevity nor one passing representative
 program certifies the full owning chapter. Package/Mod/test-runner/FFI integration
@@ -744,7 +744,7 @@ Tuple to `(3, 3, 2)`. Do not add a specialization directive: `specialize func`
 selects a source implementation, while baseline sharing is a compiler policy.
 
 Focus: [full specialization](../spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
-and [generic code generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+and [generic code generation](../impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
 
 Reproduce the current executable integration with the pinned Windows x64 toolchain:
 
@@ -789,7 +789,7 @@ the inner closure cannot bypass the enclosing capture boundary.
 
 Focus: [captures and calls](../spec/07-functions-and-callable-values.md#76-function-expressions),
 [Callable constraints](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-and [closure generation](../spec/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
+and [closure generation](../impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
 
 ## Milestone 13: a Slice-backed Iterator
 
@@ -1086,7 +1086,7 @@ ABI/frame/resource guarantees remain program 22's broader acceptance criteria;
 program 18 does not require later dedicated features.
 
 Focus: [generic body checking](../spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
-[generic generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation),
+[generic generation](../impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation),
 and [secured results and cleanup](../spec/16-scope-exit-and-destruction.md#1622-results-and-transfers).
 
 ## Milestone 19: Contracts, associated Types and conditional conformance
@@ -1242,7 +1242,7 @@ Member Identities. Program 22 separately checks concrete entry ABI and finite
 generation limits; this program introduces no partial/conditional specialization.
 
 Focus: [full specialization](../spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
-and [implementation selection and generation](../spec/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+and [implementation selection and generation](../impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
 
 ## Milestone 22: concrete generic generation
 
@@ -1277,9 +1277,9 @@ transitional shared fallback. Allocation measurements belong to implementation
 completion. Shared contexts, scratch frames and optional sharing-budget tests are
 deferred, not acceptance conditions of this initial profile.
 
-Focus: [generation policy](../spec/21-layout-runtime-and-code-generation.md#2131-policy-and-sharing-conditions),
-[finite generation](../spec/21-layout-runtime-and-code-generation.md#2135-generation-limits-and-code-merging),
-and [calls and frames](../spec/21-layout-runtime-and-code-generation.md#214-checked-lowering-and-internal-abi).
+Focus: [generation policy](../impl/21-layout-runtime-and-code-generation.md#2131-policy-and-sharing-conditions),
+[finite generation](../impl/21-layout-runtime-and-code-generation.md#2135-generation-limits-and-code-merging),
+and [calls and frames](../impl/21-layout-runtime-and-code-generation.md#214-checked-lowering-and-internal-abi).
 
 ## Milestone 23: basic Copy Properties
 
@@ -1437,7 +1437,7 @@ environment allocation; account for permitted erasure allocation separately.
 Focus: [captures and invocation](../spec/07-functions-and-callable-values.md#76-function-expressions),
 [Callable](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
 [closure dependencies](../spec/15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results),
-and [environment/erasure layout](../spec/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
+and [environment/erasure layout](../impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
 
 ## Milestone 27: general Slice, Index and Range
 
@@ -1713,7 +1713,7 @@ Focus: [object views](../spec/03-types-and-values.md#335-object-views-and-identi
 [upcasts](../spec/13-operators-and-assignment.md#1357-object-upcasts),
 [runtime tests](../spec/13-operators-and-assignment.md#1361-runtime-is-tests),
 [refinement](../spec/14-control-flow.md#1410-type-refinement),
-[payload projection](../spec/13-operators-and-assignment.md#13551-dereference)
+[payload projection](../spec/13-operators-and-assignment.md#13551-follow)
 and [dynamic release](../spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
 
 ### Programs 22–24 authoring verification (2026-09-22)

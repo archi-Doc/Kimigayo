@@ -1,6 +1,6 @@
 # 20. Compilation configuration
 
-[Specification index](../SPEC.md)
+[Implementation specification index](../IMPLEMENTATION.md)
 
 A Compilation processes one Project for fixed source, dependency, target and configuration inputs. The source-language rules determine meaning. This chapter defines compilation invariants and configuration; Appendices A and B hold implementation requirements and reference algorithms.
 
@@ -16,7 +16,7 @@ The build model separates workspace orchestration, project configuration, source
 | SourceDocument | An immutable source snapshot, including its path and text; replacing its text creates a new snapshot. |
 | Compilation | Compiles one Project under one fixed set of source, dependency, target and build inputs. |
 
-A Solution discovers and loads Projects. A Project stores target triples, default-alias additions and [dependency declarations](18-modules-and-dependencies.md#184-dependency-configuration-and-resolution), and creates target-specific Compilations. Referenced modules keep their own definition environments. Effective default aliases, including those of generated documents, follow [§18.1.3](18-modules-and-dependencies.md#1813-effective-default-aliases).
+A Solution discovers and loads Projects. A Project stores target triples, default-alias additions and [dependency declarations](../spec/18-modules-and-dependencies.md#184-dependency-configuration-and-resolution), and creates target-specific Compilations. Referenced modules keep their own definition environments. Effective default aliases, including those of generated documents, follow [§18.1.3](../spec/18-modules-and-dependencies.md#1813-effective-default-aliases).
 
 ## 20.2. Build inputs
 
@@ -38,7 +38,7 @@ Prepared Compilations provide these values, fixed throughout analysis:
 | `debug`, `release` | `bool` | The selected build mode and its negation: `release == not debug`. |
 | `pointerWidth` | `i64` | The default raw-pointer width in bits from the prepared target layout; the supported values in this revision are 16, 32 and 64. |
 
-Project settings supply explicit `bool`, `i64` or `string` values through the `.kimiproj` `CompileTimeSettings` map; each entry sets exactly one of `Bool`, `Integer` or `String`. Setting Names are validated under §2.5, including the pinned Unicode categories, NFC and reserved words. Exact duplicate setting names and collisions with built-in values are errors, not overrides. [Condition lookup](19-compile-time-directives.md#192-environment-condition-forms) is case-sensitive, so `Feature` and `FEATURE` are distinct settings, and `WINDOWS` is distinct from the built-in `windows`. Spelling is preserved, and settings are copied into the prepared environment before parsing.
+Project settings supply explicit `bool`, `i64` or `string` values through the `.kimiproj` `CompileTimeSettings` map; each entry sets exactly one of `Bool`, `Integer` or `String`. Setting Names are validated under §2.5, including the pinned Unicode categories, NFC and reserved words. Exact duplicate setting names and collisions with built-in values are errors, not overrides. [Condition lookup](../spec/19-compile-time-directives.md#192-environment-condition-forms) is case-sensitive, so `Feature` and `FEATURE` are distinct settings, and `WINDOWS` is distinct from the built-in `windows`. Spelling is preserved, and settings are copied into the prepared environment before parsing.
 
 ## 20.5. Language-version selection
 
@@ -56,7 +56,7 @@ A **Mod** is Kimigayo's source generator: one compiler-invoked generation step. 
 
 Mods process generic declarations, not each generic instantiation, and may emit generic source. Each target-specific Compilation runs its own Mods. Several steps from one package use separate ModIds. There is no automatic retry, marker-driven rerun, or iteration until generation converges.
 
-**Deferred host.** The Mod host interface and configuration are deferred ([Appendix D](appendices/D-deferred-features.md)): concrete query, marker-registration and context APIs, assembly packaging and compatibility checks, project configuration syntax, and cache formats (§20.7.7). Until they are specified, no Mod is registered or executed. The execution, ordering, Binding, append and diagnostic rules of this section apply to that host.
+**Deferred host.** The Mod host interface and configuration are deferred ([Appendix D](../spec/appendices/D-deferred-features.md)): concrete query, marker-registration and context APIs, assembly packaging and compatibility checks, project configuration syntax, and cache formats (§20.7.7). Until they are specified, no Mod is registered or executed. The execution, ordering, Binding, append and diagnostic rules of this section apply to that host.
 
 ### 20.7.1. Registration and execution order
 
@@ -150,7 +150,7 @@ Continue S1 -> B only
 Query S2 -> [A, B, C]  (when this is their logical order)
 ```
 
-This snapshots the result list, not the whole tree; a new member query on an existing Container may observe newly appended members. Queries use [logical declaration order](#2074-generated-sources-and-declaration-order). For merged declarations, the first fragment is the ordering key, and each API must state whether it returns fragments or merged declarations. Attribute queries follow the [Mod marker rules](06-declarations-and-containers.md#65-attributes).
+This snapshots the result list, not the whole tree; a new member query on an existing Container may observe newly appended members. Queries use [logical declaration order](#2074-generated-sources-and-declaration-order). For merged declarations, the first fragment is the ordering key, and each API must state whether it returns fragments or merged declarations. Attribute queries follow the [Mod marker rules](../spec/06-declarations-and-containers.md#65-attributes).
 
 ### 20.7.4. Generated sources and declaration order
 
@@ -165,7 +165,7 @@ The compiler keeps links between the producing Mod, the source, the target Koto 
 
 Ordinary logical names are normalized project-relative paths; external files need assigned project-relative names. Separators are normalized to `/`, redundant segments are removed, and collisions are rejected. Names do not depend on absolute checkout or temporary paths and are compared without host case folding or locale rules.
 
-Identical inputs must produce identical additions and order. Changing dependency declarations alone does not change the logical order when ModIds, generated content and each Mod's addition order stay the same. Renaming sources or Mods, or changing addition order, may change initializer side-effect order. Kimigayo-layout storage uses this order under [split structures](06-declarations-and-containers.md#621-split-structures-and-storage-order). C-layout Fields occupy one fragment in written order (§21.1.2); moving that whole fragment or renaming method-only fragments does not reorder its Fields. Physical layout remains governed by §21.1. Conflicting declarations follow the normal integration rules, never last-writer-wins replacement.
+Identical inputs must produce identical additions and order. Changing dependency declarations alone does not change the logical order when ModIds, generated content and each Mod's addition order stay the same. Renaming sources or Mods, or changing addition order, may change initializer side-effect order. Kimigayo-layout storage uses this order under [split structures](../spec/06-declarations-and-containers.md#621-split-structures-and-storage-order). C-layout Fields occupy one fragment in written order (§21.1.2); moving that whole fragment or renaming method-only fragments does not reorder its Fields. Physical layout remains governed by §21.1. Conflicting declarations follow the normal integration rules, never last-writer-wins replacement.
 
 ### 20.7.5. Inputs and regeneration
 
@@ -443,7 +443,7 @@ After successful version probing, native build records keep the expected version
 | `kimi check <project>` | Validates the required lock and the current source and semantic inputs, without native generation or execution. |
 | `kimi emit <input>` | Resolves the input (§20.8.6.1), performs the required source, ownership and generation checks, and publishes the matched pre-optimization `.ll`/`.link.json` pair (§20.8.3). Never executes LLVM, validates an installed LLVM version, links or runs. |
 | `kimi build <input>` | Resolves the input, generates fresh LLVM inputs, validates the actual tool versions and native inputs, runs `opt` verification (and `default<O2>` only at O2), `llc` and `lld-link`, and publishes the executable and a successful build record. Never executes the Application. |
-| `kimi test <input>` | Requires valid product/test resolution and records the current test inputs. [§20.9](#209-test-command-and-discovery) defines discovery and options, and [§22.6](22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting) execution. |
+| `kimi test <input>` | Requires valid product/test resolution and records the current test inputs. [§20.9](#209-test-command-and-discovery) defines discovery and options, and [§22.6](../spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting) execution. |
 | `kimi pack <project>` | Verifies the fixed source-package graph and saves its closure (§18.6.1), without reserving a release. |
 | `kimi publish <package> --store <directory>` | Validates the fixed Package closure and atomically updates only the named local publication store (§18.6.4); no Project lock update or repacking. |
 | `kimi store verify` | Rechecks all user-cache content, formats and references and invalidates corrupt results (§18.6.4). |
@@ -552,7 +552,7 @@ The linker receives the backend as a profile-wide static input and extracts only
 
 ## 20.9. Test command and discovery
 
-`kimi test <input>` uses the [product/test inputs](18-modules-and-dependencies.md#188-product-and-test-inputs), [Test definitions](06-declarations-and-containers.md#651-test-definitions) and [test generation](21-layout-runtime-and-code-generation.md#2137-product-and-test-generation). Input resolution follows §20.8.6.1, and a solution selects every listed project. The [test profile](testing-profile.md) owns cross-project selection, configuration, limits and output. Tests are discovered at compile time without running user initialization or test code. Excluded definitions and dependencies' own tests are not collected; to test a dependency, select its project independently.
+`kimi test <input>` uses the [product/test inputs](../spec/18-modules-and-dependencies.md#188-product-and-test-inputs), [Test definitions](../spec/06-declarations-and-containers.md#651-test-definitions) and [test generation](21-layout-runtime-and-code-generation.md#2137-product-and-test-generation). Input resolution follows §20.8.6.1, and a solution selects every listed project. The [test profile](testing-profile.md) owns cross-project selection, configuration, limits and output. Tests are discovered at compile time without running user initialization or test code. Excluded definitions and dependencies' own tests are not collected; to test a dependency, select its project independently.
 
 Test discovery and identity keep the complete declaring Container environment. Test eligibility, which includes inherited parameters, and placement are checked after directive selection and source generation (§6.1.1, §19.1).
 

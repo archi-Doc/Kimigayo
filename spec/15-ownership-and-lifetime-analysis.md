@@ -198,7 +198,7 @@ Getter results are acquired as results, never by moving hidden storage. An owned
 | Subject `E` | Subject Place |
 | --- | --- |
 | A bare Place | A shared borrow of the Place; when the Place stores `ref/T` or `uniq/T`, a Reborrow of that reference in its own mode |
-| Any other expression: an explicit borrow such as `E@ref`, `E@uniq`, `E@objuniq` or a typed slot borrow, `E@move`, a temporary, or an acquisition such as `E@owner` | The value this acquisition produces: `@move` transfers even a Copy value, a temporary is transferred as is, and a same-Type acquisition Copies a Copy Place, which stays usable |
+| Any other expression: an explicit borrow such as `E@ref`, `E@uniq`, `E@objuniq` or a typed slot borrow, `E@move`, `E@copy`, a temporary, or another acquisition | The value this acquisition produces: `@move` transfers even a Copy value, a temporary is transferred as is, and `@copy` Copies a Copy Place, which stays usable |
 
 The **Subject mode** is the access that the Subject Place grants to its first layer that is not a safe reference:
 
@@ -208,7 +208,7 @@ The **Subject mode** is the access that the Subject Place grants to its first la
 | An exclusive borrow, or a `uniq` or `objuniq` value | Exclusive |
 | An owned value | ByValue |
 
-The mode never depends on `var`, Copy capability, an available conformance or the body. An explicit borrow applies to the immediately written slot (§13.5.5.2), so `values@uniq` on `let values: uniq/Array<T>` is an error; the referent is enumerated exclusively with the bare `values` or with `values@deref@uniq`. A shared layer anywhere on the path bounds the mode to Shared. `E@move` on a reference transfers the reference value, never ownership of the referent, so the Subject keeps that reference's mode. `for` selects its iteration entry from the mode (§14.6.2). `match` does not itself dereference the Subject; structural Patterns select the Places they need (§14.8.1).
+The mode never depends on `var`, Copy capability, an available conformance or the body. An explicit borrow applies to the immediately written slot (§13.5.5.2), so `values@uniq` on `let values: uniq/Array<T>` is an error; the referent is enumerated exclusively with the bare `values` or with `values@follow@uniq`. A shared layer anywhere on the path bounds the mode to Shared. `E@move` on a reference transfers the reference value, never ownership of the referent, so the Subject keeps that reference's mode. `for` selects its iteration entry from the mode (§14.6.2). `match` does not itself follow the Subject; structural Patterns select the Places they need (§14.8.1).
 
 The Subject Place is initialized before arm selection, whatever the bindings and Wildcards and whether or not any arm succeeds. A Shared Subject of a proven-Copy Place may be implemented by a Copy of its value, because its bindings are shared views of a value that the Loan rules keep unchanged while they are live. A Subject that accesses a Property with a custom, computed or required `get` invokes that getter once; a standard stored `get` uses the permitted Place operation. A borrowed Subject's Loan follows the uses of its bindings: an arm without a live borrowed binding may assign to or transfer the original Place.
 
@@ -232,15 +232,15 @@ match makeMessage()                 // A temporary is an owned Subject without a
     .Write(let text) => store(text@move)
     _ => ()
 
-match count@owner                   // count: i32. A Copy acquisition: ByValue, count stays usable.
+match count@copy                    // count: i32. A Copy: ByValue, count stays usable.
     var n => n += 1                 // n: i32
 
 match counter@uniq                  // Exclusive Subject.
-    .Count(let n) => n@deref += 1   // n: uniq/i32
+    .Count(let n) => n@follow += 1  // n: uniq/i32
     _ => ()
 ```
 
-**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected as soon as its Pattern succeeds; a guarded arm also requires a true guard whose cleanup completed (§14.8.3). `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. On a shared or exclusive path, a `var` binding is therefore a reassignable reference. Assigning a value of its referent Type to it is an error whose diagnostic names the Subject mode and suggests `@deref` for an exclusive referent, or a ByValue Subject such as `E@owner` or `E@move` for a local value. Binding the whole of a borrowed Subject binds a reference to the original Place, never to the internal reference slot; for a Subject that Reborrows a stored `ref/E` or `uniq/E`, that Place is the referent, bound as `ref/E` or `uniq/E`. Binding the whole of an owned Subject transfers it.
+**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected as soon as its Pattern succeeds; a guarded arm also requires a true guard whose cleanup completed (§14.8.3). `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. On a shared or exclusive path, a `var` binding is therefore a reassignable reference. Assigning a value of its referent Type to it is an error whose diagnostic names the Subject mode and suggests `@follow` for an exclusive referent, or a ByValue Subject such as `E@copy` or `E@move` for a local value. Binding the whole of a borrowed Subject binds a reference to the original Place, never to the internal reference slot; for a Subject that Reborrows a stored `ref/E` or `uniq/E`, that Place is the referent, bound as `ref/E` or `uniq/E`. Binding the whole of an owned Subject transfers it.
 
 | Selected Place | Value bound |
 | --- | --- |
@@ -251,7 +251,7 @@ match counter@uniq                  // Exclusive Subject.
 
 On a path through a reference, parts are bound with that path's capability (§14.8.1) and are never Moved out of the referent: an owned item `ref/(A, B)` decomposes into shared borrows and `uniq/(A, B)` into exclusive borrows, and a Pattern that needs exclusive access through a shared path is rejected. Literal Patterns only observe the selected value. Owned decomposition distributes ownership that the Subject already holds; it grants no acquisition that §3.5 denies to a bare Place, and the responsibility for unbound parts stays with the Subject. Each selected Case identity and positional payload index of an owned Subject, including recursive decomposition, is tracked as a Move Path inside the Subject; these internal paths never apply to the caller's original enum and add no payload projection syntax. New borrows require valid referents and owners; copied references keep their existing Origins and Loans.
 
-A change in payload Copy capability therefore changes neither binding Types nor generic-body validity: for `wrapper: Option<Result<i32, i32>>`, `match wrapper` with `.Some(let r)` binds `ref/Result<i32, i32>`, and `r@deref` Copies the value where one is needed.
+A change in payload Copy capability therefore changes neither binding Types nor generic-body validity: for `wrapper: Option<Result<i32, i32>>`, `match wrapper` with `.Some(let r)` binds `ref/Result<i32, i32>`, and `r@follow` Copies the value where one is needed.
 
 **Guards.** In a guard, each candidate name is a shared reference `ref/T` to its selected Place, whatever the Subject mode and `T`'s Copy capability, held in its own reference slot with a Binding Identity distinct from the body binding. No payload is Moved during a guard; the body bindings are initialized from the original Places only after a true guard's cleanup. §14.8.3 owns guards, including their cleanup, candidate restrictions, escape checks and Subject protection.
 
@@ -381,11 +381,18 @@ func identity<T>(value: View<T>) -> View<T>{result}
     return value
 ```
 
+**Single-slot binding.** A named Type whose known schema has exactly one slot may bind that slot with a trailing `during`, attached as in §3.3.6: `Slice<T> during source` binds Slice's `source` slot to `source`, like `Slice<T>{v}` with `origin v.source == source`. It adds no borrow layer and names no set. In a signature, an unbound simple name there introduces a quantified Origin exactly as in a borrow annotation (§15.3.4). A Type with no slots, several slots or a schema unknown at definition rejects the shorthand; name its set and relate each slot instead.
+
+```kimi
+func tail<T>(values: Slice<T> during source) -> Slice<T> during source
+    return values[1..]
+```
+
 Naming preserves the Type, dependencies and quantification. Adding or removing a valid unused set name, or consistently renaming it and its references, leaves the contract unchanged. Naming an already complete Type does not reopen its bindings. Prefer a value projection when it directly names the needed slot; set names remain available for results, nested occurrences and other Type expressions.
 
 The role of braces follows from syntactic position, independent of whitespace or lookup success: in a declaration they are a Type schema header; after a named Type they name a set. A following `/` does not turn a set into a borrow annotation. Brace borrow annotations before `/`, Origin lists on functions, constructors and accessors, `origin`/`from` borrow annotations, and brace contents of the wrong role are rejected.
 
-**Projection.** `value.source` selects a declared slot from the value's Type (§15.2.1): after aliases and redundant owner prefixes are normalized, only consecutive safe-borrow layers are peeled to find that schema, never Fields, Type arguments or raw pointers. A set projection selects the corresponding slot of its named occurrence. Unknown slots are errors. Projection reads compile-time Type information; it invokes neither dereference nor getters and grants no initialization or Loan permission.
+**Projection.** `value.source` selects a declared slot from the value's Type (§15.2.1): after aliases and redundant owner prefixes are normalized, only consecutive safe-borrow layers are peeled to find that schema, never Fields, Type arguments or raw pointers. A set projection selects the corresponding slot of its named occurrence. Unknown slots are errors. Projection reads compile-time Type information; it follows no reference, invokes no getter and grants no initialization or Loan permission.
 
 ### 15.3.2. Type schemas and storage
 
@@ -720,7 +727,7 @@ Two Places overlap when an operation on one may affect the other. Static Place a
 | Independent local roots and their inline parts | Disjoint |
 | Distinct inline stored fields, Tuple elements or different constant fixed-array indices of one aggregate, and their subparts | Disjoint |
 | Referents of simultaneously live valid `uniq`/`objuniq` borrows with distinct Loan anchors | Disjoint by exclusivity |
-| Other reference dereferences | Follow Loan provenance and apply these rules |
+| Other followed references | Follow Loan provenance and apply these rules |
 | Anything not decided above | Non-overlap unproven; operations requiring a proof are rejected |
 
 Inline parts exclude pointer and reference referents. Distinct shared-reference or raw-pointer variables alone do not prove independence. Constant fixed-array indices follow only the [ConstantIndexExpression rule](#1513-move-paths-and-partial-move) and compare decoded in-range literal values; runtime index comparisons such as `i != j`, integer proofs and optimizer results establish no disjointness. Array-derived Slices keep the whole-array Loan footprint through reslicing, splitting and empty views under the [Slice lifetime rules](04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions). Simultaneous exclusive borrows may be used only through their valid access paths, and Reborrowing still suspends conflicting parent access.
@@ -824,7 +831,7 @@ Here `observe` accepts `ref/Writer`, and passing `self.out` shares the stored ca
 
 A **call reservation** delays exclusive access, not evaluation or lifetime protection. It belongs to one invocation's preparation and is not a value, Type, Semantics or Origin. No runtime lock, allocation or fallible activation is required.
 
-**Eligibility.** A final exclusive Borrow or Reborrow that directly prepares a receiver or parameter starts a reservation of its target. This includes the explicit `@uniq`, `@uniq/T`, `@deref@uniq` and `@objuniq`; the implicit exclusive acquisition of a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), including the exclusive Reborrow of a borrow value; the implicit exclusive Reborrow of a borrow value at a `uniq` or `objuniq` parameter (§10.2); permitted exclusive payload dereferences; and generic adaptations with that resolved effect. An assignment target starts no reservation (§13.7). Parentheses are transparent. The path from the root through standard field and element projections that call no user code, up to the invocation, is one preparation and ends at the lending point ([§3.4](03-types-and-values.md#34-values-places-and-storage)): in `holder.items.append(holder.items.length)`, the lending point is `holder.items` and the argument is read during the reservation, and the call equals `holder.items@uniq.append(...)` and `holder@uniq.items.append(...)`. A getter or another invocation on that path activates at its own call and acquires its own receiver under §7.3. Direct, indirect, Callable, generic, constructor and intrinsic invocations follow the same rule. The operation and overload are resolved first; reservation legality never changes candidate ranking or retries selection.
+**Eligibility.** A final exclusive Borrow or Reborrow that directly prepares a receiver or parameter starts a reservation of its target. This includes the explicit `@uniq`, `@uniq/T`, `@follow@uniq` and `@objuniq`; the implicit exclusive acquisition of a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), including the exclusive Reborrow of a borrow value; the implicit exclusive Reborrow of a borrow value at a `uniq` or `objuniq` parameter (§10.2); permitted exclusive payload follows; and generic adaptations with that resolved effect. An assignment target starts no reservation (§13.7). Parentheses are transparent. The path from the root through standard field and element projections that call no user code, up to the invocation, is one preparation and ends at the lending point ([§3.4](03-types-and-values.md#34-values-places-and-storage)): in `holder.items.append(holder.items.length)`, the lending point is `holder.items` and the argument is read during the reservation, and the call equals `holder.items@uniq.append(...)` and `holder@uniq.items.append(...)`. A getter or another invocation on that path activates at its own call and acquires its own receiver under §7.3. Direct, indirect, Callable, generic, constructor and intrinsic invocations follow the same rule. The operation and overload are resolved first; reservation legality never changes candidate ranking or retries selection.
 
 A directly written adaptation and its call-only Reborrow form one preparation chain and must not first activate an intermediate exclusive Loan. Other operand operations keep their own evaluation and Loans. Reservations do not pass through local or aggregate storage, Closure captures, nested invocations, or the results of `if`, `match`, `do` or other control-flow expressions; such expressions use the ordinary Borrow and Reborrow rules internally, and a later call adaptation cannot demote their already active Loans. An inner invocation activates its own reservations before its entry. Exclusive borrows outside an eligible preparation are active immediately. Compound assignment and indexing keep their own evaluation rules; lowering them to helper calls grants no new reservation.
 
@@ -887,7 +894,7 @@ Each target must be fully Initialized, exclusively writable and permitted to und
 | `Kimi.Intrinsics.exchange` | Transferred without destruction | The acquired value is installed | The old value and its responsibilities |
 | `Kimi.Intrinsics.swap` | Both transferred without destruction | Contents and responsibilities exchanged | Unit |
 
-The targets are arguments, not Receiver Expressions, so an owned Place is lent with `@uniq` whatever its access path, and an existing borrow value is Reborrowed without a spelling ([lending rule](#1515-movable-places)). An object payload is selected with `@deref` first (`handle@deref@uniq`); `@uniq` on a reference or handle borrows its slot (§13.5.5). If `T` is a borrow Type, the operations transfer its reference value and capability, not ownership of its referent. Property access and hidden-storage permissions still apply.
+The targets are arguments, not Receiver Expressions, so an owned Place is lent with `@uniq` whatever its access path, and an existing borrow value is Reborrowed without a spelling ([lending rule](#1515-movable-places)). An object payload is selected with `@follow` first (`handle@follow@uniq`); `@uniq` on a reference or handle borrows its slot (§13.5.5). If `T` is a borrow Type, the operations transfer its reference value and capability, not ownership of its referent. Property access and hidden-storage permissions still apply.
 
 These operations cannot repair Uninitialized, Moved or partially moved storage; `=` keeps its own repair rules. They permit no incomplete MoveOut through a borrow, no unrestricted construction or destruction receivers, and no assignment to the immutable `self` binding. A whole-content replacement may replace a value containing `let` fields without granting individual writes to those fields.
 

@@ -38,7 +38,7 @@ pair(second: 3)    // first = 1, second = 3.
 
 ## 10.2. Common adaptation at expected types
 
-This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or ordinary common-Type inference; it is never derived backward from a borrow or a Scalar read. §14.9.1 finds the common Type of result sources, including sources that differ only in reference layers over one Scalar; sources without a common Type, such as `ref/Node` and `Node`, need an annotation, or an explicit `@deref` when `Node` is Copy. The call form, explicit Type arguments and aliases do not change these rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
+This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or ordinary common-Type inference; it is never derived backward from a borrow or a Scalar read. §14.9.1 finds the common Type of result sources, including sources that differ only in reference layers over one Scalar; sources without a common Type, such as `ref/Node` and `Node`, need an annotation, or an explicit `@follow` when `Node` is Copy. The call form, explicit Type arguments and aliases do not change these rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
 
 In the table, `U` is the complete Type named in the Expected column; the shared-reference and Scalar-read rows may reach it through several input layers.
 
@@ -48,7 +48,7 @@ In the table, `U` is the complete Type named in the Expected column; the shared-
 | Owner `U` temporary | `ref/U` | Materialize once and shared-borrow |
 | Safe value-reference layers ending in `U` | `ref/U` | One shared reference to `U` (below) |
 | `uniq/U` | `uniq/U` | Exclusive Reborrow for the required extent |
-| Readable owning object handle | The corresponding `objref/U` | Shared object borrow |
+| Readable owning object handle `obj/U`, `rc/U` or `arc/U` | `objref/U` | Shared object borrow; no reference-count change |
 | `objuniq/U` | `objuniq/U` or `objref/U` | The corresponding object Reborrow |
 | Safe value-reference layers ending in a Scalar `U` | `U` | Scalar read (§3.5.3) |
 | Any other value or Place | Its complete Type | Bare acquisition, explicit transfer, or transfer of a temporary (§3.5) |
@@ -71,7 +71,7 @@ for node in nodes                // node: ref/(uniq/Node)
     validate(node)               // Shared Reborrow through both layers.
 ```
 
-There is no implicit borrow of a reference or handle slot, no implicit payload dereference of an object, no implicit `rc`/`arc` strong duplication or exclusive borrow of a temporary, and no implicit object upcast, numeric (including integer/float) or user conversion. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value expectation. An explicit `@move` executes first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
+There is no implicit borrow of a reference or handle slot, no implicit payload follow of an object, no implicit `rc`/`arc` strong duplication or exclusive borrow of a temporary, and no implicit object upcast, numeric (including integer/float) or user conversion. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value expectation. An explicit `@move` executes first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
 
 A new exclusive borrow of an owned Place requires `@uniq`/`@objuniq`; only a Receiver Expression acquires one implicitly ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). An annotation, assignment or result never adds lifetime or capability. A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and implicit exclusive borrowing never switches candidates.
 
@@ -155,7 +155,7 @@ process(node@ref)   // The shared-borrow candidate.
 
 Copy proof, explicit transfer and Take are part of applicability, so adding a candidate never introduces an implicit Move. A generic body verifies acquisition, adaptation and candidate ranking symbolically from its published Constraints and rejects at definition what it cannot prove; instantiation neither reselects candidates nor redistributes Copy and Move. Because a by-value candidate is preferred when applicable, adding or conditionally granting Copy can change the selected callee, and a generic body's fixed selection can differ from a concrete call with the same arguments. Pattern binding Types are unaffected; use `@ref` to fix a borrow.
 
-[Inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) and the complete Sealed payload dereference of a receiver (§12.4.4) are member-receiver operations supplied by implicit receiver acquisition (§7.3); they do not apply to ordinary arguments or unbound calls and take no part in candidate comparison. Fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is handled separately and adds no rank to this table.
+[Inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) and the complete Sealed payload follow of a receiver (§12.4.4) are member-receiver operations supplied by implicit receiver acquisition (§7.3); they do not apply to ordinary arguments or unbound calls and take no part in candidate comparison. Fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is handled separately and adds no rank to this table.
 
 ## 10.3. Expected results
 
@@ -302,7 +302,7 @@ Callable variance uses the static Type relations of [the relation table](03-type
 
 Common Function Type conversion and `Callable<r, S>` use one rule. For implementation `(A1, ..., An) -> R` and required `(P1, ..., Pn) -> Q`, the arity must be equal, `Pi <: Ai` must hold at every position, and `R <: Q` must hold. Here `<:` means normalized complete-Type identity or an already defined subtype relation, keeping Semantics and Origins. Parameter labels, name-omission permissions and defaults cannot bridge a mismatch.
 
-Compare parameter/result Origins and Loans for every admitted call using [canonical Origin contracts](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification). Required quantifiers are rigid; only the implementation's call-time Origins are inferred. Fixed captures cannot become fresh quantifiers. Compatibility inserts no Borrow/Reborrow, dereference, numeric or user conversion, or argument/result erasure, and never reinfers committed Types. Covariant Origin shortening remains valid, while exclusive Core invariance and result Loans remain mandatory.
+Compare parameter/result Origins and Loans for every admitted call using [canonical Origin contracts](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification). Required quantifiers are rigid; only the implementation's call-time Origins are inferred. Fixed captures cannot become fresh quantifiers. Compatibility inserts no Borrow/Reborrow, follow, numeric or user conversion, or argument/result erasure, and never reinfers committed Types. Covariant Origin shortening remains valid, while exclusive Core invariance and result Loans remain mandatory.
 
 Implicit erasure applies only after the expected common Function Type is fixed. No overload ordering is defined between a concrete direct match and an erasure conversion; use an annotation or typed intermediate where that comparison would be needed. Allocation cost never ranks candidates, and a receiver, Copy, Owned or Loan failure cannot reopen selection.
 

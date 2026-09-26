@@ -1,6 +1,6 @@
 # Test execution profile
 
-This normative supplement to [§20.9](20-compilation-configuration.md#209-test-command-and-discovery) and [§22.6](22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting) defines the initial Windows x64 test interface: configuration, identity, transport and output. The owning chapters define the language semantics.
+This normative supplement to [§20.9](20-compilation-configuration.md#209-test-command-and-discovery) and [§22.6](../spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting) defines the initial Windows x64 test interface: configuration, identity, transport and output. The owning chapters define the language semantics.
 
 ## Inputs and selection
 

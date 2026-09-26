@@ -1,10 +1,10 @@
 # Appendix A. Compiler implementation requirements
 
-[Specification index](../../SPEC.md)
+[Implementation specification index](../../IMPLEMENTATION.md)
 
 **Normative.** These compiler requirements preserve the language's information and invariants; they add no source syntax or failure behavior. Appendix B gives optional algorithms. The verification coverage below is required, and parsing alone does not establish it.
 
-UTF-8 formatting, buffers, interpolation and Console optimization must satisfy the [formatting profile](../utf8-formatting.md), including its required costs and [verification matrix](../utf8-formatting.md#7-conformance-verification). Preserve the original exclusive Loans in shared dependent results, and check BufferWriter's effect bound before erasure.
+UTF-8 formatting, buffers, interpolation and Console optimization must satisfy the [formatting profile](../../spec/utf8-formatting.md), including its required costs and [verification matrix](../../spec/utf8-formatting.md#7-conformance-verification). Preserve the original exclusive Loans in shared dependent results, and check BufferWriter's effect bound before erasure.
 
 | Term | Meaning |
 | --- | --- |
@@ -17,7 +17,7 @@ UTF-8 formatting, buffers, interpolation and Console optimization must satisfy t
 
 ## A.1. Source identity and incremental analysis
 
-A Kotonoha tokenizes and parses each `SourceDocument` and merges the declarations into one root Koto tree. Root executable syntax is placed as described under [root and nested containers](../06-declarations-and-containers.md#611-root-and-nested-containers).
+A Kotonoha tokenizes and parses each `SourceDocument` and merges the declarations into one root Koto tree. Root executable syntax is placed as described under [root and nested containers](../../spec/06-declarations-and-containers.md#611-root-and-nested-containers).
 
 A CodeContext belongs to one Kotonoha and one immutable SourceDocument snapshot (§18). A new snapshot requires a fresh source context and fresh validation of aliases and Binding, even at the same path. Verified semantic records may be reused only after the correspondence, dependency and source-mapping checks of §18.7; stale Koto or CodeContext objects are never reused. A source-less context cannot replace a parsed node's source identity, and nodes cannot move into another Kotonoha's Container.
 
@@ -102,7 +102,7 @@ Persist the static effects and returned Loan anchors of §15.6.4 in artifacts an
 
 Represent `let`/`var` storage, standard operations, custom and computed accessor signatures, and Contract requirements explicitly. Preserve storage and base identities, complete Types and Origins, accessor access, function boundaries and witness mappings. A standard `get` is not a synthesized source function, and Copy does not change its result Type.
 
-Before lowering, validate direct and child Place permissions, implicit receiver acquisition, the slot borrows and dereference of §13.5.5 and the common adaptation of §10.2 under the lending rule (§7.3, §15.1.5), generic Copy proof, the transfer `@move` on Copy and Non-Copy Places, first-placement history, construction-call bans, getter-temporary restrictions and normal cleanup. Preserve Contract result restrictions through witness optimization. Update the parser, writer, grammar, serialization, diagnostics and artifact invalidation for accessor syntax, the transfer operation and the dereference.
+Before lowering, validate direct and child Place permissions, implicit receiver acquisition, the slot borrows and follow operation of §13.5.5 and the common adaptation of §10.2 under the lending rule (§7.3, §15.1.5), generic Copy proof, the transfer `@move` on Copy and Non-Copy Places, first-placement history, construction-call bans, getter-temporary restrictions and normal cleanup. Preserve Contract result restrictions through witness optimization. Update the parser, writer, grammar, serialization, diagnostics and artifact invalidation for accessor syntax, the transfer, copy and follow operations.
 
 Cover private-`set` Move rejection; custom-`get` results versus storage borrowing; Non-Copy custom setters and self-assignment; construction branch joins; partial inherited access and ancestor `deinit`; reference-result Origins; static accessor effects; and Contract by-value versus shared-slot witnesses.
 
@@ -140,7 +140,7 @@ Verify the Copy and Move input states of object creation, payload eligibility, f
 
 Test capture versus call acquisition, unused and nested explicit captures, `let`/`var`, reference and referent lifetimes, Copy- and Move-consuming calls, every Callable receiver, per-call Origins, variant cast Loans, static inherited calls, and construction and destruction restrictions. Verify public status, use legality, complete dynamic cleanup and receiver adjustment independently of load order and optimization.
 
-Verify implicit receiver acquisition (§7.3) against its explicit spelling by semantic case, not by the absence of a spelling: equal evaluation order and count for receivers with side-effecting indices or getters; equal reservations (shared reads during reservation accepted, overlapping exclusive acquisitions rejected); equal retained result Loans; equal object paths (no ObjectCallCompatible proof for a Sealed payload dereference, Proven required for a protected object path); and no additional Copy, heap allocation or reference-count operation. Accept bare exclusive receivers and redundant explicit spellings, preserve the effect of a different explicit spelling, and reject bare owned Places at exclusive non-receiver positions, including Places reached through exclusive references. Diagnose the main causes of §7.3 and receiver-shape violations in Type declarations, Contract requirements, specializations and constraint-gathered groups, naming every mismatching declaration.
+Verify implicit receiver acquisition (§7.3) against its explicit spelling by semantic case, not by the absence of a spelling: equal evaluation order and count for receivers with side-effecting indices or getters; equal reservations (shared reads during reservation accepted, overlapping exclusive acquisitions rejected); equal retained result Loans; equal object paths (no ObjectCallCompatible proof for a Sealed payload follow, Proven required for a protected object path); and no additional Copy, heap allocation or reference-count operation. Accept bare exclusive receivers and redundant explicit spellings, preserve the effect of a different explicit spelling, and reject bare owned Places at exclusive non-receiver positions, including Places reached through exclusive references. Diagnose the main causes of §7.3 and receiver-shape violations in Type declarations, Contract requirements, specializations and constraint-gathered groups, naming every mismatching declaration.
 
 ## A.9. Refinement and require verification
 
@@ -169,10 +169,10 @@ Verification must cover at least these boundaries; neither parsing nor optimizat
 | Conditional Copy when T is Copy | Type remains usable for non-Copy T; Copy is available only when its condition is Proven |
 | Kimi Option/Result conditional Copy | Check both Result payloads, nesting and complete Semantics; active Case does not change capability. Verify reuse versus Move, Unknown versus Refuted, and borrow dependencies after Copy |
 | Kimi condition-atom sets | Accept both orders, grouping, and duplicate atoms; reject missing/unconditional Copy, missing/extra atoms, and wrong Symbol Identity. Check generated and loaded definitions without spelling-based user-enum behavior |
-| Copy payloads through shared Subjects | Bindings are `ref/T` even for Copy payloads, and `@deref` Copies the value; an explicit element `@ref` keeps storage and Origin, and `tryGet` keeps its reference result. A generic head with a bare `s[0]` fails definition checking |
+| Copy payloads through shared Subjects | Bindings are `ref/T` even for Copy payloads, and `@follow` Copies the value; an explicit element `@ref` keeps storage and Origin, and `tryGet` keeps its reference result. A generic head with a bare `s[0]` fails definition checking |
 | Child structural Patterns, Grouping, `ref/ref/T`, `ref/uniq/T`, `uniq/T` payloads | Repeated selection until the required structure; shared access bounded by any shared layer; exclusive bindings only on exclusive paths; Unit Patterns through `ref/(ref/())` |
 | Same Non-Copy payload Type on owned/shared/exclusive paths | Body acquisition is transfer, `ref/T` or `uniq/T` respectively; test string, object, and exclusive-reference payloads |
-| Subject written bare, `x@ref`, `x@uniq`/`x@objuniq`/`x@uniq/T`, `x@move`, `x@owner`, a temporary, or a reference value | Ordinary acquisition, except that a bare Place is borrowed in place; the Shared, Exclusive or ByValue mode follows the access of the Subject Place: an owned temporary is ByValue, a `uniq` value is Exclusive even when transferred or returned, `@uniq` on a `let` slot is rejected, a Copy Subject under `@move` is transferred, and `x@owner` copies it |
+| Subject written bare, `x@ref`, `x@uniq`/`x@objuniq`/`x@uniq/T`, `x@move`, `x@copy`, a temporary, or a reference value | Ordinary acquisition, except that a bare Place is borrowed in place; the Shared, Exclusive or ByValue mode follows the access of the Subject Place: an owned temporary is ByValue, a `uniq` value is Exclusive even when transferred or returned, `@uniq` on a `let` slot is rejected, a Copy Subject under `@move` is transferred, and `x@copy` copies it |
 | Guard candidates | `ref/T` for every stored Type and mode; `candidate@ref` borrows the guard's reference slot; rejection of assignment, Move, capture and escaping candidate Loans |
 | Non-Copy ByValue Subject (`x@move` or a temporary) with only `_`; false guard followed by acquisition | Initial whole transfer into the Subject Place even without bindings, while a bare Place Subject is borrowed and stays usable; preserve payload for the next arm without double destruction |
 | Same name in guard and body | Separate Identities and scope-specific Types/overload resolution; no automatic refinement transfer |
@@ -318,7 +318,7 @@ Coordinate with the cleanup, refinement, and Pattern checks in A.7, A.9, and A.1
 
 ## A.16. Dependencies, artifacts, and bounded reuse
 
-Implement [§18](../18-modules-and-dependencies.md), the native connection rules (§20.8.2) and product and test planning (§21.3.7) so that processing order and cache presence change neither acceptance nor selection.
+Implement [§18](../../spec/18-modules-and-dependencies.md), the native connection rules (§20.8.2) and product and test planning (§21.3.7) so that processing order and cache presence change neither acceptance nor selection.
 
 Stream hashes from fixed input bytes instead of building large concatenation buffers. Intern and share each dependency's declarations, strings, Types, Origins and verification facts; use range-checked integer references, and reconstruct diagnostic paths on demand instead of copying paths per node. Share immutable lexical data only when its language conditions agree, and never share mutable Binding or Koto state across definition environments or target and mode checks.
 
@@ -340,7 +340,7 @@ Measure retrieval, lexing, semantic verification, generation and linking separat
 
 ## A.17. Test verification and runner requirements
 
-Implement the contracts of [Test definitions](../06-declarations-and-containers.md#651-test-definitions), [verification operations](../17-failure-handling.md#175-test-verification-operations), [discovery and CLI](../20-compilation-configuration.md#209-test-command-and-discovery) and [execution and reporting](../22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting). Unsupported operations must be diagnosed before generation, never silently accepted. Declaration parsing does not establish test execution support.
+Implement the contracts of [Test definitions](../../spec/06-declarations-and-containers.md#651-test-definitions), [verification operations](../../spec/17-failure-handling.md#175-test-verification-operations), [discovery and CLI](../20-compilation-configuration.md#209-test-command-and-discovery) and [execution and reporting](../../spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting). Unsupported operations must be diagnosed before generation, never silently accepted. Declaration parsing does not establish test execution support.
 
 | Area | Required verification |
 | --- | --- |
@@ -372,7 +372,7 @@ Index named aliases per document, and reuse Container member indexes for opening
 
 Verify the intrinsic Sealed Identity, the normalized outer owner Core, rejection of open Types and Never, outer-only classification and the four-valued proof rules. Verify the intrinsic ObjectPayload Identity, its direct and premise-based judgments, the `Self is not ObjectPayload` opt-out and its inheritance, Object Target evidence including pair evidence from admitted Semantics sets, and the rejection of every object form, creation, upcast, cast and `is` test over an opted-out Core (§8.4.7.2). Check generic signature formation before body generation; no missing capability or Origin proof may become a deferred layout obligation. Recheck both positive and negative evidence after changes to openness, opt-out, Type formation, effects or specialization.
 
-Test every payload dereference of §13.5.5, exact internal Type and Origin identity, outer lifetime shortening, owner retention, parent suspension, shared coexistence, rejection of exclusive access at an `rc`/`arc` count of one, and explicit versus implicit receiver paths. Preserve protected base calls, the defining `Self`, Property permissions, witness Identity, ObjectViewCompatible and the public ObjectCallCompatible status.
+Test every payload follow of §13.5.5, exact internal Type and Origin identity, outer lifetime shortening, owner retention, parent suspension, shared coexistence, rejection of exclusive access at an `rc`/`arc` count of one, and explicit versus implicit receiver paths. Preserve protected base calls, the defining `Self`, Property permissions, witness Identity, ObjectViewCompatible and the public ObjectCallCompatible status.
 
 For `replace`, `exchange` and `swap`, verify the original declaration Identity, textual argument order including names, early target reservations and simultaneous activation, full initialization, exact Types and structural disjointness. Test Scalar and Non-Copy contents, `let` fields, open ordinary owners, nested references, independent external dependencies, old-content dependencies and returned destruction responsibilities. Verify destruction at the original location, Abort or divergence before placement, and the absence of destruction during `exchange` and `swap` transfers.
 
@@ -399,7 +399,7 @@ Exercise both accepted and rejected programs. Parsing or reference interning alo
 
 ### A.21.1. Implementation boundaries
 
-Implement the optional [§2.3.1–6](../02-source-and-lexical-structure.md#231-documentation-text) path and the [Documentation Markdown profile](../documentation-markdown.md). Keep collection, association, text/source mapping, Markdown processing and publication separate:
+Implement the optional [§2.3.1–6](../../spec/02-source-and-lexical-structure.md#231-documentation-text) path and the [Documentation Markdown profile](../../spec/documentation-markdown.md). Keep collection, association, text/source mapping, Markdown processing and publication separate:
 
 ```text
 SourceDocument
@@ -413,7 +413,7 @@ SourceDocument
   -> selected publication and optional documentation diagnostics
 ```
 
-Use ordinary lexing, including interpolation expression lexing, rather than an independent regular-expression comment scanner. Keep source-ordered ranges per immutable SourceDocument, not per-line objects or extra executable tokens. Binding supplies declaration identity, effective access and specialization facts. Analysis, Lowering and Emit require no documentation metadata. Collection and dependency boundaries remain in §2.3.6; syntax lifetime, reuse and resource requirements are in [profile §5](../documentation-markdown.md#5-syntax-api-and-processing-guarantees).
+Use ordinary lexing, including interpolation expression lexing, rather than an independent regular-expression comment scanner. Keep source-ordered ranges per immutable SourceDocument, not per-line objects or extra executable tokens. Binding supplies declaration identity, effective access and specialization facts. Analysis, Lowering and Emit require no documentation metadata. Collection and dependency boundaries remain in §2.3.6; syntax lifetime, reuse and resource requirements are in [profile §5](../../spec/documentation-markdown.md#5-syntax-api-and-processing-guarantees).
 
 ### A.21.2. Correctness and differential tests
 
@@ -426,14 +426,14 @@ Assert syntax structure, item classification, node identity and source ranges di
 | Lexing and text | Recognized/ordinary/trailing comments, literals/interpolation/block comments, all line endings, EOF, empty text, whitespace, non-BMP text and original UTF-16 mappings |
 | Association | Every target, same-line/multiline Attributes and their interiors, nearest/empty/misindented candidates, headers, scope/file boundaries and syntax recovery |
 | Selection | Incomplete False #if syntax, reached #switch arms with nested exclusions, no migration to surviving declarations, no extra excluded-region parsing |
-| Markdown blocks and inlines | Every retained feature and interaction; every [profile §2.4 difference](../documentation-markdown.md#24-omitted-syntax-and-boundary-examples); three/four-column starts inside and outside containers, marker widths and five-space list padding, explicit continuation, tight/loose lists, closed/unclosed fences and incomplete delimiters |
+| Markdown blocks and inlines | Every retained feature and interaction; every [profile §2.4 difference](../../spec/documentation-markdown.md#24-omitted-syntax-and-boundary-examples); three/four-column starts inside and outside containers, marker widths and five-space list padding, explicit continuation, tight/loose lists, closed/unclosed fences and incomplete delimiters |
 | Character processing | Escapes and numeric/five named references, code exclusions, literal fallback and no reparsing; pinned Unicode 15.0.0 across cultures/runtimes, whitespace/symbol/unassigned and supplementary characters, including classifications that differ across Unicode versions |
 | Summary and items | First-block rule; plain/code names, decoded colons and exact whitespace, case and non-NFC names, duplicate/overlapping descriptions, root-only extraction, parameter/standard-name collisions, external/generic/Origin names, receiver roles, ambiguous/unknown and not-yet-classified candidates |
 | Positions and publication | Exact half-open body/source ranges under LF/CR/CRLF, empty/EOF positions, decoded spellings and partial tabs; stable identity, concurrent requests, eager/lazy equivalence, interrupted work, retry and preservation of completed results |
-| Reuse | Each [profile §5.2 dependency](../documentation-markdown.md#52-completion-concurrency-and-reuse), including identical text in different source paths/projects, declaration/receiver changes, parser/Unicode/settings changes, configuration selection, generated replacement/removal, serialization/reparse and uncacheable callbacks |
+| Reuse | Each [profile §5.2 dependency](../../spec/documentation-markdown.md#52-completion-concurrency-and-reuse), including identical text in different source paths/projects, declaration/receiver changes, parser/Unicode/settings changes, configuration selection, generated replacement/removal, serialization/reparse and uncacheable callbacks |
 | Kimigayo integration | Fragment order/provenance and independent Markdown scopes, rootgroup leaf, associated Types, overloads/specialization, effective access, ordinary/generated sources, unresolved links and source-mapped diagnostics |
 
-Link and HTML tests must cover the separate stages in [profile §4](../documentation-markdown.md#4-html-and-links):
+Link and HTML tests must cover the separate stages in [profile §4](../../spec/documentation-markdown.md#4-html-and-links):
 
 | Stage | Required verification |
 | --- | --- |
@@ -472,20 +472,20 @@ Reuse the existing Type, Case, match, return and cleanup machinery without textu
 
 ## A.23. Places, borrowing and iteration
 
-Implement §3.4–3.5, §4.6.9, §7.1.1, §8.4.3, §10.2–10.3, §13.4, §13.5.5, §13.7, §14.6, §14.8, §14.9.1, §15.1.3–15.1.6, §15.6.3, §21.1.5 and §22.1.2 consistently across lexing, parsing, Binding, ownership analysis, lowering and generation. Parse `@deref` as a level-1 postfix operation, `place(ref | uniq, T)` only in result position, `associate Name(params)` with `wellformed` clauses, `T.(C).LentItem(a)` applications, Contract Type parameters and `for var` slots, and write them back through the formatter and serialization without reinterpretation.
+Implement §3.4–3.5, §4.6.9, §7.1.1, §8.4.3, §10.2–10.3, §13.4, §13.5.5, §13.7, §14.6, §14.8, §14.9.1, §15.1.3–15.1.6, §15.6.3, §21.1.5 and §22.1.2 consistently across lexing, parsing, Binding, ownership analysis, lowering and generation. Parse `@follow` as a level-1 postfix operation and `@copy` as a level-3 operation, `place ref/T` and `place uniq/T` only in result position, `associate Name(params)` with formation Types (`for Type`), single-slot `during` bindings, `T.(C).LentItem(a)` applications, Contract Type parameters and `for var` slots, and write them back through the formatter and serialization without reinterpretation.
 
 | Area | Required verification |
 | --- | --- |
-| Acquisition | Rejection of bare Non-Copy and Copy-unproven Places; `@move` and Take; transfer of temporaries and of owned decomposition; a typed borrow selects the same slot as the shorthand and rejects a non-matching Type; `@owner`/`@obj` are not transfers |
+| Acquisition | Rejection of bare Non-Copy and Copy-unproven Places; `@move` and Take; transfer of temporaries and of owned decomposition; a typed borrow selects the same slot as the shorthand and rejects a non-matching Type; `@copy` accepts only proven-Copy operands; the bare `@owner`, `@obj`, `@rc` and `@arc` are rejected with a suggestion |
 | Common adaptation and inference | Value positions and arm/`yield`/`exit`/single-item sources with and without an expected Type; generic Reborrow and the inference order; temporary borrows used inside the full expression versus stored or returned; by-value preference, selection differences after a Copy change and between generic and concrete calls; no reselection after a Loan failure; nested reference layers at a fixed `ref/U` (inner `ref` Copied with its own Origin, `uniq` layers below shared-Reborrowed, Origins met); result sources that differ only in reference layers over one Scalar unify to it without annotation (§14.9.1) |
-| Selection and comparison | Multi-layer Scalar reads and the unchanged update target; multi-layer string and Tuple comparison and Literal Patterns; Loans during left and right evaluation; Contract comparison of `ref/T`; Sealed, `let obj`/`let objuniq`, payload protection, the shared upper bound; `@deref` grouping and single evaluation |
+| Selection and comparison | Multi-layer Scalar reads and the unchanged update target; multi-layer string and Tuple comparison and Literal Patterns; Loans during left and right evaluation; Contract comparison of `ref/T`; Sealed, `let obj`/`let objuniq`, payload protection, the shared upper bound; `@follow` grouping and single evaluation |
 | Indexing | Non-consumed Non-Copy keys; explicit `key@ref` for reference keys; Slice `source`; several `Key` conformances; fixed-array Partial Move; `Array<uniq/Node>` implicit Reborrow selecting `indexUniq`; rejection through shared paths and getter boundaries |
 | Updates | Right-hand-side-first simple and compound assignment; self-Move restoration; old-state dependencies; accessor boundaries; no safe borrow of a possibly Uninitialized target |
 | Partial Move | Restoration on every path including `return`, `try`, `continue`, `exit`, `yield` and `defer`; inner destructors; Abort and double destruction; incomplete construction versus a Partial Move after completion; base and part cleanup order |
 | Place results | Source and internal Origins; several returns; Never; Unit fall-through; temporary receivers; cleanup; Callable; adaptation of known value/Place results; ambiguous Scalar result overloads |
-| Associated Types and matching | Origin-parameter scope and count; `LentItem(a)` versus `{name}`; formation conditions from a fixed right-hand side; definition of unbound Origins and remaining obligations; rejection of rebinding, domain narrowing and unapplied families; Contract implementation identity separate from Function Type contravariance |
-| Patterns | Multi-layer Tuple, enum, Unit and Literal Patterns; no selection for a single name; the shared upper bound; guard `ref/T` and the escape ban; false guards and Wildcards; `positiveOrZero` at a fixed `i32` result; a `var` binding on a shared or exclusive path rejects a referent-Type assignment with a diagnostic that names the mode and suggests `@deref`, `E@owner` or `E@move` |
-| Iteration | Bare Place Subjects storing `ref/C` (selecting `Iterable`) and `uniq/C` (selecting `UniqIterable`); temporary, `x@owner` and `x@move` Subjects selecting `IntoIterable`; rejection of `@uniq` on a `let` slot; `for var`; item Types independent of the mode; early exit and resumption through `UniqIterable` of standard iterators and adapters; remainder cleanup of `IntoIterable`; resumable general Iterators and Cursors versus exhausted standard iterators and adapters |
+| Associated Types and matching | Origin-parameter scope and count; `LentItem(a)` versus `{name}`; formation conditions from a fixed right-hand side or a formation Type; single-slot `during` versus several slots; definition of unbound Origins and remaining obligations; rejection of rebinding, domain narrowing and unapplied families; Contract implementation identity separate from Function Type contravariance |
+| Patterns | Multi-layer Tuple, enum, Unit and Literal Patterns; no selection for a single name; the shared upper bound; guard `ref/T` and the escape ban; false guards and Wildcards; `positiveOrZero` at a fixed `i32` result; a `var` binding on a shared or exclusive path rejects a referent-Type assignment with a diagnostic that names the mode and suggests `@follow`, `E@copy` or `E@move` |
+| Iteration | Bare Place Subjects storing `ref/C` (selecting `Iterable`) and `uniq/C` (selecting `UniqIterable`); temporary, `x@copy` and `x@move` Subjects selecting `IntoIterable`; rejection of `@uniq` on a `let` slot; `for var`; item Types independent of the mode; early exit and resumption through `UniqIterable` of standard iterators and adapters; remainder cleanup of `IntoIterable`; resumable general Iterators versus exhausted standard iterators and adapters |
 | Independence and region splitting | LendingIterator items that borrow the Iterator conflicting with the next `next`; rejection of `Self is Iterator` when `Item` would depend on `step` or the Iterator's Storage; adapters conforming to `Iterator` exactly when their iterator does; generic `nextPair` and borrowing `collect`; rejected conformance for conflicting `next` effects and specializations; destruction effects and dependencies added after return; Ref/Uniq/Owned remainders with empty, zero-sized, ordered, key-protecting and post-return cases; rejection of internal Types and forged capabilities outside Kimi; effect bounds across separate compilation |
 | Generic paths | Stopping at an undetermined `T` or associated Type; following a layer proven by a public equality; no additional selection after instantiation; NaN semantics unchanged for an Equatable comparison instantiated at `ref/f32` |
 | Representation and performance | Reference-equivalent ABI of Place results; nonnull Option `Some`/`None`, zero-sized referents, nesting and cleanup; Scalar reference observation and attributes; direct delivery of large items and Tuple remainders; fixed-array storage reuse versus reinitialization and escape; nonempty checks of shared traversal; sparse Dictionary amortized and full-traversal bounds |

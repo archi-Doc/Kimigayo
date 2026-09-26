@@ -1,10 +1,10 @@
 # 21. Layout, runtime metadata, and code generation
 
-[Specification index](../SPEC.md)
+[Implementation specification index](../IMPLEMENTATION.md)
 
 Physical representation and code sharing must preserve Type identity, ownership, evaluation and cleanup. This chapter separates language-wide requirements, Windows storage contracts and compiler-controlled function passing.
 
-UTF-8 buffers and interpolation also follow the [formatting optimization and cost requirements](utf8-formatting.md#6-optimization-and-output). Only that profile's private resource-failure exception permits changes in allocation-failure timing; ordinary user effects and semantic checks keep their order.
+UTF-8 buffers and interpolation also follow the [formatting optimization and cost requirements](../spec/utf8-formatting.md#6-optimization-and-output). Only that profile's private resource-failure exception permits changes in allocation-failure timing; ordinary user effects and semantic checks keep their order.
 
 The Windows storage and metadata contracts below are normative for this profile. They keep the capture and call restrictions of §7.6 and the compiler-controlled function passing of §21.4.2. Their adoption in this specification does not establish implementation coverage (STATUS.md).
 
@@ -301,15 +301,15 @@ On CAS failure, the latest representation is rechecked; a failure that discovers
 
 ### 21.2.4. Value-borrow storage
 
-`ref/V` and `uniq/V` point to the storage of the **immediate complete `V`**, without implicit dereference. On windows-x64-v1 each is one nonnull address-space-0 pointer with size, alignment and stride 8/8/8, aligned for `V`. It contains no metadata, length, count, Origin or Loan ID. A borrow of an Array or Slice points to its complete handle. `ref/(rc/T)` points to a handle slot, while `objref/T` points to the original object header; `uniq/(rc/T)` grants exclusive access to the handle slot, not unique payload ownership. Nested dependencies stay distinct: `@ref` on a reference slot yields a pointer to that slot, a Reborrow reuses the loaded referent address, and `@deref` loads nothing beyond the address it selects.
+`ref/V` and `uniq/V` point to the storage of the **immediate complete `V`**, never to a referent reached through `V`. On windows-x64-v1 each is one nonnull address-space-0 pointer with size, alignment and stride 8/8/8, aligned for `V`. It contains no metadata, length, count, Origin or Loan ID. A borrow of an Array or Slice points to its complete handle. `ref/(rc/T)` points to a handle slot, while `objref/T` points to the original object header; `uniq/(rc/T)` grants exclusive access to the handle slot, not unique payload ownership. Nested dependencies stay distinct: `@ref` on a reference slot yields a pointer to that slot, a Reborrow reuses the loaded referent address, and `@follow` loads nothing beyond the address it selects.
 
-A Place result (§7.1.1) `place(ref, T)` or `place(uniq, T)` has exactly the ABI of `ref/T` or `uniq/T` under the same Type binding, generation method and contract. This holds for direct and indirect calls, Callable values, and Contract entries and adapters. It is an ABI equality, not a Type identity.
+A Place result (§7.1.1) `place ref/T` or `place uniq/T` has exactly the ABI of `ref/T` or `uniq/T` under the same Type binding, generation method and contract. This holds for direct and indirect calls, Callable values, and Contract entries and adapters. It is an ABI equality, not a Type identity.
 
 A zero-sized `V` keeps its logical initialization, Loans and destruction. It uses nonnull aligned substitute storage that stays alive for the required uses; one static substitute per alignment may serve several distinct Places. Pointer equality merges neither those Places nor their logical overlap. Size and stride remain zero, lifetimes are not extended, and substitute bytes justify no positive `dereferenceable` attribute; `noalias` follows the call contract of §21.5.5, not substitute addresses.
 
 An unknown-layout generic `V` still uses one borrow pointer. A separate GenericContext is passed only if operations on `V` need it; transferring the borrow alone needs no `V` metadata. Direct value layouts must be finite. If materializing a required temporary needs unsupported storage, a verified adapter or specialization is used, or the use is diagnosed; it is never silently boxed or made unsized.
 
-A borrow of a proven Sealed payload selected with `@deref` uses the ordinary `ref`/`uniq` ABI and points to the payload address of §21.2.3, not to the object header. Its completeness proof is static: it adds no mode, count operation, header field, generation counter or runtime Loan representation, and the ownership dependencies stay in the existing analysis facts.
+A borrow of a proven Sealed payload selected with `@follow` uses the ordinary `ref`/`uniq` ABI and points to the payload address of §21.2.3, not to the object header. Its completeness proof is static: it adds no mode, count operation, header field, generation counter or runtime Loan representation, and the ownership dependencies stay in the existing analysis facts.
 
 ### 21.2.5. Concrete Closures and common function values
 
@@ -363,7 +363,7 @@ The rules here and in §21.4.6 define generic sharing and specialization; [Appen
 
 **Instantiation** binds generic arguments. **Explicit full specialization** selects a user-written implementation under §8.8. **Automatic specialization** fixes facts in generated code while preserving the selected implementation. Neither instantiation nor a Scalar operation alone requires a separate machine-code body.
 
-**Initial profile: monomorphization.** The initial windows-x64-v1 implementation generates one concrete body for each closed substitution selected for generation, after explicit-specialization selection (§8.8), and lowers it under the concrete rules of §21.4.1–21.4.5. **Generic code sharing is deferred** ([Appendix D](appendices/D-deferred-features.md)). It is the required future generation method, and its settled design is retained here: the baseline sharing plan of step 4 below, shared operations and Type policies (§21.3.3), shared entry/context connections (§21.3.6.1 beyond fixed callees, §21.3.6.2), optional growth budgets and code merging (§21.3.5), and generic scratch storage and fixed frames (§21.4.6). Those parts are not requirements of the initial profile.
+**Initial profile: monomorphization.** The initial windows-x64-v1 implementation generates one concrete body for each closed substitution selected for generation, after explicit-specialization selection (§8.8), and lowers it under the concrete rules of §21.4.1–21.4.5. **Generic code sharing is deferred** ([Appendix D](../spec/appendices/D-deferred-features.md)). It is the required future generation method, and its settled design is retained here: the baseline sharing plan of step 4 below, shared operations and Type policies (§21.3.3), shared entry/context connections (§21.3.6.1 beyond fixed callees, §21.3.6.2), optional growth budgets and code merging (§21.3.5), and generic scratch storage and fixed frames (§21.4.6). Those parts are not requirements of the initial profile.
 
 Whatever the generation method, these remain required:
 
@@ -563,7 +563,7 @@ The defining Kotonoha closes its explicit-specialization set under §8.8.3. Arti
 
 Every environment-selected specialization's target, arguments, Constraints, inherited contract and body are checked before its artifact is finalized, even if unused; excluded syntax follows §19.5. Unused verified bodies need no machine code, while every use still checks its own contract, initialization and Loans. Shared calls and function references reach the statically selected implementation, never one selected from a value's Dynamic Type or from registration or load order.
 
-The complete declaration, body, selection, premise and absence dependencies are preserved and validated under [§18.7](18-modules-and-dependencies.md#187-verified-information-and-reuse). Changed selections are revalidated before generation; old proofs are never mixed with new mappings, and no incorrect shared fallback is chosen.
+The complete declaration, body, selection, premise and absence dependencies are preserved and validated under [§18.7](../spec/18-modules-and-dependencies.md#187-verified-information-and-reuse). Changed selections are revalidated before generation; old proofs are never mixed with new mappings, and no incorrect shared fallback is chosen.
 
 Nested declarations share one declaration tree, with interned normalized references and reusable parent bindings; children are not cloned per instantiation, and resolving a child does not require the outer layout. Artifacts keep bindings, Constraint roles and origins, proof dependencies and selected declarations, and outer changes invalidate dependent inner proofs and plans. Adding or widening an accessible Container name on an open base can break derived declarations and requires downstream revalidation (§9.6.1). Resource-limit diagnostics are distinct from failures of the specified proof rules.
 

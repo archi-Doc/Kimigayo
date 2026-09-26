@@ -116,7 +116,7 @@ try pending@move      // try (pending@move): transfer the stored Result, then ex
 try try nested       // Extract twice; check each propagation separately.
 ```
 
-The normalized outer operand Type must be an owned compiler-recognized Kimi Option or Result. Aliases and redundant owner prefixes normalize normally. Names or structurally similar user enums grant no support. `Option<ref/T>` is valid; `ref/Option<T>`, `uniq/Result<T,E>` and `obj/Option<T>` are not automatically dereferenced. Generic definitions require proof of the actual enum structure.
+The normalized outer operand Type must be an owned compiler-recognized Kimi Option or Result. Aliases and redundant owner prefixes normalize normally. Names or structurally similar user enums grant no support. `Option<ref/T>` is valid; `ref/Option<T>`, `uniq/Result<T,E>` and `obj/Option<T>` are not followed automatically. Generic definitions require proof of the actual enum structure.
 
 **Evaluation.** Evaluate and acquire the operand once in Value Context without an expected Type, as an owned position: Copy a Copy Place, require `@move` for a Non-Copy Place, and transfer an existing temporary without extra acquisition. Inspect its Case:
 
@@ -356,4 +356,4 @@ A supplied message is evaluated exactly once, only after a false condition and i
 
 Diagnostics observe values obtained during the original evaluation of the expression. They never rerun a call, Property or comparison, reread a variable after later operand effects or cleanup, or evaluate a short-circuited operand; an unevaluated operand may be shown as such. Initially, supported `bool` and numeric scalars are snapshotted, concentrating on the operands of an outer comparison. Saving scalar bits in compiler temporaries is permitted, but diagnostic display must not introduce a language Copy or Move, extend Loans or change lifetimes. For unsupported values, source and expression information is shown and the omitted values are indicated. Arbitrary objects are not traversed and user display functions are not called implicitly. Operands are labeled by their expressions or as left and right, not by an inferred actual/expected role.
 
-Verification is enabled in both Debug and Release. Optimization may remove a side-effect-free, always-true check only while preserving the required evaluation, cleanup and diagnostic meaning. A constant-false runtime condition alone is not a compile-time error. [Appendix A.17](appendices/A-compiler-requirements.md#a17-test-verification-and-runner-requirements) defines the verification requirements.
+Verification is enabled in both Debug and Release. Optimization may remove a side-effect-free, always-true check only while preserving the required evaluation, cleanup and diagnostic meaning. A constant-false runtime condition alone is not a compile-time error. [Appendix A.17](../impl/appendices/A-compiler-requirements.md#a17-test-verification-and-runner-requirements) defines the verification requirements.

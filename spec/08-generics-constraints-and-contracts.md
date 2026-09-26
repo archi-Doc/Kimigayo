@@ -46,7 +46,7 @@ After transparent alias expansion, the original pair expression `s/T` refers to 
 
 An explicit Origin annotation follows the ordinary Type-formation rules. Otherwise the original `s/T` keeps `W`'s Origins, and another `s/U` uses the [position-specific Origin rules](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision). Storing a Type in a pair slot grants no additional omission permission.
 
-For `W = ref/i32 during a`, `s/T during b` forms `ref/i32 during b`. Formation requires no relationship between the old outer Origin `a` and the new `b` and performs no value conversion, but it still validates the binding of `b`, its annotation position and the formed Type's own inner-Origin outlives constraints. Fitting an actual `{a}` value to this Type separately checks the permitted shortening (`a : b`), acquisition and Loans. In particular, `uniq/V` keeps `V` invariant and any required Move or Reborrow; an annotation neither creates nor removes a Reborrow.
+For `W = ref/i32 during a`, `s/T during b` forms `ref/i32 during b`. Formation requires no relationship between the old outer Origin `a` and the new `b` and performs no value conversion, but it still validates the binding of `b`, its annotation position and the formed Type's own inner-Origin outlives constraints. Fitting an actual `{a}` value to this Type separately checks the permitted shortening (`a outlives b`), acquisition and Loans. In particular, `uniq/V` keeps `V` invariant and any required Move or Reborrow; an annotation neither creates nor removes a Reborrow.
 
 For another target `s/U`, omitted Origins follow the position rules symbolically even when `s` is unknown. A direct input records, at definition, an independent outer-Origin slot that is active only when `s` is a safe borrow. Otherwise the slot contributes no binding or constraint; all dependencies of `U` remain, and `owner/U` normalizes to `U`. Fields and nested borrow layers gain no new omission permission. Type formation and body legality must hold for every admitted binding. An explicit `s/T during a` or `s/U during a` requires the admitted Semantics set of `s` (§8.7) to be contained in the `borrow` category. The original unannotated `s/T` keeps its WholeType and receives no new Origin.
 
@@ -142,7 +142,7 @@ This revision defines static conformance checking and generic use; runtime Contr
 ```kimi
 contract Indexable<Key>
     associate Element
-    func index(self: ref/Self, key: ref/Key) -> place(ref, Element) during self
+    func index(self: ref/Self, key: ref/Key) -> place ref/Element during self
 ```
 
 ### 8.4.1. Function requirements
@@ -192,6 +192,7 @@ An associated Type denotes a **complete Type**: Semantics, Type arguments, neste
 | `associate Element is i32` | Declares it with a fixed Type, or specifies that Type in an implementation. |
 | `associate C.Element is T` | Specifies identity with a Type `T` for the associated Type declared by `C`. |
 | `associate LentItem(step)` | Declares an associated Type with an Origin parameter (below). |
+| `associate LentItem(step) for uniq/Self during step` | Declares it with a formation Type that bounds the domain of `step` (below). |
 | `associate C.LentItem(a) is ref/E during a` | Specifies an Origin-parameterized associated Type; `a` is the implementation's parameter for the first requirement parameter. |
 
 Each associated Type is determined uniquely by explicit specifications and Type-identity Constraints on the Contract or its ancestors. Bindings are never inferred from implementation signatures, member search, function bodies, implicit adaptations, Copy judgments or instantiated Types, and a Type is never chosen merely because it satisfies a capability; contradictory identity facts from several requirements are rejected. Bindings are substituted before implementations are matched. For example, an unconstrained `Source.Element` is not inferred as `i32` merely because an implementation of `read` returns `i32`.
@@ -250,23 +251,23 @@ associate LentItem(step) is E                     // Fixed: an owned value, for 
 associate LentItem(step) is ref/E during step
 associate LentItem(step) is uniq/E during step
 associate LentItem(step) is ref/E during source   // source is bound in the enclosing environment
+associate LentItem(step) for uniq/Self during step // A requirement whose domain a formation Type bounds
 ```
 
-A parameter is an Origin binder whose scope is the right-hand side of its declaration and the attached clauses. It is not visible to sibling requirements. A same-spelled Origin in a method signature is a different binder, which applies the associated Type explicitly, as in `Self.LentItem(step)`. Duplicate and hiding names follow the ordinary Origin naming rules (§15.3.4).
+A parameter is an Origin binder whose scope is the right-hand side of its declaration, its formation Type and the attached clauses. It is not visible to sibling requirements. A same-spelled Origin in a method signature is a different binder, which applies the associated Type explicitly, as in `Self.LentItem(step)`. Duplicate and hiding names follow the ordinary Origin naming rules (§15.3.4).
 
 In Type context, `LentItem(a)` substitutes existing Origin atoms positionally for the parameters and denotes an ordinary complete Type. Arguments use the same atoms as `during`; an intersection is parenthesized, as in `LentItem((a and b))`. Declaration and application take one or more arguments, and their counts must match. Unapplied, partially applied, `_` and omitted arguments are invalid, and an unapplied family cannot be passed as a Type argument or aliased. Renaming a parameter does not change the Contract. An application is never a runtime call, a Type computation or a Place Type. Covariance of an associated Type is not assumed: the applied Type undergoes the ordinary variance, shortening and Reborrow checks.
 
-**Formation conditions.** The enclosing Contract and the requirement's attached `origin` relations fix the domain of a new requirement. A requirement whose right-hand side is a fixed complete Type automatically publishes that Type's Origin well-formedness conditions; a capability requirement such as `is LendingIterator` fixes no Type. A requirement without a fixed Type may add an indented **`wellformed Type`** clause, which publishes the Origin formation conditions of `Type` without fixing the associated Type. `wellformed` is contextual only there. The structure, Semantics, capabilities and lengths of `Type` are first proven from the enclosing public Constraints; no capability is inferred, and a Place result is not a `Type`.
+**Formation conditions.** The enclosing Contract and the requirement's attached `origin` relations fix the domain of a new requirement. A requirement whose right-hand side is a fixed complete Type automatically publishes that Type's Origin well-formedness conditions; a capability requirement such as `is LendingIterator` fixes no Type. A requirement with Origin parameters and without a fixed Type may end its header with a **formation Type**, `for Type`, which publishes the Origin formation conditions of `Type` without fixing the associated Type. It follows any capability requirement, as in `associate IteratorType(source) is LendingIterator for ref/Self during source`. The structure, Semantics, capabilities and lengths of `Type` are first proven from the enclosing public Constraints; no capability is inferred, and a Place result is not a `Type`.
 
 ```kimi
 // E is a complete Type parameter of the enclosing Contract.
 associate View(a) is ref/E during a
 
-associate LentItem(step)
-    wellformed uniq/Self during step
+associate LentItem(step) for uniq/Self during step
 ```
 
-The first publishes the condition that the observable Origins of `E` outlive `a`; the second fixes no Type and admits every `step` for which `uniq/Self during step` is well formed. A clause may also name an existing Origin, as in `origin source outlives a`. Formation conditions create no Loan or capability; actual borrows are checked separately.
+The first publishes the condition that the observable Origins of `E` outlive `a`; the second fixes no Type and admits every `step` for which `uniq/Self during step` is well formed. An attached `origin` clause may also relate a parameter to an existing Origin, as in `origin source outlives a`. Formation conditions create no Loan or capability; actual borrows are checked separately.
 
 Attached clauses are processed in the order of §15.3.3. Equalities first bind the unbound Origins of the right-hand side, which fixes the complete Type; the remaining conditions become the published domain. For example, `Borrowed<Self>{view}` with `origin view.source == a` defines the unbound `source` as `a`. Naming a set alone creates no Origin, and a bound Type is never rebound. A use proves the substituted conditions. An implementation or a refining requirement proves the remaining conditions and inherited obligations after binding its right-hand side; it can neither add nor strengthen call conditions from its right-hand side or body. A requirement with neither a right-hand side nor conditions admits every Origin the Contract allows. Closed contradictions, circular self-proof and treating Unknown as success are rejected. Conditions, bindings and formation obligations are static metadata; Origin parameters add no runtime representation.
 
@@ -401,8 +402,8 @@ struct Cell<T>
     public var value: T
 
 func readPayload<T>(source: objref/T) -> ref/T during source
-    T is Sealed and ObjectPayload   // Sealed for the dereference, ObjectPayload to form objref/T
-    return source@deref@ref
+    T is Sealed and ObjectPayload   // Sealed for @follow, ObjectPayload to form objref/T
+    return source@follow@ref
 ```
 
 #### 8.4.7.2. ObjectPayload
@@ -582,7 +583,7 @@ Every getter result and setter requirement is checked separately. Forming `objre
 
 The unique static conformance for the concrete Type and Contract identity is used; changing View bindings cannot create another conformance. Static conformance does not generally persist in derived Types, so the extension must ensure that the ObjectViewCompatible restrictions, fixed associated-Type bindings and published implementation guarantees preserve the Supports relation through every derived layer; static conformance alone does not prove that invariant.
 
-Contract refinement follows [static refinement](#842-refinement). There is no replacement conformance, default implementation or external registration. Registration and artifact consistency follow the [metadata rules](21-layout-runtime-and-code-generation.md#2121-type-identity-and-descriptors).
+Contract refinement follows [static refinement](#842-refinement). There is no replacement conformance, default implementation or external registration. Registration and artifact consistency follow the [metadata rules](../impl/21-layout-runtime-and-code-generation.md#2121-type-identity-and-descriptors).
 
 ```text
 Speaker requires Shared speak() -> string
@@ -769,7 +770,7 @@ Inferred ObjectCallCompatible is a [common implementation guarantee](12-expressi
 
 ### 8.8.3. Selection and declaration ownership
 
-Selection uses the [Implementation Selection Key](21-layout-runtime-and-code-generation.md#2132-identity-and-generation-keys): the original function's declaration identity and its ordered, normalized static generic arguments, excluding only Origins. Nominal identity, nested structure and every Semantics layer, including an outer object handle, are preserved, so `obj/D` and `rc/D` have different keys even when they identify the same dynamic payload Type. Two specialization declarations with the same key are an error.
+Selection uses the [Implementation Selection Key](../impl/21-layout-runtime-and-code-generation.md#2132-identity-and-generation-keys): the original function's declaration identity and its ordered, normalized static generic arguments, excluding only Origins. Nominal identity, nested structure and every Semantics layer, including an outer object handle, are preserved, so `obj/D` and `rc/D` have different keys even when they identify the same dynamic payload Type. Two specialization declarations with the same key are an error.
 
 Calls and function references first use ordinary lookup, overload resolution, inference and the original contract's Type, Constraint, Origin and Loan checks. Specializations never enter the candidate set or supply inference evidence. Once the static generic arguments determine a key, the matching specialization is used, or the ordinary implementation if there is none. A value's Dynamic Type, including behind a base or Contract View, never changes this selection.
 
@@ -784,7 +785,7 @@ A generic caller cannot be fixed to the ordinary implementation merely because i
 
 There is no direct name for the specialization and no syntax that bypasses it to call the ordinary body. Calling the same function with the same generic arguments from inside its specialization selects that specialization again and recurses; move common work to a helper. An error in a specialization body never falls back to another body or overload.
 
-Specializations belong to the original function's Kotonoha and Declaration Container. Existing Container fragments may place them in another file; unrelated extensions and other Kotonoha libraries cannot add or replace them. The defining Kotonoha closes the specialization set after environment selection and declaration collection, including generated sources, before it finalizes affected call targets and no later than artifact finalization. Declaration and loading order cannot affect selection. Verification, artifact information and invalidation follow [generic code generation](21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+Specializations belong to the original function's Kotonoha and Declaration Container. Existing Container fragments may place them in another file; unrelated extensions and other Kotonoha libraries cannot add or replace them. The defining Kotonoha closes the specialization set after environment selection and declaration collection, including generated sources, before it finalizes affected call targets and no later than artifact finalization. Declaration and loading order cannot affect selection. Verification, artifact information and invalidation follow [generic code generation](../impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
 
 ## 8.9. Generic access effects
 
@@ -812,6 +813,7 @@ Generic analysis
 A by-value acquisition's effect follows its spelling:
 
 - a bare Place Copies and requires Copy evidence at definition checking; unproven Copy is an error, never deferred checking or an inferred Move;
+- `@copy` Copies and requires the same evidence;
 - `@move` transfers;
 - `@s` follows the binding of `s`: it borrows for a borrow binding and, for an owning binding, performs an ordinary same-Type acquisition, which needs Copy evidence.
 

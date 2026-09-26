@@ -52,14 +52,12 @@ group Text
     public func writer<W>(destination: uniq/W) -> Utf8Writer
         W is BufferWriter
     public func utf8(text: ref/string) -> Utf8Slice
-    public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice{r}, InvalidUtf8>
-        origin r.source == bytes.source
+    public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice during bytes.source, InvalidUtf8>
     public func toString<T>(value: ref/T) -> string
         T is Utf8Format
     public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8])
-        -> Result<Utf8Slice{r}, BufferFull>
+        -> Result<Utf8Slice during destination, BufferFull>
         T is Utf8Format
-        origin r.source == destination
 ```
 
 | Function | Behavior |
@@ -95,7 +93,7 @@ Both buffers implement `BufferWriter` and expose the following operations:
 | `validate()` | `uniq/Self` | `Result<(), InvalidUtf8>`; records validation on complete success only. |
 | `clear()` | `uniq/Self` | Resets committed and validated lengths to zero, retaining capacity; does not promise erasure. |
 | `reserve(minimum: isize)` | `uniq/Self` | `Result<WriteWindow, BufferFull>` as in §3. |
-| `intoText()` (FixedBuffer) | `owner/Self` | `Result<Utf8Slice{r}, InvalidUtf8>`, `origin r.source == self.source`. Validates the remaining suffix and returns the committed source region. Consumes the buffer on success or failure without freeing the source. |
+| `intoText()` (FixedBuffer) | `owner/Self` | `Result<Utf8Slice during self.source, InvalidUtf8>`. Validates the remaining suffix and returns the committed source region. Consumes the buffer on success or failure without freeing the source. |
 | `intoString()` (HeapBuffer) | `owner/Self` | `Result<string, InvalidUtf8>`. Validates the remaining suffix, then transfers the allocation pointer, length and sole release responsibility without copying. On failure the consumed buffer is destroyed. |
 
 An unallocated empty HeapBuffer becomes a Static string. An allocated buffer retains its original pointer and Heap release kind even when its length is zero. Optional in-place shrinking is specified in §3.4.
@@ -104,7 +102,7 @@ An unallocated empty HeapBuffer becomes a Static string. An allocated buffer ret
 
 ### 2.2. UTF-8 views
 
-`Utf8Slice.length` is a getter with `self: Self`. `bytes(self: Self) -> Slice<u8>{r}` has `origin r.source == self.source`. Both preserve the source borrow without reference counting.
+`Utf8Slice.length` is a getter with `self: Self`. `bytes(self: Self) -> Slice<u8> during self.source`. Both preserve the source borrow without reference counting.
 
 Validation accepts exactly UTF-8 encodings of Unicode scalar values. It rejects truncated sequences, overlong encodings, surrogates and out-of-range values, without replacement or normalization. NUL is data. An arbitrary byte subrange is not presumed valid UTF-8.
 
@@ -227,7 +225,7 @@ Built-in formatting checks status, computes the exact encoded byte length, reser
 
 For a finite nonzero float, choose the decimal representation with the fewest significant digits that rounds to the original value in its original width using nearest-even rounding. Among equal-length candidates choose the closest to the exact value, then an even final significant digit to break a tie. `f32` uses its own rounding interval. Let `e` be the normalized decimal exponent: use fixed notation for `-4 <= e < 16`, scientific notation otherwise. Omit unnecessary fractional trailing zeros and decimal points. Use `.`, lowercase `e`, no exponent `+` and no leading exponent zeros. Special values are `0`, `-0`, `Infinity`, `-Infinity` and `NaN`; NaN sign and payload are ignored.
 
-Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly, and diagnostics suggest an explicit payload dereference `@deref` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance.
+Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly, and diagnostics suggest an explicit payload follow `@follow` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance.
 
 ## 5. Interpolation and internal adapters
 

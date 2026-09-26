@@ -309,7 +309,7 @@ These keys only find candidates; actual Type and Symbol identities keep the defi
 
 Private information may support generation and reverification without entering consumer lookup. Using a public contract must not require searching private bodies. Origins are preserved even when erased at runtime. ObjectCallCompatible is exported only as a completed Proven/NotProven status with causes, never as a pending status. Legitimate generic representation obligations keep their subject, premises, dependencies and deadline; they are not completed proofs. Each use still checks its own obligations, Loans, initialization and cleanup.
 
-Openness is published, together with the dependencies of Sealed proofs, payload dereferences, complete-target effects and all allowed Type/Origin/full-specialization checks. An openness change is an API change, and a breaking change when it invalidates a previously valid use; positive and negative proofs are rechecked after it. Sealed alone never replaces the required ObjectCallCompatible checks.
+Openness is published, together with the dependencies of Sealed proofs, payload follows, complete-target effects and all allowed Type/Origin/full-specialization checks. An openness change is an API change, and a breaking change when it invalidates a previously valid use; positive and negative proofs are rechecked after it. Sealed alone never replaces the required ObjectCallCompatible checks.
 
 ### 18.7.3. Invalidation and persistence
 
@@ -346,7 +346,7 @@ group MeasureTests
         $expect(Measure.doubled(3) == 6)
 ```
 
-Tests may use the fixed product declarations and dependencies but cannot modify them, reassign a reference name or change a same-release input. Identical dependencies are merged. Dependencies' own tests and TestDependencies do not propagate. Inline `#Test` edits may change raw hashes and require reparsing, but never change product meaning, layout, sharing or budget choices; changed locations and provenance are updated. Test generation and its separate budgets follow [§21.3.7](21-layout-runtime-and-code-generation.md#2137-product-and-test-generation).
+Tests may use the fixed product declarations and dependencies but cannot modify them, reassign a reference name or change a same-release input. Identical dependencies are merged. Dependencies' own tests and TestDependencies do not propagate. Inline `#Test` edits may change raw hashes and require reparsing, but never change product meaning, layout, sharing or budget choices; changed locations and provenance are updated. Test generation and its separate budgets follow [§21.3.7](../impl/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation).
 
 Declarations in TestSources, and Test functions in normal sources, are test-only. Internal declarations inherit the membership of their enclosing declaration. All other declarations in normal sources, including unmarked helpers, are product declarations. Directory and file names such as `tests` have no special meaning. Product lookup, overloads, Types, layout, conformance, specialization, initialization and destruction are fixed from product inputs alone. A test instantiation of a product generic keeps product definition-time lookup and the ordinary instantiation rules.
 

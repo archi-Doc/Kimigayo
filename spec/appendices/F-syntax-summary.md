@@ -170,7 +170,7 @@ FunctionRequirement  := "unsafe"? "func" Name GenericParameters?
                         ParameterList<RequirementParameter> ("->" FunctionResult)?
                         RequirementConstraints?
 FunctionResult       := Type | PlaceResult
-PlaceResult          := "place" "(" ("ref" | "uniq") "," Type ")" BorrowOrigin?
+PlaceResult          := "place" ("ref" | "uniq") "/" SemanticsType BorrowOrigin?
 RequirementParameter := ParameterName ":" Type | ReceiverShorthand
 RequirementConstraints := IndentedList<ConstraintClause | OriginRelation>
 PropertyRequirement  := "property" Name ":" Type
@@ -178,10 +178,10 @@ PropertyRequirement  := "property" Name ":" Type
                          | IndentedList<RequiredSignature>)
 RequiredAccessor     := "get" | "set"
 RequiredSignature    := (GetterSignature | SetterSignature) OriginClauses?
-AssociatedTypeDeclaration := "associate" Name OriginParameters? ("is" IsRequirement)?
-                             IndentedList<WellformedClause | OriginRelation>?
+AssociatedTypeDeclaration := "associate" Name OriginParameters? ("is" IsRequirement)? FormationType?
+                             IndentedList<OriginRelation>?
 OriginParameters     := "(" List<Name> ")"
-WellformedClause     := "wellformed" Type
+FormationType        := "for" Type
 AssociatedTypeSpecification := "associate" AssociatedTypeName OriginParameters? "is" IsRequirement OriginClauses?
 AssociatedTypeName   := Name | ContractSelector "." Name
 AssociatedTypeReference := TypeQualifier "." Name OriginApplication?
@@ -268,7 +268,7 @@ Ordinary parameter bindings are immutable under §7. A ParameterList permits at 
 
 Contract function requirements permit the `!` boundary but have no parameter defaults, access modifiers or executable bodies. Property requirements have no parameter defaults, `!` boundaries, initializers, access modifiers or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method generic parameters and implicit signature Origins follow the ordinary function rules. Property requirements are instance-only: `get` is mandatory and `set` optional, each at most once in either order, and no accessor is implied beyond the written list or explicit signatures. The shared and exclusive defaults for `has` and the explicit signature checks follow §11.4.
 
-`AssociatedTypeDeclaration` introduces a name only inside a Contract, optionally with Origin parameters and attached `wellformed` or `origin` clauses (§8.4.3.1); `wellformed` is contextual only there. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances and repeats its Origin parameter count; a bare `associate Element` is not a specification. `OriginApplication` follows only an associated-Type name in Type context and is never a Type grouping, Tuple or call. `PlaceResult` is recognized only in result position when `place` is immediately followed by `(` (§7.1.1); anonymous functions use it only with an explicit result annotation, and Function Types accept it as their result. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` occupies a member position only in generic struct and enum bodies (§8.4.8), has one target Contract and introduces no namespace or generic binders; its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations, and all conditional blocks reject storage, Cases, constructors, deinit, nested Types and nested conformances. Intrinsics keep their own rules.
+`AssociatedTypeDeclaration` introduces a name only inside a Contract, optionally with Origin parameters, a formation Type and attached `origin` clauses (§8.4.3.1); a formation Type requires Origin parameters and no fixed Type. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances and repeats its Origin parameter count; a bare `associate Element` is not a specification. `OriginApplication` follows only an associated-Type name in Type context and is never a Type grouping, Tuple or call. `PlaceResult` is recognized only in result position when `place` is followed by `ref` or `uniq` and a slash (§7.1.1); anonymous functions use it only with an explicit result annotation, and Function Types accept it as their result. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` occupies a member position only in generic struct and enum bodies (§8.4.8), has one target Contract and introduces no namespace or generic binders; its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations, and all conditional blocks reject storage, Cases, constructors, deinit, nested Types and nested conformances. Intrinsics keep their own rules.
 
 Constraint subjects follow their declaration context. In a nested Contract, conditions on inherited arguments are reference inputs, conditions on the conforming `Self` are implementation requirements, and closed conditions are declaration obligations (§6.1.3.1). Functions constrain their generic parameters and projections rooted in them; Types use their ordinary Constraints and conformance rules. These productions do not broaden `#if`/`#case` Conditions.
 
@@ -305,8 +305,8 @@ Additive             := Multiplicative (("+" | "-") Multiplicative)*
 Multiplicative       := Try (("*" | "/" | "%") Try)*
 Try                  := "try" Try | Adapted
 Adapted              := Prefix ("@" OperationTarget PostfixSuffix*)*
-OperationTarget      := "move" | Semantics | AdaptationType
-// "@" "deref" is a PostfixSuffix (level 1), never an OperationTarget.
+OperationTarget      := "move" | "copy" | Semantics | AdaptationType
+// "@" "follow" is a PostfixSuffix (level 1), never an OperationTarget.
 AdaptationType       := AdaptationCore ("?")*
 AdaptationCore       := Semantics "/" AdaptationCore | AdaptationAtom
 AdaptationAtom       := ContainerPath | UnitType | "(" Type ")"
@@ -319,7 +319,7 @@ PostfixSuffix        := "." (Name | DecimalTupleIndex)
                       | "." "(" ContractReference ")" "." Name
                       | "(" TrailingList<Argument>? ")"
                       | AdjacentTypeArguments | "[" Expression "]" | "++" | "--"
-                      | "@" "deref"
+                      | "@" "follow"
 AdjacentTypeArguments := ? TypeArguments adjacent to an eligible Name, §12.4.2 ?
 DecimalTupleIndex    := ? decimal integer literal used as a Tuple member, §12.4.1 ?
 ConstantIndexExpression := IntegerLiteral | "(" ConstantIndexExpression ")"
@@ -353,7 +353,7 @@ CompositionRootExpression := "$" "abort" "(" Expression ")"
                            | "$" "tryWrite" "(" Expression "," StringLiteral ")"
 ```
 
-Ordinary `is` / `is not` accepts one named struct Core and does not consume an outer `and` or `or`. The separate compile-time [requirement expressions](../08-generics-constraints-and-contracts.md#83-requirement-expressions) keep their own extent in their dedicated contexts. Omitted anonymous parameter and result Types and Capture Lists follow the [function-expression rules](../07-functions-and-callable-values.md#76-function-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](../13-operators-and-assignment.md#131-precedence-and-associativity); `@deref` binds as a postfix operation, takes no Type, `?` or `during`, and a following `/` is division. These boundaries are not alternative parses selected by conversion success.
+Ordinary `is` / `is not` accepts one named struct Core and does not consume an outer `and` or `or`. The separate compile-time [requirement expressions](../08-generics-constraints-and-contracts.md#83-requirement-expressions) keep their own extent in their dedicated contexts. Omitted anonymous parameter and result Types and Capture Lists follow the [function-expression rules](../07-functions-and-callable-values.md#76-function-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](../13-operators-and-assignment.md#131-precedence-and-associativity); `@follow` binds as a postfix operation, takes no Type, `?` or `during`, and a following `/` is division; `@move` and `@copy` take no Type, `?` or `during` either. These boundaries are not alternative parses selected by conversion success.
 
 Qualified enum Case expressions have no separate Primary production: Binding classifies ordinary Postfix syntax under §6.3.2. InferredCaseExpression is the only dedicated Case expression production; CaseReference belongs to the Pattern grammar in F.5.
 
@@ -438,7 +438,7 @@ Each concrete accessor occurs at most once, in either order. `let` forbids `set`
 
 ## F.7. Origin grammar
 
-The productions in F.2 distinguish schema and binding-set braces from the postfix borrow annotation `during OriginAtom`. An intersection immediately after `during` needs parentheses, while relation operands keep the full OriginExpression grammar. There are no function or accessor Origin lists and no Origin mappings. Associated-Type Origin parameters and their applications are the F.3 and F.2 productions `OriginParameters` and `OriginApplication` (§8.4.3.1).
+The productions in F.2 distinguish schema and binding-set braces from the postfix borrow annotation `during OriginAtom`. An intersection immediately after `during` needs parentheses, while relation operands keep the full OriginExpression grammar. There are no function or accessor Origin lists and no Origin mappings. A trailing `during` after a named Type without a Semantics prefix binds its single schema slot (§15.3.1). Associated-Type Origin parameters and their applications are the F.3 and F.2 productions `OriginParameters` and `OriginApplication` (§8.4.3.1).
 
 An `OriginRelation` is attached to its owning declaration, one indentation level below it. Type, function and accessor relations share the leading Constraint region and precede executable items or members. Field, enum Case, associated-Type declaration and specification, local and Container-alias relations are attached to that declaration. Relations are declaration metadata, permitted only in these leading or attached positions, and a declaration-only signature may have only such clauses.
 
@@ -481,14 +481,14 @@ These entries record where the syntax summary of this revision ends. They are ne
 | Runtime-contract designations, View associated-Type bindings, exact and Contract tests, and checked casts | The [runtime extension](../08-generics-constraints-and-contracts.md#85-runtime-contracts) and the [object operations](../13-operators-and-assignment.md#1362-general-view-tests-and-checked-casts) keep the design without final source spellings. Static associated-Type specifications and projections are defined in F.3; ordinary struct `is` and explicit upcasts are defined. |
 | Callable extensions | Borrowed, Exclusive or Consuming erased Types, public lending results, non-escaping declarations, capture aliases, initializers and parts, generic receiver Semantics and `{environment}` are not introduced. |
 | Additional Patterns | The [initial forms](../14-control-flow.md#1481-patterns) are defined; Struct, Type, OR, Range, Rest and other [extensions](D-deferred-features.md#d1-enum-and-pattern-extensions) remain deferred. |
-| Attributes | Syntax, placement and Mod marker behavior follow [§6.5](../06-declarations-and-containers.md#65-attributes); Layout follows [§21.1.2](../21-layout-runtime-and-code-generation.md#2112-layout-attribute-and-fragments), LibraryImport [§22.3](../22-core-execution-and-foreign-functions.md#223-foreign-function-imports), and the argument-free Test Attribute [§6.5.1](../06-declarations-and-containers.md#651-test-definitions). Concrete marker registration and other general semantics remain design boundaries. |
+| Attributes | Syntax, placement and Mod marker behavior follow [§6.5](../06-declarations-and-containers.md#65-attributes); Layout follows [§21.1.2](../../impl/21-layout-runtime-and-code-generation.md#2112-layout-attribute-and-fragments), LibraryImport [§22.3](../22-core-execution-and-foreign-functions.md#223-foreign-function-imports), and the argument-free Test Attribute [§6.5.1](../06-declarations-and-containers.md#651-test-definitions). Concrete marker registration and other general semantics remain design boundaries. |
 | Composition Root operations | `$abort(...)` and `$tryWrite(...)` are expressions. `$expect(...)` and `$require(...)` are standalone TestVerification items, never expression operands; [§17.5](../17-failure-handling.md#175-test-verification-operations) defines their test-only restrictions, message boundary and evaluation. Entry/Provider syntax remains unsettled under [§13.8](../13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |
 | Additional Type arguments | [Generic application](../12-expressions.md#1242-invocation-and-generic-application) defines no general constant Type arguments. |
-| Object ownership operations | The Kimi operations for [creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) and the [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) use ordinary call syntax; those sections define their names, Types and acquisition contracts. `Type.init` constructs an owner value, and `@obj`/`@rc`/`@arc` add no allocation or count increment. |
-| Complete payload and whole-value updates | Sealed and ObjectPayload use ordinary requirement syntax; the opt-out `Self is not ObjectPayload` is an ordinary `ConstraintClause` whose placement §8.4.7.2 restricts. `@deref` selects a proven complete payload (§13.5.5.1), and `@ref`/`@uniq` borrow the written slot. `Kimi.Intrinsics.replace`, `exchange` and `swap` use ordinary generic calls and named arguments (§15.7). |
-| Places and iteration | `place(ref, T)` and `place(uniq, T)` results, Contract Type parameters, Origin-parameterized associated Types, `wellformed` clauses, the postfix `@deref` and `for var` slots are defined in F.2–F.5. Pattern-local acquisition selectors and Contract-owned Origin parameters are not introduced ([Appendix D](D-deferred-features.md)). |
+| Object ownership operations | The Kimi operations for [creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) and the [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) use ordinary call syntax; those sections define their names, Types and acquisition contracts. `Type.init` constructs an owner value, and the complete forms such as `@obj/T` and `@rc/T` add no allocation or count increment. |
+| Complete payload and whole-value updates | Sealed and ObjectPayload use ordinary requirement syntax; the opt-out `Self is not ObjectPayload` is an ordinary `ConstraintClause` whose placement §8.4.7.2 restricts. `@follow` selects a proven complete payload (§13.5.5.1), and `@ref`/`@uniq` borrow the written slot. `Kimi.Intrinsics.replace`, `exchange` and `swap` use ordinary generic calls and named arguments (§15.7). |
+| Places and iteration | `place ref/T` and `place uniq/T` results, Contract Type parameters, Origin-parameterized associated Types with formation Types, single-slot `during` bindings, `@copy`, the postfix `@follow` and `for var` slots are defined in F.2–F.5. Pattern-local acquisition selectors and Contract-owned Origin parameters are not introduced ([Appendix D](D-deferred-features.md)). |
 | Function parameters | [§7.2](../07-functions-and-callable-values.md#72-parameters-and-defaults) defines the `!` boundary, external and internal names and independent defaults; F.3 summarizes their syntax. |
-| Re-export and special FFI layouts | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports) and [layout boundaries](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi). |
+| Re-export and special FFI layouts | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports) and [layout boundaries](../../impl/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi). |
 | Failure propagation | Prefix `try` is defined in §17.2.4. User-defined propagation and try blocks are not introduced. |
 
 Container placement follows §6.1.1: groups, structs, enums and Contracts may nest in structs, enum and Contract bodies have no children, and `rootgroup` appears only at the source root. Own arity excludes inherited slots; groups declare no own arguments, and Contracts declare only their own Type parameters. BoundContainerQualifier is Type-side only and normalizes with ordinary grouped Type syntax. Contract and associated selectors use the same paths and full Origin bindings, and each final role and intermediate qualifier is checked under §9.6.1. CaseReference remains a PlainContainerPath and excludes own and inherited explicit Origin annotations on its qualifier, while keeping Origins inside Type arguments.

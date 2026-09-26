@@ -10,7 +10,7 @@ Type identity includes the evaluated length and the complete element Type: `[3 o
 
 Elements are stored inline in index order; the array's own element storage uses no implicit heap allocation. Nested arrays apply this rule recursively, with the innermost index varying contiguously. Where the enclosing value is stored, and any allocation by individual elements, follow their own rules.
 
-The element layout must be finite and valid. Let `d = stride(T)`; Slice uses the same element spacing. These are specification quantities, not source operators, and follow the [common layout rules](21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi).
+The element layout must be finite and valid. Let `d = stride(T)`; Slice uses the same element spacing. These are specification quantities, not source operators, and follow the [common layout rules](../impl/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi).
 
 | Quantity | Layout of `[N of T]` |
 | --- | --- |
@@ -194,7 +194,7 @@ These names are not keywords; `::Kimi.Index`, for example, disambiguates a hidde
 
 The returned integers, Booleans and `ResolvedRange` values acquire no receiver or source Origin or Loan; this does not release existing Loans. `indices` is a snapshot of `[0, L)` at acquisition. Resizing an Array does not update a saved snapshot; later accesses check the length current at that time.
 
-**Element Places.** Binding the receiver and index Types, resolving bounds and checking access produce an element Place. It carries the complete stored Type `T`, its source location and its capabilities: `place(ref, T)` for reads and `place(uniq, T)` for updates (§4.6.9, §7.1.1). Forming the Place performs no element Copy or Move. Chained access such as `matrix[1][2] = 10` keeps Places without copying an intermediate inner array.
+**Element Places.** Binding the receiver and index Types, resolving bounds and checking access produce an element Place. It carries the complete stored Type `T`, its source location and its capabilities: `place ref/T` for reads and `place uniq/T` for updates (§4.6.9, §7.1.1). Forming the Place performs no element Copy or Move. Chained access such as `matrix[1][2] = 10` keeps Places without copying an intermediate inner array.
 
 | Use | Operation after locating the Place |
 | --- | --- |
@@ -376,7 +376,7 @@ For `s: Slice<T>`, members receive and Copy the handle by value. Element and par
 | --- | --- |
 | `s.length: isize` / `s.isEmpty: bool` | Read-only count / whether the count is zero |
 | `s.indices: ResolvedRange` | Read-only snapshot under the metadata rules |
-| `s[index]` | The element Place `place(ref, T) during s.source`; accepts `isize` or `Index` |
+| `s[index]` | The element Place `place ref/T during s.source`; accepts `isize` or `Index` |
 | `s[range]` | `Slice<T>` retaining `s.source`; accepts `Range` or `ResolvedRange`, checked against the current length |
 | `s.tryGet(index)` | `Option<ref/T during s.source>`; separate `isize` and `Index` overloads |
 | `s.trySlice(range)` | `Option<Slice<T>>` retaining `s.source`; separate `Range` and `ResolvedRange` overloads |
@@ -409,8 +409,7 @@ match s.tryGet(10)
     .Some(let value) => ()
     .None => ()
 
-func tryTail<T>(values: Slice<T>) -> Option<Slice<T>{tail}>
-    origin tail.source == values.source
+func tryTail<T>(values: Slice<T>) -> Option<Slice<T> during values.source>
     return values.trySlice(1..) // None for an empty Slice; no static length condition.
 ```
 
@@ -468,11 +467,11 @@ Single-element indexing is the [Kimi Contract](22-core-execution-and-foreign-fun
 contract Indexable<Key>
     associate Element
     func index(self: ref/Self, key: ref/Key)
-        -> place(ref, Element) during self
+        -> place ref/Element during self
 
 contract UniqIndexable<Key>: Indexable<Key>
     func indexUniq(self: uniq/Self, key: ref/Key)
-        -> place(uniq, Element) during self
+        -> place uniq/Element during self
 ```
 
 Both requirements share one `Element`, and the same key selects the same element. `UniqIndexable` grants exclusive access to the element Place; it does not change the stored Type to `uniq/Element`. An index expression `receiver[key]` is resolved statically in this order, without changing runtime evaluation:
@@ -492,9 +491,9 @@ A shared path cannot satisfy an exclusive requirement. Ordinary functions and ge
 
 | Target and operation | Input | Result | Depends on |
 | --- | --- | --- | --- |
-| `Array<E>`, `[N of E]` element | `isize` or `Index`, shared-borrowed | `place(ref, E)` for reads, `place(uniq, E)` for updates | `a` |
-| `Dictionary<K, V>` element | `K` as `ref/K` | `place(ref, V)` for reads, `place(uniq, V)` for updates; absence Aborts | `a`, never the key |
-| `Slice<E>` element | `isize` or `Index`, shared-borrowed | `place(ref, E) during s.source` | `s` |
+| `Array<E>`, `[N of E]` element | `isize` or `Index`, shared-borrowed | `place ref/E` for reads, `place uniq/E` for updates | `a` |
+| `Dictionary<K, V>` element | `K` as `ref/K` | `place ref/V` for reads, `place uniq/V` for updates; absence Aborts | `a`, never the key |
+| `Slice<E>` element | `isize` or `Index`, shared-borrowed | `place ref/E during s.source` | `s` |
 | `Array<E>`, `[N of E]` range | `Range` or `ResolvedRange` by value | An ordinary `Slice<E>` | The element storage |
 | `Slice<E>` range | `Range` or `ResolvedRange` by value | An ordinary `Slice<E>` | `s` |
 

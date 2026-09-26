@@ -66,7 +66,7 @@ Every row additionally requires valid receiver capabilities, initialization and 
 | Standard `get` + custom `set` | Storage Copy or shared borrow; no direct Move or exclusive borrow | Call `set` |
 | Custom `get` + custom `set` | Getter result; no direct storage access | Call `set` |
 
-Borrows follow §13.5.5. For a slot of Type `F = ref/U`, `@ref` and `@ref/F` both borrow the slot as `ref/(ref/U)`; bare acquisition or an expected `ref/U` Copies the stored reference (§10.2), and `@deref@ref` Reborrows its referent.
+Borrows follow §13.5.5. For a slot of Type `F = ref/U`, `@ref` and `@ref/F` both borrow the slot as `ref/(ref/U)`; bare acquisition or an expected `ref/U` Copies the stored reference (§10.2), and `@follow@ref` Reborrows its referent.
 
 ### 11.1.1. Access and mutability
 
@@ -216,7 +216,7 @@ Non-Copy results must be legally created or acquired; a shared receiver cannot s
 
 Stored custom `get`, computed `get` and Contract `get` produce function results; adaptations apply to that result, not to backing storage.
 
-**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and the implicit or explicit exclusive receiver acquisition of §7.3 preserve this restriction: a `uniq/Self` method or getter cannot be called on an owned getter result, and no Copy is modified instead. A reference returned by a getter keeps its referent's own capabilities (`holder.view@deref@uniq` Reborrows a returned `uniq/T`, and `holder.view.update()` Reborrows it implicitly). Updating the Property itself through `set` is separate and remains allowed (§13.7).
+**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and the implicit or explicit exclusive receiver acquisition of §7.3 preserve this restriction: a `uniq/Self` method or getter cannot be called on an owned getter result, and no Copy is modified instead. A reference returned by a getter keeps its referent's own capabilities (`holder.view@follow@uniq` Reborrows a returned `uniq/T`, and `holder.view.update()` Reborrows it implicitly). Updating the Property itself through `set` is separate and remains allowed (§13.7).
 
 ```kimi
 // position: Point is Copy, with custom get and standard set.

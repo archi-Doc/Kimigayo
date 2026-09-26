@@ -23,7 +23,7 @@ Name Resolution
 
 Language-defined lexical visibility and compile-time selection order apply first. File loading, alias order, candidate enumeration, caching, parallelism and optimization must not change resolution.
 
-During [Mod generation](20-compilation-configuration.md#2072-compilation-and-binding), these rules may produce provisional results from the declarations available so far. Such results commit neither lookup nor overload selection for the final program; final Binding runs after generation completes.
+During [Mod generation](../impl/20-compilation-configuration.md#2072-compilation-and-binding), these rules may produce provisional results from the declarations available so far. Such results commit neither lookup nor overload selection for the final program; final Binding runs after generation completes.
 
 ## 9.1. Signatures
 

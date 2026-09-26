@@ -235,7 +235,7 @@ For display page `https://docs.example/api.html?old#previous`, an empty destinat
 
 ### 4.3. Logical source targets and output mapping
 
-Use the ordinary source's [§20.7.4 logical name](20-compilation-configuration.md#2074-generated-sources-and-declaration-order) without requiring a file-existence check. Keep project identity, logical path, query and fragment as separate values; do not join a logical target into a URL and parse it again.
+Use the ordinary source's [§20.7.4 logical name](../impl/20-compilation-configuration.md#2074-generated-sources-and-declaration-order) without requiring a file-existence check. Keep project identity, logical path, query and fragment as separate values; do not join a logical target into a URL and parse it again.
 
 1. Split the URI reference into path, query and fragment. Encoded `?` and `#` are data, not separators.
 2. Split the path on `/` and decode each segment as UTF-8 exactly once. Reject invalid encoding and decoded `/`, backslash or controls. Do not decode the existing logical source name.
@@ -317,4 +317,4 @@ For UTF-16 body length `n` and output size `o`, use `O(n + 1)` retained syntax/r
 
 Source-position queries, declaration matching and link resolution must avoid whole-input scans per character/item. Account separately for source reads, declaration/logical-name inputs, callbacks, output storage, concurrent work and optional detailed mappings, including their input/output sizes and call counts.
 
-Parsing, extraction, output and diagnostics must handle deep nesting without stack exhaustion. Support cancellation. If a tool imposes time, memory or depth limits, publish their conditions and report excess as a documentation interruption, never a syntax-to-text fallback or a language error. No particular parser algorithm, node arena, pool, cache, lazy strategy, candidate prefilter or synchronization mechanism is required. Acceptance evidence is specified in [Appendix A.21](appendices/A-compiler-requirements.md#a21-documentation-comments).
+Parsing, extraction, output and diagnostics must handle deep nesting without stack exhaustion. Support cancellation. If a tool imposes time, memory or depth limits, publish their conditions and report excess as a documentation interruption, never a syntax-to-text fallback or a language error. No particular parser algorithm, node arena, pool, cache, lazy strategy, candidate prefilter or synchronization mechanism is required. Acceptance evidence is specified in [Appendix A.21](../impl/appendices/A-compiler-requirements.md#a21-documentation-comments).

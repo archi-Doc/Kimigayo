@@ -25,21 +25,21 @@ The table is the minimal set that language rules name, not a promise of a genera
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not enumerable |
 | `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and the three iteration conformances with item `isize` under §4.6.3 |
-| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; `Indexable<isize>` and `Indexable<Index>` publishing `place(ref, T) during self.source`; the three iteration conformances with item `ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
+| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; `Indexable<isize>` and `Indexable<Index>` publishing `place ref/T during self.source`; the three iteration conformances with item `ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
 | `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, `UniqIndexable<K>` existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and the three iteration conformances with the pair items of §14.6.2 |
 | UTF-8 formatting declarations | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` at the root, and the `Text` group: exact signatures, shape, intrinsic Origin/Loan/variance metadata and operations in the [formatting profile](utf8-formatting.md#1-contracts-and-declarations) |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
-| `LendingIterator`, `Iterator: LendingIterator`, `Cursor`, `UniqCursor` | The exact declarations of §22.1.2.1: LendingIterator's `LentItem(step)` and `next`; Iterator's step-independent `Item` and the effect bound of §22.1.2.4; Cursor's `Element`, `advance` and Place-publishing `current`/`currentUniq` |
+| `LendingIterator`, `Iterator: LendingIterator` | The exact declarations of §22.1.2.1: LendingIterator's `LentItem(step)` and `next`; Iterator's step-independent `Item` and the effect bound of §22.1.2.4 |
 | `Iterable`, `UniqIterable`, `IntoIterable` | The exact declarations of §22.1.2.2: `IteratorType(source)` or `IteratorType` bound to a LendingIterator, and `iterate`, `iterateUniq` or `intoIterator` |
-| `Indexable<Key>`, `UniqIndexable<Key>: Indexable<Key>` | `associate Element`; `index(self: ref/Self, key: ref/Key) -> place(ref, Element) during self` and `indexUniq(self: uniq/Self, key: ref/Key) -> place(uniq, Element) during self` (§4.6.9) |
-| `Iteration` group | `Owned<I>`, `Borrowed<I>`, `Shared<C>`, `Uniq<C>` and `owned`, `borrowed`, `shared`, `uniq` under §22.1.2.3 |
+| `Indexable<Key>`, `UniqIndexable<Key>: Indexable<Key>` | `associate Element`; `index(self: ref/Self, key: ref/Key) -> place ref/Element during self` and `indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self` (§4.6.9) |
+| `Iteration` group | `Owned<I>`, `Borrowed<I>` and `owned`, `borrowed` under §22.1.2.3 |
 | `Storage` internal group | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`, `borrowStorage`, `ownStorage`, `splitFirst`, `takeFirst` under §22.1.2.5; usable only inside the Kimi Kotonoha |
 | Copy, Owned, Callable, Sealed, ObjectPayload | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership and call rules (§8.4.7 for Sealed and ObjectPayload); not ordinary user-implementable replacements |
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts; every creation declares `T is ObjectPayload` (§8.4.7.2) |
 | Whole-value update intrinsics | Ordinary generic declarations `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts; their signatures impose no Sealed requirement, and completeness is checked at each actual storage target |
 | `Console.writeLine` | Overloads `(text: ref/string) -> ()` and `(text: Text.Utf8Slice) -> ()`; §22.4 and the [formatting profile](utf8-formatting.md#61-console-output) |
-| `Test.tempDirectory` | `public func tempDirectory() -> string`; independently owned case-directory path, restricted to test-only bodies under the [test profile](testing-profile.md#environment-and-temporary-directory) |
+| `Test.tempDirectory` | `public func tempDirectory() -> string`; independently owned case-directory path, restricted to test-only bodies under the [test profile](../impl/testing-profile.md#environment-and-temporary-directory) |
 
 The iteration and indexing Contracts are static Contracts. Their associated Types are complete Types and may take Origin parameters (§8.4.3.1). Table signatures follow the normal associated-Type, receiver, result-Origin and lifetime rules.
 
@@ -63,7 +63,7 @@ The following reference collects the public function names. Types are abbreviate
 | --- | --- | --- |
 | `Kimi.Console.writeLine` | `(text: ref/string) -> ()`, `(text: Text.Utf8Slice) -> ()` | §22.4 |
 | `Kimi.Text` functions | `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](utf8-formatting.md#2-text-operations) |
-| `Kimi.Test.tempDirectory` | `() -> string` | [Test profile](testing-profile.md#environment-and-temporary-directory) |
+| `Kimi.Test.tempDirectory` | `() -> string` | [Test profile](../impl/testing-profile.md#environment-and-temporary-directory) |
 | `Kimi.Intrinsics.replace<T>` | `(target: uniq/T, with => value: T) -> ()` | §15.7 |
 | `Kimi.Intrinsics.exchange<T>` | `(target: uniq/T, with => value: T) -> T` | §15.7 |
 | `Kimi.Intrinsics.swap<T>` | `(first: uniq/T, second: uniq/T) -> ()` | §15.7 |
@@ -76,35 +76,24 @@ The following reference collects the public function names. Types are abbreviate
 | `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
 | `Kimi.Iteration.owned<I>` | `I -> Owned<I>` | §22.1.2.3 |
-| `Kimi.Iteration.borrowed<I>` | `uniq/I during source -> Borrowed<I>{r}` with `origin r.source == source` | §22.1.2.3 |
-| `Kimi.Iteration.shared<C>` | `C -> Shared<C>` | §22.1.2.3 |
-| `Kimi.Iteration.uniq<C>` | `C -> Uniq<C>` | §22.1.2.3 |
+| `Kimi.Iteration.borrowed<I>` | `uniq/I during source -> Borrowed<I> during source` | §22.1.2.3 |
 
-Container members stay with their owning Types and Contracts: the iteration, Cursor and Indexable requirements are in §22.1.2 and §4.6.9; collection, indexing, range and Slice APIs in §4.6–7; comparison requirements in §22.1; formatting members in the [profile](utf8-formatting.md). `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` and `$tryWrite` are not declarations in these groups.
+Container members stay with their owning Types and Contracts: the iteration and Indexable requirements are in §22.1.2 and §4.6.9; collection, indexing, range and Slice APIs in §4.6–7; comparison requirements in §22.1; formatting members in the [profile](utf8-formatting.md). `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` and `$tryWrite` are not declarations in these groups.
 
 This reference specifies required APIs, including unimplemented ones. [STATUS.md](../STATUS.md#kimi-library-and-whole-value-updates) records current declaration and runtime coverage separately.
 
-### 22.1.2. Iteration, cursors and storage
+### 22.1.2. Iteration and storage
 
-#### 22.1.2.1. Iterator and Cursor
+#### 22.1.2.1. LendingIterator and Iterator
 
 ```kimi
 contract LendingIterator
-    associate LentItem(step)
-        wellformed uniq/Self during step
+    associate LentItem(step) for uniq/Self during step
     func next(self: uniq/Self during step) -> Option<Self.LentItem(step)>
 
 contract Iterator: LendingIterator
     associate Item
     associate LendingIterator.LentItem(step) is Item
-
-contract Cursor
-    associate Element
-    func advance(self: uniq/Self) -> bool
-    func current(self: ref/Self) -> place(ref, Element) during self
-
-contract UniqCursor: Cursor
-    func currentUniq(self: uniq/Self) -> place(uniq, Element) during self
 ```
 
 Every enumeration calls `LendingIterator.next`, which delivers the next item as a value. Each call binds `step` to the receiver borrow of that call and keeps the actual Loan dependencies. An **Iterator** is the ordinary case: its `Item` is one complete Type that names no Origin of `next`, so generic code may retain its items across later calls (§22.1.2.4). A conforming Type writes `associate Iterator.Item is T` and `func next(self: uniq/Self) -> Option<T>`; the inherited `LentItem(step)` is `Item` for every `step`. A **LendingIterator** that is not an Iterator may instead lend items that borrow the Iterator. A general LendingIterator may return `Some` after `None`; `for` stops at the first `None`, and §22.1.2.3 states the guarantees of standard iterators. `None` carries no Loan.
@@ -114,19 +103,15 @@ Every enumeration calls `LendingIterator.next`, which delivers the next item as 
 | `ref/E during step`, `uniq/E during step` | Depends on that call's receiver borrow and conflicts with the next `next` while retained |
 | A Type without `step`, such as `E` or `ref/E during source` | Retained under the ordinary Loan rules, since the annotation alone removes no actual dependency (§22.1.2.4); only an Iterator publishes the effect bound that lets generic code keep it across the next `next` |
 
-A Cursor publishes the Place of its current position. After creation and after a false `advance`, there is no current position, and `current` and `currentUniq` Abort. After a true `advance`, the same logical element stays selected until the next `advance` and may be accessed repeatedly, shared or exclusively. Calling `advance` again after `false` is allowed. The implementation manages this state; the compiler proves no state machine and inserts no flags. The ordinary Loan rules reject conflicting `advance`, updates and destruction.
-
 #### 22.1.2.2. Iteration entries
 
 ```kimi
 contract Iterable
-    associate IteratorType(source) is LendingIterator
-        wellformed ref/Self during source
+    associate IteratorType(source) is LendingIterator for ref/Self during source
     func iterate(self: ref/Self during source) -> Self.IteratorType(source)
 
 contract UniqIterable
-    associate IteratorType(source) is LendingIterator
-        wellformed uniq/Self during source
+    associate IteratorType(source) is LendingIterator for uniq/Self during source
     func iterateUniq(self: uniq/Self during source) -> Self.IteratorType(source)
 
 contract IntoIterable
@@ -134,7 +119,7 @@ contract IntoIterable
     func intoIterator(self: Self) -> Self.IteratorType
 ```
 
-The three capabilities are independent; `for` requires the conformance of the entry that its Subject mode selects (§14.6.2). The borrowing entries keep the per-call `source`, and the owning entry keeps the dependencies inside `Self`. The item Type is the `LentItem(step)` of the selected `IteratorType` (§14.6.2); the entry mode forces neither `ref`, `uniq` nor an owned item. `UniqIterable` guarantees only the exclusive receiver borrow. The exclusive Place results of `UniqIndexable` and `UniqCursor` are guarantees of those requirement signatures, not of the name `Uniq`. A Type may conform to `Iterator` and to entries at the same time. There is no duck typing by member name, no automatic conformance of references or arbitrary Iterators, no derived Contract and no default body. No standard conformance advances an Iterator through a shared borrow.
+The three capabilities are independent; `for` requires the conformance of the entry that its Subject mode selects (§14.6.2). The borrowing entries keep the per-call `source`, and the owning entry keeps the dependencies inside `Self`. The item Type is the `LentItem(step)` of the selected `IteratorType` (§14.6.2); the entry mode forces neither `ref`, `uniq` nor an owned item. `UniqIterable` guarantees only the exclusive receiver borrow. The exclusive Place result of `UniqIndexable` is a guarantee of that requirement signature, not of the name `Uniq`. A Type may conform to `Iterator` and to entries at the same time. There is no duck typing by member name, no automatic conformance of references or arbitrary Iterators, no derived Contract and no default body. No standard conformance advances an Iterator through a shared borrow.
 
 ```kimi
 struct Countdown
@@ -143,8 +128,7 @@ struct Countdown
     Self is UniqIterable
     associate Iterator.Item is i32
     associate IntoIterable.IteratorType is Self
-    associate UniqIterable.IteratorType(a) is Kimi.Iteration.Borrowed<Self>{view}
-        origin view.source == a
+    associate UniqIterable.IteratorType(a) is Kimi.Iteration.Borrowed<Self> during a
     var remaining: i32 = 3
 
     public func next(self: uniq/Self) -> Option<i32>
@@ -156,8 +140,7 @@ struct Countdown
         return self@move
 
     public func iterateUniq(self: uniq/Self during source)
-        -> Kimi.Iteration.Borrowed<Self>{result}
-        origin result.source == source
+        -> Kimi.Iteration.Borrowed<Self> during source
         return Kimi.Iteration.borrowed(self)
 
 var total: i32 = 0
@@ -171,20 +154,14 @@ for number in countdown@move
 
 #### 22.1.2.3. Standard adapters
 
-The public group `Kimi.Iteration` declares the following functions and result Types. `I` is a LendingIterator and `C` a Cursor; each result is an ordinary generic struct that conforms to `LendingIterator`, `IntoIterable` (transferring itself) and `UniqIterable` (returning `Borrowed<Self>`).
+The public group `Kimi.Iteration` declares the following functions and result Types. `I` is a LendingIterator; each result is an ordinary generic struct that conforms to `LendingIterator`, `IntoIterable` (transferring itself) and `UniqIterable` (returning `Borrowed<Self>`).
 
 | Operation | Result Type | Contract |
 | --- | --- | --- |
 | `owned(iterator)` | `Owned<I>` | Takes `I` by value and forwards its `LentItem(step)` and dependencies; a Non-Copy Place is written `@move` |
 | `borrowed(iterator)` | `Borrowed<I>` | Takes `uniq/I` and advances it without Moving it; items keep `I`'s contract |
-| `shared(cursor)` | `Shared<C>` | Takes `C` by value; after a true `advance` it borrows `current` and returns `ref/Element during step` |
-| `uniq(cursor)` | `Uniq<C>` | Takes a `UniqCursor` by value; after a true `advance` it returns `uniq/Element during step` from `currentUniq` |
-
-`uniq` is a contextual word only in Semantics positions, so `Kimi.Iteration.uniq(cursor)` is an ordinary call, distinct from the borrow `@uniq`.
 
 `Borrowed`'s slot `source` is the outer Origin of its input, and the `step` of each item is the actual Reborrow of `next`. `Owned` and `Borrowed` inherit their input's exhaustion guarantee. They conform to `Iterator` exactly when `I` does, with the same `Item`, dependencies and effect bound.
-
-`Shared` and `Uniq` are LendingIterators whose items depend on `step`. They keep their own finished state and call `advance` once per `next`, calling the corresponding `current` only after `true`. After the first `false` they return `None` without calling the Cursor again, so they stay exhausted whatever the Cursor does later. Their `Some` payload is an ordinary reference value, never a Place.
 
 No adapter allocates, updates a reference count or materializes items in advance. Draining is an ordinary Iterator API that publishes how items are taken and how an early exit treats the remainder; it is not a language protocol.
 
@@ -231,8 +208,8 @@ The internal group `Kimi.Storage` holds the operations that split standard colle
 
 | Signature template | Contract |
 | --- | --- |
-| `borrowStorage(value: ref/S during a) -> RefRemainder<S>{r}` with `origin r.source == a` | Holds the shared Loan and traverses from the first element |
-| `borrowStorage(value: uniq/S during a) -> UniqRemainder<S>{r}` with `origin r.source == a` | Transfers the received whole-collection capability to the untaken part; no independent whole access remains |
+| `borrowStorage(value: ref/S during a) -> RefRemainder<S> during a` | Holds the shared Loan and traverses from the first element |
+| `borrowStorage(value: uniq/S during a) -> UniqRemainder<S> during a` | Transfers the received whole-collection capability to the untaken part; no independent whole access remains |
 | `ownStorage(value: S) -> OwnedRemainder<S>` | Transfers the Storage of `S` and its cleanup responsibility |
 | `splitFirst(state: uniq/RefRemainder<S>{r}) -> Option<R(r.source)>` | Lends the untaken first element for shared access and advances |
 | `splitFirst(state: uniq/UniqRemainder<S>{r}) -> Option<U(r.source)>` | Splits the untaken first element off as a child Loan and updates the remainder |
@@ -566,13 +543,13 @@ All permitted verifications from user initialization through shutdown belong to 
 
 ### 22.6.2. Process isolation and recovery
 
-Each selected case runs once in a new child process of the same immutable native executable for its project, which receives the CaseId. Cases share no static state and are not retried automatically, and the executable and its diagnostic table are not replaced during the run. An unsupported execution target is an execution error. The working directory is fixed to the target project root, and each case receives a unique temporary directory that is reclaimed after every outcome. The parent's environment is captured once and project settings are applied; then only reserved case-specific settings, including TMP/TEMP, are overridden. The [test profile](testing-profile.md) defines the temporary-directory API, environment, stdin and limits. Separate per-case stdout and stderr streams are drained continuously, without interleaving the stored logs of different cases.
+Each selected case runs once in a new child process of the same immutable native executable for its project, which receives the CaseId. Cases share no static state and are not retried automatically, and the executable and its diagnostic table are not replaced during the run. An unsupported execution target is an execution error. The working directory is fixed to the target project root, and each case receives a unique temporary directory that is reclaimed after every outcome. The parent's environment is captured once and project settings are applied; then only reserved case-specific settings, including TMP/TEMP, are overridden. The [test profile](../impl/testing-profile.md) defines the temporary-directory API, environment, stdin and limits. Separate per-case stdout and stderr streams are drained continuously, without interleaving the stored logs of different cases.
 
 External files, databases and ports may remain shared. Tests use case-specific resources or the serial mode of §20.9 where needed; temporary-directory recovery performs no user defer or external rollback. Parallel cases are separate processes and add no language-level threads or memory model.
 
 The parent's monotonic clock measures a finite execution deadline and the recovery grace. The execution deadline covers child launch through exit, including runtime preparation, initialization, body, cleanup, shutdown and completion reporting, but not build or queue time. Normal exit, abnormal exit, timeout and cancellation enter the same bounded recovery process. Timed-out and cancelled cases are stopped, and remaining managed descendants are recovered even after a normal child exit.
 
-The process group is managed from launch with an OS management unit or equivalent; later PID enumeration alone is insufficient. The recovery grace bounds process termination waits, channel draining and EOF waits, and temporary cleanup. Surviving processes and unrecovered resources are reported after the grace, preserving the original termination reason. Storage still used by a live process is never claimed as recovered. Forced termination does not guarantee user cleanup. No guarantee extends to external processes outside OS management. An unrecoverable resource shortage fails the run. The [test profile](testing-profile.md) defines the adopted limits and management mechanism.
+The process group is managed from launch with an OS management unit or equivalent; later PID enumeration alone is insufficient. The recovery grace bounds process termination waits, channel draining and EOF waits, and temporary cleanup. Surviving processes and unrecovered resources are reported after the grace, preserving the original termination reason. Storage still used by a live process is never claimed as recovered. Forced termination does not guarantee user cleanup. No guarantee extends to external processes outside OS management. An unrecoverable resource shortage fails the run. The [test profile](../impl/testing-profile.md) defines the adopted limits and management mechanism.
 
 ### 22.6.3. Diagnostic identity
 
@@ -608,7 +585,7 @@ Failure records, the termination reason and management errors are kept separatel
 
 A `$require` failure neither produces normal completion nor resumes the test function; the parent recovers that case's process and continues managing other cases. A `$require`-initiated Abort is identified from reliable termination information associated with its verification site. A recorded false condition alone does not establish that reason: condition cleanup, message evaluation or message cleanup may Abort or diverge before the operation reaches its own Abort. In those cases, both the already recorded failure and the actual termination reason are retained.
 
-Results are provided in human-readable and versioned machine-readable forms under the [test profile](testing-profile.md). They include the project, target and settings, IDs, source locations and expressions, retained values and messages, phases, durations, termination state, management errors, log paths and omission information. Terminal formatting is not the machine-readable interface.
+Results are provided in human-readable and versioned machine-readable forms under the [test profile](../impl/testing-profile.md). They include the project, target and settings, IDs, source locations and expressions, retained values and messages, phases, durations, termination state, management errors, log paths and omission information. Terminal formatting is not the machine-readable interface.
 
 ### 22.6.5. Bounded diagnostics and storage
 

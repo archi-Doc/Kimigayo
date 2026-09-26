@@ -1,6 +1,6 @@
 # Appendix B. Non-normative reference models
 
-[Specification index](../../SPEC.md)
+[Implementation specification index](../../IMPLEMENTATION.md)
 
 **Non-normative.** All algorithms in this appendix are optional. An alternative must preserve the language and Appendix A, including excluded-syntax validation and committed lookup decisions.
 
@@ -76,7 +76,7 @@ Descriptor sharing/canonicalization may permit address comparison when it preser
 
 ## B.5. Type relation and operation plans
 
-A Binder can map the [normative relation table](../03-types-and-values.md#38-type-relations-and-expression-operations) to separate APIs such as the following. Names and signatures are illustrative.
+A Binder can map the [normative relation table](../../spec/03-types-and-values.md#38-type-relations-and-expression-operations) to separate APIs such as the following. Names and signatures are illustrative.
 
 | Illustrative API | Responsibility |
 | --- | --- |
@@ -97,7 +97,7 @@ An implementation may attach the following information to bound Pattern position
 | --- | --- |
 | `MatchedType` | Complete Type at the position before referent selection |
 | `AccessMode` | `ByValue` / `Shared` / `Exclusive` after this position's referent selections |
-| `ImplicitDeref` | The number of safe reference layers selected at this position |
+| `ImplicitFollow` | The number of safe reference layers followed at this position |
 | `MovePath` | Subject position with owned initialization/destruction tracking, when applicable |
 | `CandidateSymbol` / `GuardReadType` | Binding position's candidate Identity and its guard Type `ref/T` |
 | `BodySymbol` / `BodyBindingType` | Distinct body-local Identity and its bound Type |
