@@ -214,8 +214,9 @@ public sealed partial class Binding
         {
             IdentifierNameKoto => source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate,
             ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } => true, // SPEC 13.5.5.1: a selected referent is a Place.
-            MemberAccessKoto member => (member.BoundSymbol?.Property is { Getter.IsStandard: true } && StructStorage.IsStruct(member.Left.BoundType?.Kind == BoundTypeKind.Semantics ? member.Left.BoundType.Components[0] : member.Left.BoundType)) ||
-                ReferenceTypes.IsTuple(member.Left.BoundType) || member.Left.BoundType?.Kind == BoundTypeKind.Tuple,
+            MemberAccessKoto member => ElementAccess.AccessType(member.Left) is var receiver &&
+                ((member.BoundSymbol?.Property is { Getter.IsStandard: true } && StructStorage.IsStruct(receiver?.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver)) ||
+                ReferenceTypes.IsTuple(receiver) || receiver?.Kind == BoundTypeKind.Tuple), // SPEC 3.4.1: also through the receiver's recorded reference.
             IndexKoto index => index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
                 ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType), // SPEC 4.6.9
             _ => false,

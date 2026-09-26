@@ -29,6 +29,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData(S + "func f(r: ref/S) -> string => r.f@move", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func f(x: i32) => x = 2", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let value) if (value = 1) => value\n    _ => 0", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(S + "func f(r: ref/(ref/S during a)) -> string => r.f@move", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Layers + "func f(r: ref/Outer{o}) => r.inner.n = 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Layers + "func f(r: ref/Outer{o}) => r.inner.n += 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Layers + "func f(r: ref/Outer{o})\n    let u = r.inner.n@uniq", DiagnosticCode.SharedPathAccess_Kd)]
@@ -40,6 +41,14 @@ public class PathCapabilityDiagnosticTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Code is DiagnosticCode.UnsupportedOwnership_Kd or DiagnosticCode.UninitializedPlace_Kd);
+    }
+
+    [Fact]
+    public void AFieldThroughSeveralLayersIsABarePlaceSubject()
+    {
+        // SPEC 15.1.6, 3.4.1: `r.n` through `ref/(ref/S)` is a Place, so the Subject is Shared and binds `ref/i32`.
+        var c = MinimalEmissionTest.Analyze(S + "func f(r: ref/(ref/S during a)) -> i32\n    match r.n\n        let v => return v@deref");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
