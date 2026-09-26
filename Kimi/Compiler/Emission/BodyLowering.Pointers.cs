@@ -74,7 +74,8 @@ internal sealed partial class BodyLowering
         var sharedRead = !store && pointerType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             pointerType.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } storedReference &&
             type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            (type.Semantics == SemanticsKind.Ref || storedReference.Semantics == SemanticsKind.Uniq) && ReferenceEquals(storedReference.Components[0], type.Components[0]);
+            (type.Semantics == SemanticsKind.Ref || (storedReference.Semantics == SemanticsKind.Uniq && pointerType.Semantics == SemanticsKind.Uniq)) &&
+            ReferenceEquals(storedReference.Components[0], type.Components[0]); // SPEC 15.6.2: a shared layer grants no exclusive load.
         var referent = pointerType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             (ReferenceEquals(pointerType.Components[0], type) || sharedRead) &&
             (store ? pointerType.Semantics == SemanticsKind.Uniq && ReferenceEquals(sourceType, pointerType) : place.Acquisition == AcquisitionKind.Copy);

@@ -60,7 +60,7 @@ internal sealed partial class BodyLowering
         else if (plan.Element < 0)
         {
             if (loop.IsTupleBinding || result is not { Kind: BoundTypeKind.Tuple, Components.Count: 2 } ||
-                !Matches(result.Components[0], key.Type) || !Matches(result.Components[1], value.Type) ||
+                !Matches(result.Components[0], key.Type, false) || !Matches(result.Components[1], value.Type, true) ||
                 this.aggregateLayouts.Get(result) is not { } pair ||
                 (borrowed ? pair.Offset(0) != 0 || pair.Offset(1) != 8 : pair.Offset(1) != helper.ValueOffset - helper.KeyOffset))
             {
@@ -78,7 +78,7 @@ internal sealed partial class BodyLowering
             }
 
             var component = plan.Element == 0 ? key : value;
-            if (result is null || !Matches(result, component.Type))
+            if (result is null || !Matches(result, component.Type, plan.Element == 1))
             {
                 return Fail("Dictionary component acquisition has a mismatched Type or Origin.", out failure);
             }
@@ -93,9 +93,10 @@ internal sealed partial class BodyLowering
         return true;
 
         // SPEC 14.6.2: a borrowed key is ref/K; a borrowed value is ref/V for shared and uniq/V for exclusive enumeration.
-        bool Matches(BoundType actual, BoundType stored) => borrowed
+        // The component is identified by its position, not its Type: K and V may be the same Type.
+        bool Matches(BoundType actual, BoundType stored, bool value) => borrowed
             ? actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-                (actual.Semantics == SemanticsKind.Ref || (ReferenceEquals(stored, dictionary.Components[1]) && body.Places[plan.Receiver].Type.Semantics == SemanticsKind.Uniq)) &&
+                (actual.Semantics == SemanticsKind.Ref || (value && body.Places[plan.Receiver].Type.Semantics == SemanticsKind.Uniq)) &&
                 ReferenceEquals(actual.Components[0], stored) && ReferenceEquals(actual.Origin, body.Places[plan.Receiver].Type.Origin)
             : ReferenceEquals(actual, stored);
     }

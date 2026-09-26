@@ -143,11 +143,21 @@ public sealed partial class OwnershipAnalysis
     {
         var shared = source.SharedIterable;
         var exclusive = source.Mode == SubjectMode.Exclusive && shared is not null;
-        var dictionary = source.Iterable.BoundType?.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(source.Iterable.BoundType);
-        var array = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.FixedArray;
-        var dynamicArray = shared is null && source.Iterable.BoundType?.Kind == BoundTypeKind.Array;
-        var slice = !dictionary && (shared is not null || source.Iterable.BoundType?.Kind == BoundTypeKind.Slice);
-        var element = slice ? source.Bindings[0].BoundType! : array || dynamicArray ? source.Iterable.BoundType!.Components[0] : BoundType.ISize;
+
+        // SPEC 14.6.2: a borrowed Copy iterable such as ref/Slice<T> is read as its value; Binding recorded that read.
+        var iterableType = this.compilation.Binding.TryGetAdaptation(source.Iterable, out var read) && read.Kind == ExpectedAdaptationKind.ReferentRead
+            ? read.Type : source.Iterable.BoundType;
+        var dictionary = iterableType?.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(iterableType);
+        var array = shared is null && iterableType?.Kind == BoundTypeKind.FixedArray;
+        var dynamicArray = shared is null && iterableType?.Kind == BoundTypeKind.Array;
+        var slice = !dictionary && (shared is not null || iterableType?.Kind == BoundTypeKind.Slice);
+        if (!dictionary && !array && !dynamicArray && !slice && iterableType?.Kind != BoundTypeKind.ResolvedRange)
+        {
+            this.Unsupported(source);
+            return;
+        }
+
+        var element = slice ? source.Bindings[0].BoundType! : array || dynamicArray ? iterableType!.Components[0] : BoundType.ISize;
         if (dynamicArray && (source.IsTupleBinding || !this.SupportsType(element) || this.compilation.Binding.ProveOwned(element, source) != ConstraintProof.Proven))
         {
             this.Unsupported(source);

@@ -152,13 +152,8 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (!this.hasElements && !preparedCopies)
-        {
-            return body.ElementUpdates.Count == 0 || Fail("Element updates require projection plans.", out failure);
-        }
-
-        // Defaults in this subset contain no calls. Cache the following call once;
-        // receiver checks then validate against its explicit acquired argument slots.
+        // Defaults in this subset contain no calls. Cache the following call once; receiver and prepared-argument
+        // borrow checks then validate against its explicit acquired argument slots, in every body.
         Grow(ref this.elementNextCalls, body.Operations.Count);
         var nextCall = -1;
         for (var i = body.Operations.Count - 1; i >= 0; i--)
@@ -168,7 +163,15 @@ internal sealed partial class BodyLowering
             {
                 nextCall = i;
             }
+        }
 
+        if (!this.hasElements && !preparedCopies)
+        {
+            return body.ElementUpdates.Count == 0 || Fail("Element updates require projection plans.", out failure);
+        }
+
+        for (var i = body.Operations.Count - 1; i >= 0; i--)
+        {
             // Explicit aggregate arguments can be acquired from locals/parameters,
             // not just literals or call results. Their Consume is independently
             // validated by LowerAggregate; retain its identity for dominance checks.
