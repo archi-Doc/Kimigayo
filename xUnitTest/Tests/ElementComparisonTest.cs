@@ -46,8 +46,17 @@ public class ElementComparisonTest
         "require exclusive(text@uniq) else => $abort(\"uniq\")\nlet names: Array<ref/string> = [text@ref]\n" +
         "for n in names\n    require n == \"admin\" and \"admin\" == n and n != \"user\" else => $abort(\"layers\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 4.6.9, 10.2: an element storing an exclusive reference or an object handle is read as its shared view when a
+    // member is selected below it.
+    private const string StoredViewsSource =
+        "struct Cell\n    public var value: i32 = 7\nfunc first(r: ref/[1 of uniq/Cell during c]) -> i32 => r[0].value\n" +
+        "var cell = Cell.init()\nlet cells: [1 of uniq/Cell] = [cell@uniq]\nrequire first(cells) == 7 else => $abort(\"uniq element\")\n" +
+        "let objects: Array<obj/Cell> = [Kimi.Intrinsics.makeObj(Cell.init())]\nlet view = objects[..]\n" +
+        "require view[0].value == 7 and objects[0].value == 7 else => $abort(\"object element\")\nConsole.writeLine(\"ok\")";
+
     [Theory]
     [InlineData("Elements", ElementsSource, "ok\n")]
+    [InlineData("StoredViews", StoredViewsSource, "ok\n")]
     [InlineData("Layers", LayersSource, "ok\n")]
     [InlineData("Dictionary", DictionarySource, "one\n")]
     [InlineData("BelowSharedElements", BelowSharedElementsSource, "b\na\nx\n")]

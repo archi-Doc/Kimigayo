@@ -264,7 +264,10 @@ public sealed partial class Binding
     // shared borrow of that element Place. The element keeps its stored Type; the borrow is the receiver's adaptation.
     private void ReceiverElement(Koto left, BoundType? element)
     {
-        if (KotoHelper.UnwrapParentheses(left) is IndexKoto index && ElementAccess.IsSharedElement(index))
+        // An owned Array element that stores a reference or handle is not an inline part either: its member is reached
+        // through the stored view.
+        if (KotoHelper.UnwrapParentheses(left) is IndexKoto index &&
+            (ElementAccess.IsSharedElement(index) || (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))))
         {
             this.SharedElement(left, index.Left, element);
         }

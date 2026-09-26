@@ -70,11 +70,11 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(elementReference);
         }
 
-        if (unwrapped is IndexKoto slice && type.Semantics == SemanticsKind.Ref &&
+        if (unwrapped is IndexKoto slice && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef &&
             (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType)))
         {
-            // A shared Reborrow of a stored exclusive reference or handle loads the stored pointer (SPEC 10.2);
-            // any other shared borrow takes the element slot's address.
+            // A shared Reborrow of a stored exclusive reference or an objref view of a stored handle loads the stored
+            // pointer (SPEC 10.2, 4.6.9); any other shared borrow takes the element slot's address.
             var reborrow = slice.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type);
             var depth = this.comparisonDepth++;
             var handle = this.SequenceReceiver(slice.Left, out var projection);
@@ -86,9 +86,33 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is IndexKoto index && ElementAccess.AccessType(index.Left) is { Semantics: SemanticsKind.Ref } array && ReferenceTypes.IsArray(array) &&
-            type.Semantics == SemanticsKind.Ref)
+            type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
         {
-            // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver.
+            // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver. A stored
+            // exclusive reference or handle is read as its shared view; any other element is borrowed at its address.
+            if (index.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type))
+            {
+                if (!ReferenceTypes.IsArray(index.Left.BoundType))
+                {
+                    this.Unsupported(index); // An element Place borrowed as the receiver holds no stored pointer to read.
+                    return -1;
+                }
+
+                var depth = this.comparisonDepth++;
+                var handle = this.Expression(index.Left, PlaceUseKind.Read);
+                var position = handle < 0 ? -1 : this.Value(this.Expression(index.Right));
+                var read = position < 0 ? -1 : this.SequenceValue(index, type, SequenceOperation.Read, handle, index: position);
+                this.EndComparisonLoans(depth, index);
+                this.comparisonDepth = depth;
+                return read;
+            }
+
+            if (type.Semantics != SemanticsKind.Ref)
+            {
+                this.Unsupported(index);
+                return -1;
+            }
+
             var receiver = this.Receiver(index.Left);
             var receiverValue = this.Value(receiver);
             var subscript = this.Expression(index.Right);
