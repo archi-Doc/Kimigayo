@@ -46,14 +46,18 @@ internal static partial class LlvmModuleWriter
             WriteSlot(output, function, instruction.Place);
             output.Write(", ptr ");
             WriteSlot(output, function, (int)function.GetOperands(instruction)[0].Value);
-            output.Write($", i64 {instruction.Aggregate.Value.Layout.Size}, i1 false)\n");
+            output.Write(", i64 ");
+            WriteNumber(output, instruction.Aggregate.Value.Layout.Size);
+            output.Write(", i1 false)\n");
         }
 
-        output.Write($"  %operationsSlot{instruction.Operation} = getelementptr i8, ptr ");
+        Name(output, "  %operationsSlot", instruction.Operation);
+        output.Write(" = getelementptr i8, ptr ");
         WriteSlot(output, function, instruction.Place);
         output.Write(", i64 8\n  store ptr @");
         WriteClosureTableName(output, function, instruction.Operation);
-        output.Write($", ptr %operationsSlot{instruction.Operation}, align 8\n");
+        Name(output, ", ptr %operationsSlot", instruction.Operation);
+        output.Write(", align 8\n");
     }
 
     private static void WriteClosureTableName(TextWriter output, EmissionFunction function, int id)
@@ -99,9 +103,13 @@ internal static partial class LlvmModuleWriter
             Name(output, ", i64 ", field.Offset);
             if (operands[i].Kind == EmissionOperandKind.SlotAddress)
             {
-                output.Write($"\n  call void @llvm.memcpy.p0.p0.i64(ptr %captureAddress{id}_{i}, ptr ");
+                Name(output, "\n  call void @llvm.memcpy.p0.p0.i64(ptr %captureAddress", id);
+                Name(output, "_", i);
+                output.Write(", ptr ");
                 WriteSlot(output, function, (int)operands[i].Value);
-                output.Write($", i64 {field.Representation.Layout.Size}, i1 false)\n");
+                output.Write(", i64 ");
+                WriteNumber(output, field.Representation.Layout.Size);
+                output.Write(", i1 false)\n");
                 continue;
             }
 

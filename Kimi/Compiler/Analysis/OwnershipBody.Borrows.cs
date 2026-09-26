@@ -15,6 +15,7 @@ public sealed partial class OwnershipBody
     private int[] borrowDefinitions = [];
     private int[] slicePaths = [];
     private bool[] inspectionBorrows = [];
+    private bool[] borrowedPlaces = [];
 
     internal PlaceState GetBorrowInputState(int operation)
     {
@@ -49,11 +50,18 @@ public sealed partial class OwnershipBody
         // is a separate Place and retains its ordinary Origin-based dependency.
         Grow(ref this.inspectionBorrows, count);
         this.inspectionBorrows.AsSpan(0, count).Clear();
+        Grow(ref this.borrowedPlaces, count);
+        this.borrowedPlaces.AsSpan(0, count).Clear();
         for (var id = 0; id < this.Operations.Count; id++)
         {
             if (this.Values[id].Kind == OwnershipValueKind.Borrow && this.Operations[id].Input >= 0)
             {
                 this.inspectionBorrows[this.Operations[id].Input] = true;
+            }
+
+            if (this.Operations[id] is { Kind: OwnershipOperationKind.Borrow, Place: >= 0 } borrow && borrow.Place < count)
+            {
+                this.borrowedPlaces[borrow.Place] = true;
             }
         }
 
@@ -759,18 +767,8 @@ public sealed partial class OwnershipBody
     }
 
     // A scalar temporary is a Loan root only where a borrow materializes it (SPEC 3.6.2).
-    private bool IsBorrowedPlace(int place)
-    {
-        for (var i = 0; i < this.Operations.Count; i++)
-        {
-            if (this.Operations[i] is { Kind: OwnershipOperationKind.Borrow } borrow && borrow.Place == place)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // Recorded once per preparation; the Origin mapping queries it for every root of every Place.
+    private bool IsBorrowedPlace(int place) => this.borrowedPlaces[place];
 
     private bool IsBorrowAncestor(int value, int place)
     {

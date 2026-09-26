@@ -290,7 +290,10 @@ internal static partial class LlvmModuleWriter
                     {
                         if (function.SlotAddresses[p] is { Kind: EmissionOperandKind.CaptureAddress } capture)
                         {
-                            output.Write($"  %p{p} = getelementptr i8, ptr %environment, i64 {capture.Value}\n");
+                            Name(output, "  %p", p);
+                            output.Write(" = getelementptr i8, ptr %environment, i64 ");
+                            WriteNumber(output, capture.Value);
+                            output.Write('\n');
                         }
                     }
                 }

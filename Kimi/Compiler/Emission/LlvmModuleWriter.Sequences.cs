@@ -93,7 +93,11 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
             if (operands.Length == 5)
             {
-                output.Write($"  %offset{id} = add i64 %itemoffset{id}, {(long)operands[4].Value}\n");
+                Name(output, "  %offset", id);
+                Name(output, " = add i64 %itemoffset", id);
+                output.Write(", ");
+                WriteNumber(output, (long)operands[4].Value);
+                output.Write('\n');
             }
 
             Name(output, "  %element", id);
