@@ -21,10 +21,11 @@ public sealed partial class Binding
     // then shared-borrowed through the layer where a reference to it is required.
     private BoundType ComparisonThroughPairs(Koto operand, BoundType type)
     {
+        var scope = this.ConstraintScope(operand);
         for (var depth = 0; depth < 8; depth++)
         {
             var terminal = ComparisonReferent(type);
-            if (!TryPairLayer(terminal, out _, out _) || this.FollowablePair(terminal, this.ConstraintScope(operand), out var target) == SemanticsMask.None)
+            if (this.FollowablePair(terminal, scope, out var target) == SemanticsMask.None)
             {
                 return depth == 0 ? type : terminal;
             }
