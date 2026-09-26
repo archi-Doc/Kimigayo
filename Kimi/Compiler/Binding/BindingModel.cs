@@ -189,6 +189,9 @@ public sealed class BindingSymbol
 
     internal bool MutableCapture { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether a Pattern or iteration binding is a reference because its path is shared or exclusive (SPEC 15.1.6).</summary>
+    internal bool BindsReference { get; set; }
+
     /// <summary>Gets or sets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
     internal bool TransferCapture { get; set; }
 

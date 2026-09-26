@@ -14,12 +14,12 @@ public sealed partial class Binding
     private int defaultBindingDepth;
 
     // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a value of its referent Type
-    // assigned to it names that mode and the spellings that bind or update a value instead. A guard candidate is a
-    // shared layer that grants Read only (SPEC 14.8.3).
+    // assigned to it names that mode and the spellings that bind or update a value instead. A binding whose stored Type
+    // is itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that
+    // grants Read only (SPEC 14.8.3).
     private static BindingFailure? ReferenceBindingAssignment(Koto target)
         => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate } ? BindingFailure.SharedPathAccess
-            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
-            symbol.Declaration is SyntaxFormKoto { Akind: KotoKind.BindingPattern } or IdentifierNameKoto { Parent: ForKoto }
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, BindsReference: true, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } }
             ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
 
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
@@ -958,6 +958,9 @@ public sealed partial class Binding
             left = this.BindNode(binary.Left, scope, assignment ? null : expected);
             left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
             right = this.BindNode(binary.Right, scope, left is { IsInteger: true } ? left : null);
+
+            // SPEC 3.5.3: the count of a compound shift is Scalar-read like that of a plain shift (below).
+            right = assignment ? this.ReadReferent(binary.Right, right) : right;
         }
         else if (IsUnfittedLiteral(binary.Left) && !IsUnfittedLiteral(binary.Right) && !assignment)
         {

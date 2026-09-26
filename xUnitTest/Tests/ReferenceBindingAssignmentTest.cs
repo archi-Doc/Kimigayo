@@ -27,6 +27,17 @@ public class ReferenceBindingAssignmentTest
     }
 
     [Theory]
+    [InlineData("let a = 1\nvar refs: Array<ref/i32> = [a@ref]\nfor var r in refs@move\n    r = 2")]
+    [InlineData("let a = 1\nmatch (a@ref, 2)\n    (var r, _) => r = 3")]
+    public void OwnedReferenceBindingsReportTheOrdinaryMismatch(string source)
+    {
+        // SPEC 15.1.6: a ByValue Subject binds its stored reference; the mode diagnostic does not apply.
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.SharedBindingAssignment_Kd or DiagnosticCode.ExclusiveBindingAssignment_Kd);
+    }
+
+    [Theory]
     [InlineData("var values: Array<i32> = [1]\nfor v in values@uniq\n    v@deref += 1")]
     [InlineData("var values: Array<i32> = [1]\nfor var v in values@move\n    v += 1")]
     [InlineData("var count: i32 = 1\nmatch count@owner\n    var n => n += 5")]

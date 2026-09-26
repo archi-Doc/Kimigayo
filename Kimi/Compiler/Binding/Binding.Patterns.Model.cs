@@ -92,11 +92,11 @@ public sealed class BoundMatch
 
     internal bool Pending { get; set; }
 
-    /// <summary>Gets or sets the borrow that acquires the Subject (SPEC 15.1.6 subject rule): the shared borrow of a bare Place or temporary,
-    /// or the exclusive Reborrow of a bare exclusive borrow value; null when the written Subject value itself is acquired.</summary>
+    /// <summary>Gets or sets the borrow that acquires the Subject (SPEC 15.1.6 subject rule): the borrow of a bare Place in its mode,
+    /// such as the exclusive Reborrow of a bare exclusive borrow value; null when the written Subject value itself is acquired.</summary>
     internal BoundType? SubjectBorrow { get; set; }
 
-    /// <summary>Gets or sets the Subject mode fixed by the outermost written operation.</summary>
+    /// <summary>Gets or sets the Subject mode: the access that the Subject Place grants (SPEC 15.1.6).</summary>
     internal SubjectMode Mode { get; set; }
 
     internal void Reset(MatchKoto? syntax)

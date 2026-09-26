@@ -370,6 +370,7 @@ public sealed partial class Binding
                 // of a reference-valued Subject copies that reference and never selects the internal slot.
                 symbol.Type = access == PatternAccessMode.Owned ? matched
                     : this.InternType(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: origin);
+                symbol.BindsReference = access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };

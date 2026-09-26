@@ -117,6 +117,7 @@ public sealed partial class Binding
             }
 
             name.BoundSymbol!.Type = slot;
+            name.BoundSymbol.BindsReference = source.Mode != SubjectMode.ByValue;
             Complete(name, slot);
         }
 

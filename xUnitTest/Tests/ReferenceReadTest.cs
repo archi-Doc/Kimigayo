@@ -15,6 +15,7 @@ public class ReferenceReadTest
         "let x: i32 = 7\nvar y: i32 = 3\nlet r = x@ref\nlet n: i32 = r\nvar m: i32 = 0\nm = r\nlet apply = func (v: i32) -> i32 => v + 1\n" +
         "require value(r) == 7 and read(x@ref) == 7 and readUniq(y@uniq) == 3 and n == 7 and m == 7 else => $abort(\"acquire\")\n" +
         "require r == 7 and 7 == r and r == x and not (x != r) and r + 1 == 8 and -r == -7 and not (r < 7) and apply(r) == 8 else => $abort(\"operand\")\n" +
+        "var wide: i64 = 1\nlet count: i32 = 3\nlet c = count@ref\nwide <<= c\nrequire wide == 8 and (wide >> c) == 1 else => $abort(\"shift\")\n" +
         "Console.writeLine(\"ok\")";
 
     [Fact]
