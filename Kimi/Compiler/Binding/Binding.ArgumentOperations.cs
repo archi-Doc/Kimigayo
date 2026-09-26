@@ -278,8 +278,7 @@ public sealed partial class Binding
         }
 
         this.CompareInPlace(selection.Left);
-        if (ElementAccess.AccessType(selection.Left) is { } receiver &&
-            (receiver.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsBorrow(receiver)))
+        if (ElementAccess.IsBorrowedReceiver(ElementAccess.AccessType(selection.Left)))
         {
             this.SharedElement(operand, selection.Left, selection.BoundType);
         }

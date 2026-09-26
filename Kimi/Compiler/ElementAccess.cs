@@ -19,14 +19,19 @@ internal static class ElementAccess
     internal static bool IsSharedElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
         (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType));
 
-    // SPEC 4.6.9: whether a selection reaches its Place through a Slice, a dynamic Array or a reference on its path rather
-    // than through static selectors of an owner.
+    // SPEC 4.6.9: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
+    // Array, a Dictionary or a borrow.
+    internal static bool IsBorrowedReceiver(BoundType? receiver)
+        => receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || ReferenceTypes.IsBorrow(receiver);
+
+    // SPEC 4.6.9: whether a selection reaches its Place through a borrowed receiver on its path rather than through static
+    // selectors of an owner.
     internal static bool IsBorrowedSelection(Koto source)
     {
         for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
             !Binding.IsGetterResult(selection); depth++)
         {
-            if (AccessType(selection.Left) is { } receiver && (receiver.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsBorrow(receiver)))
+            if (IsBorrowedReceiver(AccessType(selection.Left)))
             {
                 return true;
             }
