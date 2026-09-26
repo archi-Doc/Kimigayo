@@ -40,7 +40,7 @@ pair(second: 3)    // first = 1, second = 3.
 
 This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or ordinary common-Type inference; it is never derived backward from a borrow or a Scalar read. §14.9.1 finds the common Type of result sources, including sources that differ only in reference layers over one Scalar; sources without a common Type, such as `ref/Node` and `Node`, need an annotation, or an explicit `@follow` when `Node` is Copy. The call form, explicit Type arguments and aliases do not change these rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
 
-In the table, `U` is the complete Type named in the Expected column; the shared-reference and Scalar-read rows may reach it through several input layers.
+In the table, `U` is the complete Type named in the Expected column; the shared-reference and Scalar-read rows may reach it through several input layers, including qualifying pair layers (§3.4.1) with the dependencies of §13.5.5.1.
 
 | Input | Expected | Operation |
 | --- | --- | --- |
@@ -118,7 +118,7 @@ chooseBorrow(1) // Error: both fit; default i32 does not break the tie.
 
 Type inference and acquisition planning are separate: inferring a Type performs no Copy, Move or borrow.
 
-1. Bind explicit Type arguments, then infer the remaining Type arguments from the original complete Types of the receiver and the arguments. A bare `T` binds the original Type; a declared `ref/T` or `uniq/T` binds `T` to an owned argument's complete Type or to the immediate referent of a borrow value's outermost layer, and the rows of the table that follow several layers apply only after `T` is fixed. Constraints over several arguments are solved together, and no argument fixes `T` first by traversal order.
+1. Bind explicit Type arguments, then infer the remaining Type arguments from the original complete Types of the receiver and the arguments. A bare `T` binds the original Type; a declared `ref/T` or `uniq/T` binds `T` to an owned argument's complete Type or to the immediate referent of a borrow value's outermost layer, and the rows of the table that follow several layers apply only after `T` is fixed. A [pair layer](13-operators-and-assignment.md#pair-layers) is not a borrow value here: `T` binds to its complete Type `W`, so `inspect(c[i])` for an element Type `s/U` binds `s/U` and shared-borrows the element slot as `c[i]@ref` does, while `inspect(c[i]@follow)` binds `U`. Constraints over several arguments are solved together, and no argument fixes `T` first by traversal order.
 2. An independently known expected result Type fills still-unbound parts by ordinary Type matching; it never selects an unknown Type by inverting a borrow or Scalar read, and never changes an established Type. Origin inference and shortening follow the ordinary rules, keeping bound internal Origins.
 3. Normalize the parameter Types and plan the acquisition of each argument under §3.5 and this section. An existing reference passed to a borrow parameter is Reborrowed in a generic call as elsewhere; consuming the reference value itself needs `@move`.
 

@@ -176,6 +176,8 @@ struct Buffer
 | Declaration in a base `B` | The projection of §9.5.1 | The same |
 | Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and is otherwise not acquired (write `p@move.m()`); a reference supplies a Scalar `Self` by the Scalar read, and otherwise `p@follow.m()` Copies a Copy referent | An owned temporary passes as is; an owned Place requires `p@move`; there is no read from an object borrow |
 
+A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path is followed like a borrow value: a `ref/Self` or `uniq/Self` receiver is acquired as `p@follow@ref` or `p@follow@uniq`, and an exclusive receiver needs the Write capability of §13.5.5.1. For an owning receiver, the only implicit acquisition through a pair layer is the Scalar read of a Scalar `Self`, the rule of its `ref` case; otherwise write `p@follow.m()`, which Copies the selected Place and needs Copy evidence.
+
 **Checks.** The acquisition is checked in the following order, and the call is an error if any check fails:
 
 1. *The supplied operation is legal* under the existing explicit rules, including static storage (§15.2.3), values of generic Semantics (§8.9), `rc`/`arc` (shared access only, §13.5.5), Property permissions (§11.1), getter-result storage (§11.2.3) and the exclusive acquisition conditions of §15.1.5.

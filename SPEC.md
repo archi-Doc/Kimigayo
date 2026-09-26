@@ -43,6 +43,7 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 
 - [12. Expressions](spec/12-expressions.md)
 - [13. Operators and assignment](spec/13-operators-and-assignment.md)
+  - [Pair layers](spec/13-operators-and-assignment.md#pair-layers): a pair `s/T` or `s/U` whose admitted set lies in `value or valueborrow` is a safe value-reference layer that may or may not exist; `@follow` selects its direct target, and every operation applies the rule of each admitted Semantics, taking the weakest capability and mode and keeping each case's dependencies conditionally.
 - [14. Control flow](spec/14-control-flow.md)
 
 ### Part V. Ownership, cleanup, and failure

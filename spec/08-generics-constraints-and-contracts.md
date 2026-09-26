@@ -52,6 +52,8 @@ For another target `s/U`, omitted Origins follow the position rules symbolically
 
 Conditional slots and result plans are kept in the [canonical contract](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification). Instantiation substitutes that plan; it introduces no binders and discovers no missing definition proofs.
 
+Following a [pair layer](13-operators-and-assignment.md#pair-layers) uses the outer-Origin slot of the followed occurrence, not `W`'s outer Origin for another `s/U`, and keeps the dependencies of each admitted case as conditional dependencies by the same mechanism: a dependency is active only for the Semantics whose case produced it.
+
 ### 8.1.3. Argument validity
 
 **WellFormedGenericTypeArgument(A)** requires a valid resolved complete Type, or a legitimately dependent Type with retained obligations. Access, Semantics application, generic and associated-Type arguments, Origin bindings, relations and Constraints are checked before any Origin-erased comparison key is used.
@@ -818,6 +820,8 @@ A by-value acquisition's effect follows its spelling:
 - `@s` follows the binding of `s`: it borrows for a borrow binding and, for an owning binding, performs an ordinary same-Type acquisition, which needs Copy evidence.
 
 Unresolved Copy capability is never treated as proof of Non-Copy. Borrow effects may remain symbolic until instantiation only if every admitted case is legal, including subsequent uses, Loans and cleanup. This delays the determination of an effect, not the discovery of a required capability. Environment-changing directives still obey their earlier [selection deadlines](19-compile-time-directives.md#194-name-resolution-boundary).
+
+Following a [pair layer](13-operators-and-assignment.md#pair-layers) has such a symbolic effect: Borrow for `owner` and Reborrow for `ref` and `uniq`. `@s` and `@follow` correspond in how they treat the outer layer, but they are not inverse operations: `@s` applies Semantics to a value, and `@follow` selects a Place and never restores a Take.
 
 Instantiations may have different effects. The already-verified effect plan is substituted, and each concrete body's cleanup is derived from it; an analysis for a different effect is never reused without validation. Compile-time directives neither test Types nor select Access Effects. The [generic verification principle](#810-generic-body-checking-and-deferred-obligations) requires the ordinary body to be valid independently of explicit specializations.
 

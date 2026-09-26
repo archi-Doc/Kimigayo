@@ -474,7 +474,7 @@ The [initialization-state rules](15-ownership-and-lifetime-analysis.md#1511-stor
 
 ### 3.4.1. Reference-path selection
 
-A member access, an index expression and the receiver of a method call select a Place from the declaration and the Type of their operand. If the operand's current layer is a safe value reference (`ref` or `uniq`) without the required member, index or receiver declaration, selection continues at its immediate referent, layer by layer, and stops at the first layer that has the declaration. Selection uses Types alone: a later acquisition, adaptation or Loan failure never returns to another layer. Object Semantics follow the object view rules of §12.4.3–4, and a complete Sealed payload is selected under the [follow rules](13-operators-and-assignment.md#13551-follow).
+A member access, an index expression and the receiver of a method call select a Place from the declaration and the Type of their operand. At each layer, selection stops when the current complete Type has the required member, index or receiver declaration, either declared or provided by a published requirement such as a Contract conformance or Type-identity Constraint. Otherwise, if the layer is a safe value reference (`ref` or `uniq`) or a [pair layer](13-operators-and-assignment.md#pair-layers) whose admitted set lies in `value or valueborrow`, selection continues at its referent or direct target and repeats; `s/(ref/V)` thus continues from `ref/V` to `V`. Throughout this specification, the **safe value-reference layers** that such rules follow include these pair layers, with the capabilities, dependencies and modes of §13.5.5.1. Selection uses Types alone: a later acquisition, adaptation or Loan failure never returns to another layer. Object Semantics follow the object view rules of §12.4.3–4, and a complete Sealed payload is selected under the [follow rules](13-operators-and-assignment.md#13551-follow).
 
 ```kimi
 func update(node: uniq/Node)
@@ -484,9 +484,9 @@ func update(node: uniq/Node)
 
 The same selection applies to the receiver of a borrowing `for` entry (§14.6.2) and to structural Patterns, which stop at the first layer that has the required structure (§14.8.1). A Scalar read and a comparison instead select the terminal of the reference chain (§3.5.3, §13.4). Each selected layer keeps its own capabilities, Origins and Loans; exclusive capability is never recovered through a shared layer.
 
-In a generic body, a Type parameter or associated Type whose shape the public Constraints and Type equalities do not determine, after normalization, is the terminal of the path. Only its published capabilities are used there, and instantiation never selects a different layer, member or comparison. A reference shape proven by a declared equality may be followed at definition time.
+In a generic body, a Type parameter or associated Type whose shape the public Constraints and Type equalities do not determine, after normalization, is the terminal of the path. Only its published capabilities are used there, and instantiation never selects a different layer, member or comparison. A reference shape proven by a declared equality may be followed at definition time. A qualifying pair layer is not a terminal: it is followed to its direct target unless its complete Type publishes the requirement. For example, when an associated Type is identical to `s/T` and a Contract conformance of that associated Type is required, its members are selected on the complete `s/T`, not on `T`.
 
-Bare acquisition and a single-name binding never select a referent. `@ref` and `@uniq` are not subject to selection: they always borrow the immediately written slot (§13.5.5). An update requirement, such as the exclusive access needed by `matrix[f()][j] = value`, propagates only along the selected projection path, never into the argument `f()` or behind an ordinary function or getter.
+Bare acquisition, a single-name binding and Type inference (§10.2) never select a referent or follow a pair layer. `@ref` and `@uniq` are not subject to selection: they always borrow the immediately written slot (§13.5.5). An update requirement, such as the exclusive access needed by `matrix[f()][j] = value`, propagates only along the selected projection path, never into the argument `f()` or behind an ordinary function or getter.
 
 ## 3.5. Copy and move
 
@@ -613,7 +613,7 @@ for number in references     // references: Array<ref/i32>; number: ref/(ref/i32
     total += number          // Reads the terminal i32.
 ```
 
-- Only safe value-reference layers are followed. Object Semantics, raw pointers and Fields are not followed, and every layer is checked for initialization, capability and Loans.
+- Only safe value-reference layers, including qualifying pair layers (§3.4.1), are followed. Object Semantics, raw pointers and Fields are not followed, and every layer is checked for initialization, capability and Loans. For `factor: s/i32` under `s is value or valueborrow`, `factor * 2` reads the `i32` in every admitted case.
 - No numeric conversion is added; an unresolved literal is fitted to the terminal Scalar Type. Overflow, operator availability and short-circuit evaluation are unchanged.
 - Every read takes the value at that evaluation; nothing is snapshotted at binding time.
 - The target of an assignment, compound assignment, increment or decrement is never redirected to a referent: `number += 1` on `number: ref/i32` is an error, and `number@follow += 1` updates the referent.

@@ -101,7 +101,7 @@ For floating-point values, `+0.0 == -0.0` is true. With a NaN operand, `==`, `<`
 
 Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison. Tuple comparison visits corresponding elements from left to right and stops as soon as the result is determined: equality stops at the first unequal pair, and ordering stops at the first pair that is unequal or unordered. An unordered pair makes all four relational operators false, without inspecting later elements. This rule composes recursively, including shared-borrow elements, and never converts unordered floating values into a Comparable result.
 
-Comparisons may borrow their operands and never Move Non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability (§13.4.1). An operand whose Type is safe value-reference layers (`ref`, `uniq`) denotes the terminal Place reached by following every layer (see [reference-path selection](03-types-and-values.md#341-reference-path-selection)), and the comparison applies to that terminal Type. Following the layers acquires nothing; the terminal is then copied or shared-inspected as this section requires. Both terminal Types must be the same (or one operand is `Never`), and that Type's comparison capability applies. An owned operand and a reference to the same Type therefore compare alike, and an untyped literal operand is fitted to the other operand's terminal Type. The outer borrow Origins need not be identical, but each layer of each operand must remain valid through the comparison. Object Semantics and raw pointers are not followed and compare under their own rules.
+Comparisons may borrow their operands and never Move Non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability (§13.4.1). An operand whose Type is safe value-reference layers (`ref`, `uniq` and the qualifying pair layers of §3.4.1) denotes the terminal Place reached by following every layer (see [reference-path selection](03-types-and-values.md#341-reference-path-selection)), and the comparison applies to that terminal Type. Following the layers acquires nothing; the terminal is then copied or shared-inspected as this section requires. Both terminal Types must be the same (or one operand is `Never`), and that Type's comparison capability applies. An owned operand and a reference to the same Type therefore compare alike, and an untyped literal operand is fitted to the other operand's terminal Type. The outer borrow Origins need not be identical, but each layer of each operand must remain valid through the comparison. Object Semantics and raw pointers are not followed and compare under their own rules.
 
 ```kimi
 // names: Array<ref/string>; name is ref/(ref/string).
@@ -339,7 +339,7 @@ Rounding and checks apply at every `@` in a chain; an intermediate result is nev
 
 #### 13.5.5.1. Follow
 
-`E@follow` selects the Place that a `ref/T` or `uniq/T` value `E` points to. It reads only the reference information needed to locate that Place and neither Copies nor Moves the reference or the referent. The selected Place keeps the capabilities and dependencies of the reference: the referent of `ref/T` offers Read, the referent of `uniq/T` offers Read and Write, and neither offers Take. Each `@follow` removes exactly one layer; write it twice to follow two layers. It takes no Type, `?` or `during` (§13.5.1), and raw pointers keep the `*` operator and its Unsafe rules (§5.2).
+`E@follow` selects the Place that a `ref/T` or `uniq/T` value `E` points to; [pair layers](#pair-layers) and complete object payloads follow below. It reads only the reference information needed to locate that Place and neither Copies nor Moves the reference or the referent. The selected Place keeps the capabilities and dependencies of the reference: the referent of `ref/T` offers Read, the referent of `uniq/T` offers Read and Write, and neither offers Take. Each `@follow` removes exactly one layer; write it twice to follow two layers. It takes no Type, `?` or `during` (§13.5.1), and raw pointers keep the `*` operator and its Unsafe rules (§5.2).
 
 ```kimi
 var number: i32 = 1
@@ -377,6 +377,42 @@ func borrowPayloadMut<T>(source: objuniq/T) -> uniq/T during source
 // a and b are writable obj/Cell<i32> Places; Cell is non-open.
 Kimi.Intrinsics.swap(a@follow@uniq, b@follow@uniq) // Exchange payload contents.
 Kimi.Intrinsics.swap(a@uniq, b@uniq)             // Exchange handle values.
+```
+
+<a id="pair-layers"></a>
+**Pair layers.** A **pair layer** is a normalized Type whose outer Semantics is a pair binding `s` (§8.1.1): the original `s/T`, whose direct target is `T`, or an application `s/U` to another Type, whose direct target is `U`. The pair target `T` alone is not a pair layer. When the [admitted set](08-generics-constraints-and-contracts.md#87-constraint-proof-system) of `s` is contained in `value or valueborrow`, the pair layer is one safe value-reference layer that may or may not exist: there is no layer for `s = owner` and one layer for `s = ref` or `uniq`. On such a Place or value, `@follow` selects the Place storing the direct target `U`, the **selected Place**. It removes one layer (`s/(t/U)` needs two), neither Copies nor Moves the reference or the referent, and is a definition-time error for any other admitted set; the diagnostic names the admitted set and the missing `s is value or valueborrow`. It is not the inverse of `x@s` (§8.9): for `s = owner`, `x@s` on an owned Place needs Copy and yields a separate temporary, and following that temporary selects it, not `x`.
+
+Every operation on a pair layer applies the existing rule of each admitted Semantics, and a generic body must be valid for all of them (§8.10). For an operand Place `P` whose path dependencies are `p`, and for the mode `M` reached so far (§15.1.6):
+
+| Aspect | `owner` | `ref` | `uniq` |
+| --- | --- | --- | --- |
+| Selected Place | `P` itself; a value is materialized only when an operation needs storage (§3.6.1) | The referent | The referent |
+| Access Effect (§8.9) | Borrow | Reborrow; a Copy of the reference in the shared-reference adaptation of §10.2 | Reborrow |
+| Read | When `P` is readable | Yes | Yes |
+| Write | When `P` is exclusively writable | No | Yes, also through a `let` slot; never through a shared path |
+| Dependencies | `p`; for a value, its Temporary Place (§3.6.2) | `o` and the parent Loan, not the slot holding the reference (§13.5.5.2) | As for `ref` |
+| Mode of a bare Place Subject | Shared | Shared | Exclusive |
+| Mode past the layer | The weaker of `M` and Exclusive | Shared | The weaker of `M` and Exclusive |
+
+A generic body combines the admitted cases:
+
+- **Capabilities and modes** are the weakest of the admitted cases. Write therefore needs `s is owner or uniq` and, when `owner` is admitted, an exclusively writable `P`.
+- **Dependencies** of each case are kept as a conditional dependency that is active only for that `s`, like the conditional Origin slots of §8.1.2; definition checking uses every dependency that can be active. Each case's dependencies come from applying the existing rules to its whole path, not from accumulating layers: the table shows the case in which the selected Place lies directly below the pair layer. Adapting `s/(ref/V during a)` to `ref/V` Copies the inner `ref` in every case (§10.2), so the result depends only on `a` and the actual Loans, while `p` and `o` need to be valid only when the path is read.
+- **The Access Effect** is symbolic (§8.9); each case is legal under the existing rules.
+- **Take** is never offered, even when the admitted set is `{owner}`, so a structural Pattern never binds by value past a pair layer. Ownership is obtained with `remove` or `Kimi.Intrinsics.exchange`.
+
+`o` is the conditional outer Origin of the followed occurrence: `W`'s outer Origin for the original `s/T`, and for another `s/U` the slot that the position rules or an explicit annotation give that occurrence (§8.1.2). It is independent of the Origins of other inputs that use the same `s`; internal Origins of `U` and the actual Loans are kept.
+
+The plan (selected Place Type, Access Effect, capabilities, conditional dependencies and Loans) is fixed at definition checking and substituted at instantiation (§8.1.2, §8.9). An instance never reanalyzes the selected Place as an ordinary owned Place, and Take stays excluded. Generated code reuses existing addresses: the address of an owned Place, the address a reference value already holds, and a pointer loaded from a Place storing a reference only when needed. Following adds no Copy, runtime branch, heap allocation or unneeded reference temporary. `@follow` on a concrete owned Place remains an error, and object and `unsafe` pairs are not followed (Appendix D).
+
+```kimi
+func view<s/T>(c: ref/Collection<s/T>, i: isize) -> ref/T during c
+    s is value or valueborrow
+    return c[i]@follow@ref   // owner: Borrow of the element; ref and uniq: shared Reborrow of the referent.
+
+func viewUniq<s/T>(c: uniq/Collection<s/T>, i: isize) -> uniq/T during c
+    s is owner or uniq
+    return c[i]@follow@uniq  // Rejected for Collection<ref/Node>: s is owner or uniq is Refuted.
 ```
 
 #### 13.5.5.2. Borrow and reborrow
