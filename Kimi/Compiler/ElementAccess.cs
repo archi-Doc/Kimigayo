@@ -26,21 +26,10 @@ internal static class ElementAccess
 
     // SPEC 4.6.9: whether a selection reaches its Place through a borrowed receiver on its path rather than through static
     // selectors of an owner.
-    internal static bool IsBorrowedSelection(Koto source)
-    {
-        for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
-            !Binding.IsGetterResult(selection); depth++)
-        {
-            if (IsBorrowedReceiver(AccessType(selection.Left)))
-            {
-                return true;
-            }
+    internal static bool IsBorrowedSelection(Koto source) => HasReceiverOnPath(source, owners: true);
 
-            source = selection.Left;
-        }
-
-        return false;
-    }
+    // SPEC 4.6.6, 4.6.9: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
+    internal static bool ReachesThroughBorrow(Koto source) => HasReceiverOnPath(source, owners: false);
 
     internal static bool IsSyntax(Koto source) => source is IndexKoto or MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && StructStorage.IsStruct(type));
@@ -299,6 +288,23 @@ internal static class ElementAccess
             position = (int)magnitude;
             element = type.Components[position];
             return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasReceiverOnPath(Koto source, bool owners)
+    {
+        for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
+            !Binding.IsGetterResult(selection); depth++)
+        {
+            var receiver = AccessType(selection.Left);
+            if (owners ? IsBorrowedReceiver(receiver) : receiver?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsBorrow(receiver))
+            {
+                return true;
+            }
+
+            source = selection.Left;
         }
 
         return false;

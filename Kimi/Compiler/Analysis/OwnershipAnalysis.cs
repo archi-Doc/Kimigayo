@@ -696,7 +696,7 @@ public sealed partial class OwnershipAnalysis
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))):
                 return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) || ObjectTypes.IsBorrow(member.Left.BoundType) ||
-                (ReferenceTypes.IsValue(member.BoundType) && ElementAccess.BorrowedPathRoot(member) is not null):
+                ElementAccess.BorrowedPathRoot(member) is not null:
                 return this.ReadBorrowedField(member);
             case IndexKoto element when ReferenceTypes.IsPointer(element.Left.BoundType):
                 return this.ReadPointer(element, use);

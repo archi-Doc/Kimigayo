@@ -34,7 +34,8 @@ public class ElementComparisonTest
 
     private const string BelowSharedElementsSource =
         "let words: Array<[2 of string]> = [[\"a\", \"b\"]]\nlet rows = words[..]\nConsole.writeLine(rows[0][1])\nlet kept = rows[0][0]@ref\nConsole.writeLine(kept)\n" +
-        "let pairs: Array<[2 of (i32, string)]> = [[(1, \"x\"), (2, \"y\")]]\nlet grid = pairs[..]\nrequire grid[0][1].0 == 2 else => $abort(\"leaf\")\nConsole.writeLine(grid[0][0].1)";
+        "let pairs: Array<[2 of (i32, string)]> = [[(1, \"x\"), (2, \"y\")]]\nlet grid = pairs[..]\nrequire grid[0][1].0 == 2 else => $abort(\"leaf\")\nConsole.writeLine(grid[0][0].1)\n" +
+        "let items: Array<([2 of i32], string)> = [([1, 2], \"a\")]\nlet v = items[..]\nrequire v[0].0[1] == 2 else => $abort(\"part\")";
 
     private const string DictionarySource =
         "var d: Dictionary<i32, string> = [:]\n_ = d.tryInsert(1, \"one\")\nrequire d[1] == \"one\" and \"one\" == d[1] else => $abort(\"dictionary\")\nConsole.writeLine(d[1])";
