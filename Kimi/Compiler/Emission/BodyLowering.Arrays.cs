@@ -323,6 +323,40 @@ internal sealed partial class BodyLowering
         return true;
     }
 
+    // SPEC 4.7.2, 4.7.4: Array<T>.init(capacity:) zeroes the result handle and reserves the capacity once; the reserve runtime
+    // aborts on a negative capacity, and zero allocates nothing.
+    private bool LowerArrayConstruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    {
+        failure = null;
+        if (plan.Target.Declaration is not FunctionKoto { IsConstructor: true } target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            call.ArgumentNodes.Count != 1 || plan.ArgumentOperations.Length != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
+            SignatureType(this, call.BoundType) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
+        {
+            return Fail("Array construction has an unsupported argument plan or element Type.", out failure);
+        }
+
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
+        {
+            return false;
+        }
+
+        if (!complete)
+        {
+            return true;
+        }
+
+        if (!this.ScalarArrayArgument(body, id, 0, BoundType.ISize, out var capacity) || !this.TryGetLocation(call, directory, constants, out var location))
+        {
+            return Fail("Array construction capacity or location is unavailable at the call.", out failure);
+        }
+
+        this.arrayRuntimeUsed = true;
+        var handle = new EmissionOperand(EmissionOperandKind.SlotAddress, body.Operations[id].Place);
+        function.AddCall(id, WindowsLowering.ArrayInit, [handle, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+        function.AddCall(id, WindowsLowering.ArrayReserve, [handle, new(EmissionOperandKind.Integer, element.Stride), capacity, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+        return true;
+    }
+
     private bool PrepareCollectionArguments(OwnershipBody body, int id, InvocationKoto call, BoundCall plan, FunctionKoto target, out bool complete, out string? failure)
     {
         failure = null;
@@ -330,7 +364,7 @@ internal sealed partial class BodyLowering
         this.parameterArguments.AsSpan(0, target.Parameters.Count).Fill(-1);
         var cursor = 0;
         complete = true;
-        for (var i = -1; i < call.ArgumentNodes.Count; i++)
+        for (var i = plan.Receiver is null ? 0 : -1; i < call.ArgumentNodes.Count; i++)
         {
             var parameter = i < 0 ? 0 : plan.ArgumentToParameter[i];
             var acquisition = i < 0 ? plan.ReceiverOperation : plan.ArgumentOperations[i];

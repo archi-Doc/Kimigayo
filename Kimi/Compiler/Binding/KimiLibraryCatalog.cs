@@ -64,6 +64,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayInsertIndex, "insert", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsertIndex, Overload: 1),
         new(KimiDeclarationId.ArrayRemoveIndex, "remove", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemoveIndex, Overload: 1),
         new(KimiDeclarationId.ArraySwap, "swap", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArraySwap),
+        new(KimiDeclarationId.ArrayWithCapacity, "init", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayWithCapacity),
         new(KimiDeclarationId.Utf8Format, "Utf8Format"),
         new(KimiDeclarationId.BufferWriter, "BufferWriter"),
         new(KimiDeclarationId.BufferFull, "BufferFull"),

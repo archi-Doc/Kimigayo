@@ -78,8 +78,24 @@ public class ArrayMembersTest
         "    require bag.count() == 2 else => $abort(\"count\")\n" +
         "    Console.writeLine(\"Bag ready.\")\n";
 
+    // SPEC 4.7.2, 4.7.4: init(! capacity:) reserves once, also for a generic or Non-Copy element; zero allocates nothing.
+    private const string Capacity =
+        "struct Tag\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Tag dropped.\")\n" +
+        "func make<T>(count: isize) -> Array<T>\n    return Array<T>.init(capacity: count)\n" +
+        "public func main()\n" +
+        "    var values = Array<i32>.init(capacity: 4)\n" +
+        "    require values.length == 0 and values.capacity >= 4 else => $abort(\"capacity\")\n" +
+        "    values.append(1)\n    values.append(2)\n" +
+        "    let empty = Array<i32>.init(capacity: 0)\n" +
+        "    require values[1] == 2 and empty.capacity == 0 else => $abort(\"append\")\n" +
+        "    var tags = make<Tag>(3)\n    tags.append(Tag.init(1))\n" +
+        "    var names = Array<string>.init(capacity: 2)\n    names.append(\"a\")\n" +
+        "    require tags.capacity >= 3 and names[0] == \"a\" else => $abort(\"generic\")\n" +
+        "    Console.writeLine(\"Capacity ok.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Capacity", Capacity, "Capacity ok.\nTag dropped.\n" },
         { "Field", Field, "Bag ready.\nDropped.\nDropped.\n" },
         { "Access", Access, "Out of range.\nEmpty has no first.\nAccess ok.\n" },
         { "Mutation", Mutation, "Mutation ok.\n" },
@@ -90,6 +106,11 @@ public class ArrayMembersTest
     [MemberData(nameof(Fixtures))]
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ArrayMembers" + name, source, stdout);
+
+    // SPEC 4.7.2: a negative capacity Aborts.
+    [Fact]
+    public void NegativeCapacityAborts()
+        => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeCapacity", "let bad = Array<i32>.init(capacity: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARGUMENT: Invalid argument value\n");
 
     // P26 boundary (PLAN G10): the callback members verify in the library, but a function passed to their Callable
     // parameter is not yet bound; the call is diagnosed instead of generating code. P26 turns this into an execution.

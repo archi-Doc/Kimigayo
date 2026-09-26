@@ -200,10 +200,11 @@ Complexity bounds describe collection management for fixed Types. Allocator inte
 
 [Specification: Array operations](spec/04-arrays-indexing-and-slices.md#472-array-operations) and [destruction order](spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
 
-An ordered, growable sequence constructed with `[]` or `[a, b, ...]`.
+An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! capacity:)`.
 
 | Member | Guarantee |
 | --- | --- |
+| `init(! capacity: isize)` | An empty Array with `capacity >= capacity`; a negative argument Aborts and zero allocates nothing. |
 | `indices: ResolvedRange` | The interval `[0, length)`. |
 | `values[i]`, where i is `isize or Index` | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
 | `values[r]`, where r is `Range or ResolvedRange` | A shared Slice; invalid bounds Abort. |
@@ -223,7 +224,7 @@ An ordered, growable sequence constructed with `[]` or `[a, b, ...]`.
 | `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. Callback arguments await P26. |
 | `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | Heapsort by `by`; not stable, no allocation. Callback arguments await P26. |
 
-Specified but not yet provided: `init(! capacity:)`, `init(! repeating:count:)`, the `first`/`last` Properties (Origin-carrying getter results, P24), `appendCopies`, `sort()`, and the Slice `contains`/`firstIndex` operations (element-conditional members, PLAN G23). Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+Specified but not yet provided: `init(! repeating:count:)`, the `first`/`last` Properties (Origin-carrying getter results, P24), `appendCopies`, `sort()`, and the Slice `contains`/`firstIndex` operations (element-conditional members, PLAN G23). Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 
