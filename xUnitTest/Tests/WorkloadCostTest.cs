@@ -18,8 +18,41 @@ public class WorkloadCostTest
 
     [Fact]
     public void ProcessingWorkloadAllocationsAreBounded()
+        => WriteWorkload("WorkloadCostProcessing", Program(), Expected, Bound);
+
+    // The workload's functions over N generated orders: the allocations grow with the Array's geometric growth only, so they stay
+    // logarithmic in N while the processing is linear (the Dictionary holds three categories).
+    [Theory]
+    [InlineData(64)]
+    [InlineData(1024)]
+    public void ScaledWorkloadAllocationsStayLogarithmic(int count)
     {
-        var source = File.ReadAllText(Path.Combine(FindRoot(), "milestones", "Milestone37.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var program = Program();
+        var functions = program[..program.IndexOf("public func main()", StringComparison.Ordinal)];
+        var source = functions +
+            "public func main()\n    var orders: Array<Order> = []\n    var i: i32 = 0\n" +
+            "    while i < " + count + "\n        orders.append(Order.init(i + 1, 10 * (i % 3 + 1), i % 50))\n        i += 1\n" +
+            "    let any = func [] (order: ref/Order) -> bool => true\n" +
+            "    require countMatching(orders[..], any@ref) == " + count + " else => $abort(\"count\")\n" +
+            "    var sum: i32 = 0\n    var running = func [var sum] (order: ref/Order) -> i32\n        sum += order.amount\n        return sum\n" +
+            "    let last = applyAll(orders[..], running@uniq)\n" +
+            "    let sums = totals(orders[..])\n    var categories: i32 = 0\n    for (category, amount) in sums\n        categories += 1\n" +
+            "    require categories == 3 else => $abort(\"categories\")\n" +
+            "    Console.writeLine(\"Processed.\")\n";
+        var expected = new System.Text.StringBuilder("Processed.\n");
+        for (var id = count; id > 0; id--)
+        {
+            expected.Append("Order ").Append(id).Append(" destroyed.\n");
+        }
+
+        WriteWorkload("WorkloadCostScaled" + count, source, expected.ToString(), 1 + (int)Math.Ceiling(Math.Log2(count)) + 2);
+    }
+
+    private static string Program()
+        => File.ReadAllText(Path.Combine(FindRoot(), "milestones", "Milestone37.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    private static void WriteWorkload(string name, string source, string stdout, int bound)
+    {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
         Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
@@ -34,7 +67,7 @@ public class WorkloadCostTest
         Assert.True(exit > start);
         var check = $$"""
           %allocations = load i64, ptr @probe_allocations, align 8
-          %bounded = icmp ule i64 %allocations, {{Bound}}
+          %bounded = icmp ule i64 %allocations, {{bound}}
           br i1 %bounded, label %passed, label %failed
         passed:
           call void @__kimi_exit(i32 0)
@@ -58,7 +91,7 @@ public class WorkloadCostTest
             }
 
             """;
-        ScalarEmissionTest.WriteFixture("WorkloadCostProcessing", ir, Expected);
+        ScalarEmissionTest.WriteFixture(name, ir, stdout);
     }
 
     private static string FindRoot()
