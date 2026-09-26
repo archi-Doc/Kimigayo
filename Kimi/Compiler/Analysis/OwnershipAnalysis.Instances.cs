@@ -69,13 +69,15 @@ public sealed partial class OwnershipAnalysis
     // SPEC 13.5.5.1: a @follow that selects the referent of a reference. A followed pair layer does so in an instance whose
     // binding is ref or uniq; for owner, and in the universal verification of the generic body, it selects the operand
     // Place itself, whose Loans cover every admitted case.
-    // A pair layer exists in an instance exactly when the operand is a reference to the selected target: an owner binding of
-    // s/(t/U) or of s/T with a reference T is no layer, although its concrete operand is a reference (SPEC 13.5.5.1).
     private bool FollowsReference(ConversionKoto conversion)
         => conversion.ConversionBinding == ConversionBinding.Follow ||
-            (conversion.ConversionBinding == ConversionBinding.PairFollow &&
-            this.Concrete(conversion.Left.BoundType) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } &&
-            ReferenceEquals(referent, this.Concrete(conversion.BoundType)));
+            (conversion.ConversionBinding == ConversionBinding.PairFollow && this.PairLayerExists(conversion.Left.BoundType, conversion.BoundType));
+
+    // A pair layer exists in an instance exactly when its operand is a reference to the selected target: an owner binding of
+    // s/(t/U), or of s/T with a reference T, is no layer although its concrete operand is a reference (SPEC 13.5.5.1).
+    private bool PairLayerExists(BoundType? operand, BoundType? target)
+        => this.Concrete(operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } &&
+            ReferenceEquals(referent, this.Concrete(target));
 
     // SPEC 13.5.5.1: universal verification of a value use through a pair layer. Every admitted case reads the direct target
     // from the selected Place, so the operand is shared-borrowed for the read and a Copy of the target is produced; the stored
@@ -112,8 +114,7 @@ public sealed partial class OwnershipAnalysis
     // instance; the universal verification and an owner instance borrow the receiver Place itself.
     private bool ImplicitlyFollowsReference(Koto node, BoundType type)
         => this.instance is not null && this.compilation.Binding.ImplicitPairAdmitted(node) != SemanticsMask.None &&
-            !ReferenceEquals(type.Components[0], node.BoundType) &&
-            this.Concrete(node.BoundType) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
+            this.PairLayerExists(node.BoundType, type.Components[0]);
 
     private int StoredReference(ConversionKoto pair) => this.StoredReference(KotoHelper.UnwrapParentheses(pair.Left), SemanticsKind.Ref);
 
