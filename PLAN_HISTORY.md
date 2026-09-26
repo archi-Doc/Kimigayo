@@ -94,3 +94,6 @@ Links from other documents point here. Each record's full text is in `git show 3
 
 <a id="documentation-markdown-product-switch-20260920"></a>
 - **Documentation Markdown product switch** 2026-09-20: the compiler uses the independent parser; Markdig remains only in comparison tests and benchmarks.
+
+<a id="p27-completion"></a>
+- **P27 completion** 2026-09-26: Place results (`place ref/T`/`place uniq/T`), Contract Type parameters with bound references, `Indexable`/`UniqIndexable` and `receiver[key]` on user Types (also through a generic Constraint), Kimigayo `Index`/`Range`/`ResolvedRange` with `resolve`/`tryResolve`, Index/Range/ResolvedRange keys, `Slice.tryGet`/`trySlice`/`splitAt`/`trySplitAt`, nested views and by-value Slice results; commits `7c6ac4d0`…, Program 27 passes 97 Debug harness checks (`bin/verify/20260926-154051-101-unit-m27-harness1`).

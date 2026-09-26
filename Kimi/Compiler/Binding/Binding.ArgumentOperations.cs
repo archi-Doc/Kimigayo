@@ -335,6 +335,15 @@ public sealed partial class Binding
     // receiver on its path that is such a selection is borrowed the same way.
     private void CompareInPlace(Koto operand)
     {
+        if ((ElementAccess.IsPlaceCall(operand) || ElementAccess.IsUserIndex(operand)) && operand.BoundType is { } published && this.ProveCopy(published, operand) == ConstraintProof.Refuted &&
+            SharedReadTypes.BorrowSemantics(published) is { } placeSemantics)
+        {
+            // SPEC 4.6.9, 7.1.1, 13.4: a Non-Copy published Place, of a Place call or of receiver[key] on a user Type, is
+            // compared in place through the reference the call returns.
+            this.adaptations[operand] = new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: this.PlaceOrigin(operand)));
+            return;
+        }
+
         if (KotoHelper.UnwrapParentheses(operand) is not BinaryKoto selection || selection is not (IndexKoto { Right: not RangeKoto } or MemberAccessKoto) ||
             IsGetterResult(selection) || ElementAccess.OwnedPathRoot(selection) is not null)
         {
@@ -345,6 +354,16 @@ public sealed partial class Binding
         if (ElementAccess.IsBorrowedReceiver(ElementAccess.AccessType(selection.Left)))
         {
             this.SharedElement(operand, selection.Left, selection.BoundType);
+        }
+    }
+
+    // SPEC 4.6.5, 4.6.6: a range selection of a fixed-array element reached through a Slice or a borrowed array borrows
+    // the element slot in place, whatever the element's Copy capability, so the view retains the backing source.
+    private void SharedElementView(Koto receiver)
+    {
+        if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && ElementAccess.IsSharedElement(element))
+        {
+            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element.Left)));
         }
     }
 

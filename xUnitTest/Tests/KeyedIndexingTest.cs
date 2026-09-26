@@ -31,10 +31,22 @@ public class KeyedIndexingTest
         "let direct = ResolvedRange.init(start: 1, end: 3)\nlet applied = middle[direct]\nrequire applied.length == 2 and applied[0] == 3 else => $abort(\"direct\")\n" +
         "Console.writeLine(\"ok\")";
 
+    // SPEC 4.6.5, 4.6.6: a view of a fixed-array element reached through a Slice retains the backing storage, not the
+    // handles used to form it.
+    private const string NestedViews =
+        "let grid: [3 of [4 of i32]] = [[1, 2, 3, 4], [10, 20, 30, 40], [5, 6, 7, 8]]\nlet rows: Slice<[4 of i32]> = grid[1..]\nlet row = rows[0][..]\n" +
+        "require row.length == 4 and row[1] == 20 else => $abort(\"row\")\n" +
+        "let middle: Slice<i32> = selection: do\n    let inner: Slice<[4 of i32]> = grid[1..]\n    let line = inner[0][..]\n    exit to selection: line[1..3]\n" +
+        "require middle.length == 2 and middle[0] == 20 and middle[1] == 30 else => $abort(\"middle\")\n" +
+        "let last = rows[^1][1..]\nrequire last.length == 3 and last[0] == 6 else => $abort(\"last\")\n" +
+        "let saved: Range = 1..^1\nlet keyed = rows[0][saved]\nrequire keyed.length == 2 and keyed[0] == 20 else => $abort(\"keyed\")\n" +
+        "func head(table: ref/[3 of [4 of i32]]) -> i32 => table[2][..][0]\nrequire head(grid) == 5 else => $abort(\"reference\")\nConsole.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "IndexKeys", IndexKeys, "Last text.\nFirst text.\nFirst text.\nok\n" },
         { "RangeKeys", RangeKeys, "ok\n" },
+        { "NestedViews", NestedViews, "ok\n" },
     };
 
     [Theory]

@@ -69,6 +69,7 @@ public sealed partial class Binding
                 }
 
                 Complete(range, BoundType.Range);
+                this.SharedElementView(source.Left);
                 return Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: this.PlaceOrigin(source.Left)));
             }
 

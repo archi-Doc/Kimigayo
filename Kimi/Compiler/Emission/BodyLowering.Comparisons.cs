@@ -70,8 +70,9 @@ internal sealed partial class BodyLowering
         var inspected = SignatureType(this, ElementAccess.AccessType(operand));
         if (ReferenceTypes.IsStringReference(inspected))
         {
+            // SPEC 4.6.9: receiver[key] on a user Type reads its published Place through the synthesized index call.
             return loan == -1 && this.ValidateReferenceUse(body, reference, id) && ValuePlace(body.Operations[reference]) == place &&
-                ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), inspected);
+                ReferenceEquals(body.Operations[reference].Source, ElementAccess.IndexerCall(operand, false) ?? KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), inspected);
         }
 
         if (reference >= 0 && (uint)reference < (uint)body.Operations.Count && ReferenceTypes.IsPointer(ValueType(body, reference)))

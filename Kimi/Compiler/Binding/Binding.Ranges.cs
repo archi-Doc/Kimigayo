@@ -121,6 +121,7 @@ public sealed partial class Binding
         }
 
         this.resolvedSlices.Add(source);
+        this.SharedElementView(source.Left);
         result = Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
         return true;
     }

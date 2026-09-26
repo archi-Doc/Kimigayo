@@ -109,7 +109,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnresolvedBinding_Kd` at required `value.item`; ownership-bearing setters/getters and Contract Property calls remain. |
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
 | 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
-| 27 | YES | PASS | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Binding completes; Ownership first reports `UnsupportedOwnership_Kd` at `rows[0]` (a view of a fixed-array element of a Slice). Range values, Index resolution, Index/Range/ResolvedRange keys, the Slice operations and the Place foundation are verified. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
+| 27 | YES | PASS | PASS (Debug, O0/O2) | NOT_RUN | DONE | 97 Debug harness checks (`bin/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../PLAN_HISTORY.md#p27-completion). |
 | 28 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Re-spelled 2026-09-25 for `Kimi.IntoIterable`. `Drain<T>`, `Batch<T>`, `Cursor<T>` and `View<T>` bind, including the generic Slice element borrow `self.values[index]@ref`; Binding first reports `UnresolvedBinding_Kd` at `item.id` because `for item in batch@move` over a user `IntoIterable` conformance is not yet bound. User `for` protocols, Origin-related associated iterators and generic iterator-state ownership remain. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
 | 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (123 checks per configuration); shared string iteration is a positive case, while zero-sized Array elements retain an ownership-stage unsupported diagnostic. Allocation/cost probes pass. |
 | 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../PLAN_HISTORY.md#review-remediation). |
@@ -1468,7 +1468,7 @@ shares the reference-write boundary, STATUS); `names[0]@ref` keeps one reference
 from one search; and the generic `firstPlace` forwards a Place result through the
 Contract requirement without acquiring a value, for `Pair<i32>` and `Pair<string>`.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (verified natively at O0/O2; 97 Debug harness checks):
 
 ```text
 Start evaluated.

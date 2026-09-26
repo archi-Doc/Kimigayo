@@ -89,6 +89,12 @@ public sealed partial class OwnershipAnalysis
     {
         projection = -1;
         var receiver = KotoHelper.UnwrapParentheses(source);
+        if (receiver is IndexKoto && this.compilation.Binding.TryGetAdaptation(receiver, out var view) && view.Kind == ExpectedAdaptationKind.SharedBorrow)
+        {
+            // SPEC 4.6.6: a view of a fixed-array element reached through a Slice or a borrow selects through the borrowed element.
+            return this.BorrowStruct(receiver, view.Type);
+        }
+
         if (receiver is BinaryKoto element && ElementAccess.IsSyntax(element) && source.BoundType?.Kind == BoundTypeKind.FixedArray)
         {
             projection = this.LocateElement(element);
