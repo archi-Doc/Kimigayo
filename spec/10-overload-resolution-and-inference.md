@@ -38,9 +38,9 @@ pair(second: 3)    // first = 1, second = 3.
 
 ## 10.2. Common adaptation at expected types
 
-This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or the ordinary common-Type inference; it is never derived backward from a borrow or a Scalar read. Result sources whose Types differ only in safe reference layers over one Scalar Type have that Scalar Type as their common Type, and each reference source is Scalar-read (§14.9.1); other sources without a common Type, such as `ref/Node` and `Node`, need an annotation or an explicit `@deref`. The call form, explicit Type arguments and aliases do not change the rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
+This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or the ordinary common-Type inference; it is never derived backward from a borrow or a Scalar read. The common Type of result sources is found by §14.9.1, which unifies sources that differ only in reference layers over one Scalar; other sources without a common Type, such as `ref/Node` and `Node`, need an annotation, or an explicit `@deref` when `Node` is Copy. The call form, explicit Type arguments and aliases do not change the rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
 
-In the table, `U` is the complete immediate referent Type.
+In the table, `U` is the complete referent Type of the expected Type; the one-shared-reference and Scalar-read rows may reach it through several input layers.
 
 | Input | Expected | Operation |
 | --- | --- | --- |
@@ -69,7 +69,9 @@ var second = Node.init()
 let nodes: [2 of uniq/Node] = [first@uniq, second@uniq]
 for node in nodes                // node: ref/(uniq/Node)
     validate(node)               // Shared Reborrow through both layers.
-``` There is no implicit borrow of a reference or handle slot, no implicit payload dereference of an object, no implicit `rc`/`arc` or exclusive-temporary borrow, and no implicit object upcast, numeric, integer/float or user conversion. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value expectation; an explicit `@move` is executed first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
+```
+
+There is no implicit borrow of a reference or handle slot, no implicit payload dereference of an object, no implicit `rc`/`arc` or exclusive-temporary borrow, and no implicit object upcast, numeric, integer/float or user conversion. A bare Non-Copy or Copy-unproven Place is not applicable to a by-value expectation; an explicit `@move` is executed first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
 
 A new exclusive borrow of an owned Place requires `@uniq`/`@objuniq`; only a Receiver Expression acquires it implicitly ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). An annotation, assignment or result never adds lifetime or capability. A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and no candidate switch arises from implicit exclusive borrowing.
 
@@ -116,7 +118,7 @@ chooseBorrow(1) // Error: both fit; default i32 does not break the tie.
 
 Type inference and acquisition planning are separate: inferring a Type performs no Copy, Move or borrow.
 
-1. Bind explicit Type arguments, then infer the remaining Type arguments from the original complete Types of the receiver and the arguments. A bare `T` binds the original Type; a declared layer such as `ref/T` matches through the permitted correspondences of the table. Constraints over several arguments are solved together, and no argument fixes `T` first by traversal order.
+1. Bind explicit Type arguments, then infer the remaining Type arguments from the original complete Types of the receiver and the arguments. A bare `T` binds the original Type; a declared `ref/T` or `uniq/T` binds `T` to an owned argument's complete Type or to the immediate referent of a borrow value's outermost layer, and the rows of the table that follow several layers apply only after `T` is fixed. Constraints over several arguments are solved together, and no argument fixes `T` first by traversal order.
 2. An independently known expected result Type fills still-unbound parts by ordinary Type matching; it never selects an unknown Type by inverting a borrow or Scalar read, and never changes an established Type. Origin inference and shortening follow the ordinary rules, keeping bound internal Origins.
 3. Normalize the parameter Types and plan the acquisition of each argument under §3.5 and this section. An existing reference passed to a borrow parameter is Reborrowed in a generic call as elsewhere; consuming the reference value itself needs `@move`.
 
@@ -138,7 +140,7 @@ Candidates are checked for applicability with their acquisition plans, and the s
 | Exact | Normalized Type compatibility requiring no adaptation operation, including no borrow or Reborrow |
 | Literal fitting | Directly fitting an unresolved literal to the candidate's Type |
 | Same-Semantics Reborrow | A Reborrow that preserves the input's outer Semantics |
-| Cross-Semantics adaptation | Any other borrow or Reborrow of the table, or a Scalar read |
+| Cross-Semantics adaptation | Any other borrow or Reborrow of the table, one shared reference through more than one layer, or a Scalar read |
 
 Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies when bare or transfers under `@move`, and Copy versus transfer adds no ranking preference. A required exclusive Reborrow is not Exact even when the written Types match. Type and declaration permissions and the Place-versus-temporary form are checked during applicability; flow-dependent initialization and active Loan conflicts are checked after selection and never reselect a candidate. Selected exclusive adaptations use [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). `uniq/T` is never treated as a subtype of `ref/T`. Nested calls use the shared expectation of §10.5; bodies are not rechecked per candidate.
 
@@ -159,7 +161,7 @@ Copy proof, explicit transfer and Take are part of applicability: a bare Non-Cop
 
 This section is the static expected-result judgment of [the relation table](03-types-and-values.md#38-type-relations-and-expression-operations), not the implicit-expression-adaptation judgment.
 
-An expected result may complete inference and exclude otherwise applicable candidates. Compatibility requires normalized Type identity or a defined subtype relation without additional value operations. Origins are instantiated and checked, including permitted covariant shortening. No new borrow or reborrow, dereference, numeric conversion or user conversion is inserted to keep a candidate, and a function body's literal is never retyped to change its established return Type.
+An expected result may complete inference, and it excludes a candidate only when the use position admits no acquisition or adaptation of that candidate's known result (**Result adaptation**, below). Origins are instantiated and checked, including permitted covariant shortening. No numeric or user conversion is inserted to keep a candidate, and a function body's literal is never retyped to change its established return Type.
 
 Expected results do not rank candidates by result-conversion quality. Result Loan/Origin propagation and Copy/Move still apply. An expectation comes from a surrounding annotation, a fixed parameter or a declared result, subject to §10.5; it cannot circularly select its own source candidate. Discarding a call supplies no expected Unit Type. Constructs with Unit-fixed Target Result Types follow §14.2, and their directly discarded calls still receive no Unit expectation.
 

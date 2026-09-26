@@ -86,7 +86,7 @@ Descriptor sharing/canonicalization may permit address comparison when it preser
 | --- | --- |
 | `IsIdenticalType(A, B)` | Compare normalized complete Types, including bound Origin identity. |
 | `IsSubtype(A, B, constraints)` | Prove static fitting without inserting value operations. |
-| `IsExpectedResultCompatible(A, B, constraints)` | Apply only the static relation permitted during candidate result filtering. |
+| `IsExpectedResultCompatible(A, B, constraints)` | Check that the use position admits an acquisition or common adaptation of a candidate's known result. |
 | `CanImplicitlyAdapt(expression, target, context)` | Select an adaptation permitted in that use-site context. |
 | `CanExplicitlyAdapt(expression, target, context)` | Select one operation admitted by the resolved explicit target. |
 | `CanAcquire(expression, access, state)` | Check the selected access against Place, initialization, ownership, and Loan state. |
@@ -100,13 +100,13 @@ An implementation may attach the following information to bound Pattern position
 | Information | Meaning |
 | --- | --- |
 | `MatchedType` | Complete Type at the position before implicit dereference |
-| `AccessMode` | `Owned` / `Shared`, including that position's implicit dereference |
-| `ImplicitDeref` | `None` / `SharedOnce` at this position |
+| `AccessMode` | `Owned` / `Shared` / `Exclusive` after this position's referent selections |
+| `ImplicitDeref` | The number of safe reference layers selected at this position |
 | `MovePath` | Subject position with owned initialization/destruction tracking, when applicable |
 | `CandidateSymbol` / `GuardReadType` | Binding position's candidate Identity and shared-read Type |
 | `BodySymbol` / `BodyBindingType` | Distinct body-local Identity and acquired Type |
 
-AccessMode describes the path, not the value's Semantics or the Owned capability. The internal label `Owned` denotes by-value access; an implicit dereference changes it to Shared, inherited by descendants. Binding a `ref/E` Subject with `let r` uses `Owned` / `None`; a Case Pattern inspecting its referent uses `Shared` / `SharedOnce`. Guard reading remains shared in either mode.
+AccessMode describes the path, not the value's Semantics or the Owned capability. The internal label `Owned` denotes by-value access. Selecting through a `ref` layer bounds the position and its descendants to `Shared`; a `uniq` layer keeps `Exclusive` only on an exclusive path. A single-name binding selects no referent, while a Case Pattern inspecting the referent of a `ref/E` position selects one layer. Guard reading is shared in every mode.
 
 Retain Candidate positions, Origin/Loan dependencies, and Copy/Move/Borrow/Reborrow plans alongside these facts. Candidate/body Symbols and binding Types are needed only at Binding positions. Shared position tracking gives no Move authority. Do not reconstruct access effects solely from MatchedType or reuse an instantiation's plan when its effects differ.
 

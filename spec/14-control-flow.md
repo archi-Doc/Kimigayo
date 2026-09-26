@@ -305,22 +305,22 @@ while ready => process()
 
 ### 14.6.2. Iteration protocol and acquisition
 
-`for` uses only the [Iterator Contract](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and the three iteration entries. The Subject `E` is evaluated once and acquired under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime); the Subject mode selects the entry, and the entry's receiver is acquired under the [reference-path selection](03-types-and-values.md#341-reference-path-selection) of the complete Subject Type:
+`for` uses only the [LendingIterator Contract](22-core-execution-and-foreign-functions.md#22121-iterator-and-cursor), which every Iterator refines, and the three iteration entries. The Subject `E` is evaluated once and acquired under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime); the Subject mode selects the entry, and the entry's receiver is acquired under the [reference-path selection](03-types-and-values.md#341-reference-path-selection) of the complete Subject Type:
 
 | Subject mode | Typical Subjects | Entry |
 | --- | --- | --- |
 | Shared | `values`, `values@ref`, a `ref/C` value | `Iterable.iterate` |
 | Exclusive | `values@uniq`, a `uniq/C` value | `UniqIterable.iterateUniq` |
-| ByValue | `values@move`, a temporary such as `makeValues()`, `values@owner` | `IntoIterable.intoIterator` |
+| ByValue | `values@move`, a temporary such as `makeValues()`, or `range@owner` for a Copy Subject | `IntoIterable.intoIterator` |
 
-For `values: ref/Array<T>`, `for value in values` selects Array's shared entry through the reference. The mode is never changed by the selection, and an explicit borrow must be valid on the immediately written slot before the entry is searched: `values@uniq` on `let values: uniq/Array<T>` is an error, and `values@deref@uniq` enumerates the referent exclusively. ByValue uses the `IntoIterable` conformance of the acquired complete Type and never takes ownership of a referent. Missing or ambiguous conformances are errors; there is no method-name duck typing, no automatic conformance of references or arbitrary iterators, and no fallback protocol. A user Iterator without an entry conformance is enumerated through the standard adapters, whose results are owned temporaries: `Kimi.Iteration.owned(it@move)` or `Kimi.Iteration.borrowed(it@uniq)` (§22.1.2).
+For `values: ref/Array<T>`, `for value in values` selects Array's shared entry through the reference. The mode is never changed by the selection, and an explicit borrow must be valid on the immediately written slot before the entry is searched (§15.1.6). ByValue uses the `IntoIterable` conformance of the acquired complete Type and never takes ownership of a referent. Missing or ambiguous conformances are errors; there is no method-name duck typing, no automatic conformance of references or arbitrary iterators, and no fallback protocol. A user LendingIterator without an entry conformance is enumerated through the standard adapters, whose results are owned temporaries: `Kimi.Iteration.owned(it@move)` or `Kimi.Iteration.borrowed(it@uniq)` (§22.1.2).
 
 ~~~text
 subject  := acquire(E) in its mode
 iterator := entry(receiver)               // iterate, iterateUniq or intoIterator, once
 repeat:
-    step := Iterator.next(short exclusive reborrow of iterator)
-    if step is None: finish
+    result := LendingIterator.next(short exclusive reborrow of iterator)
+    if result is None: finish
     item := the Some payload, owned by this iteration
     bind item under the owned decomposition of §15.1.6
     execute body
@@ -337,7 +337,7 @@ The **item Type** is `LendingIterator.LentItem(step)` of the selected iterator T
 | `Slice<E>` | `ref/E during s` | `ref/E during s` | `ref/E during s` |
 | `ResolvedRange` | `isize` | `isize` | `isize` |
 
-Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`; element-internal Origins are kept separately, so an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Array, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order; all of them keep returning `None` after the first `None`, and every standard iterator is an Iterator (§22.1.2.4). Exclusive enumeration of a Slice lends the handle; its elements stay shared. `Range` is not enumerable; resolve it first (§4.6.3).
+Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`; element-internal Origins are kept separately, so an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Array, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order; their iterators are the standard iterators of §22.1.2.3. Exclusive enumeration of a Slice lends the handle; its elements stay shared. `Range` is not enumerable; resolve it first (§4.6.3).
 
 ```kimi
 for item in items            // Shared iteration; items remains usable.
@@ -433,7 +433,7 @@ action: match event@ref
 
 ## 14.8. Match expressions and patterns
 
-The subject is evaluated and acquired once in the mode fixed by its outermost operation (§15.1.6). Arms are tried in source order, and the first arm whose Pattern matches and whose optional `bool` guard is true is selected. Only that arm's body executes; there is no fall-through to another arm. Each arm has its own Body, result rules and binding scope.
+The subject is evaluated once and acquired under the [subject rule](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): ordinary acquisition, except that a bare Place is borrowed in place; the access of the Subject Place fixes the Shared, Exclusive or ByValue mode. Arms are tried in source order, and the first arm whose Pattern matches and whose optional `bool` guard is true is selected. Only that arm's body executes; there is no fall-through to another arm. Each arm has its own Body, result rules and binding scope.
 
 **Match is exhaustive in every Evaluation Context and body form.** Intentionally ignored values are handled with `_ => ()` or suitable Case-specific arms. A selected arm list must be nonempty. Coverage uses only the conservative proof rules of §14.8.4.
 

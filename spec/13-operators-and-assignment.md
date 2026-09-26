@@ -259,8 +259,8 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 
 | Operation | Condition |
 | --- | --- |
-| Transfer | `@move`, or an owning-Semantics target as described below; the operand is a Movable Place or a Temporary Value |
-| Identity Acquisition | Same normalized complete Type without a written owning Semantics; a Copy Place or a Temporary Value |
+| Transfer | `@move` only; the operand is a Movable Place or a Temporary Value |
+| Identity Acquisition | Same normalized complete Type, written as the Type or as an owning-Semantics target matching the operand's outer Semantics (below); a Copy Place or a Temporary Value |
 | Numeric Conversion | Integer and floating values under `owner` Semantics, per the numeric table in §13.5.4 |
 | Borrow / Reborrow | The explicit Borrow tables of §13.5.5 |
 | Object Upcast | The finite [object upcast table](#1357-object-upcasts), including its specified borrow forms |
@@ -291,7 +291,7 @@ A target that changes both Core and Semantics must be one defined operation; no 
 inspect(number@i64@ref)
 ```
 
-There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [Scalar read](03-types-and-values.md#353-scalar-read) or after an explicit `@deref`; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
+There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [Scalar read](03-types-and-values.md#353-scalar-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@deref`; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
 
 ### 13.5.4. Numeric conversions and literals
 

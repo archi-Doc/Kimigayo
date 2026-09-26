@@ -191,8 +191,8 @@ An associated Type denotes a **complete Type**: Semantics, Type arguments, neste
 | `associate Element is Equatable` | Declares it with a capability requirement, or constrains the uniquely identified associated Type in an implementation. |
 | `associate Element is i32` | Declares it with a fixed Type, or specifies that Type in an implementation. |
 | `associate C.Element is T` | Specifies identity with a Type `T` for the associated Type declared by `C`. |
-| `associate Item(step)` | Declares an associated Type with an Origin parameter (below). |
-| `associate C.Item(a) is ref/E during a` | Specifies an Origin-parameterized associated Type; `a` is the implementation's parameter for the first requirement parameter. |
+| `associate LentItem(step)` | Declares an associated Type with an Origin parameter (below). |
+| `associate C.LentItem(a) is ref/E during a` | Specifies an Origin-parameterized associated Type; `a` is the implementation's parameter for the first requirement parameter. |
 
 Each associated Type is determined uniquely from explicit specifications and Type-identity Constraints on the Contract or its ancestors. Bindings are never inferred from implementation signatures, member search, function bodies, implicit adaptations, Copy judgments or instantiated Types, and a Type is never chosen merely because it satisfies a capability; contradictory inferences from several requirements are rejected. Bindings are substituted before implementations are matched. An unconstrained `Source.Element` is not inferred as `i32` merely because an implementation of `read` returns `i32`.
 
@@ -210,7 +210,7 @@ struct Pipe
     public func read(self: ref/Self) -> i32 => 42
 ```
 
-**Projections.** `T.(C).Element` refers to the associated Type of `T`'s conformance to the bound Contract reference `C`, and `T.(C).Item(a)` applies Origin arguments (below). `T.Element` is the short form, valid outside a Contract only when the requirement is unique under the available Constraints; inside a Contract, a short name refers to that Contract's own or inherited requirement. `C` uses ordinary Contract-name and alias lookup, not member lookup on `T`, and an unparenthesized `T.C.Element` is an ordinary qualified path, never a projection. Conformance evidence is required and is never discovered by searching for a same-named Contract. The Type-side base may be a named or constructed Core, a parameter, `Self` or another associated-Type projection. A projection is not a value or Semantics-applied expression; a projected complete Type keeps its Semantics and is not a Core qualifier merely because it is an associated projection.
+**Projections.** `T.(C).Element` refers to the associated Type of `T`'s conformance to the bound Contract reference `C`, and `T.(C).LentItem(a)` applies Origin arguments (below). `T.Element` is the short form, valid outside a Contract only when the requirement is unique under the available Constraints; inside a Contract, a short name refers to that Contract's own or inherited requirement. `C` uses ordinary Contract-name and alias lookup, not member lookup on `T`, and an unparenthesized `T.C.Element` is an ordinary qualified path, never a projection. Conformance evidence is required and is never discovered by searching for a same-named Contract. The Type-side base may be a named or constructed Core, a parameter, `Self` or another associated-Type projection. A projection is not a value or Semantics-applied expression; a projected complete Type keeps its Semantics and is not a Core qualifier merely because it is an associated projection.
 
 ```kimi
 func readOne<T>(source: ref/T) -> T.(Source).Element
@@ -225,7 +225,7 @@ func readInt<T>(source: ref/T) -> i32
 
 Leading function Constraints are collected before projections in the signature, including its result Type, are resolved; the Constraints themselves are validated and discharged at each use. Type context fixes a projection's namespace, and the dotted syntax is kept until Binding resolves the Contract and associated-Type roles. Distinct successful interpretations are ambiguous; neither expected results nor fallback to value-member lookup resolves that ambiguity.
 
-**Refinement Constraints.** A child may constrain an inherited associated Type through `Self.(C).Element`, where `C` is an ancestor. In a Contract-body Constraint subject, a bare associated-Type name is also permitted when it is unique among the own and inherited declarations. These clauses constrain existing declarations; they create no replacement Types or conformances. A child may also refine an inherited Origin-parameterized requirement with `associate Parent.Item(a) is E`, which requires the equality for every `a` in the parent's domain; `E` need not use `a`, but the actual Loan independence of values is checked separately (§15.6.3).
+**Refinement Constraints.** A child may constrain an inherited associated Type through `Self.(C).Element`, where `C` is an ancestor. In a Contract-body Constraint subject, a bare associated-Type name is also permitted when it is unique among the own and inherited declarations. These clauses constrain existing declarations; they create no replacement Types or conformances. A child may also refine an inherited Origin-parameterized requirement with `associate Parent.LentItem(a) is E`, which requires the equality for every `a` in the parent's domain, as `Iterator` does with `associate LendingIterator.LentItem(step) is Item`; `E` need not use `a`, but the actual Loan independence of values is checked separately (§15.6.3).
 
 ```kimi
 contract Equatable
@@ -245,24 +245,24 @@ An `IntSource` implementation need not repeat the inherited `Source.Element is i
 An associated Type may declare **Origin parameters**, one or more simple Names in parentheses after its Name:
 
 ```text
-associate Item(step)                          // A requirement
-associate Item(step) is E                     // Fixed: an owned value, for example
-associate Item(step) is ref/E during step
-associate Item(step) is uniq/E during step
-associate Item(step) is ref/E during source   // source is bound in the enclosing environment
+associate LentItem(step)                          // A requirement
+associate LentItem(step) is E                     // Fixed: an owned value, for example
+associate LentItem(step) is ref/E during step
+associate LentItem(step) is uniq/E during step
+associate LentItem(step) is ref/E during source   // source is bound in the enclosing environment
 ```
 
-A parameter is an Origin binder whose scope is the right-hand side of that declaration and its attached clauses; it is not visible to sibling requirements, and a same-spelled Origin in a method signature is a different binder that applies the associated Type explicitly, as in `Self.Item(step)`. Duplicate and hiding names follow the ordinary Origin naming rules (§15.3.4).
+A parameter is an Origin binder whose scope is the right-hand side of that declaration and its attached clauses; it is not visible to sibling requirements, and a same-spelled Origin in a method signature is a different binder that applies the associated Type explicitly, as in `Self.LentItem(step)`. Duplicate and hiding names follow the ordinary Origin naming rules (§15.3.4).
 
-In Type context, `Item(a)` substitutes existing Origin atoms positionally for the parameters and denotes an ordinary complete Type. Arguments use the same atoms as `during`, and an intersection is parenthesized: `Item((a and b))`. Declaration and application take one or more arguments, with matching counts; unapplied, partially applied, `_` and omitted arguments are invalid, and an unapplied family cannot be passed as a Type argument or aliased. Renaming a parameter does not change the Contract, and an application is never a runtime call, a Type computation or a Place Type. Covariance of an associated Type is not assumed: the applied Type undergoes the ordinary variance, shortening and Reborrow checks.
+In Type context, `LentItem(a)` substitutes existing Origin atoms positionally for the parameters and denotes an ordinary complete Type. Arguments use the same atoms as `during`, and an intersection is parenthesized: `LentItem((a and b))`. Declaration and application take one or more arguments, with matching counts; unapplied, partially applied, `_` and omitted arguments are invalid, and an unapplied family cannot be passed as a Type argument or aliased. Renaming a parameter does not change the Contract, and an application is never a runtime call, a Type computation or a Place Type. Covariance of an associated Type is not assumed: the applied Type undergoes the ordinary variance, shortening and Reborrow checks.
 
-**Formation conditions.** The domain of a new requirement is fixed by the enclosing Contract and by its attached `origin` relations. A requirement whose right-hand side is a fixed complete Type publishes that Type's Origin well-formedness conditions automatically; a capability requirement such as `is Iterator` fixes no Type. A requirement without a fixed Type may add an indented **`wellformed Type`** clause, which publishes the Origin formation conditions of `Type` without fixing the associated Type; `wellformed` is contextual only there, the Type's structure, Semantics, capabilities and lengths are proven from the enclosing public Constraints first, no capability is inferred, and a Place result is not a `Type`.
+**Formation conditions.** The domain of a new requirement is fixed by the enclosing Contract and by its attached `origin` relations. A requirement whose right-hand side is a fixed complete Type publishes that Type's Origin well-formedness conditions automatically; a capability requirement such as `is LendingIterator` fixes no Type. A requirement without a fixed Type may add an indented **`wellformed Type`** clause, which publishes the Origin formation conditions of `Type` without fixing the associated Type; `wellformed` is contextual only there, the Type's structure, Semantics, capabilities and lengths are proven from the enclosing public Constraints first, no capability is inferred, and a Place result is not a `Type`.
 
 ```kimi
 // E is a complete Type parameter of the enclosing Contract.
 associate View(a) is ref/E during a
 
-associate Item(step)
+associate LentItem(step)
     wellformed uniq/Self during step
 ```
 
@@ -276,10 +276,10 @@ The role of a parenthesized or braced suffix is fixed by its syntactic position,
 
 | Syntax | Meaning |
 | --- | --- |
-| `associate Item(a)` in a declaration or specification | Introduces Origin parameters |
-| `Self.Item(a)` or `T.(C).Item(a)` in Type context | Applies existing Origins; the resolved requirement must declare corresponding parameters |
+| `associate LentItem(a)` in a declaration or specification | Introduces Origin parameters |
+| `Self.LentItem(a)` or `T.(C).LentItem(a)` in Type context | Applies existing Origins; the resolved requirement must declare corresponding parameters |
 | `View<T>{v}` on a named Type | Names a binding set (§15.3.1); requires a nonempty known schema |
-| `Self.Item(a){v}` | Names the binding set of an applied Type; valid only when its internal schema is known |
+| `Self.LentItem(a){v}` | Names the binding set of an applied Type; valid only when its internal schema is known |
 
 Only a parenthesized list directly after a named Type in Type context is an Origin application. Type grouping, Tuple and Function Types, and value-context calls keep their existing meanings and are never reinterpreted. Origin application on an ordinary Type, a wrong argument count, and an unapplied family are errors. Braces are never read as positional Origin arguments.
 
@@ -518,7 +518,7 @@ A child conformance must satisfy its ancestor Contracts under its own conditions
 
 #### 8.4.8.4. Intrinsics and boundaries
 
-`Self is Copy when P` requests compiler-derived Copy under `D` and `P`. Every complete own Field or payload Type and the direct base are checked under §3.5; user-defined Copy bodies remain forbidden. Deriving Copy for a `ref/T` component needs no `T is Copy` premise, but an explicitly written `T is Copy` condition is still required and cannot be weakened. An unconditional `Self is Copy` keeps its all-bindings guarantee. Unknown Copy follows the verified conditional acquisition plans of §8.9 and §8.10 and is never assumed to be Non-Copy.
+`Self is Copy when P` requests compiler-derived Copy under `D` and `P`. Every complete own Field or payload Type and the direct base are checked under §3.5; user-defined Copy bodies remain forbidden. Deriving Copy for a `ref/T` component needs no `T is Copy` premise, but an explicitly written `T is Copy` condition is still required and cannot be weakened. An unconditional `Self is Copy` keeps its all-bindings guarantee. Unknown Copy is never assumed to be Non-Copy; a bare acquisition needs Copy evidence (§8.9, §8.10).
 
 This feature defines static conformance and generic use. It adds no external registration, extension declarations, partial Type specialization, condition-based implementation replacement or runtime Contract View feature.
 
@@ -555,7 +555,7 @@ struct Bad<A, B>
 
 For other combinations of direct conformance, refinement and effective base conformance, each path's availability conditions are added to the collision conditions. When paths may meet, consistent associated bindings and requirements must be proven, and for conformance definitions also consistent implementation mappings. If meeting cannot be excluded and consistency cannot be proven, the definition is rejected. Equal references may share structure but never lose assumptions or obligations. For example, `Family<A>.C` and `Family<B>.C` cannot specify one associated Type as `i32` and `string` while `A = B` remains possible.
 
-A refinement path that revisits a Contract declaration, even with different arguments, is rejected, including `Outer<T>.C` to `Outer<List<T>>.C`. Distinct instantiations on separate paths are not cyclic for that reason alone; processed references are tracked separately from the declarations on the current path. Contract-owned parameters, defaults, external conformance, implementation priority and runtime Contract Views are not introduced.
+A refinement path that revisits a Contract declaration, even with different arguments, is rejected, including `Outer<T>.C` to `Outer<List<T>>.C`. Distinct instantiations on separate paths are not cyclic for that reason alone; processed references are tracked separately from the declarations on the current path. Contract-owned Origin or length parameters, defaults, external conformance, implementation priority and runtime Contract Views are not introduced.
 
 ## 8.5. Runtime contracts
 

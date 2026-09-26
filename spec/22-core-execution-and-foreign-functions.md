@@ -41,7 +41,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 
 The iteration and indexing Contracts are static Contracts whose associated Types are complete Types with the Origin parameters of §8.4.3.1; `LentItem(step)` may depend on the receiver borrow of each `next`, so lending iterators are ordinary LendingIterator conformances, while an Iterator's `Item` never depends on it. Table signatures follow the normal associated-Type, receiver, result-Origin and lifetime rules.
 
-Fixed arrays conform to the three iteration entries with the items of §14.6.2. Owning Array/Dictionary iterators retain and destroy unyielded elements in §4.7.6 order. ResolvedRange and Slice use concrete Kimi iterator identities with §4.6's item Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and all standard iterators stay exhausted after None and are Iterators. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next's result extends no lifetime. These requirements add no public iterator constructors.
+Fixed arrays conform to the three iteration entries with the items of §14.6.2. Owning Array/Dictionary iterators retain and destroy unyielded elements in §4.7.6 order. ResolvedRange and Slice use concrete Kimi iterator identities with §4.6's item Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements; §22.1.2.3 states the common guarantees of standard iterators. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next's result extends no lifetime. These requirements add no public iterator constructors.
 
 The primitive keyword string denotes the compiler's UTF-8 string Core, not a shadowable alias. It supports literal/interpolation construction, concatenation, comparison and Utf8Format. The [formatting profile](utf8-formatting.md) defines separate mutable buffers, validated views and `Text.toString` for string copying; it adds no character indexer or formatting options. Fixed-array syntax and layout follow [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](04-arrays-indexing-and-slices.md#46-indexing-and-slicing).
 
@@ -73,7 +73,6 @@ The following reference collects the public function names. Types are abbreviate
 | `Kimi.Intrinsics.upgrade<S>` | `ref/Weak<S> -> Option<S>` | §13.5.9 |
 | `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
-
 | `Kimi.Iteration.owned<I>` | `I -> Owned<I>` | §22.1.2.3 |
 | `Kimi.Iteration.borrowed<I>` | `uniq/I during source -> Borrowed<I>{r}` with `origin r.source == source` | §22.1.2.3 |
 | `Kimi.Iteration.shared<C>` | `C -> Shared<C>` | §22.1.2.3 |

@@ -203,7 +203,7 @@ The returned integers, Booleans and `ResolvedRange` values acquire no receiver o
 | `values[i]@move` | Transfer, only through an eligible static Move Path of an owned fixed array |
 | Bare value read | Copy for a proven-Copy element; a Non-Copy element is an error without an expected borrow Type. A bare read never Moves |
 
-Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, `Index` values and paths through borrows never become movable. `@ref` borrows the element Place regardless of the index form, a fixed expected `ref/T` or `uniq/T` borrows it implicitly (§10.2), and a stored reference or handle is Reborrowed from that Place under the same table. Slice Places are shared-only.
+Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, `Index` values and paths through borrows never become movable. `@ref` borrows the element Place regardless of the index form, and a fixed expected `ref/T` borrows it implicitly (§10.2); an exclusive borrow of an owned element needs `@uniq`, while a stored reference or handle is Reborrowed from that Place under the same table. Slice Places are shared-only.
 
 ```kimi
 // resources is an owned fixed array of Non-Copy value Type Resource.

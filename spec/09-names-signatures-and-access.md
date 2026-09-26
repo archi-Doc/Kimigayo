@@ -107,7 +107,7 @@ func example() -> i32
 
 Type parameters belong to their declaring function or Type scope. Nested functions may use outer Type parameters, but runtime bindings cross a Function Boundary only through the anonymous-function capture rules; named nested functions do not capture runtime locals. Top-level locals and local functions stay private to their SourceDocument's execution scope.
 
-Pattern names follow [arm-local scopes](14-control-flow.md#1482-binding-scopes), with separate candidate and body identities. A guard candidate is not a capture source, even when its read Type is Copy.
+Pattern names follow [arm-local scopes](14-control-flow.md#1482-binding-scopes), with separate candidate and body identities. A guard candidate, a `ref/T` reference, is not a capture source.
 
 `Self` is reserved and requires a Type or Contract requirement context. `self` and `value` are contextual receiver and accessor bindings; while active they cannot be redeclared. The stored-accessor binding `storage` designates its own slot (§11.2) and is not a capturable local; elsewhere `storage` is an ordinary Name. Contextual runtime bindings are never implicitly captured. Origin and Label lookup never falls back to Type or Value names.
 

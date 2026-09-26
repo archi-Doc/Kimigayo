@@ -149,7 +149,7 @@ At every position other than a Receiver Expression, including arguments, annotat
 
 | Value kind | Acquisition at other positions |
 | --- | --- |
-| Borrow value | Reborrow or Copy of the reference at a fixed expected borrow Type, or a Scalar read at a Scalar; without an expected Type, Copy only for `ref`/`objref` |
+| Borrow value | Reborrow, or one shared reference through its layers at an expected `ref/U` (§10.2), or a Scalar read at a Scalar; without an expected Type, Copy only for `ref`/`objref` |
 | Owned Place | Shared borrow bare at an expected borrow Type; exclusive borrow requires `@uniq`/`@objuniq`, whatever the access path; by value, Copy when Copy and otherwise `@move` |
 | Owned temporary | By value, passed as is; shared borrow materializes it; exclusive borrow requires `@uniq` |
 
@@ -242,7 +242,7 @@ match counter@uniq                  // Exclusive Subject.
     _ => ()
 ```
 
-**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected immediately on Pattern success; a guarded arm additionally requires successful guard cleanup. `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. On a shared or exclusive path a `var` binding is therefore a reassignable reference, and assigning a value of its referent Type to it is an error whose diagnostic names the Subject mode and suggests `@deref` for an exclusive referent, or a ByValue Subject such as `E@owner` or `E@move` for a local value. Binding the whole Subject borrows the original Place, never the internal reference slot.
+**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected immediately on Pattern success; a guarded arm additionally requires successful guard cleanup. `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. On a shared or exclusive path a `var` binding is therefore a reassignable reference, and assigning a value of its referent Type to it is an error whose diagnostic names the Subject mode and suggests `@deref` for an exclusive referent, or a ByValue Subject such as `E@owner` or `E@move` for a local value. Binding the whole of a borrowed Subject binds a reference to the original Place, never to the internal reference slot: for a Subject that Reborrows a stored `ref/E` or `uniq/E`, that is its referent, bound as `ref/E` or `uniq/E`. Binding the whole of an owned Subject transfers it.
 
 | Selected Place | Value bound |
 | --- | --- |
@@ -255,7 +255,7 @@ On a path that passed through a reference, parts are bound with that path's capa
 
 A change in payload Copy capability therefore changes neither binding Types nor generic-body validity: `match wrapper` with `.Some(let r)` binds `ref/Result<i32, i32>` for `wrapper: Option<Result<i32, i32>>`, and `r@deref` Copies the value where one is needed.
 
-**Guards.** In a guard, each candidate name is exposed as a **shared reference** `ref/T` to its selected Place, whatever the Subject mode and `T`'s Copy capability; the candidate has its own `let`-like reference slot and a Binding Identity distinct from the body binding. `candidate@ref` borrows that slot, `candidate@deref` Copies a Copy value, and `candidate@deref@ref` borrows the original Place again; a stored `ref/U` gives `ref/(ref/U)` without flattening. Assignment, Move and direct capture of a candidate, and exclusive operations on the candidate Storage, are rejected. Candidate references and Loans newly derived from them cannot leave the guard, through a callee or a wrapping value; a Scalar snapshot or a Copy of a stored external reference obtained with `candidate@deref` may be kept under the ordinary dependency rules when it does not depend on the candidate. From Pattern testing through guard cleanup the Case and the candidate Places are protected; a false guard cleans up the guard's reference slots, temporaries and Loans and tries the next arm, and a true guard runs the same cleanup and then initializes the body bindings from the original Places. Side effects are not rolled back, and no payload is Moved during a guard. Guard syntax, escape checks and Subject protection are detailed in §14.8.3.
+**Guards.** In a guard, each candidate name is a shared reference `ref/T` to its selected Place, held in its own `let`-like reference slot with a Binding Identity distinct from the body binding, whatever the Subject mode and `T`'s Copy capability. No payload is Moved during a guard; a false guard cleans up the guard's reference slots, temporaries and Loans and tries the next arm, and a true guard runs the same cleanup and then initializes the body bindings from the original Places. Side effects are not rolled back. §14.8.3 owns the guard syntax, candidate restrictions, escape checks and Subject protection.
 
 **Lifetime.** The Subject lasts for the match evaluation. A match result or outward transfer value is secured first; then the arm scope is cleaned up under ordinary Scope Exit, and finally the Subject's remaining initialized parts are destroyed. Body bindings enter scope left to right and are destroyed in reverse order, before the Subject; body locals and `defer` keep their normal reverse registration order. A Wildcard does not destroy immediately, and unselected arms acquire no body ownership. Match is exhaustive and has no unmatched normal-completion path. Each later step requires the earlier cleanup to complete normally; Abort does not unwind.
 
@@ -759,7 +759,7 @@ Each call creates a temporary reborrow; the first ends before the second starts.
 
 A split target must be valid initialized Storage with correct bounds, placement and provenance. The remainder's capabilities are updated before a child is published, and capabilities over an already published part are never regenerated from the remainder. Zero-sized parts are distinguished by logical position, not by address. A Dictionary separates one entry and then lends the key and the value with different modes; exclusive access to a key, which fixes identity, is never published. Destroying an iterator or a remainder handle does not end published child Loans. Conflicting reads, writes, reallocation, Move or destruction of the original collection are rejected while a published child is needed. Internal dependencies of elements and external effects are checked separately from non-overlap.
 
-**Independence of published results.** A result whose Type does not depend on the receiver Loan of the call that produced it, and whose Loan anchors are the external source, owner or a needed parent Loan rather than the receiver or the callee's storage, may be retained across later calls on the same receiver. The callee's published effects (§15.6.4, §9.1) must not conflict with the Loans of results it published earlier; a generic caller uses the published upper bound of those effects and never reanalyzes a private body.
+**Independence of published results.** A result whose Type does not depend on the receiver Loan of the call that produced it, and whose Loan anchors are the external source, owner or a needed parent Loan rather than the receiver or the callee's storage, may be retained across later calls on the same receiver. The callee's published effects (§15.6.4; for an Iterator, the effect bound of §22.1.2.4) must not conflict with the Loans of results it published earlier; a generic caller uses the published upper bound of those effects and never reanalyzes a private body.
 
 ### 15.6.4. Calls and origin propagation
 
@@ -1004,7 +1004,7 @@ This revision does not define:
 
 - abstract Origin parameters owned by Contracts themselves; static Contracts may inherit outer Origins under §6.1.3, associated Types may declare Origin parameters under §8.4.3, and the [Property getter receiver and result contracts](11-properties.md#1122-computed-properties) introduce no Contract-level Origin parameters;
 - existential object views that hide non-static payload dependencies;
-- general higher-ranked Origins beyond the direct-input quantification of Callable constraints and the per-call `step` of `Iterator.next`;
+- general higher-ranked Origins beyond the direct-input quantification of Callable constraints and the per-call `step` of `LendingIterator.next` and of other Origin-parameterized associated Types (§8.4.3.1);
 - Origin expressions naming static Places, such as a function result bounded by a mutable static Field; use direct access, an input-bounded result (§11.3.2), a scoped callback or immutable static storage instead;
 - cancellation cleanup guarantees.
 
