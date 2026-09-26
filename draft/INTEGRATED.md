@@ -38,6 +38,7 @@
 | `2026-09-23 Implicit Exclusive Receiver.md` | 取り込み済み | SPEC.md の要約、§3.4、§4.7、§6.2.2、§7.3、§7.6.3、§8.4.1、§8.6、§8.8.2、§9.1、§9.5、§9.5.1、§10.2、§10.4、§11.2、§12.4.4、§13.1、§13.5.5.1、§13.7、§14、§15.1.5、§15.6.7、§15.7、utf8-formatting §5、付録 A/E/F（PLAN_HISTORY 2026-09-24） |
 | `2026-09-23 Object Payload.md` | 取り込み済み | §3.2.2、§3.3、§3.3.6、§6.1.3.1、§6.2.2、§8.1.1、§8.1.2、§8.2、§8.4.4、§8.4.7、§8.4.7.1、§8.4.7.2（新設）、§8.5、§8.7、§8.10、§13.5.5.1、§13.5.7、§13.5.8、§13.6、§15.3、§15.8.1、§21.3.4、§22.1、utf8-formatting §1.1、付録 A.19/E/F（PLAN_HISTORY 2026-09-24） |
 | `2026-09-24 Complete Types and Static Contracts.md` | 取り込み済み | `Design/2026-09-25 Places Borrowing and Iteration.md` に統合され、同文書の取り込み（2026-09-26）で §8.4、§8.4.3、§8.4.5、§8.4.9 へ反映 |
+| `2026-09-26 Follow Copy and Specification Split.md` | 取り込み済み | SPEC と実装仕様の分離（`b71eba3b`）、実装 `d0acea79`（`@follow`）、`95cb6f4f`（`@copy`）、`80f74a75`（単一スロット束縛）。本書は事後の変更記録として作成 |
 | `2026-09-25 Shared Place Results.md` | 取り込み済み | 同上。§7.1.1、§4.6.9、§10.3 へ反映 |
 | `2026-09-24 Exclusive Iteration and Iterable Modes.md` | 保留 | `Obsolete/` へ移動済み。後続の `Design/2026-09-25 Places Borrowing and Iteration.md` が三つの列挙入口として置き換えた |
 
