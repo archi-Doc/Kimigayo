@@ -18,7 +18,7 @@ public sealed partial class Binding
     /// <summary>Gets the terminal Scalar of a chain of safe value-reference layers (SPEC 3.5.3).</summary>
     /// <param name="type">The source Type.</param>
     /// <returns>The terminal Scalar Type, or null when the chain does not end in a Scalar.</returns>
-    internal static BoundType? ScalarReferent(BoundType type)
+    internal static BoundType? ScalarReferent(BoundType? type)
     {
         if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {

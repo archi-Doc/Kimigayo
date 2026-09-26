@@ -29,7 +29,7 @@ public enum ArgumentOperationKind : byte
 /// <summary>An implicit operation of the common adaptation (SPEC 10.2) selected at a fixed expected Type.</summary>
 public enum ExpectedAdaptationKind : byte
 {
-    /// <summary>The Copy referent at the end of the reference layers is read (SPEC 3.5.3).</summary>
+    /// <summary>The Scalar or Unit referent at the end of the reference layers is read (SPEC 3.5.3).</summary>
     ReferentRead,
 
     /// <summary>A readable owned Place is shared-borrowed.</summary>
@@ -38,7 +38,8 @@ public enum ExpectedAdaptationKind : byte
     /// <summary>A single uniq layer is Reborrowed in the expected mode.</summary>
     Reborrow,
 
-    /// <summary>Several reference layers yield one shared reference to their final referent.</summary>
+    /// <summary>Several reference layers yield one reference to their final referent: shared under SPEC 10.2, or exclusive when a
+    /// receiver is selected through exclusive layers only (SPEC 3.4.1).</summary>
     ReferenceRead,
 }
 
@@ -308,7 +309,7 @@ public sealed partial class Binding
             return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
         }
 
-        if (this.Referent(actual, node) is { } referent && Compatible(referent, expected))
+        if (ScalarReferent(actual) is { } referent && Compatible(referent, expected))
         {
             return new(ExpectedAdaptationKind.ReferentRead, referent);
         }
@@ -360,23 +361,12 @@ public sealed partial class Binding
         return source.BoundType?.Origin ?? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
-    // SPEC 3.5.3 Scalar read: the safe value-reference layers of a value are followed to their terminal Type,
-    // which is read only when it is a Scalar. A non-Scalar referent, Copy or not, is never read implicitly.
-    private BoundType? Referent(BoundType? type, Koto context)
-    {
-        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            return null;
-        }
-
-        var terminal = ComparisonReferent(type);
-        return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
-    }
-
-    // An operand denotes its Copy referent (SPEC 13.4); the node keeps its reference Type.
+    // SPEC 3.5.3 Scalar read: the safe value-reference layers of an operand are followed to their terminal Type, which
+    // is read only when it is a Scalar; a non-Scalar referent, Copy or not, is never read implicitly. The node keeps its
+    // reference Type.
     private BoundType? ReadReferent(Koto node, BoundType? type)
     {
-        if (this.Referent(type, node) is not { } referent)
+        if (ScalarReferent(type) is not { } referent)
         {
             return type;
         }
@@ -502,7 +492,7 @@ public sealed partial class Binding
             }
 
             // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source) && this.Referent(actual, source) is { } read && this.FitsTypeAt(read, pattern, source))
+            if (!this.FitsTypeAt(actual, pattern, source) && ScalarReferent(actual) is { } read && this.FitsTypeAt(read, pattern, source))
             {
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
@@ -522,7 +512,7 @@ public sealed partial class Binding
         // A comparison's Copy read is a temporary value, even though its syntax retains ref/T.
         // Borrow that snapshot; borrowing the original storage would change left-to-right semantics.
         if (!projected && pattern.Semantics == SemanticsKind.Ref && this.ReadsReferent(source) &&
-            this.Referent(actual, source) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source))
+            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source))
         {
             adapted = this.PreparedBorrowType(source, pattern);
             quality = ArgumentAdaptation.CrossSemanticsBorrow;

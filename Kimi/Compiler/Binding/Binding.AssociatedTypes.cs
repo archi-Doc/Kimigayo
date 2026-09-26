@@ -305,10 +305,11 @@ public sealed partial class Binding
         var self = this.SelfType(path.Type);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
+        var iteratorItem = this.IsIteratorItem(associated);
         for (var i = 0; i < binding.Candidates.Count; i++)
         {
             var type = this.ContractType(binding.Candidates[i], scope, self);
-            valid &= (this.IsIteratorElement(associated) || this.IsAssociatedCore(type, scope)) && (result is null || ReferenceEquals(result, type));
+            valid &= (iteratorItem || this.IsAssociatedCore(type, scope)) && (result is null || ReferenceEquals(result, type));
             result = type;
         }
 
@@ -411,7 +412,7 @@ public sealed partial class Binding
 
     // SPEC 8.4.3: every associated Type is a complete Type; this implementation admits Semantics and generic parameters
     // only in the Item requirement of Kimi.Iterator (STATUS).
-    private bool IsIteratorElement(BindingSymbol associated)
+    private bool IsIteratorItem(BindingSymbol associated)
         => associated.Name == "Item" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration);
 
     /// <summary>Substitutes Contract Self and normalizes explicit associated identities without member inference.</summary>

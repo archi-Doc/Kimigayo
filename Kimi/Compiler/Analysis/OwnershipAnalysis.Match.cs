@@ -72,8 +72,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        // SPEC 15.1.6 subject rule: a bare Place or temporary is shared-borrowed and a bare exclusive borrow
-        // value Reborrowed for the match; a written borrow or transfer is acquired as it is.
+        // SPEC 15.1.6 subject rule: a bare Place is borrowed in its mode (a bare exclusive borrow value is Reborrowed);
+        // any other Subject, including a temporary, a written borrow or a transfer, is acquired as it is.
         var input = plan!.SubjectBorrow is { } borrowed ? this.BorrowStruct(syntax.Expression, borrowed) : this.Expression(syntax.Expression);
         if (this.current < 0 || !this.flow!.Nodes[syntax.Expression].CanCompleteNormally)
         {

@@ -214,10 +214,10 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        // SPEC 13.7.2: secure the RHS, then the receiver and old value. Keep the original SSA receiver
-        // even if later evaluation reads the same Place.
+        // SPEC 13.7.2: secure the RHS, then the receiver and old value. The receiver is read like that of a simple
+        // write; nothing runs between reading the old value and storing the new one.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
-        var receiver = right < 0 ? -1 : this.BorrowStruct(root, receiverType);
+        var receiver = right < 0 ? -1 : this.Receiver(root);
         var receiverValue = this.Value(receiver);
         var previous = -1;
         if (receiver >= 0)

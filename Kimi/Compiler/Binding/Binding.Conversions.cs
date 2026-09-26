@@ -414,13 +414,7 @@ public sealed partial class Binding
             // A Type-only target Copies and never transfers a Non-Copy Place.
             if (SupportsIdentityAcquisition(source))
             {
-                if (IsBarePlace(conversion.Left) && this.ProveCopy(source, conversion) != ConstraintProof.Proven)
-                {
-                    return Fail(conversion, BindingFailure.TransferRequired);
-                }
-
-                conversion.ConversionBinding = ConversionBinding.Identity;
-                return Complete(conversion, target);
+                return this.CompleteIdentity(conversion, target);
             }
         }
 

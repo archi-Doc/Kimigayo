@@ -28,7 +28,8 @@ public sealed class ForKoto : ExpressionKoto
     // SPEC 14.6.1: bit i is set when slot i is written "var Name"; a bare Name is a let binding.
     private readonly ulong mutableSlots;
 
-    /// <summary>Gets or sets the implicit whole-range Slice Type through which a bare fixed-array Place is iterated (SPEC 14.6.2), or null.</summary>
+    /// <summary>Gets or sets the borrow through which the loop enumerates its Subject (SPEC 14.6.2): the implicit whole-range Slice of a bare
+    /// array Place, or the shared or exclusive view of an array or Dictionary in the Subject mode; null for a Subject acquired by value.</summary>
     internal BoundType? SharedIterable { get; set; }
 
     /// <summary>Gets or sets the Subject mode selected by the outermost operation of the iterable (SPEC 15.1.6).</summary>

@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>SPEC 4.6.6: the shared result of a proven Non-Copy value.</summary>
+/// <summary>SPEC 4.6.9, 10.2: the Semantics of a shared borrow of a stored value, and whether it reads a stored pointer.</summary>
 internal static class SharedReadTypes
 {
     internal static SemanticsKind? BorrowSemantics(BoundType stored) => stored.Semantics switch
