@@ -56,6 +56,20 @@ public struct Slice<T> {source}
             .Some(let position) => return self.trySplitAt(position)
             .None => return .None
 
+    /// Returns whether some element equals `value`, visiting elements in increasing index order.
+    public func contains(self: Self, value: ref/T) -> bool
+        T is Equatable
+        for element in self
+            if element == value => return true
+        return false
+
+    /// Returns the first index whose element equals `value`, or `None` when no element does.
+    public func firstIndex(self: Self, of => value: ref/T) -> Option<isize>
+        T is Equatable
+        for index in self.indices
+            if self[index]@ref/T == value => return .Some(index)
+        return .None
+
 public struct SliceIterator<T> {source}
     Self is Iterator
     associate Iterator.Item is ref/T during source

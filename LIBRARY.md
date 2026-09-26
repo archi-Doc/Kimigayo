@@ -171,6 +171,8 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | `trySlice(self: Self, range: Range or ResolvedRange) -> Option<Slice<T> during source>` | None for invalid range bounds. |
 | `splitAt(self: Self, index: isize or Index) -> (Slice<T> during source, Slice<T> during source)` | Splits into `[0, p)` and `[p, length)`; invalid boundaries Abort. |
 | `trySplitAt(self: Self, index: isize or Index) -> Option<(Slice<T> during source, Slice<T> during source)>` | The same split, returning None for an invalid boundary. |
+| `contains(self: Self, value: ref/T) -> bool`, `T is Equatable` | Whether some element equals `value`; visits elements in index order and stops at the first match. |
+| `firstIndex(self: Self, of: ref/T) -> Option<isize>`, `T is Equatable` | The first index whose element equals the value, or None. |
 
 Split boundaries include zero and length. Both results retain the source dependency, including empty results. Indexable and the three iteration conformances follow §2.
 
@@ -224,7 +226,7 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. Callback arguments await P26. |
 | `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | Heapsort by `by`; not stable, no allocation. Callback arguments await P26. |
 
-Specified but not yet provided: `init(! repeating:count:)`, the `first`/`last` Properties (Origin-carrying getter results, P24), `appendCopies`, `sort()`, and the Slice `contains`/`firstIndex` operations (element-conditional members, PLAN G23). Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+Specified but not yet provided: `init(! repeating:count:)`, the `first`/`last` Properties (Origin-carrying getter results, P24), `appendCopies`, `sort()` and the Slice `firstIndex(matching:)` operation (Callable arguments, P26). Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 
