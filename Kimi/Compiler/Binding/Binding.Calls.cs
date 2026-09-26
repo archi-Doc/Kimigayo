@@ -484,7 +484,9 @@ public sealed partial class Binding
                         declaringType = this.ConstructorType(call, function, scope);
                     }
 
+                    this.activeRequirementContract = requirementGroup?.Contracts[index];
                     state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed);
+                    this.activeRequirementContract = null;
                 }
 
                 evaluated[index] = new(candidate, state, declaringType, defaultsUsed);
@@ -534,6 +536,7 @@ public sealed partial class Binding
 
             var winner = evaluated[winnerIndex].Symbol;
             var selected = (FunctionKoto)winner.Declaration;
+            this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex]; // Reset by the finally block.
             var selectedType = evaluated[winnerIndex].DeclaringType;
             if (savedCandidates != 0)
             {
@@ -652,6 +655,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.activeRequirementContract = null;
             if (defaults is not null)
             {
                 this.defaultArgumentScratch.Return(defaults, clearArray: true);

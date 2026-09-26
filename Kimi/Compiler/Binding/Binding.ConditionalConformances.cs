@@ -305,6 +305,17 @@ public sealed partial class Binding
             }
         }
 
+        if (identity is null && !IsBoundContractReference(contract))
+        {
+            // SPEC 8.4.9: a Contract named without Type arguments (a requirement's owner) is satisfied by the one conformance
+            // to a bound reference of its declaration; several such conformances stay undecided here.
+            identity = this.ConformanceByDeclaration(symbol, contract, out var ambiguous);
+            if (ambiguous)
+            {
+                return ConstraintProof.Unknown;
+            }
+        }
+
         if (identity is null || identity.PathStorage.Count == 0)
         {
             return !DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;

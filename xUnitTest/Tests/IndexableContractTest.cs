@@ -20,6 +20,13 @@ public class IndexableContractTest
         "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
         "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n";
 
+    // SPEC 8.4.2: a Constraint on a bound Contract reference indexes a Type parameter through the requirement.
+    private const string FirstPlace =
+        "func firstPlace<S>(items: ref/S) -> place ref/S.Element during items\n    S is Indexable<isize>\n    return items[0]\n";
+
+    private const string FirstUniq =
+        "func firstUniq<S>(items: uniq/S) -> place uniq/S.Element during items\n    S is UniqIndexable<isize>\n    return items[0]\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "CopyRead", Pair + "var pair = Pair<i32>.init(1, 2)\nlet second = pair[1]\nlet key: isize = 0\nrequire second == 2 and pair[key] == 1 else => $abort(\"read\")\npair[key] = 5\nrequire pair[0] == 5 else => $abort(\"write\")\nConsole.writeLine(\"ok\")", "ok\n" },
@@ -27,6 +34,8 @@ public class IndexableContractTest
         { "ExclusiveWrite", Pair + "var counts = Pair<i32>.init(1, 2)\ncounts[1] += 40\nlet exclusive = counts[0]@uniq\nexclusive@follow = 7\nrequire counts[1] == 42 and counts[0] == 7 else => $abort(\"write\")\ncounts[0] = counts[1] + 1\nrequire counts[0] == 43 else => $abort(\"replace\")\nConsole.writeLine(\"Pair replaced.\")\nvar names = Pair<string>.init(\"Pair first.\", \"Pair second.\")\nlet lent = names[1]@uniq\nConsole.writeLine(lent)", "Pair replaced.\nPair second.\n" },
         { "ThroughReferences", Pair + "func show(pair: ref/Pair<string>) => Console.writeLine(pair[1])\nfunc bump(pair: uniq/Pair<i32>) => pair[0] += 1\nvar names = Pair<string>.init(\"a\", \"b\")\nshow(names)\nvar counts = Pair<i32>.init(41, 0)\nbump(counts@uniq)\nrequire counts[0] == 42 else => $abort(\"bump\")\nConsole.writeLine(\"ok\")", "b\nok\n" },
         { "SharedOnly", Shared + "let view = View.init(42)\nrequire view[0] == 42 else => $abort(\"shared\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "GenericShared", Pair + Shared + FirstPlace + "var pair = Pair<string>.init(\"Pair first.\", \"Pair second.\")\nConsole.writeLine(firstPlace(pair))\nlet counts = Pair<i32>.init(7, 8)\nlet view = View.init(9)\nrequire firstPlace(counts) == 7 and firstPlace(view) == 9 else => $abort(\"generic\")\nlet lent = firstPlace(pair)@ref\nConsole.writeLine(lent)", "Pair first.\nPair first.\n" },
+        { "GenericExclusive", Pair + FirstUniq + "var counts = Pair<i32>.init(1, 2)\nfirstUniq(counts@uniq) = 40\nfirstUniq(counts@uniq) += 2\nrequire counts[0] == 42 and counts[1] == 2 else => $abort(\"uniq\")\nConsole.writeLine(\"ok\")", "ok\n" },
     };
 
     [Theory]
@@ -44,6 +53,8 @@ public class IndexableContractTest
     [InlineData("struct Wrong\n    Self is Indexable<isize>\n    associate Element is string\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("struct Missing\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.MissingContractImplementation_Kd)]
     [InlineData("struct Value\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> i32 => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("func f<S>(items: uniq/S) -> place uniq/S.Element during items\n    S is Indexable<isize>\n    return items[0]", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(Shared + FirstUniq + "var view = View.init(1)\nfirstUniq(view@uniq) = 2", DiagnosticCode.NoApplicableOverload_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

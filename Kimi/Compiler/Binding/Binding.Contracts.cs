@@ -41,7 +41,35 @@ public sealed partial class Binding
         => this.ResolveConformance(type, contract, this.ConstraintScope(context), out path);
 
     private static bool IsRefinement(BindingSymbol child, BindingSymbol parent)
-        => ReferenceEquals(child, parent) || (child.Contract is { } shape && shape.AncestorStorage.Contains(parent));
+    {
+        if (ReferenceEquals(child, parent) || SatisfiesDeclaration(child, parent))
+        {
+            return true;
+        }
+
+        if (child.Contract is not { } shape)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < shape.AncestorStorage.Count; i++)
+        {
+            if (ReferenceEquals(shape.AncestorStorage[i], parent) || SatisfiesDeclaration(shape.AncestorStorage[i], parent))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 8.4.2, 8.4.9: a Contract named without Type arguments, as an associated Type's owner is, is satisfied by any
+    // bound reference of its declaration.
+    private static bool SatisfiesDeclaration(BindingSymbol candidate, BindingSymbol parent)
+        => IsBoundContractReference(candidate) && !IsBoundContractReference(parent) && ReferenceEquals(candidate.Declaration, parent.Declaration);
+
+    private static bool IsBoundContractReference(BindingSymbol contract)
+        => contract.Type is { } reference && !ReferenceEquals(reference.Symbol, contract);
 
     private static bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
     {

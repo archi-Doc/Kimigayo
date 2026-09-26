@@ -423,6 +423,11 @@ public sealed partial class Binding
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
     {
         type = this.ApplyContractEnvironment(type, scope);
+        if (this.activeRequirementContract is { } bound)
+        {
+            type = this.SubstituteContractReference(type, bound); // SPEC 8.4.2: the requirement of a bound reference.
+        }
+
         if (type.Symbol?.Declaration is ContractKoto && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed)
         {
             return self ?? EnclosingContractSelf(scope) ?? type;

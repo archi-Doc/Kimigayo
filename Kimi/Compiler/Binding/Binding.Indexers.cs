@@ -27,6 +27,26 @@ public sealed partial class Binding
     internal bool HasExclusiveIndexer(Koto node)
         => KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.exclusiveIndexers.Contains(index);
 
+    // SPEC 8.4.2: whether the Contract, a bound reference or a declaration, is the declaration or refines it.
+    private static bool RefinesDeclaration(BindingSymbol contract, Koto declaration)
+    {
+        if (ReferenceEquals(contract.Declaration, declaration))
+        {
+            return true;
+        }
+
+        var shape = contract.Contract;
+        for (var i = 0; shape is not null && i < shape.Ancestors.Count; i++)
+        {
+            if (ReferenceEquals(shape.Ancestors[i].Declaration, declaration))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
     {
         result = null;
@@ -37,26 +57,42 @@ public sealed partial class Binding
         }
 
         this.exclusiveIndexers.Remove(source);
-        if (source.Right is RangeKoto || core?.Symbol is not { Declaration: StructKoto or EnumKoto } owner || this.Library.Indexable is not { } indexable)
+        if (source.Right is RangeKoto || core is null || this.Library.Indexable is not { } indexable)
         {
             return false;
         }
 
-        var conformance = this.ConformanceByDeclaration(owner, indexable, out var ambiguous);
-        if (conformance is null)
+        bool exclusiveAvailable;
+        if (core.Symbol is { Declaration: StructKoto or EnumKoto } owner)
         {
-            if (!ambiguous)
+            var conformance = this.ConformanceByDeclaration(owner, indexable, out var ambiguous);
+            if (conformance is null)
             {
-                return false;
+                if (!ambiguous)
+                {
+                    return false;
+                }
+
+                // SPEC 4.6.9: several Key conformances are distinct; selecting among them by the key Type remains a boundary (STATUS).
+                this.BindNode(source.Right, scope);
+                result = Fail(source, BindingFailure.Ambiguous);
+                return true;
             }
 
-            // SPEC 4.6.9: several Key conformances are distinct; selecting among them by the key Type remains a boundary (STATUS).
-            this.BindNode(source.Right, scope);
-            result = Fail(source, BindingFailure.Ambiguous);
-            return true;
+            exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.ConformanceByDeclaration(owner, uniqIndexable, out _) is not null;
+        }
+        else if (core.Kind == BoundTypeKind.Parameter && this.HasContractFact(core, indexable, scope))
+        {
+            // SPEC 4.6.9, 8.4: a constrained Type parameter indexes through its Indexable fact; the synthesized call
+            // resolves to the requirement, and the instance supplies the conforming Type's implementation.
+            exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.HasContractFact(core, uniqIndexable, scope);
+        }
+        else
+        {
+            return false;
         }
 
-        if (this.Library.UniqIndexable is { } uniqIndexable && this.ConformanceByDeclaration(owner, uniqIndexable, out _) is not null)
+        if (exclusiveAvailable)
         {
             this.exclusiveIndexers.Add(source);
         }
@@ -78,6 +114,29 @@ public sealed partial class Binding
 
         result = Complete(source, element);
         return true;
+    }
+
+    // SPEC 8.4.2, 8.7: whether an available Constraint fact makes the subject conform to the Contract declaration or a refinement.
+    private bool HasContractFact(BoundType subject, BindingSymbol contract, BindingScope scope)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { Invalid: false } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, subject) && fact.Contract is { } bound &&
+                    this.AvailableConstraintFact(environment, fact) && RefinesDeclaration(bound, contract.Declaration))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private InvocationKoto? BindIndexerCall(IndexKoto source, BindingScope scope, bool exclusive)

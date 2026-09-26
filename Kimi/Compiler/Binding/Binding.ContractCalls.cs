@@ -8,6 +8,10 @@ public sealed partial class Binding
 {
     private readonly Dictionary<MemberAccessKoto, RequirementGroup> requirementGroups = new(ReferenceEqualityComparer.Instance);
 
+    // SPEC 8.4.2: the bound Contract reference whose requirement is the candidate under evaluation or the selected
+    // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
+    private BindingSymbol? activeRequirementContract;
+
     private static bool HasUnsubstitutedOrigin(BoundType type, Koto binder)
     {
         if (!type.CarriesOrigin)
@@ -70,6 +74,7 @@ public sealed partial class Binding
         }
 
         group.Members.Clear();
+        group.Contracts.Clear();
         group.Seen.Clear();
         group.Self = type;
         group.Active = true;
@@ -149,6 +154,7 @@ public sealed partial class Binding
                 if (requirement.Declaration is FunctionKoto && group.Seen.Add(requirement))
                 {
                     group.Members.Add(requirement);
+                    group.Contracts.Add(shape.Symbol);
                 }
             }
         }
@@ -190,6 +196,9 @@ public sealed partial class Binding
     private sealed class RequirementGroup
     {
         internal List<BindingSymbol> Members { get; } = new();
+
+        /// <summary>Gets the Contract, a bound reference where it takes Type arguments, that supplied each member.</summary>
+        internal List<BindingSymbol> Contracts { get; } = new();
 
         internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
 
