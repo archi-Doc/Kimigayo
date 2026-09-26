@@ -599,6 +599,11 @@ public sealed partial class OwnershipAnalysis
             return this.Call(getter);
         }
 
+        if (this.compilation.Binding.IndexerCall(node, false) is { } indexer)
+        {
+            return this.Expression(indexer, use, acquisition); // SPEC 4.6.9: receiver[key] through a user conformance reads the published Place.
+        }
+
         if (this.compilation.Binding.StorageProjection(node) is { } storage)
         {
             return this.ReadBorrowedField(storage);
@@ -821,6 +826,11 @@ public sealed partial class OwnershipAnalysis
             if (target is InvocationKoto placeCall && ElementAccess.IsPlaceCall(placeCall))
             {
                 return this.WritePlaceCall(binary, placeCall); // SPEC 7.1.1: a write through a place uniq/T result.
+            }
+
+            if (target is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, true) is { } exclusiveIndexer)
+            {
+                return this.WritePlaceCall(binary, exclusiveIndexer); // SPEC 4.6.9: an update selects indexUniq.
             }
 
             if (IsPointerPlace(target))

@@ -1,0 +1,9 @@
+// SPEC 4.6.9, 22.1: the single-element indexing Contracts. receiver[key] resolves through a conformance to
+// Indexable<Key>; updates and exclusive borrows select indexUniq of the same conformance. The standard Array,
+// fixed-array, Slice and Dictionary indexing remains compiler-provided (STATUS); user Types conform explicitly.
+public contract Indexable<Key>
+    associate Element
+    func index(self: ref/Self, key: ref/Key) -> place ref/Element during self
+
+public contract UniqIndexable<Key>: Indexable<Key>
+    func indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self

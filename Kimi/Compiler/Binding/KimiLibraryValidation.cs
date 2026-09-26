@@ -35,6 +35,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.IntoIterable => this.ValidIntoIterable(symbol),
                         KimiDeclarationId.Equatable or KimiDeclarationId.Comparable => this.ValidComparisonContract(symbol, entry.Id),
+                        KimiDeclarationId.Indexable or KimiDeclarationId.UniqIndexable => this.ValidIndexableContract(symbol, entry.Id),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
                         KimiDeclarationId.Dictionary => this.ValidDictionary(symbol),
@@ -96,6 +97,17 @@ public sealed partial class KimiLibrary
             if (matches && entry.Id == KimiDeclarationId.Comparable)
             {
                 matches = symbol.Contract is { } contract && contract.Ancestors.Contains(this.GetSymbol(KimiDeclarationId.Equatable)!);
+            }
+
+            if (matches && entry.Id == KimiDeclarationId.UniqIndexable)
+            {
+                // The refined parent is a bound reference Indexable<Key> of the recognized Indexable declaration.
+                var indexable = this.GetSymbol(KimiDeclarationId.Indexable)!.Declaration;
+                matches = false;
+                for (var a = 0; symbol.Contract is { } refined && a < refined.Ancestors.Count && !matches; a++)
+                {
+                    matches = ReferenceEquals(refined.Ancestors[a].Declaration, indexable);
+                }
             }
 
             if (!matches)
@@ -232,6 +244,48 @@ public sealed partial class KimiLibrary
                 SemanticsKind: SemanticsKind.Ref, SemanticsParameter: null, OriginExpression: null, OriginName: null, OriginArguments: null,
             },
         };
+
+    // SPEC 4.6.9: contract Indexable<Key> with associate Element and index(self: ref/Self, key: ref/Key) -> place ref/Element
+    // during self; contract UniqIndexable<Key>: Indexable<Key> with indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self.
+    private bool ValidIndexableContract(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var exclusive = id == KimiDeclarationId.UniqIndexable;
+        if (symbol.Intrinsic != IntrinsicKind.None || !ReferenceEquals(symbol.Scope, this.Scope) ||
+            symbol.Declaration is not ContractKoto { HasIncompatibleBindingHeader: false, ConstraintNodes.Count: 0, GenericParameterNodes.Count: 1, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration ||
+            !ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) || declaration.Name != (exclusive ? "UniqIndexable" : "Indexable") ||
+            declaration.GenericParameterNodes[0] is not GenericParameterKoto { Identifier: "Key", SemanticsParameter: null, AttributeChain: null } ||
+            declaration.Bases.Count != (exclusive ? 1 : 0) || declaration.Members.Count != (exclusive ? 1 : 2))
+        {
+            return false;
+        }
+
+        if (exclusive && (BareType(declaration.Bases[0]) is not GenericsKoto { TypeArguments.Count: 1 } parent || !BareName(parent.Identifier, "Indexable") || !BareName(parent.TypeArguments[0], "Key")))
+        {
+            return false;
+        }
+
+        if (!exclusive && (declaration.Members[0] is not SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1, AttributeChain: null } associated ||
+            associated.Operands[0] is not IdentifierNameKoto { IdentifierName: "Element" }))
+        {
+            return false;
+        }
+
+        if (declaration.Members[exclusive ? 0 : 1] is not FunctionKoto { IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 2, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function ||
+            function.Name != (exclusive ? "indexUniq" : "index") || function.NameBoundaryIndex >= 0 ||
+            function.ReturnType is not PlaceResultKoto place || place.IsExclusive != exclusive ||
+            place.Type is not TypeSemanticsKoto { SemanticsParameter: null, OriginName: "self", OriginExpression: IdentifierNameKoto, OriginArguments: null, Type: { } element } || !BareName(element, "Element"))
+        {
+            return false;
+        }
+
+        var receiver = function.Parameters[0];
+        var key = function.Parameters[1];
+        return receiver.InternalName == "self" && receiver.ExternalName == "self" && receiver.DefaultValue is null && receiver.AttributeChain is null &&
+            receiver.Type is TypeSemanticsKoto { SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null } receiverType &&
+            receiverType.SemanticsKind == (exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref) && BareName(receiverType.Type, "Self") &&
+            key.InternalName == "key" && key.ExternalName == "key" && key.DefaultValue is null && key.AttributeChain is null &&
+            key.Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Ref, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null } keyType && BareName(keyType.Type, "Key");
+    }
 
     private bool ValidComparisonContract(BindingSymbol symbol, KimiDeclarationId id)
     {

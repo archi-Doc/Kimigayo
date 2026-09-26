@@ -91,6 +91,8 @@ public enum KimiDeclarationId : byte
     DictionaryTryGet,
     DictionaryClear,
     DictionaryShrinkToFit,
+    Indexable,
+    UniqIndexable,
 }
 
 public enum KimiDeclarationState : byte

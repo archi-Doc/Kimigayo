@@ -42,6 +42,11 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)
+        {
+            return this.BorrowStruct(indexer, type, reservation); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
+        }
+
         if (unwrapped is InvocationKoto placeCall && ElementAccess.IsPlaceCall(placeCall))
         {
             // SPEC 7.1.1: a borrow of a published Place is a Reborrow through the reference the call returns; the call is

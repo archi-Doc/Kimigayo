@@ -73,6 +73,11 @@ public sealed partial class Binding
                 return Complete(source, receiver.Components[0]); // SPEC 4.6.6: the shared element Place.
             }
 
+            if (this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
+            {
+                return indexed; // SPEC 4.6.9: a user Indexable conformance.
+            }
+
             if (receiver is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !ReferenceEquals(receiver, BoundType.Never))
             {
                 this.BindNode(source.Right, scope);

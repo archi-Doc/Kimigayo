@@ -16,7 +16,33 @@ public sealed partial class Binding
         }
 
         var context = this.TypeContext(syntax, scope) with { SuppressOuter = true };
-        var reference = this.BindContainerReference(syntax, declaration, scope, context, []);
+        // SPEC 8.4: a Contract's own Type parameters are supplied at the reference, as for a constructed struct Type.
+        var unwrapped = syntax;
+        while (unwrapped is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
+        {
+            unwrapped = inner;
+        }
+
+        var container = (DeclarationContainerKoto)declaration.Declaration;
+        BoundType? own = null;
+        if (container.GenericParameterNodes.Count != 0)
+        {
+            if (unwrapped is not GenericsKoto generic || generic.TypeArguments.Count != container.GenericParameterNodes.Count)
+            {
+                Fail(syntax, BindingFailure.TypeMismatch);
+                return null;
+            }
+
+            generic.Identifier!.BoundSymbol = declaration;
+            generic.Identifier.BindingState = BindingState.Resolved;
+            own = this.BindTypeList(generic, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, declaration);
+            if (own is null)
+            {
+                return null;
+            }
+        }
+
+        var reference = this.BindContainerReference(syntax, declaration, scope, context, own is null ? [] : (BoundType[])own.Components);
         reference = reference is null ? null : this.CompleteOrigins(reference, syntax as TypeSemanticsKoto, syntax, scope, context);
         if (reference is null || reference.OriginArguments.Count != declaration.Schema.Origins.Count || reference.OriginArguments.Contains(null!))
         {
@@ -24,12 +50,9 @@ public sealed partial class Binding
             return null;
         }
 
-        // Associated requirements and converging bound refinement paths need separate
-        // requirement-reference identities; never reuse declaration-only evidence there.
-        if (declaration.Contract is { AssociatedTypes.Count: > 0 } or { Ancestors.Count: > 0 })
+        if (!ReferenceEquals(unwrapped, syntax))
         {
-            Fail(syntax, BindingFailure.Unsupported);
-            return null;
+            Complete(unwrapped, reference);
         }
 
         Complete(syntax, reference);
@@ -58,12 +81,16 @@ public sealed partial class Binding
             members.Clear();
         }
 
+        shape.AncestorStorage.Clear();
+        shape.AssociatedStorage.Clear();
         if (declaration.Contract is { } original)
         {
-            shape.RequirementStorage.AddRange(original.Requirements);
+            // Indexed loops: a warm rebind rebuilds every bound reference without allocating.
+            shape.RequirementStorage.AddRange(original.RequirementStorage);
             shape.ClauseStorage.AddRange(original.ClauseStorage);
-            foreach (var requirement in original.Requirements)
+            for (var i = 0; i < original.RequirementStorage.Count; i++)
             {
+                var requirement = original.RequirementStorage[i];
                 shape.Seen.Add(requirement);
                 if (!shape.MembersByName.TryGetValue(requirement.Name, out var members))
                 {
@@ -72,6 +99,31 @@ public sealed partial class Binding
 
                 members.Add(requirement);
             }
+
+            // SPEC 8.4.2, 8.4.9: a bound reference keeps the declaration's associated identities, and its ancestors are the
+            // parents' bound references under this reference's substitution (Indexable<Key> of UniqIndexable<isize> is
+            // Indexable<isize>); an ancestor without Type arguments keeps its declaration identity.
+            for (var i = 0; i < original.AssociatedStorage.Count; i++)
+            {
+                if (shape.Seen.Add(original.AssociatedStorage[i]))
+                {
+                    shape.AssociatedStorage.Add(original.AssociatedStorage[i]);
+                }
+            }
+
+            for (var i = 0; i < original.AncestorStorage.Count; i++)
+            {
+                var ancestor = original.AncestorStorage[i];
+                var boundAncestor = ancestor.Type is { Components.Count: > 0 } ancestorReference && !ReferenceEquals(ancestorReference.Symbol, ancestor) &&
+                    this.StoredType(ancestorReference, reference) is { } substituted && !ReferenceEquals(substituted, ancestorReference)
+                    ? this.BoundContractReference(substituted) : ancestor;
+                if (shape.Seen.Add(boundAncestor))
+                {
+                    shape.AncestorStorage.Add(boundAncestor);
+                }
+            }
+
+            shape.AncestorStorage.Sort(static (left, right) => left.Contract!.Ancestors.Count.CompareTo(right.Contract!.Ancestors.Count));
         }
 
         if (cached is null)
@@ -88,11 +140,36 @@ public sealed partial class Binding
         {
             if (current.ConformancePath?.Contract is { Type: { } reference } contract && !ReferenceEquals(reference.Symbol, contract))
             {
-                return this.StoredType(type, reference) ?? type;
+                return this.SubstituteContractReference(type, contract);
             }
         }
 
         return type;
+    }
+
+    // SPEC 8.4.2: a bound reference substitutes its own Type parameters and, through its bound ancestors, each
+    // inherited requirement's parameters.
+    private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract)
+    {
+        if (contract.Type is not { } reference || ReferenceEquals(reference.Symbol, contract))
+        {
+            return type;
+        }
+
+        var result = this.StoredType(type, reference) ?? type;
+        if (contract.Contract is { } shape)
+        {
+            for (var i = 0; i < shape.Ancestors.Count; i++)
+            {
+                var ancestor = shape.Ancestors[i];
+                if (ancestor.Type is { } ancestorReference && !ReferenceEquals(ancestorReference.Symbol, ancestor))
+                {
+                    result = this.StoredType(result, ancestorReference) ?? result;
+                }
+            }
+        }
+
+        return result;
     }
 
     private bool ContractBindingsMayCollide(BindingSymbol a, BindingSymbol b, BindingScope scope)

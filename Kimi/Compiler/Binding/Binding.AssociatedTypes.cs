@@ -181,9 +181,10 @@ public sealed partial class Binding
         }
 
         var associated = name is null ? null : this.FindAssociated(self, scope, name.IdentifierName, qualifier, clause);
-        if (associated is null || !this.conformances.TryGetValue((self.Symbol!, qualifier ?? associated.Scope.Owner.BoundSymbol!), out var conformance) || conformance.Paths.Count == 0)
+        var ambiguous = false;
+        if (associated is null || this.ConformanceByDeclaration(self.Symbol!, qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || conformance.Paths.Count == 0)
         {
-            Fail(clause, BindingFailure.InvalidAssociatedType);
+            Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
             return;
         }
 
@@ -305,7 +306,7 @@ public sealed partial class Binding
         var self = this.SelfType(path.Type);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
-        var iteratorItem = this.IsIteratorItem(associated);
+        var iteratorItem = this.IsCompleteAssociated(associated);
         for (var i = 0; i < binding.Candidates.Count; i++)
         {
             var type = this.ContractType(binding.Candidates[i], scope, self);
@@ -328,7 +329,7 @@ public sealed partial class Binding
             }
         }
 
-        if (receiver.Symbol is not { } owner || !this.conformances.TryGetValue((owner, associated.Scope.Owner.BoundSymbol!), out var identity))
+        if (receiver.Symbol is not { } owner || this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _) is not { } identity)
         {
             return null;
         }
@@ -412,8 +413,11 @@ public sealed partial class Binding
 
     // SPEC 8.4.3: every associated Type is a complete Type; this implementation admits Semantics and generic parameters
     // only in the Item requirement of Kimi.Iterator (STATUS).
-    private bool IsIteratorItem(BindingSymbol associated)
-        => associated.Name == "Item" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration);
+    // SPEC 4.6.9, 22.1.2: Iterator.Item and Indexable.Element denote complete Types; every other associated Type is still
+    // bound to a Core (STATUS).
+    private bool IsCompleteAssociated(BindingSymbol associated)
+        => (associated.Name == "Item" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration)) ||
+        (associated.Name == "Element" && ReferenceEquals(associated.Scope.Owner, this.Library.Indexable?.Declaration));
 
     /// <summary>Substitutes Contract Self and normalizes explicit associated identities without member inference.</summary>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)

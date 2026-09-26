@@ -41,8 +41,14 @@ internal static class ElementAccess
     // SPEC 4.6.6, 4.6.9: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
     internal static bool ReachesThroughBorrow(Koto source) => HasReceiverOnPath(source, owners: false);
 
-    internal static bool IsSyntax(Koto source) => source is IndexKoto or MemberAccessKoto { Right: NumberLiteralKoto } ||
+    internal static bool IsSyntax(Koto source) => source is IndexKoto index ? !IsUserIndex(index) : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && StructStorage.IsStruct(type));
+
+    // SPEC 4.6.9: receiver[key] resolved through a user Indexable conformance: the Binding synthesized its index call, and
+    // its indexUniq call where the use may update or borrow exclusively. Such an expression is a Place call, not an element projection.
+    internal static InvocationKoto? IndexerCall(Koto source, bool exclusive) => source.CodeContext.Compilation.Binding.IndexerCall(source, exclusive);
+
+    internal static bool IsUserIndex(Koto source) => KotoHelper.UnwrapParentheses(source) is IndexKoto index && IndexerCall(index, false) is not null;
 
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
     internal static int StaticSelector(BinaryKoto source)

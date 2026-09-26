@@ -150,6 +150,20 @@ public sealed partial class Binding
     // authority, even to an exclusive reference stored below it.
     private static bool ReachedThroughShared(Koto source) => PathAuthority(source) == SemanticsKind.Ref;
 
+    // SPEC 3.4.1: whether selection through the Type's reference layers passes a shared layer.
+    private static bool HasSharedLayer(BoundType? type)
+    {
+        for (; type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; type = type.Components[0])
+        {
+            if (type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 3.4, 13.5.5.1, 15.1.5: the access a Place's path grants, computed once for writes, Moves and borrows. Owner is a
     // direct path (a local, parameter or static and their inline parts), Uniq a path through an exclusive reference or
     // objuniq view, and Ref a path through a shared layer: a ref reference, a Slice element, an objref, rc or arc view or
@@ -173,6 +187,17 @@ public sealed partial class Binding
                 case InvocationKoto call when ElementAccess.PlaceCallReference(call) is { } published:
                     // SPEC 7.1.1: a published Place has the capability of the returned reference and never Take.
                     return published.Semantics == SemanticsKind.Ref ? SemanticsKind.Ref : SemanticsKind.Uniq;
+                case IndexKoto userIndex when ElementAccess.IsUserIndex(userIndex):
+                    // SPEC 3.4.1, 4.6.9: the element Place is reached through the receiver's reference layers; indexUniq
+                    // publishes it exclusively, index alone shares it, and a published Place never offers Take.
+                    if (!userIndex.CodeContext.Compilation.Binding.HasExclusiveIndexer(userIndex) || HasSharedLayer(userIndex.Left.BoundType))
+                    {
+                        return SemanticsKind.Ref;
+                    }
+
+                    authority = SemanticsKind.Uniq;
+                    next = userIndex.Left;
+                    break;
                 case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.Slice ||
                     index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
                     return SemanticsKind.Ref; // SPEC 4.6.6: a Slice element Place is shared.
@@ -231,7 +256,8 @@ public sealed partial class Binding
                 ((member.BoundSymbol?.Property is { Getter.IsStandard: true } && StructStorage.IsStruct(receiver?.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver)) ||
                 ReferenceTypes.IsTuple(receiver) || receiver?.Kind == BoundTypeKind.Tuple), // SPEC 3.4.1: also through the receiver's recorded reference.
             IndexKoto index => index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
-                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType), // SPEC 4.6.9
+                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType) ||
+                ElementAccess.IsUserIndex(index), // SPEC 4.6.9, including a Place published by a user index
             InvocationKoto call => ElementAccess.IsPlaceCall(call), // SPEC 7.1.1: a published Place.
             _ => false,
         };
@@ -403,6 +429,11 @@ public sealed partial class Binding
             return published; // SPEC 7.1.1: a published Place keeps the dependencies of the returned reference.
         }
 
+        if (ElementAccess.IndexerCall(source, false) is { } indexer && ElementAccess.PlaceCallReference(indexer) is { Origin: { } publishedElement })
+        {
+            return publishedElement; // SPEC 4.6.9: the element Place depends on the receiver under its contract.
+        }
+
         source = PlaceOriginSource(source);
         return source.BoundType?.Origin ?? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
@@ -456,6 +487,11 @@ public sealed partial class Binding
         if (source is InvocationKoto placeCall && ElementAccess.PlaceCallReference(placeCall) is { } publishedReference)
         {
             return !exclusive || publishedReference.Semantics == SemanticsKind.Uniq; // SPEC 7.1.1
+        }
+
+        if (source is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex))
+        {
+            return !exclusive || ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.6.9
         }
 
         if (source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice })
@@ -650,6 +686,7 @@ public sealed partial class Binding
                 }
             }
             else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } || ElementAccess.IsPlaceCall(unwrapped) ||
+                (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)) || // SPEC 4.6.9: a published element Place is never a temporary.
                 (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
                 (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
                 !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&

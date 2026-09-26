@@ -106,6 +106,8 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryTryGet, "tryGet", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryTryGet),
         new(KimiDeclarationId.DictionaryClear, "clear", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryClear),
         new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryShrinkToFit),
+        new(KimiDeclarationId.Indexable, "Indexable"),
+        new(KimiDeclarationId.UniqIndexable, "UniqIndexable"),
     ];
 
     private static readonly int[] Indices = CreateIndices();

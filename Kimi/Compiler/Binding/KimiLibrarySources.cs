@@ -17,6 +17,7 @@ public sealed partial class KimiLibrary
             Read("Comparison.kimi"),
             Read("Iterator.kimi"),
             Read("IntoIterable.kimi"),
+            Read("Indexable.kimi"),
             Read("Slice.kimi"),
             Read("Array.kimi"),
             Read("Dictionary.kimi"),

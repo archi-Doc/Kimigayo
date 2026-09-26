@@ -8,6 +8,21 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(BoundConformancePath Conformance, BindingSymbol Requirement), BindingScope> witnessScopes = new();
 
+    // SPEC 8.4.2: an inherited requirement's path is registered under the ancestor as the refining Contract names it,
+    // which is a bound reference when the parent takes Type arguments (Indexable<isize> under UniqIndexable<isize>).
+    private static BindingSymbol RequirementAncestor(BoundContract shape, BindingSymbol owner)
+    {
+        for (var i = 0; i < shape.Ancestors.Count; i++)
+        {
+            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner.Declaration))
+            {
+                return shape.Ancestors[i];
+            }
+        }
+
+        return owner;
+    }
+
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
         if (requirement.GenericArguments.Count != implementation.GenericArguments.Count)
@@ -297,7 +312,7 @@ public sealed partial class Binding
                 var requirement = shape.Requirements[i];
                 if (!ReferenceEquals(requirement.Scope.Owner, conformance.Contract.Declaration))
                 {
-                    var ancestor = this.conformancePaths[(conformance.Type, requirement.Scope.Owner.BoundSymbol!, conformance.Declaration, conformance.RootContract)];
+                    var ancestor = this.conformancePaths[(conformance.Type, RequirementAncestor(shape, requirement.Scope.Owner.BoundSymbol!), conformance.Declaration, conformance.RootContract)];
                     if (ancestor.GetImplementation(requirement) is { } inherited)
                     {
                         var inheritedWitness = ancestor.WitnessMap[requirement];
@@ -466,6 +481,15 @@ public sealed partial class Binding
         if (formation != ConstraintProof.Proven)
         {
             return formation;
+        }
+
+        // SPEC 7.1.1, 8.4.5: result modes are matched; an exclusive Place may satisfy a shared Place requirement, never the
+        // reverse, and a Place result never matches a value result.
+        if (requirement.ReturnType is PlaceResultKoto requiredPlace
+            ? implementation.ReturnType is not PlaceResultKoto providedPlace || (requiredPlace.IsExclusive && !providedPlace.IsExclusive)
+            : implementation.ReturnType is PlaceResultKoto)
+        {
+            return ConstraintProof.Error;
         }
 
         var key = (conformance, requirement.BoundSymbol!);

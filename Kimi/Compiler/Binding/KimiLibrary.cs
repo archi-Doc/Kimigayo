@@ -101,6 +101,8 @@ public sealed partial class KimiLibrary
         this.Result = this.GetSymbol(KimiDeclarationId.Result)!;
         this.Iterator = this.GetSymbol(KimiDeclarationId.Iterator)!;
         this.IntoIterable = this.GetSymbol(KimiDeclarationId.IntoIterable)!;
+        this.Indexable = this.GetSymbol(KimiDeclarationId.Indexable)!;
+        this.UniqIndexable = this.GetSymbol(KimiDeclarationId.UniqIndexable)!;
         this.Slice = this.GetSymbol(KimiDeclarationId.Slice)!;
         this.DynamicArray = this.GetSymbol(KimiDeclarationId.Array)!;
         this.Index = this.GetSymbol(KimiDeclarationId.Index)!;
@@ -170,6 +172,12 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the recognized static Iterator declaration.</summary>
     public BindingSymbol Iterator { get; }
+
+    /// <summary>Gets the recognized Indexable Contract declaration (SPEC 4.6.9).</summary>
+    public BindingSymbol Indexable { get; }
+
+    /// <summary>Gets the recognized UniqIndexable Contract declaration (SPEC 4.6.9).</summary>
+    public BindingSymbol UniqIndexable { get; }
 
     /// <summary>Gets the recognized owning iteration entry, IntoIterable (SPEC 22.1.2.2).</summary>
     public BindingSymbol IntoIterable { get; }

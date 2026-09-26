@@ -69,6 +69,11 @@ public sealed partial class Binding
             return published.Semantics == SemanticsKind.Uniq; // SPEC 7.1.1: place uniq/T offers Write; place ref/T does not.
         }
 
+        if (node is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex))
+        {
+            return ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.6.9: an update selects indexUniq.
+        }
+
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(nested.Left)) &&
             ElementAccess.BorrowedPathRoot(nested) is { } root)
         {
