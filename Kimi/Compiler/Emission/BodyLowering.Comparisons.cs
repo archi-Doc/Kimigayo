@@ -39,8 +39,7 @@ internal sealed partial class BodyLowering
             if ((uint)plan.Operation >= (uint)body.Operations.Count || this.stringComparisons[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation].Kind != OwnershipOperationKind.Produce || body.Values[plan.Operation].Kind != OwnershipValueKind.StringComparison ||
                 body.Operations[plan.Operation].Source is not BinaryKoto source ||
-                !(ReferenceEquals(SignatureType(this, source.Left.BoundType), BoundType.String) || ReferenceTypes.IsString(SignatureType(this, source.Left.BoundType))) ||
-                !(ReferenceEquals(SignatureType(this, source.Right.BoundType), BoundType.String) || ReferenceTypes.IsString(SignatureType(this, source.Right.BoundType))) ||
+                !ReferenceTypes.EndsInString(SignatureType(this, source.Left.BoundType)) || !ReferenceTypes.EndsInString(SignatureType(this, source.Right.BoundType)) ||
                 !ReferenceEquals(ValueType(body, plan.Operation), BoundType.Boolean) ||
                 source.Akind != body.Values[plan.Operation].Operator)
             {
@@ -69,7 +68,7 @@ internal sealed partial class BodyLowering
     {
         // SPEC 13.4: a string reference, or an operand inspected through its shared borrow.
         var inspected = SignatureType(this, ElementAccess.AccessType(operand));
-        if (ReferenceTypes.IsString(inspected))
+        if (ReferenceTypes.IsStringReference(inspected))
         {
             return loan == -1 && this.ValidateReferenceUse(body, reference, id) && ValuePlace(body.Operations[reference]) == place &&
                 ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), inspected);

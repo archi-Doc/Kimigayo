@@ -781,7 +781,7 @@ public sealed partial class OwnershipAnalysis
             return comparisonResult;
         }
 
-        if ((ReferenceEquals(binary.Left.BoundType, BoundType.String) || ReferenceTypes.IsString(binary.Left.BoundType) || ReferenceTypes.IsString(binary.Right.BoundType)) && ReferenceEquals(binary.BoundType, BoundType.Boolean))
+        if ((ReferenceTypes.EndsInString(binary.Left.BoundType) || ReferenceTypes.EndsInString(binary.Right.BoundType)) && ReferenceEquals(binary.BoundType, BoundType.Boolean))
         {
             return this.StringComparison(binary);
         }

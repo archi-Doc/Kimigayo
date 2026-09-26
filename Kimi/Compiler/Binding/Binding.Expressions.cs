@@ -1020,11 +1020,14 @@ public sealed partial class Binding
         }
 
         // Shared references compare their immediate referents, independently of the two input Origins.
-        if (comparison && (ReferenceTypes.IsString(left) || ReferenceEquals(left, BoundType.String) || ReferenceEquals(left, BoundType.Never)) &&
-            (ReferenceTypes.IsString(right) || ReferenceEquals(right, BoundType.String) || ReferenceEquals(right, BoundType.Never)))
+        if (comparison && (ReferenceTypes.EndsInString(left) || ReferenceEquals(left, BoundType.Never)) &&
+            (ReferenceTypes.EndsInString(right) || ReferenceEquals(right, BoundType.Never)))
         {
+            // SPEC 13.4: every operand is inspected in place through at most one reference.
             this.CompareInPlace(binary.Left);
             this.CompareInPlace(binary.Right);
+            this.StringThroughLayers(binary.Left, left);
+            this.StringThroughLayers(binary.Right, right);
             return Complete(binary, BoundType.Boolean);
         }
 
@@ -1165,5 +1168,16 @@ public sealed partial class Binding
         internal BindingScope Scope { get; set; } = null!;
 
         public override void Visit(Koto node) => binding.BindNode(node, this.Scope);
+    }
+
+    // SPEC 13.4, 10.2: a string operand behind several reference layers is read as one shared reference to the string;
+    // a single ref or uniq layer is inspected as it is.
+    private void StringThroughLayers(Koto operand, BoundType type)
+    {
+        if (type.Components.Count == 1 && ReferenceTypes.EndsInString(type) && !ReferenceTypes.IsStringReference(type) &&
+            this.SharedReferenceThroughLayers(type, BoundType.String, out _) is { } shared)
+        {
+            this.adaptations[operand] = new(ExpectedAdaptationKind.ReferenceRead, shared);
+        }
     }
 }

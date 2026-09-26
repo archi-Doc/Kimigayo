@@ -40,8 +40,15 @@ public class ElementComparisonTest
     private const string DictionarySource =
         "var d: Dictionary<i32, string> = [:]\n_ = d.tryInsert(1, \"one\")\nrequire d[1] == \"one\" and \"one\" == d[1] else => $abort(\"dictionary\")\nConsole.writeLine(d[1])";
 
+    // SPEC 13.4: comparisons read through every reference layer, shared or exclusive.
+    private const string LayersSource =
+        "func exclusive(name: uniq/string) -> bool => name == \"admin\" and \"admin\" == name\nvar text = \"admin\"\n" +
+        "require exclusive(text@uniq) else => $abort(\"uniq\")\nlet names: Array<ref/string> = [text@ref]\n" +
+        "for n in names\n    require n == \"admin\" and \"admin\" == n and n != \"user\" else => $abort(\"layers\")\nConsole.writeLine(\"ok\")";
+
     [Theory]
     [InlineData("Elements", ElementsSource, "ok\n")]
+    [InlineData("Layers", LayersSource, "ok\n")]
     [InlineData("Dictionary", DictionarySource, "one\n")]
     [InlineData("BelowSharedElements", BelowSharedElementsSource, "b\na\nx\n")]
     [InlineData("Fields", FieldsSource, "found\nok\n")]

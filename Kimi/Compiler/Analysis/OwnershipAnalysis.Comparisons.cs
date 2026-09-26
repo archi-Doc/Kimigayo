@@ -56,10 +56,11 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (this.compilation.Binding.TryGetAdaptation(source, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)
+        if (this.compilation.Binding.TryGetAdaptation(source, out var adaptation) && adaptation.Kind is ExpectedAdaptationKind.SharedBorrow or ExpectedAdaptationKind.ReferenceRead)
         {
-            // SPEC 13.4: an operand without an owned static path is inspected through its one shared borrow.
-            var shared = this.BorrowStruct(source, adaptation.Type);
+            // SPEC 13.4: an operand without an owned static path is inspected through its one shared borrow, and one
+            // behind several reference layers through the one shared reference they yield (SPEC 10.2).
+            var shared = adaptation.Kind == ExpectedAdaptationKind.SharedBorrow ? this.BorrowStruct(source, adaptation.Type) : this.ReadReference(source, adaptation.Type);
             reference = this.Value(shared);
             return shared;
         }
@@ -67,13 +68,13 @@ public sealed partial class OwnershipAnalysis
         if (KotoHelper.UnwrapParentheses(source) is BinaryKoto element && ElementAccess.IsSyntax(element))
         {
             var borrowed = this.BorrowStringElement(element, null, null, out loan);
-            reference = ReferenceTypes.IsString(source.BoundType) ? this.Value(borrowed) : -1;
+            reference = ReferenceTypes.IsStringReference(source.BoundType) ? this.Value(borrowed) : -1;
             return borrowed;
         }
 
         var place = this.Expression(source, PlaceUseKind.Read);
-        reference = ReferenceTypes.IsString(source.BoundType) ? this.Value(place) : -1;
-        if (place < 0 || ReferenceTypes.IsString(this.body.Places[place].Type) || this.body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
+        reference = ReferenceTypes.IsStringReference(source.BoundType) ? this.Value(place) : -1;
+        if (place < 0 || ReferenceTypes.IsStringReference(this.body.Places[place].Type) || this.body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
         {
             return place;
         }

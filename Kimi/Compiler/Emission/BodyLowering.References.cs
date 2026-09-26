@@ -204,7 +204,7 @@ internal sealed partial class BodyLowering
 
     private bool ValidateReferenceUse(OwnershipBody body, int value, int at)
     {
-        if ((uint)value >= (uint)body.Operations.Count || !ReferenceTypes.IsString(ValueType(body, value)) ||
+        if ((uint)value >= (uint)body.Operations.Count || !ReferenceTypes.IsStringReference(ValueType(body, value)) ||
             (body.IsReachable(at) && !this.Dominates(value, at)))
         {
             return false;
