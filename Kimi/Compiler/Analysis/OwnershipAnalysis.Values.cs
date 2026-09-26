@@ -177,6 +177,13 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            KotoHelper.UnwrapParentheses(unary.Operand) is ConversionKoto { ConversionBinding: ConversionBinding.Deref } dereference)
+        {
+            // SPEC 13.7.2: `r@deref++` updates the referent Place like `r@deref += 1`.
+            return this.WriteReferent(unary, dereference);
+        }
+
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
             KotoHelper.UnwrapParentheses(unary.Operand) is MemberAccessKoto field && ElementAccess.BorrowedPathRoot(field) is not null)
         {
             return this.UpdateBorrowedField(unary, field);

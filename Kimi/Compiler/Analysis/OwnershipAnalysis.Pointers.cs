@@ -117,11 +117,13 @@ public sealed partial class OwnershipAnalysis
     private int LoadReferent(Koto source, int layers)
     {
         var reference = this.ExpressionCore(source, PlaceUseKind.Read, null);
-        if (reference < 0)
-        {
-            return -1;
-        }
+        return reference < 0 ? -1 : this.LoadThrough(source, reference, layers);
+    }
 
+    // Loads the referent through an already evaluated reference, so that an update reads and writes the one Place
+    // its target expression designates (SPEC 13.7.2).
+    private int LoadThrough(Koto source, int reference, int layers)
+    {
         if (layers <= 0)
         {
             this.Unsupported(source);
@@ -252,7 +254,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var pointer = this.Value(this.Expression(reference, PlaceUseKind.Read));
+        var address = this.Expression(reference, PlaceUseKind.Read);
+        var pointer = this.Value(address);
         if (pointer < 0)
         {
             return -1;
@@ -266,7 +269,7 @@ public sealed partial class OwnershipAnalysis
         }
         else
         {
-            var loaded = this.LoadReferent(reference, 1);
+            var loaded = this.LoadThrough(reference, address, 1);
             previous = this.Value(loaded);
             var operand = source is BinaryKoto ? this.Value(right) : previous >= 0 ? this.IncrementOne(source) : -1;
             value = loaded >= 0 && operand >= 0 && this.flow!.Nodes[source].CanCompleteNormally
