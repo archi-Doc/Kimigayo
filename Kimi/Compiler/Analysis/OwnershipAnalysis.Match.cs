@@ -567,6 +567,21 @@ public sealed partial class OwnershipAnalysis
                     return this.RegisterTemporary(reference);
                 }
 
+                if (source.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } candidateReference &&
+                    this.body.Places[candidate.Subject].Type is var subjectType && ReferenceEquals(subjectType, this.Concrete(candidateReference.Components[0])) &&
+                    (ScalarTypes.Supports(subjectType) || ReferenceEquals(subjectType, BoundType.Unit)))
+                {
+                    // SPEC 14.8.3: a candidate of a whole owned Scalar or Unit Subject is a shared reference to the Subject
+                    // Place; the Scalar value is materialized in the Subject's slot at the borrow.
+                    var reference = this.Place(source, candidateReference, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+                    var borrow = this.Emit(OwnershipOperationKind.Borrow, source, candidate.Subject, reference, loanMode: LoanRequirement.Ref);
+                    this.body.OperationSteps[borrow] = candidate.Arm;
+                    this.SetValue(borrow, OwnershipValueKind.Address, ScalarTypes.Supports(subjectType) ? [candidate.Value] : [], constant: candidate.Subject);
+                    this.EnsureGuardProtection(candidate.Subject, candidate.Arm, candidate.Loan);
+                    this.placeValues[candidate.Subject] = candidate.Value;
+                    return this.RegisterTemporary(reference);
+                }
+
                 var read = this.Emit(OwnershipOperationKind.Read, source, candidate.Subject);
                 this.body.OperationSteps[read] = candidate.Arm;
                 if (ScalarTypes.Supports(source.BoundType))

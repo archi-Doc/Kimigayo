@@ -951,6 +951,13 @@ public sealed partial class OwnershipAnalysis
         }
 
         var result = this.Temporary(binary);
+        if (binary.Akind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals && ReferenceEquals(this.body.Places[left].Type, BoundType.Unit))
+        {
+            // SPEC 13.4: Unit has one value, so after both operands are evaluated equality is constant.
+            this.SetValue(this.Value(result), OwnershipValueKind.Constant, [], constant: binary.Akind == KotoKind.EqualsEquals ? 1 : 0);
+            return result;
+        }
+
         this.SetValue(this.Value(result), OwnershipValueKind.Binary, [leftValue, rightValue], binary.Akind);
         return result;
     }

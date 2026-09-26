@@ -341,8 +341,6 @@ public sealed partial class Binding
                     var candidateOrigin = this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot);
                     candidate.Type = parent < 0 && matched is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
                         ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
-                        : parent < 0 && (ScalarTypes.Supports(matched) || ReferenceEquals(matched, BoundType.Unit))
-                        ? matched // A whole Scalar or Unit ByValue Subject is read by its candidate (STATUS: candidate reference boundary).
                         : this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: candidateOrigin);
                     position = position with { CandidateSymbol = candidate };
                 }

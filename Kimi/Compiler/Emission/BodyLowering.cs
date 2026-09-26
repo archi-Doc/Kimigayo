@@ -295,6 +295,14 @@ internal sealed partial class BodyLowering
 
         if (body.Values[index].Kind is OwnershipValueKind.Address or OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite)
         {
+            if (operation.Kind == OwnershipOperationKind.Borrow && operation.Source.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate &&
+                (uint)operation.Place < (uint)body.Places.Count && body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Subject } subject &&
+                (ScalarTypes.Supports(subject.Type) || ReferenceEquals(subject.Type, BoundType.Unit)) &&
+                !this.ValidateCandidateRead(body, index, out failure))
+            {
+                return false;
+            }
+
             return this.LowerStructBorrow(body, function, constants, projectDirectory, index, out failure);
         }
 

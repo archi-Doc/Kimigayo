@@ -176,8 +176,9 @@ internal sealed partial class BodyLowering
                 }
 
                 this.subjectInitializers[operation.Place] = id;
-                // Ownership changes identity; the already acquired storage is reused.
-                if (!ReferenceTypes.IsStorage(body.Places[operation.Place].Type))
+                // Ownership changes identity; the already acquired storage is reused. A borrowed Scalar Subject keeps
+                // its own slot, where its candidate borrow materializes the value (SPEC 14.8.3).
+                if (!ReferenceTypes.IsStorage(body.Places[operation.Place].Type) && !this.IsMaterializedScalar(operation.Place))
                 {
                     function.SlotAddresses[operation.Place] = function.SlotAddresses[operation.Input];
                 }
@@ -609,10 +610,14 @@ internal sealed partial class BodyLowering
         var match = body.Matches[arm.Match];
         var pattern = match.Binding.Positions[arm.Pattern];
         var scalar = ScalarTypes.Supports(this.Matched(pattern.MatchedType));
+        // SPEC 14.8.3: the candidate of a whole owned Scalar or Unit Subject borrows the Subject Place; a Scalar value is
+        // materialized there from the Subject's acquired value.
+        var borrow = operation.Kind == OwnershipOperationKind.Borrow;
         if (arm.GuardEntry < 0 || operation.Place != match.Subject || operation.Source.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate ||
             !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), pattern.CandidateSymbol?.Type) ||
             (body.IsReachable(id) && !this.Dominates(arm.GuardEntry, id)) ||
-            (scalar && (body.Values[id].Kind != OwnershipValueKind.Alias || Input(body, id, 0) != this.subjectInitializers[match.Subject])) ||
+            (borrow && (body.Values[id].Kind != OwnershipValueKind.Address || body.Values[id].Count != (scalar ? 1 : 0))) ||
+            (scalar && ((!borrow && body.Values[id].Kind != OwnershipValueKind.Alias) || Input(body, id, 0) != this.subjectInitializers[match.Subject])) ||
             (!scalar && !ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.Unit) && !ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.String)))
         {
             return Fail("Candidate read does not inspect its protected Subject snapshot.", out failure);

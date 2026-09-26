@@ -79,6 +79,13 @@ public class SharedSubjectTest
         "func f(x: uniq/i32) -> i32 => match x\n    0 => 10\n    _ => 20\n" +
         "var n: i32 = 0\nrequire f(n@uniq) == 10 else => $abort(\"zero\")\nn = 3\nrequire f(n@uniq) == 20 and n == 3 else => $abort(\"other\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 14.8.3: a guard candidate is a shared reference to the Subject Place, also for a whole owned Scalar or Unit
+    // Subject, so it can be passed to ref/T parameters and compared with values.
+    private const string CandidateSource =
+        "func same(a: ref/i32, b: ref/i32) -> bool => a == b\nfunc f(x: bool) -> i32 => match x@move\n    let b if b => 1\n    _ => 0\n" +
+        "let r = match 7\n    let n if same(n, 7) and n == 7 => n + 1\n    _ => 0\nrequire r == 8 and f(true) == 1 and f(false) == 0 else => $abort(\"candidate\")\n" +
+        "match ()\n    let u if u == () => Console.writeLine(\"unit\")\n    _ => ()\nConsole.writeLine(\"ok\")";
+
     // SPEC 14.6.2: values@uniq and an exclusive borrow value enumerate uniq/E items; Tuple items decompose into
     // uniq components; a Dictionary yields (ref/K, uniq/V); reborrows inside the body suspend the item.
     private const string UniqIterationSource =
@@ -108,6 +115,7 @@ public class SharedSubjectTest
     [InlineData("UniqLiteral", UniqLiteralSource, "ok\n")]
     [InlineData("Acquisition", SubjectAcquisitionSource, "made\na\nb\nhello\nok\n")]
     [InlineData("UniqIteration", UniqIterationSource, "a\nb\nok\n")]
+    [InlineData("Candidates", CandidateSource, "unit\nok\n")]
     public void ExclusiveBorrowValuesKeepTheirMode(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedSubject" + name, source, stdout);
 

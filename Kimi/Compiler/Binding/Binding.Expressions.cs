@@ -979,7 +979,9 @@ public sealed partial class Binding
             }
 
             // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
-            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && left?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : left);
+            // SPEC 13.4: a comparison reads through every reference layer, so the other operand is fitted to the referent.
+            var comparand = comparison && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && !ReferenceTypes.IsString(left) ? ComparisonReferent(left) : left;
+            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : comparand);
             if (assignment && kind == KotoKind.Equals && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
                 right is not null && !Compatible(right, left) && Compatible(right, left.Components[0]) && ReferenceBindingAssignment(binary.Left) is { } valueBinding)
             {
@@ -1038,8 +1040,20 @@ public sealed partial class Binding
                 : Fail(binary, BindingFailure.TypeMismatch);
         }
 
-        if (comparison && (ComparisonReferent(left).Kind != BoundTypeKind.Primitive || ComparisonReferent(right).Kind != BoundTypeKind.Primitive))
+        // SPEC 13.4: a comparison reads through every safe reference layer of either operand; a Unit referent is read like a Scalar.
+        if (comparison && (ComparisonReferent(left).Kind != BoundTypeKind.Primitive || ComparisonReferent(right).Kind != BoundTypeKind.Primitive ||
+            !ReferenceEquals(ComparisonReferent(left), left) || !ReferenceEquals(ComparisonReferent(right), right)))
         {
+            if (!ReferenceEquals(left, BoundType.Unit) && ReferenceEquals(ComparisonReferent(left), BoundType.Unit))
+            {
+                this.adaptations[binary.Left] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
+            }
+
+            if (!ReferenceEquals(right, BoundType.Unit) && ReferenceEquals(ComparisonReferent(right), BoundType.Unit))
+            {
+                this.adaptations[binary.Right] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
+            }
+
             left = ComparisonReferent(left);
             right = ComparisonReferent(right);
             if (ReferenceEquals(left, BoundType.Never))
