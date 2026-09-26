@@ -110,8 +110,19 @@ public class PairFollowTest
         "    require first(other@uniq, n@uniq) == 7 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Matched.\")\n";
 
+    // SPEC 7.3: an owning receiver through a pair layer is written p@follow.m(), which Copies the selected Place.
+    private const string Spent =
+        "struct Coin\n    Self is Copy\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func spend(self: Self) -> i32 => self.n\n" +
+        "func spend<s/T>(item: s/Coin, marker: s/T) -> i32\n    s is value or valueborrow\n    return item@follow.spend()\n" +
+        "public func main()\n" +
+        "    let z: i32 = 0\n    require spend(Coin.init(3), z) == 3 else => $abort(\"owner\")\n" +
+        "    let c = Coin.init(4)\n    require spend(c@ref, z@ref) == 4 else => $abort(\"ref\")\n" +
+        "    var d = Coin.init(5)\n    var n: i32 = 0\n    require spend(d@uniq, n@uniq) == 5 and d.n == 5 else => $abort(\"uniq\")\n" +
+        "    Console.writeLine(\"Spent.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Spent", Spent, "Spent.\n" },
         { "Matched", Matched, "Matched.\n" },
         { "Iterated", Iterated, "Iterated.\n" },
         { "Positions", Positions, "Positions.\n" },
@@ -201,6 +212,18 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 7.3: an owning receiver is acquired through a pair layer only by the Scalar read; p@follow.m() Copies the Place.
+    [Theory]
+    [InlineData("struct Token\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func consume(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Token, marker: s/T) -> i32\n    s is value or valueborrow\n    return item.consume()", false)]
+    [InlineData("struct Token\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func consume(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Token, marker: s/T) -> i32\n    s is value or valueborrow\n    return item@follow.consume()", false)]
+    [InlineData("struct Coin\n    Self is Copy\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func spend(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Coin, marker: s/T) -> i32\n    s is value or valueborrow\n    return item.spend()", false)]
+    [InlineData("struct Coin\n    Self is Copy\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func spend(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Coin, marker: s/T) -> i32\n    s is value or valueborrow\n    return item@follow.spend()", true)]
+    public void OwningReceivers(string source, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == (c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified), MinimalEmissionTest.Describe(c, null));
     }
 
     // SPEC 10.2: s/U parameters are solved together with the other arguments, whatever their order, and must agree on s.
