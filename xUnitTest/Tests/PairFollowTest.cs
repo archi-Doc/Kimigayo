@@ -102,12 +102,14 @@ public class PairFollowTest
     private const string Matched =
         "func first<s/T>(o: s/Option<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    match o\n        .Some(let v) => return v\n        .None => return 0\n" +
         "func second<s/T>(pair: s/(i32, i32), marker: s/T) -> i32\n    s is value or valueborrow\n    match pair\n        (_, let b) => return b\n" +
+        "func raise<s/T>(o: s/Option<i32>, marker: s/T)\n    s is uniq\n    match o\n        .Some(let v) => v@follow += 10\n        .None => ()\n" +
         "public func main()\n" +
         "    let z: i32 = 0\n    require first(Option<i32>.Some(3), z) == 3 and second((1, 2), z) == 2 else => $abort(\"owner\")\n" +
         "    let some = Option<i32>.Some(4)\n    let none = Option<i32>.None\n    let tuple = (5, 6)\n" +
         "    require first(some@ref, z@ref) == 4 and first(none@ref, z@ref) == 0 and second(tuple@ref, z@ref) == 6 else => $abort(\"ref\")\n" +
         "    var other = Option<i32>.Some(7)\n    var n: i32 = 0\n" +
-        "    require first(other@uniq, n@uniq) == 7 else => $abort(\"uniq\")\n" +
+        "    raise(other@uniq, n@uniq)\n" +
+        "    require first(other@uniq, n@uniq) == 17 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Matched.\")\n";
 
     // SPEC 7.3: an owning receiver through a pair layer is written p@follow.m(), which Copies the selected Place.

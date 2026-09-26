@@ -15,6 +15,11 @@ internal sealed partial class GenericStoragePlan
     // finite recursion reuses its registered entry long before this bound.
     private const int GrowingKeyLimit = 16;
     private const int ContextDepthLimit = 128;
+    private const int DefaultSubstitutionSetLimit = 1024;
+
+    // A lowered bound set on the current thread only, so that concurrent compilations keep the default.
+    [ThreadStatic]
+    private static int substitutionSetLimitOverride;
 
     private readonly Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundCall, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
@@ -26,8 +31,13 @@ internal sealed partial class GenericStoragePlan
     private IReadOnlyDictionary<FunctionKoto, FunctionAbi>? functions;
     private int entryNames;
 
-    /// <summary>Gets or sets the mandatory bound on distinct closed contexts one generic body may generate (SPEC 21.3.5).</summary>
-    internal static int SubstitutionSetLimit { get; set; } = 1024;
+    /// <summary>Gets or sets the mandatory bound on distinct closed contexts one generic body may generate (SPEC 21.3.5) for
+    /// compilations on the current thread.</summary>
+    internal static int SubstitutionSetLimit
+    {
+        get => substitutionSetLimitOverride > 0 ? substitutionSetLimitOverride : DefaultSubstitutionSetLimit;
+        set => substitutionSetLimitOverride = value;
+    }
 
     internal IReadOnlyDictionary<BoundCall, CallEntry> Calls => this.calls;
 

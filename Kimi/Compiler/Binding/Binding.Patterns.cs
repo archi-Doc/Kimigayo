@@ -325,17 +325,20 @@ public sealed partial class Binding
             return type;
         }
 
-        if (this.FollowablePair(type, this.ConstraintScope(expression), out _) is var admitted && admitted != SemanticsMask.None)
+        if (this.FollowablePair(type, this.ConstraintScope(expression), out var target) is var admitted && admitted != SemanticsMask.None)
         {
             // SPEC 15.1.6: a bare pair-layer Place is shared-borrowed in place, and structural positions follow the pair layer.
-            // With only uniq admitted the Subject is Exclusive, which is not yet acquired through a pair layer.
-            if (admitted != SemanticsMask.Uniq)
+            // With only uniq admitted off a shared path the Subject is Exclusive: the stored reference is Reborrowed.
+            if (admitted != SemanticsMask.Uniq || ReachedThroughShared(expression))
             {
                 borrow = this.SharedReference(type, this.PlaceOrigin(expression));
                 return borrow;
             }
 
-            return type;
+            this.implicitPairFollows[expression] = admitted;
+            mode = SubjectMode.Exclusive;
+            borrow = this.Reference(SemanticsKind.Uniq, target, this.PairOrigin(expression, type, admitted));
+            return borrow;
         }
 
         if (type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)

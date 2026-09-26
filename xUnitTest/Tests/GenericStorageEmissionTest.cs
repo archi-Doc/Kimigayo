@@ -5,8 +5,6 @@ using Xunit;
 
 namespace XunitTest;
 
-// OversizedSubstitutionSetsAreResourceDiagnosed lowers the process-wide substitution set limit.
-[TestClass(DisableParallelization = true)]
 public class GenericStorageEmissionTest
 {
     internal const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n";
