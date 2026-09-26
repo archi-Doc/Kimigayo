@@ -4,7 +4,7 @@ public struct Slice<T> {source}
         return SliceIterator<T>.init(self)
 public struct SliceIterator<T> {source}
     Self is Iterator
-    associate Iterator.Element is ref/T during source
+    associate Iterator.Item is ref/T during source
     let values: Slice<T>{slice}
         origin slice.source == source
     var position: isize = 0

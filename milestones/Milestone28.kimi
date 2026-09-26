@@ -1,4 +1,4 @@
-// Milestone 28: user Iterable/Iterator mappings, owned cleanup and external borrows.
+// Milestone 28: user IntoIterable/Iterator mappings, owned cleanup and external borrows.
 struct Item
     public let id: i32
     public init(id: i32) => self.id = id
@@ -12,7 +12,7 @@ struct Item
 
 struct Drain<T>
     Self is Iterator
-    associate Iterator.Element is T
+    associate Iterator.Item is T
     var first: Option<T>
     var second: Option<T>
     var third: Option<T>
@@ -33,19 +33,18 @@ struct Drain<T>
             _ => Kimi.Intrinsics.exchange(self.fourth@uniq, with: .None)
 
 struct Batch<T>
-    Self is Iterable
-    associate Iterable.Element is T
-    associate Iterable.Iterator is Drain<T>
+    Self is IntoIterable
+    associate IntoIterable.IteratorType is Drain<T>
     let cursor: Drain<T>
     public init(a: T, b: T, c: T, d: T)
         self.cursor = Drain<T>.init(a@move, b@move, c@move, d@move)
-    public func iterate(self: Self) -> Drain<T>
+    public func intoIterator(self: Self) -> Drain<T>
         Console.writeLine("Owned iterator acquired.")
         return self.cursor@move
 
 struct Cursor<T> {source}
     Self is Iterator
-    associate Iterator.Element is ref/T during source
+    associate Iterator.Item is ref/T during source
     let values: Slice<T>{slice}
         origin slice.source == source
     var position: isize = 0
@@ -59,16 +58,15 @@ struct Cursor<T> {source}
         return .Some(self.values[index]@ref)
 
 struct View<T> {source}
-    Self is Iterable
-    associate Iterable.Element is ref/T during source
-    associate Iterable.Iterator is Cursor<T>{cursor}
+    Self is IntoIterable
+    associate IntoIterable.IteratorType is Cursor<T>{cursor}
         origin cursor.source == source
     let values: Slice<T>{slice}
         origin slice.source == source
     public init(values: Slice<T>)
         origin values.source == source
         self.values = values
-    public func iterate(self: Self) -> Cursor<T>{result}
+    public func intoIterator(self: Self) -> Cursor<T>{result}
         origin result.source == source
         Console.writeLine("Borrowed iterator acquired.")
         return Cursor<T>.init(self.values)
@@ -85,7 +83,7 @@ public func main()
     Console.writeLine("Owned iteration finished.")
 
     let values: [3 of i32] = [10, 20, 30]
-    var cursor = View<i32>.init(values[..]).iterate()
+    var cursor = View<i32>.init(values[..]).intoIterator()
     let first: ref/i32 = match cursor.next()
         .Some(let item) => item
         .None => $abort("Missing first element")

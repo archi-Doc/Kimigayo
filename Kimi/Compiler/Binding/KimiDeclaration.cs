@@ -22,7 +22,7 @@ public enum KimiDeclarationId : byte
     Equatable,
     Comparable,
     Iterator,
-    Iterable,
+    IntoIterable,
     ObjectOwnership, // Reserved legacy aggregate ID; no longer a declaration entry.
     Sealed,
     Replace,

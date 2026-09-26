@@ -1,0 +1,3 @@
+public contract IntoIterable
+    associate IteratorType is ::Kimi.Iterator
+    func intoIterator(self: Self) -> Self.IteratorType

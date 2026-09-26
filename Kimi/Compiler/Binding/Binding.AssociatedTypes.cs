@@ -409,10 +409,10 @@ public sealed partial class Binding
         return type.Kind != BoundTypeKind.TargetProjection || this.HasValueRole(type, scope, false);
     }
 
-    // SPEC 8.4.3: the Element requirements of Kimi.Iterator and Kimi.Iterable are the only complete-Type associated Types.
+    // SPEC 8.4.3: every associated Type is a complete Type; this implementation admits Semantics and generic parameters
+    // only in the Item requirement of Kimi.Iterator (STATUS).
     private bool IsIteratorElement(BindingSymbol associated)
-        => associated.Name == "Element" &&
-            (ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration) || ReferenceEquals(associated.Scope.Owner, this.Library.Iterable.Declaration));
+        => associated.Name == "Item" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration);
 
     /// <summary>Substitutes Contract Self and normalizes explicit associated identities without member inference.</summary>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)

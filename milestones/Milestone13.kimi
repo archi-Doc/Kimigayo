@@ -5,7 +5,7 @@ struct Sample
 
 struct Cursor<T> {source}
     Self is Iterator
-    associate Iterator.Element is ref/T during source
+    associate Iterator.Item is ref/T during source
     let values: Slice<T>{slice}
         origin slice.source == source
     var position: isize = 0

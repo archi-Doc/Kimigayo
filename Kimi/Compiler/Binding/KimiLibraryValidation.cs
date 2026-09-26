@@ -33,7 +33,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.TestTempDirectory => this.ValidTempDirectory(symbol),
                         KimiDeclarationId.MakeObj => this.ValidMakeObj(),
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
-                        KimiDeclarationId.Iterable => this.ValidIterable(symbol),
+                        KimiDeclarationId.IntoIterable => this.ValidIntoIterable(symbol),
                         KimiDeclarationId.Equatable or KimiDeclarationId.Comparable => this.ValidComparisonContract(symbol, entry.Id),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
@@ -86,9 +86,9 @@ public sealed partial class KimiLibrary
                 matches = ReferenceEquals(next.BoundSymbol?.Type?.Symbol, this.Option);
             }
 
-            if (matches && entry.Id == KimiDeclarationId.Iterable)
+            if (matches && entry.Id == KimiDeclarationId.IntoIterable)
             {
-                // The associated Iterator must require the recognized Kimi.Iterator, not a same-named Contract.
+                // The associated IteratorType must require the recognized Kimi.Iterator, not a same-named Contract.
                 var iterator = ((ContractKoto)symbol.Declaration).ConstraintNodes[0];
                 matches = iterator.BoundConstraint is { Contract: { } required } && ReferenceEquals(required, this.GetSymbol(KimiDeclarationId.Iterator));
             }
@@ -270,28 +270,23 @@ public sealed partial class KimiLibrary
         symbol.Declaration is ContractKoto { Name: "Iterator", HasIncompatibleBindingHeader: false, Members.Count: 2, ConstraintNodes.Count: 0, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
         ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
         declaration.Members[0] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1, AttributeChain: null } associated &&
-        associated.Operands[0] is IdentifierNameKoto { IdentifierName: "Element" } &&
+        associated.Operands[0] is IdentifierNameKoto { IdentifierName: "Item" } &&
         declaration.Members[1] is FunctionKoto { Name: "next", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function &&
         function.Parameters[0] is { InternalName: "self", ExternalName: "self", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: TypeSemanticsKoto { Identifier: "Self", Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null } } } &&
         BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") &&
-        BareType(option.TypeArguments[0]) is MemberAccessKoto element && BareName(element.Left, "Self") && BareName(element.Right, "Element");
+        BareType(option.TypeArguments[0]) is MemberAccessKoto element && BareName(element.Left, "Self") && BareName(element.Right, "Item");
 
-    // SPEC 22.1: associate Element; associate Iterator is ::Kimi.Iterator; Self.Iterator.Element is Self.Element;
-    // func iterate(self: owner/Self) -> Self.Iterator. The Iterator requirement's identity is checked after Binding.
-    private bool ValidIterable(BindingSymbol symbol)
+    // SPEC 22.1.2.2: associate IteratorType is ::Kimi.Iterator; func intoIterator(self: Self) -> Self.IteratorType.
+    // The IteratorType requirement's identity is checked after Binding. The borrowing entries and LendingIterator
+    // need Origin-parameterized associated Types, which the parser does not accept yet (STATUS).
+    private bool ValidIntoIterable(BindingSymbol symbol)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
-        symbol.Declaration is ContractKoto { Name: "Iterable", HasIncompatibleBindingHeader: false, Members.Count: 2, ConstraintNodes.Count: 2, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        symbol.Declaration is ContractKoto { Name: "IntoIterable", HasIncompatibleBindingHeader: false, Members.Count: 1, ConstraintNodes.Count: 1, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
         ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
-        declaration.Members[0] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1, AttributeChain: null } element &&
-        element.Operands[0] is IdentifierNameKoto { IdentifierName: "Element" } &&
-        declaration.ConstraintNodes[0] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, AttributeChain: null } iterator && BareName(iterator.Left, "Iterator") &&
-        declaration.ConstraintNodes[1] is IsKoto { IsAssociatedConstraint: false, IsNegated: false, AttributeChain: null } identity &&
-        BareType(identity.Left) is MemberAccessKoto yielded && BareName(yielded.Right, "Element") &&
-        BareType(yielded.Left) is MemberAccessKoto yieldedIterator && BareName(yieldedIterator.Left, "Self") && BareName(yieldedIterator.Right, "Iterator") &&
-        BareType(identity.Right) is MemberAccessKoto own && BareName(own.Left, "Self") && BareName(own.Right, "Element") &&
-        declaration.Members[1] is FunctionKoto { Name: "iterate", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function &&
+        declaration.ConstraintNodes[0] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, AttributeChain: null } iterator && BareName(iterator.Left, "IteratorType") &&
+        declaration.Members[0] is FunctionKoto { Name: "intoIterator", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function &&
         function.Parameters[0] is { InternalName: "self", ExternalName: "self", DefaultValue: null, AttributeChain: null } receiver && BareName(receiver.Type, "Self") &&
-        BareType(function.ReturnType) is MemberAccessKoto result && BareName(result.Left, "Self") && BareName(result.Right, "Iterator");
+        BareType(function.ReturnType) is MemberAccessKoto result && BareName(result.Left, "Self") && BareName(result.Right, "IteratorType");
 
     private bool ValidSlice(BindingSymbol symbol)
     {

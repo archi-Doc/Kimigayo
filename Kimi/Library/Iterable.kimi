@@ -1,5 +1,0 @@
-public contract Iterable
-    associate Element
-    associate Iterator is ::Kimi.Iterator
-    Self.Iterator.Element is Self.Element
-    func iterate(self: owner/Self) -> Self.Iterator
