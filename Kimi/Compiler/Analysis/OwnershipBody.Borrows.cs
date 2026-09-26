@@ -296,6 +296,13 @@ public sealed partial class OwnershipBody
                     if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && entry.Key.Slot == (origin.Kind == OriginKind.Input ? origin.InputIndex : origin.Slot) &&
                         (origin.Kind != OriginKind.Input || entry.Key.Kind == BindingSymbolKind.Parameter))
                     {
+                        if (origin.Kind == OriginKind.Input && this.Places[entry.Value].Type is { Kind: BoundTypeKind.Slice, Semantics: SemanticsKind.Owner })
+                        {
+                            // SPEC 4.6.5, 4.6.6: a by-value Slice parameter is a Copy handle whose source is the caller's
+                            // storage; a result retaining that source depends on no local root.
+                            continue;
+                        }
+
                         Record(entry.Value);
                     }
                 }

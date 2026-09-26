@@ -259,7 +259,19 @@ public sealed partial class Binding
     {
         var binder = owner.Symbol!.Declaration;
         var substituted = this.SubstituteType(field, binder, (BoundType[])owner.Components);
-        return substituted is null ? null : this.SubstituteStoredOrigins(substituted, binder, owner.Kind == BoundTypeKind.Slice && owner.Origin is { } origin ? [origin] : (BoundOrigin[])owner.OriginArguments);
+        if (substituted is null)
+        {
+            return null;
+        }
+
+        if (owner.Kind == BoundTypeKind.Slice && owner.Origin is { } origin)
+        {
+            // The one Slice slot is passed on the stack: a conditional with an array branch would allocate it per call.
+            ReadOnlySpan<BoundOrigin> single = [origin];
+            return this.SubstituteStoredOrigins(substituted, binder, single);
+        }
+
+        return this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
     }
 
     private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default)
