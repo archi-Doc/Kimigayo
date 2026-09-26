@@ -386,6 +386,12 @@
   + Name="ReceiverShapeMismatch_Kd"
     Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
 
+  + Name="BareOwningShorthand_Kd"
+    Message="A bare owning Semantics shorthand (@owner, @obj, @rc or @arc) names no Type and is not an operation; write @copy to copy, @move to transfer, or a complete target such as @owner/T"
+
+  + Name="NonCopyOperand_Kd"
+    Message="@copy requires a value whose Type is proven Copy; write @move to transfer it, or borrow it with @ref or @uniq"
+
   + Name="MissingSpecializationTarget_Kd"
     Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"
 

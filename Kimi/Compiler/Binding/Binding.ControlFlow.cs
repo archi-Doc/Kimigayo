@@ -217,7 +217,7 @@ public sealed partial class Binding
                     return BoundType.Never;
                 }
 
-                if (ConversionTargetSyntax(conversion) is TypeSemanticsKoto { Type: null, Identifier: "owner" })
+                if (IsCopyOperation(conversion))
                 {
                     return this.ResultEvidence(conversion.Left, this.NodeScope(source, scope));
                 }

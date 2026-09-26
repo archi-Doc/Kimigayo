@@ -125,6 +125,10 @@ internal enum BindingFailure : byte
 
     // SPEC 7.3: one receiver shape per function group fixed by member lookup.
     ReceiverShapeMismatch,
+
+    // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
+    BareOwningShorthand,
+    NonCopyOperand,
     MissingSpecializationTarget,
     SpecializationInputMismatch,
     DuplicateDictionaryKey,

@@ -16,7 +16,7 @@ public class IdentityAcquisitionEmissionTest
         { "Tuple", "let source = (\"value\", 42)\nlet value = source@move@(string, i32)\nConsole.writeLine(value.0)", "value\n" },
         { "Array", "let source: [1 of string] = [\"value\"]\nlet value = source@move@[1 of string]\nConsole.writeLine(value[0])", "value\n" },
         { "CopyType", "let source: i32 = 42\nlet value = source@i32\nif value == source => Console.writeLine(\"value\")", "value\n" },
-        { "Owner", "let source = \"value\"\nlet value = source@move@owner\nConsole.writeLine(value)", "value\n" },
+        { "Copy", "let source: i32 = 42\nlet value = source@copy\nif value == source => Console.writeLine(\"value\")", "value\n" },
         { "ExplicitOwner", "let source = \"value\"\nlet value = source@move@owner/string\nConsole.writeLine(value)", "value\n" },
         { "OwnerNumeric", "let source: i32 = 42\nif source@owner/u8 == 42 and 5000000000@owner/f64 == 5000000000.0 => Console.writeLine(\"ok\")", "ok\n" },
     };
@@ -30,7 +30,7 @@ public class IdentityAcquisitionEmissionTest
     [InlineData("Partial", "let pair = (\"first\", \"last\")\nlet first = pair.0@move@string\nlet last = pair.1@move", "first=1;last=1", new[] { 1, 0 })]
     [InlineData("Repair", "var pair = (\"first\", \"last\")\nlet first = pair.0@move@string\npair.0 = \"new\"\nlet whole = pair@move", "first=1;last=1;new=1", new[] { 1, 2, 0 })]
     [InlineData("SelfReplace", "var value = \"value\"\nvalue = value@move@string", "value=1", new[] { 0 })]
-    [InlineData("Temporary", "let value = (\"first\", \"last\")@owner@(string, string)", "first=1;last=1", new[] { 1, 0 })]
+    [InlineData("Temporary", "let value = (\"first\", \"last\")@owner/(string, string)", "first=1;last=1", new[] { 1, 0 })]
     [InlineData("Parameter", "func take(value: (string, string)) -> string => value.0@move\nlet result = take((\"first\", \"last\"))", "first=1;last=1", new[] { 1, 0 })]
     [InlineData("Deferred", "let value = \"value\"\ndefer\n    let taken = value@move", "value=1", new[] { 0 })]
     public void AcquisitionTransfersExactlyOneDestructionResponsibility(string name, string source, string counts, int[] order)
@@ -74,15 +74,15 @@ public class IdentityAcquisitionEmissionTest
     }
 
     [Theory]
-    [InlineData("Unit", "let value = ()@owner@()\nConsole.writeLine(\"ok\")")]
-    [InlineData("Empty", "let value: [0 of string] = []\nlet taken = value@move@owner@[0 of string]\nConsole.writeLine(\"ok\")")]
+    [InlineData("Unit", "let value = ()@copy@()\nConsole.writeLine(\"ok\")")]
+    [InlineData("Empty", "let value: [0 of string] = []\nlet taken = value@move@owner/[0 of string]\nConsole.writeLine(\"ok\")")]
     [InlineData("CopyArray", "let value: [2 of i32] = [1, 2]\nlet copy = value@[2 of i32]\nif copy[0] == value[0] => Console.writeLine(\"ok\")")]
-    [InlineData("CopyIdentity", "let value: [2 of i32] = [1, 2]\nlet moved = value@owner\nif moved[0] == 1 => Console.writeLine(\"ok\")")]
+    [InlineData("CopyIdentity", "let value: [2 of i32] = [1, 2]\nlet moved = value@copy\nif moved[0] == 1 => Console.writeLine(\"ok\")")]
     [InlineData("Snapshot", "var value: i32 = 1\nlet sum = value@i32 + value++\nif sum == 2 and value == 2 => Console.writeLine(\"ok\")")]
-    [InlineData("Once", "func get() -> string\n    Console.writeLine(\"ok\")\n    return \"value\"\nlet value = get()@owner@string")]
-    [InlineData("Selection", "let value = if true => \"ok\"@owner else => \"bad\"@owner\nConsole.writeLine(value)")]
-    [InlineData("Abrupt", "func get() -> string\n    (return \"ok\")@owner\nConsole.writeLine(get())")]
-    [InlineData("Grouped", "let text = \"ok\"\nlet value = text@move@((owner))@((string))\nConsole.writeLine(value)")]
+    [InlineData("Once", "func get() -> string\n    Console.writeLine(\"ok\")\n    return \"value\"\nlet value = get()@owner/string")]
+    [InlineData("Selection", "let value = if true => \"ok\"@owner/string else => \"bad\"@owner/string\nConsole.writeLine(value)")]
+    [InlineData("Abrupt", "func get() -> string\n    (return \"ok\")@copy\nConsole.writeLine(get())")]
+    [InlineData("Grouped", "let text = \"ok\"\nlet value = text@move@((owner/string))@((string))\nConsole.writeLine(value)")]
     public void BoundariesAndEvaluationOrderExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture("IdentityAcquisition" + name, source, "ok\n");
 

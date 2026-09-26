@@ -32,6 +32,10 @@ public sealed partial class Binding
         => type.Semantics == SemanticsKind.Owner &&
             (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Tuple or BoundTypeKind.FixedArray || Kimi.Compiler.EnumStorage.IsEnum(type));
 
+    // SPEC 13.5.3: E@copy is bound as the Identity acquisition of a proven-Copy value.
+    internal static bool IsCopyOperation(ConversionKoto conversion)
+        => ConversionTargetSyntax(conversion) is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation };
+
     private static Koto ConversionTargetSyntax(ConversionKoto conversion)
     {
         var syntax = conversion.Right;
@@ -252,6 +256,31 @@ public sealed partial class Binding
             return this.CompleteTransfer(conversion, transferred, scope);
         }
 
+        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation, OriginName: null, OriginExpression: null, OriginArguments: null })
+        {
+            // SPEC 13.5.3: @copy Copies a proven-Copy value and never transfers or borrows; a Temporary Value is used as is.
+            var copied = this.BindNode(conversion.Left, scope);
+            if (copied is null)
+            {
+                return Complete(conversion, null);
+            }
+
+            Complete(conversion.Right, copied);
+            if (ReferenceEquals(copied, BoundType.Never))
+            {
+                conversion.ConversionBinding = ConversionBinding.Abrupt;
+                return Complete(conversion, copied);
+            }
+
+            if (this.ProveCopy(copied, conversion) != ConstraintProof.Proven)
+            {
+                return Fail(conversion, BindingFailure.NonCopyOperand);
+            }
+
+            conversion.ConversionBinding = ConversionBinding.Identity;
+            return Complete(conversion, copied);
+        }
+
         if (syntax is TypeSemanticsKoto { Type: null, HasOrigin: false } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
         {
             // SPEC 10.8: an expected borrow of the same Semantics fits an untyped literal operand to its referent
@@ -293,22 +322,12 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            // SPEC 13.5.3: an owning-Semantics spelling that matches the operand's outer Semantics is the ordinary
-            // same-Type acquisition: a Copy of a Copy value, the transfer of a temporary, never a transfer from a Place.
-            if (semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && operandType.Semantics == semantics)
+            // SPEC 13.5.3: a bare owning shorthand names no Core and is not an operation; @copy, @move or a complete
+            // target such as @owner/T states the acquisition.
+            if (semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
             {
-                for (var targetNode = conversion.Right; ;)
-                {
-                    Complete(targetNode, operandType);
-                    if (ReferenceEquals(targetNode, syntax))
-                    {
-                        break;
-                    }
-
-                    targetNode = targetNode is ParenthesizedTypeKoto parentheses ? parentheses.Type : ((TypeSemanticsKoto)targetNode).Type!;
-                }
-
-                return this.CompleteIdentity(conversion, operandType);
+                Complete(conversion.Right, operandType);
+                return Fail(conversion, BindingFailure.BareOwningShorthand);
             }
 
             Fail(conversion.Right, BindingFailure.Unsupported, true);

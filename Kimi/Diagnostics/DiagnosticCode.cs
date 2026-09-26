@@ -123,6 +123,8 @@ public enum DiagnosticCode
     SharedPathAccess_Kd,
     ExclusivePathTake_Kd,
     ReceiverShapeMismatch_Kd,
+    BareOwningShorthand_Kd,
+    NonCopyOperand_Kd,
     MissingSpecializationTarget_Kd,
     SpecializationInputMismatch_Kd,
 

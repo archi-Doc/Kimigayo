@@ -1473,10 +1473,10 @@ CloseParameters:
                 string? semanticsParameter = default;
                 if (!CompilerHelper.TryParse(semantics, out var semanticsKind))
                 {
-                    if (semantics.SequenceEqual(Constants.MoveOperation))
+                    if (semantics.SequenceEqual(Constants.MoveOperation) || semantics.SequenceEqual(Constants.CopyOperation))
                     {
-                        // @move is an operation, never a Semantics prefix (SPEC §13.5.1).
-                        reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "move as a Semantics prefix");
+                        // @move and @copy are operations, never Semantics prefixes (SPEC §13.5.1).
+                        reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, semantics[0] == 'm' ? "move as a Semantics prefix" : "copy as a Semantics prefix");
                     }
 
                     semanticsParameter = reader.GetIdentifier(token);
@@ -3363,8 +3363,8 @@ CloseParameters:
                 }
                 else if (IsBareOperationTarget(ref reader))
                 {
-                    // A bare built-in Semantics shorthand or @move completes the target (SPEC §13.5.1);
-                    // a following '.', '(' or '[' continues the postfix chain: x@uniq.m(), f@move().
+                    // A bare built-in Semantics shorthand, @move or @copy completes the target (SPEC §13.5.1);
+                    // a following '.', '(' or '[' continues the postfix chain: x@uniq.m(), f@move(), p@copy.x.
                     typeKoto = new TypeSemanticsKoto(ref reader, reader.Read());
                 }
                 else
@@ -3519,8 +3519,8 @@ CloseParameters:
     }
 
     /// <summary>
-    /// Determines whether the token after <c>@</c> is a bare built-in Semantics name or <c>move</c> that completes
-    /// the operation target by itself, so that no qualified Type parse is attempted (SPEC §13.5.1).
+    /// Determines whether the token after <c>@</c> is a bare built-in Semantics name, <c>move</c> or <c>copy</c> that
+    /// completes the operation target by itself, so that no qualified Type parse is attempted (SPEC §13.5.1).
     /// </summary>
     private static bool IsBareOperationTarget(ref TokenReader reader)
     {
@@ -3531,7 +3531,7 @@ CloseParameters:
         }
 
         var text = reader.GetSpan(token);
-        if (!text.SequenceEqual(Constants.MoveOperation) && !CompilerHelper.TryParse(text, out _))
+        if (!text.SequenceEqual(Constants.MoveOperation) && !text.SequenceEqual(Constants.CopyOperation) && !CompilerHelper.TryParse(text, out _))
         {
             return false; // follow is consumed as a postfix operation before this point (SPEC 13.1).
         }

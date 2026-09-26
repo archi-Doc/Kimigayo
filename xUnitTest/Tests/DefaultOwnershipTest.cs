@@ -54,7 +54,7 @@ public class DefaultOwnershipTest
     [InlineData("func f(x: string, y: string = (loop => exit x)) => ()")]
     [InlineData("func take(value: string) -> i32 => 1\nfunc f(x: string, y: i32 = take(x@move)) => ()")]
     [InlineData("contract C\n    func f(x: string, y: string = x)")]
-    [InlineData("func f(x: string, y: string = x@move@owner) => ()")]
+    [InlineData("func f(x: string, y: string = x@move@owner/string) => ()")]
     [InlineData("struct S\n    public func take(self: Self) -> i32 => 1\nfunc f(x: S, y: i32 = x@move.take()) => ()")]
     public void DefinitePreparedArgumentMovesAreDeclarationErrors(string source)
     {

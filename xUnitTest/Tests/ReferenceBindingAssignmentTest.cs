@@ -40,7 +40,7 @@ public class ReferenceBindingAssignmentTest
     [Theory]
     [InlineData("var values: Array<i32> = [1]\nfor v in values@uniq\n    v@follow += 1")]
     [InlineData("var values: Array<i32> = [1]\nfor var v in values@move\n    v += 1")]
-    [InlineData("var count: i32 = 1\nmatch count@owner\n    var n => n += 5")]
+    [InlineData("var count: i32 = 1\nmatch count@copy\n    var n => n += 5")]
     [InlineData("let a = 1\nlet b = 2\nlet refs: [2 of ref/i32] = [a@ref, b@ref]\nfor var r in refs\n    r = refs[1]@ref")]
     public void SuggestedSpellingsAreAccepted(string source)
     {

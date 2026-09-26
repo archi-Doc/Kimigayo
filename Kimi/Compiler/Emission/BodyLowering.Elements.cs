@@ -175,10 +175,12 @@ internal sealed partial class BodyLowering
             // Explicit aggregate arguments can be acquired from locals/parameters,
             // not just literals or call results. Their Consume is independently
             // validated by LowerAggregate; retain its identity for dominance checks.
+            // A struct acquired by @move or @copy is a receiver of member selection.
             var operation = body.Operations[i];
             if (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition is AcquisitionKind.Copy or AcquisitionKind.Move &&
                 (uint)operation.Input < (uint)body.Places.Count &&
-                body.Places[operation.Input] is { Kind: OwnershipPlaceKind.Temporary, Type.Kind: BoundTypeKind.Tuple or BoundTypeKind.FixedArray } acquired)
+                body.Places[operation.Input] is { Kind: OwnershipPlaceKind.Temporary } acquired &&
+                (acquired.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(acquired.Type)))
             {
                 if (this.slotFunctionInitializations[acquired.Id] >= 0 || this.constructionOwners[acquired.Id] >= 0 || this.slotFunctionPlaces[acquired.Id] != 0)
                 {

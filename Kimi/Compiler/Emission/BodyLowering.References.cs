@@ -168,7 +168,7 @@ internal sealed partial class BodyLowering
                 body.SymbolPlaces.TryGetValue(symbol, out var anchor) && anchor == operation.Place;
         }
 
-        // A transferred or Identity-acquired operand (text@move, text@owner) is borrowed through the
+        // A transferred or Identity-acquired operand (text@move, text@owner/string) is borrowed through the
         // operand's own temporary. Storage authorization is checked after the string plans are prepared.
         return source.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && ReferenceEquals(source.Source, ElementAccess.ValueSource(operation.Source));
     }

@@ -25,9 +25,11 @@ internal sealed partial class BodyLowering
             foreach (var identity in identities)
             {
                 var source = identity.Source;
-                // A transfer (@move) designates its consumed input like Identity Acquisition, for every acquired Type.
+                // A transfer (@move) and a Copy (@copy) designate their acquired input like Identity Acquisition, for every
+                // acquired Type; the Type targets of Identity Acquisition keep their supported set.
                 if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding is not (ConversionBinding.Identity or ConversionBinding.Transfer) ||
-                    SignatureType(lowering, source.BoundType) is not { } type || (source.ConversionBinding == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type)) ||
+                    SignatureType(lowering, source.BoundType) is not { } type ||
+                    (source.ConversionBinding == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type) && !Binding.IsCopyOperation(source)) ||
                     !ReferenceEquals(type, SignatureType(lowering, source.Left.BoundType)) || !ReferenceEquals(type, SignatureType(lowering, source.Right.BoundType)) ||
                     !ReferenceEquals(type, body.Places[identity.Place].Type))
                 {

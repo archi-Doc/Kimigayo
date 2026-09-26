@@ -106,7 +106,7 @@ public sealed partial class OwnershipAnalysis
 
                     return;
                 case ConversionKoto conversion:
-                    // SPEC 13.5.3: a transfer (x@move, x@owner) and an Identity acquisition consume their operand.
+                    // SPEC 13.5.3: a transfer (x@move) and an Identity acquisition (x@copy, x@i32) consume their operand.
                     this.Visit(conversion.Left, conversion.ConversionBinding is ConversionBinding.Transfer or ConversionBinding.Identity ? PlaceUseKind.Consume : PlaceUseKind.Read);
                     return;
             }

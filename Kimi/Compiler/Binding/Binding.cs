@@ -575,6 +575,8 @@ public sealed partial class Binding
                     BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
                     BindingFailure.ExclusivePathTake => DiagnosticCode.ExclusivePathTake_Kd,
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
+                    BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
+                    BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
