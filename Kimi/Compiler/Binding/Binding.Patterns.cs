@@ -325,6 +325,19 @@ public sealed partial class Binding
             return type;
         }
 
+        if (this.FollowablePair(type, this.ConstraintScope(expression), out _) is var admitted && admitted != SemanticsMask.None)
+        {
+            // SPEC 15.1.6: a bare pair-layer Place is shared-borrowed in place, and structural positions follow the pair layer.
+            // With only uniq admitted the Subject is Exclusive, which is not yet acquired through a pair layer.
+            if (admitted != SemanticsMask.Uniq)
+            {
+                borrow = this.SharedReference(type, this.PlaceOrigin(expression));
+                return borrow;
+            }
+
+            return type;
+        }
+
         if (type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)
         {
             // SPEC 15.1.6, 15.6.2: a stored exclusive reference reached through a shared layer is shared-Reborrowed.
@@ -369,15 +382,33 @@ public sealed partial class Binding
         {
             // SPEC 14.8.1, 3.4.1: a structural Pattern selects the referent of every safe value-reference layer
             // that lacks its structure; a shared layer anywhere on the path bounds every descendant to shared access.
-            while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            while (true)
             {
-                access = type.Semantics == SemanticsKind.Ref || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
+                if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+                {
+                    access = type.Semantics == SemanticsKind.Ref || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
 
-                // SPEC 10.2: a ref layer is a Copy that restarts the dependency at its own Origin; a uniq layer below it
-                // is Reborrowed, so its Origin is met with the dependency reached so far.
-                origin = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin
-                    : type.Origin is { } layer ? this.Meet(origin, layer) : origin;
-                type = type.Components[0];
+                    // SPEC 10.2: a ref layer is a Copy that restarts the dependency at its own Origin; a uniq layer below it
+                    // is Reborrowed, so its Origin is met with the dependency reached so far.
+                    origin = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin
+                        : type.Origin is { } layer ? this.Meet(origin, layer) : origin;
+                    type = type.Components[0];
+                    layers++;
+                    continue;
+                }
+
+                var admitted = this.FollowablePair(type, outer, out var target);
+                if (admitted == SemanticsMask.None)
+                {
+                    break;
+                }
+
+                // SPEC 14.8.1, 13.5.5.1: a qualifying pair layer is selected like the other safe value-reference layers. The access
+                // past it is the weakest over its admitted cases; an admitted owner keeps the dependency reached so far.
+                access = (admitted & SemanticsMask.Ref) != 0 || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
+                origin = (admitted & SemanticsMask.Owner) != 0 ? origin : (admitted & SemanticsMask.Ref) != 0 || origin is null ? type.Origin ?? origin
+                    : type.Origin is { } stored ? this.Meet(origin, stored) : origin;
+                type = target;
                 layers++;
             }
         }
@@ -643,9 +674,21 @@ public sealed partial class Binding
             return;
         }
 
-        while (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        // The structural positions selected every safe reference layer and qualifying pair layer (SPEC 14.8.1).
+        while (true)
         {
-            subject = subject.Components[0];
+            if (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                subject = subject.Components[0];
+            }
+            else if (TryPairLayer(subject, out _, out var target))
+            {
+                subject = target;
+            }
+            else
+            {
+                break;
+            }
         }
 
         var caseCount = subject.Symbol?.Declaration is EnumKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape) ? shape.CaseCount : 0;

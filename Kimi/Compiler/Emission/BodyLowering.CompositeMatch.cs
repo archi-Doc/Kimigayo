@@ -8,22 +8,42 @@ internal sealed partial class BodyLowering
 {
     private int[] patternProjectionRoots = [];
 
-    // The selected layers of a structural position are safe value references (SPEC 14.8.1).
+    // The selected layers of a structural position are safe value references or pair layers (SPEC 14.8.1).
     private static bool ValidDereferences(BoundPattern pattern)
     {
         var type = pattern.MatchedType;
         for (var layer = 0; layer < pattern.ImplicitFollows; layer++)
         {
-            if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            if (!SelectedLayer(ref type))
             {
                 return false;
             }
-
-            type = type.Components[0];
         }
 
         return true;
     }
+
+    // Steps over one selected layer: a safe reference or a pair layer, whose target is its referent (SPEC 13.5.5.1).
+    private static bool SelectedLayer(ref BoundType type)
+    {
+        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            type = type.Components[0];
+            return true;
+        }
+
+        if (Binding.TryPairLayer(type, out _, out var target))
+        {
+            type = target;
+            return true;
+        }
+
+        return false;
+    }
+
+    // A selected layer is read through a pointer when the instance's layer is a reference; a pair layer bound to owner
+    // is the Place itself (SPEC 13.5.5.1).
+    private bool Dereferences(BoundType layer) => this.Matched(layer) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
 
     private bool IsCompositeSubject(BoundType type) => (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ReferenceTypes.IsStorage(type)) ||
         ((type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type) || StructStorage.IsStruct(type)) &&
@@ -34,7 +54,7 @@ internal sealed partial class BodyLowering
         var type = pattern.MatchedType;
         for (var layer = 0; layer < pattern.ImplicitFollows; layer++)
         {
-            type = type.Components[0];
+            _ = SelectedLayer(ref type);
         }
 
         return this.Matched(type);
@@ -77,8 +97,20 @@ internal sealed partial class BodyLowering
         for (var level = depth - 1; level >= 0; level--)
         {
             var parent = match.Positions[ancestors[level]];
+            var layerType = parent.MatchedType;
             for (var layer = 0; layer < parent.ImplicitFollows; layer++)
             {
+                var dereference = this.Dereferences(layerType);
+                if (!SelectedLayer(ref layerType))
+                {
+                    return -1;
+                }
+
+                if (!dereference)
+                {
+                    continue;
+                }
+
                 if (offset > int.MaxValue || count == dereferences.Length)
                 {
                     return -1;

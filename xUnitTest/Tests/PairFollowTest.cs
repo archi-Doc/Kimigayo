@@ -98,8 +98,21 @@ public class PairFollowTest
         "    require sum(more@uniq, n@uniq) == 17 and more[1] == 9 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Iterated.\")\n";
 
+    // SPEC 14.8.1: a structural Pattern selects through a pair layer; its bindings are references fixed at definition.
+    private const string Matched =
+        "func first<s/T>(o: s/Option<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    match o\n        .Some(let v) => return v\n        .None => return 0\n" +
+        "func second<s/T>(pair: s/(i32, i32), marker: s/T) -> i32\n    s is value or valueborrow\n    match pair\n        (_, let b) => return b\n" +
+        "public func main()\n" +
+        "    let z: i32 = 0\n    require first(Option<i32>.Some(3), z) == 3 and second((1, 2), z) == 2 else => $abort(\"owner\")\n" +
+        "    let some = Option<i32>.Some(4)\n    let none = Option<i32>.None\n    let tuple = (5, 6)\n" +
+        "    require first(some@ref, z@ref) == 4 and first(none@ref, z@ref) == 0 and second(tuple@ref, z@ref) == 6 else => $abort(\"ref\")\n" +
+        "    var other = Option<i32>.Some(7)\n    var n: i32 = 0\n" +
+        "    require first(other@uniq, n@uniq) == 7 else => $abort(\"uniq\")\n" +
+        "    Console.writeLine(\"Matched.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Matched", Matched, "Matched.\n" },
         { "Iterated", Iterated, "Iterated.\n" },
         { "Positions", Positions, "Positions.\n" },
         { "Explicit", Explicit, "Owned followed.\nShared followed.\nExclusive followed.\n" },
