@@ -120,7 +120,7 @@ $invalid = [ordered]@{
     MissingCase = @{ source = [regex]::Replace($original, '(?m)^\s*\.Stop => exit to scan: total\r?\n', ''); diagnostic = 'NonExhaustiveMatch_Kd' }
     WrongPatternArity = @{ source = (Edit-KimiSource $original '.Data((let value, true))' '.Data((let value, true, _))'); diagnostic = 'InvalidPattern_Kd' }
     DuplicatePatternName = @{ source = (Edit-KimiSource $original '.Data((let value, true))' '.Data((let value, let value))'); diagnostic = 'DuplicateBinding_Kd' }
-    CandidateAssignment = @{ source = (Edit-KimiSource $original 'if value > 0' 'if (value = 1)'); diagnostic = 'InvalidAssignment_Kd' }
+    CandidateAssignment = @{ source = (Edit-KimiSource $original 'if value > 0' 'if (value = 1)'); diagnostic = 'SharedPathAccess_Kd' }
     WrongGuardType = @{ source = (Edit-KimiSource $original 'if value > 0' 'if value'); diagnostic = 'TypeMismatch_Kd' }
     MissingTarget = @{ source = (Edit-KimiSource $original 'exit to scan:' 'exit to missing:'); diagnostic = 'ControlFlow_Kd' }
     UninitializedTotal = @{ source = (Edit-KimiSource $original 'var total: i32 = 0' 'var total: i32'); diagnostic = 'UninitializedPlace_Kd' }

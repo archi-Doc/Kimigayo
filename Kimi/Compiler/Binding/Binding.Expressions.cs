@@ -14,9 +14,11 @@ public sealed partial class Binding
     private int defaultBindingDepth;
 
     // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a value of its referent Type
-    // assigned to it names that mode and the spellings that bind or update a value instead.
+    // assigned to it names that mode and the spellings that bind or update a value instead. A guard candidate is a
+    // shared layer that grants Read only (SPEC 14.8.3).
     private static BindingFailure? ReferenceBindingAssignment(Koto target)
-        => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
+        => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate } ? BindingFailure.SharedPathAccess
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
             symbol.Declaration is SyntaxFormKoto { Akind: KotoKind.BindingPattern } or IdentifierNameKoto { Parent: ForKoto }
             ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
 
@@ -785,7 +787,7 @@ public sealed partial class Binding
             var sourceReceiver = (node as MemberAccessKoto)?.Left;
             if ((write || update) && sourceReceiver?.BoundType is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc })
             {
-                return Fail(node, BindingFailure.InvalidAssignment);
+                return Fail(node, AccessFailure(node));
             }
 
             if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
@@ -905,7 +907,7 @@ public sealed partial class Binding
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 if (!this.ValidPropertyWritePath(unary.Operand, scope))
                 {
-                    return Fail(unary, BindingFailure.InvalidAssignment);
+                    return Fail(unary, AccessFailure(unary.Operand));
                 }
 
                 if (ElementAccess.DestinationType(unary.Operand, operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
@@ -916,7 +918,7 @@ public sealed partial class Binding
 
                 if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
                 {
-                    return Fail(unary, BindingFailure.InvalidAssignment);
+                    return Fail(unary, AccessFailure(unary.Operand));
                 }
 
                 // Increment and decrement do not apply to floats (SPEC 13.2).
@@ -997,13 +999,13 @@ public sealed partial class Binding
 
         if (assignment && !this.ValidPropertyWritePath(binary.Left, scope))
         {
-            return Fail(binary, BindingFailure.InvalidAssignment);
+            return Fail(binary, AccessFailure(binary.Left));
         }
 
         if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
             !(kind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) || (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor))))
         {
-            return Fail(binary, BindingFailure.InvalidAssignment);
+            return Fail(binary, AccessFailure(binary.Left));
         }
 
         var result = assignment ? BoundType.Unit : left;

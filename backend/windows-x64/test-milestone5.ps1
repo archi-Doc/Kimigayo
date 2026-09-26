@@ -126,7 +126,7 @@ $invalid = [ordered]@{
     LiveLoanReplacement = @{ source = (Edit-KimiSource $original $anchor "counter = Counter.init()`n        $anchor"); diagnostic = 'ComparisonLoanConflict_Kd' }
     LiveLoanFieldWrite = @{ source = (Edit-KimiSource $original $anchor "counter.value = 99`n        $anchor"); diagnostic = 'ComparisonLoanConflict_Kd' }
     EscapedLocal = @{ source = (Edit-KimiSource $original 'return counter' "let local = Counter.init()`n    return local@ref"); diagnostic = 'TypeMismatch_Kd' }
-    SharedWrite = @{ source = (Edit-KimiSource $original 'counter: uniq/Counter' 'counter: ref/Counter'); diagnostic = 'InvalidAssignment_Kd' }
+    SharedWrite = @{ source = (Edit-KimiSource $original 'counter: uniq/Counter' 'counter: ref/Counter'); diagnostic = 'SharedPathAccess_Kd' }
     ImmutableOwner = @{ source = (Edit-KimiSource $original 'var counter = Counter.init()' 'let counter = Counter.init()'); diagnostic = 'InvalidAssignment_Kd' }
     MissingStoredOrigin = @{ source = (Edit-KimiSource $original 'let counter: ref/Counter during source' 'let counter: ref/Counter'); diagnostic = 'MissingOriginBinding_Kd' }
     WrongArgument = @{ source = (Edit-KimiSource $original 'Counter.init()' 'Counter.init(true)'); diagnostic = 'NoApplicableOverload_Kd' }

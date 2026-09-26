@@ -377,6 +377,12 @@
   + Name="ExclusiveBindingAssignment_Kd"
     Message="This binding is an exclusive reference because its match or for Subject is Exclusive; update the referent with @deref, or bind a value from a ByValue Subject such as E@owner or E@move"
 
+  + Name="SharedPathAccess_Kd"
+    Message="This Place is reached through a shared layer (a ref reference, a Slice element, an objref, rc or arc view, or a guard candidate), which grants Read only; a write, Move or exclusive borrow needs an owned or exclusive path"
+
+  + Name="ExclusivePathTake_Kd"
+    Message="This Place is reached through an exclusive reference, which grants Read and Write but not Take; exchange or replace the value with Kimi.Intrinsics instead of moving it"
+
   + Name="ReceiverShapeMismatch_Kd"
     Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
 

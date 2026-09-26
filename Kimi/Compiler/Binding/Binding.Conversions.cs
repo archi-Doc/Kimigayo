@@ -67,9 +67,10 @@ public sealed partial class Binding
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
         if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate ||
-            KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref })
+            KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } ||
+            (IsBarePlace(conversion.Left) && PathAuthority(conversion.Left) != SemanticsKind.Owner))
         {
-            return Fail(conversion, BindingFailure.InvalidAssignment); // SPEC 15.1.5: a referent offers no Take.
+            return Fail(conversion, AccessFailure(conversion.Left, take: true)); // SPEC 15.1.5: only an owned path offers Take.
         }
 
         // SPEC 11.1: consuming var storage requires its accessible standard setter,
@@ -267,7 +268,7 @@ public sealed partial class Binding
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
                 if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
                 {
-                    return Fail(conversion, BindingFailure.InvalidAssignment);
+                    return Fail(conversion, semantics == SemanticsKind.ObjUniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
                 }
 
                 Complete(conversion.Right, adapted);
@@ -284,7 +285,7 @@ public sealed partial class Binding
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType]);
                 if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
-                    return Fail(conversion, BindingFailure.InvalidAssignment);
+                    return Fail(conversion, semantics == SemanticsKind.Uniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
                 }
 
                 Complete(conversion.Right, adapted);

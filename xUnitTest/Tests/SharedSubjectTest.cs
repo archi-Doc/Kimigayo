@@ -141,7 +141,7 @@ public class SharedSubjectTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidAssignment_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.InvalidAssignment_Kd);
     }
 
     [Theory]

@@ -11,7 +11,7 @@ $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
     Names = @{ source = (Edit-KimiSource $original 'Meter' 'Gauge' 'level' 'reading' 'doubled' 'scaled'); stdout = $expected }
     Values = @{ source = (Edit-KimiSource $original 'return 8' 'return 14' 'level == 8' 'level == 14' 'doubled = 12' 'doubled = 20' 'doubled == 12' 'doubled == 20' 'raw == 6' 'raw == 10'); stdout = $expected }
-    Compound = @{ source = (Edit-KimiSource $original '.level = input()' '.level += input()' 'level == 8' 'level == 11'); stdout = "Standard access finished.`nReceiver evaluated.`nCustom get.`nInput evaluated.`nCustom set.`nCustom get.`nComputed set.`nComputed get.`nCopy properties finished.`n" }
+    Compound = @{ source = (Edit-KimiSource $original '.level = input()' '.level += input()' 'level == 8' 'level == 11'); stdout = "Standard access finished.`nInput evaluated.`nReceiver evaluated.`nCustom get.`nCustom set.`nCustom get.`nComputed set.`nComputed get.`nCopy properties finished.`n" }
     RestrictedRead = @{ source = (Edit-KimiSource $original 'public var raw: i32' "public var raw: i32`n        private set" "    meter.raw = 4`n" '' 'meter.raw == 4' 'meter.raw == 2'); stdout = $expected }
     DifferentSetterInput = @{ source = (Edit-KimiSource $original "set(value: i32) -> ()`n            Console.writeLine(`"Computed set.`")`n            self.raw = value / 2" "set(value: bool) -> ()`n            Console.writeLine(`"Computed set.`")`n            if value => self.raw = 6" 'meter.doubled = 12' 'meter.doubled = true'); stdout = $expected }
 }

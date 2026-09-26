@@ -116,7 +116,7 @@ foreach ($level in @('O0', 'O2')) {
 $invalid = [ordered]@{
     OuterLength = @{ source = (Edit-KimiSource $original '[3 of [4 of i32]]' '[2 of [4 of i32]]'); diagnostic = 'TypeMismatch_Kd' }
     InnerLength = @{ source = (Edit-KimiSource $original '[3 of [4 of i32]]' '[3 of [3 of i32]]'); diagnostic = 'TypeMismatch_Kd' }
-    SliceWrite = @{ source = (Edit-KimiSource $original 'var rowTotal: i32 = 0' 'rowView[0] = 99'); diagnostic = 'InvalidAssignment_Kd' }
+    SliceWrite = @{ source = (Edit-KimiSource $original 'var rowTotal: i32 = 0' 'rowView[0] = 99'); diagnostic = 'SharedPathAccess_Kd' }
     BorrowedWrite = @{ source = (Edit-KimiSource $original 'var rowTotal: i32 = 0' "var rowTotal: i32 = 0`n    matrix[0][0] = 99"); diagnostic = 'ComparisonLoanConflict_Kd' }
     BorrowedReplacement = @{ source = (Edit-KimiSource $original 'var rowTotal: i32 = 0' "var rowTotal: i32 = 0`n    matrix[0] = [9, 9, 9, 9]"); diagnostic = 'ComparisonLoanConflict_Kd' }
     ImmutableIndex = @{ source = (Edit-KimiSource $original 'let value = matrix[row][column]' 'row = 0'); diagnostic = 'InvalidAssignment_Kd' }

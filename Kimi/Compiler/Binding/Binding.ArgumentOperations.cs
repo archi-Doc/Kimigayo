@@ -142,28 +142,45 @@ public sealed partial class Binding
     // authority, even to an exclusive reference stored below it.
     private static bool ReachedThroughShared(Koto source) => PathAuthority(source) == SemanticsKind.Ref;
 
-    // SPEC 3.4: the access path of a Place. Owner means a direct path (a local, parameter or static and
-    // their inline parts), Uniq a path through an exclusive reference and Ref a path through a shared one.
-    // The path bounds every borrow of the Place; it does not change the Place's Type.
+    // SPEC 3.4, 13.5.5.1, 15.1.5: the access a Place's path grants, computed once for writes, Moves and borrows. Owner is a
+    // direct path (a local, parameter or static and their inline parts), Uniq a path through an exclusive reference or
+    // objuniq view, and Ref a path through a shared layer: a ref reference, a Slice element, an objref, rc or arc view or
+    // a guard candidate. A shared layer anywhere on the path bounds it to shared access; the path never changes the Type.
     private static SemanticsKind PathAuthority(Koto source)
     {
         var authority = SemanticsKind.Owner;
         source = KotoHelper.UnwrapParentheses(source);
         for (var depth = 0; depth < 64; depth++)
         {
-            var root = source switch
+            Koto next;
+            SemanticsKind? layer = null;
+            switch (source)
             {
-                MemberAccessKoto member => ElementAccess.BorrowedPathRoot(member),
-                IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) => index.Left,
-                _ => null,
-            };
-            if (root is null)
-            {
-                return authority;
+                case IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate }:
+                    return SemanticsKind.Ref;
+                case ConversionKoto { ConversionBinding: ConversionBinding.Deref or ConversionBinding.PayloadDeref } selected:
+                    next = selected.Left;
+                    layer = selected.Left.BoundType?.Semantics;
+                    break;
+                case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.Slice ||
+                    index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
+                    return SemanticsKind.Ref; // SPEC 4.6.6: a Slice element Place is shared.
+                case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType):
+                    next = index.Left;
+                    layer = index.Left.BoundType!.Semantics;
+                    break;
+                case MemberAccessKoto member when ElementAccess.BorrowedPathRoot(member) is { } root:
+                    next = root;
+                    layer = ElementAccess.ReceiverType(KotoHelper.UnwrapParentheses(root))?.Semantics;
+                    break;
+                case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
+                    next = part.Left; // An inline part shares its owner's path.
+                    break;
+                default:
+                    return authority;
             }
 
-            root = KotoHelper.UnwrapParentheses(root);
-            switch (ElementAccess.ReceiverType(root)?.Semantics)
+            switch (layer)
             {
                 case SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc:
                     return SemanticsKind.Ref;
@@ -172,11 +189,21 @@ public sealed partial class Binding
                     break;
             }
 
-            source = root;
+            source = KotoHelper.UnwrapParentheses(next);
         }
 
         return authority;
     }
+
+    // SPEC 3.4, 15.1.5: the one diagnostic for a capability that a Place's path denies. A shared layer grants Read only, an
+    // exclusive reference grants Read and Write but not Take, and otherwise the binding itself forbids the access.
+    private static BindingFailure AccessFailure(Koto target, bool take = false)
+        => PathAuthority(target) switch
+        {
+            SemanticsKind.Ref => BindingFailure.SharedPathAccess,
+            SemanticsKind.Uniq when take => BindingFailure.ExclusivePathTake,
+            _ => BindingFailure.InvalidAssignment,
+        };
 
     // SPEC 3.5: a bare Place, as opposed to a Temporary Value or an explicit @ operation. Only a Place's
     // acquisition is restricted by the lending rule; a temporary transfers its ownership freely.

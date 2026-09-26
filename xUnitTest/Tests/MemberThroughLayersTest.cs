@@ -26,7 +26,7 @@ public class MemberThroughLayersTest
     {
         var c = MinimalEmissionTest.Analyze(P + "var a = P.init(1, \"a\")\nvar views: [1 of uniq/P] = [a@uniq]\nfor v in views\n    v.v = 5");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssignment_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.SharedPathAccess_Kd);
     }
 
     [Fact]

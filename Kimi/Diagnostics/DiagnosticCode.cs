@@ -120,6 +120,8 @@ public enum DiagnosticCode
     ExclusiveBorrowRequired_Kd,
     SharedBindingAssignment_Kd,
     ExclusiveBindingAssignment_Kd,
+    SharedPathAccess_Kd,
+    ExclusivePathTake_Kd,
     ReceiverShapeMismatch_Kd,
     MissingSpecializationTarget_Kd,
     SpecializationInputMismatch_Kd,

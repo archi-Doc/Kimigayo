@@ -572,6 +572,8 @@ public sealed partial class Binding
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
+                    BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
+                    BindingFailure.ExclusivePathTake => DiagnosticCode.ExclusivePathTake_Kd,
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
