@@ -2579,12 +2579,12 @@ CloseParameters:
                 continue;
             }
 
-            if (function is not null && function.GenericArguments.Count > 0 && IsTypeConstraintStart(ref reader))
+            if (function is not null && (function.GenericArguments.Count > 0 || function.HasGenericDeclaringType) && IsTypeConstraintStart(ref reader))
             {
                 // A root-qualified subject is never a generic parameter; do not read "::" as an identifier.
                 var rootQualified = reader.CurrentTokenKind == TokenKind.ColonColon;
                 var subject = rootQualified ? null : reader.GetIdentifier(reader.CurrentToken);
-                var isGenericParameter = subject is not null && function.IsGenericParameter(subject);
+                var isGenericParameter = subject is not null && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
                 if (!seenExecutableItem || isGenericParameter)
                 {
                     if (seenExecutableItem || !isGenericParameter)

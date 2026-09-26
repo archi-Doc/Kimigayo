@@ -836,6 +836,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             var constructor = Parser.ParseFuncDeclaration(ref reader, constructor: true);
             if (constructor is not null)
             {
+                constructor.DeclaringContainer = this;
                 constructor.Parse(ref reader);
                 this.AddLast(constructor);
             }
@@ -962,6 +963,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return true;
         }
 
+        functionKoto.DeclaringContainer = this;
         if (this is ContractKoto)
         {
             Parser.ParseRequirementBody(ref reader, functionKoto);

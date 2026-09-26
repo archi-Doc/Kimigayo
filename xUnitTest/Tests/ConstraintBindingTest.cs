@@ -170,12 +170,12 @@ public class ConstraintBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
     }
 
+    // SPEC 7.4: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
-    public void AFunctionCannotConstrainItsEnclosingTypeParameter()
+    public void AMemberFunctionCanConstrainItsDeclaringTypeParameter()
     {
-        var c = Parse("struct Box<T>\n    func f<U>(x: U)\n        T is i32\n        ()", allowParserErrors: true);
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd);
+        var c = Parse("struct Box<T>\n    func f<U>(x: U)\n        T is Equatable\n        ()");
+        Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues));
     }
 
     [Fact]

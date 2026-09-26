@@ -254,6 +254,30 @@ public sealed class FunctionKoto : DeclarationKoto
         return false;
     }
 
+    // SPEC 7.4: a member function or constructor of a generic Type may constrain the declaring Type's parameters. The body
+    // is parsed before the member is attached, so the container is recorded for the parse.
+    internal bool IsDeclaringTypeParameter(string name)
+    {
+        if (this.DeclaringContainer is not (StructKoto or EnumKoto) || this.DeclaringContainer is not { GenericParameterNodes: { Count: > 0 } parameters })
+        {
+            return false;
+        }
+
+        for (var i = 0; i < parameters.Count; i++)
+        {
+            if (parameters[i].Identifier == name || parameters[i].SemanticsParameter == name)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal bool HasGenericDeclaringType => this.DeclaringContainer is StructKoto or EnumKoto && this.DeclaringContainer.GenericParameterNodes.Count > 0;
+
+    internal DeclarationContainerKoto? DeclaringContainer { get; set; }
+
     /// <summary>Gets the generic parameters.</summary>
     public IReadOnlyList<TypeKoto> GenericArguments
         => (IReadOnlyList<TypeKoto>?)this.genericArguments ?? [];
