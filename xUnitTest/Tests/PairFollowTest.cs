@@ -224,6 +224,40 @@ public class PairFollowTest
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("PairFollow" + name, source, stdout);
 
+    // SPEC 15.4.4: Origins inferred for a local initializer's construction qualifier are inferred again when the same
+    // compilation is bound again.
+    [Fact]
+    public void InferredQualifierOriginsSurviveRebinding()
+    {
+        var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let a = Node.init(10)\n    let refs = Collection<ref/Node>.init([a@ref])\n    let n = refs.indices.length");
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        }
+    }
+
+    // PLAN P39: warm rebinding of the Program 39 shape allocates nothing (instance ownership and emission: PLAN G25).
+    [Fact]
+    public void WarmPairLayerRebindingAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(Collected);
+        for (var i = 0; i < 100; i++)
+        {
+            Assert.True(c.Bind().IsComplete);
+        }
+
+        var success = true;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 128; i++)
+        {
+            success &= c.Bind().IsComplete;
+        }
+
+        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(success);
+        Assert.Equal(0, bytes);
+    }
+
     [Theory]
     [InlineData("func f<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    return box.item@follow@ref", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("func f<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is owner or obj\n    return box.item@follow@ref", DiagnosticCode.UnprovenConstraint_Kd)]

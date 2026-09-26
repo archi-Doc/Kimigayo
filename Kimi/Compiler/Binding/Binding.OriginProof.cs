@@ -43,7 +43,11 @@ public sealed partial class Binding
         {
             if (node is VariableKoto { TypeKoto: null, InitializerKoto: { } initializer } variable && IsWithin(atom.Binder!, initializer))
             {
-                var declaration = this.OriginDeclarationFor(variable);
+                if (!this.initializerOrigins.TryGetValue(variable, out var declaration))
+                {
+                    this.initializerOrigins.Add(variable, declaration = new(variable));
+                }
+
                 return declaration.State < 2 ? declaration : null;
             }
         }
@@ -53,11 +57,17 @@ public sealed partial class Binding
 
     private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use)
     {
+        var initializers = this.initializerOrigins.Count != 0;
         for (var node = use; node is not null; node = node.Parent)
         {
             if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State >= 2)
             {
                 origin = this.ResolveOrigin(origin, declaration);
+            }
+
+            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.State >= 2)
+            {
+                origin = this.ResolveOrigin(origin, inferred);
             }
         }
 

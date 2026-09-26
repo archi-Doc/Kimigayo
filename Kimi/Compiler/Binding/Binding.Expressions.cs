@@ -679,7 +679,7 @@ public sealed partial class Binding
 
         var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
         symbol.Resolving = false;
-        if (declared is null && inferred is not null && this.originDeclarations.TryGetValue(variable, out var initializerOrigins) &&
+        if (declared is null && inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
             initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
         {
             // SPEC 15.4.4: Origins omitted in the initializer's own Type expressions are resolved into the local's Type.

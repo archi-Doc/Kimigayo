@@ -9,6 +9,10 @@ public sealed partial class Binding
     // Persist declaration storage across provisional/final binding passes. No environment is
     // allocated for declarations with neither written relations nor binding-set names.
     private readonly Dictionary<Koto, OriginDeclaration> originDeclarations = new(ReferenceEqualityComparer.Instance);
+
+    // Origins omitted in a local initializer's own Type expressions (SPEC 15.4.4), inferred while that initializer binds. They
+    // are kept apart from declared Origin contracts, which are completed before bodies bind; entries are reused across binds.
+    private readonly Dictionary<Koto, OriginDeclaration> initializerOrigins = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
     private OriginRewriteVisitor? originRewriteVisitor;
 
@@ -66,6 +70,11 @@ public sealed partial class Binding
     private void PrepareOriginDeclarations()
     {
         foreach (var declaration in this.originDeclarations.Values)
+        {
+            declaration.Reset();
+        }
+
+        foreach (var declaration in this.initializerOrigins.Values)
         {
             declaration.Reset();
         }
