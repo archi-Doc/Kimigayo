@@ -989,7 +989,8 @@ public sealed class ControlFlowAnalysis
         }
 
         this.boundaries.TryGetValue(target ?? jump, out var boundary);
-        var operand = jump.Expression is { } expression ? this.Visit(expression, reachable, boundary?.Expected) : new Flow(true, ControlFlowType.Unit);
+        // A jump that failed Binding has reported its value's mismatch; its value is not checked against the target again.
+        var operand = jump.Expression is { } expression ? this.Visit(expression, reachable, jump.BindingState == BindingState.Invalid ? null : boundary?.Expected) : new Flow(true, ControlFlowType.Unit);
         if (jump is not ContinueKoto && boundary is not null)
         {
             var source = new ControlFlowResultSource(jump.Expression ?? jump, operand.Type, reachable) { Transfer = jump };
@@ -1300,6 +1301,11 @@ public sealed class ControlFlowAnalysis
     {
         foreach (var source in boundary.Sources)
         {
+            if (source.Transfer is { BindingState: BindingState.Invalid })
+            {
+                continue; // Binding reported the transferred value's mismatch; a dependent result error would repeat it.
+            }
+
             // Propagate a later inferred contract into nested Never expressions as well.
             if (source.Node != target && source.Node is not JumpKoto && source.Type != ControlFlowType.Unit)
             {

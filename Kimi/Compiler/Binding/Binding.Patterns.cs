@@ -342,7 +342,11 @@ public sealed partial class Binding
             while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
             {
                 access = type.Semantics == SemanticsKind.Ref || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
-                origin = type.Origin ?? origin;
+
+                // SPEC 10.2: a ref layer is a Copy that restarts the dependency at its own Origin; a uniq layer below it
+                // is Reborrowed, so its Origin is met with the dependency reached so far.
+                origin = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin
+                    : type.Origin is { } layer ? this.Meet(origin, layer) : origin;
                 type = type.Components[0];
                 layers++;
             }
