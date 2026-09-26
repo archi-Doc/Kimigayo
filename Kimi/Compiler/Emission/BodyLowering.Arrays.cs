@@ -134,6 +134,7 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Clear => "__kimi_array_clear_",
             ArrayHelperKind.Take => "__kimi_array_take_",
             ArrayHelperKind.IteratorDrop => "__kimi_array_iterator_drop_",
+            ArrayHelperKind.Swap => "__kimi_array_swap_",
             _ => "__kimi_array_drop_",
         };
         var name = prefix + suffix;
@@ -155,6 +156,7 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Remove or ArrayHelperKind.RemoveIndex => element.IsScalar
                 ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
                 : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
+            ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             _ => new(name, unit, [handle, location, length]),
         };
         var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option);
@@ -172,7 +174,7 @@ internal sealed partial class BodyLowering
             plan.ReceiverOperation.Kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != call.ArgumentNodes.Count || plan.ArgumentToParameter.Length != call.ArgumentNodes.Count ||
             call.ArgumentNodes.Count + 1 != target.Parameters.Count || target.BoundSymbol?.ReceiverIndex != 0 ||
-            plan.ReceiverOperation.ParameterType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq } receiverType ||
+            SignatureType(this, plan.ReceiverOperation.ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq } receiverType ||
             receiverType.Components[0] is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
         {
             return Fail("Array operation has an unsupported receiver, argument plan or element Type.", out failure);
@@ -283,6 +285,18 @@ internal sealed partial class BodyLowering
                     this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
                 }
 
+                break;
+            case CompilerFunctionKind.ArraySwap:
+                // SPEC 4.7.2: both indices are checked, then the two element slots exchange their bytes; no element is
+                // Copied as a value and no destructor runs.
+                callee = this.GetArrayHelper(ArrayHelperKind.Swap, element).Abi;
+                if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var first) || !this.ScalarArrayArgument(body, id, 2, BoundType.ISize, out var second))
+                {
+                    return Fail("Array swap indices are unavailable at the call.", out failure);
+                }
+
+                this.callOperands.Add(first);
+                this.callOperands.Add(second);
                 break;
             default:
                 callee = this.GetArrayHelper(ArrayHelperKind.Clear, element).Abi;

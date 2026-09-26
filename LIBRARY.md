@@ -212,8 +212,18 @@ An ordered, growable sequence constructed with `[]` or `[a, b, ...]`.
 | `pop(self: uniq/Self) -> Option<T>` | Returns the last element, or None when empty. O(1). |
 | `remove(self: uniq/Self, index: isize or Index) -> T` | Returns the removed element, preserving order; invalid bounds Abort. O(1 + n). |
 | `clear(self: uniq/Self) -> ()` | Destroys elements in reverse index order and retains capacity. |
+| `isEmpty: bool` | Whether `length` is zero. |
+| `tryGet(self, index: isize or Index) -> Option<ref/T during self>` | A shared element reference, or None for an invalid index. O(1). |
+| `tryGetUniq(self: uniq/Self, index: isize or Index) -> Option<uniq/T during self>` | An exclusive element reference, or None for an invalid index. O(1). |
+| `swap(self: uniq/Self, first: isize, second: isize) -> ()` | Exchanges two elements without Copy or destruction; equal indices change nothing; invalid indices Abort. O(1). |
+| `swapRemove(self: uniq/Self, index: isize) -> T` | Removes the element; the last element takes its position. O(1), order not preserved. |
+| `truncate(self: uniq/Self, length: isize) -> ()` | Destroys the elements from `length` in decreasing index order; a negative length Aborts. |
+| `appendAll(self: uniq/Self, other: Array<T>) -> ()` | Moves every element of `other` to the end in order. |
+| `reverse(self: uniq/Self) -> ()` | Reverses the order. O(1 + n). |
+| `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. Callback arguments await P26. |
+| `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | Heapsort by `by`; not stable, no allocation. Callback arguments await P26. |
 
-Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+Specified but not yet provided: `init(! capacity:)`, `init(! repeating:count:)`, the `first`/`last` Properties (Origin-carrying getter results, P24), `appendCopies`, `sort()`, and the Slice `contains`/`firstIndex` operations (element-conditional members, PLAN G23). Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 

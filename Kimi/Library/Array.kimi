@@ -1,3 +1,112 @@
 // Compiler-managed dynamic Array (SPEC 4.5, 4.7): storage, length/capacity metadata and the mutation
 // operations are supplied by the compiler; helpers may be added here as functions only.
 public struct Array<T>
+    /// Returns a shared reference to the element at `index`, or `None` when `index` is out of range.
+    public func tryGet(self, index: isize) -> Option<ref/T during self>
+        require index >= 0 and index < self.length else => return .None
+        return .Some(self[index]@ref/T)
+
+    /// Returns a shared reference to the element `index` resolves to, or `None` when it resolves to no element.
+    public func tryGet(self, index: Index) -> Option<ref/T during self>
+        match index.tryResolve(self.length)
+            .Some(let position) => return self.tryGet(position)
+            .None => return .None
+
+    /// Returns an exclusive reference to the element at `index`, or `None` when `index` is out of range.
+    public func tryGetUniq(self: uniq/Self, index: isize) -> Option<uniq/T during self>
+        require index >= 0 and index < self.length else => return .None
+        let slot = self[index]@uniq/T
+        return .Some(slot@move)
+
+    /// Returns an exclusive reference to the element `index` resolves to, or `None` when it resolves to no element.
+    public func tryGetUniq(self: uniq/Self, index: Index) -> Option<uniq/T during self>
+        match index.tryResolve(self.length)
+            .Some(let position) => return self.tryGetUniq(position)
+            .None => return .None
+
+    /// Removes and returns the element at `index`; the last element takes its position.
+    ///
+    /// Runs in O(1) and does not preserve order.
+    ///
+    /// - return: The removed element; the caller takes ownership.
+    /// - abort: `index` is outside `[0, length)`.
+    public func swapRemove(self: uniq/Self, index: isize) -> T
+        let count = self.length
+        require index >= 0 and index < count else => $abort("Array index out of range")
+        self.swap(first: index, second: count - 1)
+        match self.pop()
+            .Some(let removed) => return removed@move
+            .None => $abort("Array index out of range")
+
+    /// Destroys the elements from `length` to the end in decreasing index order.
+    ///
+    /// A length at or above the current length changes nothing.
+    ///
+    /// - abort: `length` is negative.
+    public func truncate(self: uniq/Self, length: isize)
+        require length >= 0 else => $abort("Negative Array length")
+        while self.length > length
+            match self.pop()
+                .Some(_) => ()
+                .None => return
+
+    /// Moves every element of `other` to the end, in order; `other` is consumed.
+    public func appendAll(self: uniq/Self, other: Array<T>)
+        var source = other@move
+        self.reserve(additional: source.length)
+        source.reverse()
+        while source.length > 0
+            match source.pop()
+                .Some(let value) => self.append(value@move)
+                .None => return
+
+    /// Removes the elements for which `matching` returns true and keeps the order of the others.
+    ///
+    /// `matching` is called once per element in increasing index order with a shared reference. The removed
+    /// elements are destroyed after the last call, in an unspecified order.
+    public func removeAll<F>(self: uniq/Self, matching: F)
+        F is Callable<(ref/T) -> bool>
+        let count = self.length
+        var kept: isize = 0
+        var index: isize = 0
+        while index < count
+            if not matching(self[index])
+                if kept != index => self.swap(first: kept, second: index)
+                kept += 1
+            index += 1
+        self.truncate(kept)
+
+    /// Reverses the order of the elements.
+    public func reverse(self: uniq/Self)
+        var low: isize = 0
+        var high = self.length - 1
+        while low < high
+            self.swap(first: low, second: high)
+            low += 1
+            high -= 1
+
+    /// Sorts the elements in nondecreasing order of `by`, which returns a negative, zero or positive value
+    /// for less, equal or greater.
+    ///
+    /// Heapsort: O(n log n) calls and moves in the worst case, without allocation; not stable.
+    public func sort<F>(self: uniq/Self, by: F)
+        F is Callable<(ref/T, ref/T) -> i32>
+        var end = self.length
+        var start = end / 2
+        while end > 1
+            // The first phase builds the heap from start = length / 2 down to 0; the second moves the maximum
+            // to the end and restores the heap on the shorter prefix.
+            var parent: isize = 0
+            if start > 0
+                start -= 1
+                parent = start
+            else
+                end -= 1
+                self.swap(first: 0, second: end)
+            while true
+                var child = parent * 2 + 1
+                if child >= end => exit
+                if child + 1 < end and by(self[child], self[child + 1]) < 0 => child += 1
+                if by(self[parent], self[child]) >= 0 => exit
+                self.swap(first: parent, second: child)
+                parent = child

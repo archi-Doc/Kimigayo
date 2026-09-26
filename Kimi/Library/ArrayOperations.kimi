@@ -8,4 +8,5 @@ public func pop(self: uniq/Self) -> Option<T>
 public func remove(self: uniq/Self, index: isize) -> T
 public func remove(self: uniq/Self, index: Index) -> T
 public func clear(self: uniq/Self)
+public func swap(self: uniq/Self, first: isize, second: isize)
 public func shrinkToFit(self: uniq/Self)

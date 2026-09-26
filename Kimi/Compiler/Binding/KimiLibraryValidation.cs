@@ -42,7 +42,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Index => this.ValidIndex(symbol),
                         KimiDeclarationId.Range => this.ValidRange(symbol),
                         KimiDeclarationId.ResolvedRange => this.ValidResolvedRange(symbol),
-                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex => this.ValidArrayOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex or KimiDeclarationId.ArraySwap => this.ValidArrayOperation(symbol, entry.Id),
                         >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
@@ -391,6 +391,11 @@ public sealed partial class KimiLibrary
 
         for (var i = 0; i < array.Members.Count; i++)
         {
+            if (array.Members[i] is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed })
+            {
+                continue; // A computed Property has accessors but no storage.
+            }
+
             if (array.Members[i] is not FunctionKoto member)
             {
                 return false; // Array storage is compiler-managed; helpers cannot add fields.
@@ -459,6 +464,7 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.ArrayPop => (CompilerFunctionKind.ArrayPop, "pop"),
             KimiDeclarationId.ArrayRemove => (CompilerFunctionKind.ArrayRemove, "remove"),
             KimiDeclarationId.ArrayRemoveIndex => (CompilerFunctionKind.ArrayRemoveIndex, "remove"),
+            KimiDeclarationId.ArraySwap => (CompilerFunctionKind.ArraySwap, "swap"),
             KimiDeclarationId.ArrayClear => (CompilerFunctionKind.ArrayClear, "clear"),
             _ => (CompilerFunctionKind.ArrayShrinkToFit, "shrinkToFit"),
         };
@@ -483,6 +489,7 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.ArrayPop => inputs == 0 && BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") && BareName(option.TypeArguments[0], "T"),
             KimiDeclarationId.ArrayRemove => inputs == 1 && Input(function, 1, "index", "isize") && BareName(function.ReturnType, "T"),
             KimiDeclarationId.ArrayRemoveIndex => inputs == 1 && Input(function, 1, "index", "Index") && BareName(function.ReturnType, "T"),
+            KimiDeclarationId.ArraySwap => inputs == 2 && Input(function, 1, "first", "isize") && Input(function, 2, "second", "isize") && function.ReturnType is null,
             _ => inputs == 0 && function.ReturnType is null,
         };
 

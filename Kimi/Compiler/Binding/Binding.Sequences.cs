@@ -26,12 +26,13 @@ public sealed partial class Binding
             return false; // A ResolvedRange exposes its fields and computed Properties through the library struct (SPEC 4.6.3).
         }
 
-        // SPEC 4.6.1 and 4.7.4: fixed arrays and Array expose length and indices, Slice adds isEmpty, Array adds capacity.
+        // SPEC 4.6.1, 4.7.2 and 4.7.4: fixed arrays and Array expose length and indices, Slice and Array add isEmpty, Array
+        // adds capacity.
         var valid = name.IdentifierName switch
         {
             "indices" => !utf8 && receiver!.Kind != BoundTypeKind.Dictionary,
             "length" => true,
-            "isEmpty" => receiver!.Kind is BoundTypeKind.Slice,
+            "isEmpty" => receiver!.Kind is BoundTypeKind.Slice or BoundTypeKind.Array,
             "capacity" => receiver!.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary,
             _ => false,
         };

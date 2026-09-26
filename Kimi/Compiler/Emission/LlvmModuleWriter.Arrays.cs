@@ -166,6 +166,9 @@ internal static partial class LlvmModuleWriter
                 case ArrayHelperKind.Place:
                     WriteArrayPlace(output, helper);
                     break;
+                case ArrayHelperKind.Swap:
+                    WriteArraySwap(output, helper);
+                    break;
                 default:
                     WriteArrayClear(output, helper, helper.Kind is ArrayHelperKind.Drop or ArrayHelperKind.IteratorDrop);
                     break;
@@ -274,6 +277,25 @@ internal static partial class LlvmModuleWriter
         WriteNumber(output, Stride(helper));
         output.Write("\n  call void @llvm.memmove.p0.p0.i64(ptr %slot, ptr %next, i64 %tail_bytes, i1 false)\n  store i64 %last, ptr %length_ptr, align 8\n");
         WriteArrayReturn(output, helper, scalar);
+        WriteArrayBoundsFailure(output);
+    }
+
+    // Requires both indices in [0, length) and exchanges the two element slots through a stack buffer (SPEC 4.7.2).
+    private static void WriteArraySwap(TextWriter output, ArrayHelper helper)
+    {
+        output.Write("  %scratch = alloca i8, i64 ");
+        WriteNumber(output, Stride(helper));
+        output.Write(", align 16\n  %first_negative = icmp slt i64 %first, 0\n  %first_beyond = icmp sge i64 %first, %length\n  %second_negative = icmp slt i64 %second, 0\n  %second_beyond = icmp sge i64 %second, %length\n  %first_invalid = or i1 %first_negative, %first_beyond\n  %second_invalid = or i1 %second_negative, %second_beyond\n  %invalid = or i1 %first_invalid, %second_invalid\n  br i1 %invalid, label %bounds_failure, label %check\ncheck:\n  %same = icmp eq i64 %first, %second\n  br i1 %same, label %done, label %exchange\nexchange:\n  %buffer = load ptr, ptr %handle, align 8\n  %first_offset = mul i64 %first, ");
+        WriteNumber(output, Stride(helper));
+        output.Write("\n  %first_slot = getelementptr i8, ptr %buffer, i64 %first_offset\n  %second_offset = mul i64 %second, ");
+        WriteNumber(output, Stride(helper));
+        output.Write("\n  %second_slot = getelementptr i8, ptr %buffer, i64 %second_offset\n  call void @llvm.memcpy.p0.p0.i64(ptr %scratch, ptr %first_slot, i64 ");
+        WriteNumber(output, Stride(helper));
+        output.Write(", i1 false)\n  call void @llvm.memcpy.p0.p0.i64(ptr %first_slot, ptr %second_slot, i64 ");
+        WriteNumber(output, Stride(helper));
+        output.Write(", i1 false)\n  call void @llvm.memcpy.p0.p0.i64(ptr %second_slot, ptr %scratch, i64 ");
+        WriteNumber(output, Stride(helper));
+        output.Write(", i1 false)\n  br label %done\ndone:\n  ret void\n");
         WriteArrayBoundsFailure(output);
     }
 

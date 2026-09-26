@@ -1259,6 +1259,14 @@ public sealed partial class OwnershipAnalysis
             return value;
         }
 
+        if (kind == ArgumentOperationKind.Reborrow && KotoHelper.UnwrapParentheses(argument) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer })
+        {
+            // SPEC 10.2: a same-Type temporary, here a transferred reference, is transferred as is rather than Reborrowed.
+            var transferred = this.Expression(argument, acquisition: acquisition);
+            this.CheckAcquisition(transferred, acquisition);
+            return transferred;
+        }
+
         // A borrowed source keeps its value and responsibility; it never enters the callee.
         this.Expression(argument, PlaceUseKind.Borrow);
         this.Unsupported(argument);

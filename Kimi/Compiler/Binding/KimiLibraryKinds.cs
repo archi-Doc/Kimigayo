@@ -34,6 +34,7 @@ public enum CompilerFunctionKind : byte
     ArrayShrinkToFit,
     ArrayInsertIndex,
     ArrayRemoveIndex,
+    ArraySwap,
     TextFixed,
     TextHeap,
     TextWriter,
