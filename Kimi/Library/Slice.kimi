@@ -1,35 +1,61 @@
 public struct Slice<T> {source}
     public func iterate(self: Self) -> SliceIterator<T> during source
         return SliceIterator<T>.init(self)
-    // SPEC 4.6.6: a try-prefixed selection converts only its own bounds failure to None; results retain source, and
-    // tryGet has a fixed reference result whatever T's Copy capability.
+
+    /// Returns a shared reference to the element at `index`, or `None` when `index` is out of range.
+    ///
+    /// The result retains `source` and is a reference whatever T's Copy capability (SPEC 4.6.6). Only this
+    /// operation's own bounds failure becomes `None`.
     public func tryGet(self: Self, index: isize) -> Option<ref/T during source>
         require index >= 0 and index < self.length else => return .None
         return .Some(self[index]@ref/T)
+
+    /// Returns a shared reference to the element at `index`, or `None` when it resolves to no element.
+    ///
+    /// A position that resolves to the length is a boundary, not an element, and yields `None`.
     public func tryGet(self: Self, index: Index) -> Option<ref/T during source>
         match index.tryResolve(self.length)
             .Some(let position)
                 require position < self.length else => return .None
                 return .Some(self[position]@ref/T)
             .None => return .None
+
+    /// Returns the sub-Slice selected by `range`, or `None` when `range` does not resolve within this Slice.
     public func trySlice(self: Self, range: Range) -> Option<Slice<T> during source>
         match range.tryResolve(self.length)
             .Some(let resolved) => return .Some(self[resolved])
             .None => return .None
+
+    /// Returns the sub-Slice selected by `range`, or `None` when its end exceeds this Slice's length.
     public func trySlice(self: Self, range: ResolvedRange) -> Option<Slice<T> during source>
         require range.end <= self.length else => return .None
         return .Some(self[range])
+
+    /// Splits this Slice at `index` into the views `[0, index)` and `[index, length)`.
+    ///
+    /// Both results retain `source`; neither copies an element.
+    ///
+    /// - abort: `index < 0` or `index > self.length`.
     public func splitAt(self: Self, index: isize) -> (Slice<T> during source, Slice<T> during source)
         return (self[..index], self[index..])
+
+    /// Splits this Slice at the position `index` resolves to.
+    ///
+    /// - abort: `index` does not resolve within `[0, self.length]`.
     public func splitAt(self: Self, index: Index) -> (Slice<T> during source, Slice<T> during source)
         return self.splitAt(index.resolve(self.length))
+
+    /// Splits this Slice at `index`, returning `None` instead of Aborting on an invalid boundary.
     public func trySplitAt(self: Self, index: isize) -> Option<(Slice<T> during source, Slice<T> during source)>
         require index >= 0 and index <= self.length else => return .None
         return .Some((self[..index], self[index..]))
+
+    /// Splits this Slice at the position `index` resolves to, returning `None` when it does not resolve.
     public func trySplitAt(self: Self, index: Index) -> Option<(Slice<T> during source, Slice<T> during source)>
         match index.tryResolve(self.length)
             .Some(let position) => return self.trySplitAt(position)
             .None => return .None
+
 public struct SliceIterator<T> {source}
     Self is Iterator
     associate Iterator.Item is ref/T during source

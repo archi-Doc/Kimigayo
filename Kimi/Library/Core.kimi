@@ -13,70 +13,126 @@ public enum Result<T, E>
     Ok(T)
     Err(E)
 
-// SPEC 4.6.2: a Copy position measured from the start or the end; it retains no target.
+/// A Copy position measured from the start or, when `isFromEnd` is set, from the end of a sequence.
+///
+/// An Index retains no target (SPEC 4.6.2); `^n` constructs the from-end form.
 public struct Index
     Self is Copy
     Self is Equatable
     public let offset: isize
     public let isFromEnd: bool
+
+    /// Creates a position `offset` elements from the start, or from the end when `fromEnd` is true.
+    ///
+    /// - abort: `offset < 0`.
     public init(offset: isize, fromEnd: bool = false)
         require offset >= 0 else => $abort("Negative Index offset")
         self.offset = offset
         self.isFromEnd = fromEnd
-    // Range syntax normalizes an integer boundary through this form; Range construction then checks the signs in
-    // boundary order after both boundaries are evaluated (SPEC 4.6.4).
+
+    /// Creates a from-start position without checking its sign.
+    ///
+    /// Range syntax normalizes an integer boundary through this form; Range construction then checks the
+    /// signs in boundary order after both boundaries are evaluated (SPEC 4.6.4).
     public init(! unchecked: isize)
         self.offset = unchecked
         self.isFromEnd = false
-    public func equals(self: ref/Self, other: ref/Self) -> bool => self.offset == other.offset and self.isFromEnd == other.isFromEnd
-    // SPEC 4.6.4: a boundary position at length; ^0 resolves to the length itself.
+
+    /// Compares both the offset and the direction; `^0` and `0` are different positions.
+    public func equals(self: ref/Self, other: ref/Self) -> bool
+        return self.offset == other.offset and self.isFromEnd == other.isFromEnd
+
+    /// Resolves this position against `length` to an absolute boundary in `[0, length]`.
+    ///
+    /// A boundary may equal `length` (SPEC 4.6.4); `^0` resolves to the length itself.
+    ///
+    /// - abort: The position lies outside `[0, length]`.
     public func resolve(self, length: isize) -> isize
         match self.tryResolve(length)
             .Some(let position) => return position
             .None => $abort("Index out of range")
+
+    /// Resolves this position against `length`, returning `None` instead of Aborting when it is out of range.
     public func tryResolve(self, length: isize) -> Option<isize>
         require length >= 0 and self.offset >= 0 and self.offset <= length else => return .None
         if self.isFromEnd => return .Some(length - self.offset)
         return .Some(self.offset)
 
-// SPEC 4.6.3: unresolved boundaries and an end-inclusion flag, constructed by range syntax through the labeled
-// constructors below (its normal forms); an omitted start is 0 and an omitted end is ^0.
+/// Unresolved start and end boundaries with an end-inclusion flag (SPEC 4.6.3).
+///
+/// Range syntax constructs a Range through the Type functions below, its normal forms: an omitted start is
+/// `0` and an omitted end is `^0`. They check the signs of integer boundaries in boundary order after both
+/// boundaries are evaluated (SPEC 4.6.4). A Range is a Copy value, retains no target and is not iterable;
+/// resolve it against a length to obtain a ResolvedRange.
 public struct Range
     Self is Copy
     Self is Equatable
     public let start: Index
     public let end: Index
     public let isInclusive: bool
+
     init(start: Index, end: Index, inclusive: bool)
         self.start = start
         self.end = end
         self.isInclusive = inclusive
-    // The normal forms of range syntax (SPEC 4.6.3): the signs of integer boundaries are checked in boundary order after
-    // both boundaries are evaluated (SPEC 4.6.4).
+
+    /// Creates the half-open range `start..end`.
+    ///
+    /// - abort: A boundary has a negative offset.
     public func between(start: Index, end: Index) -> Range
         require start.offset >= 0 else => $abort("Negative Range start")
         require end.offset >= 0 else => $abort("Negative Range end")
         return Range.init(start, end, false)
+
+    /// Creates the range `start..`, which ends at `^0`.
+    ///
+    /// - abort: `start` has a negative offset.
     public func from(start: Index) -> Range
         require start.offset >= 0 else => $abort("Negative Range start")
         return Range.init(start, Index.init(0, fromEnd: true), false)
+
+    /// Creates the range `..end`, which starts at `0`.
+    ///
+    /// - abort: `end` has a negative offset.
     public func to(end: Index) -> Range
         require end.offset >= 0 else => $abort("Negative Range end")
         return Range.init(Index.init(0), end, false)
+
+    /// Creates the range `..`, which covers a whole sequence.
     public func all() -> Range => Range.init(Index.init(0), Index.init(0, fromEnd: true), false)
+
+    /// Creates the inclusive range `start..=end`.
+    ///
+    /// - abort: A boundary has a negative offset.
     public func through(start: Index, end: Index) -> Range
         require start.offset >= 0 else => $abort("Negative Range start")
         require end.offset >= 0 else => $abort("Negative Range end")
         return Range.init(start, end, true)
+
+    /// Creates the inclusive range `..=end`, which starts at `0`.
+    ///
+    /// - abort: `end` has a negative offset.
     public func upTo(end: Index) -> Range
         require end.offset >= 0 else => $abort("Negative Range end")
         return Range.init(Index.init(0), end, true)
-    public func equals(self: ref/Self, other: ref/Self) -> bool => self.start == other.start and self.end == other.end and self.isInclusive == other.isInclusive
+
+    /// Compares the unresolved boundaries and the inclusion flag; `0..2` and `0..=1` are different values.
+    public func equals(self: ref/Self, other: ref/Self) -> bool
+        return self.start == other.start and self.end == other.end and self.isInclusive == other.isInclusive
+
+    /// Resolves both boundaries against `length` into a validated half-open interval.
+    ///
+    /// - abort: A boundary lies outside `[0, length]`, an inclusive end equals `length`, or the resolved start
+    ///   exceeds the resolved end.
     public func resolve(self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
             .Some(let resolved) => return resolved
             .None => $abort("Range out of range")
-    // SPEC 4.6.4: both boundaries resolve within [0, length]; an inclusive end lies below the length and is normalized.
+
+    /// Resolves both boundaries against `length`, returning `None` instead of Aborting.
+    ///
+    /// Both boundaries must resolve within `[0, length]`; an inclusive end must lie below the length and is
+    /// normalized to the half-open form (SPEC 4.6.4).
     public func tryResolve(self, length: isize) -> Option<ResolvedRange>
         var first: isize = 0
         var last: isize = 0
@@ -92,20 +148,34 @@ public struct Range
         require first <= last else => return .None
         return .Some(ResolvedRange.init(start: first, end: last))
 
-// SPEC 4.6.3: a validated absolute half-open interval; the compiler produces it for indices and iterates it directly.
+/// A validated absolute half-open interval `[start, end)` with `0 <= start <= end` (SPEC 4.6.3).
+///
+/// The compiler produces it for `indices` and iterates it directly; selection with a ResolvedRange still
+/// checks `end` against the target's length.
 public struct ResolvedRange
     Self is Copy
     Self is Equatable
     public let start: isize
     public let end: isize
+
+    /// The number of positions in the interval, `end - start`.
+    public computed length: isize
+        get() -> isize
+            return self.end - self.start
+
+    /// Whether the interval contains no position.
+    public computed isEmpty: bool
+        get() -> bool
+            return self.start == self.end
+
+    /// Creates the interval `[start, end)`.
+    ///
+    /// - abort: `start < 0` or `start > end`.
     public init(! start: isize, end: isize)
         require start >= 0 and start <= end else => $abort("Invalid ResolvedRange bounds")
         self.start = start
         self.end = end
-    public computed length: isize
-        get() -> isize
-            return self.end - self.start
-    public computed isEmpty: bool
-        get() -> bool
-            return self.start == self.end
-    public func equals(self: ref/Self, other: ref/Self) -> bool => self.start == other.start and self.end == other.end
+
+    /// Compares both bounds.
+    public func equals(self: ref/Self, other: ref/Self) -> bool
+        return self.start == other.start and self.end == other.end

@@ -443,7 +443,7 @@ public sealed partial class KimiLibrary
         ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
         BareName(declaration.ConstraintNodes[0].Left, "Self") && BareName(declaration.ConstraintNodes[0].Right, "Copy") &&
         ValidField(declaration, 0, "start", "isize") && ValidField(declaration, 1, "end", "isize") &&
-        declaration.Members.Count > 2 && declaration.Members[2] is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, Parameters.Count: 2, NameBoundaryIndex: 0, ReturnType: null, Body: not null, AttributeChain: null } constructor &&
+        declaration.Members.Count > 4 && declaration.Members[4] is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, Parameters.Count: 2, NameBoundaryIndex: 0, ReturnType: null, Body: not null, AttributeChain: null } constructor && // Members[2..3] are the computed length and isEmpty (STYLE 2.2).
         constructor.Parameters[0] is { InternalName: "start", ExternalName: "start", DefaultValue: null } startParameter && BareName(startParameter.Type, "isize") &&
         constructor.Parameters[1] is { InternalName: "end", ExternalName: "end", DefaultValue: null } endParameter && BareName(endParameter.Type, "isize");
 

@@ -1,9 +1,22 @@
-// SPEC 4.6.9, 22.1: the single-element indexing Contracts. receiver[key] resolves through a conformance to
-// Indexable<Key>; updates and exclusive borrows select indexUniq of the same conformance. The standard Array,
-// fixed-array, Slice and Dictionary indexing remains compiler-provided (STATUS); user Types conform explicitly.
+/// The single-element indexing Contract: `receiver[key]` resolves through a conformance to Indexable<Key>.
+///
+/// The standard Array, fixed-array, Slice and Dictionary indexing remains compiler-provided (STATUS); user
+/// Types conform explicitly (SPEC 4.6.9, 22.1).
 public contract Indexable<Key>
     associate Element
+
+    /// Publishes the Place of the element selected by `key` for reads and shared borrows.
+    ///
+    /// - return: A Place that retains `self`; its caller may borrow it or read a Copy value.
+    /// - abort: `key` selects no element.
     func index(self: ref/Self, key: ref/Key) -> place ref/Element during self
 
+/// The exclusive indexing Contract: updates and exclusive borrows of `receiver[key]` select `indexUniq`.
+///
+/// Both requirements belong to one conformance and must select the same element for the same key.
 public contract UniqIndexable<Key>: Indexable<Key>
+    /// Publishes the Place of the element selected by `key` for updates and exclusive borrows.
+    ///
+    /// - return: A Place that retains `self` exclusively.
+    /// - abort: `key` selects no element.
     func indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self
