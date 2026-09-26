@@ -249,6 +249,7 @@ public class PairFollowTest
     [InlineData("func bump<s/T>(items: s/Array<i32>, marker: s/T)\n    s is uniq\n    for x in items\n        x@follow += 1")]
     [InlineData("func keep<s/T, t/U>(x: s/(t/i32 during b), m: s/T, n: t/U)\n    s is value or valueborrow\n    t is valueborrow\n    let r = x@follow@ref\n    let q = x@ref")]
     [InlineData("func keep<s/T>(x: s/i32, m: s/T)\n    s is value or valueborrow\n    let r = x@ref")]
+    [InlineData("func same<s/T>(c: ref/Collection<s/T>) -> bool\n    s is value or valueborrow\n    T is Equatable\n    return c[0] == c[1]")]
     public void PairPositionsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
@@ -265,6 +266,17 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(valid == (c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified), MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 8.1.2: an s/U nested in a Type argument gains no omitted Origin; SPEC 13.5.5.1: a followed element Place is never
+    // transferred by a bare initializer.
+    [Theory]
+    [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0")]
+    [InlineData("func pick<s/T>(c: ref/Collection<s/T>, i: isize) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let n = c[i]\n    return n.load()")]
+    public void PairPositionsReject(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(Collection + source);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // SPEC 10.2: s/U parameters are solved together with the other arguments, whatever their order, and must agree on s.
