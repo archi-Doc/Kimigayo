@@ -3,5 +3,10 @@
   { "Program": 25, "Stage": "Ownership", "Diagnostic": "UnsupportedOwnership_Kd", "Anchor": "value.count", "SupportedPrefixEnd": "public func main()" },
   { "Program": 26, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "func [value@move, visitor]() -> i32 => visitor(value@ref)", "SupportedPrefixEnd": "func inspectTwice" },
   { "Program": 28, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "item.id", "SupportedPrefixEnd": "public func main" },
-  { "Program": 33, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "view.extra", "SupportedPrefixEnd": "func inspect" }
+  { "Program": 33, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "view.extra", "SupportedPrefixEnd": "func inspect" },
+  { "Program": 34, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "Kimi.Intrinsics.makeRc", "SupportedPrefixEnd": "public func main()" },
+  { "Program": 35, "Stage": "Binding", "Diagnostic": "InvalidTypeFormation_Kd", "Anchor": "Weak<rc/Node>", "SupportedPrefixEnd": "struct Node" },
+  { "Program": 36, "Stage": "Ownership", "Diagnostic": "UnsupportedOwnership_Kd", "Anchor": "Registry", "SupportedPrefixEnd": "public func main()" },
+  { "Program": 38, "Stage": "Binding", "Diagnostic": "InvalidTypeFormation_Kd", "Anchor": "Weak<rc/Lamp>", "SupportedPrefixEnd": "group Registry" },
+  { "Program": 39, "Stage": "Binding", "Diagnostic": "TypeMismatch_Kd", "Anchor": "c[i]@follow", "SupportedPrefixEnd": "func view<s/T>" }
 ]

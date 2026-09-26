@@ -1,0 +1,71 @@
+// Milestone 38: Properties, inheritance, objects, shared ownership, static state and formatting together.
+open struct Device
+    public let name: string
+    public var level: i32
+        set(value: i32) -> ()
+            require value >= 0 and value <= 100 else => $abort("Level out of range")
+            storage = value
+    public computed isOff: bool
+        get() -> bool => self.level == 0
+    protected init(name: string, level: i32)
+        self.name = name@move
+        self.level = level
+    deinit => Console.writeLine("Device \(self.name) released.")
+
+struct Lamp : Device
+    Self is Utf8Format
+    public let watts: i32
+    public init(name: string, watts: i32) : base(name@move, 0)
+        self.watts = watts
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return $tryWrite(writer, "\(self.name) (\(self.watts) W, level \(self.level))")
+    deinit => Console.writeLine("Lamp \(self.name) destroyed.")
+
+struct Sensor : Device
+    public init(name: string) : base(name@move, 50) => ()
+
+group Registry
+    public var lastSeen: Option<Weak<rc/Lamp>> = .None
+
+func describe(view: objref/Device) -> string
+    if view is Lamp
+        return Text.toString(view@follow@ref) // The refined view exposes the complete Sealed Lamp.
+    return "\(view.name) at level \(view.level)"
+
+func lookup() -> Option<rc/Lamp>
+    match Registry.lastSeen
+        .Some(let weak) => return Kimi.Intrinsics.upgrade(weak)
+        .None => return .None
+
+public func main()
+    do
+        var owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init("desk", 40))
+        owner.level = 30 // The custom setter runs through the owning handle.
+        require owner.level == 30 and owner.isOff == false else => $abort("Property access failed")
+        Console.writeLine(describe(owner@objref/Device))
+        owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init("shelf", 25)) // Replacement destroys the desk lamp first.
+        require owner.isOff else => $abort("Replacement kept the old level")
+        Console.writeLine(describe(owner@objref/Device))
+        // The shelf lamp is destroyed at scope exit.
+    do
+        let sensor = Kimi.Intrinsics.makeObj<Sensor>(Sensor.init("door"))
+        Console.writeLine(describe(sensor@objref/Device))
+    match lookup()
+        .Some(_) => $abort("Registry was not empty")
+        .None => Console.writeLine("Registry starts empty.")
+    do
+        let shared = Kimi.Intrinsics.makeRc(Lamp.init("hall", 60))
+        Registry.lastSeen = .Some(Kimi.Intrinsics.downgrade(shared@ref))
+        do
+            let keeper = Kimi.Intrinsics.clone(shared@ref)
+            match lookup()
+                .Some(let live) => Console.writeLine(describe(live@objref/Device))
+                .None => $abort("Live lamp failed to upgrade")
+            // keeper releases one strong here.
+        Console.writeLine("Hall lamp still owned once.")
+        // shared releases the final strong: the hall lamp is destroyed while the Weak survives.
+    match lookup()
+        .Some(_) => $abort("Expired lamp was resurrected")
+        .None => Console.writeLine("Registry entry expired.")
+    Console.writeLine("Application finished.")
+    // Shutdown destroys the initialized static Weak, which releases the weak table of the hall lamp.

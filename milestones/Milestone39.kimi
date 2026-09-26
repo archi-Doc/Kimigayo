@@ -1,0 +1,63 @@
+// Milestone 39: a pair s/T Place followed to its stored target under the admitted Semantics set.
+contract Loaded
+    func load(self: ref/Self) -> i32
+
+struct Node
+    Self is Loaded
+    public var weight: i32
+    public init(weight: i32) => self.weight = weight
+    public func load(self: ref/Self) -> i32 => self.weight
+
+struct Collection<E>
+    Self is UniqIndexable<isize>
+    associate Element is E
+    var items: Array<E>
+    public computed indices: ResolvedRange
+        get() -> ResolvedRange => self.items.indices
+    public init(items: Array<E>) => self.items = items@move
+    public func index(self, key: ref/isize) -> place ref/E during self => self.items[key]
+    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/E during self => self.items[key]
+
+// Shared access to T for every admitted s: owner borrows the element itself; ref and uniq reborrow the referent.
+func view<s/T>(c: ref/Collection<s/T>, i: isize) -> ref/T during c
+    s is value or valueborrow
+    return c[i]@follow@ref
+
+// Exclusive access excludes ref from the admitted set; owner writes the element and uniq reborrows exclusively.
+func viewUniq<s/T>(c: uniq/Collection<s/T>, i: isize) -> uniq/T during c
+    s is owner or uniq
+    return c[i]@follow@uniq
+
+// Implicit selection: the shared receiver of load is acquired through the pair layer of each element Place.
+func total<s/T>(c: ref/Collection<s/T>) -> i32
+    s is value or valueborrow
+    T is Loaded
+    var sum: i32 = 0
+    for i in c.indices
+        sum += c[i].load()
+    return sum
+
+public func main()
+    var owned = Collection<Node>.init([Node.init(1), Node.init(2)])
+    require view(owned, 0).weight == 1 else => $abort("Owned follow failed")
+    let slot = viewUniq(owned@uniq, 1)
+    slot.weight = 5
+    require owned[1].weight == 5 else => $abort("Owned exclusive follow failed")
+    Console.writeLine("Owned element updated to 5.")
+
+    let a = Node.init(10)
+    let b = Node.init(20)
+    let refs = Collection.init([a@ref, b@ref]) // Collection<ref/Node>; the result of view depends on a, b and refs.
+    require view(refs, 1).weight == 20 and total(refs) == 30 else => $abort("Borrowed follow failed")
+    Console.writeLine("Borrowed elements total 30.")
+
+    var c = Node.init(30)
+    var d = Node.init(40)
+    var uniqs = Collection.init([c@uniq, d@uniq]) // Collection<uniq/Node>.
+    let target = viewUniq(uniqs@uniq, 0)
+    target.weight = 33
+    require view(uniqs, 1).weight == 40 and total(uniqs) == 73 else => $abort("Exclusive follow failed")
+    Console.writeLine("Exclusive referent updated to 33.")
+    require total(owned) == 6 else => $abort("Owned total failed")
+    Console.writeLine("Totals are 6, 30 and 73.")
+    Console.writeLine("Semantics-generic follow finished.")

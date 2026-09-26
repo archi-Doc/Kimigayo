@@ -51,7 +51,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../PLAN.md#3-current-position)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
+As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../PLAN.md#3-current-position)). Programs 34–39 were authored on 2026-09-27; Program 37 runs natively and the others record their first diagnostics ([authoring verification](#programs-3439-authoring-verification-2026-09-27)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -109,19 +109,19 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnresolvedBinding_Kd` at required `value.item`; ownership-bearing setters/getters and Contract Property calls remain. |
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
 | 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
-| 27 | YES | PASS | PASS (Debug, O0/O2) | NOT_RUN | DONE | 97 Debug harness checks (`bin/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../PLAN_HISTORY.md#p27-completion). |
+| 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`bin/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../PLAN_HISTORY.md#p27-completion). |
 | 28 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Re-spelled 2026-09-25 for `Kimi.IntoIterable`. `Drain<T>`, `Batch<T>`, `Cursor<T>` and `View<T>` bind, including the generic Slice element borrow `self.values[index]@ref`; Binding first reports `UnresolvedBinding_Kd` at `item.id` because `for item in batch@move` over a user `IntoIterable` conformance is not yet bound. User `for` protocols, Origin-related associated iterators and generic iterator-state ownership remain. [Authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
 | 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (123 checks per configuration); shared string iteration is a positive case, while zero-sized Array elements retain an ownership-stage unsupported diagnostic. Allocation/cost probes pass. |
 | 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../PLAN_HISTORY.md#review-remediation). |
 | 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; public generic API/capacity source migration, nonempty runtime literals, borrowed indexing and nested owning storage remain. [Evidence](../PLAN_HISTORY.md#p31-kimigayo-library). |
 | 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
 | 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 and 2026-09-26 (`@follow` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
-| 34 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
-| 35 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
-| 36 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
-| 37 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
-| 38 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
-| 39 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G21 decision (PLAN §7) |
+| 34 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnresolvedBinding_Kd` at `Kimi.Intrinsics.makeRc`: the rc/arc creation and clone intrinsics have no declarations (PLAN G4). The payload, dependency-carrying payload, consuming `rc/Payload` parameter and `objref` view declarations bind. |
+| 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `InvalidTypeFormation_Kd` at `Weak<rc/Node>`: `Weak<S>` is not formed and the Weak/cyclic intrinsics are undeclared (PLAN G4). |
+| 36 | YES | PASS | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding passes; ownership analysis stops at the static group `Registry` with `UnsupportedOwnership_Kd` (static stored Properties are not analyzed or generated). |
+| 37 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | TODO | Authored 2026-09-27. The unchanged target, two view variants and three rejections pass 27 Debug harness checks (`test-milestone37.ps1`, `bin/verify/20260926-161205-335-unit-p37-2`). Allocation/complexity observations, further workload-derived rejections and the Release harness remain (PLAN P37). |
+| 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `InvalidTypeFormation_Kd` at `Weak<rc/Lamp>` in the static registry; payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
+| 39 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27 per `draft/Design/2026-09-26 Semantics-Generic Follow.md`. Binding first reports `TypeMismatch_Kd` at `c[i]@follow`: `@follow` on a pair `s/T` Place is not defined yet (PLAN G21); the specification decision and its implementation precede completion. `Collection<E>` with its Indexable conformance binds. |
 | 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
 
 [Restructuring audit](../PLAN_HISTORY.md#programs38-restructure) records source/DLL
@@ -1747,6 +1747,229 @@ Focus: [object views](../spec/03-types-and-values.md#335-object-views-and-identi
 [payload projection](../spec/13-operators-and-assignment.md#13551-follow)
 and [dynamic release](../spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
 
+## Milestone 34: shared object ownership
+
+`rc` and `arc` handles are created from complete payloads, cloned explicitly,
+moved and consumed; the payload is destroyed exactly once when the last strong
+handle is released. Object borrows read the payload without changing counts, and
+a payload that keeps a borrow retains that dependency in its handle.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Handle reads payload 1.
+Cloned handle shares payload 1.
+Released one strong handle.
+Payload 1 destroyed.
+Arc views read payload 2.
+Payload 2 destroyed.
+Borrowed counter is 5.
+Shared ownership finished.
+```
+
+Separate checks: reject exclusive payload access through `rc`/`arc`
+(`first@follow@uniq`, a setter call), implicit handle duplication (`let alias = first`),
+reuse of a moved handle, escape of a handle whose payload borrows a local, and
+`obj`/`rc`/`arc` conversions. Inspect exact retain/release counts, clone without
+allocation or payload copy, single destruction and `arc` atomic ordering through
+internal tests; count-overflow Aborts use separate probes. No source concurrency
+is introduced.
+
+Focus: [object ownership creation and sharing](../spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
+[payload follow](../spec/13-operators-and-assignment.md#13551-follow),
+[object views and identity](../spec/03-types-and-values.md#335-object-views-and-identity)
+and [object release](../spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
+
+## Milestone 35: Weak references and cyclic construction
+
+A Weak is downgraded from a live `rc`, upgraded while the strong exists, and stays
+a present but expired value after the final strong release; cloning and moving it
+change no strong count. A cyclic factory passes its builder a Weak that cannot
+upgrade during Building and upgrades after publication; the node's stored Weak
+releases the table when the node is destroyed.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Upgrade succeeded while alive.
+Item destroyed.
+Upgrade failed after the final release.
+Weak clone stays expired.
+Upgrade fails while Building.
+Self weak upgrades after publication.
+Weak run finished.
+Node destroyed.
+```
+
+Separate checks: reject `downgrade` of `obj` or object borrows, payload access
+through a Weak, a Weak that outlives a payload borrow, a factory payload that is
+not Owned and a builder that is not `Callable<owner, (Weak<rc/T>) -> T>`; an Abort
+inside the builder publishes nothing. Inspect separate payload/object/table
+lifetimes, allocation-free `upgrade`/`clone`, the final table release and the
+`arc` upgrade/final-release race internally.
+
+Focus: [Weak reference values](../spec/03-types-and-values.md#322-weak-reference-values),
+[Weak reference operations](../spec/13-operators-and-assignment.md#1359-weak-reference-operations)
+and [cyclic construction](../spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing).
+
+## Milestone 36: general static storage
+
+Static values initialize on first access, with their effects, in access order: a
+read of `count` runs its initializer once before the replacement, a `let`
+initializes when first read, and a first write initializes the slot and then
+replaces its value. A never-accessed static is neither initialized nor destroyed.
+Nested groups of a generic struct keep one key per enclosing binding. Shutdown
+destroys the initialized values in reverse initialization order after main's
+locals.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+Main started.
+Count initialized.
+Count is 11.
+Resource 1 initialized.
+Primary is 1.
+Resource 2 initialized.
+Static resource 2 destroyed.
+Replaced the second resource.
+Generic keys are distinct.
+Main finished.
+Static resource 3 destroyed.
+Static resource 1 destroyed.
+```
+
+Separate checks: alias paths (`Cache<ref/i32 during a>` and `during b`) reach one
+key; reject non-Owned static storage, a `let` write, a borrow `during static` of
+mutable storage, and initialization from untaken branches or effect summaries
+alone; initialization cycles and access to destroyed storage during shutdown Abort
+in separate inputs. Inspect per-key state/address/destruction identity and
+preserved keys across body sharing and Origin erasure.
+
+Focus: [static storage](../spec/11-properties.md#1132-static-storage),
+[`static` and `Owned`](../spec/15-ownership-and-lifetime-analysis.md#1523-static-and-owned),
+[static initialization and shutdown](../spec/22-core-execution-and-foreign-functions.md#2223-os-entry-static-initialization-and-shutdown)
+and [inherited environments](../spec/22-core-execution-and-foreign-functions.md#2224-static-storage-in-inherited-environments).
+
+## Milestone 37: integrated order processing
+
+A bounded workload over five orders: a generic predicate count with a capturing
+closure over the whole Array and a borrowed tail view, a first-match search that
+returns a borrow into the Slice, a mutating closure driven through an exclusive
+`Callable`, category totals kept in a Dictionary and read back in insertion order,
+an early-stopped shared loop, and removal of one order before the remaining
+orders are destroyed in reverse index order.
+
+Expected stdout (verified natively at O0/O2 through the Debug harness):
+
+```text
+No orders to count.
+Large orders: 3 overall, 2 in the tail.
+First order over 40 is 3.
+Running total is 155.
+Category 10 totals 75.
+Category 20 totals 20.
+Category 30 totals 60.
+Stopped at order 4.
+Removed order 1.
+Order 1 destroyed.
+Processing finished.
+Order 5 destroyed.
+Order 4 destroyed.
+Order 3 destroyed.
+Order 2 destroyed.
+```
+
+Separate checks: the harness keeps the output for from-end and resolved tail
+selections and rejects a bare Non-Copy return (`TransferRequired_Kd`), an append
+while the tail view is live (`CallActivationConflict_Kd`) and reuse of a consumed
+Array (`MovedPlace_Kd`). Alternate values, an empty Dictionary result, Abort paths
+and the workload's allocation/complexity observations remain for P37; no new
+language mechanism is introduced.
+
+Focus: [function expressions](../spec/07-functions-and-callable-values.md#76-function-expressions),
+[Callable constraints](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
+[Slice operations](../spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
+[Dictionary operations](../spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement)
+and [iteration](../spec/14-control-flow.md#146-iteration-constructs).
+
+## Milestone 38: integrated device registry
+
+An open `Device` base with a validating custom setter and a computed Property, a
+`Lamp` that formats itself and a `Sensor` are used through owning objects and
+base views: refinement selects the complete Lamp payload for formatting, handle
+replacement destroys the old object first, and each derived object destroys its
+Leaf before its base. A static registry holds an optional Weak to an `rc` Lamp:
+empty at first, live while a clone exists, expired after the final release and
+destroyed at shutdown.
+
+Expected stdout (specification-derived; native execution is blocked):
+
+```text
+desk (40 W, level 30)
+Lamp desk destroyed.
+Device desk released.
+shelf (25 W, level 0)
+Lamp shelf destroyed.
+Device shelf released.
+door at level 50
+Device door released.
+Registry starts empty.
+hall (60 W, level 0)
+Hall lamp still owned once.
+Lamp hall destroyed.
+Device hall released.
+Registry entry expired.
+Application finished.
+```
+
+Separate checks: an out-of-range level Aborts through the setter; reject payload
+follow through an open view, a setter call through `rc` or `objref`, a computed
+accessor through an open view without ObjectCallCompatible, and a static Weak
+whose payload borrows a local. Check identity across replacement, the single
+destruction of each object and the shutdown release of the registry.
+
+Focus: [Properties](../spec/11-properties.md),
+[inheritance](../spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
+[object views](../spec/03-types-and-values.md#335-object-views-and-identity),
+[Weak operations](../spec/13-operators-and-assignment.md#1359-weak-reference-operations),
+[static storage](../spec/11-properties.md#1132-static-storage)
+and [UTF-8 formatting](../spec/utf8-formatting.md).
+
+## Milestone 39: Semantics-generic follow
+
+`Collection<E>` publishes its element Places through the Indexable Contracts.
+Generic accessors over `Collection<s/T>` follow the pair Place to its stored
+target: `view` returns `ref/T` for every `s` in `value or valueborrow`, `viewUniq`
+returns `uniq/T` for `owner or uniq`, and `total` calls a Contract requirement on
+each element through the pair layer implicitly. The same bodies serve
+`Collection<Node>`, `Collection<ref/Node>` and `Collection<uniq/Node>`: the owner
+instantiation borrows the element itself, and the reference instantiations
+reborrow the referent with the outer borrow's dependency.
+
+Expected stdout (derived from the proposal; native execution is blocked):
+
+```text
+Owned element updated to 5.
+Borrowed elements total 30.
+Exclusive referent updated to 33.
+Totals are 6, 30 and 73.
+Semantics-generic follow finished.
+```
+
+Separate checks: reject `viewUniq` on `Collection<ref/Node>` (`s is owner or uniq`
+Refuted), an exclusive follow whose admitted set includes `ref`, Take through the
+followed Place (`c[i]@follow@move`), a follow whose admitted set includes an object
+or `unsafe` Semantics, and a result that drops the outer borrow's dependency.
+Inspect that monomorphized bodies select the owner Place or the referent without a
+runtime test or allocation.
+
+Focus: [reference-path selection](../spec/03-types-and-values.md#341-reference-path-selection),
+[slots and projections](../spec/08-generics-constraints-and-contracts.md#811-slots-and-projections),
+[generic access effects](../spec/08-generics-constraints-and-contracts.md#89-generic-access-effects),
+[follow](../spec/13-operators-and-assignment.md#13551-follow) and the proposal
+`draft/Design/2026-09-26 Semantics-Generic Follow.md`, which owns the pending decision.
+
 ### Programs 22–24 authoring verification (2026-09-22)
 
 All three sources pass the syntax catalog. Native Application builds were probed
@@ -1786,6 +2009,20 @@ specification-derived. P31/P33 remain TODO, with no new native harness, rejectio
 or allocation evidence; existing harness results retain their prior scope.
 Commands, source/compiler hashes and diagnostics are in the
 [authoring session](../PLAN_HISTORY.md#programs31-33-authoring).
+
+### Programs 34–39 authoring verification (2026-09-27)
+
+All six sources pass syntax parsing, and the source catalog records their stages:
+Programs 34, 35, 38 and 39 fail Binding at the anchors in the status table,
+Program 36 binds and stops at ownership analysis of its static group, and
+Program 37 binds, verifies and runs natively through its Debug harness
+(27 checks in `bin/verify/20260926-161205-335-unit-p37-2`: unchanged target,
+`IndexTail` and `ResolvedTail` variants and three rejections at O0/O2). Expected output for the
+pending programs is specification-derived (Program 39: proposal-derived), not a
+passing test claim, and their native tests are NOT_RUN. Program 37's Release
+harness, allocation observations and remaining separate checks are P37 scope.
+Catalog/alias checks and both full suites pass in the
+[authoring session](../PLAN_HISTORY.md#programs34-39-authoring).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining
