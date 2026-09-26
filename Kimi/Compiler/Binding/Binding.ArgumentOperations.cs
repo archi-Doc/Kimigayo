@@ -752,8 +752,9 @@ public sealed partial class Binding
             quality = actual.Semantics == target ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Reborrow;
         }
-        else if (actual.Semantics == SemanticsKind.Owner)
+        else if (actual.Semantics == SemanticsKind.Owner || (explicitBorrow && actual.Kind == BoundTypeKind.SemanticsApplication))
         {
+            // SPEC 13.5.5.2: an explicit borrow of a slot storing a pair application borrows that slot like a stored value.
             var exclusive = target == SemanticsKind.Uniq;
             var unwrapped = KotoHelper.UnwrapParentheses(source);
             if (this.BorrowablePlace(source, scope, exclusive))

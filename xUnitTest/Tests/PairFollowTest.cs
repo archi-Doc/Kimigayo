@@ -145,8 +145,20 @@ public class PairFollowTest
         "    var q = v@uniq\n    require twice(q@ref, z@ref, w@uniq) == 8 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Nested.\")\n";
 
+    // SPEC 13.5.5.1: s/(t/U) needs two follows; an owner binding of the outer layer is no layer, even above a reference.
+    private const string Followed =
+        "func twice<s/T, t/U>(x: s/(t/i32 during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    return x@follow@follow * 2\n" +
+        "func once<s/T>(x: s/i32, m: s/T) -> i32\n    s is value or valueborrow\n    return x@follow * 3\n" +
+        "public func main()\n" +
+        "    var v: i32 = 4\n    let z: i32 = 0\n    var w: i32 = 0\n" +
+        "    require twice(v@ref, z, z@ref) == 8 and twice(v@uniq, z, w@uniq) == 8 else => $abort(\"owner\")\n" +
+        "    let r = v@ref\n    require twice(r@ref, z@ref, z@ref) == 8 else => $abort(\"ref\")\n" +
+        "    require once(v, z) == 12 and once(v@ref, z@ref) == 12 and once(v@uniq, w@uniq) == 12 else => $abort(\"once\")\n" +
+        "    Console.writeLine(\"Followed.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Followed", Followed, "Followed.\n" },
         { "Nested", Nested, "Nested.\n" },
         { "Inner", Inner, "Inner.\n" },
         { "Spent", Spent, "Spent.\n" },
@@ -235,6 +247,8 @@ public class PairFollowTest
     [InlineData("contract Bump\n    func bump(self: uniq/Self)\nfunc bumpOne<s/T>(item: s/T)\n    s is uniq\n    T is Bump\n    item.bump()")]
     [InlineData("func sumAll<s/T>(c: ref/Collection<s/T>) -> i32\n    s is value or valueborrow\n    T is Loaded\n    var total: i32 = 0\n    for i in c.indices\n        match c[i].load()\n            let w => total += w\n    return total")]
     [InlineData("func bump<s/T>(items: s/Array<i32>, marker: s/T)\n    s is uniq\n    for x in items\n        x@follow += 1")]
+    [InlineData("func keep<s/T, t/U>(x: s/(t/i32 during b), m: s/T, n: t/U)\n    s is value or valueborrow\n    t is valueborrow\n    let r = x@follow@ref\n    let q = x@ref")]
+    [InlineData("func keep<s/T>(x: s/i32, m: s/T)\n    s is value or valueborrow\n    let r = x@ref")]
     public void PairPositionsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);

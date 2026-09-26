@@ -592,8 +592,9 @@ public sealed partial class OwnershipAnalysis
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair && !this.FollowsReference(pair))
         {
             // SPEC 13.5.5.1: owner selects the operand itself. The universal verification reads a Copy of the direct target
-            // through a shared borrow of the operand, since the stored pair Type need not be Copy.
-            return this.instance is null && use != PlaceUseKind.Read ? this.CopyPairTarget(pair)
+            // through a shared borrow of the operand, since the stored pair Type need not be Copy; a Scalar target is read as
+            // that Copy also where only its value is used (SPEC 3.5.3).
+            return this.instance is null && (use != PlaceUseKind.Read || ScalarTypes.Supports(pair.BoundType)) ? this.CopyPairTarget(pair)
                 : this.ExpressionCore(KotoHelper.UnwrapParentheses(pair.Left), use, acquisition);
         }
 
