@@ -80,6 +80,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 16 | `target@follow@uniq` replaces `target@uniq/Cell` | SPEC 13.5.5.2 |
 | 28 | `IntoIterable` with `IteratorType` and `intoIterator` replaces `Iterable`; `Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1, 22.1.2.2 |
 | 33 | `@follow@ref`/`@follow@uniq` payload borrows; `owner@move@obj/Base` transfers the bare Place | SPEC 3.5, 13.5.5.2, 13.5.7 |
+| 39 | `Collection<ref/Node>.init(...)` and `Collection<uniq/Node>.init(...)` supply the construction Type arguments (PLAN G24, approved 2026-09-27) | SPEC 6.2.3.2, 15.4.4 |
 
 | Program | Created | Binding | Build | Tests | Implementation | Evidence / boundary |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -121,7 +122,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 36 | YES | PASS | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding passes; ownership analysis stops at the static group `Registry` with `UnsupportedOwnership_Kd` (static stored Properties are not analyzed or generated). |
 | 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `bin/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. |
 | 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `InvalidTypeFormation_Kd` at `Weak<rc/Lamp>` in the static registry; payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
-| 39 | YES | FAIL | NOT_RUN | NOT_RUN | IN_PROGRESS | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers), which is implemented. Binding first reports `TypeMismatch_Kd` at `Collection` in `main`: the constructions omit their Type arguments (SPEC §6.2.3.2, PLAN G24). With the proposed spelling `Collection<ref/Node>.init(...)`/`Collection<uniq/Node>.init(...)`, `test-milestone39.ps1` passes 29 Debug checks in a repository mirror. |
+| 39 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | IN_PROGRESS | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers), which is implemented; the two constructions were re-spelled with their Type arguments (G24). The unchanged target, two variants and four rejections pass `test-milestone39.ps1` in Debug. |
 | 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
 
 [Restructuring audit](../PLAN_HISTORY.md#programs38-restructure) records source/DLL

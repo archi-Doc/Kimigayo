@@ -47,13 +47,13 @@ public func main()
 
     let a = Node.init(10)
     let b = Node.init(20)
-    let refs = Collection.init([a@ref, b@ref]) // Collection<ref/Node>; the result of view depends on a, b and refs.
+    let refs = Collection<ref/Node>.init([a@ref, b@ref]) // The result of view depends on a, b and refs.
     require view(refs, 1).weight == 20 and total(refs) == 30 else => $abort("Borrowed follow failed")
     Console.writeLine("Borrowed elements total 30.")
 
     var c = Node.init(30)
     var d = Node.init(40)
-    var uniqs = Collection.init([c@uniq, d@uniq]) // Collection<uniq/Node>.
+    var uniqs = Collection<uniq/Node>.init([c@uniq, d@uniq])
     let target = viewUniq(uniqs@uniq, 0)
     target.weight = 33
     require view(uniqs, 1).weight == 40 and total(uniqs) == 73 else => $abort("Exclusive follow failed")
