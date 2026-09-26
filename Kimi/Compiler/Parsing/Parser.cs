@@ -386,7 +386,7 @@ NextParameter:
             }
             else
             {
-                returnType = ParseDeclarationType(ref reader);
+                returnType = ParseFunctionResult(ref reader);
             }
 
             end = returnType.Span.End;
@@ -2751,7 +2751,9 @@ CloseParameters:
             case TokenKind.Extension:
             case TokenKind.Contract:
                 reader.Advance();
-                var supportsGenericHeader = token.Kind is TokenKind.Struct or TokenKind.Enum;
+                // SPEC 8.4: a Contract declares Type parameters but no Origin parameters.
+                var supportsGenericHeader = token.Kind is TokenKind.Struct or TokenKind.Enum or TokenKind.Contract;
+                var supportsOriginHeader = token.Kind is TokenKind.Struct or TokenKind.Enum;
                 if (token.Kind == TokenKind.Extension)
                 {
                     reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "extension");
@@ -2761,7 +2763,7 @@ CloseParameters:
                 var declaration = ParseDeclarationContainerHeader(
                     ref reader,
                     supportsGenericHeader,
-                    supportsGenericHeader,
+                    supportsOriginHeader,
                     token.Kind);
                 var container = DeclarationContainerKoto.CreateStandalone(
                     reader.CodeContext,
@@ -4487,12 +4489,35 @@ Loop:
         }
 
         reader.Advance();
-        var returnType = ParseDeclarationType(ref reader, parseOrigin: true);
+        var returnType = ParseFunctionResult(ref reader);
         return new FunctionTypeKoto(
             ref reader,
             SourceSpan.FromBounds(type.Span.Start, Math.Max(arrowRange.End, returnType.Span.End)),
             type,
             returnType);
+    }
+
+    /// <summary>
+    /// Parses a function result: an ordinary Type, or a Place result when an unqualified <c>place</c> is followed by
+    /// <c>ref</c> or <c>uniq</c> and a slash (SPEC §7.1.1). The reference Type after <c>place</c> keeps its own
+    /// <c>during</c>, which is the Place result's Origin.
+    /// </summary>
+    private static Koto ParseFunctionResult(ref TokenReader reader)
+    {
+        if (!reader.IsCurrentIdentifier("place") || !reader.PeekKind(1).IsIdentifierOrContextualKeyword() || reader.PeekKind(2) != TokenKind.Slash)
+        {
+            return ParseDeclarationType(ref reader);
+        }
+
+        var mode = reader.GetSpan(reader.PeekToken(1));
+        if (!mode.SequenceEqual("ref") && !mode.SequenceEqual("uniq"))
+        {
+            return ParseDeclarationType(ref reader);
+        }
+
+        var keyword = reader.Read();
+        var type = ParseType(ref reader, parseOrigin: true);
+        return new PlaceResultKoto(ref reader, SourceSpan.FromBounds(keyword.Span.Start, type.Span.End), type);
     }
 
     private static List<TypeKoto>? ParseGenericArguments(ref TokenReader reader, bool allowLength = false, bool specialization = false)

@@ -306,7 +306,8 @@ public sealed partial class Binding
                 }
                 else if (node is DeclarationContainerKoto container && pass != 2)
                 {
-                    if (container is ContractKoto && (container.GenericParameterNodes.Count != 0 || container.OriginNames.Count != 0))
+                    // SPEC 8.4, Appendix D: a Contract declares Type parameters; Contract-owned Origin parameters are not introduced.
+                    if (container is ContractKoto && container.OriginNames.Count != 0)
                     {
                         Fail(container, BindingFailure.InvalidConstraint);
                     }

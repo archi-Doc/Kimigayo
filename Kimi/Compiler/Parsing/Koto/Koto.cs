@@ -308,6 +308,9 @@ public enum KotoKind : byte
     /// <summary>A parenthesized type, distinct from a one-element tuple.</summary>
     ParenthesizedType,
 
+    /// <summary>A Place result <c>place ref/T</c> or <c>place uniq/T</c> in result position.</summary>
+    PlaceResult,
+
     /// <summary>A fixed-array type.</summary>
     FixedArrayType,
 

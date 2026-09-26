@@ -787,12 +787,14 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         reader.Advance();
-        var supportsGenericHeader = tokenKind is TokenKind.Struct or TokenKind.Enum;
+        // SPEC 8.4: a Contract declares Type parameters but no Origin parameters.
+        var supportsGenericHeader = tokenKind is TokenKind.Struct or TokenKind.Enum or TokenKind.Contract;
+        var supportsOriginHeader = tokenKind is TokenKind.Struct or TokenKind.Enum;
         var state = reader.TakeContext();
         var declaration = Parser.ParseDeclarationContainerHeader(
             ref reader,
             supportsGenericHeader,
-            supportsGenericHeader,
+            supportsOriginHeader,
             tokenKind);
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
         reader.Document(container, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
