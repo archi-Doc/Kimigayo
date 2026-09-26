@@ -385,6 +385,21 @@ public class ScalarDefaultEmissionTest
     }
 
     [Fact]
+    public void DefaultsReadReferencesToScalarsButSupplyOnlyScalars()
+    {
+        // SPEC 15.1.6: a binding of a shared Subject inside a default is a ref/T that the default may read; the value a
+        // default supplies to its parameter is a Scalar or Unit.
+        var c = MinimalEmissionTest.Analyze("func f(x: ref/i32) => ()");
+        var type = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Parameters.Count == 1).Parameters[0].Type.BoundType;
+        Assert.True(ReferenceTypes.IsScalarBorrow(type));
+        Assert.True(ScalarDefaults.SupportsValue(type));
+        Assert.False(ScalarDefaults.SupportsResult(type));
+        Assert.True(ScalarDefaults.SupportsResult(BoundType.I32));
+        Assert.True(ScalarDefaults.SupportsResult(BoundType.Unit));
+        Assert.False(ScalarDefaults.SupportsValue(BoundType.String));
+    }
+
+    [Fact]
     public void WarmDefaultOwnershipAndEmissionReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope: n\n)) -> i32 => y\nlet a = f(1)\nlet b = f(2)");

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Collections.Generic;
 using System.Linq;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -47,7 +46,7 @@ public class ElementComparisonTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var node = Walk(c.Kotonoha.RootKoto).OfType<BinaryKoto>().Single(x => x.ToString() == operand);
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<BinaryKoto>().Single(x => x.ToString() == operand);
         Assert.True(c.Binding.TryGetAdaptation(node, out var adaptation));
         Assert.Equal(ExpectedAdaptationKind.SharedBorrow, adaptation.Kind);
         Assert.True(ReferenceTypes.IsString(adaptation.Type));
@@ -59,20 +58,8 @@ public class ElementComparisonTest
     {
         var c = MinimalEmissionTest.Analyze("let pair: (i32, string) = (1, \"a\")\nlet same = pair.1 == \"a\"");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var node = Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.False(c.Binding.TryGetAdaptation(node, out _));
         Assert.True(c.Ownership.Result.IsVerified);
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
     }
 }

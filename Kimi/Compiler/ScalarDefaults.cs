@@ -10,11 +10,20 @@ internal static class ScalarDefaults
     internal static bool Supports(FunctionKoto function, int parameterIndex)
     {
         var parameter = function.Parameters[parameterIndex];
-        return parameter.DefaultValue is { } expression && SupportsValue(parameter.Type.BoundType) &&
+        return parameter.DefaultValue is { } expression && SupportsResult(parameter.Type.BoundType) &&
             SupportsExpression(expression, function, parameterIndex);
     }
 
-    internal static bool SupportsValue(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
+    /// <summary>Gets whether a default supplies a value of this Type to its parameter: a Scalar or Unit, which no Loan can escape with.</summary>
+    /// <param name="type">The parameter Type.</param>
+    /// <returns>Whether the Type is a supported default result.</returns>
+    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit);
+
+    /// <summary>Gets whether a default expression may compute or read a value of this Type: a supported result, or a safe
+    /// reference to one, such as a binding of a shared Subject (SPEC 15.1.6).</summary>
+    /// <param name="type">The expression Type.</param>
+    /// <returns>Whether the Type is readable inside a default.</returns>
+    internal static bool SupportsValue(BoundType? type) => SupportsResult(type) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && SupportsValue(type.Components[0]));
 
     internal static bool SupportsPatternValue(BoundType? type)

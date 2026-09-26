@@ -71,7 +71,7 @@ public class DynamicArraySharedReadTest
         // borrow as the receiver's adaptation instead of changing the element's Type.
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\nlet view = values[..]\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var element = Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().Single(x => x.Right is not RangeKoto);
+        var element = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().Single(x => x.Right is not RangeKoto);
         Assert.Equal("Task", element.BoundType!.Name);
         Assert.Equal(SemanticsKind.Owner, element.BoundType.Semantics);
     }
@@ -86,17 +86,5 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\n" + use);
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
     }
 }
