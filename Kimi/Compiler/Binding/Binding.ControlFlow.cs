@@ -51,23 +51,11 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 3.5.3, 14.9.1: a source whose Type is reference layers ending in a Scalar supplies that Scalar by
-        // a Scalar read where the other sources fit it.
-        for (var i = 0; i < types.Count; i++)
+        // SPEC 3.5.3, 14.9.1: sources that differ only in safe reference layers over one Scalar Type unify to that Scalar,
+        // and each reference source is Scalar-read. Sources with the same layers keep the borrow rule below.
+        if (ScalarUnification(types) is { } scalar)
         {
-            if (types[i] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && ScalarReferent(types[i]) is { } terminal)
-            {
-                var readsAll = true;
-                for (var j = 0; j < types.Count && readsAll; j++)
-                {
-                    readsAll = FitsType(types[j], terminal) || (ScalarReferent(types[j]) is { } read && FitsType(read, terminal));
-                }
-
-                if (readsAll)
-                {
-                    return terminal;
-                }
-            }
+            return scalar;
         }
 
         // Borrow results with the same referent retain every incoming dependency.
@@ -111,6 +99,34 @@ public sealed partial class Binding
         }
 
         return this.WithOrigins(left, this.Meet(a, b), []);
+    }
+
+    private static BoundType? ScalarUnification(List<BoundType> types)
+    {
+        BoundType? scalar = null;
+        var layers = -1;
+        var differ = false;
+        for (var i = 0; i < types.Count; i++)
+        {
+            var count = 0;
+            var terminal = types[i];
+            while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                terminal = terminal.Components[0];
+                count++;
+            }
+
+            if (terminal.Kind != BoundTypeKind.Primitive || !ScalarTypes.Supports(terminal) || (scalar is not null && !ReferenceEquals(scalar, terminal)))
+            {
+                return null;
+            }
+
+            scalar = terminal;
+            differ |= layers >= 0 && layers != count;
+            layers = count;
+        }
+
+        return differ ? scalar : null;
     }
 
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
