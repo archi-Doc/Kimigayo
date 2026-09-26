@@ -382,8 +382,11 @@ For `s: Slice<T>`, members receive and Copy the handle by value. Element and par
 | `s.trySlice(range)` | `Option<Slice<T>>` retaining `s.source`; separate `Range` and `ResolvedRange` overloads |
 | `s.splitAt(index)` | `(Slice<T>, Slice<T>)`, both retaining `s.source`, covering `[0, p)` and `[p, length)` |
 | `s.trySplitAt(index)` | `Option` of that Tuple |
+| `s.contains(value)` | `bool`; whether some element equals `value: ref/T` under `T is Equatable` |
+| `s.firstIndex(of: value)` | `Option<isize>`; the first index whose element equals `value: ref/T` under `T is Equatable` |
+| `s.firstIndex(matching: f)` | `Option<isize>`; the first index for which `f`, with `F is Callable<(ref/T) -> bool>`, returns `true` |
 
-Both split operations have `isize` and `Index` overloads and accept the boundaries zero and length. Invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`; `tryGet` and `trySlice` likewise return `None` on their own invalid bounds. `tryGet` deliberately has a fixed reference result, independent of `T`'s Copy capability.
+The search operations visit elements in increasing index order, stop at the first match and neither Copy nor Move elements; each comparison or call receives a shared reference to the element. Both split operations have `isize` and `Index` overloads and accept the boundaries zero and length. Invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`; `tryGet` and `trySlice` likewise return `None` on their own invalid bounds. `tryGet` deliberately has a fixed reference result, independent of `T`'s Copy capability.
 
 A Slice element Place follows the element Place rules of §4.6.1 but is shared-only: writes, Moves and exclusive borrows through a Slice are rejected. No result Type depends on Copy: for an unknown `T`, a by-value `s[0]` needs `T is Copy`, while `s[0]@ref` works for every `T`.
 
@@ -558,6 +561,37 @@ values.append(first)
 values.append(values[0])       // The element Copy finishes before receiver activation.
 ```
 
+**Construction, access and further mutation.** Array also provides the following public members. Constructors and mutations follow §4.7.1; access members take a shared or exclusive receiver as their results require.
+
+| Member | Behavior |
+| --- | --- |
+| `init(! capacity: isize)` | An empty Array with `capacity >= capacity` (§4.7.4); a negative argument Aborts, and zero allocates nothing |
+| `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts |
+| `isEmpty: bool` | Read-only; whether `length` is zero |
+| `first`, `last: Option<ref/T>` | Read-only, `get(self: ref/Self) -> Option<ref/T during self>`; the first or last element, or `None` when empty |
+| `tryGet(index: isize)`, `tryGet(index: Index)` | `Option<ref/T during self>`; `None` for an invalid index |
+| `tryGetUniq(index: isize)`, `tryGetUniq(index: Index)` | `Option<uniq/T during self>` with an exclusive receiver; `None` for an invalid index |
+| `swap(first: isize, second: isize) -> ()` | Exchanges two elements; equal indices change nothing; an invalid index Aborts |
+| `swapRemove(index: isize) -> T` | Removes and returns the element; the last element takes its position, so order is not preserved |
+| `truncate(length: isize) -> ()` | Destroys the elements from `length` to the end in decreasing index order; a length at or above the current length changes nothing, and a negative one Aborts |
+| `appendAll(other: Array<T>) -> ()` | Moves every element of `other` to the end in order; `other` is consumed and its storage released |
+| `appendCopies(values: Slice<T>) -> ()`, `T is Copy` | Copies each element of `values` to the end in order |
+| `removeAll<F>(matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Calls `matching` once per element in increasing index order with a shared reference, removes the elements for which it returns `true`, keeps the order of the others and destroys the removed ones after the last call, in an unspecified order |
+| `reverse() -> ()` | Reverses the order of the elements |
+| `sort() -> ()`, `T is Comparable` | Sorts in nondecreasing `compare` order; not stable |
+| `sort<F>(by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | The same with `by` as the comparison: negative, zero or positive for less, equal or greater |
+
+Moving elements inside the Array (`swap`, `swapRemove`, `removeAll`, `reverse`, `sort`) neither Copies them nor runs destructors, and no operation in this table allocates except `init` and the growth of `appendAll` and `appendCopies`. `removeAll` and `sort` must not observe the Array through their callbacks: the Array is exclusively borrowed for the whole call, and an Abort in a callback leaves every element initialized exactly once. A comparison that is not a consistent total order yields an unspecified permutation of the same elements.
+
+```kimi
+var values = Array<i32>.init(capacity: 4)
+values.appendCopies([30, 10, 20][..])
+values.sort()                                  // [10, 20, 30]
+let removed = values.swapRemove(0)             // 10; values is [30, 20]
+values.removeAll(matching: func (value) => value > 25) // [20]
+let head = values.first                        // Some: a shared reference to 20
+```
+
 ### 4.7.3. Dictionary operations and indexed replacement
 
 All searches use the equality mapping, argument orientation and unspecified candidate order/count defined in [§12.3.4](12-expressions.md#1234-dictionary-construction-and-duplicate-keys). These search choices do not change insertion order or the specified iteration and destruction order.
@@ -594,7 +628,7 @@ let removed = names.remove(1) // A temporary key is borrowed under §10.2.
 
 ### 4.7.4. Capacity and allocation
 
-Both collections expose read-only `capacity: isize` through shared access: the maximum number of elements or entries supported without internal allocation, not bytes or buckets. The result is a snapshot without a Loan. `0 <= length <= capacity <= isize.MaxValue` always holds. Typed empty `[]` and `[:]` have length and capacity zero and allocate nothing internally; a fixed handle-management cost is permitted.
+Both collections expose read-only `capacity: isize` through shared access: the maximum number of elements or entries supported without internal allocation, not bytes or buckets. The result is a snapshot without a Loan. `0 <= length <= capacity <= isize.MaxValue` always holds. Typed empty `[]` and `[:]` have length and capacity zero and allocate nothing internally; a fixed handle-management cost is permitted. `Array<T>.init(capacity: c)` behaves as `[]` followed by `reserve(additional: c)`.
 
 | Operation | Contract |
 | --- | --- |
@@ -656,6 +690,11 @@ For fixed Types, let `n` be the length, `c` the capacity and `d` the number of l
 | Operation | Required bound, excluding separately charged user-code cost |
 | --- | --- |
 | Array `append` / `pop` | Amortized O(1) / O(1) |
+| Array `swap`, `swapRemove`, `first`, `last`, `tryGet`, `tryGetUniq`, `isEmpty` | O(1) |
+| Array `truncate` | O(1 + d) for the destroyed elements |
+| Array `appendAll` / `appendCopies` / `init(repeating:count:)` | Amortized O(1) per added element |
+| Array `removeAll`, `reverse`; Slice `contains` / `firstIndex` | O(1 + n) plus the callback or comparison calls |
+| Array `sort` | O(1 + n log n) comparisons and moves in the worst case, without allocation |
 | Array stable `insert` / `remove` | O(1 + n) |
 | Array `clear` | O(1 + d); O(1) for a cleanup-free element Type |
 | Dictionary lookup | Search cost + O(1) management |
@@ -666,4 +705,4 @@ For `m` operations without `shrinkToFit`, let `C` be the maximum of the initial 
 
 Dictionary search cost includes key-content equality and internal hashing work and candidate or bucket probing for every operation; linear search is permitted. This introduces neither a public Hash constraint nor user-defined hash calls. Relocation, index rewriting and order maintenance remain management cost. Reindexing across growth, tombstones and allocation-free cleanup processes O(m + C) keys in total, not O(1) per key lifetime. Variable-length key work is charged at actual search cost; whether hashes are cached or recomputed is an implementation choice. Known-entry deletion, placement and order maintenance remain amortized O(1), including allocation-free full-capacity churn. O(c) auxiliary indices, free lists or linked slots and noncontiguous storage are permitted; avoid temporary arrays or per-element allocations used only to preserve order.
 
-Ordinary free-slot, insertion-order and traversal management after a Dictionary removal is amortized O(1); physical compaction is not required, and search, user code and destruction are charged separately. Fixed-capacity mutation, mutable Slices, bulk, resize and unordered removal, `contains`, an Abort-only Dictionary insert, entry or factory APIs, recoverable allocators and a fixed collection ABI remain outside this contract. `tryGet` followed by indexed replacement may search twice; a future one-search update must define lookup and reference-write authority together.
+Ordinary free-slot, insertion-order and traversal management after a Dictionary removal is amortized O(1); physical compaction is not required, and search, user code and destruction are charged separately. Fixed-capacity mutation, mutable Slices, bulk removal of ranges, resize, a Dictionary `contains`, an Abort-only Dictionary insert, entry or factory APIs, recoverable allocators and a fixed collection ABI remain outside this contract. `tryGet` followed by indexed replacement may search twice; a future one-search update must define lookup and reference-write authority together.
