@@ -382,7 +382,7 @@ public class ForeignEmissionTest
                 unsafe => *target(p) += amount(p)
                 var value: i32 = 0
                 unsafe => value = *p
-                require value == 13 else => $abort("read before rhs")
+                require value == 103 else => $abort("rhs before read")
                 unsafe => *p -= 1
                 unsafe => *p *= 5
                 unsafe => *p /= 4
@@ -416,7 +416,8 @@ public class ForeignEmissionTest
                 require freed != 0 else => $abort("free")
                 Console.writeLine("compound ok")
             """;
-        ScalarEmissionTest.EmitFixture("ForeignPointerCompound", source, "target\namount\ncompound ok\n");
+        // SPEC 13.7.2: the right-hand side runs first; the old value is then read from the located target.
+        ScalarEmissionTest.EmitFixture("ForeignPointerCompound", source, "amount\ntarget\ncompound ok\n");
     }
 
     [Theory]
@@ -585,7 +586,9 @@ public class ForeignEmissionTest
                         require chosen == next else => $abort("changed")
                         exit to change: 2
                 unsafe => value = p[0]
-                require value == 20 else => $abort("secured address")
+                require value == 18 else => $abort("target located after the right-hand side")
+                unsafe => value = next[0]
+                require value == 2 else => $abort("updated target")
                 chosen = p
                 unsafe
                     value = chosen[offset: do
@@ -593,7 +596,7 @@ public class ForeignEmissionTest
                         require chosen == next else => $abort("changed")
                         exit to offset: 0
                     ]
-                require value == 20 else => $abort("secured index base")
+                require value == 18 else => $abort("secured index base")
                 unsafe => skipIndex(p)
                 unsafe => skipRight(p)
                 var freed: i32 = 0
@@ -601,7 +604,8 @@ public class ForeignEmissionTest
                 require freed != 0 else => $abort("free")
                 Console.writeLine("index ok")
             """;
-        var ir = ScalarEmissionTest.EmitFixture("ForeignPointerIndex", source, "amount\ntarget\nindex\ntarget\nindex\namount\nindex ok\n");
+        // SPEC 13.7.2: simple and compound assignments run their right-hand side before locating the target.
+        var ir = ScalarEmissionTest.EmitFixture("ForeignPointerIndex", source, "amount\ntarget\nindex\namount\ntarget\nindex\namount\nindex ok\n");
         Assert.DoesNotContain("getelementptr inbounds i8", ir);
         Assert.DoesNotContain("call void @__kimi_abort(i32 " + WindowsLowering.IndexBoundsReason, ir);
     }
@@ -907,7 +911,8 @@ public class ForeignEmissionTest
                 require freed != 0 else => $abort("free")
                 Console.writeLine("checked ok")
             """;
-        ScalarEmissionTest.EmitFixture("ForeignPointerSubplaceIndex", source, "value\npick\nindex\npick\nindex\nvalue\nindex\nchecked ok\n");
+        // SPEC 13.7.2: the right-hand side of the compound update runs before its target is located.
+        ScalarEmissionTest.EmitFixture("ForeignPointerSubplaceIndex", source, "value\npick\nindex\nvalue\npick\nindex\nindex\nchecked ok\n");
     }
 
     [Theory]
@@ -927,6 +932,27 @@ public class ForeignEmissionTest
                 Console.writeLine("bad")
             """;
         ScalarEmissionTest.EmitFixture("ForeignPointerSubplaceBounds" + name, source, string.Empty, 1, "Hello.kimi:8:15: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+    }
+
+    [Fact]
+    public void ComputedPointerSubplaceIndicesMayEndALogicalOperand()
+    {
+        // The bounds-checked element address splits its block; the join of `and` names the block after the check.
+        const string Source = """
+            group Native
+                #LibraryImport("kernel32", "VirtualAlloc")
+                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+            public func main()
+                var p: unsafe/[3 of i32] = null
+                unsafe => p = Native.allocate(null, 4096, 12288, 4)@unsafe/[3 of i32]
+                var i: isize = 1
+                let flag = true
+                var ok = false
+                unsafe => ok = flag and (*p)[i] == 0
+                require ok else => $abort("and")
+                Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("ForeignPointerSubplaceLogical", Source, "ok\n");
     }
 
     [Theory]

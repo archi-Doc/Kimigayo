@@ -19,8 +19,11 @@ internal sealed partial class BodyLowering
 
     private static bool IsScalar(BoundType? type) => ReferenceTypes.IsValue(type);
 
+    // Every operation whose lowering emits a checked split is classified here, so its block continuation is known before
+    // the physical blocks are computed.
     private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind == OwnershipValueKind.Convert
         ? conversion.Checked ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
+        : value.Kind == OwnershipValueKind.PointerProject && value.Count == 2 ? ArithmeticCheckKind.Bounds // A computed index into a raw array Place (SPEC 5.2).
         : FloatingTypes.Supports(type) || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
@@ -77,10 +80,7 @@ internal sealed partial class BodyLowering
         Grow(ref this.blockEnds, count);
         Grow(ref this.queue, count);
         Grow(ref this.instructionStarts, count + 1);
-        if (this.checks.Length < count)
-        {
-            Array.Resize(ref this.checks, Math.Max(count, Math.Max(16, this.checks.Length * 2)));
-        }
+        Grow(ref this.checks, count);
 
         this.PrepareConversions(body);
         if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure) || !this.PrepareArrayIterators(body, out failure))
