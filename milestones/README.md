@@ -1,7 +1,7 @@
 # Language milestones
 
-Thirty-eight independent programs are planned from the current [SPEC](../SPEC.md).
-Programs 1–33 have source files; programs 34–38 have design and verification scopes.
+Forty independent programs are planned from the current [SPEC](../SPEC.md).
+Programs 1–33 have source files; programs 34–40 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
 not an execution claim. Milestones 24–28 and 33 are authored targets beyond current
@@ -41,7 +41,7 @@ and in [STATUS.md](../STATUS.md).
 | [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
 | [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
 | [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
-| [Milestone27](Milestone27.kimi) | Saved Index/Range resolution, nested/sub-Slice views, splitting, empty views and backing/element Origins |
+| [Milestone27](Milestone27.kimi) | Saved Index/Range resolution, nested/sub-Slice views, splitting, empty views, backing/element Origins, and user Place results through `Indexable`/`UniqIndexable` |
 | [Milestone28](Milestone28.kimi) | User IntoIterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
 | [Milestone30](Milestone30.kimi) | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
@@ -51,7 +51,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-24**, Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
+As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../PLAN.md#3-current-position)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -121,6 +121,8 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 36 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
 | 37 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
 | 38 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table |
+| 39 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G21 decision (PLAN §7) |
+| 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
 
 [Restructuring audit](../PLAN_HISTORY.md#programs38-restructure) records source/DLL
 identities and exact commands: Release compiler/test-project build PASS with zero
@@ -153,8 +155,10 @@ Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 
 ## Roadmap from program 15 to core completion
 
-The current plan has **38 programs**, including **24 programs numbered 15–38**.
-Programs 15–33 are concrete; 34–38 are future source targets.
+The current plan has **40 programs**, including **26 programs numbered 15–40**.
+Programs 15–33 are concrete; 34–40 are future source targets. Programs 39 and 40
+were added on 2026-09-26 for the two collection designs that the Place foundation
+leaves open (PLAN issues G21 and G22); their execution order is in [PLAN.md](../PLAN.md#4-milestones-execution-order).
 Source creation is not implemented capability. This count is a decomposition of scope, not an effort or delivery
 estimate. Passing programs 13/14 does not
 establish general Slice, Iterator, callable, or object support.
@@ -183,7 +187,7 @@ remain subject to the [explicit deferral](../spec/appendices/D-deferred-features
 | 24 | Ownership-bearing Properties | Non-Copy setters, owned/borrowed getter results, temporary lifetimes and Contract witnesses |
 | 25 | Inheritance | Base storage, construction/destruction, inherited members and already-verified Property operations |
 | 26 | General closures and Callable | Composite/generic captures, dependency retention, function values and permitted erasure |
-| 27 | General Slice/Index/Range | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins |
+| 27 | General Slice/Index/Range and the Place foundation | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins; `place ref/T`/`place uniq/T` results, Contract Type parameters and user `Indexable`/`UniqIndexable` conformances |
 | 28 | General Iterator/Iterable | User Iterable protocols, owned/borrowed elements, early exit and remaining-element cleanup |
 | 29 | Dynamic Array | Capacity, insertion/removal/replacement, Non-Copy elements and owning iteration |
 | 30 | Comparison Contracts | Equatable/Comparable, generic requirement calls and composed comparisons before Dictionary |
@@ -195,6 +199,8 @@ remain subject to the [explicit deferral](../spec/appendices/D-deferred-features
 | 36 | General static storage | First initialization, effects, cycles, shutdown and inherited generic environment keys |
 | 37 | Integrated processing application | Collections, borrows, iteration and closures in one realistic workload |
 | 38 | Integrated core application | Properties, inheritance, objects and formatting combined with established features |
+| 39 | Semantics-generic follow | A pair `s/T` Place followed to its stored target under the admitted Semantics set; generic accessors over `Collection<s/T>` returning `ref/T` or `uniq/T` |
+| 40 | Disjoint exclusive element access | Simultaneous exclusive borrows of distinct elements of one collection through a splitting operation over the internal storage boundary |
 
 ### Number migration from the 34-program plan
 
@@ -212,6 +218,7 @@ target. Remaining changes affect planned scopes only:
 | 29 | 30, 32 | Separate comparison from Utf8Format/interpolation |
 | 30 | 33, 34 | Separate exclusive objects/views from shared ownership |
 | 31–34 | 35–38 | Weak, static storage and the two integration targets |
+| — | 39, 40 | Added 2026-09-26: Semantics-generic follow and disjoint exclusive element access |
 
 The dependency direction is ownership/Origins, then generic foundations, then
 general member/call/sequence operations, collections and runtime integration.
@@ -248,7 +255,7 @@ continues to own active execution scope, acceptance tracking, dependencies,
 states and exact next actions; [PLAN_HISTORY.md](../PLAN_HISTORY.md) owns run
 history. This roadmap does not replace the active target or mark any work done.
 
-### Verification scopes for programs 22–38
+### Verification scopes for programs 22–40
 
 Every row inherits the three evidence gates above. The canonical program is a
 small successful Application. Rejection/Abort cases use separate source copies;
@@ -265,7 +272,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Owned getter results and legal receiver consumption, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
 | 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
 | 26 / 12, 14, 16, 18–22 | Capture a compound/generic value and an external borrow, then invoke through the required Callable mode; separately demonstrate permitted function-value erasure. | Shared/exclusive/consuming calls, nested captures, function items, moved closures, escaping dependencies and erasure without required Copy/Owned evidence. | Environment layout, direct versus common entries, capture destruction, no per-call environment allocation; optional erasure allocation accounted separately. |
-| 27 / 7, 13, 16 | Resolve Index/Range values and retain nested/sub-Slice views of external backing storage. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation. Mutable-element Slice remains excluded. |
+| 27 / 7, 13, 16, 19 | Resolve Index/Range values and retain nested/sub-Slice views of external backing storage; publish user Places through `Indexable`/`UniqIndexable` and forward one through a generic Constraint. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition; reject Take, bare Non-Copy reads and shared-path updates of published Places, and Place results over ending storage. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation; Place results use the reference ABI. Mutable-element Slice remains excluded. |
 | 28 / 13, 18–19, 27 | Implement user Iterable/Iterator protocols, yield owned or externally borrowed elements, then stop early. | Exhaustion, continue/exit/return, correct associated Element/Iterator equality, retained previous borrowed results; reject lending results and missing capability proofs. | Receiver acquisition once, exact yielded/unyielded responsibilities and reverse remaining-element cleanup; no hidden element clone. |
 | 29 / 17–18, 27–28 | Grow, insert, replace and remove Non-Copy Array elements; consume an iterator and stop early. | Empty/pop/clear, directional indices, capacity/no-op paths, live and empty-Slice conflicts, retained borrowed contents, normal argument abandonment and Abort. | Count internal allocations; verify within-capacity/no-op/removal guarantees, reverse current-index cleanup, growth amortization and shrink failure preserving original placement. |
 | 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
@@ -277,6 +284,8 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 36 / 19, 22, 24–25, 34 | Initialize static values on first access, distinguish enclosing generic keys and destroy in reverse successful-initialization order. | First write before replacement, unused storage, alias paths to one key, effects/reentry, non-Owned storage rejection; initialization cycles and invalid shutdown access in separate Abort inputs. | Per-key state/address/destruction identity, preserved keys across body sharing and Origin erasure, no initialization from untaken paths or effect summaries alone. |
 | 37 / 26–32 | One bounded processing workload using collections, borrowed views, iteration and closures with exact results and cleanup. | Empty input, alternate values, early stop, rejection/Abort paths and representative Loan violations derived from the workload. | Workload allocation/complexity observations and regressions of prerequisites; no new language mechanism introduced to make the application work. |
 | 38 / 24–25, 32–36; 37 as needed | A second application using Properties, inheritance, objects and formatted output with exact lifetime behavior. | Alternate object lifetimes, replacement, empty/expired states, shutdown and relevant rejected accesses. | Cross-feature identity/cleanup/ownership checks and prerequisite regressions. It need not repeat every program-37 collection operation; no new feature family is deferred to this final target. |
+| 39 / 8, 18, 27 | Generic code over `Collection<s/T>` follows a pair Place to its stored target for every admitted `s`: shared under `value or valueborrow`, exclusive under `owner or uniq`. | Reject an exclusive follow whose admitted set includes `ref`, Take through the followed Place and any layer choice that would differ between instantiations; the followed Place depends on the outer borrow Origin whenever `s` is a borrow. | The Access Effect is fixed per admitted set at definition checking; monomorphized bodies select the owner Place or the referent without a runtime test and without allocation. Written after the G21 decision. |
+| 40 / 27–29, 31 | Borrow two distinct elements of an Array exclusively at once through a splitting operation, update both, and observe `None` for equal indices. | Reject two `@uniq` element borrows of one collection, conflicting whole-collection access while a split part is live, and retention of a part after the collection is moved or resized. | Region splitting through `Kimi.Storage` in O(1) without allocation; both child Loans end before the parent is reused. Written after the G22 decision. |
 
 Owning clauses: [Properties](../spec/11-properties.md),
 [generics and Contracts](../spec/08-generics-constraints-and-contracts.md),
@@ -1451,6 +1460,13 @@ length fails through `tryResolve`. Shared string access preserves its Non-Copy
 owner. A `Slice<ref/i32>` read copies the inner reference with its original
 dependency, distinct from the Slice's backing-slot dependency.
 
+`Pair<T>` publishes its two stored Places through `Indexable<isize>` and
+`UniqIndexable<isize>` (§4.6.9, §7.1.1): `pair[1]` at a `ref/string` parameter
+selects `index` and borrows the second Place; `pair[0] = ...` selects `indexUniq`
+and replaces the first value in place; `pair[0]@ref` keeps one reference from one
+search; and the generic `firstPlace` forwards a Place result through the Contract
+requirement without acquiring a value.
+
 Expected stdout (specification-derived; native execution is blocked):
 
 ```text
@@ -1462,6 +1478,8 @@ Short target rejected.
 Last text.
 Last text.
 Slice Origins preserved.
+Pair second.
+Pair replaced.
 ```
 
 Separate checks: full/empty/inclusive ranges, `Index.init`, zero-sized elements,
@@ -1474,9 +1492,20 @@ views and reslices preserve the original Loan footprint and nested Origins.
 Measure O(1) view operations without backing allocation or element copying.
 Mutable-element Slice remains outside this milestone.
 
+Place checks: a bare read of a Non-Copy published Place, `@move` of a published
+Place, an update through `index` alone (a `let` pair or a `ref/Pair` receiver),
+a Place result that designates a local or a by-value parameter, an `if` whose
+branches designate Places without their own `return`, a mismatched `Element`
+specification, and a conformance that omits `indexUniq` while claiming
+`UniqIndexable` are rejected. A retained `pair[0]@ref` conflicts with a later
+`pair[0] = ...`; the exclusive receiver of `indexUniq` is reserved before the key
+is evaluated (§15.6.7). The Place result ABI is the reference ABI (§21.2).
+
 Focus: [bounds and failure](../spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure),
 [Slice lifetimes](../spec/04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions),
 [element results](../spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
+[Indexable Contracts](../spec/04-arrays-indexing-and-slices.md#469-indexable-contracts),
+[Place results](../spec/07-functions-and-callable-values.md#711-place-results),
 and [required costs](../spec/04-arrays-indexing-and-slices.md#468-representation-and-performance).
 
 ## Milestone 28: user Iterable/Iterator and element responsibilities
