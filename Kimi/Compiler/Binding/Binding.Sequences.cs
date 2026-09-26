@@ -9,7 +9,7 @@ public sealed partial class Binding
     private bool BindSequenceMember(MemberAccessKoto source, BindingScope scope, out BoundType? result)
     {
         result = null;
-        if (source.Right is not IdentifierNameKoto name || name.IdentifierName is not ("indices" or "length" or "isEmpty" or "capacity" or "start" or "end"))
+        if (source.Right is not IdentifierNameKoto name || name.IdentifierName is not ("indices" or "length" or "isEmpty" or "capacity"))
         {
             return false;
         }
@@ -21,20 +21,19 @@ public sealed partial class Binding
         }
 
         var utf8 = FormattingTypes.IsUtf8Slice(receiver);
-        if (!utf8 && receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary))
+        if (!utf8 && receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary))
         {
-            return false;
+            return false; // A ResolvedRange exposes its fields and computed Properties through the library struct (SPEC 4.6.3).
         }
 
         // SPEC 4.6.1 and 4.7.4: fixed arrays and Array expose length and indices, Slice adds isEmpty, Array adds capacity.
-        var range = receiver!.Kind == BoundTypeKind.ResolvedRange;
         var valid = name.IdentifierName switch
         {
-            "indices" => !range && !utf8 && receiver.Kind != BoundTypeKind.Dictionary,
+            "indices" => !utf8 && receiver!.Kind != BoundTypeKind.Dictionary,
             "length" => true,
-            "isEmpty" => receiver.Kind is BoundTypeKind.Slice or BoundTypeKind.ResolvedRange,
-            "capacity" => receiver.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary,
-            _ => range,
+            "isEmpty" => receiver!.Kind is BoundTypeKind.Slice,
+            "capacity" => receiver!.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary,
+            _ => false,
         };
         if (!valid)
         {
@@ -42,7 +41,7 @@ public sealed partial class Binding
             return true;
         }
 
-        result = name.IdentifierName == "indices" ? BoundType.ResolvedRange : name.IdentifierName == "isEmpty" ? BoundType.Boolean : BoundType.ISize;
+        result = name.IdentifierName == "indices" ? this.ResolvedRangeType : name.IdentifierName == "isEmpty" ? BoundType.Boolean : BoundType.ISize;
         Complete(name, result);
         Complete(source, result);
         return true;
@@ -53,7 +52,7 @@ public sealed partial class Binding
         var iterable = this.BindNode(source.Iterable, scope);
         source.SharedIterable = null;
         source.Mode = SubjectModeOf(source.Iterable, iterable);
-        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Slice or BoundTypeKind.ResolvedRange }] })
+        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Slice } or { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
         {
             // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy handle or
             // interval is the entry receiver and is read once for the loop. Exclusive enumeration of a
@@ -84,7 +83,7 @@ public sealed partial class Binding
 
         var view = source.SharedIterable ?? iterable;
         var element = view is null ? null : view.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? view.Components[0] : view.Kind == BoundTypeKind.Slice
-            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : view.Kind == BoundTypeKind.ResolvedRange ? BoundType.ISize
+            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize
             : exclusive && (ReferenceTypes.IsArray(view) || ReferenceTypes.IsDynamicArray(view)) ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [view.Components[0].Components[0]], origin: view.Origin) : null;
         if (dictionary is not null)
         {
@@ -137,7 +136,7 @@ public sealed partial class Binding
             return Fail(source, BindingFailure.TypeMismatch);
         }
 
-        if (dictionary is null && view?.Kind is not (BoundTypeKind.ResolvedRange or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) &&
+        if (dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) &&
             !(exclusive && (ReferenceTypes.IsArray(view) || ReferenceTypes.IsDynamicArray(view))))
         {
             return Fail(source, BindingFailure.Unsupported);

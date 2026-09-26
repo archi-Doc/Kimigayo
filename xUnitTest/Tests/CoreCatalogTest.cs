@@ -159,12 +159,12 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Library.IsCompleteLibrary);
-        Assert.Equal(75, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(77, c.Library.ValidatedDeclarationCount);
         Assert.Equal(85, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];
-            if ((int)entry.Id < 6 || entry.Id >= KimiDeclarationId.Utf8Format || entry.Id is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Index or KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.IntoIterable or KimiDeclarationId.Slice or KimiDeclarationId.Array or KimiDeclarationId.Dictionary or KimiDeclarationId.TestTempDirectory or (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex))
+            if ((int)entry.Id < 6 || entry.Id >= KimiDeclarationId.Utf8Format || entry.Id is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Index or KimiDeclarationId.Range or KimiDeclarationId.ResolvedRange or KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.IntoIterable or KimiDeclarationId.Slice or KimiDeclarationId.Array or KimiDeclarationId.Dictionary or KimiDeclarationId.TestTempDirectory or (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex))
             {
                 Assert.Equal(KimiDeclarationState.Validated, entry.State);
                 Assert.Same(entry.Symbol, c.Library.GetSymbol(entry.Id));

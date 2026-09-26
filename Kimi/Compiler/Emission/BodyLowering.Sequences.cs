@@ -326,17 +326,17 @@ internal sealed partial class BodyLowering
         };
         if (name is null || (operation.Source is not ForKoto && operation.Source is not MemberAccessKoto { Right: IdentifierNameKoto }) ||
             (operation.Source is MemberAccessKoto { Right: IdentifierNameKoto member } && member.IdentifierName != name) ||
-            (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary) &&
+            (!ReferenceTypes.IsResolvedRange(receiver) && receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary) &&
                 !(FormattingTypes.IsUtf8Slice(receiver) && plan.Kind == SequenceOperation.Length && this.aggregateLayouts.Get(receiver) is { Value.Layout.Size: 16, Fields.Length: 1 } viewLayout && viewLayout.Offset(0) == 0)) ||
             (plan.Kind == SequenceOperation.Capacity && receiver.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary)) ||
             (plan.Kind == SequenceOperation.Indices ? operation.Source is not MemberAccessKoto { Right: IdentifierNameKoto { IdentifierName: "indices" } } ||
-                receiver.Kind == BoundTypeKind.ResolvedRange || !ReferenceEquals(ValueType(body, id), BoundType.ResolvedRange) :
+                ReferenceTypes.IsResolvedRange(receiver) || !ReferenceTypes.IsResolvedRange(ValueType(body, id)) :
                 plan.Kind == SequenceOperation.IsEmpty ? !ReferenceEquals(ValueType(body, id), BoundType.Boolean) : !ReferenceEquals(ValueType(body, id), BoundType.ISize)))
         {
             return Fail("Sequence operation does not match its source and result Type.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1), new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.Dictionary ? 24 : 8)], place: operation.Place, op: name, representation: receiver.Kind == BoundTypeKind.ResolvedRange ? WindowsLowering.Unit : null);
+        function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1), new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.Dictionary ? 24 : 8)], place: operation.Place, op: name, representation: ReferenceTypes.IsResolvedRange(receiver) ? WindowsLowering.Unit : null);
         return true;
     }
 }

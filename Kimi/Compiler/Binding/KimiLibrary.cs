@@ -106,6 +106,8 @@ public sealed partial class KimiLibrary
         this.Slice = this.GetSymbol(KimiDeclarationId.Slice)!;
         this.DynamicArray = this.GetSymbol(KimiDeclarationId.Array)!;
         this.Index = this.GetSymbol(KimiDeclarationId.Index)!;
+        this.Range = this.GetSymbol(KimiDeclarationId.Range)!;
+        this.ResolvedRange = this.GetSymbol(KimiDeclarationId.ResolvedRange)!;
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
         var iterator = FindDeclaration(this.Kotonoha.RootKoto, "SliceIterator", false);
@@ -190,6 +192,12 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the designated storable sequence Index Type (SPEC 4.6.2).</summary>
     public BindingSymbol Index { get; }
+
+    /// <summary>Gets the designated unresolved Range Type that range syntax constructs (SPEC 4.6.3).</summary>
+    public BindingSymbol Range { get; }
+
+    /// <summary>Gets the designated validated ResolvedRange Type (SPEC 4.6.3).</summary>
+    public BindingSymbol ResolvedRange { get; }
 
     /// <summary>Gets the implemented concrete object factory, independently of the incomplete ownership family.</summary>
     public BindingSymbol MakeObj { get; }

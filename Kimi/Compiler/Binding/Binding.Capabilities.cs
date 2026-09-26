@@ -91,9 +91,9 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Kind == BoundTypeKind.ResolvedRange || (type.Kind == BoundTypeKind.Slice && kind == IntrinsicKind.Copy))
+        if (type.Kind == BoundTypeKind.Slice && kind == IntrinsicKind.Copy)
         {
-            result = kind == IntrinsicKind.Copy || type.Kind == BoundTypeKind.ResolvedRange ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            result = ConstraintProof.Proven;
             return true;
         }
 

@@ -151,7 +151,7 @@ public sealed partial class OwnershipAnalysis
         var array = shared is null && iterableType?.Kind == BoundTypeKind.FixedArray;
         var dynamicArray = shared is null && iterableType?.Kind == BoundTypeKind.Array;
         var slice = !dictionary && (shared is not null || iterableType?.Kind == BoundTypeKind.Slice);
-        if (!dictionary && !array && !dynamicArray && !slice && iterableType?.Kind != BoundTypeKind.ResolvedRange)
+        if (!dictionary && !array && !dynamicArray && !slice && !ReferenceTypes.IsResolvedRange(iterableType))
         {
             this.Unsupported(source);
             return;

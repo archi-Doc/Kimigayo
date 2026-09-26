@@ -604,6 +604,11 @@ public sealed partial class OwnershipAnalysis
             return this.Expression(indexer, use, acquisition); // SPEC 4.6.9: receiver[key] through a user conformance reads the published Place.
         }
 
+        if (this.compilation.Binding.RangeValueCall(node) is { } rangeValue)
+        {
+            return this.Expression(rangeValue, use, acquisition); // SPEC 4.6.3: range syntax constructs the library Range.
+        }
+
         if (this.compilation.Binding.StorageProjection(node) is { } storage)
         {
             return this.ReadBorrowedField(storage);
@@ -709,7 +714,7 @@ public sealed partial class OwnershipAnalysis
                 return this.ConversionValue(conversion);
             case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
                 return this.ReadPointer(element, use);
-            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.ResolvedRange or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) || ReferenceTypes.IsDictionary(member.Left.BoundType) ||
+            case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) || ReferenceTypes.IsDictionary(member.Left.BoundType) ||
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))):
                 return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) || ObjectTypes.IsBorrow(member.Left.BoundType) ||

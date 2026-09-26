@@ -431,6 +431,8 @@ public sealed partial class Binding
                 return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, inferredSymbol, null, scope, expected);
             case IndexKoto index:
                 return this.BindElement(index, scope);
+            case RangeKoto range:
+                return this.BindRangeValue(range, scope); // SPEC 4.6.3: range syntax outside an index position.
             case MemberAccessKoto { Right: NumberLiteralKoto } tupleElement:
                 return this.BindElement(tupleElement, scope);
             case MemberAccessKoto member:

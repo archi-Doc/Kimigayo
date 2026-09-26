@@ -40,6 +40,10 @@ public sealed class InvocationKoto : ApplicationKoto
     public IReadOnlyList<string?> ArgumentLabels
         => this.argumentLabels ??= new string?[this.ArgumentNodes.Count];
 
+    /// <summary>Sets the argument labels of a synthesized invocation, in argument order.</summary>
+    /// <param name="labels">The labels, or <see langword="null"/> when no argument is labeled.</param>
+    internal void SetArgumentLabels(string?[]? labels) => this.argumentLabels = labels;
+
     /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

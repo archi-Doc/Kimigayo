@@ -13,11 +13,99 @@ public enum Result<T, E>
     Ok(T)
     Err(E)
 
+// SPEC 4.6.2: a Copy position measured from the start or the end; it retains no target.
 public struct Index
     Self is Copy
+    Self is Equatable
     public let offset: isize
     public let isFromEnd: bool
     public init(offset: isize, fromEnd: bool = false)
         require offset >= 0 else => $abort("Negative Index offset")
         self.offset = offset
         self.isFromEnd = fromEnd
+    // Range syntax normalizes an integer boundary through this form; Range construction then checks the signs in
+    // boundary order after both boundaries are evaluated (SPEC 4.6.4).
+    public init(! unchecked: isize)
+        self.offset = unchecked
+        self.isFromEnd = false
+    public func equals(self: ref/Self, other: ref/Self) -> bool => self.offset == other.offset and self.isFromEnd == other.isFromEnd
+    // SPEC 4.6.4: a boundary position at length; ^0 resolves to the length itself.
+    public func resolve(self, length: isize) -> isize
+        match self.tryResolve(length)
+            .Some(let position) => return position
+            .None => $abort("Index out of range")
+    public func tryResolve(self, length: isize) -> Option<isize>
+        require length >= 0 and self.offset >= 0 and self.offset <= length else => return .None
+        if self.isFromEnd => return .Some(length - self.offset)
+        return .Some(self.offset)
+
+// SPEC 4.6.3: unresolved boundaries and an end-inclusion flag, constructed by range syntax through the labeled
+// constructors below (its normal forms); an omitted start is 0 and an omitted end is ^0.
+public struct Range
+    Self is Copy
+    Self is Equatable
+    public let start: Index
+    public let end: Index
+    public let isInclusive: bool
+    init(start: Index, end: Index, inclusive: bool)
+        self.start = start
+        self.end = end
+        self.isInclusive = inclusive
+    // The normal forms of range syntax (SPEC 4.6.3): the signs of integer boundaries are checked in boundary order after
+    // both boundaries are evaluated (SPEC 4.6.4).
+    public func between(start: Index, end: Index) -> Range
+        require start.offset >= 0 else => $abort("Negative Range start")
+        require end.offset >= 0 else => $abort("Negative Range end")
+        return Range.init(start, end, false)
+    public func from(start: Index) -> Range
+        require start.offset >= 0 else => $abort("Negative Range start")
+        return Range.init(start, Index.init(0, fromEnd: true), false)
+    public func to(end: Index) -> Range
+        require end.offset >= 0 else => $abort("Negative Range end")
+        return Range.init(Index.init(0), end, false)
+    public func all() -> Range => Range.init(Index.init(0), Index.init(0, fromEnd: true), false)
+    public func through(start: Index, end: Index) -> Range
+        require start.offset >= 0 else => $abort("Negative Range start")
+        require end.offset >= 0 else => $abort("Negative Range end")
+        return Range.init(start, end, true)
+    public func upTo(end: Index) -> Range
+        require end.offset >= 0 else => $abort("Negative Range end")
+        return Range.init(Index.init(0), end, true)
+    public func equals(self: ref/Self, other: ref/Self) -> bool => self.start == other.start and self.end == other.end and self.isInclusive == other.isInclusive
+    public func resolve(self, length: isize) -> ResolvedRange
+        match self.tryResolve(length)
+            .Some(let resolved) => return resolved
+            .None => $abort("Range out of range")
+    // SPEC 4.6.4: both boundaries resolve within [0, length]; an inclusive end lies below the length and is normalized.
+    public func tryResolve(self, length: isize) -> Option<ResolvedRange>
+        var first: isize = 0
+        var last: isize = 0
+        match self.start.tryResolve(length)
+            .Some(let position) => first = position
+            .None => return .None
+        match self.end.tryResolve(length)
+            .Some(let position) => last = position
+            .None => return .None
+        if self.isInclusive
+            require last < length else => return .None
+            last = last + 1
+        require first <= last else => return .None
+        return .Some(ResolvedRange.init(start: first, end: last))
+
+// SPEC 4.6.3: a validated absolute half-open interval; the compiler produces it for indices and iterates it directly.
+public struct ResolvedRange
+    Self is Copy
+    Self is Equatable
+    public let start: isize
+    public let end: isize
+    public init(! start: isize, end: isize)
+        require start >= 0 and start <= end else => $abort("Invalid ResolvedRange bounds")
+        self.start = start
+        self.end = end
+    public computed length: isize
+        get() -> isize
+            return self.end - self.start
+    public computed isEmpty: bool
+        get() -> bool
+            return self.start == self.end
+    public func equals(self: ref/Self, other: ref/Self) -> bool => self.start == other.start and self.end == other.end

@@ -169,13 +169,5 @@ public sealed partial class Binding
         }
 
         return this.BindCall(call, scope, null) is null ? null : call;
-
-        static void ResetSynthetic(Koto node)
-        {
-            node.BindingState = BindingState.Unvisited;
-            node.BoundType = null;
-            node.BoundSymbol = null;
-            node.BindingFailure = BindingFailure.None;
-        }
     }
 }

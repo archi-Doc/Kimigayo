@@ -58,7 +58,6 @@ public enum BoundTypeKind : byte
     TargetProjection,
     SemanticsApplication,
     AssociatedProjection,
-    ResolvedRange,
     Slice,
     Range,
     Closure,
@@ -285,7 +284,6 @@ public sealed record BoundType : ControlFlowType
     internal static readonly BoundType ISize = Primitives["isize"];
     internal static readonly BoundType USize = Primitives["usize"];
 
-    internal static readonly BoundType ResolvedRange = new("ResolvedRange", BoundTypeKind.ResolvedRange);
     internal static readonly BoundType Range = new("Range", BoundTypeKind.Range);
 
     internal static readonly BoundType Char = Primitives["char"];
