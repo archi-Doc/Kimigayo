@@ -195,8 +195,15 @@ public class PairFollowTest
         "    require total(a@ref) == 3 and peek(a@uniq) == 3 else => $abort(\"followed\")\n" +
         "    Console.writeLine(\"Followed iteration.\")\n";
 
+    // SPEC 13.5.5.1: with only uniq admitted, Write reaches through a let slot; an explicit follow is an exclusive receiver.
+    private const string ExclusiveFollow =
+        "func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is uniq\n    values@follow.append(4)\n" +
+        "public func main()\n    var a: Array<i32> = [1, 2]\n    var w: i32 = 0\n    grow(a@uniq, w@uniq)\n" +
+        "    require a.length == 3 and a[2] == 4 else => $abort(\"grow\")\n    Console.writeLine(\"Exclusive follow.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "ExclusiveFollow", ExclusiveFollow, "Exclusive follow.\n" },
         { "FollowedIteration", FollowedIteration, "Followed iteration.\n" },
         { "Combined", Combined, "Combined.\n" },
         { "NestedReceiver", NestedReceiver, "Nested receiver.\n" },
@@ -315,10 +322,11 @@ public class PairFollowTest
     }
 
     // SPEC 8.1.2: an s/U nested in a Type argument gains no omitted Origin; SPEC 13.5.5.1: a followed element Place is never
-    // transferred by a bare initializer.
+    // transferred by a bare initializer, and Write with owner admitted needs an exclusively writable operand.
     [Theory]
     [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0")]
     [InlineData("func pick<s/T>(c: ref/Collection<s/T>, i: isize) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let n = c[i]\n    return n.load()")]
+    [InlineData("func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is owner or uniq\n    values@follow.append(4)")]
     public void PairPositionsReject(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
