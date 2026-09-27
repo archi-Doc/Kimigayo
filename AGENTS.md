@@ -1,3 +1,21 @@
+# Kimigayo Principles — A Programming Language for AI
+
+1. **One Concept, One Canonical Form**
+   Give each concept and operation one clear, consistent form. Allow alternatives only when they provide a distinct practical benefit.
+
+2. **Local Reasoning**
+   Make meaning and legality understandable from local code, explicit context, and published contracts. Keep inference and resolution bounded and predictable.
+
+3. **Explicit Semantics**
+   Express ownership, failure, conversion, and dependency semantics in syntax or contracts. Allow omission only when meaning remains locally unambiguous.
+
+4. **Compiler Server Protocol**
+   Provide a structured interface for:
+
+   - **Diagnostics:** causes, related locations, and repair candidates with explicit preconditions and guarantees.
+   - **AST Inspection and Manipulation:** inspect syntax and semantics, apply edits against identified source snapshots, and produce reviewable source changes.
+   - **Verifiable Changes:** associate checks, tests, and measurements with exact source and configuration, reporting outcomes and remaining uncertainty.
+
 # Coding Guidelines
 
 - Minimize memory allocations and optimize code for performance wherever practical.
