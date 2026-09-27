@@ -35,6 +35,16 @@ public class AssociatedLendingStepTest
         Assert.Empty(writer.ToString());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContinueAndExitReleaseStepLoans(bool generic)
+    {
+        var next = generic ? "advance(iterator@uniq)" : "iterator.next()";
+        var source = Declarations + "var iterator = Counter.init()\nvar count: i32 = 0\nvar total: i32 = 0\nwhile count < 5\n    let item = " + next + "\n    count += 1\n    if item < 3 => continue\n    total += item\n    if item == 4 => exit\nrequire count == 4 else => $abort(\"exit count\")\nrequire total == 7 else => $abort(\"continue total\")\nlet after = " + next + "\nrequire after == 5 else => $abort(\"after exit\")\nConsole.writeLine(\"transfers\")";
+        ScalarEmissionTest.EmitFixture("AssociatedOriginLendingTransfers" + (generic ? "Generic" : "Concrete"), source, "transfers\n");
+    }
+
     [Fact]
     public void RepeatedLendingStepsReuseLoansAndAllocateNothing()
     {
