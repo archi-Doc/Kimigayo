@@ -94,6 +94,32 @@ public sealed partial class Binding
             ? constraint : this.InternConstraint(new(constraint.Kind, constraint.Subject, required, constraint.Contract, constraint.Mask, left, right));
     }
 
+    private BoundType? BindAssociatedRefinement(IsKoto clause, OriginApplicationKoto application, MemberAccessKoto member, BindingScope scope)
+    {
+        var owner = scope.Owner.BoundSymbol!;
+        var qualifier = this.TypeName(member.Left, scope, false);
+        if (qualifier?.Declaration is not ContractKoto || ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
+        {
+            return Fail(clause, BindingFailure.InvalidAssociatedType);
+        }
+
+        var self = this.SelfType(owner);
+        var associated = this.FindAssociated(self, scope, name, qualifier, clause);
+        if (associated is null || this.AssociatedParameters(associated.Declaration).Length != application.ArgumentNodes.Count)
+        {
+            return Fail(clause, BindingFailure.InvalidAssociatedType);
+        }
+
+        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self], originArguments: this.AssociatedParameters(associated.Declaration));
+        clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = application.BoundSymbol = associated;
+        member.Left.BoundSymbol = qualifier;
+        Complete(member.Left, BoundType.Unit);
+        Complete(member.Right, projection);
+        Complete(member, projection);
+        Complete(application, projection);
+        return projection;
+    }
+
     private void PrepareAssociatedOrigins()
     {
         for (var n = 0; n < this.nodes.Count; n++)
