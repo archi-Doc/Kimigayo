@@ -340,9 +340,11 @@ public sealed partial class Binding
             case TypeKoto:
                 return this.BindType(node, scope);
             case DeclarationContainerKoto container:
+                var invalidGenericHeader = false;
                 for (var i = 0; i < container.GenericParameterNodes.Count; i++)
                 {
                     this.BindType(container.GenericParameterNodes[i], scope);
+                    invalidGenericHeader |= container.GenericParameterNodes[i] is LengthParameterKoto;
                 }
 
                 for (var i = 0; i < container.Bases.Count; i++)
@@ -380,7 +382,7 @@ public sealed partial class Binding
                     return Fail(node, BindingFailure.Unsupported, true);
                 }
 
-                return Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
+                return invalidGenericHeader ? Fail(node, BindingFailure.InvalidTypeFormation) : Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
             case FunctionKoto function:
                 return function.IsAnonymous ? this.BindClosure(function, scope, expected) : this.BindFunction(function, scope);
             case VariableKoto variable:

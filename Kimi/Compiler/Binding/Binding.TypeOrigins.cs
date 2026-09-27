@@ -18,7 +18,9 @@ public sealed partial class Binding
         {
             for (var i = 0; i < schema.GenericSlots.Count; i++)
             {
-                types[i] = schema.GenericSlots[i].Symbol.WholeType!;
+                var slot = schema.GenericSlots[i];
+                // An invalid nominal length header is diagnosed by BindSchemas; its recovery Type must still be complete.
+                types[i] = slot.Kind == GenericSlotKind.Length ? BoundType.Never : slot.Symbol.WholeType!;
             }
 
             for (var i = 0; i < schema.Origins.Count; i++)

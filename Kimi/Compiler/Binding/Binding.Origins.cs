@@ -256,6 +256,16 @@ public sealed partial class Binding
                 }
 
                 parameters = container.GenericParameterNodes;
+                for (var i = 0; i < parameters.Count; i++)
+                {
+                    if (parameters[i] is LengthParameterKoto)
+                    {
+                        // SPEC 8.1: length slots belong only to functions. Keep the invalid header for recovery.
+                        Fail(node, BindingFailure.InvalidTypeFormation);
+                        break;
+                    }
+                }
+
                 origins = container.OriginNames;
             }
             else
