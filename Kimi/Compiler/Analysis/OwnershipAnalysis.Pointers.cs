@@ -376,7 +376,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var address = this.Expression(reference, PlaceUseKind.Read);
+        var address = this.ReadsStoredReference(followed) ? this.StoredReference(KotoHelper.UnwrapParentheses(reference), SemanticsKind.Uniq)
+            : this.Expression(reference, PlaceUseKind.Read);
         var pointer = this.Value(address);
         if (pointer < 0)
         {

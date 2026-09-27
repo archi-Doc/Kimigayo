@@ -125,11 +125,11 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(loaded);
     }
 
-    // SPEC 13.5.5.1, 13.5.5.2: in an instance whose pair binding is ref or uniq, a followed pair stored in a field or element
-    // Place lends through the stored reference: the slot is shared-borrowed only to load the pointer, which is neither moved
-    // nor copied as an owner. A local operand is read in place by the ordinary reference paths.
+    // SPEC 13.5.5.1, 13.5.5.2: a followed reference stored in a field or element Place lends through the stored reference:
+    // the slot is borrowed only to load the pointer, which is neither moved nor copied as an owner. A pair follows this
+    // path in a ref/uniq instance; a local operand is read in place by the ordinary reference paths.
     private bool ReadsStoredReference(ConversionKoto conversion)
-        => conversion.ConversionBinding == ConversionBinding.PairFollow && this.instance is not null &&
+        => (conversion.ConversionBinding == ConversionBinding.Follow || (conversion.ConversionBinding == ConversionBinding.PairFollow && this.instance is not null)) &&
             KotoHelper.UnwrapParentheses(conversion.Left) is not IdentifierNameKoto && this.FollowsReference(conversion);
 
     // SPEC 3.4.1, 7.3: a receiver selected through a pair layer lends through the reference stored in it in a ref or uniq
