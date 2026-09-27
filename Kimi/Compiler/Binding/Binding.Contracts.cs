@@ -620,7 +620,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(fact.Contract!, contract))
+                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(fact.Contract!, contract))
                 {
                     premise = true;
                     break;

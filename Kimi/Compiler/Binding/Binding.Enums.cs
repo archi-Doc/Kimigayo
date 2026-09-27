@@ -321,7 +321,7 @@ public sealed partial class Binding
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
                     var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
-                    if (!this.Infer(inferred, adapted, declaration, arguments, true))
+                    if (!(hint is not null && this.FitsTypeAt(adapted, hint, source)) && !this.Infer(inferred, adapted, declaration, arguments, true))
                     {
                         return Fail(use, BindingFailure.TypeMismatch);
                     }
@@ -356,7 +356,7 @@ public sealed partial class Binding
             {
                 var type = this.StoredType(payload[i].BoundType!, result)!;
                 var operation = operations[i];
-                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || !FitsType(adapted, type))
+                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || !this.FitsTypeAt(adapted, type, operation.Source!))
                 {
                     return Fail(use, BindingFailure.TypeMismatch);
                 }

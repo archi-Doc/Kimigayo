@@ -107,12 +107,12 @@ internal sealed partial class BodyLowering
                     return false;
                 }
 
-                if (value.Kind == OwnershipValueKind.Phi && (body.Values[input].Kind == OwnershipValueKind.Alias || !FitsValue(ValueType(body, input), ValueType(body, id))))
+                if (value.Kind == OwnershipValueKind.Phi && (body.Values[input].Kind == OwnershipValueKind.Alias || !FitsValue(ValueType(body, input), ValueType(body, id), operation.Source)))
                 {
                     return false;
                 }
 
-                if (value.Kind == OwnershipValueKind.Alias && !FitsValue(ValueType(body, input), operation.Kind == OwnershipOperationKind.Branch ? BoundType.Boolean : ValueType(body, id)))
+                if (value.Kind == OwnershipValueKind.Alias && !FitsValue(ValueType(body, input), operation.Kind == OwnershipOperationKind.Branch ? BoundType.Boolean : ValueType(body, id), operation.Source))
                 {
                     return false;
                 }
@@ -224,9 +224,10 @@ internal sealed partial class BodyLowering
     // A value fits its destination's storage and Origin contract. An Origin omitted in an initializer's Type expression is
     // inferred after that Type was formed (SPEC 15.4.4); Binding proves its relations at the BodyOrigins deadline, so its
     // unresolved atom is not compared here.
-    private static bool FitsValue(BoundType? source, BoundType? target)
+    private static bool FitsValue(BoundType? source, BoundType? target, Parsing.Koto? use = null)
         => ReferenceEquals(source, target) ||
-            (ReferenceTypes.StorageMatches(source, target) && (Binding.FitsType(source!, target!) || HasInferenceOrigin(source!) || HasInferenceOrigin(target!)));
+            (ReferenceTypes.StorageMatches(source, target) && (Binding.FitsType(source!, target!) ||
+                (use is not null && use.CodeContext.Compilation.Binding.FitsTypeAt(source!, target!, use)) || HasInferenceOrigin(source!) || HasInferenceOrigin(target!)));
 
     private static bool HasInferenceOrigin(BoundType type)
     {

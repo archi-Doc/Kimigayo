@@ -50,7 +50,7 @@ public sealed partial class Binding
 
                 foreach (var fact in environment.Facts)
                 {
-                    if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, type) && fact.Contract?.Contract is { } shape)
+                    if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is { } shape)
                     {
                         Search(shape);
                     }

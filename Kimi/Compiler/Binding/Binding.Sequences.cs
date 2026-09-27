@@ -105,7 +105,7 @@ public sealed partial class Binding
             element = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [key, value]);
         }
 
-        var userEntry = element is null && iterable is not null && source.Mode == SubjectMode.ByValue &&
+        var userEntry = element is null && iterable is not null &&
             this.BindUserIteration(source, scope, iterable, out element);
 
         // SPEC 14.6.2, 14.8.1: structural decomposition selects every safe reference layer. A shared
@@ -140,7 +140,7 @@ public sealed partial class Binding
             }
 
             name.BoundSymbol!.Type = slot;
-            name.BoundSymbol.BindsReference = sharedTuple || source.Mode != SubjectMode.ByValue;
+            name.BoundSymbol.BindsReference = sharedTuple || (!userEntry && source.Mode != SubjectMode.ByValue);
             Complete(name, slot);
         }
 
@@ -177,7 +177,14 @@ public sealed partial class Binding
     private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, out BoundType? item)
     {
         item = null;
-        var entry = this.Library.IntoIterable;
+        var entry = source.Mode == SubjectMode.ByValue ? this.Library.IntoIterable :
+            source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
+        var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
+        if (source.Mode != SubjectMode.ByValue && subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq })
+        {
+            subject = subject.Components[0];
+        }
+
         var nominal = subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null;
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {
@@ -186,9 +193,9 @@ public sealed partial class Binding
 
         // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. The ordinary call keeps
         // receiver acquisition, substitutions and Origins; no method-name fallback grants conformance.
-        if (source.EntryCall is not { } call)
+        if (source.EntryCall is not { } call || ((MemberAccessKoto)call.Method).Right is not IdentifierNameKoto name || name.IdentifierName != method)
         {
-            var member = new MemberAccessKoto(source, source.Iterable, new IdentifierNameKoto(source, "intoIterator"));
+            var member = new MemberAccessKoto(source, source.Iterable, new IdentifierNameKoto(source, method));
             source.EntryCall = call = new InvocationKoto(source, member, []);
         }
         else
@@ -199,21 +206,24 @@ public sealed partial class Binding
         }
 
         this.projectionUses.Add((source, subject, entry));
-        if (this.BindCall(call, scope, null) is not { } iterator ||
-            this.FindAssociated(iterator, scope, "Item", this.Library.Iterator, source) is not { } associated)
+        if (this.BindCall(call, scope, null) is not { } iterator)
         {
             return false;
         }
 
-        this.projectionUses.Add((source, iterator, this.Library.Iterator));
-        item = this.ContractType(this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [iterator]), scope);
+        this.projectionUses.Add((source, iterator, this.Library.LendingIterator));
+        if (this.BindIterationNext(source, scope, iterator) is not { Components.Count: 1 } option || !ReferenceEquals(option.Symbol, this.Library.Option))
+        {
+            return false;
+        }
+
+        item = option.Components[0];
         return true;
     }
 
-    private void BindIterationStep(ForKoto source, BindingScope scope, BoundType item, BoundType tuple, PatternAccessMode access, int layers)
+    private BoundType? BindIterationNext(ForKoto source, BindingScope scope, BoundType iterator)
     {
         var plan = source.Iteration ??= new(source);
-        var iterator = source.EntryCall!.BoundType!;
         plan.Scope.Parent = scope;
         plan.Scope.Function = scope.Function;
         var symbol = plan.Iterator.BoundSymbol ??= new BindingSymbol("$for.iterator", BindingSymbolKind.Local, plan.Iterator, plan.Scope);
@@ -225,7 +235,13 @@ public sealed partial class Binding
         ResetSynthetic(plan.Next);
         ResetSynthetic(plan.Next.Method);
         ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
-        if (this.BindCall(plan.Next, plan.Scope, null) is not { } option || !ReferenceEquals(option.Symbol, this.Library.Option) ||
+        return this.BindCall(plan.Next, plan.Scope, null);
+    }
+
+    private void BindIterationStep(ForKoto source, BindingScope scope, BoundType item, BoundType tuple, PatternAccessMode access, int layers)
+    {
+        var plan = source.Iteration!;
+        if (plan.Next.BoundType is not { } option || !ReferenceEquals(option.Symbol, this.Library.Option) ||
             option.Components.Count != 1 || !ReferenceEquals(option.Components[0], item))
         {
             Fail(source, BindingFailure.TypeMismatch);

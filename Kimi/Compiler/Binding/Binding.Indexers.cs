@@ -128,7 +128,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, subject) && fact.Contract is { } bound &&
+                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, subject) && fact.Contract is { } bound &&
                     this.AvailableConstraintFact(environment, fact) && RefinesDeclaration(bound, contract.Declaration))
                 {
                     return true;

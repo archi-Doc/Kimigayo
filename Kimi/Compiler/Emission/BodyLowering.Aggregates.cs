@@ -465,8 +465,8 @@ internal sealed partial class BodyLowering
                     ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
                     (!upcast && !(operation.Kind == OwnershipOperationKind.Consume
-                        ? FitsValue(place.Type, body.Places[operation.Input].Type)
-                        : FitsValue(body.Places[operation.Input].Type, place.Type))) ||
+                        ? FitsValue(place.Type, body.Places[operation.Input].Type, operation.Source)
+                        : FitsValue(body.Places[operation.Input].Type, place.Type, operation.Source))) ||
                     (body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary && this.slotResultPlaces[operation.Input] == 0 &&
                     !(body.Places[operation.Input].Kind == OwnershipPlaceKind.Result && (IsScalar(place.Type) || ReferenceEquals(place.Type, BoundType.Unit)))) ||
                     (operation.Kind == OwnershipOperationKind.PayloadPlacement && this.payloadOwners[place.Id] < 0) ||
@@ -518,7 +518,7 @@ internal sealed partial class BodyLowering
                 else if (IsScalar(place.Type))
                 {
                     if (body.Values[id].Kind != OwnershipValueKind.Alias || body.Values[id].Count != 1 ||
-                        (uint)Input(body, id, 0) >= (uint)id || ValueType(body, Input(body, id, 0)) is not { } inputType || !FitsValue(inputType, place.Type) ||
+                        (uint)Input(body, id, 0) >= (uint)id || ValueType(body, Input(body, id, 0)) is not { } inputType || !FitsValue(inputType, place.Type, operation.Source) ||
                         (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
                     {
                         return Fail("Scalar payload placement has no dominating value.", out failure);
