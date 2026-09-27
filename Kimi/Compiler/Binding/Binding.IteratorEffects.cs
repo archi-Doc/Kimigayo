@@ -444,7 +444,7 @@ public sealed partial class Binding
         private bool Conflicts(BoundType type, BoundOrigin origin, LoanRequirement mode, Koto use)
         {
             if (type.Origin is { } retained && (mode == LoanRequirement.Uniq || type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq) &&
-                binding.ProvesOriginOutlives(origin, retained, use) && binding.ProvesOriginOutlives(retained, origin, use))
+                this.SharesDependency(origin, retained, use))
             {
                 return true;
             }
@@ -452,7 +452,7 @@ public sealed partial class Binding
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
                 if ((mode == LoanRequirement.Uniq || type.Symbol?.Schema?.Origins[i].LoanRequirement == LoanRequirement.Uniq) &&
-                    binding.ProvesOriginOutlives(origin, type.OriginArguments[i], use) && binding.ProvesOriginOutlives(type.OriginArguments[i], origin, use))
+                    this.SharesDependency(origin, type.OriginArguments[i], use))
                 {
                     return true;
                 }
@@ -463,6 +463,39 @@ public sealed partial class Binding
                 if (this.Conflicts(type.Components[i], origin, mode, use))
                 {
                     return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool SharesDependency(BoundOrigin accessed, BoundOrigin retained, Koto use)
+        {
+            if (binding.ProvesOriginOutlives(accessed, retained, use) && binding.ProvesOriginOutlives(retained, accessed, use))
+            {
+                return true;
+            }
+
+            // SPEC 15.6.4: an intersection retains every possible source, not only the common lifetime.
+            if (accessed.Kind == OriginKind.Intersection)
+            {
+                foreach (var source in accessed.Operands)
+                {
+                    if (this.SharesDependency(source, retained, use))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (retained.Kind == OriginKind.Intersection)
+            {
+                foreach (var source in retained.Operands)
+                {
+                    if (this.SharesDependency(accessed, source, use))
+                    {
+                        return true;
+                    }
                 }
             }
 
