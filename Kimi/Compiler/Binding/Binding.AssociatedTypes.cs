@@ -232,13 +232,13 @@ public sealed partial class Binding
         Complete(name, projection);
         Complete(clause.Left, projection);
         var requirement = this.BindRequirement(clause.Right, projection, false, this.NodeScope(clause, scope));
-        if (parameters.Length != 0 && HasOriginDependentAssociatedIdentity(requirement))
+        if (parameters.Length != 0 && HasUnsupportedAssociatedIdentity(requirement))
         {
             Fail(clause, BindingFailure.Unsupported, true);
             return;
         }
 
-        clause.BoundConstraint = requirement;
+        clause.BoundConstraint = parameters.Length == 0 ? requirement : this.CanonicalAssociatedOrigins(requirement, clause, parameters);
         if (applied is not null)
         {
             Complete(applied.Type, projection);
@@ -461,12 +461,11 @@ public sealed partial class Binding
         return type.Kind != BoundTypeKind.TargetProjection || this.HasValueRole(type, scope, false);
     }
 
-    // SPEC 8.4.3: every associated Type is a complete Type; this implementation admits Semantics and generic parameters
-    // only in the Item requirement of Kimi.Iterator (STATUS).
-    // SPEC 4.6.9, 22.1.2: Iterator.Item and Indexable.Element denote complete Types; every other associated Type is still
-    // bound to a Core (STATUS).
+    // SPEC 8.4.3, 4.6.9, 22.1.2: family definitions with implemented formation checks, Iterator.Item and Indexable.Element
+    // denote complete Types. Other associated definitions still have the Core limitation recorded in STATUS.
     private bool IsCompleteAssociated(BindingSymbol associated)
-        => (associated.Name == "Item" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration)) ||
+        => this.AssociatedParameters(associated.Declaration).Length != 0 ||
+        (associated.Name == "Item" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration)) ||
         (associated.Name == "Element" && ReferenceEquals(associated.Scope.Owner, this.Library.Indexable?.Declaration));
 
     /// <summary>Substitutes Contract Self and normalizes explicit associated identities without member inference.</summary>
@@ -504,6 +503,7 @@ public sealed partial class Binding
             {
                 if (result.Kind == BoundTypeKind.AssociatedProjection && result.Components[0] is { Symbol.Declaration: StructKoto or EnumKoto } receiver && this.ResolveAssociated(receiver, result.Symbol!, scope) is { } fixedType)
                 {
+                    fixedType = this.SubstituteStoredOrigins(fixedType, result.Symbol!.Declaration, (BoundOrigin[])result.OriginArguments);
                     // A container substitution can expose another associated projection
                     // (Wrapper<S>.Element -> S.Element). Normalize that identity too;
                     // the active query above still guards recursive specifications.
@@ -522,6 +522,11 @@ public sealed partial class Binding
                     {
                         if (fact.Kind == ConstraintKind.TypeIdentity && AssociatedIdentityMatches(fact.Subject, result) && this.AvailableConstraintFact(environment, fact) && fact.RequiredType is { } required)
                         {
+                            if (result.Kind == BoundTypeKind.AssociatedProjection && result.OriginArguments.Count != 0)
+                            {
+                                required = this.SubstituteStoredOrigins(required, result.Symbol!.Declaration, (BoundOrigin[])result.OriginArguments);
+                            }
+
                             return this.ContractType(required, scope, self);
                         }
                     }

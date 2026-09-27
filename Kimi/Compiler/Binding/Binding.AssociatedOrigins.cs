@@ -29,10 +29,39 @@ public sealed partial class Binding
         return head;
     }
 
-    private static bool HasOriginDependentAssociatedIdentity(BoundConstraint constraint)
-        => constraint.RequiredType?.CarriesOrigin == true ||
-        (constraint.Left is { } left && HasOriginDependentAssociatedIdentity(left)) ||
-        (constraint.Right is { } right && HasOriginDependentAssociatedIdentity(right));
+    private static bool HasUnsupportedAssociatedIdentity(BoundConstraint constraint)
+        => (constraint.RequiredType is { } type && !HasUnconditionalAssociatedFormation(type)) ||
+        (constraint.Left is { } left && HasUnsupportedAssociatedIdentity(left)) ||
+        (constraint.Right is { } right && HasUnsupportedAssociatedIdentity(right));
+
+    // These complete Types introduce no Origin well-formedness premise. General formation domains stay guarded.
+    private static bool HasUnconditionalAssociatedFormation(BoundType type)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+        {
+            return type.Origin is not null && type.Components[0].Kind == BoundTypeKind.Primitive;
+        }
+
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!HasUnconditionalAssociatedFormation(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
 
     private static bool AssociatedIdentityMatches(BoundType? pattern, BoundType type)
         => ReferenceEquals(pattern, type) ||
@@ -55,6 +84,15 @@ public sealed partial class Binding
 
     private ReadOnlySpan<BoundOrigin> AssociatedParameters(Koto declaration)
         => this.associatedOrigins.TryGetValue(declaration, out var origins) && AssociatedHead(declaration) is OriginApplicationKoto ? origins : [];
+
+    private BoundConstraint CanonicalAssociatedOrigins(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundOrigin> parameters)
+    {
+        var required = constraint.RequiredType is { } type ? this.SubstituteStoredOrigins(type, binder, parameters) : null;
+        var left = constraint.Left is { } a ? this.CanonicalAssociatedOrigins(a, binder, parameters) : null;
+        var right = constraint.Right is { } b ? this.CanonicalAssociatedOrigins(b, binder, parameters) : null;
+        return ReferenceEquals(required, constraint.RequiredType) && ReferenceEquals(left, constraint.Left) && ReferenceEquals(right, constraint.Right)
+            ? constraint : this.InternConstraint(new(constraint.Kind, constraint.Subject, required, constraint.Contract, constraint.Mask, left, right));
+    }
 
     private void PrepareAssociatedOrigins()
     {

@@ -398,7 +398,7 @@ public sealed partial class Binding
         Complete(clause.Left, subject);
         var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left, scope);
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject ? BoundType.Unit : subject, semantics, bindingScope);
-        if (AssociatedHead(clause) is OriginApplicationKoto && HasOriginDependentAssociatedIdentity(requirement))
+        if (AssociatedHead(clause) is OriginApplicationKoto && HasUnsupportedAssociatedIdentity(requirement))
         {
             Fail(clause, BindingFailure.Unsupported, true);
             return;
