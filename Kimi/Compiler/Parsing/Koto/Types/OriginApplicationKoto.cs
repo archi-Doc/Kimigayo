@@ -20,6 +20,18 @@ public sealed class OriginApplicationKoto : ApplicationKoto
     public Koto Type => this.Target;
 
     /// <inheritdoc/>
+    public override void ReplaceArgument(int index, Koto replacement)
+    {
+        if (ReferenceEquals(this.ArgumentNodes[index], replacement))
+        {
+            return;
+        }
+
+        base.ReplaceArgument(index, replacement);
+        this.CodeContext.Compilation.InvalidateSourceAnalysis();
+    }
+
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.Type.WriteTo(ref builder);

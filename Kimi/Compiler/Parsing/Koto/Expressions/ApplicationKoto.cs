@@ -40,7 +40,7 @@ public abstract class ApplicationKoto : ExpressionKoto
     /// <summary>Replaces an argument by its known index without searching or copying the argument collection.</summary>
     /// <param name="index">The argument index.</param>
     /// <param name="replacement">The detached replacement node.</param>
-    public void ReplaceArgument(int index, Koto replacement) => this.ReplaceAt(this.ArgumentNodes, index, replacement);
+    public virtual void ReplaceArgument(int index, Koto replacement) => this.ReplaceAt(this.ArgumentNodes, index, replacement);
 
     /// <summary>Gets the expression to which the arguments apply.</summary>
     protected Koto Target { get; private set; }

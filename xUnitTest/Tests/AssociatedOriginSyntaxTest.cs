@@ -53,4 +53,18 @@ public class AssociatedOriginSyntaxTest
         Assert.False(compilation.Binding.Result.IsComplete);
         Assert.False(compilation.Bind().IsComplete);
     }
+
+    [Theory]
+    [InlineData("Item()")]
+    [InlineData("Item(a,)")]
+    [InlineData("Item(_)")]
+    [InlineData("Item(static)")]
+    [InlineData("Item((a and b))")]
+    public void MalformedDeclarationCannotPublishIr(string head)
+    {
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate " + head + "\nConsole.writeLine(\"unreachable\")");
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+    }
 }
