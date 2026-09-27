@@ -70,7 +70,10 @@ public sealed partial class Binding
         private EffectBound bound;
         private int context;
         private int callCount;
-        private int forwardedSteps;
+        private FunctionKoto? implementation;
+        private BoundType? receiverType;
+        private BindingSymbol? steppedField;
+        private Koto? stepUse;
         private bool valid;
 
         public override void Visit(Koto node)
@@ -160,7 +163,10 @@ public sealed partial class Binding
             this.contexts.Add(null);
             this.context = 0;
             this.callCount = 0;
-            this.forwardedSteps = 0;
+            this.implementation = implementation.Declaration as FunctionKoto;
+            this.receiverType = null;
+            this.steppedField = null;
+            this.stepUse = null;
             if (bound == EffectBound.Iterator)
             {
                 if (implementation.Type is not { } declared)
@@ -176,6 +182,7 @@ public sealed partial class Binding
 
                 this.item = item;
                 this.selfOrigins = SelfOrigins(implementation, out var receiver);
+                this.receiverType = receiver;
                 this.StoredIterators(receiver);
             }
 
@@ -222,6 +229,25 @@ public sealed partial class Binding
             }
 
             return receiver?.OriginArguments ?? [];
+        }
+
+        // Whether `type` is `iterator` or has it as a part, including an associated projection of it.
+        private static bool Names(BoundType type, BoundType iterator)
+        {
+            if (ReferenceEquals(type, iterator))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (Names(type.Components[i], iterator))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static BoundType? Dictionary(BoundType? type)
@@ -727,7 +753,9 @@ public sealed partial class Binding
                 return;
             }
 
+            this.stepUse = use;
             this.Function(call.Target, call);
+            this.stepUse = null;
         }
 
         private void Comparison(BoundComparison? plan)
@@ -820,10 +848,10 @@ public sealed partial class Binding
         {
             if (call is not null && this.bound == EffectBound.Iterator && ReferenceEquals(symbol.Scope.Owner, binding.Library.LendingIterator.Declaration))
             {
-                // SPEC 22.1.2.4: a delegating wrapper forwards the items of one inner iterator. That iterator's next conflicts
-                // with none of its own earlier items, which are exactly this Iterator's items; a second step call or an item
-                // of another origin would leave the inner effects unbounded.
-                this.valid &= ++this.forwardedSteps == 1 && this.ForwardsItems(call);
+                // SPEC 22.1.2.4: the items of an Iterator J stored in one Field f are J's items obtained through f when Self
+                // stores no other value naming J, so J's published bound covers every step of f; any other step leaves the
+                // effects unbounded.
+                this.valid &= this.ForwardsItems(call, out var iterator) && this.StepsStoredIterator(iterator);
                 return;
             }
 
@@ -851,8 +879,9 @@ public sealed partial class Binding
 
         // Whether a step call's Some payload is this Iterator's own Item: the same projection family (LentItem or Item)
         // of the receiver's Type, or the Item itself.
-        private bool ForwardsItems(BoundCall call)
+        private bool ForwardsItems(BoundCall call, out BoundType iterator)
         {
+            iterator = BoundType.Unit;
             var receiver = call.ReceiverOperation.ParameterType;
             for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
             {
@@ -862,11 +891,13 @@ public sealed partial class Binding
                 }
             }
 
-            if (receiver is not { Kind: BoundTypeKind.Semantics, Components: [var iterator] } || this.Type(call.ReturnType) is not { Components: [var payload] } option ||
+            if (receiver is not { Kind: BoundTypeKind.Semantics, Components: [var stepped] } || this.Type(call.ReturnType) is not { Components: [var payload] } option ||
                 !ReferenceEquals(option.Symbol, binding.Library.Option))
             {
                 return false;
             }
+
+            iterator = stepped;
 
             // The checked implementation's own result is the Option of its Item; both sides are compared in the conformance scope.
             var item = this.item is { Components: [var declared] } && ReferenceEquals(this.item.Symbol, binding.Library.Option) ? declared : this.item;
@@ -878,6 +909,53 @@ public sealed partial class Binding
 
             return payload is { Kind: BoundTypeKind.AssociatedProjection, Components: [var root] } && item is { Kind: BoundTypeKind.AssociatedProjection, Components: [var own] } &&
                 ReferenceEquals(root, own) && ReferenceEquals(root, iterator) && this.IsItemFamily(payload.Symbol) && this.IsItemFamily(item.Symbol);
+        }
+
+        // Whether this step call reaches `iterator` as `self.f` in the implementation's own body, f being the one Field
+        // that stores `iterator` or a borrow of it, with no other Field naming it; every step must use the same f.
+        private bool StepsStoredIterator(BoundType iterator)
+        {
+            if (this.context != 0 || this.stepUse is not InvocationKoto { Method: MemberAccessKoto { Left: MemberAccessKoto { Left: IdentifierNameKoto self, BoundSymbol: { } field } } } ||
+                this.implementation?.BoundSymbol is not { ReceiverIndex: >= 0 and var index } ||
+                self.BoundSymbol is not { Kind: BindingSymbolKind.Parameter, Slot: var slot, Declaration: var owner } || slot != index || !ReferenceEquals(owner, this.implementation))
+            {
+                return false;
+            }
+
+            if (this.steppedField is not null)
+            {
+                return ReferenceEquals(this.steppedField, field);
+            }
+
+            if (!StructStorage.IsStruct(this.receiverType))
+            {
+                return false;
+            }
+
+            var found = false;
+            for (var i = 0; i < StructStorage.Count(this.receiverType!); i++)
+            {
+                if (StructStorage.FieldType(this.receiverType!, i) is not { } type)
+                {
+                    return false;
+                }
+
+                if (!Names(type, iterator))
+                {
+                    continue;
+                }
+
+                if (found || !ReferenceEquals(StructStorage.Field(this.receiverType!, i).BoundSymbol, field) ||
+                    !(ReferenceEquals(type, iterator) || (type is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var target] } && ReferenceEquals(target, iterator))))
+                {
+                    return false;
+                }
+
+                found = true;
+            }
+
+            this.steppedField = found ? field : null;
+            return found;
         }
 
         private bool IsItemFamily(BindingSymbol? family)

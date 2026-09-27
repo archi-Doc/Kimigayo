@@ -151,11 +151,29 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorWrapper", source, "wrapped\n");
     }
 
-    // The inner bound covers only the inner iterator's own items: a wrapper whose items are not that iterator's, or that
-    // steps a second iterator, cannot certify its own bound.
+    // SPEC 22.1.2.4: all items come from the one stored Iterator, so its bound covers every step of it, from any number of
+    // call sites.
+    [Fact]
+    public void AWrapperMayStepItsStoredIteratorFromSeveralCallSites()
+    {
+        const string Alternate = "struct Alternate<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var even: bool = false\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        self.even = self.even == false\n" +
+            "        if self.even => return self.inner.next()\n        return self.inner.next()\n";
+        var source = Counter + Alternate + "var alternate = Alternate<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match alternate.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and alternate.even == false else => $abort(\"alternate\")\nConsole.writeLine(\"alternated\")"; // Four steps, the last one None.
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorAlternate", source, "alternated\n");
+    }
+
+    // The inner bound covers only the stored iterator's own items: a wrapper whose items are not that iterator's, that
+    // steps a second iterator, or that stores another value naming it (an item slot), cannot certify its own bound; an
+    // item discarded inside next runs an unknown destructor.
     [Theory]
     [InlineData("struct Wrapper<I> {a}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is uniq/i32 during a\n    var inner: I\n    var slot: Option<uniq/i32 during a>\n    public func next(self: uniq/Self) -> Option<uniq/i32 during a>\n        _ = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)")]
     [InlineData("struct Wrapper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var other: I\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        _ = self.other.next()\n        return self.inner.next()")]
+    [InlineData("struct Chain<I> {source}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var first: uniq/I during source\n    var second: uniq/I during source\n" +
+        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.first.next()\n            .Some(let item) => return .Some(item@move)\n            .None => return self.second.next()")]
+    [InlineData("struct Peek<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var pending: Option<I.(Iterator).Item>\n" +
+        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let following = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: following@move)")]
     [InlineData("struct Wrapper<I> {source}\n    I is LendingIterator\n    Self is LendingIterator\n    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n    var inner: uniq/I during source\n\n" +
         "    Self is Iterator when I is Iterator\n        associate Iterator.Item is I.(Iterator).Item\n    public func next(self: uniq/Self during step) -> Option<I.(LendingIterator).LentItem(step)>\n        _ = self.inner.next()\n        return self.inner.next()")]
     public void AWrapperWithUnboundedInnerEffectsIsRejected(string wrapper)
