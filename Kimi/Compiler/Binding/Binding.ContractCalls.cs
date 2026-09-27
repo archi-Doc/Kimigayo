@@ -117,6 +117,17 @@ public sealed partial class Binding
             }
         }
 
+        // Expand the proved contracts of this referenced receiver only, as for an explicit associated
+        // projection. Inherited signatures can depend on their refining contract's associated identities.
+        for (var i = 0; i < group.Contracts.Count; i++)
+        {
+            var contract = group.Contracts[i];
+            if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope) == ConstraintProof.Proven)
+            {
+                this.AddContractPremises(contract.Contract!, type, scope);
+            }
+        }
+
         // SPEC 9.5: requirements gathered from constraints must share one receiver shape; a mismatch is an error at the use.
         SemanticsKind? expected = null;
         for (var i = 0; i < group.Members.Count; i++)

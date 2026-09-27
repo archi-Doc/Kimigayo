@@ -398,11 +398,11 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 
-[LendingIterator.kimi](Kimi/Library/LendingIterator.kimi) now declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. The Iterator refinement and general iteration-entry migration below remain incomplete.
+[LendingIterator.kimi](Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item`; complete verification of the specified independence effect bound and the general iteration-entry migration remain P28 work.
 
 | Source interface | Difference and intended treatment |
 | --- | --- |
-| [Iterator.kimi](Kimi/Library/Iterator.kimi) and [IntoIterable.kimi](Kimi/Library/IntoIterable.kimi) | The source declares Iterator directly with Item and next, and binds IntoIterable.IteratorType to Iterator. The required declarations refine or refer to LendingIterator as shown in §2. |
+| [IntoIterable.kimi](Kimi/Library/IntoIterable.kimi) | The source binds IntoIterable.IteratorType to Iterator; the required declaration accepts any LendingIterator as shown in §2. |
 | `Index.init(! unchecked: isize)` in [Core.kimi](Kimi/Library/Core.kimi) | A normalization helper can admit negative values, unlike specified Index construction. It must not be treated as the specified constructor. |
 | `Range.between`, `from`, `to`, `all`, `through`, `upTo` in [Core.kimi](Kimi/Library/Core.kimi) | Public helpers used by syntax lowering. The specified construction interface is range syntax only. |
 | `Slice.iterate(self: Self) -> SliceIterator<T> during self.source` and `SliceIterator.init(values: Slice<T> during source)` in [Slice.kimi](Kimi/Library/Slice.kimi) | Source convenience interfaces. The required iteration entries and item guarantees are in §2; no concrete iterator constructor is required. |

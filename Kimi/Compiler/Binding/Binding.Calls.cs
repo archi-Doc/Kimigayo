@@ -19,7 +19,9 @@ public sealed class BoundCall
     private BoundType?[] typeArguments = [];
     private BoundLength?[] lengthArguments = [];
     private BoundOrigin[] origins = [];
+    private int originCount;
     private BoundOrigin[] inputOrigins = [];
+    private int inputOriginCount;
     private BoundArgumentOperation[] argumentOperations = [];
     private BoundDefaultArgument[] defaultArguments = [];
 
@@ -49,10 +51,10 @@ public sealed class BoundCall
     public BoundMemberPath? BasePath { get; private set; }
 
     /// <summary>Gets the committed substitutions for the function's declared Origins.</summary>
-    public ReadOnlySpan<BoundOrigin> Origins => this.origins;
+    public ReadOnlySpan<BoundOrigin> Origins => this.origins.AsSpan(0, this.originCount);
 
     /// <summary>Gets the committed input Origins in parameter-slot order.</summary>
-    public ReadOnlySpan<BoundOrigin> InputOrigins => this.inputOrigins;
+    public ReadOnlySpan<BoundOrigin> InputOrigins => this.inputOrigins.AsSpan(0, this.inputOriginCount);
 
     /// <summary>Gets source-argument index to parameter-slot mappings.</summary>
     public ReadOnlySpan<int> ArgumentToParameter => this.mapping;
@@ -88,16 +90,26 @@ public sealed class BoundCall
         }
 
         defaults.CopyTo(this.defaultArguments);
-        if (this.origins.Length != origins.Length)
+        if (this.origins.Length < origins.Length)
         {
             this.origins = new BoundOrigin[origins.Length];
         }
+        else if (this.originCount > origins.Length)
+        {
+            Array.Clear(this.origins, origins.Length, this.originCount - origins.Length);
+        }
 
-        if (this.inputOrigins.Length != inputOrigins.Length)
+        if (this.inputOrigins.Length < inputOrigins.Length)
         {
             this.inputOrigins = new BoundOrigin[inputOrigins.Length];
         }
+        else if (this.inputOriginCount > inputOrigins.Length)
+        {
+            Array.Clear(this.inputOrigins, inputOrigins.Length, this.inputOriginCount - inputOrigins.Length);
+        }
 
+        this.originCount = origins.Length;
+        this.inputOriginCount = inputOrigins.Length;
         origins.CopyTo(this.origins);
         inputOrigins.CopyTo(this.inputOrigins);
         if (this.mapping.Length != mapping.Length)

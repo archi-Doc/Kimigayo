@@ -1,3 +1,5 @@
-public contract Iterator
+/// An iterator whose item Type is independent of an individual next call.
+public contract Iterator: LendingIterator
+    /// The complete Type delivered by every successful next call.
     associate Item
-    func next(self: uniq/Self) -> Option<Self.Item>
+    associate LendingIterator.LentItem(step) is Item

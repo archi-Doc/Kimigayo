@@ -96,12 +96,19 @@ public class UserIterationTest
         for (var i = 0; i < 128; i++)
         {
             success &= c.Ownership.Analyze().IsVerified;
+        }
+
+        var ownershipBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 128; i++)
+        {
             success &= c.Emission.WriteIr(TextWriter.Null, out _);
         }
 
         var generationBytes = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
+        Assert.Equal(0, ownershipBytes);
         Assert.Equal(0, generationBytes);
         NativeAllocationAudit.WriteFixture("UserIterationCost", Source, 0, 0, 0);
     }
