@@ -273,7 +273,8 @@ public sealed partial class Binding
         }
 
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage.
-        if (expected is not null && actual is not null && node.ErasedFunctionType is null && !Compatible(actual, expected) &&
+        if (expected is not null && actual is not null && node.ErasedFunctionType is null &&
+            (!Compatible(actual, expected) || (actual.Semantics == SemanticsKind.Uniq && expected.Semantics == SemanticsKind.Uniq && IsBarePlace(node))) &&
             this.ExpectedAdaptation(node, actual, expected) is { } adaptation)
         {
             this.adaptations[node] = adaptation;

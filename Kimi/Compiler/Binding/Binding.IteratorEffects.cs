@@ -64,6 +64,12 @@ public sealed partial class Binding
                 return;
             }
 
+            if (binding.TryGetAdaptation(node, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.Reborrow)
+            {
+                // SPEC 10.2, 15.6.4: shortening a Reborrow's lifetime does not remove its original access effect.
+                this.Access(node.BoundType, adaptation.Type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref, node);
+            }
+
             if (node is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals)
             {
                 this.Access(PlaceReference(assignment.Left), LoanRequirement.Uniq, node);
@@ -399,7 +405,12 @@ public sealed partial class Binding
         {
             if (argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection)
             {
-                this.Access(argument.ParameterType, argument.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, use);
+                var mode = argument.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
+                this.Access(argument.ParameterType, mode, use);
+                if (argument.Kind == ArgumentOperationKind.Reborrow)
+                {
+                    this.Access(argument.SourceType, mode, use);
+                }
             }
             else if (argument.Kind == ArgumentOperationKind.CopyRead)
             {
