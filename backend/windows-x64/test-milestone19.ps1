@@ -110,7 +110,9 @@ foreach ($level in @('O0', 'O2')) {
 }
 $invalid = [ordered]@{
     WrongEquality = @{ source = (Edit-KimiSource $original '    let nested =' "    let invalid = readNumber(flag@ref)`n    let nested ="); diagnostic = 'NoApplicableOverload_Kd' }
-    MissingPremise = @{ source = (Edit-KimiSource $original '    Console.writeLine("Contract forwarding finished.")' '    let invalid = readTwice(storageOnly@ref)'); diagnostic = 'UnprovenConstraint_Kd' }
+    # SPEC 8.7: `i32 is Source` is refuted (a primitive's conformances are fixed), so Wrapper<i32> is not a Source and
+    # readTwice has no applicable overload.
+    MissingPremise = @{ source = (Edit-KimiSource $original '    Console.writeLine("Contract forwarding finished.")' '    let invalid = readTwice(storageOnly@ref)'); diagnostic = 'NoApplicableOverload_Kd' }
     MissingAssociated = @{ source = (Edit-KimiSource $original "    associate Source.Element is i32`n" ''); diagnostic = 'InvalidAssociatedType_Kd' }
     ExclusiveReceiver = @{ source = (Edit-KimiSource $original 'public func read(self: ref/Self) -> i32' 'public func read(self: uniq/Self) -> i32'); diagnostic = 'MissingContractImplementation_Kd' }
     MissingDefinitionPremise = @{ source = (Edit-KimiSource $original "    T is Source`n    let first" '    let first'); diagnostic = 'UnprovenConstraint_Kd' }
