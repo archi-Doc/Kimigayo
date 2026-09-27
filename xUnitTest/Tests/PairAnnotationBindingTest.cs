@@ -54,23 +54,38 @@ public class PairAnnotationBindingTest
         }
     }
 
-    [Theory]
-    [InlineData("owner")]
-    [InlineData("unsafe")]
-    public void NonBorrowSemanticsCannotCertifyAnOuterOrigin(string semantics)
-    {
-        var c = Parse($"func f<s/T>(value: s/T during a)\n    s is {semantics}\n    ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
-        Assert.False(Reload(c).Bind().IsComplete);
-    }
-
+    // SPEC 8.1.2: a written outer Origin is a conditional slot, active only for the admitted borrow bindings, so the same
+    // annotation is valid whatever `s` admits.
     [Theory]
     [InlineData("s/T during a", "owner")]
     [InlineData("s/T during a", "unsafe")]
     [InlineData("s/U during a", "owner")]
     [InlineData("s/U during a", "unsafe")]
-    public void ApplicationEvidenceNeverDischargesAnExplicitOrigin(string type, string semantics)
+    [InlineData("s/T during a", "owner or ref")]
+    [InlineData("s/U during a", "value or valueborrow")]
+    [InlineData("s/U during static", "owner or ref")]
+    public void AnOuterOriginIsInactiveForValueBindings(string type, string semantics)
+    {
+        var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(Reload(c).Bind().IsComplete);
+    }
+
+    // The same signature serves a value and a borrow: the slot binds `a` only for the borrow instance.
+    [Fact]
+    public void OneAnnotatedSignatureServesValueAndBorrowInstances()
+    {
+        const string Source = "struct Box<T>\n    public let item: T\n    public init(item: T) => self.item = item@move\n" +
+            "func wrap<s/T>(value: s/T during a) -> Box<s/T during a>\n    s is value or valueborrow\n    return Box<s/T during a>.init(value@move)\n" +
+            "let owned = wrap(5)\nlet n = 7\nlet shared = wrap(n@ref)\nrequire owned.item == 5 and shared.item == 7 else => $abort(\"wrap\")\nConsole.writeLine(\"conditional slot\")";
+        ScalarEmissionTest.EmitFixture("PairConditionalOuterOrigin", Source, "conditional slot\n");
+    }
+
+    // A static Origin admits no exclusive borrow, so an admitted `uniq` cannot form the Type.
+    [Theory]
+    [InlineData("s/T during static", "uniq")]
+    [InlineData("s/U during static", "owner or uniq")]
+    public void AStaticOuterOriginRejectsExclusiveBindings(string type, string semantics)
     {
         var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
         Assert.False(c.Bind().IsComplete);

@@ -236,13 +236,10 @@ public sealed partial class Binding
             }
 
             var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole) : whole;
-            if (type.Origin is { } replacement)
+            if (type.Origin is { } replacement && (IsBorrow(projected.Semantics) || projected.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication))
             {
-                if (!IsBorrow(projected.Semantics))
-                {
-                    return null;
-                }
-
+                // SPEC 8.1.2: the annotation binds the outer-Origin slot of a borrow binding; a value binding keeps no slot,
+                // and an abstract binding keeps it conditional.
                 projected = this.WithOrigins(projected, replacement, (BoundOrigin[])projected.OriginArguments);
             }
 

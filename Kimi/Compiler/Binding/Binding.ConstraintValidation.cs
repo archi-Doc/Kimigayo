@@ -394,17 +394,17 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (application.OriginExpression is not null || application.OriginName is not null)
+            if (application.OriginExpression is not null || application.OriginName is not null || (applied.Kind == BoundTypeKind.SemanticsApplication && applied.Origin is not null))
             {
-                var allowed = applied.Origin?.Kind == OriginKind.Static ? SemanticsMask.Ref | SemanticsMask.ObjRef : SemanticsMask.Borrow;
-                return (admitted & ~allowed) == 0 && (applied.Kind == BoundTypeKind.Parameter || this.HasValueRole(type, scope, false)) &&
-                    ((admitted & objectFamily) == 0 || this.HasValueRole(type, scope, true));
-            }
+                // SPEC 8.1.2: an outer-Origin slot, written or recorded for a direct input, is active only for the admitted
+                // borrow bindings and contributes nothing for the others. A static Origin admits no exclusive borrow.
+                if (applied.Origin?.Kind == OriginKind.Static && (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0)
+                {
+                    return false;
+                }
 
-            if (applied.Kind == BoundTypeKind.SemanticsApplication && applied.Origin is not null)
-            {
-                // The outer slot activates only for safe-borrow bindings.
-                return this.HasValueRole(type, scope, false) && ((admitted & objectFamily) == 0 || this.HasValueRole(type, scope, true));
+                return (applied.Kind == BoundTypeKind.Parameter || (admitted & ~objectFamily) == 0 || this.HasValueRole(type, scope, false)) &&
+                    ((admitted & objectFamily) == 0 || this.HasValueRole(type, scope, true));
             }
 
             // Without an Origin slot, no borrow binding can be admitted; owning objects need no Origin.
