@@ -163,6 +163,12 @@ public sealed partial class Binding
 
     private void BindAssociatedSpecification(IsKoto clause, BindingScope scope, BindingSymbol? owner = null)
     {
+        if (clause.FormationType is not null)
+        {
+            Fail(clause, BindingFailure.Unsupported, true);
+            return;
+        }
+
         var self = this.SelfType(owner ?? scope.Owner.BoundSymbol!);
         var name = clause.Left as IdentifierNameKoto;
         BindingSymbol? qualifier = null;

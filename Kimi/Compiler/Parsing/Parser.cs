@@ -1412,6 +1412,11 @@ CloseParameters:
 
                 left = ParseGenericsPostfix(ref reader, left);
             }
+            else if (tokenKind == TokenKind.OpenParenthesis && !disambiguateGenerics &&
+                left is TypeSemanticsKoto { Type: null } or MemberAccessKoto or GenericsKoto or SyntaxFormKoto { Akind: KotoKind.RootName })
+            {
+                left = ParseOriginApplication(ref reader, left);
+            }
             else
             {
                 break;
@@ -2340,6 +2345,10 @@ CloseParameters:
                 if (reader.CurrentTokenKind == TokenKind.LessThan)
                 {
                     name = ParseGenericsPostfix(ref reader, name);
+                }
+                else if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
+                {
+                    name = ParseOriginApplication(ref reader, name);
                 }
                 else if (reader.TryConsume(TokenKind.Dot))
                 {

@@ -439,6 +439,9 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
     /// <summary>Gets a value indicating whether this is an associated-type constraint.</summary>
     public bool IsAssociatedConstraint { get; internal set; }
 
+    /// <summary>Gets the formation Type of an Origin-parameterized associated requirement.</summary>
+    public Koto? FormationType { get; internal set; }
+
     /// <summary>Gets the bound compile-time proposition; ordinary runtime tests leave this null.</summary>
     public BoundConstraint? BoundConstraint { get; internal set; }
 
@@ -470,7 +473,43 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
         }
 
         base.WriteTo(ref builder);
+        if (this.FormationType is { } formation)
+        {
+            builder.Append(" for ");
+            formation.WriteTo(ref builder);
+        }
+
         OriginClauses.Write(this, ref builder);
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        base.VisitChildrenCore(visitor);
+        if (this.FormationType is { } formation)
+        {
+            visitor.Visit(formation);
+        }
+    }
+
+    protected override IEnumerable<Koto> GetChildNodes()
+    {
+        yield return this.Left;
+        yield return this.Right;
+        if (this.FormationType is { } formation)
+        {
+            yield return formation;
+        }
+    }
+
+    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
+    {
+        if (ReferenceEquals(oldKoto, this.FormationType))
+        {
+            this.FormationType = newKoto;
+            return true;
+        }
+
+        return base.ReplaceChildCore(oldKoto, newKoto);
     }
 }
 

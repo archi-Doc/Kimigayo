@@ -384,6 +384,12 @@ public sealed partial class Binding
 
     private void BindConstraint(IsKoto clause, BindingScope scope)
     {
+        if (clause.FormationType is not null)
+        {
+            Fail(clause, BindingFailure.Unsupported, true);
+            return;
+        }
+
         var symbol = this.TypeName(clause.Left, scope, false);
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var subject = semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, scope);

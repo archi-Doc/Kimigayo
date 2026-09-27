@@ -360,6 +360,9 @@ public enum KotoKind : byte
     /// <summary>A declaration-attached Origin relation.</summary>
     OriginRelation,
 
+    /// <summary>An associated-Type Origin application.</summary>
+    OriginApplication,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
