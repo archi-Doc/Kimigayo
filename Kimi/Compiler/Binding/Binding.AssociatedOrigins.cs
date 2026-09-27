@@ -35,12 +35,12 @@ public sealed partial class Binding
     }
 
     private static bool HasUnsupportedAssociatedIdentity(BoundConstraint constraint)
-        => (constraint.RequiredType is { } type && !HasUnconditionalAssociatedFormation(type)) ||
+        => (constraint.RequiredType is { } type && !HasSupportedAssociatedFormation(type)) ||
         (constraint.Left is { } left && HasUnsupportedAssociatedIdentity(left)) ||
         (constraint.Right is { } right && HasUnsupportedAssociatedIdentity(right));
 
-    // These complete Types introduce no Origin well-formedness premise. General formation domains stay guarded.
-    private static bool HasUnconditionalAssociatedFormation(BoundType type)
+    // Concrete borrow layers publish their formation premises; symbolic referents remain guarded.
+    private static bool HasSupportedAssociatedFormation(BoundType type)
     {
         if (!type.CarriesOrigin)
         {
@@ -49,14 +49,15 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
-            return type.Origin is not null && type.Components[0].Kind == BoundTypeKind.Primitive;
+            return type.Origin is not null && type.Components[0].Kind is BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray &&
+                HasSupportedAssociatedFormation(type.Components[0]);
         }
 
         if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
         {
             for (var i = 0; i < type.Components.Count; i++)
             {
-                if (!HasUnconditionalAssociatedFormation(type.Components[i]))
+                if (!HasSupportedAssociatedFormation(type.Components[i]))
                 {
                     return false;
                 }
@@ -217,9 +218,25 @@ public sealed partial class Binding
 
     private void ValidateAssociatedApplications()
     {
+        foreach (var node in this.nodes)
+        {
+            if (AssociatedHead(node) is OriginApplicationKoto && !IsAssociatedRequirement(node) &&
+                node.BoundSymbol is { Kind: BindingSymbolKind.AssociatedType } associated && AssociatedFormationType(node) is { } definition)
+            {
+                definition = this.SubstituteStoredOrigins(definition, associated.Declaration, this.AssociatedParameters(node));
+                if (!this.CheckAssociatedFormation(definition, node))
+                {
+                    Fail(node, BindingFailure.InvalidOrigin);
+                }
+            }
+        }
+
         foreach (var (use, projection) in this.associatedApplications)
         {
-            if (this.CheckTypeOriginRelations(projection, this.ConstraintScope(use)) != ConstraintProof.Proven)
+            var declaration = projection.Symbol!.Declaration;
+            var formation = AssociatedFormationType(declaration);
+            if (this.CheckTypeOriginRelations(projection, this.ConstraintScope(use)) != ConstraintProof.Proven ||
+                (formation is not null && !this.CheckAssociatedFormation(this.SubstituteStoredOrigins(formation, declaration, (BoundOrigin[])projection.OriginArguments), use)))
             {
                 Fail(use, BindingFailure.InvalidOrigin);
             }
@@ -229,12 +246,23 @@ public sealed partial class Binding
     private bool ProvesAssociatedRequirementRelation(Koto node, BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
         if (AssociatedHead(node) is not OriginApplicationKoto || node.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } associated ||
-            ReferenceEquals(associated.Declaration, node) || !this.originDeclarations.TryGetValue(associated.Declaration, out var requirement) || requirement.State != 3)
+            ReferenceEquals(associated.Declaration, node))
         {
             return false;
         }
 
         var arguments = this.AssociatedParameters(node);
+        if (AssociatedFormationType(associated.Declaration) is { } formation &&
+            this.ProvesTypeOriginPremise(this.SubstituteStoredOrigins(formation, associated.Declaration, arguments), longer, shorter, use))
+        {
+            return true;
+        }
+
+        if (!this.originDeclarations.TryGetValue(associated.Declaration, out var requirement) || requirement.State != 3)
+        {
+            return false;
+        }
+
         foreach (var relation in requirement.Relations)
         {
             var a = this.SubstituteStoredOrigin(relation.Longer, associated.Declaration, arguments);

@@ -138,6 +138,12 @@ public sealed partial class Binding
 
             for (var node = use; node is not null; node = node.Parent)
             {
+                if (IsAssociatedRequirement(node) && AssociatedFormationType(node) is { } formation &&
+                    this.ProvesTypeOriginPremise(formation, longer, shorter, use))
+                {
+                    return true;
+                }
+
                 if (this.ProvesAssociatedRequirementRelation(node, longer, shorter, use))
                 {
                     return true;

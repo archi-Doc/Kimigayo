@@ -86,7 +86,6 @@ public class AssociatedOriginBorrowTest
 
     [Theory]
     [InlineData("contract C<T>\n    associate Item(a) is ref/T during a")]
-    [InlineData("contract C\n    associate Item(a, b) is ref/(ref/i32 during a) during b")]
     [InlineData("contract C\n    associate Item(a) is ref/i32 during a\nstruct S\n    Self is C\n    associate C.Item(b) is uniq/i32 during b")]
     public void UnimplementedDomainsAndIncompatibleDefinitionsAreRejected(string source)
     {
