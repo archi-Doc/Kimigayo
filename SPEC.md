@@ -9,6 +9,7 @@ This is the index of the Kimigayo language specification; the chapter files unde
 | Part | Status |
 | --- | --- |
 | Chapters 1–19 and 22, the [Documentation Markdown profile](spec/documentation-markdown.md) and the [UTF-8 formatting profile](spec/utf8-formatting.md) | Normative language rules. |
+| Chapter 23 | Normative contracts of the compiler services (check foundation, Language Server Protocol, Compiler Server Protocol). They govern tools and never change language validity. |
 | Appendix C | Pointer to the separate implementation status; not part of the language. |
 | Appendix D | Index of deferred designs and boundaries; the owning sections remain authoritative. |
 | Appendix E | Terminology index; the linked definitions remain authoritative. |
@@ -64,6 +65,13 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 
 Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and code generation) and the test execution profile belong to the [implementation specification](IMPLEMENTATION.md).
 
+### Part VII. Compiler services
+
+- [23. Compiler services](spec/23-compiler-services.md)
+  - [Check foundation](spec/23-compiler-services.md#233-check-foundation): check units, the shared check entry, outcomes, diagnostic records, input identity and revisions.
+  - [Language Server Protocol](spec/23-compiler-services.md#234-language-server-protocol): `kimi lsp` transport, document synchronization, discovery, units, change detection, scheduling, publication and settings.
+  - [Compiler Server Protocol](spec/23-compiler-services.md#235-compiler-server-protocol): purpose, the provided foundation and the requirements of the future protocol.
+
 ### Appendices
 
 - Appendices A (compiler implementation requirements) and B (reference models): [implementation specification](IMPLEMENTATION.md)
@@ -88,6 +96,7 @@ Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and
 - **Standard declarations and functions:** [Kimi declaration and function reference](#kimi-declaration-and-function-reference).
 - **First executable program:** [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output and native build](impl/20-compilation-configuration.md#208-llvm-output-native-build-and-execution).
 - **Source commands:** [input resolution and implicit single-source projects](impl/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects); [lock files](spec/18-modules-and-dependencies.md#185-lock-files-and-input-records) for `restore` and `check --locked`.
+- **Editor and tool integration:** the [language server](spec/23-compiler-services.md#234-language-server-protocol) publishes the diagnostics of the shared [check foundation](spec/23-compiler-services.md#233-check-foundation), which the future [Compiler Server Protocol](spec/23-compiler-services.md#235-compiler-server-protocol) also uses.
 - **Milestone programs:** the [milestone roadmap](milestones/README.md) plans 40 independent programs of increasing difficulty, from Hello World through ownership and lifetimes, control flow and Patterns, arrays, generics and specialization, closures, iteration, collections, Properties, formatting and objects. Programs 1–39 have source files and 40 has a design and verification scope; the README records their status. Source creation does not establish compiler support, and expected behavior follows this specification.
 
 ## Kimi declaration and function reference
