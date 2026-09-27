@@ -68,6 +68,7 @@ public sealed partial class Binding
         private EffectBound bound;
         private int context;
         private int callCount;
+        private int forwardedSteps;
         private bool valid;
 
         public override void Visit(Koto node)
@@ -153,6 +154,7 @@ public sealed partial class Binding
             this.contexts.Add(null);
             this.context = 0;
             this.callCount = 0;
+            this.forwardedSteps = 0;
             if (bound == EffectBound.Iterator)
             {
                 if (implementation.Type is not { } item)
@@ -807,6 +809,15 @@ public sealed partial class Binding
         // A requirement call contributes its published effect bound; a requirement without one has unknown effects.
         private void Requirement(BindingSymbol symbol, BoundCall? call)
         {
+            if (call is not null && this.bound == EffectBound.Iterator && ReferenceEquals(symbol.Scope.Owner, binding.Library.LendingIterator.Declaration))
+            {
+                // SPEC 22.1.2.4: a delegating wrapper forwards the items of one inner iterator. That iterator's next conflicts
+                // with none of its own earlier items, which are exactly this Iterator's items; a second step call or an item
+                // of another origin would leave the inner effects unbounded.
+                this.valid &= ++this.forwardedSteps == 1 && this.ForwardsItems(call);
+                return;
+            }
+
             if (symbol.Scope.Owner.BoundSymbol?.LibraryDeclaration != KimiDeclarationId.BufferWriter || call is null)
             {
                 this.valid = false;
@@ -828,6 +839,39 @@ public sealed partial class Binding
                 this.Reachable(receiver is null ? null : this.Type(receiver), LoanRequirement.Uniq, symbol.Declaration);
             }
         }
+
+        // Whether a step call's Some payload is this Iterator's own Item: the same projection family (LentItem or Item)
+        // of the receiver's Type, or the Item itself.
+        private bool ForwardsItems(BoundCall call)
+        {
+            var receiver = call.ReceiverOperation.ParameterType;
+            for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
+            {
+                if (call.ArgumentOperations[i].ParameterIndex == 0)
+                {
+                    receiver = call.ArgumentOperations[i].ParameterType;
+                }
+            }
+
+            if (receiver is not { Kind: BoundTypeKind.Semantics, Components: [var iterator] } || this.Type(call.ReturnType) is not { Components: [var payload] } option ||
+                !ReferenceEquals(option.Symbol, binding.Library.Option))
+            {
+                return false;
+            }
+
+            // The checked implementation's own result is the Option of its Item.
+            var item = this.item is { Components: [var declared] } && ReferenceEquals(this.item.Symbol, binding.Library.Option) ? declared : this.item;
+            if (ReferenceEquals(payload, item))
+            {
+                return true;
+            }
+
+            return payload is { Kind: BoundTypeKind.AssociatedProjection, Components: [var root] } && item is { Kind: BoundTypeKind.AssociatedProjection, Components: [var own] } &&
+                ReferenceEquals(root, own) && ReferenceEquals(root, iterator) && this.IsItemFamily(payload.Symbol) && this.IsItemFamily(item.Symbol);
+        }
+
+        private bool IsItemFamily(BindingSymbol? family)
+            => family is { Declaration: { } declaration } && (ReferenceEquals(declaration.Parent, binding.Library.LendingIterator.Declaration) || ReferenceEquals(declaration.Parent, binding.Library.Iterator.Declaration));
 
         private void Specialization(FunctionKoto function, BoundCall call)
         {

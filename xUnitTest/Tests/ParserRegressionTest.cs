@@ -962,6 +962,17 @@ public class ParserRegressionTest
         Assert.Equal(unexpected, diagnostics.Count(x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd)));
     }
 
+    // SPEC 8.4.3: a Contract-qualified projection names its Contract in parentheses, also in Constraint subjects and
+    // requirement Types.
+    [Theory]
+    [InlineData("struct W<I>\n    I is LendingIterator\n    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n")]
+    [InlineData("func f<T>(x: T)\n    T.(Iterator).Item is Copy\n    ()\n")]
+    public void QualifiedProjectionsParseInConstraints(string source)
+    {
+        var (_, diagnostics) = Parse(source);
+        Assert.Empty(diagnostics);
+    }
+
     private static (GroupKoto Root, Diagnostic[] Diagnostics) Parse(string source)
     {
         var kotonoha = ParseTestHelper.Parse(source);

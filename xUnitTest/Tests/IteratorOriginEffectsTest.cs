@@ -137,6 +137,32 @@ public class IteratorOriginEffectsTest
         Assert.Equal(0, allocated);
     }
 
+    private const string Counter = "struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    var value: i32 = 0\n    public init() => ()\n" +
+        "    public func next(self: uniq/Self) -> Option<i32>\n        if self.value == 3 => return .None\n        self.value += 1\n        return .Some(self.value)\n";
+
+    // SPEC 22.1.2.4: a delegating wrapper forwards one inner iterator's items; that iterator's published bound covers them.
+    [Fact]
+    public void ADelegatingWrapperForwardsItsInnerItems()
+    {
+        const string Wrapper = "struct Wrapper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var count: i32 = 0\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        self.count += 1\n        return self.inner.next()\n";
+        var source = Counter + Wrapper + "var wrapper = Wrapper<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match wrapper.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and wrapper.count == 4 else => $abort(\"wrapper\")\nConsole.writeLine(\"wrapped\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorWrapper", source, "wrapped\n");
+    }
+
+    // The inner bound covers only the inner iterator's own items: a wrapper whose items are not that iterator's, or that
+    // steps a second iterator, cannot certify its own bound.
+    [Theory]
+    [InlineData("struct Wrapper<I> {a}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is uniq/i32 during a\n    var inner: I\n    var slot: Option<uniq/i32 during a>\n    public func next(self: uniq/Self) -> Option<uniq/i32 during a>\n        _ = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)")]
+    [InlineData("struct Wrapper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var other: I\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        _ = self.other.next()\n        return self.inner.next()")]
+    public void AWrapperWithUnboundedInnerEffectsIsRejected(string wrapper)
+    {
+        var c = MinimalEmissionTest.Analyze(wrapper);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // A call without a published effect bound, such as a requirement of a Type parameter, cannot certify next.
     [Fact]
     public void UnboundedRequirementCallsAreRejected()

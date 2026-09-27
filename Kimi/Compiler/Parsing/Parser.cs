@@ -2352,7 +2352,10 @@ CloseParameters:
                 }
                 else if (reader.TryConsume(TokenKind.Dot))
                 {
-                    var member = ParseName(ref reader);
+                    // SPEC 8.4.3: a requirement Type may be a Contract-qualified projection such as I.(LendingIterator).LentItem(step).
+                    var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
+                        ? ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseContainerSuffix: false, parseSuffix: false)
+                        : ParseName(ref reader);
                     name = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, member.Span.End), name, member);
                 }
                 else
