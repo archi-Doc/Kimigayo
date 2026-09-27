@@ -12,7 +12,9 @@
 # the selected native fixtures and milestone harnesses with the Release compiler.
 #   ./verify.ps1 -Mode Session -Fixtures 'ForeignPointer*.ll' -Milestone 1,15,18
 #
-# Milestone harnesses run -Parallel at a time (default 4), each in its own process, work
+# Tests run up to -TestParallel collections at a time (default up to 4), respecting disabled
+# parallelization on test classes. Use -TestParallel 1 for serial execution.
+# Milestone harnesses run -Parallel at a time (default up to 8), each in its own process, work
 # directory and log; the steps are still recorded in the requested order.
 #
 # Never edit sources while this script runs; it records the commit and dirty state it verified.
@@ -26,7 +28,8 @@ param(
     [int[]] $Milestone = @(),
     [string] $Name = '',
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
-    [int] $Parallel = 4
+    [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
+    [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(4, [Environment]::ProcessorCount)
 )
 $ErrorActionPreference = 'Stop'
 $repo = $PSScriptRoot
@@ -36,11 +39,17 @@ $evidence = Join-Path $repo "bin/verify/$label"
 New-Item -ItemType Directory $evidence | Out-Null
 $steps = [Collections.Generic.List[object]]::new()
 $failed = $false
+$totalTimer = [Diagnostics.Stopwatch]::StartNew()
 
-function Add-Step([string] $step, [bool] $ok, [string] $detail) {
-    $script:steps.Add([ordered]@{ step = $step; result = if ($ok) { 'PASS' } else { 'FAIL' }; detail = $detail })
+function Start-Step([string] $step) {
+    Write-Host "RUN  $step"
+    return [Diagnostics.Stopwatch]::StartNew()
+}
+
+function Add-Step([string] $step, [bool] $ok, [string] $detail, [double] $seconds) {
+    $script:steps.Add([ordered]@{ step = $step; result = if ($ok) { 'PASS' } else { 'FAIL' }; detail = $detail; seconds = [Math]::Round($seconds, 3) })
     if (-not $ok) { $script:failed = $true }
-    Write-Host ("{0,-4} {1}: {2}" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $step, $detail)
+    Write-Host ("{0,-4} {1} ({2:N1}s): {3}" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $step, $seconds, $detail)
 }
 
 function Invoke-Script([scriptblock] $block, [string] $log) {
@@ -50,14 +59,17 @@ function Invoke-Script([scriptblock] $block, [string] $log) {
 }
 
 function Invoke-Build([string] $configuration) {
+    $timer = Start-Step "build $configuration"
     $log = Join-Path $evidence "build-$configuration.log"
     # --no-incremental recompiles every project, so analyzers (StyleCop) report on sources another build left up to date.
     & dotnet build (Join-Path $repo 'Kimigayo.slnx') --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
-    Add-Step "build $configuration" ($LASTEXITCODE -eq 0) $log
-    return $LASTEXITCODE -eq 0
+    $ok = $LASTEXITCODE -eq 0
+    Add-Step "build $configuration" $ok $log $timer.Elapsed.TotalSeconds
+    return $ok
 }
 
 function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $tag) {
+    $timer = Start-Step "tests $configuration $tag (up to $TestParallel collections)"
     $log = Join-Path $evidence "tests-$configuration-$tag.log"
     $xml = Join-Path $evidence "tests-$configuration-$tag.xml"
     $dll = Join-Path $repo "xUnitTest/bin/$configuration/net10.0/xUnitTest.dll"
@@ -67,14 +79,15 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     $previousDirectory = $env:KIMI_FIXTURE_DIRECTORY
     try {
         $env:KIMI_FIXTURE_DIRECTORY = $fixtureDirectory
-        & dotnet $dll -parallelMode none -failSkips -result-xml $xml @filters *> $log
+        $parallelMode = if ($TestParallel -eq 1) { 'none' } else { 'collections' }
+        & dotnet $dll -parallelMode $parallelMode -maxThreads $TestParallel -failSkips -result-xml $xml @filters *> $log
         $code = $LASTEXITCODE
     }
     finally { $env:KIMI_FIXTURE_DIRECTORY = $previousDirectory }
     $summary = Select-String -LiteralPath $log -Pattern 'Total: (\d+), Errors: (\d+), Failed: (\d+)' | Select-Object -Last 1
     $total = if ($summary) { [int]$summary.Matches[0].Groups[1].Value } else { 0 }
     # Zero executed tests is never evidence (for example, a mistyped filter).
-    Add-Step "tests $configuration $tag" ($code -eq 0 -and $total -gt 0) "$(if ($summary) { $summary.Line.Trim() } else { 'no summary' }); $log"
+    Add-Step "tests $configuration $tag" ($code -eq 0 -and $total -gt 0) "$(if ($summary) { $summary.Line.Trim() } else { 'no summary' }); $log" $timer.Elapsed.TotalSeconds
 }
 
 $head = (& git -C $repo rev-parse --short HEAD).Trim()
@@ -98,11 +111,12 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
     $hashes = [System.Collections.Generic.List[string]]::new()
     for ($i = 0; $i -lt $Fixtures.Count; $i++) {
         $pattern = $Fixtures[$i]
+        $timer = Start-Step "native $pattern"
         $suffix = if ($Fixtures.Count -eq 1) { '' } else { "-$i" }
         $log = Join-Path $evidence "native$suffix.log"
         $ok = Invoke-Script { & (Join-Path $repo 'backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $evidence "native$suffix") } $log
         $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
-        Add-Step "native $pattern" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log"
+        Add-Step "native $pattern" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log" $timer.Elapsed.TotalSeconds
         if (Test-Path -LiteralPath $fixtureDirectory) {
             Get-ChildItem -LiteralPath $fixtureDirectory -Filter $pattern -File | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }
         }
@@ -115,14 +129,18 @@ if (-not $failed -and $Milestone.Count -gt 0) {
     # Harness scripts throw on failure; each job records PASS/FAIL after writing its own log.
     $jobs = [ordered]@{}
     foreach ($number in $Milestone) {
-        while (@($jobs.Values | Where-Object { $_.State -eq 'Running' }).Count -ge [Math]::Max(1, $Parallel)) { Start-Sleep -Milliseconds 500 }
+        while (@($jobs.Values | Where-Object { $_.State -eq 'Running' }).Count -ge $Parallel) { Start-Sleep -Milliseconds 500 }
+        Write-Host "RUN  milestone $number ($native)"
         $log = Join-Path $evidence "milestone$number-$native.log"
         $script = Join-Path $repo "backend/windows-x64/test-milestone$number.ps1"
         $jobs["$number"] = Start-Job -Name "milestone$number" -ArgumentList $script, $native, $log -ScriptBlock {
             param($script, $configuration, $log)
             $ErrorActionPreference = 'Stop'
-            try { & $script -Configuration $configuration *> $log; 'PASS' }
-            catch { $_ | Out-String | Add-Content -LiteralPath $log; 'FAIL' }
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            $ok = $true
+            try { & $script -Configuration $configuration *> $log }
+            catch { $_ | Out-String | Add-Content -LiteralPath $log; $ok = $false }
+            [pscustomobject]@{ ok = $ok; seconds = $timer.Elapsed.TotalSeconds }
         }
     }
 
@@ -130,11 +148,11 @@ if (-not $failed -and $Milestone.Count -gt 0) {
         $job = $jobs["$number"]
         $result = Receive-Job -Job $job -Wait
         Remove-Job -Job $job
-        Add-Step "milestone $number ($native)" ($result -eq 'PASS') (Join-Path $evidence "milestone$number-$native.log")
+        Add-Step "milestone $number ($native)" ($result.ok -eq $true) (Join-Path $evidence "milestone$number-$native.log") $result.seconds
     }
 }
 
-[ordered]@{ mode = $Mode; head = $head; dirty = $dirty; started = $stamp; steps = $steps } |
+[ordered]@{ mode = $Mode; head = $head; dirty = $dirty; started = $stamp; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

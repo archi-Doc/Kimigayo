@@ -4,6 +4,21 @@ This directory supplies the native helpers for SPEC §21.5.7. The reviewed packa
 
 ## Build and test
 
+Use the repository's `verify.ps1` for implementation-unit and end-of-session evidence:
+
+```powershell
+./verify.ps1 -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
+./verify.ps1 -Mode Session -Fixtures 'StorageBoundary*.ll' -Milestone 27,28
+```
+
+Both modes keep non-incremental builds with warnings as errors. Unit mode runs the selected tests;
+Session mode runs the full Debug and Release suites. Test collections run up to four at a time,
+respecting each test class's disabled-parallelization setting. Milestone harnesses run in separate
+processes, up to eight at a time; both defaults are capped by the logical processor count.
+Use `-TestParallel 1 -Parallel 1` for serial execution, or set either limit independently. Every
+stage announces its start and records its duration, along with the total duration and concurrency
+settings, in `bin/verify/<run>/summary.json`. Do not edit sources during verification.
+
 For bounded local verification with separate stdout/stderr logs and a JSON result, run commands through `invoke-verification.ps1` from the repository root:
 
 ```powershell
