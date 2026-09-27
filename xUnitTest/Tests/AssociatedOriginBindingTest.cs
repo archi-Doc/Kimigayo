@@ -41,8 +41,6 @@ public class AssociatedOriginBindingTest
     [InlineData("contract C\n    associate Item(a)\nstruct S\n    Self is C\n    associate C.Item is i32")]
     [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item(a) is i32")]
     [InlineData("contract C\n    associate Item(a)\n    func f(self: ref/Self) -> Self.Item(a)")]
-    [InlineData("contract C\n    associate Item(a)\n        origin a outlives static")]
-    [InlineData("contract C\n    associate Item(a, b) is i32\n        origin a outlives b")]
     [InlineData("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\n    associate C.Item(b, c) is i32")]
     public void InvalidBindersAndSpecificationsDoNotBind(string source)
         => Assert.False(MinimalEmissionTest.Analyze(source).Binding.Result.IsComplete);

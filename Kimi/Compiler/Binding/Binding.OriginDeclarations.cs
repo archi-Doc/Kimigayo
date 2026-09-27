@@ -21,7 +21,7 @@ public sealed partial class Binding
         for (var current = node; current is not null; current = current.Parent)
         {
             if (current is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto or AliasKoto or IsKoto { IsAssociatedConstraint: true } ||
-                current is VariableKoto || current.Akind == KotoKind.EnumCase)
+                current is VariableKoto || current.Akind is KotoKind.EnumCase or KotoKind.AssociatedType)
             {
                 return current;
             }

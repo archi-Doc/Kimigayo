@@ -7,6 +7,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundOrigin[]> associatedOrigins = new(ReferenceEqualityComparer.Instance);
+    private readonly List<(Koto Use, BoundType Projection)> associatedApplications = new();
+
+    private static bool IsAssociatedRequirement(Koto node)
+        => node.Parent is ContractKoto && AssociatedHead(node) is OriginApplicationKoto application &&
+            UnwrapAssociatedHead(application.Type) is IdentifierNameKoto or TypeSemanticsKoto { Type: null };
 
     private static Koto? AssociatedHead(Koto declaration)
     {
@@ -168,7 +173,7 @@ public sealed partial class Binding
             }
 
             // Formation domains and their implementation implication checks are a separate unit.
-            if (OriginClauses.Get(node).Count != 0 || node is SyntaxFormKoto { Operands.Length: > 1 } || node is IsKoto { FormationType: not null })
+            if ((OriginClauses.Get(node).Count != 0 && !IsAssociatedRequirement(node)) || node is SyntaxFormKoto { Operands.Length: > 1 } || node is IsKoto { FormationType: not null })
             {
                 Fail(node, BindingFailure.Unsupported);
             }
@@ -199,6 +204,7 @@ public sealed partial class Binding
             }
 
             projection = this.WithOrigins(projection, null, arguments.AsSpan(0, application.ArgumentNodes.Count));
+            this.associatedApplications.Add((application, projection));
             application.BoundSymbol = target.BoundSymbol = associated;
             Complete(target, projection);
             return this.bindingConstraintTypes ? projection : this.ContractType(projection, scope);
@@ -206,6 +212,17 @@ public sealed partial class Binding
         finally
         {
             this.originScratch.Return(arguments, clearArray: true);
+        }
+    }
+
+    private void ValidateAssociatedApplications()
+    {
+        foreach (var (use, projection) in this.associatedApplications)
+        {
+            if (this.CheckTypeOriginRelations(projection, this.ConstraintScope(use)) != ConstraintProof.Proven)
+            {
+                Fail(use, BindingFailure.InvalidOrigin);
+            }
         }
     }
 }

@@ -151,7 +151,7 @@ public sealed partial class Binding
 
                 // Only declaration contracts are assumptions. A field or local relation
                 // being checked must never prove itself.
-                if (node is not (FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto) ||
+                if ((node is not (FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto) && !IsAssociatedRequirement(node)) ||
                     !this.originDeclarations.TryGetValue(node, out var declaration) || declaration.State != 3)
                 {
                     continue;
@@ -309,6 +309,11 @@ public sealed partial class Binding
 
                 this.CompleteOriginDeclaration(declaration);
             }
+            else if (IsAssociatedRequirement(this.nodes[i]))
+            {
+                var node = this.nodes[i];
+                this.CompleteOriginDeclaration(this.BeginOriginDeclaration(node, this.scopes[node]));
+            }
         }
     }
 
@@ -316,7 +321,7 @@ public sealed partial class Binding
     {
         foreach (var declaration in this.originDeclarations.Values)
         {
-            if (declaration.State != 3 || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto)
+            if (declaration.State != 3 || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(declaration.Owner))
             {
                 continue;
             }

@@ -256,6 +256,7 @@ public sealed partial class Binding
             this.PruneMatchPlans();
             this.ClearCapabilityResults();
             this.ValidateOriginRelations();
+            this.ValidateAssociatedApplications();
             this.ValidateCopyDeclarations(mode);
             this.ComputeOriginRequirements();
             this.ValidateOriginRequirements();

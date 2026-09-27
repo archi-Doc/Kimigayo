@@ -165,6 +165,7 @@ public sealed partial class Binding
         }
 
         this.projectionUses.Clear();
+        this.associatedApplications.Clear();
         this.memberSelections.Clear();
         foreach (var group in this.requirementGroups.Values)
         {
