@@ -40,7 +40,13 @@ public sealed partial class Binding
     // The receiver's own Origin is distinct from the stored source Origins of the published result.
     private sealed class IteratorEffects(Binding binding) : KotoVisitor
     {
+        private readonly HashSet<(Koto Node, int Context)> seen = new();
+        private readonly List<(Koto Node, int Context)> pending = new();
+        private readonly List<BoundCall?> contexts = new();
+        private readonly List<BoundCall> forwarded = new();
         private BoundType result = BoundType.Unit;
+        private int context;
+        private int forwardedCount;
         private bool valid;
 
         public override void Visit(Koto node)
@@ -71,6 +77,23 @@ public sealed partial class Binding
                 this.Access(PlaceReference(node), LoanRequirement.Ref, node);
             }
 
+            if (node is InvocationKoto invocation && !binding.TryGetEnumConstruction(node, out _))
+            {
+                if (invocation.BoundCall is { } call)
+                {
+                    this.Call(call, node);
+                }
+                else
+                {
+                    this.valid = false; // An indirect call has no published independence bound yet.
+                }
+            }
+
+            if (node is BinaryKoto { ComparisonCall.BoundCall: { } comparison })
+            {
+                this.Call(comparison, node);
+            }
+
             node.VisitChildren(this);
         }
 
@@ -78,16 +101,20 @@ public sealed partial class Binding
         {
             this.result = function.BoundSymbol!.Type!;
             this.valid = true;
+            this.seen.Clear();
+            this.pending.Clear();
+            this.contexts.Clear();
+            this.contexts.Add(null);
+            this.context = 0;
+            this.forwardedCount = 0;
             if (this.result.CarriesOrigin)
             {
-                if (function.Body is { } body)
+                this.Queue(function.Body);
+                this.Queue(function.ExpressionBody);
+                for (var i = 0; this.valid && i < this.pending.Count; i++)
                 {
-                    this.Visit(body);
-                }
-
-                if (function.ExpressionBody is { } expression)
-                {
-                    this.Visit(expression);
+                    this.context = this.pending[i].Context;
+                    this.Visit(this.pending[i].Node);
                 }
             }
 
@@ -108,9 +135,115 @@ public sealed partial class Binding
 
         private void Access(BoundType? type, LoanRequirement mode, Koto use)
         {
-            if (type?.Origin is { } origin && this.Conflicts(this.result, origin, mode, use))
+            if (type is not null && this.Type(type)?.Origin is { } origin && this.Conflicts(this.result, origin, mode, use))
             {
                 this.valid = false;
+            }
+        }
+
+        private void Call(BoundCall call, Koto use)
+        {
+            this.Argument(call.ReceiverOperation, use);
+            foreach (var argument in call.ArgumentOperations)
+            {
+                this.Argument(argument, use);
+            }
+
+            if (this.contexts[this.context] is { } outer)
+            {
+                if (this.forwardedCount == this.forwarded.Count)
+                {
+                    this.forwarded.Add(new());
+                }
+
+                if (binding.InstantiateForwardedCall(call, outer, this.forwarded[this.forwardedCount++]) is not { } instantiated)
+                {
+                    this.valid = false;
+                    return;
+                }
+
+                call = instantiated;
+            }
+
+            var previous = this.context;
+            this.context = this.Context(call);
+            foreach (var omitted in call.DefaultArguments)
+            {
+                this.Queue(omitted.Expression);
+            }
+
+            if (call.Target.CompilerFunction != CompilerFunctionKind.None)
+            {
+                // These recognized operations act only on their acquired inputs and platform-owned state.
+                this.valid &= call.Target.CompilerFunction is CompilerFunctionKind.Abort or CompilerFunctionKind.WriteLine or
+                    CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj;
+            }
+            else if (call.Target.Declaration is FunctionKoto function)
+            {
+                var selected = binding.SelectSpecialization(call) ?? function;
+                this.valid &= selected.Body is not null || selected.ExpressionBody is not null || (selected.IsConstructor && selected.IsGenerated);
+                this.Queue(selected.Body);
+                this.Queue(selected.ExpressionBody);
+                this.Queue(selected.BaseInitializer);
+                if (selected.IsConstructor && call.DeclaringType is { } owner)
+                {
+                    for (var i = 0; i < StructStorage.Count(owner); i++)
+                    {
+                        this.Queue(StructStorage.Field(owner, i).InitializerKoto);
+                    }
+                }
+            }
+            else
+            {
+                this.valid = false;
+            }
+
+            this.context = previous;
+        }
+
+        private void Argument(BoundArgumentOperation argument, Koto use)
+        {
+            if (argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection)
+            {
+                this.Access(argument.ParameterType, argument.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, use);
+            }
+            else if (argument.Kind == ArgumentOperationKind.CopyRead)
+            {
+                this.Access(argument.SourceType, LoanRequirement.Ref, use);
+            }
+        }
+
+        private BoundType? Type(BoundType type)
+            => this.contexts[this.context] is { } call ? binding.InstantiateStorageType(type, call) : type;
+
+        private int Context(BoundCall call)
+        {
+            for (var i = 1; i < this.contexts.Count; i++)
+            {
+                var existing = this.contexts[i]!;
+                if (ReferenceEquals(existing.Target, call.Target) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) &&
+                    existing.TypeArguments.SequenceEqual(call.TypeArguments) && existing.LengthArguments.SequenceEqual(call.LengthArguments) &&
+                    existing.Origins.SequenceEqual(call.Origins) && existing.InputOrigins.SequenceEqual(call.InputOrigins))
+                {
+                    return i;
+                }
+            }
+
+            if (this.contexts.Count >= 1024)
+            {
+                this.valid = false;
+                return 0;
+            }
+
+            this.contexts.Add(call);
+            return this.contexts.Count - 1;
+        }
+
+        private void Queue(Koto? node)
+        {
+            if (node is not null && this.seen.Add((node, this.context)))
+            {
+                this.pending.Add((node, this.context));
             }
         }
 

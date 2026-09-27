@@ -35,4 +35,40 @@ public class IteratorIndependenceTest
         const string source = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: ref/i32 during source\n    var count: i32 = 0\n    public init(value: ref/i32 during source) => self.value = value\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        self.count += 1\n        return .Some(self.value)\nlet value = 42\nvar cursor = Cursor.init(value@ref)\nlet first = cursor.next()\nlet second = cursor.next()\nmatch first\n    .Some(let item) => require item == 42 else => $abort(\"first\")\n    .None => $abort(\"empty\")\nmatch second\n    .Some(let item) => require item == 42 else => $abort(\"second\")\n    .None => $abort(\"empty\")\nConsole.writeLine(\"independent\")";
         ScalarEmissionTest.EmitFixture("AssociatedIteratorIndependentShared", source, "independent\n");
     }
+
+    [Theory]
+    [InlineData("self.value@follow += 1", false)]
+    [InlineData("self.count += 1", true)]
+    public void HelperEffectsParticipateInIndependence(string operation, bool valid)
+    {
+        var source = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: uniq/i32 during source\n    var count: i32 = 0\n    func update(self: uniq/Self)\n        " + operation + "\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        self.update()\n        return .Some(self.value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        }
+    }
+
+    [Theory]
+    [InlineData("self.value@follow += 1", false)]
+    [InlineData("self.count += 1", true)]
+    public void RecursiveGenericHelperEffectsParticipateInIndependence(string operation, bool valid)
+    {
+        var source = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: uniq/i32 during source\n    var count: i32 = 0\n    func update<T>(self: uniq/Self, depth: i32)\n        if depth > 0 => self.update<T>(depth - 1)\n        " + operation + "\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        self.update<i32>(2)\n        return .Some(self.value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        }
+    }
+
+    [Fact]
+    public void UncalledMutatingHelperDoesNotAffectIndependence()
+    {
+        const string source = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: uniq/i32 during source\n    func update(self: uniq/Self) => self.value@follow += 1\n    public func next(self: uniq/Self) -> Option<ref/i32 during source> => .Some(self.value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
 }
