@@ -30,6 +30,28 @@ public class StorageBoundaryTest
         Assert.False(c.Ownership.Result.IsVerified);
     }
 
+    // SPEC 22.1.2.5, 15.3.5: a remainder holds the Loan of its source slot although no field stores a safe reference, so a
+    // live iterator protects its source: no replacement or growth, and no read beside an exclusive iterator.
+    [Theory]
+    [InlineData("var it = values.iterateUniq()\nvalues.append(4)")]
+    [InlineData("var it = values.iterateUniq()\nvalues = [4]")]
+    [InlineData("var it = values.iterateUniq()\nlet first = values[0]")]
+    [InlineData("var it = values.iterate()\nvalues.append(4)")]
+    [InlineData("var it = values.iterate()\nvalues = [4]")]
+    public void ALiveIteratorKeepsTheSourceLoan(string use)
+    {
+        var c = MinimalEmissionTest.Analyze(Values + use + "\nmatch it.next()\n    .Some(_) => ()\n    .None => ()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+    }
+
+    [Fact]
+    public void ASharedIteratorAllowsReads()
+    {
+        var c = MinimalEmissionTest.Analyze(Values + "var it = values.iterate()\nlet first = values[0]\nmatch it.next()\n    .Some(_) => ()\n    .None => ()");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
     // The Kimigayo iterators execute natively over the boundary: shared items are read in index order, exclusive items
     // are retained together and written through, and both iterators stay exhausted after None.
     [Fact]
