@@ -251,13 +251,17 @@ public sealed partial class OwnershipAnalysis
         {
             var operation = operations[i];
             var acquisition = this.body.PlaceStorage[start + i].Acquisition; // Committed, or resolved for an instance.
-            if ((acquisition == AcquisitionKind.None) == (operation.Kind is ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead))
+            if ((acquisition == AcquisitionKind.None) == (operation.Kind is ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead))
             {
                 throw new InvalidOperationException("Committed payload operation has no matching acquisition kind.");
             }
 
-            // The shared argument path records Borrow/Reborrow as unsupported until Loan checking exists.
-            var value = this.Argument(operation.Source!, operation.Kind, acquisition == AcquisitionKind.None ? null : acquisition);
+            // SPEC 10.2, 12.2: payload borrows use the same prepared reference and actual dependency as call inputs.
+            // They enter the enum immediately, without a call activation; an explicitly transferred reference keeps its acquisition.
+            var borrow = operation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection or ArgumentOperationKind.ReferenceRead &&
+                !(operation.Kind == ArgumentOperationKind.Reborrow && KotoHelper.UnwrapParentheses(operation.Source!) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer });
+            var value = borrow && source is InvocationKoto invocation ? this.PrepareCallArgument(invocation, operation.Source!, operation, immediate: true)
+                : this.Argument(operation.Source!, operation.Kind, acquisition == AcquisitionKind.None ? null : acquisition);
             var payload = start + i;
             this.Emit(OwnershipOperationKind.PayloadPlacement, operation.Source!, payload, value);
             // Placement completes after evaluation, interleaving with surviving temporaries.

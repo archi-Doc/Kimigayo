@@ -1255,7 +1255,10 @@ public sealed partial class OwnershipAnalysis
         if (kind is ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead)
         {
             // SPEC 10.2: a Copy read acquires the referent as a fresh Copy temporary through the reference.
-            var value = kind == ArgumentOperationKind.CopyRead ? this.LoadReferent(argument) : this.Expression(argument, acquisition: acquisition);
+            // Binding may already have adapted the expression before committing this Value operation. Its acquisition
+            // applies to the adapted value, not to the original reference slot (SPEC 10.2).
+            var adapted = kind == ArgumentOperationKind.Value && this.compilation.Binding.TryGetAdaptation(argument, out _);
+            var value = kind == ArgumentOperationKind.CopyRead ? this.LoadReferent(argument) : this.Expression(argument, acquisition: adapted ? null : acquisition);
             this.CheckAcquisition(value, acquisition);
             return value;
         }

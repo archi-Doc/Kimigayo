@@ -230,17 +230,25 @@ public class EnumOwnershipTest
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }
 
-    // Self-containing enums are rejected at Binding (InlineLayoutTest); these payloads are finite but unsupported.
+    // Static borrowed payload storage remains outside this low-level ownership profile.
     [Theory]
-    [InlineData("enum V<T> {a}\n    Some(ref/T during a)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
     [InlineData("func f(x: ref/i32 during static) -> Option<ref/i32 during static> => .Some(x)")]
-    [InlineData("func f(x: uniq/i32) -> Option<uniq/i32 during x> => .Some(x)")]
     public void UnsupportedPayloadTypesCannotBeHiddenByAnEmptyCase(string source)
     {
         var c = Parse(source);
         var result = c.Ownership.Analyze();
         Assert.False(result.IsVerified);
         Assert.True(result.UnsupportedCount > 0, Describe(c));
+    }
+
+    // SPEC 10.2, 12.2: implicit borrowed payloads use the ordinary borrow/reborrow acquisition and retain their Loans.
+    [Theory]
+    [InlineData("enum V<T> {a}\n    Some(ref/T during a)\nfunc f()\n    var n = 1\n    let v = V<i32>.Some(n)")]
+    [InlineData("func f(x: uniq/i32) -> Option<uniq/i32 during x> => .Some(x)")]
+    public void BorrowedPayloadAcquisitionsVerify(string source)
+    {
+        var c = Parse(source);
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
     }
 
     [Fact]

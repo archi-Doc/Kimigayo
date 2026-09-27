@@ -133,7 +133,7 @@ public sealed partial class OwnershipAnalysis
     // to an independent snapshot.
     private int LoadReferent(Koto source, int layers)
     {
-        var reference = this.ExpressionCore(source, PlaceUseKind.Read, null);
+        var reference = this.StoredReference(KotoHelper.UnwrapParentheses(source), SemanticsKind.Ref);
         return reference < 0 ? -1 : this.LoadThrough(source, reference, layers);
     }
 
@@ -175,7 +175,7 @@ public sealed partial class OwnershipAnalysis
     // Origin of that Type, so a Copied inner reference no longer depends on the layers above it.
     private int ReadReference(Koto source, BoundType result)
     {
-        var reference = this.ExpressionCore(source, PlaceUseKind.Read, null);
+        var reference = this.StoredReference(KotoHelper.UnwrapParentheses(source), SemanticsKind.Ref);
         if (reference < 0)
         {
             return -1;

@@ -115,4 +115,18 @@ public class IteratorIndependenceTest
             Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
         }
     }
+
+    [Theory]
+    [InlineData("ref", true)]
+    [InlineData("uniq", false)]
+    public void PublishedPayloadLoansAreEffectsOfNext(string semantics, bool valid)
+    {
+        var source = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is " + semantics + "/i32 during source\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self) -> Option<" + semantics + "/i32 during source> => .Some(self.value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        }
+    }
 }

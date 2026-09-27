@@ -174,6 +174,15 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(projected);
         }
 
+        if (unwrapped is MemberAccessKoto storedField && !Binding.IsGetterResult(storedField) && !this.SpecialField(storedField) &&
+            ReferenceTypes.IsBorrow(storedField.BoundType) && ReferenceEquals(storedField.BoundType!.Components[0], type.Components[0]) &&
+            ElementAccess.BorrowedPathRoot(storedField) is not null)
+        {
+            // SPEC 10.2: a fixed expected reference reborrows the stored pointer; an explicit borrow of the slot has
+            // the complete field Type as its referent and therefore continues through the ordinary projection below.
+            return this.BorrowStoredReference(storedField, storedField, type, reservation);
+        }
+
         if (unwrapped is MemberAccessKoto field && !Binding.IsGetterResult(field) && !this.SpecialField(field) && !ReferenceTypes.IsStorage(field.BoundType) &&
             ElementAccess.BorrowedPathRoot(field) is { } root)
         {
