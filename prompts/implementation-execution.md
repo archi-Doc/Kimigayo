@@ -16,6 +16,7 @@ Implement the target milestone of [PLAN.md](../PLAN.md) with verified, committed
 3. Read only the owning SPEC sections and the code paths needed for the next action.
 4. Do not rerun a baseline if HEAD matches the last session's verified commit (PLAN §3). Otherwise run `./verify.ps1` on the affected area first.
 5. Preserve uncommitted user changes; if they overlap the work, ask before touching them.
+6. Sessions that may run in parallel use separate git worktrees, so a build or `verify.ps1` run never reads another session's edits. Stage only the files the unit changed (`git add <paths>`), never `git add -A`.
 
 Do not print a long inspection report. Begin the first unit.
 
@@ -52,8 +53,8 @@ reproducer (a failing test or program variant)
 
 ## 5. Session end
 
-1. Stop starting units when the duration has elapsed. Finish or cleanly revert the current unit.
-2. Run `./verify.ps1 -Mode Session [-Fixtures ...] [-Milestone <completed programs>]` once.
+1. The duration covers unit work only. Stop starting units when it has elapsed; finish or cleanly revert the current unit.
+2. Then run `./verify.ps1 -Mode Session [-Fixtures ...] [-Milestone <completed programs>]` once; it may run past the duration.
 3. Update the documents briefly, then commit:
    - **PLAN.md:** §3 position (HEAD, test count), milestone states, §6 next three actions, §7 issues. Mark a milestone DONE only when every PLAN §5 condition holds.
    - **PLAN_HISTORY.md:** one table row for the session (date, what changed, result).
