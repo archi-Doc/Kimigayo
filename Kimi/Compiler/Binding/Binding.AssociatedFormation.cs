@@ -68,6 +68,11 @@ public sealed partial class Binding
 
     private bool AssociatedOriginsOutlive(BoundType type, BoundOrigin outer, Koto use)
     {
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection || type.Symbol?.Declaration is ContractKoto)
+        {
+            return this.ProveOwned(type, use) == ConstraintProof.Proven || this.ProvesAssociatedTypeLifetime(type, outer, use);
+        }
+
         if (type.Origin is { } origin && !this.ProvesOriginOutlives(origin, outer, use))
         {
             return false;
@@ -90,5 +95,70 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    private BoundType? InheritedAssociatedFormation(Koto node)
+    {
+        if (AssociatedHead(node) is not OriginApplicationKoto || node.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } associated ||
+            ReferenceEquals(associated.Declaration, node) || AssociatedFormationType(associated.Declaration) is not { } formation)
+        {
+            return null;
+        }
+
+        formation = this.SubstituteStoredOrigins(formation, associated.Declaration, this.AssociatedParameters(node));
+        var scope = this.ConstraintScope(node);
+        for (var enclosing = scope; enclosing is not null; enclosing = enclosing.Parent)
+        {
+            if (enclosing.Owner is StructKoto or EnumKoto or ContractKoto && enclosing.Owner.BoundSymbol is { } self)
+            {
+                return this.ContractType(formation, scope, this.SelfType(self));
+            }
+        }
+
+        return formation;
+    }
+
+    private bool ProvesAssociatedTypeLifetime(BoundType type, BoundOrigin outer, Koto use)
+    {
+        for (var node = use; node is not null; node = node.Parent)
+        {
+            var formation = IsAssociatedRequirement(node) ? AssociatedFormationType(node) : this.InheritedAssociatedFormation(node);
+            if (formation is not null && this.ProvesBorrowedTypeLifetime(formation, type, outer, use))
+            {
+                return true;
+            }
+
+            if (node is FunctionKoto or PropertyAccessorKoto)
+            {
+                for (var i = 0; i < InputCount(node); i++)
+                {
+                    if (BoundInputType(node, i) is { } input && this.ProvesBorrowedTypeLifetime(input, type, outer, use))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private bool ProvesBorrowedTypeLifetime(BoundType premise, BoundType type, BoundOrigin outer, Koto use)
+    {
+        if (IsBorrow(premise.Semantics) && premise.Origin is { } origin && premise.Components.Count != 0 &&
+            ReferenceEquals(premise.Components[0], type) && this.ProvesOriginOutlives(origin, outer, use))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < premise.Components.Count; i++)
+        {
+            if (this.ProvesBorrowedTypeLifetime(premise.Components[i], type, outer, use))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

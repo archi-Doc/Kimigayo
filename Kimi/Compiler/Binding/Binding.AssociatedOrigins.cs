@@ -49,7 +49,8 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
-            return type.Origin is not null && type.Components[0].Kind is BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray &&
+            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray ||
+                type.Components[0].Symbol?.Declaration is ContractKoto) &&
                 HasSupportedAssociatedFormation(type.Components[0]);
         }
 
@@ -229,8 +230,14 @@ public sealed partial class Binding
         {
             var declaration = projection.Symbol!.Declaration;
             var formation = AssociatedFormationType(declaration);
+            if (formation is not null)
+            {
+                formation = this.SubstituteStoredOrigins(formation, declaration, (BoundOrigin[])projection.OriginArguments);
+                formation = this.ContractType(formation, this.ConstraintScope(use), projection.Components[0]);
+            }
+
             if (this.CheckTypeOriginRelations(projection, this.ConstraintScope(use)) != ConstraintProof.Proven ||
-                (formation is not null && !this.CheckAssociatedFormation(this.SubstituteStoredOrigins(formation, declaration, (BoundOrigin[])projection.OriginArguments), use)))
+                (formation is not null && !this.CheckAssociatedFormation(formation, use)))
             {
                 Fail(use, BindingFailure.InvalidOrigin);
             }
@@ -246,8 +253,8 @@ public sealed partial class Binding
         }
 
         var arguments = this.AssociatedParameters(node);
-        if (AssociatedFormationType(associated.Declaration) is { } formation &&
-            this.ProvesTypeOriginPremise(this.SubstituteStoredOrigins(formation, associated.Declaration, arguments), longer, shorter, use))
+        if (this.InheritedAssociatedFormation(node) is { } formation &&
+            this.ProvesTypeOriginPremise(formation, longer, shorter, use))
         {
             return true;
         }
