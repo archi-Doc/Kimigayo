@@ -108,9 +108,25 @@ public sealed partial class Binding
         var userEntry = element is null && iterable is not null && source.Mode == SubjectMode.ByValue &&
             this.BindUserIteration(source, scope, iterable, out element);
 
-        // SPEC 14.6.2: a Tuple item reached through a reference decomposes into references of the same capability.
-        var sharedTuple = source.IsTupleBinding && ReferenceTypes.IsTuple(element);
-        var tuple = sharedTuple ? element!.Components[0] : element;
+        // SPEC 14.6.2, 14.8.1: structural decomposition selects every safe reference layer. A shared
+        // layer bounds the path; Copying a ref restarts its Origin, while uniq keeps the reached dependency.
+        var tuple = element;
+        var access = PatternAccessMode.Owned;
+        BoundOrigin? tupleOrigin = null;
+        var layers = 0;
+        if (source.IsTupleBinding && (userEntry || ReferenceTypes.IsTuple(element)))
+        {
+            while (tuple is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                access = tuple.Semantics == SemanticsKind.Ref || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
+                tupleOrigin = tuple.Semantics == SemanticsKind.Ref || tupleOrigin is null ? tuple.Origin ?? tupleOrigin
+                    : tuple.Origin is { } layer ? this.Meet(tupleOrigin, layer) : tupleOrigin;
+                tuple = tuple.Components[0];
+                layers++;
+            }
+        }
+
+        var sharedTuple = layers != 0;
         var result = this.BeginResult(source, scope, BoundType.Unit);
         var duplicate = false;
         for (var i = 0; i < source.Bindings.Count; i++)
@@ -120,7 +136,7 @@ public sealed partial class Binding
             var slot = source.IsTupleBinding && tuple?.Kind == BoundTypeKind.Tuple && i < tuple.Components.Count ? tuple.Components[i] : element;
             if (sharedTuple && slot is not null)
             {
-                slot = this.InternType(BoundTypeKind.Semantics, null, element!.Semantics, [slot], origin: element.Origin);
+                slot = this.InternType(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [slot], origin: tupleOrigin);
             }
 
             name.BoundSymbol!.Type = slot;
@@ -130,7 +146,7 @@ public sealed partial class Binding
 
         if (userEntry && element is not null)
         {
-            this.BindIterationStep(source, scope, element);
+            this.BindIterationStep(source, scope, element, tuple!, access, layers);
         }
 
         this.BindNode(source.Body, scope);
@@ -194,7 +210,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private void BindIterationStep(ForKoto source, BindingScope scope, BoundType item)
+    private void BindIterationStep(ForKoto source, BindingScope scope, BoundType item, BoundType tuple, PatternAccessMode access, int layers)
     {
         var plan = source.Iteration ??= new(source);
         var iterator = source.EntryCall!.BoundType!;
@@ -230,9 +246,7 @@ public sealed partial class Binding
         Complete(some, option);
         Complete(none, option);
         var end = source.IsTupleBinding ? source.Bindings.Count + 2 : 2;
-        var borrowedTuple = source.IsTupleBinding && ReferenceTypes.IsTuple(item);
-        var tuple = borrowedTuple ? item.Components[0] : item;
-        var access = borrowedTuple ? item.Semantics == SemanticsKind.Uniq ? PatternAccessMode.Exclusive : PatternAccessMode.Shared : PatternAccessMode.Owned;
+        var borrowedTuple = layers != 0;
         match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: Compiler.EnumStorage.Case(option, 0)));
         if (source.IsTupleBinding)
         {
@@ -242,7 +256,7 @@ public sealed partial class Binding
                 return;
             }
 
-            match.PositionStorage.Add(new(plan.Item, item, BoundPatternKind.Tuple, 0, 0, end, AccessMode: access, ImplicitFollows: borrowedTuple ? 1 : 0));
+            match.PositionStorage.Add(new(plan.Item, item, BoundPatternKind.Tuple, 0, 0, end, AccessMode: access, ImplicitFollows: layers));
         }
 
         for (var i = 0; i < source.Bindings.Count; i++)

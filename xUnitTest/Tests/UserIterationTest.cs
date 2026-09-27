@@ -90,6 +90,38 @@ public class UserIterationTest
         => ScalarEmissionTest.EmitFixture("UserIterationExclusiveTuple", Drain + "func update(row: uniq/(i32, i32) during a)\n    for (first, second) in Batch<uniq/(i32, i32) during a>.init(row@move)\n        first@follow += 1\n        second@follow += first\nvar row = (7, 2)\nupdate(row@uniq)\nrequire row.0 == 8 and row.1 == 10 else => $abort(\"tuple\")\nConsole.writeLine(\"ok\")", "ok\n");
 
     [Theory]
+    [InlineData("ref", "ref")]
+    [InlineData("ref", "uniq")]
+    [InlineData("uniq", "uniq")]
+    public void TupleItemFollowsEverySafeReferenceLayer(string outer, string inner)
+    {
+        var type = outer + "/(" + inner + "/(i32, i32) during a) during b";
+        var update = outer == "uniq" ? "\n        first@follow += 1\n        second@follow += first" : string.Empty;
+        ScalarEmissionTest.EmitFixture("UserIterationLayers" + outer + inner, Drain + "func inspect(row: " + type + ")\n    for (first, second) in Batch<" + type + ">.init(row" + (outer == "uniq" ? "@move" : string.Empty) + ")\n        require first == 7 and second == 2 else => $abort(\"tuple\")" + update + "\nvar row = (7, 2)\nvar view = row@" + inner + "\ninspect(view@" + outer + ")\nrequire row.0 == " + (outer == "uniq" ? "8 and row.1 == 10" : "7 and row.1 == 2") + " else => $abort(\"result\")\nConsole.writeLine(\"ok\")", "ok\n");
+    }
+
+    [Fact]
+    public void SharedLayerStillBoundsExclusiveTupleComponents()
+    {
+        var c = MinimalEmissionTest.Analyze(Drain + "func inspect(row: ref/(uniq/(i32, i32) during a) during b)\n    for (first, second) in Batch<ref/(uniq/(i32, i32) during a) during b>.init(row)\n        first@follow = 9");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.SharedPathAccess_Kd);
+    }
+
+    [Theory]
+    [InlineData("a", false)]
+    [InlineData("(a and b)", true)]
+    public void TupleComponentRetainsEveryGrantingOrigin(string resultOrigin, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(Drain + "func first(row: ref/(uniq/(i32, i32) during a) during b) -> ref/i32 during " + resultOrigin + "\n    for (value, _) in Batch<ref/(uniq/(i32, i32) during a) during b>.init(row) => return value\n    $abort(\"empty\")");
+        Assert.Equal(valid, c.Binding.Result.IsComplete);
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        }
+    }
+
+    [Theory]
     [InlineData("first@follow = 9", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("first = 9", DiagnosticCode.SharedBindingAssignment_Kd)]
     public void SharedTupleComponentsKeepTheirCapabilities(string update, DiagnosticCode code)
