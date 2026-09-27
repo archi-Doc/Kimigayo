@@ -115,6 +115,17 @@ public class UserIterationTest
         => ScalarEmissionTest.EmitFixture("UserIterationConstraintItems", Drain + "struct Tracked\n    deinit => Console.writeLine(\"item\")\nfunc count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nfunc inspect(n: ref/i32 during a)\n    require count(Batch<ref/i32 during a>.init(n)) == 1 else => $abort(\"borrow\")\nrequire count(Batch<Tracked>.init(Tracked.init())) == 1 else => $abort(\"owned\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")", "item\nok\n");
 
     [Fact]
+    public void GenericLoopTransfersItsProjectedItemIntoTheResult()
+    {
+        const string First = "func first<B>(batch: B) -> Option<B.IteratorType.Item>\n    B is IntoIterable\n    for item in batch@move => return .Some(item@move)\n    return .None\n";
+        ScalarEmissionTest.EmitFixture("UserIterationProjectedResult", Counter + Three + Drain + First + "match first(Three.init())\n    .Some(let n) => require n == 1 else => $abort(\"first\")\n    .None => $abort(\"empty\")\nmatch first(Batch<string>.init(\"ok\"))\n    .Some(let text) => Console.writeLine(text)\n    .None => $abort(\"empty\")", "ok\n");
+    }
+
+    [Fact]
+    public void ReturnedBorrowedItemOutlivesItsIterator()
+        => ScalarEmissionTest.EmitFixture("UserIterationBorrowedResult", Drain + "func first(n: ref/i32 during a) -> ref/i32 during a\n    for item in Batch<ref/i32 during a>.init(n) => return item\n    $abort(\"empty\")\nvar n: i32 = 7\nlet result = first(n@ref)\nrequire result == 7 else => $abort(\"borrow\")\nn = 8\nConsole.writeLine(\"ok\")", "ok\n");
+
+    [Fact]
     public void MissingEntryConstraintIsRejected()
     {
         var c = MinimalEmissionTest.Analyze("func count<B>(batch: B)\n    for _ in batch@move => ()");
