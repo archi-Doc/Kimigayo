@@ -613,6 +613,16 @@ public abstract class Koto
 
         oldKoto.Parent = default;
         newKoto.Parent = this;
+        for (var owner = this; owner is not null; owner = owner.Parent)
+        {
+            if (owner.Akind == KotoKind.AssociatedType || owner is IsKoto { IsAssociatedConstraint: true })
+            {
+                // Associated definitions publish Type and Origin conditions used outside this subtree.
+                this.CodeContext.Compilation.InvalidateSourceAnalysis();
+                break;
+            }
+        }
+
         return true;
     }
 
