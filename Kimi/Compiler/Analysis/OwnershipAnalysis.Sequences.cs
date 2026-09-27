@@ -188,6 +188,12 @@ public sealed partial class OwnershipAnalysis
 
     private void Iterate(ForKoto source)
     {
+        if (source.Iteration is { Decomposition.IsCurrent: true } protocol)
+        {
+            this.IterateUser(source, protocol);
+            return;
+        }
+
         var shared = source.SharedIterable;
         var exclusive = source.Mode == SubjectMode.Exclusive && shared is not null;
 

@@ -38,6 +38,9 @@ public sealed class ForKoto : ExpressionKoto
     /// <summary>Gets or sets the owning user protocol entry, outside the source tree.</summary>
     internal InvocationKoto? EntryCall { get; set; }
 
+    /// <summary>Gets or sets the calls and item decomposition of a user protocol loop.</summary>
+    internal BoundIteration? Iteration { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="ForKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete expression span.</param>

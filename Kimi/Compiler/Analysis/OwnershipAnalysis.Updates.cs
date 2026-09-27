@@ -147,9 +147,15 @@ public sealed partial class OwnershipAnalysis
         }
 
         var type = this.body.Places[first].Type.Components[0];
-        // Complete Types with internal dependencies need a content-sensitive effect plan.
+        // SPEC 13.5: taking an Option by installing None transfers its old dependencies to the result;
+        // it destroys no old content and installs no new dependency in the borrowed storage.
+        var takeOption = plan.Target.CompilerFunction == CompilerFunctionKind.Exchange &&
+            ReferenceEquals(type.Symbol, this.compilation.Library.Option) &&
+            this.compilation.Binding.TryGetEnumConstruction(this.body.Places[second].Source, out var replacement) &&
+            replacement!.Case.Ordinal == 1 && ReferenceEquals(this.Concrete(replacement.Type), type);
+        // Other updates of complete Types with internal dependencies need a content-sensitive effect plan.
         if (!ReferenceTypes.IsStorage(this.body.Places[first].Type) ||
-            this.compilation.Binding.ProveOwned(type, call) != ConstraintProof.Proven)
+            (!takeOption && this.compilation.Binding.ProveOwned(type, call) != ConstraintProof.Proven))
         {
             this.Unsupported(call);
             this.EndComparisonLoans(depth, call);

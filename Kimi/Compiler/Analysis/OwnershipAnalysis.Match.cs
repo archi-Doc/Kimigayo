@@ -494,7 +494,7 @@ public sealed partial class OwnershipAnalysis
         {
             var acquisition = PatternAcquisitionKind(pattern);
             this.CheckAcquisition(input, acquisition);
-            var local = this.LocalPlace(pattern.BodySymbol, pattern.Source, pattern.MatchedType, pattern.Source is SyntaxFormKoto { IsMutablePattern: true }, acquisition);
+            var local = this.LocalPlace(pattern.BodySymbol, pattern.Source, pattern.MatchedType, Binding.IsMutableDeclaration(pattern.Source), acquisition);
             this.Emit(OwnershipOperationKind.Declare, pattern.Source, local);
             this.locals.Add(new(local, pattern.Source, this.registrationSequence++));
             // The bound Place resolved a committed CopyOrMove to the instance's exact effect (SPEC 21.3.1).

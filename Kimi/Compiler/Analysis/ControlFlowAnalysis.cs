@@ -1179,7 +1179,12 @@ public sealed class ControlFlowAnalysis
         switch (node)
         {
             case ForKoto f:
-                header = this.Visit(f.Iterable, reachable);
+                header = this.Visit(f.Iteration is { Decomposition.IsCurrent: true } ? f.EntryCall! : f.Iterable, reachable);
+                if (f.Iteration is { Decomposition.IsCurrent: true } protocol)
+                {
+                    this.Visit(protocol.Next, reachable && header.Normal);
+                }
+
                 body = f.Body;
                 mayFinish = true;
                 break;

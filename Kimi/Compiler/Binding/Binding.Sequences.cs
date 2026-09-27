@@ -51,6 +51,7 @@ public sealed partial class Binding
     private BoundType? BindIteration(ForKoto source, BindingScope scope)
     {
         var iterable = this.BindNode(source.Iterable, scope);
+        source.Iteration?.Decomposition.Reset(null);
         source.SharedIterable = null;
         var followed = this.PairSubject(source.Iterable, iterable, scope);
         iterable = followed ?? iterable;
@@ -127,6 +128,11 @@ public sealed partial class Binding
             Complete(name, slot);
         }
 
+        if (userEntry && element is not null)
+        {
+            this.BindIterationStep(source, scope, element);
+        }
+
         this.BindNode(source.Body, scope);
         if (duplicate)
         {
@@ -186,5 +192,67 @@ public sealed partial class Binding
         this.projectionUses.Add((source, iterator, this.Library.Iterator));
         item = this.ContractType(this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [iterator]), scope);
         return true;
+    }
+
+    private void BindIterationStep(ForKoto source, BindingScope scope, BoundType item)
+    {
+        var plan = source.Iteration ??= new(source);
+        var iterator = source.EntryCall!.BoundType!;
+        plan.Scope.Parent = scope;
+        plan.Scope.Function = scope.Function;
+        var symbol = plan.Iterator.BoundSymbol ??= new BindingSymbol("$for.iterator", BindingSymbolKind.Local, plan.Iterator, plan.Scope);
+        symbol.Type = iterator;
+        plan.Scope.Values[symbol.Name] = symbol;
+        plan.Receiver.BoundSymbol = symbol;
+        Complete(plan.Iterator, iterator);
+        Complete(plan.Receiver, iterator);
+        ResetSynthetic(plan.Next);
+        ResetSynthetic(plan.Next.Method);
+        ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
+        if (this.BindCall(plan.Next, plan.Scope, null) is not { } option || !ReferenceEquals(option.Symbol, this.Library.Option) ||
+            option.Components.Count != 1 || !ReferenceEquals(option.Components[0], item))
+        {
+            Fail(source, BindingFailure.TypeMismatch);
+            return;
+        }
+
+        // SPEC 14.6.2: Some delivers one owned item, independently of the entry mode. Reuse the ordinary
+        // match decomposition and its acquisition validation; the synthetic nodes never replace source parents.
+        var match = plan.Decomposition;
+        match.Reset(plan.Match);
+        match.Mode = SubjectMode.ByValue;
+        match.Coverage = new(MatchCoverageState.Exhaustive);
+        Complete(plan.Match, BoundType.Unit);
+        Complete(plan.Match.Arms[1].Body, BoundType.Unit);
+        Complete(plan.Item, item);
+        var some = plan.Match.Arms[0].Pattern;
+        var none = plan.Match.Arms[1].Pattern;
+        Complete(some, option);
+        Complete(none, option);
+        var end = source.IsTupleBinding ? source.Bindings.Count + 2 : 2;
+        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: Compiler.EnumStorage.Case(option, 0)));
+        if (source.IsTupleBinding)
+        {
+            if (item.Kind != BoundTypeKind.Tuple)
+            {
+                match.IsCurrent = false; // Reference Tuple decomposition is added with its selected access path.
+                return;
+            }
+
+            match.PositionStorage.Add(new(plan.Item, item, BoundPatternKind.Tuple, 0, 0, end));
+        }
+
+        for (var i = 0; i < source.Bindings.Count; i++)
+        {
+            var name = source.Bindings[i];
+            var type = name.BoundType!;
+            var proof = this.ProveCopy(type, name);
+            var acquisition = proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.CopyOrMove;
+            match.PositionStorage.Add(new(name, type, BoundPatternKind.Binding, source.IsTupleBinding ? 1 : 0, source.IsTupleBinding ? i : 0, match.Positions.Count + 1, BodySymbol: name.BoundSymbol, Acquisition: acquisition, WholePosition: true));
+        }
+
+        match.PositionStorage.Add(new(none, option, BoundPatternKind.Case, -1, -1, end + 1, Case: Compiler.EnumStorage.Case(option, 1)));
+        match.ArmStorage.Add(new(plan.Match.Arms[0], 0));
+        match.ArmStorage.Add(new(plan.Match.Arms[1], end));
     }
 }

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -27,9 +28,61 @@ public class UserIterationTest
     public void OwnedEntryBindsItsDeclaredItem()
     {
         var c = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init()\n    let value: i32 = item");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(BoundType.I32, loop.Bindings[0].BoundType);
+    }
+
+    [Fact]
+    public void ConcreteEntryExecutes()
+        => ScalarEmissionTest.EmitFixture("UserIterationCounter", Counter + Three + "var total: i32 = 0\nfor item in Three.init()\n    total += item\nrequire total == 6 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n");
+
+    [Fact]
+    public void OwnedTupleItemsExecute()
+        => ScalarEmissionTest.EmitFixture("UserIterationTuple", Drain + "for (var number, flag) in Batch<(i32, bool)>.init((7, true))\n    number += 1\n    require number == 8 and flag else => $abort(\"tuple\")\nConsole.writeLine(\"ok\")", "ok\n");
+
+    [Fact]
+    public void UnchangedMilestoneExecutes()
+    {
+        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../milestones/Milestone28.kimi"));
+        ScalarEmissionTest.EmitFixture("UserIterationMilestone28", File.ReadAllText(path), "Owned iterator acquired.\nContinue after item 1.\nItem 1 destroyed.\nExit after item 2.\nItem 2 destroyed.\nItem 4 destroyed.\nItem 3 destroyed.\nOwned iteration finished.\nBorrowed iterator acquired.\nExternal first is 10; remaining total is 50.\nBorrowed iterator acquired.\nGeneral iteration finished.\n");
+    }
+
+    [Fact]
+    public void GenericBorrowedItemKeepsItsExternalSource()
+        => ScalarEmissionTest.EmitFixture("UserIterationBorrowed", Drain + "func inspect(n: ref/i32 during a)\n    for item in Batch<ref/i32 during a>.init(n)\n        require item == 7 else => $abort(\"borrow\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")", "ok\n");
+
+    [Theory]
+    [InlineData("Fallthrough", "Console.writeLine(\"body\")", "body\nitem\niterator\ndone\n")]
+    [InlineData("Continue", "Console.writeLine(\"body\")\n    continue", "body\nitem\niterator\ndone\n")]
+    [InlineData("Exit", "Console.writeLine(\"body\")\n    exit", "body\nitem\niterator\ndone\n")]
+    [InlineData("Unnamed", "Console.writeLine(\"body\")\n    exit", "body\nitem\niterator\ndone\n")]
+    public void IteratorAndItemHaveSeparateCleanup(string name, string body, string stdout)
+    {
+        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
+        ScalarEmissionTest.EmitFixture("UserIterationCleanup" + name, declarations + item + "for " + (name == "Unnamed" ? "_" : "item") + " in Batch<Tracked>.init(Tracked.init())\n    " + body + "\nConsole.writeLine(\"done\")", stdout);
+    }
+
+    [Fact]
+    public void ReturnTransfersTheItemBeforeIteratorCleanup()
+    {
+        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
+        ScalarEmissionTest.EmitFixture("UserIterationReturn", declarations + item + "func take() -> Tracked\n    for item in Batch<Tracked>.init(Tracked.init()) => return item@move\n    $abort(\"empty\")\nlet value = take()\nConsole.writeLine(\"done\")", "iterator\ndone\nitem\n");
+    }
+
+    [Theory]
+    [InlineData("let values = Three.init()\nfor item in values@move => ()\nlet again = values@move")]
+    [InlineData("var values = Three.init()\nlet view = values@ref\nfor item in values@move => ()\nlet again = view")]
+    public void ConsumingEntryPreservesMoveAndLoanChecks(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(Counter + Three + source);
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Contains(c.Ownership.Issues, x => x.Code is DiagnosticCode.MovedPlace_Kd or DiagnosticCode.ComparisonLoanConflict_Kd);
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.Empty(output.ToString());
     }
 
     [Theory]
