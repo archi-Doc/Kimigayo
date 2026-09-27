@@ -172,12 +172,6 @@ public sealed partial class Binding
                 Complete(syntax, BoundType.Unit);
                 syntax.BoundOrigin = origin;
             }
-
-            // Formation domains and their implementation implication checks are a separate unit.
-            if (node is SyntaxFormKoto { Operands.Length: > 1 } || node is IsKoto { FormationType: not null })
-            {
-                Fail(node, BindingFailure.Unsupported);
-            }
         }
     }
 

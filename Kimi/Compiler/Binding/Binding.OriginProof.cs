@@ -323,7 +323,10 @@ public sealed partial class Binding
             else if (AssociatedHead(this.nodes[i]) is OriginApplicationKoto)
             {
                 var node = this.nodes[i];
-                this.CompleteOriginDeclaration(this.BeginOriginDeclaration(node, this.scopes[node]));
+                var associatedScope = this.scopes[node];
+                var associatedOrigins = this.BeginOriginDeclaration(node, associatedScope);
+                this.BindAssociatedFormation(node, associatedScope);
+                this.CompleteOriginDeclaration(associatedOrigins);
             }
         }
     }

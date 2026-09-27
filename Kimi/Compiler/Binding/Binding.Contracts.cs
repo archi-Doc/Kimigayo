@@ -230,7 +230,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < contract.Members.Count; i++)
             {
-                if (contract.Members[i] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1 } declaration)
+                if (contract.Members[i] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: > 0 } declaration)
                 {
                     this.DeclareAssociatedType(declaration, contract);
                 }

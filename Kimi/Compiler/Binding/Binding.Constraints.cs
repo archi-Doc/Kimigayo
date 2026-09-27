@@ -384,7 +384,7 @@ public sealed partial class Binding
 
     private void BindConstraint(IsKoto clause, BindingScope scope)
     {
-        if (clause.FormationType is not null)
+        if (clause.FormationType is not null && !IsAssociatedRequirement(clause))
         {
             Fail(clause, BindingFailure.Unsupported, true);
             return;

@@ -7,7 +7,15 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private static BoundType? AssociatedFormationType(Koto declaration)
-        => declaration is IsKoto clause ? AssociatedIdentityType(clause.BoundConstraint) : null;
+        => AssociatedFormationSyntax(declaration)?.BoundType ?? (declaration is IsKoto clause ? AssociatedIdentityType(clause.BoundConstraint) : null);
+
+    private static Koto? AssociatedFormationSyntax(Koto declaration)
+        => declaration switch
+        {
+            IsKoto clause => clause.FormationType,
+            SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 2 } syntax => syntax.Operands[1],
+            _ => null,
+        };
 
     private static BoundType? AssociatedIdentityType(BoundConstraint? constraint)
         => constraint?.Kind switch
@@ -16,6 +24,25 @@ public sealed partial class Binding
             ConstraintKind.And => AssociatedIdentityType(constraint.Left) ?? AssociatedIdentityType(constraint.Right),
             _ => null,
         };
+
+    private void BindAssociatedFormation(Koto declaration, BindingScope scope)
+    {
+        if (AssociatedFormationSyntax(declaration) is not { } syntax)
+        {
+            return;
+        }
+
+        if (!IsAssociatedRequirement(declaration) || (declaration is IsKoto clause && AssociatedIdentityType(clause.BoundConstraint) is not null))
+        {
+            Fail(declaration, BindingFailure.InvalidAssociatedType);
+            return;
+        }
+
+        if (this.BindType(syntax, scope) is { } type && !HasSupportedAssociatedFormation(type))
+        {
+            Fail(declaration, BindingFailure.Unsupported);
+        }
+    }
 
     private bool CheckAssociatedFormation(BoundType type, Koto use)
     {

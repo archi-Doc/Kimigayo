@@ -33,4 +33,25 @@ public class AssociatedFormationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
     }
+
+    [Theory]
+    [InlineData("", "ref/i32 during step", true)]
+    [InlineData(" is Copy", "ref/i32 during step", true)]
+    [InlineData("", "uniq/i32 during step", false)]
+    public void FormationTypeDoesNotFixTheAssociatedType(string capability, string formation, bool valid)
+    {
+        var source = "contract C\n    associate Item(step)" + capability + " for " + formation + "\nstruct S\n    Self is C\n    associate C.Item(a) is i32\nfunc f() -> S.Item(static) => 42";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Theory]
+    [InlineData("origin a outlives b", true)]
+    [InlineData("", false)]
+    public void FormationTypePublishesNestedConditions(string relation, bool valid)
+    {
+        var source = "contract C\n    associate Item(a, b) for ref/(ref/i32 during a) during b\nstruct S\n    Self is C\n    associate C.Item(x, y) is i32\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    return 42";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
 }
