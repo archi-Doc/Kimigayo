@@ -63,6 +63,8 @@ P22, P19, P20, P21, P29, P32, P30, P23, P27, P37 and P39 are done. P28 is the ac
 
 ### Toolchain track (after P38, or earlier when instructed)
 
+The user-requested [LSP diagnostics plan](LSP_PLAN.md) defines a separate tooling track (L1–L6): reuse the compiler front end, debounce editor input, and establish shared analysis inputs/results for a future CSP adapter. **Planning complete; implementation not started.** The compiler milestone order is unchanged.
+
 | ID | Subject | Acceptance |
 | --- | --- | --- |
 | T1 | Foreign imports across modules | Dependency-module imports link against that module's own `NativeLibraries` supplies through link manifest schema 4 with scoped requirement identities (§20.8.3, §18.5.2), plus archive member kind/provider validation (§20.8.2.3). Two-module native test. |
