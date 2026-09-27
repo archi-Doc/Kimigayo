@@ -99,9 +99,9 @@ public sealed partial class KimiLibrary
 
             if (matches && entry.Id == KimiDeclarationId.IntoIterable)
             {
-                // The associated IteratorType must require the recognized Kimi.Iterator, not a same-named Contract.
+                // The associated IteratorType must require the recognized Kimi.LendingIterator.
                 var iterator = ((ContractKoto)symbol.Declaration).ConstraintNodes[0];
-                matches = iterator.BoundConstraint is { Contract: { } required } && ReferenceEquals(required, this.GetSymbol(KimiDeclarationId.Iterator));
+                matches = iterator.BoundConstraint is { Contract: { } required } && ReferenceEquals(required, this.LendingIterator);
             }
 
             if (matches && entry.Id is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable)
@@ -381,9 +381,8 @@ public sealed partial class KimiLibrary
         BareType(function.ReturnType) is OriginApplicationKoto { ArgumentNodes.Count: 1 } result && BareName(result.ArgumentNodes[0], "source") &&
         BareType(result.Type) is MemberAccessKoto element && BareName(element.Left, "Self") && BareName(element.Right, "IteratorType");
 
-    // SPEC 22.1.2.2: associate IteratorType is ::Kimi.Iterator; func intoIterator(self: Self) -> Self.IteratorType.
-    // The IteratorType requirement's identity is checked after Binding. Migration to LendingIterator
-    // and the borrowing entries remains part of P28 (STATUS).
+    // SPEC 22.1.2.2: associate IteratorType is ::Kimi.LendingIterator; func intoIterator(self: Self) -> Self.IteratorType.
+    // The IteratorType requirement's identity is checked after Binding.
     private bool ValidIntoIterable(BindingSymbol symbol)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
         symbol.Declaration is ContractKoto { Name: "IntoIterable", HasIncompatibleBindingHeader: false, Members.Count: 1, ConstraintNodes.Count: 1, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&

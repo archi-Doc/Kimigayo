@@ -124,7 +124,7 @@ public class UserIterationTest
     [Fact]
     public void GenericLoopTransfersItsProjectedItemIntoTheResult()
     {
-        const string First = "func first<B>(batch: B) -> Option<B.IteratorType.Item>\n    B is IntoIterable\n    for item in batch@move => return .Some(item@move)\n    return .None\n";
+        const string First = "func first<B>(batch: B) -> Option<B.IteratorType.Item>\n    B is IntoIterable\n    B.IteratorType is Iterator\n    for item in batch@move => return .Some(item@move)\n    return .None\n";
         ScalarEmissionTest.EmitFixture("UserIterationProjectedResult", Counter + Three + Drain + First + "match first(Three.init())\n    .Some(let n) => require n == 1 else => $abort(\"first\")\n    .None => $abort(\"empty\")\nmatch first(Batch<string>.init(\"ok\"))\n    .Some(let text) => Console.writeLine(text)\n    .None => $abort(\"empty\")", "ok\n");
     }
 
