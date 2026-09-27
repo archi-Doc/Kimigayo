@@ -494,10 +494,10 @@ public sealed partial class KimiLibrary
         constructor.Parameters[0] is { InternalName: "start", ExternalName: "start", DefaultValue: null } startParameter && BareName(startParameter.Type, "isize") &&
         constructor.Parameters[1] is { InternalName: "end", ExternalName: "end", DefaultValue: null } endParameter && BareName(endParameter.Type, "isize");
 
-    // SPEC 4.7.2, 4.7.4: public init(! capacity: isize) => (); the compiler allocates the Array at each construction.
+    // SPEC 4.7.2, 4.7.4: the bodiless signature public init(! capacity: isize); the compiler allocates the Array at each construction.
     private bool ValidArrayConstructor(BindingSymbol symbol)
         => symbol.CompilerFunction == CompilerFunctionKind.ArrayWithCapacity &&
-        symbol.Declaration is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, NameBoundaryIndex: 0, ReturnType: null, Body: null, ExpressionBody: UnitLiteralKoto, AttributeChain: null, Parameters.Count: 1 } function &&
+        symbol.Declaration is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, NameBoundaryIndex: 0, ReturnType: null, Body: null, ExpressionBody: null, AttributeChain: null, Parameters.Count: 1 } function &&
         ReferenceEquals(function.Parent, this.ArrayScope.Owner) && function.GenericArguments.Count == 0 && function.Origins.Count == 0 && function.TypeConstraints.Count == 0 &&
         function.Parameters[0] is { ExternalName: "capacity", InternalName: "capacity", DefaultValue: null, AttributeChain: null } parameter && BareName(parameter.Type, "isize");
 

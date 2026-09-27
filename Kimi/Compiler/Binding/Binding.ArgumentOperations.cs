@@ -111,12 +111,6 @@ public sealed partial class Binding
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PreparedOrigin(source));
 
-    // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
-    // (SPEC 13.5.5.1), as the adaptation recorded it; otherwise the source Place's.
-    private BoundOrigin PreparedOrigin(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is var place && this.ImplicitPairAdmitted(place) is var admitted && admitted != SemanticsMask.None && place.BoundType is { } pair
-            ? this.PairOrigin(place, pair, admitted) : this.PlaceOrigin(source);
-
     // SPEC 4.6.9, 4.5: an exclusive borrow of a dynamic Array element lends the whole owned Array exclusively first.
     internal BoundType ExclusiveArrayHandle(Koto array)
         => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [array.BoundType!], origin: this.PlaceOrigin(array));
@@ -465,6 +459,12 @@ public sealed partial class Binding
         return expected.Semantics == SemanticsKind.Ref && actual.Semantics == SemanticsKind.Owner && Compatible(actual, target) && IsBarePlace(node)
             ? new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [actual], origin: this.PlaceOrigin(node))) : null;
     }
+
+    // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
+    // (SPEC 13.5.5.1), as the adaptation recorded it; otherwise the source Place's.
+    private BoundOrigin PreparedOrigin(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is var place && this.ImplicitPairAdmitted(place) is var admitted && admitted != SemanticsMask.None && place.BoundType is { } pair
+            ? this.PairOrigin(place, pair, admitted) : this.PlaceOrigin(source);
 
     private BoundOrigin PlaceOrigin(Koto source)
     {

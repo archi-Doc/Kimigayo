@@ -138,17 +138,28 @@ public sealed partial class KimiLibrary
                 break;
             }
 
-            if (reader.CurrentTokenKind != TokenKind.Func)
+            // A constructor signature is admitted in a struct; the compiler supplies its construction too.
+            var constructor = reader.CurrentTokenKind == TokenKind.Init && container is StructKoto;
+            if (reader.CurrentTokenKind != TokenKind.Func && !constructor)
             {
                 reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, reader.CurrentTokenKind.ToString());
                 break;
             }
 
-            reader.Advance();
-            var declaration = Parser.ParseFuncDeclaration(ref reader);
+            if (!constructor)
+            {
+                reader.Advance();
+            }
+
+            var declaration = Parser.ParseFuncDeclaration(ref reader, constructor: constructor);
             if (declaration is null)
             {
                 break;
+            }
+
+            if (constructor)
+            {
+                declaration.DeclaringContainer = container;
             }
 
             Parser.ParseSignatureClauses(ref reader, declaration);

@@ -1,11 +1,6 @@
 // Compiler-managed dynamic Array (SPEC 4.5, 4.7): storage, length/capacity metadata and the mutation
 // operations are supplied by the compiler; helpers may be added here as functions only.
 public struct Array<T>
-    /// Creates an empty Array whose capacity is at least `capacity`; a negative argument aborts and zero allocates nothing.
-    ///
-    /// The compiler allocates the Array; this body is never used.
-    public init(! capacity: isize) => ()
-
     /// Returns a shared reference to the element at `index`, or `None` when `index` is out of range.
     public func tryGet(self, index: isize) -> Option<ref/T during self>
         require index >= 0 and index < self.length else => return .None
