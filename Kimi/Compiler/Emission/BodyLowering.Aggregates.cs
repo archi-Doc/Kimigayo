@@ -543,7 +543,7 @@ internal sealed partial class BodyLowering
 
                 break;
             default:
-                return Fail("Aggregate operation requires an explicit execution plan.", out failure);
+                return Fail($"Aggregate operation requires an explicit execution plan ({body.Function.Name}, {id}: {operation.Kind}, {place.Id}/{place.Type.Name}).", out failure);
         }
 
         this.AddStringFlags(function, operation, id);

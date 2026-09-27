@@ -38,6 +38,35 @@ public class UserIterationTest
         => ScalarEmissionTest.EmitFixture("UserIterationCounter", Counter + Three + "var total: i32 = 0\nfor item in Three.init()\n    total += item\nrequire total == 6 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n");
 
     [Fact]
+    public void EntryConstraintDispatchesInAGenericBody()
+        => ScalarEmissionTest.EmitFixture("UserIterationConstraint", Counter + Three + "func count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Three.init()) == 3 else => $abort(\"count\")\nConsole.writeLine(\"ok\")", "ok\n");
+
+    [Fact]
+    public void EntryConstraintPreservesOwnedAndBorrowedItems()
+        => ScalarEmissionTest.EmitFixture("UserIterationConstraintItems", Drain + "struct Tracked\n    deinit => Console.writeLine(\"item\")\nfunc count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nfunc inspect(n: ref/i32 during a)\n    require count(Batch<ref/i32 during a>.init(n)) == 1 else => $abort(\"borrow\")\nrequire count(Batch<Tracked>.init(Tracked.init())) == 1 else => $abort(\"owned\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")", "item\nok\n");
+
+    [Fact]
+    public void MissingEntryConstraintIsRejected()
+    {
+        var c = MinimalEmissionTest.Analyze("func count<B>(batch: B)\n    for _ in batch@move => ()");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+    }
+
+    [Fact]
+    public void EntryConstraintStillConsumesItsSubject()
+    {
+        var c = MinimalEmissionTest.Analyze("func count<B>(batch: B)\n    B is IntoIterable\n    for _ in batch@move => ()\n    let again = batch@move");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Contains(c.Ownership.Issues, x => x.Code == DiagnosticCode.MovedPlace_Kd);
+    }
+
+    [Fact]
+    public void ConstructedEntryInsideAGenericBodyExecutes()
+        => ScalarEmissionTest.EmitFixture("UserIterationConstructed", Drain + "func count<T>(batch: Batch<T>) -> isize\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Batch<i32>.init(7)) == 1 else => $abort(\"count\")\nConsole.writeLine(\"ok\")", "ok\n");
+
+    [Fact]
     public void OwnedTupleItemsExecute()
         => ScalarEmissionTest.EmitFixture("UserIterationTuple", Drain + "for (var number, flag) in Batch<(i32, bool)>.init((7, true))\n    number += 1\n    require number == 8 and flag else => $abort(\"tuple\")\nConsole.writeLine(\"ok\")", "ok\n");
 

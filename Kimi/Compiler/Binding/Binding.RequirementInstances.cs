@@ -48,7 +48,8 @@ public sealed partial class Binding
         {
             for (var i = 0; i < source.Length; i++)
             {
-                result[i] = this.SubstituteStoredOrigin(source[i], requirement, call.Origins, call.InputOrigins);
+                // An owning input has no outer Origin slot; keep that absence in its concrete witness.
+                result[i] = source[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement, call.Origins, call.InputOrigins) : null!;
             }
         }
     }

@@ -162,8 +162,8 @@ public sealed partial class Binding
     {
         item = null;
         var entry = this.Library.IntoIterable;
-        if (subject.Symbol is not { Declaration: StructKoto or EnumKoto } owner ||
-            this.ConformanceByDeclaration(owner, entry, out _) is null)
+        var nominal = subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null;
+        if (!nominal && !this.HasContractFact(subject, entry, scope))
         {
             return false;
         }
