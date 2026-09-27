@@ -615,9 +615,10 @@ public abstract class Koto
         newKoto.Parent = this;
         for (var owner = this; owner is not null; owner = owner.Parent)
         {
-            if (owner.Akind == KotoKind.AssociatedType || owner is IsKoto { IsAssociatedConstraint: true })
+            if (owner.Akind == KotoKind.AssociatedType || owner is IsKoto { IsAssociatedConstraint: true } or FunctionKoto or PropertyAccessorKoto)
             {
-                // Associated definitions publish Type and Origin conditions used outside this subtree.
+                // Associated definitions and callable bodies publish Type, Origin and effect conditions used outside
+                // this subtree. A body edit can revoke a caller's Iterator independence or reserve certificate.
                 this.CodeContext.Compilation.InvalidateSourceAnalysis();
                 break;
             }
