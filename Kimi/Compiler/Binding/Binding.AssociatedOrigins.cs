@@ -90,6 +90,17 @@ public sealed partial class Binding
         return true;
     }
 
+    // A universal family capability is applied at the same Origins as its subject projection.
+    private BindingSymbol AppliedAssociatedContract(BoundConstraint fact, BoundType subject)
+    {
+        var contract = fact.Contract!;
+        return IsBoundContractReference(contract) &&
+            fact.Subject is { Kind: BoundTypeKind.AssociatedProjection, OriginArguments.Count: > 0 } pattern &&
+            subject.Kind == BoundTypeKind.AssociatedProjection && subject.OriginArguments.Count != 0
+            ? this.BoundContractReference(this.SubstituteStoredOrigins(contract.Type!, pattern.Symbol!.Declaration, (BoundOrigin[])subject.OriginArguments))
+            : contract;
+    }
+
     private ReadOnlySpan<BoundOrigin> AssociatedParameters(Koto declaration)
         => this.associatedOrigins.TryGetValue(declaration, out var origins) && AssociatedHead(declaration) is OriginApplicationKoto ? origins : [];
 
