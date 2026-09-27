@@ -4,6 +4,7 @@
 # classes/methods, then native O0/O2 execution of the fixtures those tests regenerated and the
 # selected milestone harnesses.
 #   ./verify.ps1 -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
+#   ./verify.ps1 -Class XunitTest.IterationAdapterTest -Fixtures 'IterationAdapter*.ll','LendingIterator*.ll'
 #   ./verify.ps1 -Method XunitTest.ForeignEmissionTest.PointerSubplacesAccessOnlyTheirStoredParts
 #   ./verify.ps1 -Milestone 18
 #
@@ -20,7 +21,8 @@ param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
-    [string] $Fixtures = '',
+    # One or more fixture patterns; each runs as its own native step over the same fixture directory.
+    [string[]] $Fixtures = @(),
     [int[]] $Milestone = @(),
     [string] $Name = '',
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
@@ -90,17 +92,23 @@ foreach ($configuration in $configurations) {
 }
 
 $native = if ($Mode -eq 'Session') { 'Release' } else { 'Debug' }
-if (-not $failed -and $Fixtures) {
+if (-not $failed -and $Fixtures.Count -gt 0) {
     # Fixtures come from the tests run above; run them only when those tests passed.
-    $log = Join-Path $evidence 'native.log'
     $fixtureDirectory = Join-Path $evidence "fixtures-$native"
-    $ok = Invoke-Script { & (Join-Path $repo 'backend/windows-x64/test-scalars.ps1') -FixturePattern $Fixtures -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $evidence 'native') } $log
-    $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
-    Add-Step "native $Fixtures" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log"
-    if (Test-Path -LiteralPath $fixtureDirectory) {
-        Get-ChildItem -LiteralPath $fixtureDirectory -Filter $Fixtures -File | Get-FileHash | ForEach-Object { "$($_.Hash),$([IO.Path]::GetFileName($_.Path))" } |
-            Set-Content (Join-Path $evidence 'fixture-hashes.csv')
+    $hashes = [System.Collections.Generic.List[string]]::new()
+    for ($i = 0; $i -lt $Fixtures.Count; $i++) {
+        $pattern = $Fixtures[$i]
+        $suffix = if ($Fixtures.Count -eq 1) { '' } else { "-$i" }
+        $log = Join-Path $evidence "native$suffix.log"
+        $ok = Invoke-Script { & (Join-Path $repo 'backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $evidence "native$suffix") } $log
+        $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
+        Add-Step "native $pattern" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log"
+        if (Test-Path -LiteralPath $fixtureDirectory) {
+            Get-ChildItem -LiteralPath $fixtureDirectory -Filter $pattern -File | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }
+        }
     }
+
+    if ($hashes.Count -gt 0) { $hashes | Sort-Object -Unique | Set-Content (Join-Path $evidence 'fixture-hashes.csv') }
 }
 
 if (-not $failed -and $Milestone.Count -gt 0) {
