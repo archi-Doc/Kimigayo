@@ -25,6 +25,19 @@ public sealed partial class Binding
             _ => null,
         };
 
+    private BindingScope AssociatedFormationScope(BoundConformancePath path, BindingSymbol? associated, BindingScope scope)
+    {
+        if (associated is not { Kind: BindingSymbolKind.AssociatedType } || this.AssociatedParameters(associated.Declaration).Length == 0 ||
+            !this.associatedBindings.TryGetValue((path.RootPath, associated), out var binding))
+        {
+            return scope;
+        }
+
+        var result = binding.FormationScope ??= new(associated.Declaration);
+        result.Parent = scope;
+        return result;
+    }
+
     private void BindAssociatedFormation(Koto declaration, BindingScope scope)
     {
         if (AssociatedFormationSyntax(declaration) is not { } syntax)

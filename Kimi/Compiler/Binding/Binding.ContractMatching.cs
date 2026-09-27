@@ -222,12 +222,13 @@ public sealed partial class Binding
                 }
 
                 // Normalized identity/Core shape alone does not prove nested input constraints.
-                proof = CombineProof(proof, this.CheckTypeConstraints(associated, scope), true);
+                var formationScope = this.AssociatedFormationScope(conformance, shape.AssociatedTypes[i], scope);
+                proof = CombineProof(proof, this.CheckTypeConstraints(associated, formationScope), true);
                 var inputs = this.associatedBindings[(conformance.RootPath, shape.AssociatedTypes[i])].Candidates;
                 for (var input = 0; input < inputs.Count; input++)
                 {
                     // Projection normalization may erase an invalid constructed qualifier.
-                    proof = CombineProof(proof, this.CheckTypeConstraints(inputs[input], scope), true);
+                    proof = CombineProof(proof, this.CheckTypeConstraints(inputs[input], formationScope), true);
                 }
             }
 
@@ -271,7 +272,8 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
+                var clauseScope = this.AssociatedFormationScope(conformance, shape.ClauseStorage[i].BoundSymbol, scope);
+                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
             }
 
             var container = (DeclarationContainerKoto)conformance.Type.Declaration;
@@ -288,7 +290,8 @@ public sealed partial class Binding
 
                         if (clause.BoundConstraint is { } constraint && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
                         {
-                            proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
+                            var clauseScope = this.AssociatedFormationScope(conformance, clause.BoundSymbol, scope);
+                            proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
                         }
                     }
                 }
@@ -303,7 +306,8 @@ public sealed partial class Binding
                         return Invalid(BindingFailure.InvalidAssociatedType);
                     }
 
-                    proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
+                    var clauseScope = this.AssociatedFormationScope(conformance, clause.BoundSymbol, scope);
+                    proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
                 }
             }
 

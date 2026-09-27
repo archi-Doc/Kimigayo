@@ -555,6 +555,8 @@ public sealed partial class Binding
 
     private sealed class AssociatedBinding
     {
+        internal BindingScope? FormationScope { get; set; }
+
         internal List<BoundType> Candidates { get; } = new();
 
         internal BoundType? Result { get; set; }
