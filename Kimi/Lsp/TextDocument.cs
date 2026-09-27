@@ -1,271 +1,148 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
+using System.Buffers;
+using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 namespace Kimi.Lsp;
 
 /// <summary>
-/// Represents an LSP text document as pooled text lines.
-/// This type is not thread-safe.
+/// Holds the text of one open document in a single pooled buffer (SPEC 23.4.2).
+/// This type is not thread-safe: only the state owner touches it.
 /// </summary>
+/// <remarks>
+/// Line starts follow the <see cref="SourceDocument"/> rule, so editor positions and diagnostics agree on CR, LF and
+/// CRLF, including a CR and an LF joined by an edit. Positions are UTF-16 code units.
+/// </remarks>
 internal sealed class TextDocument : IDisposable
 {
-    #region FieldAndProperty
+    private static readonly ArrayPool<char> Pool = ArrayPool<char>.Shared;
 
-    private readonly List<TextLine> lines = new();
-    private readonly List<TextLine> workLines = new();
-    private bool disposed;
+    private char[] buffer = [];
+    private int length;
+    private int[] lineStarts = new int[16];
+    private int lineCount = 1;
+    private string? text;
 
-    public string Uri { get; }
-
-    public int Version { get; private set; }
-
-    public IReadOnlyList<TextLine> Lines => this.lines;
-
-    #endregion
-
-    public TextDocument(string uri)
+    /// <summary>Initializes a new instance of the <see cref="TextDocument"/> class.</summary>
+    /// <param name="text">The initial text.</param>
+    public TextDocument(string text)
     {
-        this.Uri = uri ?? throw new ArgumentNullException(nameof(uri));
+        this.Replace(text);
     }
 
-    public void Open(string text, int version)
+    /// <summary>Gets the number of UTF-16 code units.</summary>
+    public int Length => this.length;
+
+    /// <summary>Gets the number of lines.</summary>
+    public int LineCount => this.lineCount;
+
+    /// <summary>Gets the current text.</summary>
+    public ReadOnlySpan<char> Span => this.buffer.AsSpan(0, this.length);
+
+    /// <summary>Replaces the whole text.</summary>
+    /// <param name="value">The new text.</param>
+    public void Replace(string value)
     {
-        ObjectDisposedException.ThrowIf(this.disposed, this);
-
-        this.ClearLines();
-        AddLines(this.lines, text.AsSpan());
-
-        this.Version = version;
+        this.EnsureCapacity(value.Length, false);
+        value.AsSpan().CopyTo(this.buffer);
+        this.length = value.Length;
+        this.text = value;
+        this.RebuildLines();
     }
 
-    public void ApplyChange(int startLine, int startCharacter, int endLine, int endCharacter, string text, int version)
+    /// <summary>Applies one ranged change. A character beyond its line end is clamped, as LSP specifies.</summary>
+    /// <param name="start">The start position.</param>
+    /// <param name="end">The end position.</param>
+    /// <param name="replacement">The inserted text.</param>
+    /// <returns><see langword="false"/> when the change cannot be applied: a reversed range, or a line beyond the document.</returns>
+    public bool TryApply(SourcePosition start, SourcePosition end, ReadOnlySpan<char> replacement)
     {
-        ObjectDisposedException.ThrowIf(this.disposed, this);
-
-        if (this.lines.Count == 0)
+        if (!this.TryGetOffset(start, out var from) || !this.TryGetOffset(end, out var to) || to < from)
         {
-            this.lines.Add(new TextLine());
+            return false;
         }
 
-        startLine = Math.Clamp(startLine, 0, this.lines.Count - 1);
-        endLine = Math.Clamp(endLine, startLine, this.lines.Count - 1);
-
-        var start = this.lines[startLine];
-        var end = this.lines[endLine];
-
-        startCharacter = Math.Clamp(startCharacter, 0, start.Length);
-        endCharacter = Math.Clamp(endCharacter, 0, end.Length);
-
-        var replacement = text.AsSpan();
-        var firstBreak = IndexOfLineBreak(replacement, out var firstBreakLength);
-
-        // Fast path: same-line replacement without line breaks.
-        if (firstBreak < 0 && startLine == endLine)
+        var removed = to - from;
+        var newLength = this.length - removed + replacement.Length;
+        this.EnsureCapacity(newLength, true);
+        var tail = this.length - to;
+        if (replacement.Length != removed && tail > 0)
         {
-            start.Replace(startCharacter, endCharacter, replacement);
-            this.Version = version;
-            return;
+            this.buffer.AsSpan(to, tail).CopyTo(this.buffer.AsSpan(from + replacement.Length));
         }
 
-        var prefix = start.AsSpan()[..startCharacter];
-        var suffix = end.AsSpan()[endCharacter..];
-
-        var newLines = this.workLines;
-        newLines.Clear();
-
-        try
-        {
-            if (firstBreak < 0)
-            {
-                var line = new TextLine();
-                line.Set(prefix, replacement, suffix);
-                newLines.Add(line);
-            }
-            else
-            {
-                var firstLine = new TextLine();
-                firstLine.Set(prefix, replacement[..firstBreak]);
-                newLines.Add(firstLine);
-
-                var position = firstBreak + firstBreakLength;
-
-                while (true)
-                {
-                    var rest = replacement[position..];
-                    var nextBreak = IndexOfLineBreak(rest, out var nextBreakLength);
-
-                    if (nextBreak < 0)
-                    {
-                        var lastLine = new TextLine();
-                        lastLine.Set(rest, suffix);
-                        newLines.Add(lastLine);
-                        break;
-                    }
-
-                    var line = new TextLine();
-                    line.Set(rest[..nextBreak]);
-                    newLines.Add(line);
-
-                    position += nextBreak + nextBreakLength;
-                }
-            }
-
-            this.ReplaceLines(startLine, endLine - startLine + 1, newLines);
-            this.Version = version;
-        }
-        catch
-        {
-            DisposeLines(newLines);
-            newLines.Clear();
-            throw;
-        }
+        replacement.CopyTo(this.buffer.AsSpan(from));
+        this.length = newLength;
+        this.text = null;
+        this.RebuildLines();
+        return true;
     }
 
+    /// <summary>Returns the text as one string, created at most once per change.</summary>
+    /// <returns>The text.</returns>
     public override string ToString()
-    {
-        ObjectDisposedException.ThrowIf(this.disposed, this);
+        => this.text ??= new string(this.buffer, 0, this.length);
 
-        var count = this.lines.Count;
-        if (count == 0)
-        {
-            return string.Empty;
-        }
-
-        var length = count - 1; // '\n' between lines
-        for (var i = 0; i < count; i++)
-        {
-            length += this.lines[i].Length;
-        }
-
-        if (length == 0)
-        {
-            return string.Empty;
-        }
-
-        return string.Create(length, this.lines, static (destination, lines) =>
-        {
-            var position = 0;
-            for (var i = 0; i < lines.Count; i++)
-            {
-                if (i != 0)
-                {
-                    destination[position++] = '\n';
-                }
-
-                var line = lines[i].AsSpan();
-                line.CopyTo(destination[position..]);
-                position += line.Length;
-            }
-        });
-    }
-
+    /// <inheritdoc/>
     public void Dispose()
     {
-        if (this.disposed)
+        if (this.buffer.Length != 0)
+        {
+            Pool.Return(this.buffer);
+            this.buffer = [];
+        }
+
+        this.length = 0;
+        this.text = null;
+    }
+
+    private bool TryGetOffset(SourcePosition position, out int offset)
+    {
+        offset = 0;
+        if (position.Line < 0 || position.Character < 0 || position.Line >= this.lineCount)
+        {
+            return false;
+        }
+
+        var lineStart = this.lineStarts[position.Line];
+        var lineEnd = position.Line + 1 < this.lineCount ? this.lineStarts[position.Line + 1] : this.length;
+        var span = this.buffer.AsSpan(0, this.length);
+        if (lineEnd > lineStart && span[lineEnd - 1] == Constants.LfChar)
+        {
+            lineEnd--;
+        }
+
+        if (lineEnd > lineStart && span[lineEnd - 1] == Constants.CrChar)
+        {
+            lineEnd--;
+        }
+
+        offset = lineStart + Math.Min(position.Character, lineEnd - lineStart);
+        return true;
+    }
+
+    private void EnsureCapacity(int capacity, bool preserve)
+    {
+        if (capacity <= this.buffer.Length && this.buffer.Length != 0)
         {
             return;
         }
 
-        this.disposed = true;
-
-        this.ClearLines();
-        DisposeLines(this.workLines);
-        this.workLines.Clear();
-    }
-
-    private static void DisposeLines(List<TextLine> lines)
-    {
-        foreach (var line in lines)
+        var larger = Pool.Rent(Math.Max(capacity, Math.Max(256, this.buffer.Length * 2)));
+        if (preserve)
         {
-            line.Dispose();
-        }
-    }
-
-    private static void AddLines(List<TextLine> lines, ReadOnlySpan<char> text)
-    {
-        var start = 0;
-
-        for (var i = 0; i < text.Length;)
-        {
-            var next = text[i..].IndexOfAny('\r', '\n');
-
-            if (next < 0)
-            {
-                break;
-            }
-
-            var lineEnd = i + next;
-
-            var line = new TextLine();
-            line.Set(text[start..lineEnd]);
-            lines.Add(line);
-
-            i = lineEnd;
-            i += text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n' ? 2 : 1;
-
-            start = i;
+            this.buffer.AsSpan(0, this.length).CopyTo(larger);
         }
 
-        var lastLine = new TextLine();
-        lastLine.Set(text[start..]);
-        lines.Add(lastLine);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int IndexOfLineBreak(ReadOnlySpan<char> text, out int lineBreakLength)
-    {
-        var index = text.IndexOfAny('\r', '\n');
-
-        if (index < 0)
+        if (this.buffer.Length != 0)
         {
-            lineBreakLength = 0;
-            return -1;
+            Pool.Return(this.buffer);
         }
 
-        lineBreakLength = (text[index] == '\r' && index + 1 < text.Length && text[index + 1] == '\n') ? 2 : 1;
-
-        return index;
+        this.buffer = larger;
     }
 
-    private void ReplaceLines(int index, int count, List<TextLine> newLines)
-    {
-        Debug.Assert(index >= 0);
-        Debug.Assert(count >= 0);
-        Debug.Assert(index + count <= this.lines.Count);
-
-        var newCount = newLines.Count;
-
-        if (newCount == count)
-        {
-            for (var i = 0; i < count; i++)
-            {
-                this.lines[index + i].Dispose();
-                this.lines[index + i] = newLines[i];
-            }
-
-            newLines.Clear();
-            return;
-        }
-
-        this.lines.EnsureCapacity(this.lines.Count - count + newCount);
-
-        for (var i = index; i < index + count; i++)
-        {
-            this.lines[i].Dispose();
-        }
-
-        this.lines.RemoveRange(index, count);
-        this.lines.InsertRange(index, newLines);
-
-        // Ownership has moved to this.lines.
-        newLines.Clear();
-    }
-
-    private void ClearLines()
-    {
-        DisposeLines(this.lines);
-        this.lines.Clear();
-    }
+    private void RebuildLines()
+        => this.lineCount = SourceDocument.FillLineStarts(this.buffer.AsSpan(0, this.length), ref this.lineStarts, null);
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
 using Kimi.Lsp;
@@ -47,6 +47,10 @@ public class LspCommand : ISimpleCommand<LspCommand.Options>
             }
         }
 
-        await this.lspServer.Run(cancellationToken).ConfigureAwait(false);
+        // Standard output carries only protocol frames (SPEC 23.3.3): stray console writes go to standard error.
+        using var input = Console.OpenStandardInput();
+        using var output = Console.OpenStandardOutput();
+        Console.SetOut(Console.Error);
+        Environment.ExitCode = await this.lspServer.Run(input, output, cancellationToken).ConfigureAwait(false);
     }
 }

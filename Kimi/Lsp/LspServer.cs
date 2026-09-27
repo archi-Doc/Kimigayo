@@ -1,395 +1,125 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
-using System.Buffers.Text;
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
-using Kimi.Diagnostics;
+using System.Threading.Channels;
+
+#pragma warning disable SA1402 // The queue items belong to the host.
 
 namespace Kimi.Lsp;
 
-public class LspServer
+/// <summary>
+/// The language server host (SPEC 23.4): the receive loop, the state owner loop and the sender over injected streams.
+/// </summary>
+public sealed class LspServer
 {
-    #region FieldAndProperty
+    /// <summary>Runs one session until <c>exit</c> or the end of the input.</summary>
+    /// <param name="input">The client's messages.</param>
+    /// <param name="output">The protocol output; nothing else may write to it.</param>
+    /// <param name="cancellationToken">Ends the session like the end of the input.</param>
+    /// <returns>The process exit code: 0 after <c>shutdown</c>, otherwise 1.</returns>
+    public Task<int> Run(Stream input, Stream output, CancellationToken cancellationToken)
+        => Run(input, output, static () => Environment.TickCount64, null, cancellationToken);
 
-    private readonly Stream input;
-    private readonly Stream output;
-    private readonly SemaphoreSlim writeLock;
-    private readonly Dictionary<string, TextDocument> documents = new(StringComparer.Ordinal);
-    private bool shutdownRequested;
-
-    private DelayedTaskExecutor dump;
-
-    #endregion
-
-    public LspServer()
+    /// <summary>Runs one session with a replaceable clock and runner, for tests.</summary>
+    /// <param name="input">The client's messages.</param>
+    /// <param name="output">The protocol output.</param>
+    /// <param name="clock">The time in milliseconds.</param>
+    /// <param name="configure">Configures the session before the first message.</param>
+    /// <param name="cancellationToken">Ends the session like the end of the input.</param>
+    /// <returns>The exit code.</returns>
+    internal static async Task<int> Run(Stream input, Stream output, Func<long> clock, Action<LspSession>? configure, CancellationToken cancellationToken)
     {
-        this.input = Console.OpenStandardInput();
-        this.output = Console.OpenStandardOutput();
-        this.writeLock = new(1, 1);
-
-        this.dump = new(
-            async cancellationToken =>
-            {
-                var sb = new StringBuilder();
-                foreach (var x in this.documents)
-                {
-                    sb.AppendLine(x.Key);
-                    sb.AppendLine(x.Value.ToString());
-                }
-
-                // File.AppendAllText("C:\\App\\lsp2.txt", sb.ToString());
-            },
-            TimeSpan.FromSeconds(3));
-    }
-
-    public async Task Run(CancellationToken cancellationToken)
-    {
-        var buffer = new byte[256];
-        int length = 0;
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            // 'Content-Length: '
-            var r = await ReadLine().ConfigureAwait(false);
-            if (r.TextLength < LspHelper.ContentHeader.Length)
-            {
-                break;
-            }
-
-            if (!LspHelper.StartsWithIgnoreAsciiCase(buffer.AsSpan(0, r.TextLength), LspHelper.ContentHeader))
-            {// Not 'Content-Length'
-                break;
-            }
-
-            if (!Utf8Parser.TryParse(buffer.AsSpan(LspHelper.ContentHeader.Length, r.TextLength - LspHelper.ContentHeader.Length), out int contentLength, out var consumed) ||
-                consumed != r.TextLength - LspHelper.ContentHeader.Length ||
-                contentLength < 0)
-            {
-                break;
-            }
-
-            while (true)
-            {
-                MoveBuffer(r.LineLength);
-                r = await ReadLine().ConfigureAwait(false);
-
-                if (r.TextLength == 0)
-                {
-                    MoveBuffer(r.LineLength);
-                    break;
-                }
-            }
-
-            var payload = ArrayPool<byte>.Shared.Rent(contentLength);
-            var remaining = contentLength;
-            try
-            {
-                if (length > 0)
-                {
-                    var size = Math.Min(length, remaining);
-                    buffer.AsSpan(0, size).CopyTo(payload);
-                    remaining -= size;
-                    MoveBuffer(size);
-                }
-
-                await this.input.ReadExactlyAsync(payload.AsMemory(contentLength - remaining, remaining), cancellationToken).ConfigureAwait(false);
-
-                var span = payload.AsSpan(0, contentLength);
-
-                var message = JsonSerializer.Deserialize(span, LspJsonContext.Default.LspMessage);
-                if (message is null)
-                {
-                    break;
-                }
-
-                await this.HandleMessage(message).ConfigureAwait(false);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(payload);
-            }
-        }
-
-        void MoveBuffer(int nextPosition)
-        {
-            if (length > nextPosition)
-            {
-                buffer.AsSpan(nextPosition, length - nextPosition).CopyTo(buffer);
-            }
-
-            length -= nextPosition;
-        }
-
-        async Task<(int TextLength, int LineLength)> ReadLine()
-        {
-            while (true)
-            {
-                var span = buffer.AsSpan(0, length);
-                var idx = span.IndexOf(LspHelper.Lf);
-                if (idx >= 0)
-                {
-                    int textLength;
-                    int lineLength;
-
-                    if (idx > 0 && span[idx - 1] == LspHelper.Cr)
-                    {// CrLf
-                        textLength = idx - 1;
-                        lineLength = idx + 1;
-                    }
-                    else
-                    {// Lf
-                        textLength = idx;
-                        lineLength = idx + 1;
-                    }
-
-                    return (textLength, lineLength);
-                }
-
-                if (length >= buffer.Length)
-                {
-                    return default;
-                }
-                else
-                {
-                    var read = await this.input.ReadAsync(buffer.AsMemory(length, buffer.Length - length), cancellationToken).ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        return default;
-                    }
-
-                    length += read;
-                }
-            }
-        }
-    }
-
-    private async Task HandleMessage(LspMessage message)
-    {
-        switch (message.Method)
-        {
-            case "initialize":
-                await this.HandleInitializeAsync(message.Id).ConfigureAwait(false);
-                break;
-
-            case "initialized":
-                break;
-
-            case "shutdown":
-                this.shutdownRequested = true;
-                await this.SendResponseAsync(message.Id, null).ConfigureAwait(false);
-                break;
-
-            case "exit":
-                Environment.Exit(this.shutdownRequested ? 0 : 1);
-                break;
-
-            case "textDocument/didOpen":
-                await this.HandleDidOpenAsync(message.Params).ConfigureAwait(false);
-                break;
-
-            case "textDocument/didChange":
-                await this.HandleDidChangeAsync(message.Params).ConfigureAwait(false);
-                break;
-
-            case "textDocument/didClose":
-                await this.HandleDidCloseAsync(message.Params).ConfigureAwait(false);
-                break;
-
-            default:
-                if (message.Id is not null)
-                {
-                    await this.SendErrorAsync(
-                        message.Id,
-                        -32601,
-                        $"Method not found: {message.Method}").ConfigureAwait(false);
-                }
-
-                break;
-        }
-    }
-
-    private async Task HandleInitializeAsync(JsonElement? id)
-    {
-        var response = new InitializeResult
-        {
-            Capabilities = new ServerCapabilities
-            {
-                TextDocumentSync = new TextDocumentSyncOptions
-                {
-                    OpenClose = true,
-
-                    // 2 = Incremental
-                    Change = 2,
-                },
-            },
-            ServerInfo = new ServerInfo
-            {
-                Name = "Kimi Language Server",
-                Version = "0.0.1",
-            },
-        };
-
-        await this.SendResponseAsync(id, response).ConfigureAwait(false);
-    }
-
-    private async Task HandleDidOpenAsync(JsonElement? parametersElement)
-    {
-        if (parametersElement is null)
-        {
-            return;
-        }
-
-        var parameters = parametersElement.Value.Deserialize(LspJsonContext.Default.DidOpenTextDocumentParams);
-        if (parameters?.TextDocument is null)
-        {
-            return;
-        }
-
-        var doc = parameters.TextDocument;
-
-        var state = new TextDocument(doc.Uri);
-        state.Open(doc.Text ?? string.Empty, doc.Version);
-
-        if (this.documents.Remove(doc.Uri, out var previous))
-        {
-            previous.Dispose();
-        }
-
-        this.documents[doc.Uri] = state;
-
-        // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
-    }
-
-    private async Task HandleDidChangeAsync(JsonElement? parametersElement)
-    {
-        if (parametersElement is null)
-        {
-            return;
-        }
-
-        var parameters = parametersElement.Value.Deserialize(LspJsonContext.Default.DidChangeTextDocumentParams);
-        if (parameters?.TextDocument is null)
-        {
-            return;
-        }
-
-        var uri = parameters.TextDocument.Uri;
-        var version = parameters.TextDocument.Version;
-        if (!this.documents.TryGetValue(uri, out var document))
-        {
-            return;
-        }
-
-        foreach (var change in parameters.ContentChanges)
-        {
-            if (change.Range is not { } range)
-            {
-                document.Open(change.Text ?? string.Empty, version);
-                continue;
-            }
-
-            document.ApplyChange(
-                range.Start.Line,
-                range.Start.Character,
-                range.End.Line,
-                range.End.Character,
-                change.Text ?? string.Empty,
-                version);
-        }
-
-        // this.dump.Request();
-
-        // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
-    }
-
-    private async Task HandleDidCloseAsync(JsonElement? parametersElement)
-    {
-        if (parametersElement is null)
-        {
-            return;
-        }
-
-        var parameters = parametersElement.Value.Deserialize(LspJsonContext.Default.DidCloseTextDocumentParams);
-        if (parameters?.TextDocument is null)
-        {
-            return;
-        }
-
-        var uri = parameters.TextDocument.Uri;
-
-        if (this.documents.Remove(uri, out var document))
-        {
-            document.Dispose();
-        }
-
-        await this.PublishEmptyDiagnosticsAsync(uri).ConfigureAwait(false);
-    }
-
-    private async Task PublishEmptyDiagnosticsAsync(string uri)
-    {
-        var parameters = new PublishDiagnosticsParams
-        {
-            Uri = uri,
-            Version = null,
-            Diagnostics = [],
-        };
-
-        await this.SendNotificationAsync("textDocument/publishDiagnostics", parameters).ConfigureAwait(false);
-    }
-
-    private async Task SendResponseAsync(JsonElement? id, object? result)
-    {
-        var response = new JsonRpcResponse
-        {
-            Id = id,
-            Result = result,
-        };
-
-        await this.SendJsonAsync(response, LspJsonContext.Default.JsonRpcResponse).ConfigureAwait(false);
-    }
-
-    private async Task SendNotificationAsync(string method, object? parameters)
-    {
-        var notification = new JsonRpcNotification
-        {
-            Method = method,
-            Params = parameters,
-        };
-
-        await this.SendJsonAsync(notification, LspJsonContext.Default.JsonRpcNotification).ConfigureAwait(false);
-    }
-
-    private async Task SendErrorAsync(JsonElement? id, int code, string message)
-    {
-        var response = new JsonRpcResponse
-        {
-            Id = id,
-            Error = new JsonRpcError
-            {
-                Code = code,
-                Message = message,
-            },
-        };
-
-        await this.SendJsonAsync(response, LspJsonContext.Default.JsonRpcResponse).ConfigureAwait(false);
-    }
-
-    private async Task SendJsonAsync<T>(T value, JsonTypeInfo<T> typeInfo)
-    {
-        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(value, typeInfo);
-        var headerBytes = Encoding.ASCII.GetBytes($"Content-Length: {jsonBytes.Length}\r\n\r\n");
-
-        await this.writeLock.WaitAsync().ConfigureAwait(false);
+        var queue = Channel.CreateUnbounded<object>(new() { SingleReader = true });
+        var writer = queue.Writer;
+        var sender = new LspSender(output);
+        var session = new LspSession(sender, static check => Task.Run(check.Run), item => writer.TryWrite(item));
+        configure?.Invoke(session);
+        using var timer = new Timer(static state => ((ChannelWriter<object>)state!).TryWrite(CheckTimer.Instance), writer, Timeout.Infinite, Timeout.Infinite);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var receive = Receive(new(input), writer, stop.Token);
         try
         {
-            await this.output.WriteAsync(headerBytes).ConfigureAwait(false);
-            await this.output.WriteAsync(jsonBytes).ConfigureAwait(false);
-            await this.output.FlushAsync().ConfigureAwait(false);
+            await foreach (var item in queue.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var now = clock();
+                session.Process(item, now);
+                if (session.Exited)
+                {
+                    break;
+                }
+
+                session.Tick(now);
+                timer.Change(session.Deadline is { } deadline ? Math.Max(0, deadline - now) : Timeout.Infinite, Timeout.Infinite);
+            }
         }
-        finally
+        catch (OperationCanceledException)
         {
-            this.writeLock.Release();
         }
+
+        writer.TryComplete();
+        await stop.CancelAsync().ConfigureAwait(false);
+        await receive.ConfigureAwait(false);
+        await sender.DrainAsync().ConfigureAwait(false);
+        return session.ExitCode;
     }
+
+    // Reads frames and enqueues each parsed message; a malformed body is answered, a malformed header ends the input.
+    private static async Task Receive(LspFrameReader reader, ChannelWriter<object> writer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false) is { } frame)
+            {
+                var (buffer, length) = frame;
+                try
+                {
+                    writer.TryWrite(JsonSerializer.Deserialize(buffer.AsSpan(0, length), LspJsonContext.Default.LspMessage) ?? (object)new InvalidFrame(-32600, "Invalid request."));
+                }
+                catch (JsonException ex)
+                {
+                    writer.TryWrite(new InvalidFrame(-32700, "Parse error: " + ex.Message));
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
+        }
+        catch (InvalidDataException ex)
+        {
+            writer.TryWrite(new InvalidFrame(-32700, ex.Message));
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (IOException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        writer.TryWrite(EndOfInput.Instance);
+    }
+}
+
+/// <summary>A frame that could not be parsed; the state owner answers with a JSON-RPC error.</summary>
+/// <param name="Code">The error code.</param>
+/// <param name="Message">The message.</param>
+internal sealed record InvalidFrame(int Code, string Message);
+
+/// <summary>The input ended.</summary>
+internal sealed class EndOfInput
+{
+    /// <summary>The only instance.</summary>
+    public static readonly EndOfInput Instance = new();
+}
+
+/// <summary>The check deadline passed.</summary>
+internal sealed class CheckTimer
+{
+    /// <summary>The only instance.</summary>
+    public static readonly CheckTimer Instance = new();
 }

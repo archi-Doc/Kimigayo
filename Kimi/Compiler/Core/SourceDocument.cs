@@ -174,6 +174,48 @@ public sealed partial class SourceDocument
     public SourceSpan GetTextSpan(SourceRange range)
         => SourceSpan.FromBounds(this.GetOffset(range.Start), this.GetOffset(range.End));
 
+    /// <summary>Writes the start offset of each physical line; a line ends with exactly one "\n", "\r" or "\r\n".</summary>
+    /// <param name="sourceText">The text.</param>
+    /// <param name="buffer">A nonempty buffer, replaced by a larger one when needed.</param>
+    /// <param name="pool">The pool that owns <paramref name="buffer"/>, or null for an unpooled buffer.</param>
+    /// <returns>The number of lines.</returns>
+    /// <remarks>The editor buffer uses the same rule, so editor positions and diagnostics agree on every line break.</remarks>
+    internal static int FillLineStarts(ReadOnlySpan<char> sourceText, ref int[] buffer, ArrayPool<int>? pool)
+    {
+        buffer[0] = 0;
+        var count = 1;
+        var index = 0;
+        while (true)
+        {
+            // The two-value overload is vectorized and measures the same as a cached
+            // SearchValues here, so the scan runs at memory bandwidth without one.
+            var next = sourceText[index..].IndexOfAny(Constants.CrChar, Constants.LfChar);
+            if (next < 0)
+            {
+                return count;
+            }
+
+            index += next;
+            if (sourceText[index] == Constants.CrChar &&
+                (uint)(index + 1) < (uint)sourceText.Length &&
+                sourceText[index + 1] == Constants.LfChar)
+            {
+                index++;
+            }
+
+            index++;
+            if (count == buffer.Length)
+            {
+                var larger = pool?.Rent(count * 2) ?? new int[count * 2];
+                buffer.AsSpan(0, count).CopyTo(larger);
+                pool?.Return(buffer);
+                buffer = larger;
+            }
+
+            buffer[count++] = index;
+        }
+    }
+
     /// <summary>
     /// Gets the exclusive end offset of a line, excluding its terminator.
     /// </summary>
@@ -236,39 +278,7 @@ public sealed partial class SourceDocument
         var buffer = pool.Rent(Math.Clamp((sourceText.Length >> 6) + 1, 4, 256));
         try
         {
-            buffer[0] = 0;
-            var count = 1;
-            var index = 0;
-            while (true)
-            {
-                // The two-value overload is vectorized and measures the same as a cached
-                // SearchValues here, so the scan runs at memory bandwidth without one.
-                var next = sourceText[index..].IndexOfAny(Constants.CrChar, Constants.LfChar);
-                if (next < 0)
-                {
-                    break;
-                }
-
-                index += next;
-                if (sourceText[index] == Constants.CrChar &&
-                    (uint)(index + 1) < (uint)sourceText.Length &&
-                    sourceText[index + 1] == Constants.LfChar)
-                {
-                    index++;
-                }
-
-                index++;
-                if (count == buffer.Length)
-                {
-                    var larger = pool.Rent(count * 2);
-                    buffer.AsSpan(0, count).CopyTo(larger);
-                    pool.Return(buffer);
-                    buffer = larger;
-                }
-
-                buffer[count++] = index;
-            }
-
+            var count = FillLineStarts(sourceText, ref buffer, pool);
             return buffer.AsSpan(0, count).ToArray();
         }
         finally

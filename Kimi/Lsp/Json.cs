@@ -1,10 +1,16 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Kimi.Diagnostics;
 
-namespace Kimi.Diagnostics;
+#pragma warning disable SA1402 // The wire model is one vocabulary.
 
+namespace Kimi.Lsp;
+
+// The wire model never carries compiler objects; it mirrors the LSP 3.17 members the server reads or writes.
+
+/// <summary>One incoming JSON-RPC message.</summary>
 public sealed class LspMessage
 {
     public string Jsonrpc { get; set; } = string.Empty;
@@ -14,26 +20,10 @@ public sealed class LspMessage
     public string? Method { get; set; }
 
     public JsonElement? Params { get; set; }
-}
 
-public sealed class JsonRpcResponse
-{
-    public string Jsonrpc { get; set; } = "2.0";
+    public JsonElement? Result { get; set; }
 
-    public JsonElement? Id { get; set; }
-
-    public object? Result { get; set; }
-
-    public JsonRpcError? Error { get; set; }
-}
-
-public sealed class JsonRpcNotification
-{
-    public string Jsonrpc { get; set; } = "2.0";
-
-    public string Method { get; set; } = string.Empty;
-
-    public object? Params { get; set; }
+    public JsonElement? Error { get; set; }
 }
 
 public sealed class JsonRpcError
@@ -41,6 +31,48 @@ public sealed class JsonRpcError
     public int Code { get; set; }
 
     public string Message { get; set; } = string.Empty;
+}
+
+public sealed class JsonRpcNotification<T>
+{
+    public string Jsonrpc { get; set; } = "2.0";
+
+    public string Method { get; set; } = string.Empty;
+
+    public T? Params { get; set; }
+}
+
+public sealed class JsonRpcRequest<T>
+{
+    public string Jsonrpc { get; set; } = "2.0";
+
+    public int Id { get; set; }
+
+    public string Method { get; set; } = string.Empty;
+
+    public T? Params { get; set; }
+}
+
+public sealed class InitializeParams
+{
+    public ClientCapabilities? Capabilities { get; set; }
+
+    public JsonElement? InitializationOptions { get; set; }
+}
+
+public sealed class ClientCapabilities
+{
+    public WorkspaceClientCapabilities? Workspace { get; set; }
+}
+
+public sealed class WorkspaceClientCapabilities
+{
+    public DynamicRegistrationCapability? DidChangeWatchedFiles { get; set; }
+}
+
+public sealed class DynamicRegistrationCapability
+{
+    public bool? DynamicRegistration { get; set; }
 }
 
 public sealed class InitializeResult
@@ -52,6 +84,8 @@ public sealed class InitializeResult
 
 public sealed class ServerCapabilities
 {
+    public string PositionEncoding { get; set; } = "utf-16";
+
     public TextDocumentSyncOptions TextDocumentSync { get; set; } = new();
 }
 
@@ -116,6 +150,42 @@ public sealed class TextDocumentContentChangeEvent
     public string? Text { get; set; }
 }
 
+public sealed class DidChangeWatchedFilesParams
+{
+    public List<FileEvent> Changes { get; set; } = new();
+}
+
+public sealed class FileEvent
+{
+    public string Uri { get; set; } = string.Empty;
+
+    public int Type { get; set; }
+}
+
+public sealed class RegistrationParams
+{
+    public Registration[] Registrations { get; set; } = [];
+}
+
+public sealed class Registration
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Method { get; set; } = string.Empty;
+
+    public DidChangeWatchedFilesRegistrationOptions? RegisterOptions { get; set; }
+}
+
+public sealed class DidChangeWatchedFilesRegistrationOptions
+{
+    public FileSystemWatcher[] Watchers { get; set; } = [];
+}
+
+public sealed class FileSystemWatcher
+{
+    public string GlobPattern { get; set; } = string.Empty;
+}
+
 public sealed class PublishDiagnosticsParams
 {
     public string Uri { get; set; } = string.Empty;
@@ -125,5 +195,19 @@ public sealed class PublishDiagnosticsParams
     public LspDiagnostic[] Diagnostics { get; set; } = [];
 }
 
-// The wire model must not serialize the compiler's source documents or ownership graph.
-public sealed record LspDiagnostic(SourceRange Range, DiagnosticSeverity Severity, string Message);
+/// <summary>One published diagnostic; <c>severity</c> uses the LSP numbering (1 error to 4 hint), which matches <see cref="DiagnosticSeverity"/>.</summary>
+public sealed record LspDiagnostic(SourceRange Range, int Severity, string Code, string Source, string Message);
+
+public sealed class LogMessageParams
+{
+    public int Type { get; set; }
+
+    public string Message { get; set; } = string.Empty;
+}
+
+/// <summary>An empty object for notifications and requests without parameters.</summary>
+public sealed class EmptyParams
+{
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; set; }
+}

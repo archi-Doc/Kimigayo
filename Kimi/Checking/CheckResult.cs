@@ -79,6 +79,19 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, s
 /// <param name="Diagnostics">The diagnostic records.</param>
 public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresence Presence, CheckDiagnostic[] Diagnostics);
 
+/// <summary>Signals a read of an open document that is out of sync (SPEC 23.4.2); it is reported as <c>DocumentDesynchronized_Kd</c>.</summary>
+internal sealed class DesynchronizedInputException : IOException
+{
+    /// <summary>The observed failure of a desynchronized document, which is its unestablished identity.</summary>
+    public const string Failure = "DocumentDesynchronized: the editor document is out of sync";
+
+    /// <summary>Initializes a new instance of the <see cref="DesynchronizedInputException"/> class.</summary>
+    public DesynchronizedInputException()
+        : base(Failure)
+    {
+    }
+}
+
 /// <summary>Signals that a check needs an input with an event after its base (SPEC 23.4.6); the check takes no effect.</summary>
 internal sealed class PendingInputException : Exception
 {

@@ -145,6 +145,9 @@ public partial class Project
 
     internal string? FilePath { get; private set; }
 
+    /// <summary>Gets the discovered source files.</summary>
+    internal IReadOnlyCollection<string> KimiFiles => this.kimiFiles;
+
     internal string? SolutionLanguageVersion { get; set; }
 
     #endregion
@@ -420,7 +423,8 @@ public partial class Project
             {
                 if (exception is not null)
                 {
-                    compilation.Kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.GenerationFailed_Kd, exception.Message, location: path);
+                    var code = exception is DesynchronizedInputException ? DiagnosticCode.DocumentDesynchronized_Kd : DiagnosticCode.GenerationFailed_Kd;
+                    compilation.Kimigayo.GetOrAddDiagnosticCollection(path).Add(default, code, exception.Message, location: path);
                     return false;
                 }
 
