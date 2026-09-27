@@ -213,7 +213,8 @@ public sealed partial class OwnershipBody
                             var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
                             if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
-                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
+                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p) &&
+                                !this.CoversThroughSplit(sourcePlace, p, root, access, count))
                             {
                                 conflict = true;
                             }
@@ -566,6 +567,14 @@ public sealed partial class OwnershipBody
     // Origin equality preserves identity, not permission: a shared result can
     // still retain the exclusive authority acquired by an input. Transfer only
     // authority for roots already present in the result's declared dependencies.
+    // SPEC 15.6.3, 22.1.2.4: a Reborrow through a reference is authorized by that reference's own Loan. When the source
+    // already holds the access on the root while p holds a conflicting Loan of it, the two coexist only as split regions
+    // (an item and the Iterator it came from), so the Reborrow stays in the source's region; it still conflicts with a p
+    // whose one definition descends from the source, or whose ancestry is not a single definition.
+    private bool CoversThroughSplit(int source, int p, int root, LoanRequirement access, int count)
+        => source != p && this.borrowDependencies[(source * count) + root] >= access &&
+            this.borrowDefinitions[p] is >= 0 and var definition && !this.IsBorrowAncestor(definition, source);
+
     private void RetainBorrowAuthority(int count)
     {
         Grow(ref this.retainedBorrowAuthority, checked(count * count));

@@ -45,6 +45,31 @@ public class StorageBoundaryTest
         Assert.False(c.Ownership.Result.IsVerified);
     }
 
+    // SPEC 15.6.3: an item is a child split from the iterator's authority, so a Reborrow through it stays in its region
+    // while the iterator lives on; two Reborrows through one item still conflict with each other.
+    [Theory]
+    [InlineData("match it.next()\n    .Some(let v)\n        v@follow += 1\n        let w = v@follow@ref\n        require w == v else => $abort(\"reborrow\")\n    .None => ()", true)]
+    [InlineData("let first = it.next()\nmatch first@move\n    .Some(let v)\n        let w = v@follow@uniq\n        w@follow += 1\n    .None => ()", true)]
+    [InlineData("match it.next()\n    .Some(let v)\n        let w = v@follow@ref\n        let u = v@follow@uniq\n        let n = w\n    .None => ()", false)]
+    public void AnItemIsReborrowedWithinItsRegion(string use, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(Values + "var it = values.iterateUniq()\n" + use + "\nmatch it.next()\n    .Some(_) => ()\n    .None => ()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+    }
+
+    // The same holds for a user Type's exclusive entry enumerated by `for`: the iterator stays live across the body.
+    [Fact]
+    public void AForItemIsReborrowedWhileTheIteratorLives()
+    {
+        const string Source = "struct Once {source}\n    Self is Iterator\n    associate Iterator.Item is uniq/i32 during source\n    var slot: Option<uniq/i32 during source>\n" +
+            "    public init(r: uniq/i32 during source) => self.slot = .Some(r@move)\n    public func next(self: uniq/Self) -> Option<uniq/i32 during source>\n        return Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)\n" +
+            "struct Cell\n    Self is UniqIterable\n    associate UniqIterable.IteratorType(a) is Once during a\n    public var value: i32 = 1\n    public init() => ()\n" +
+            "    public func iterateUniq(self: uniq/Self during a) -> Once during a\n        return Once.init(self.value@uniq)\n" +
+            "var cell = Cell.init()\nfor v in cell@uniq\n    v@follow += 1\n    let w = v@follow@ref\n    require w == v else => $abort(\"reborrow\")\nrequire cell.value == 2 else => $abort(\"value\")\nConsole.writeLine(\"split\")";
+        ScalarEmissionTest.EmitFixture("StorageBoundaryForReborrow", Source, "split\n");
+    }
+
     [Fact]
     public void ASharedIteratorAllowsReads()
     {
