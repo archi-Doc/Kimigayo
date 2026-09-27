@@ -22,6 +22,6 @@
 # Implementation Workflow
 
 - Work in coherent units: reproducer, implementation, focused tests. Commit each verified unit with a descriptive message.
-- Unit verification: `./verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` (Debug build with warnings as errors, related tests, related native O0/O2 fixtures and milestone harnesses).
+- Unit verification: `./verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` (non-incremental Debug build with warnings as errors, related tests, related native O0/O2 fixtures and milestone harnesses). A direct `dotnet build` may leave analyzer warnings unreported to later incremental builds, so only the script's build counts as evidence.
 - Session verification, once at the end of a session: `./verify.ps1 -Mode Session [...]` (Debug and Release builds and full suites). Never edit sources while a build or verification run is in progress.
 - Measure allocations only on hot paths and at milestone completion.

@@ -49,7 +49,8 @@ function Invoke-Script([scriptblock] $block, [string] $log) {
 
 function Invoke-Build([string] $configuration) {
     $log = Join-Path $evidence "build-$configuration.log"
-    & dotnet build (Join-Path $repo 'Kimigayo.slnx') --no-restore -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
+    # --no-incremental recompiles every project, so analyzers (StyleCop) report on sources another build left up to date.
+    & dotnet build (Join-Path $repo 'Kimigayo.slnx') --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
     Add-Step "build $configuration" ($LASTEXITCODE -eq 0) $log
     return $LASTEXITCODE -eq 0
 }
