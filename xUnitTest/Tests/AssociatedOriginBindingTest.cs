@@ -1,0 +1,98 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
+using Xunit;
+
+namespace XunitTest;
+
+public class AssociatedOriginBindingTest
+{
+    [Theory]
+    [InlineData("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C")]
+    [InlineData("contract C\n    associate Item(a)\nstruct S\n    Self is C\n    associate C.Item(b) is i32")]
+    public void ConstantFamilyNormalizesAtApplication(string declarations)
+    {
+        var c = MinimalEmissionTest.Analyze(declarations + "\nfunc f(x: ref/i32 during source) -> S.(C).Item(source) => 42");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        Assert.Same(BoundType.I32, function.ReturnType!.BoundType);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Theory]
+    [InlineData("S.Item")]
+    [InlineData("S.Item(source, source)")]
+    [InlineData("S.Item(missing)")]
+    [InlineData("S.Item(_)")]
+    [InlineData("S(source)")]
+    public void InvalidApplicationsDoNotBind(string result)
+    {
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during source) -> " + result + " => 42");
+        Assert.False(c.Binding.Result.IsComplete);
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("contract C\n    associate Item(a, a)")]
+    [InlineData("contract C\n    associate Item(a)\nstruct S\n    Self is C\n    associate C.Item is i32")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item(a) is i32")]
+    [InlineData("contract C\n    associate Item(a)\n    func f(self: ref/Self) -> Self.Item(a)")]
+    [InlineData("contract C\n    associate Item(a)\n        origin a outlives static")]
+    [InlineData("contract C\n    associate Item(a, b) is i32\n        origin a outlives b")]
+    [InlineData("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\n    associate C.Item(b, c) is i32")]
+    public void InvalidBindersAndSpecificationsDoNotBind(string source)
+        => Assert.False(MinimalEmissionTest.Analyze(source).Binding.Result.IsComplete);
+
+    [Fact]
+    public void EmitsConstantFamily()
+    {
+        const string source = "contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during source) -> S.(C).Item(source) => 42\nlet value = 1\nrequire f(value@ref) == 42 else => $abort(\"family\")\nConsole.writeLine(\"42\")";
+        ScalarEmissionTest.EmitFixture("AssociatedOriginConstant", source, "42\n");
+    }
+
+    [Theory]
+    [InlineData("Self.Item(a)")]
+    [InlineData("Self.(C).Item(a)")]
+    [InlineData("Item(a)")]
+    public void MethodOriginsAreSeparateFromAssociatedBinders(string result)
+    {
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\n    func f(self: ref/Self during a) -> " + result + "\nstruct S\n    Self is C\n    public func f(self: ref/Self during b) -> i32 => 42");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginApplicationKoto>().Select(x => x.ArgumentNodes.Single().BoundOrigin).ToArray();
+        Assert.NotNull(parameters[0]);
+        Assert.NotSame(parameters[0], parameters[1]);
+    }
+
+    [Theory]
+    [InlineData("a")]
+    [InlineData("(a and b)")]
+    [InlineData("static")]
+    public void GenericConstantFamilyAcceptsExistingOrigins(string argument)
+    {
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(step) is i32\nfunc f<T>(x: ref/T during a, y: ref/T during b) -> T.(C).Item(" + argument + ")\n    T is C\n    return 42");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Fact]
+    public void SerializedFamilyRetainsBindingAndWarmIdentity()
+    {
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during a) -> S.Item(a) => 42");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var restored = Compilation.CreateForTest();
+        Assert.True(restored.Prepare(WindowsProfile.Target));
+        var tree = restored.Kotonoha;
+        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
+        Assert.NotNull(tree);
+        tree.OnDeserialized(restored);
+        Assert.True(restored.Bind().IsComplete, MinimalEmissionTest.Describe(restored, null));
+        for (var i = 0; i < 8; i++)
+        {
+            Assert.True(restored.Bind().IsComplete);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() => restored.Bind()));
+    }
+}

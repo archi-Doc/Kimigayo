@@ -1466,7 +1466,7 @@ CloseParameters:
 
             if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
             {
-                return ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseSuffix: false);
+                return ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseContainerSuffix: false, parseSuffix: false);
             }
 
             var token = reader.CurrentToken;

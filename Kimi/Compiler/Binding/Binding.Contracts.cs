@@ -229,18 +229,18 @@ public sealed partial class Binding
 
             for (var i = 0; i < contract.Members.Count; i++)
             {
-                if (contract.Members[i] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1 } declaration && declaration.Operands[0] is IdentifierNameKoto name)
+                if (contract.Members[i] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1 } declaration)
                 {
-                    this.DeclareAssociatedType(declaration, name, contract);
+                    this.DeclareAssociatedType(declaration, contract);
                 }
             }
 
             for (var i = 0; i < contract.ConstraintNodes.Count; i++)
             {
                 var clause = contract.ConstraintNodes[i];
-                if (clause.IsAssociatedConstraint && clause.Left is IdentifierNameKoto name)
+                if (clause.IsAssociatedConstraint)
                 {
-                    this.DeclareAssociatedType(clause, name, contract);
+                    this.DeclareAssociatedType(clause, contract);
                 }
             }
         }
@@ -254,12 +254,24 @@ public sealed partial class Binding
         }
     }
 
-    private void DeclareAssociatedType(Koto declaration, IdentifierNameKoto name, ContractKoto contract)
+    private void DeclareAssociatedType(Koto declaration, ContractKoto contract)
     {
-        var symbol = this.Declare(declaration, name.IdentifierName, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
-        symbol.Type = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [contract.BoundSymbol!.Type!]);
+        var head = AssociatedHead(declaration);
+        var name = head is OriginApplicationKoto application ? UnwrapAssociatedHead(application.Type) : head;
+        if (name is not (IdentifierNameKoto or TypeSemanticsKoto { Type: null }) || TypeSpelling(name) is not { } spelling)
+        {
+            return; // A qualified specification refines an existing requirement.
+        }
+
+        var symbol = this.Declare(declaration, spelling, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
+        symbol.Type = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [contract.BoundSymbol!.Type!], originArguments: this.AssociatedParameters(declaration));
         name.BoundSymbol = symbol;
         Complete(name, symbol.Type);
+        if (head is OriginApplicationKoto)
+        {
+            head.BoundSymbol = symbol;
+            Complete(head, symbol.Type);
+        }
     }
 
     private bool BuildContract(BoundContract shape)

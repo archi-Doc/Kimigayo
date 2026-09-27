@@ -432,7 +432,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? BindTypeStructure(Koto syntax, BindingScope scope, TypeBindingContext context)
+    private BoundType? BindTypeStructure(Koto syntax, BindingScope scope, TypeBindingContext context, bool applyingOrigins = false)
     {
         switch (syntax)
         {
@@ -585,6 +585,8 @@ public sealed partial class Binding
                 }
 
                 return element is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
+            case OriginApplicationKoto application:
+                return this.BindAssociatedApplication(application, scope);
             case GenericsKoto generic:
                 var definition = this.TypeName(generic, scope, true);
                 return this.BindConstructedType(generic, definition, scope, context);
@@ -620,6 +622,11 @@ public sealed partial class Binding
 
         if (symbol.Kind == BindingSymbolKind.AssociatedType)
         {
+            if (!applyingOrigins && this.AssociatedParameters(symbol.Declaration).Length != 0)
+            {
+                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+            }
+
             var self = EnclosingContractSelf(scope);
             if (self is null)
             {
@@ -635,7 +642,7 @@ public sealed partial class Binding
             syntax.BoundSymbol = symbol;
 
             var projected = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self]);
-            return this.bindingConstraintTypes ? projected : this.ContractType(projected, scope);
+            return this.bindingConstraintTypes || applyingOrigins ? projected : this.ContractType(projected, scope);
         }
 
         if (symbol.Kind == BindingSymbolKind.SemanticsTarget && !IsDirectObjectTarget(syntax))

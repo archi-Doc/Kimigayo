@@ -200,6 +200,7 @@ public sealed partial class Binding
             this.ValidateDefaultAliases();
             this.PrepareOriginDeclarations();
             this.BindSchemas();
+            this.PrepareAssociatedOrigins();
             this.PrepareAliases();
             this.PrepareContracts();
             this.BindConstraints();
@@ -1059,6 +1060,9 @@ public sealed partial class Binding
 
             switch (node)
             {
+                case IsKoto or SyntaxFormKoto when AssociatedHead(node) is OriginApplicationKoto:
+                    this.Scope = binding.GetScope(node, this.Scope);
+                    break;
                 case ForKoto iteration:
                     this.Visit(iteration.Iterable);
                     this.Scope = binding.GetScope(iteration.Body, this.Scope);

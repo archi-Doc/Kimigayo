@@ -84,7 +84,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? BindAssociatedProjection(MemberAccessKoto syntax, BindingScope scope)
+    private BoundType? BindAssociatedProjection(MemberAccessKoto syntax, BindingScope scope, bool applyingOrigins = false)
     {
         if (TypeSpelling(syntax.Right) is not { } name)
         {
@@ -119,6 +119,11 @@ public sealed partial class Binding
             return null;
         }
 
+        if (!applyingOrigins && this.AssociatedParameters(associated.Declaration).Length != 0)
+        {
+            return Fail(syntax, BindingFailure.InvalidAssociatedType);
+        }
+
         var evidence = qualifier ?? associated.Scope.Owner.BoundSymbol!;
         this.projectionUses.Add((syntax, type, evidence));
         if (!this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope) == ConstraintProof.Proven)
@@ -137,7 +142,7 @@ public sealed partial class Binding
             Complete(syntax.Left, type);
         }
 
-        return this.bindingConstraintTypes ? projection : this.ContractType(projection, scope);
+        return this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
     }
 
     private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope, out Koto? receiver)
@@ -154,8 +159,24 @@ public sealed partial class Binding
         receiver = syntax.Left;
         if (symbol?.Kind == BindingSymbolKind.Container || symbol?.Declaration is ContractKoto)
         {
-            syntax.Right.BoundSymbol = symbol;
-            Complete(syntax.Right, BoundType.Unit);
+            var qualifierName = syntax.Right;
+            while (true)
+            {
+                qualifierName.BoundSymbol = symbol;
+                Complete(qualifierName, BoundType.Unit);
+                if (qualifierName is ParenthesizedTypeKoto grouped)
+                {
+                    qualifierName = grouped.Type;
+                }
+                else if (qualifierName is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
+                {
+                    qualifierName = inner;
+                }
+                else
+                {
+                    break;
+                }
+            }
         }
 
         return symbol?.Kind == BindingSymbolKind.Container || symbol?.Declaration is ContractKoto ? symbol : null;
@@ -170,11 +191,14 @@ public sealed partial class Binding
         }
 
         var self = this.SelfType(owner ?? scope.Owner.BoundSymbol!);
-        var name = clause.Left as IdentifierNameKoto;
+        var head = AssociatedHead(clause);
+        var applied = head as OriginApplicationKoto;
+        head = applied is null ? head : UnwrapAssociatedHead(applied.Type);
+        var name = head;
         BindingSymbol? qualifier = null;
-        if (clause.Left is MemberAccessKoto member)
+        if (head is MemberAccessKoto member)
         {
-            name = member.Right as IdentifierNameKoto;
+            name = member.Right;
             qualifier = this.TypeName(member.Left, scope, false);
             if (qualifier?.Declaration is not ContractKoto)
             {
@@ -186,7 +210,7 @@ public sealed partial class Binding
             Complete(member.Left, BoundType.Unit);
         }
 
-        var associated = name is null ? null : this.FindAssociated(self, scope, name.IdentifierName, qualifier, clause);
+        var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause) : null;
         var ambiguous = false;
         if (associated is null || this.ConformanceByDeclaration(self.Symbol!, qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || conformance.Paths.Count == 0)
         {
@@ -194,13 +218,33 @@ public sealed partial class Binding
             return;
         }
 
-        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self]);
+        var parameters = this.AssociatedParameters(associated.Declaration);
+        if (parameters.Length != (applied?.ArgumentNodes.Count ?? 0))
+        {
+            Fail(clause, BindingFailure.InvalidAssociatedType);
+            return;
+        }
+
+        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self], originArguments: parameters);
         clause.BoundSymbol = associated;
         clause.Left.BoundSymbol = associated;
         name!.BoundSymbol = associated;
         Complete(name, projection);
         Complete(clause.Left, projection);
-        clause.BoundConstraint = this.BindRequirement(clause.Right, projection, false, scope);
+        var requirement = this.BindRequirement(clause.Right, projection, false, this.NodeScope(clause, scope));
+        if (parameters.Length != 0 && HasOriginDependentAssociatedIdentity(requirement))
+        {
+            Fail(clause, BindingFailure.Unsupported, true);
+            return;
+        }
+
+        clause.BoundConstraint = requirement;
+        if (applied is not null)
+        {
+            Complete(applied.Type, projection);
+            Complete(applied, projection);
+        }
+
         Complete(clause, BoundType.Boolean);
     }
 
@@ -476,7 +520,7 @@ public sealed partial class Binding
 
                     foreach (var fact in environment.Facts)
                     {
-                        if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, result) && this.AvailableConstraintFact(environment, fact) && fact.RequiredType is { } required)
+                        if (fact.Kind == ConstraintKind.TypeIdentity && AssociatedIdentityMatches(fact.Subject, result) && this.AvailableConstraintFact(environment, fact) && fact.RequiredType is { } required)
                         {
                             return this.ContractType(required, scope, self);
                         }

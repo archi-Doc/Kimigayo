@@ -42,7 +42,6 @@ public class AssociatedOriginSyntaxTest
     }
 
     [Theory]
-    [InlineData("contract C\n    associate Item(a)")]
     [InlineData("contract C\n    associate Item(a) is ref/i32 during a")]
     [InlineData("contract C\n    associate Item(a) for uniq/Self during a")]
     [InlineData("contract C\n    associate Item is i32 for uniq/Self during static")]
