@@ -222,7 +222,7 @@ public sealed partial class Binding
     {
         if (clause.FormationType is not null)
         {
-            Fail(clause, BindingFailure.Unsupported, true);
+            Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: a specification fixes its Type; only a requirement may end with a formation Type.
             return;
         }
 

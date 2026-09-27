@@ -180,9 +180,9 @@ public sealed partial class Binding
         var entry = source.Mode == SubjectMode.ByValue ? this.Library.IntoIterable :
             source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
-        if (source.Mode != SubjectMode.ByValue && subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq })
+        while (source.Mode != SubjectMode.ByValue && subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
-            subject = subject.Components[0];
+            subject = subject.Components[0]; // SPEC 3.4.1: the entry is selected at the referent of every reference layer.
         }
 
         var nominal = subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null;
@@ -218,7 +218,62 @@ public sealed partial class Binding
         }
 
         item = option.Components[0];
+        this.userIterations.Add((source, subject, iterator, entry));
         return true;
+    }
+
+    // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. The entry and step are ordinary member calls,
+    // so once conformances are verified each must have selected that conformance's witness, or, through a Constraint fact,
+    // the requirement itself; a same-named member that shadows the witness makes the loop ambiguous.
+    private void ValidateIterationWitnesses()
+    {
+        for (var i = 0; i < this.userIterations.Count; i++)
+        {
+            var (loop, subject, iterator, entry) = this.userIterations[i];
+            if (loop.EntryCall?.BoundCall is { } call && loop.Iteration?.Next.BoundCall is { } next &&
+                !(this.SelectsWitness(call.Target, subject, entry) && this.SelectsWitness(next.Target, iterator, this.Library.LendingIterator)))
+            {
+                Fail(loop, BindingFailure.Ambiguous);
+            }
+        }
+    }
+
+    private bool SelectsWitness(BindingSymbol target, BoundType self, BindingSymbol contract)
+    {
+        if (target.Declaration is FunctionKoto { IsRequirement: true })
+        {
+            return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
+        }
+
+        if (self.Symbol is not { } type || !this.conformancesByType.TryGetValue(type, out var identities))
+        {
+            return false;
+        }
+
+        var unverified = false;
+        for (var i = 0; i < identities.Count; i++)
+        {
+            for (var p = 0; p < identities[i].PathStorage.Count; p++)
+            {
+                var path = identities[i].PathStorage[p];
+                if (!path.IsVerified)
+                {
+                    unverified = true; // The conformance reports its own failure.
+                    continue;
+                }
+
+                for (var w = 0; w < path.WitnessStorage.Count; w++)
+                {
+                    var witness = path.WitnessStorage[w];
+                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto declaration && RefinesDeclaration(contract, declaration))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return unverified;
     }
 
     private BoundType? BindIterationNext(ForKoto source, BindingScope scope, BoundType iterator)

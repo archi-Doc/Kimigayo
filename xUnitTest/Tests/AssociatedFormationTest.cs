@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Xunit;
 
 namespace XunitTest;
@@ -32,6 +33,17 @@ public class AssociatedFormationTest
         const string source = "contract C\n    associate Item(a, b)\nstruct S\n    Self is C\n    associate C.Item(a, b) is ref/(ref/i32 during a) during b";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    // SPEC 8.4.3: only a requirement may end with a formation Type; a specification fixes its Type, and a formation Type
+    // elsewhere is an invalid Constraint, not an implementation limit.
+    [Fact]
+    public void FormationTypesOutsideRequirementsAreInvalid()
+    {
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a)\nstruct S\n    Self is C\n    associate C.Item(a) is i32 for ref/Self during a");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
     }
 
     [Theory]

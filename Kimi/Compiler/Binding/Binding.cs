@@ -279,6 +279,7 @@ public sealed partial class Binding
 
             this.ClearCapabilityResults();
             this.ValidateEffectBounds();
+            this.ValidateIterationWitnesses();
             this.ValidateExpressionProjectionInputs(mode);
             this.CompleteEnumAcquisitions();
             this.CompletePatternAcquisitions();

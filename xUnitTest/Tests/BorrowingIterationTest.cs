@@ -47,6 +47,14 @@ public class BorrowingIterationTest
         ScalarEmissionTest.EmitFixture("AssociatedBorrowingSelfStep" + (skipMiddle ? "Continue" : "Backedge"), source, "step\n");
     }
 
+    // SPEC 3.4.1, 14.6.2: the entry is selected at the referent of every reference layer of the Subject.
+    [Fact]
+    public void EntryIsSelectedThroughEveryReferenceLayer()
+    {
+        var source = Declarations(false) + "let values = Values.init()\nlet r = values@ref\nlet rr = r@ref\nvar sum = 0\nfor item in rr\n    sum += item\nrequire sum == 21 else => $abort(\"layers\")\nConsole.writeLine(\"layers\")";
+        ScalarEmissionTest.EmitFixture("AssociatedBorrowingLayers", source, "layers\n");
+    }
+
     [Fact]
     public void SharedEntryMayReturnMutableOwnedItems()
     {

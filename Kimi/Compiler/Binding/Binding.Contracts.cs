@@ -13,6 +13,7 @@ public sealed partial class Binding
     private readonly Dictionary<BindingSymbol, List<BoundConformance>> conformancesByType = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
+    private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private BoundConstraint[] contractFactScratch = [];
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
@@ -165,6 +166,7 @@ public sealed partial class Binding
         }
 
         this.projectionUses.Clear();
+        this.userIterations.Clear();
         this.associatedApplications.Clear();
         this.memberSelections.Clear();
         foreach (var group in this.requirementGroups.Values)
