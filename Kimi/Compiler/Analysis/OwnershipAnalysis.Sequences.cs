@@ -91,6 +91,12 @@ public sealed partial class OwnershipAnalysis
         var receiver = KotoHelper.UnwrapParentheses(source);
         if (this.compilation.Binding.ImplicitPairAdmitted(receiver) != SemanticsMask.None)
         {
+            var mode = receiver.Parent is ForKoto { Mode: SubjectMode.Exclusive } ? SemanticsKind.Uniq : SemanticsKind.Ref;
+            if (this.ThroughPairLayers(receiver, mode) is var through && through != -2)
+            {
+                return through;
+            }
+
             // SPEC 14.6.2, 13.5.5.1: a pair Subject in a ref or uniq instance is read as the reference it holds; the universal
             // verification and an owner instance share the Place itself for the loop.
             var pair = this.Expression(source, PlaceUseKind.Read);

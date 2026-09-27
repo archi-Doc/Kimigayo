@@ -190,13 +190,29 @@ public sealed partial class OwnershipAnalysis
         return reference < 0 ? -1 : this.BorrowThrough(source, reference, type, reservation);
     }
 
-    // A Reborrow through an evaluated reference: the borrowed address is the reference's value.
+    // A Reborrow through an evaluated reference: the borrowed address is the reference's value. An instance sees the
+    // prepared Type in its closed substitution, whose Origins are the caller's.
     private int BorrowThrough(Koto source, int reference, BoundType type, int reservation)
     {
-        var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+        var result = this.Place(source, this.Concrete(type)!, OwnershipPlaceKind.Temporary, false);
         var operation = this.Emit(OwnershipOperationKind.Borrow, source, reference, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
         this.SetValue(operation, OwnershipValueKind.Address, [this.Value(reference)], constant: reference);
         return this.RegisterTemporary(result);
+    }
+
+    // SPEC 10.2, 13.5.5.1: two or more existing layers below a pair Subject in an instance are loaded into one reference to
+    // their terminal target in the Subject's mode; each uniq layer meets its Origin into it and a ref layer restarts it.
+    // Returns -2 when the instance has fewer layers, which the single-layer paths handle.
+    private int ThroughPairLayers(Koto node, SemanticsKind mode)
+    {
+        if (this.instance is null || this.compilation.Binding.PairTerminalOf(node) is not { } target || this.ReferenceLayers(node.BoundType, target) < 2 ||
+            this.Concrete(node.BoundType) is not { } concrete ||
+            this.compilation.Binding.SharedReferenceThroughLayers(concrete, this.Concrete(target)!, out _) is not { } shared)
+        {
+            return -2;
+        }
+
+        return this.ReadReference(node, mode == SemanticsKind.Uniq ? this.compilation.Binding.Reference(SemanticsKind.Uniq, shared.Components[0], shared.Origin) : shared);
     }
 
     // The Place a node designates once owner pair layers are removed (SPEC 13.5.5.1).

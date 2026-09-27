@@ -201,8 +201,31 @@ public class PairFollowTest
         "public func main()\n    var a: Array<i32> = [1, 2]\n    var w: i32 = 0\n    grow(a@uniq, w@uniq)\n" +
         "    require a.length == 3 and a[2] == 4 else => $abort(\"grow\")\n    Console.writeLine(\"Exclusive follow.\")\n";
 
+    // SPEC 13.5.5.1: below two pair layers, an exclusive receiver, match and for Subjects and the ref/U adaptation follow
+    // every layer an instance has, each in the weakest capability over the admitted cases of every layer.
+    private const string NestedLayers =
+        "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n    public func grow(self: uniq/Self) => self.weight += 1\n" +
+        "func bump<s/T, t/U>(x: s/(t/Node during b), m: s/T, n: t/U)\n    s is uniq\n    t is uniq\n    x.grow()\n" +
+        "func bumpOne<s/T>(x: s/Node, m: s/T)\n    s is uniq\n    x.grow()\n" +
+        "func first<s/T, t/U>(o: s/(t/Option<i32> during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    match o\n        .Some(let v) => return v\n        .None => return 0\n" +
+        "func sum<s/T, t/U>(items: s/(t/Array<i32> during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    var total: i32 = 0\n    for x in items\n        total += x\n    return total\n" +
+        "func view<s/T, t/U>(x: s/(t/Node during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    let r: ref/Node = x\n    return r.weight\n" +
+        "func raise<s/T, t/U>(items: s/(t/Array<i32> during b), m: s/T, n: t/U)\n    s is uniq\n    t is uniq\n    for x in items\n        x@follow += 1\n" +
+        "public func main()\n" +
+        "    var node = Node.init(1)\n    var w: i32 = 0\n    var z: i32 = 0\n    let k: i32 = 0\n" +
+        "    bumpOne(node@uniq, w@uniq)\n    require node.weight == 2 else => $abort(\"bumpOne\")\n" +
+        "    var inner = node@uniq\n    bump(inner@uniq, w@uniq, z@uniq)\n    require node.weight == 3 else => $abort(\"bump\")\n" +
+        "    let some = Option<i32>.Some(8)\n    let held = some@ref\n" +
+        "    require first(some@ref, k, k@ref) == 8 and first(held@ref, k@ref, k@ref) == 8 else => $abort(\"first\")\n" +
+        "    let values: Array<i32> = [3, 4]\n    let refs = values@ref\n" +
+        "    require sum(values@ref, k, k@ref) == 7 and sum(refs@ref, k@ref, k@ref) == 7 else => $abort(\"sum\")\n" +
+        "    var raised: Array<i32> = [1, 2]\n    var handle = raised@uniq\n    raise(handle@uniq, w@uniq, z@uniq)\n    require raised[0] == 2 and raised[1] == 3 else => $abort(\"raise\")\n" +
+        "    let shown = node@ref\n    require view(node@ref, k, k@ref) == 3 and view(shown@ref, k@ref, k@ref) == 3 else => $abort(\"view\")\n" +
+        "    Console.writeLine(\"Nested layers.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "NestedLayers", NestedLayers, "Nested layers.\n" },
         { "ExclusiveFollow", ExclusiveFollow, "Exclusive follow.\n" },
         { "FollowedIteration", FollowedIteration, "Followed iteration.\n" },
         { "Combined", Combined, "Combined.\n" },

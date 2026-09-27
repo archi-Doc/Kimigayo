@@ -47,12 +47,13 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation); // SPEC 7.3: a receiver through a pair layer.
         }
 
-        if (type.Semantics == SemanticsKind.Ref && this.instance is not null && this.compilation.Binding.ImplicitPairAdmitted(unwrapped) != SemanticsMask.None &&
+        if (this.instance is not null && this.compilation.Binding.ImplicitPairAdmitted(unwrapped) != SemanticsMask.None &&
             this.ReferenceLayers(unwrapped.BoundType, type.Components[0]) > 1)
         {
-            // SPEC 10.2, 13.5.5.1: several existing layers yield one shared reference, which the receiver borrows through.
-            var shared = this.ReadReference(unwrapped, type);
-            return shared < 0 ? -1 : this.BorrowThrough(unwrapped, shared, type, reservation);
+            // SPEC 3.4.1, 10.2, 13.5.5.1: several existing layers yield one reference in the receiver's mode (exclusive only
+            // through exclusive layers, which Binding checked), which the receiver borrows through.
+            var reference = this.ReadReference(unwrapped, type);
+            return reference < 0 ? -1 : this.BorrowThrough(unwrapped, reference, type, reservation);
         }
 
         if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)

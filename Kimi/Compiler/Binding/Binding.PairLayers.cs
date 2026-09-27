@@ -62,6 +62,14 @@ public sealed partial class Binding
     /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
     internal SemanticsMask ImplicitPairAdmitted(Koto node) => this.implicitPairFollows.GetValueOrDefault(node);
 
+    /// <summary>Gets the terminal target below every qualifying pair layer of a node's Type (SPEC 13.5.5.1), or null when
+    /// its Type is no qualifying pair layer.</summary>
+    /// <param name="node">A pair Subject or receiver.</param>
+    /// <returns>The Type the followed layers end in.</returns>
+    internal BoundType? PairTerminalOf(Koto node)
+        => node.BoundType is { } type && this.ConstraintScope(node) is var scope && this.FollowablePair(type, scope, out var target) != SemanticsMask.None
+            ? this.PairTerminal(target, scope) : null;
+
     // SPEC 13.5.5.1: the admitted set of a pair layer that may be followed, or None.
     private SemanticsMask FollowablePair(BoundType type, BindingScope scope, out BoundType target)
     {
@@ -101,13 +109,14 @@ public sealed partial class Binding
             return false;
         }
 
+        var exclusive = pattern.Semantics == SemanticsKind.Uniq;
         var admitted = this.FollowablePair(actual, scope, out var target);
-        if (admitted != SemanticsMask.None && !FitsType(target, pattern.Components[0]) && pattern.Semantics == SemanticsKind.Ref)
+        if (admitted != SemanticsMask.None && !FitsType(target, pattern.Components[0]))
         {
-            target = this.PairTerminal(target, scope); // A shared receiver also reads below further pair layers (s/(t/U)).
+            target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
 
-        if (admitted == SemanticsMask.None || !FitsType(target, pattern.Components[0]) || !this.PairCapability(source, admitted, scope, pattern.Semantics == SemanticsKind.Uniq))
+        if (admitted == SemanticsMask.None || target is null || !FitsType(target, pattern.Components[0]) || !this.PairCapability(source, admitted, scope, exclusive))
         {
             return false;
         }
@@ -117,9 +126,9 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 15.1.6, 14.6.2: a bare Subject Place that is a qualifying pair layer is followed like a borrow value. The Subject
-    // is a reference to the pair target in the weakest mode over the admitted cases: Shared unless only uniq is admitted,
-    // and Shared on any shared path.
+    // SPEC 15.1.6, 14.6.2: a bare Subject Place that is a qualifying pair layer is followed like a borrow value, through
+    // every further qualifying layer (s/(t/U)). The Subject is a reference to the terminal target in the weakest mode over
+    // the admitted cases of every layer: Shared unless every layer admits only uniq, and Shared on any shared path.
     private BoundType? PairSubject(Koto node, BoundType? type, BindingScope scope)
     {
         if (type is null || !IsBarePlace(node) || (this.FollowablePair(type, scope, out var target) is var admitted && admitted == SemanticsMask.None))
@@ -127,16 +136,29 @@ public sealed partial class Binding
             return null;
         }
 
-        this.implicitPairFollows[node] = admitted;
         var exclusive = admitted == SemanticsMask.Uniq && !ReachedThroughShared(node);
+        for (var depth = 0; depth < 16 && this.FollowablePair(target, scope, out var next) is var inner && inner != SemanticsMask.None; depth++)
+        {
+            exclusive &= inner == SemanticsMask.Uniq;
+            target = next;
+        }
+
+        this.implicitPairFollows[node] = admitted;
         return this.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, target, this.PairOrigin(node, type, admitted));
     }
 
-    // SPEC 13.5.5.1: the Type below every further qualifying pair layer of a pair target.
-    private BoundType PairTerminal(BoundType target, BindingScope scope)
+    // SPEC 13.5.5.1: the Type below every further qualifying pair layer of a pair target. Following for Write needs Write
+    // through every layer, so an inner layer admitting ref ends an exclusive walk (the outer layer's capability is checked
+    // at its operand). The outer layer's Origin bounds the result in every case: each inner Origin outlives it.
+    private BoundType? PairTerminal(BoundType target, BindingScope scope, bool exclusive = false)
     {
-        for (var depth = 0; depth < 16 && this.FollowablePair(target, scope, out var next) != SemanticsMask.None; depth++)
+        for (var depth = 0; depth < 16 && this.FollowablePair(target, scope, out var next) is var admitted && admitted != SemanticsMask.None; depth++)
         {
+            if (exclusive && (admitted & SemanticsMask.Ref) != 0)
+            {
+                return null;
+            }
+
             target = next;
         }
 

@@ -175,7 +175,7 @@ public sealed partial class OwnershipAnalysis
     // Origin of that Type, so a Copied inner reference no longer depends on the layers above it.
     private int ReadReference(Koto source, BoundType result)
     {
-        var reference = this.StoredReference(KotoHelper.UnwrapParentheses(source), SemanticsKind.Ref);
+        var reference = this.StoredReference(KotoHelper.UnwrapParentheses(source), result.Semantics == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Ref);
         if (reference < 0)
         {
             return -1;

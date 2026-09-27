@@ -109,7 +109,13 @@ public sealed partial class Binding
     internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Slot : 0;
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
-        => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PlaceOrigin(source));
+        => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PreparedOrigin(source));
+
+    // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
+    // (SPEC 13.5.5.1), as the adaptation recorded it; otherwise the source Place's.
+    private BoundOrigin PreparedOrigin(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is var place && this.ImplicitPairAdmitted(place) is var admitted && admitted != SemanticsMask.None && place.BoundType is { } pair
+            ? this.PairOrigin(place, pair, admitted) : this.PlaceOrigin(source);
 
     // SPEC 4.6.9, 4.5: an exclusive borrow of a dynamic Array element lends the whole owned Array exclusively first.
     internal BoundType ExclusiveArrayHandle(Koto array)
@@ -436,6 +442,11 @@ public sealed partial class Binding
         if (expected.Semantics == SemanticsKind.Ref && IsBarePlace(node) &&
             this.FollowablePair(actual, this.ConstraintScope(node), out var pairTarget) is var admitted && admitted != SemanticsMask.None)
         {
+            if (!Compatible(pairTarget, target) && this.PairTerminal(pairTarget, this.ConstraintScope(node)) is { } terminal && Compatible(terminal, target))
+            {
+                pairTarget = terminal; // A shared reference also reaches below further pair layers (s/(t/U)).
+            }
+
             if (Compatible(pairTarget, target))
             {
                 // SPEC 10.2, 13.5.5.1: one shared reference through the pair layer; each admitted case keeps its own dependencies.
@@ -504,7 +515,7 @@ public sealed partial class Binding
             var scope = this.ConstraintScope(node);
             if (type is not null &&
                 this.FollowablePair(type, scope, out var target) is var admitted && admitted != SemanticsMask.None &&
-                this.PairTerminal(target, scope) is var terminal &&
+                this.PairTerminal(target, scope) is { } terminal &&
                 (terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : ScalarReferent(terminal)) is { } scalar)
             {
                 this.implicitPairFollows[node] = admitted;
