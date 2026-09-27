@@ -583,6 +583,14 @@ internal sealed class LspSession : IDisposable
             return;
         }
 
+        foreach (var unit in this.units.Values)
+        {
+            if (unit.Key.Owner == products.Owner && unit.Key.Kind == UnitKind.Product && unit.Result is not { Valid: true })
+            {
+                return; // Only adopted product results may decide whether a test unit retires.
+            }
+        }
+
         List<UnitKey>? retired = null;
         foreach (var key in this.units.Keys)
         {

@@ -397,7 +397,7 @@ internal sealed class WorkspaceCheck
             var (fileStamp, length) = DiskReader.Stat(path);
             var bom = !watched && previous?.Content is { } content && previous.Stamp == fileStamp && previous.Length == length ? content.HasBom : DiskReader.HasBom(path);
             return text is null
-                ? InputState.Unestablished(DesynchronizedInputException.Failure, fileStamp)
+                ? InputState.Unestablished(DesynchronizedInputException.Failure, fileStamp, true, length)
                 : new() { Content = SourceContent.FromText(text, bom), Overlay = true, Stamp = fileStamp, Length = length };
         }
 
@@ -412,7 +412,7 @@ internal sealed class WorkspaceCheck
             var content = overlay.Content is { Text: { } overlayText } ? SourceContent.FromText(overlayText, DiskReader.HasBom(path)) : overlay.Content;
             return overlay.Established
                 ? new() { Content = content, Overlay = true, Stamp = fileStamp, Length = length }
-                : InputState.Unestablished(overlay.Failure!, fileStamp);
+                : InputState.Unestablished(overlay.Failure!, fileStamp, true, length);
         }
 
         if (!marked && previous is { Established: true, Overlay: false })
@@ -462,7 +462,7 @@ internal sealed class WorkspaceCheck
                 }
                 catch (IOException)
                 {
-                    // An unreadable ancestor lists no candidate; its listing is re-validated at every check.
+                    undeterminedDocuments.Add(document); // Unreadable membership cannot establish an implicit project.
                 }
             }
 
@@ -475,6 +475,8 @@ internal sealed class WorkspaceCheck
         }
 
         var active = new HashSet<SourceIdentity>();
+        var expanded = new HashSet<SourceIdentity>();
+        var pendingProjects = new Stack<SourceIdentity>();
         for (var changed = true; changed;)
         {
             changed = false;
@@ -490,12 +492,12 @@ internal sealed class WorkspaceCheck
                 changed = true;
                 foreach (var reference in item.ProductReferences)
                 {
-                    this.LoadProducts(SourceIdentity.FromPath(reference), inputs, loaded, newProjects);
+                    this.LoadProducts(SourceIdentity.FromPath(reference), inputs, loaded, newProjects, expanded, pendingProjects);
                 }
 
                 foreach (var reference in item.TestReferences)
                 {
-                    this.LoadProducts(SourceIdentity.FromPath(reference), inputs, loaded, newProjects);
+                    this.LoadProducts(SourceIdentity.FromPath(reference), inputs, loaded, newProjects, expanded, pendingProjects);
                 }
             }
         }
@@ -598,19 +600,25 @@ internal sealed class WorkspaceCheck
         return plans;
     }
 
-    private void LoadProducts(SourceIdentity path, CheckInputs inputs, Dictionary<SourceIdentity, LoadedProject?> loaded, List<LoadedProject> newProjects)
+    private void LoadProducts(SourceIdentity path, CheckInputs inputs, Dictionary<SourceIdentity, LoadedProject?> loaded, List<LoadedProject> newProjects, HashSet<SourceIdentity> expanded, Stack<SourceIdentity> pending)
     {
-        if (loaded.ContainsKey(path))
+        pending.Push(path);
+        while (pending.TryPop(out path))
         {
-            return;
-        }
-
-        this.Load(path, inputs, loaded, newProjects);
-        if (loaded[path]?.Project is not null)
-        {
-            foreach (var reference in loaded[path]!.ProductReferences)
+            this.start.CancellationToken.ThrowIfCancellationRequested();
+            if (!expanded.Add(path))
             {
-                this.LoadProducts(SourceIdentity.FromPath(reference), inputs, loaded, newProjects);
+                continue;
+            }
+
+            // Loading a candidate is separate from following it as a dependency.
+            this.Load(path, inputs, loaded, newProjects);
+            if (loaded[path] is { Project: not null } project)
+            {
+                foreach (var reference in project.ProductReferences)
+                {
+                    pending.Push(SourceIdentity.FromPath(reference));
+                }
             }
         }
     }
@@ -646,6 +654,12 @@ internal sealed class WorkspaceCheck
         catch (PendingInputException)
         {
             loaded.Add(path, previous);
+            return;
+        }
+
+        if (source.HasPendingInput)
+        {
+            loaded.Add(path, previous); // Project loading can translate an input exception to a load failure.
             return;
         }
 
@@ -685,7 +699,7 @@ internal sealed class WorkspaceCheck
                 requiresTest |= presence is TestPresence.Yes or TestPresence.Unknown;
             }
 
-            if (testPlan is null)
+            if (testPlan is null || !decided)
             {
                 continue;
             }
@@ -709,14 +723,14 @@ internal sealed class WorkspaceCheck
     private TestPresence? VisitUnit(CheckInputs inputs, UnitPlan plan)
     {
         var previous = this.start.Units.GetValueOrDefault(plan.Key);
-        if (previous is not null && inputs.Snapshot.Valid.Contains(previous.Id) && previous.Output.Outcome != CheckOutcome.Faulted)
-        {
-            return previous.Output.Presence;
-        }
-
         if (IsPending(inputs, plan, previous))
         {
             return null;
+        }
+
+        if (previous is not null && inputs.Snapshot.Valid.Contains(previous.Id) && previous.Output.Outcome != CheckOutcome.Faulted)
+        {
+            return previous.Output.Presence;
         }
 
         var source = new SnapshotInputSource(inputs);
@@ -728,6 +742,11 @@ internal sealed class WorkspaceCheck
         catch (PendingInputException)
         {
             return null;
+        }
+
+        if (source.HasPendingInput)
+        {
+            return null; // A compiler boundary may have translated the pending-input exception.
         }
 
         var result = new UnitResult

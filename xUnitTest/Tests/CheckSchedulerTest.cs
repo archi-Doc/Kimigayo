@@ -4,7 +4,9 @@ using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using Kimi;
 using Kimi.Checking;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -147,6 +149,111 @@ public sealed class CheckSchedulerTest : IDisposable
         Assert.Contains(await harness.FramesAsync(), static x => x.TryGetProperty("id", out var id) && id.GetInt32() == 9 && x.GetProperty("result").ValueKind == JsonValueKind.Null);
     }
 
+    [Fact]
+    public async Task ADiscardedProductCannotRetireItsTestUnit()
+    {
+        await using var harness = new SchedulerHarness();
+        var path = this.PathOf("A.kimi");
+        harness.At(0).Open(path, "test error");
+        harness.At(250);
+        await harness.RunCheckAsync();
+        var test = Assert.Single(harness.Session.Units, static x => x.Key.Kind == UnitKind.Test).Value.Result;
+
+        harness.At(300).Change(path, 2, "error");
+        harness.At(550);
+        await harness.RunCheckAsync(block: true, whileBlocked: () => harness.At(600).Change(path, 3, "test error"));
+        Assert.Same(test, Assert.Single(harness.Session.Units, static x => x.Key.Kind == UnitKind.Test).Value.Result);
+        Assert.Single(await harness.PublishesAsync(path));
+
+        harness.At(850);
+        await harness.RunCheckAsync();
+        Assert.Single(harness.Session.Units, static x => x.Key.Kind == UnitKind.Test);
+    }
+
+    [Fact]
+    public async Task DesynchronizationSurvivesUnrelatedChecksAndDiskChanges()
+    {
+        await using var harness = new SchedulerHarness();
+        harness.Session.Runner = static (_, _, plan, source, token) => WorkspaceCheck.RunCheck(Kimigayo.CreateSilent(), plan, false, source, token);
+        var path = this.PathOf("A.kimi");
+        File.WriteAllText(path, "let x = 1\n");
+        harness.At(0).Open(path, "let x = 1\n");
+        harness.Message($"{{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{{\"textDocument\":{{\"uri\":\"{LspTestClient.Uri(path)}\",\"version\":2}},\"contentChanges\":[{LspTestClient.Range(10, 0, 10, 0, "x")}]}}}}");
+        harness.At(250);
+        await harness.RunCheckAsync();
+        Assert.False(harness.Session.Store.Find(InputKey.File(path))!.State!.Established);
+
+        File.WriteAllText(path, "let x = 1234\n");
+        harness.At(300).Open(this.PathOf("B.kimi"), "let y = 2\n");
+        harness.At(550);
+        await harness.RunCheckAsync();
+        var state = harness.Session.Store.Find(InputKey.File(path))!.State!;
+        Assert.False(state.Established);
+        Assert.True(state.Overlay);
+        Assert.Single(await harness.PublishesAsync(path));
+
+        harness.At(600).Change(path, 3, "let x = 1\n");
+        harness.At(850);
+        await harness.RunCheckAsync();
+        Assert.True(harness.Session.Store.Find(InputKey.File(path))!.State!.Established);
+        Assert.Equal(0, (await harness.PublishesAsync(path))[1].GetProperty("diagnostics").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task AnAlreadyLoadedCandidateStillExpandsItsProductDependencies()
+    {
+        var app = this.WriteProject("App", "Dependencies={Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}}");
+        this.WriteProject("Lib", "Dependencies={Leaf={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../Leaf/Leaf.kimiproj\"}}");
+        var leaf = this.WriteProject("Leaf", "TestSources={\"../Lib/Nested/Test.kimi\"}");
+        var source = this.PathOf("Lib/Nested/Test.kimi");
+        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+        await using var harness = new SchedulerHarness();
+        harness.Session.Runner = static (_, _, _, _, _) => new(CheckOutcome.Completed, true, TestPresence.No, []);
+        harness.At(0).Open(app, File.ReadAllText(app));
+        harness.At(1).Open(source, "test");
+        harness.At(251);
+        await harness.RunCheckAsync();
+        Assert.Contains(harness.Session.Units.Keys, key => key.Owner == SourceIdentity.FromPath(leaf) && key.Kind == UnitKind.Product);
+        Assert.DoesNotContain(harness.Session.Units.Keys, key => key.Owner == SourceIdentity.FromPath(source));
+    }
+
+    [Fact]
+    public async Task APendingSourceListingDoesNotBecomeAProjectLoadFailure()
+    {
+        var project = this.WriteProject("App");
+        await using var harness = new SchedulerHarness();
+        harness.Session.Runner = static (_, _, _, _, _) => new(CheckOutcome.Completed, true, TestPresence.No, []);
+        harness.At(0).Open(project, File.ReadAllText(project));
+        harness.At(250);
+        await harness.RunCheckAsync(beforeCommit: () => harness.At(260).Open(this.PathOf("App/New.kimi"), "new"));
+        Assert.Empty(harness.Session.Units);
+        Assert.Empty(await harness.PublishesAsync(project));
+
+        harness.At(510);
+        await harness.RunCheckAsync();
+        Assert.Single(harness.Session.Units, static x => x.Key.Kind == UnitKind.Product);
+    }
+
+    [Fact]
+    public void UnreadableInputsAreNotReportedAsAbsent()
+    {
+        Assert.False(DiskReader.ReadFile(this.directory).Established);
+        var path = this.PathOf("not-a-directory");
+        File.WriteAllText(path, "file");
+        Assert.False(DiskReader.ReadListing(path, InputKey.SourcePattern).Established);
+        Assert.True(DiskReader.ReadFile(this.PathOf("missing.kimi")).Absent);
+        Assert.Empty(DiskReader.ReadListing(this.PathOf("missing"), InputKey.SourcePattern).Names!);
+    }
+
+    private string WriteProject(string name, string settings = "")
+    {
+        var directory = this.PathOf(name);
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, name + ".kimiproj");
+        File.WriteAllText(path, $"OutputKind=\"Library\" Targets={{\"{WindowsProfile.Target}\"}} {settings}");
+        return path;
+    }
+
     private string PathOf(string name) => Path.Combine(this.directory, name);
 
     /// <summary>Drives one session on the test thread; the worker runs on the thread pool and its products are pumped in order.</summary>
@@ -199,8 +306,9 @@ public sealed class CheckSchedulerTest : IDisposable
         /// <summary>Runs the started check to completion, processing its products as the state owner would.</summary>
         /// <param name="block">Whether the first unit waits until <paramref name="whileBlocked"/> ran.</param>
         /// <param name="whileBlocked">State-owner steps taken while the first unit runs.</param>
+        /// <param name="beforeCommit">State-owner steps taken before re-validation is committed.</param>
         /// <returns>A task that completes after <see cref="CheckDone"/>.</returns>
-        public async Task RunCheckAsync(bool block = false, Action? whileBlocked = null)
+        public async Task RunCheckAsync(bool block = false, Action? whileBlocked = null, Action? beforeCommit = null)
         {
             var check = this.started ?? throw new InvalidOperationException("No check was started.");
             this.started = null;
@@ -214,6 +322,11 @@ public sealed class CheckSchedulerTest : IDisposable
                     whileBlocked?.Invoke();
                     this.gate.Release();
                     continue;
+                }
+
+                if (item is CommitRequest)
+                {
+                    beforeCommit?.Invoke();
                 }
 
                 this.Session.Process(item, this.Now);
@@ -284,7 +397,7 @@ public sealed class CheckSchedulerTest : IDisposable
                 }
             }
 
-            return new(CheckOutcome.Completed, diagnostics.Count == 0, TestPresence.No, diagnostics.ToArray());
+            return new(CheckOutcome.Completed, diagnostics.Count == 0, text.Contains("test", StringComparison.Ordinal) ? TestPresence.Yes : TestPresence.No, diagnostics.ToArray());
         }
     }
 

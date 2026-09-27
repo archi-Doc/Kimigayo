@@ -104,6 +104,9 @@ internal sealed class SnapshotInputSource : CheckInputSource
     /// <summary>Gets the source files read through <see cref="ReadSource"/>.</summary>
     public IReadOnlyList<SourceIdentity> Sources => this.sources;
 
+    /// <summary>Gets a value indicating whether a read was rejected by the base rule, even if its exception was caught.</summary>
+    public bool HasPendingInput { get; private set; }
+
     /// <summary>Gets the recorded inputs.</summary>
     /// <param name="additional">Inputs recorded by another item that this item also relies on.</param>
     /// <returns>The recorded inputs.</returns>
@@ -165,8 +168,16 @@ internal sealed class SnapshotInputSource : CheckInputSource
 
     private InputState Read(InputKey key)
     {
-        var state = this.inputs.Read(key, out var revision);
-        this.recorded.TryAdd(key, new(key, revision, revision == 0 ? state : null));
-        return state;
+        try
+        {
+            var state = this.inputs.Read(key, out var revision);
+            this.recorded.TryAdd(key, new(key, revision, revision == 0 ? state : null));
+            return state;
+        }
+        catch (PendingInputException)
+        {
+            this.HasPendingInput = true;
+            throw;
+        }
     }
 }

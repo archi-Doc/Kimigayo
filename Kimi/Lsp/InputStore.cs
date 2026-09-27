@@ -101,8 +101,11 @@ internal sealed class InputState
     /// <summary>Creates the state of an unestablished input.</summary>
     /// <param name="failure">The failure kind and message.</param>
     /// <param name="stamp">The disk timestamp, if known.</param>
+    /// <param name="overlay">Whether an open document overrides the file.</param>
+    /// <param name="length">The disk length, if known.</param>
     /// <returns>The state.</returns>
-    public static InputState Unestablished(string failure, long stamp = 0) => new() { Established = false, Failure = failure, Stamp = stamp };
+    public static InputState Unestablished(string failure, long stamp = 0, bool overlay = false, long length = -1)
+        => new() { Established = false, Failure = failure, Stamp = stamp, Overlay = overlay, Length = length };
 
     /// <summary>Compares the whole identity: establishment and failure, or bytes, names or absence.</summary>
     /// <param name="other">The other state.</param>

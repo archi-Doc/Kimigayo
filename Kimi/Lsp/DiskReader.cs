@@ -15,13 +15,9 @@ internal static class DiskReader
         try
         {
             var info = new FileInfo(path);
-            if (!info.Exists)
-            {
-                return new() { Absent = true };
-            }
-
+            var stamp = info.LastWriteTimeUtc.Ticks;
             var bytes = File.ReadAllBytes(path);
-            return new() { Content = SourceContent.FromBytes(bytes), Stamp = info.LastWriteTimeUtc.Ticks, Length = bytes.Length };
+            return new() { Content = SourceContent.FromBytes(bytes), Stamp = stamp, Length = bytes.Length };
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -41,15 +37,14 @@ internal static class DiskReader
     {
         try
         {
-            if (!Directory.Exists(directory))
-            {
-                return new() { DiskNames = [], Names = [] };
-            }
-
             var stamp = Directory.GetLastWriteTimeUtc(directory).Ticks;
             var files = Directory.GetFiles(directory, pattern, SearchOption.TopDirectoryOnly);
             Array.Sort(files, StringComparer.Ordinal);
             return new() { DiskNames = files, Names = files, Stamp = stamp };
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return new() { DiskNames = [], Names = [] };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
