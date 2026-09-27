@@ -98,6 +98,13 @@ public enum KimiDeclarationId : byte
     LendingIterator,
     Iterable,
     UniqIterable,
+    RefRemainder,
+    UniqRemainder,
+    OwnedRemainder,
+    StorageBorrowShared,
+    StorageBorrowExclusive,
+    StorageSplitShared,
+    StorageSplitExclusive,
 }
 
 public enum KimiDeclarationState : byte

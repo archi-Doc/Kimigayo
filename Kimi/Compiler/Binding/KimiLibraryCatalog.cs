@@ -15,6 +15,7 @@ internal enum KimiLibraryContainer : byte
     HeapBuffer,
     WriteWindow,
     Utf8Writer,
+    Storage,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
@@ -113,6 +114,14 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryShrinkToFit),
         new(KimiDeclarationId.Indexable, "Indexable"),
         new(KimiDeclarationId.UniqIndexable, "UniqIndexable"),
+        // SPEC 22.1.2.5: the standard storage boundary; the shared overload of each operation precedes the exclusive one.
+        new(KimiDeclarationId.RefRemainder, "RefRemainder", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.UniqRemainder, "UniqRemainder", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.OwnedRemainder, "OwnedRemainder", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StorageBorrowShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowShared, Overload: 0),
+        new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 1),
+        new(KimiDeclarationId.StorageSplitShared, "splitFirst", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplitShared, Overload: 0),
+        new(KimiDeclarationId.StorageSplitExclusive, "splitFirst", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplitExclusive, Overload: 1),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -122,6 +131,8 @@ internal static class KimiLibraryCatalog
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
 
     internal static bool IsDictionaryOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.DictionaryReserve and <= CompilerFunctionKind.DictionaryShrinkToFit;
+
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageSplitExclusive;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

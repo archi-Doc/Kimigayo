@@ -281,7 +281,8 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false);
         }
 
-        if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) || type.Symbol is not { } symbol)
+        // SPEC 22.1: the standard collections declare their conformances in Kimigayo behind their compiler-managed kinds.
+        if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary) || type.Symbol is not { } symbol)
         {
             return ConstraintProof.Unknown;
         }

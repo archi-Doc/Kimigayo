@@ -159,8 +159,8 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Library.IsCompleteLibrary);
-        Assert.Equal(82, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(90, c.Library.Declarations.Length);
+        Assert.Equal(89, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(97, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];

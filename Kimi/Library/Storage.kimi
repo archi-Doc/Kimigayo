@@ -1,0 +1,22 @@
+// SPEC 22.1.2.5: the standard storage boundary. These Types and operations split standard collection Storage into
+// non-overlapping regions; they are internal to the Kimi Kotonoha, and public Iterators keep them in private Fields.
+// The compiler supplies construction, splitting and the record contents; ordinary Field operations grant no capability.
+internal group Storage
+    /// The shared Loan of its `source` slot and the traversal position of the untaken part; it does not own `S`.
+    internal struct RefRemainder<S> {source}
+        let storage: unsafe/u8
+        var position: isize
+        var count: isize
+
+    /// The parent Loan of its `source` slot and exclusive access to the untaken part; it does not own `S`.
+    internal struct UniqRemainder<S> {source}
+        let storage: unsafe/u8
+        var position: isize
+        var count: isize
+
+    /// The Storage transferred from `S` and the destruction responsibility for its unreturned elements.
+    internal struct OwnedRemainder<S>
+        let storage: unsafe/u8
+        var position: isize
+        var count: isize
+        var capacity: isize

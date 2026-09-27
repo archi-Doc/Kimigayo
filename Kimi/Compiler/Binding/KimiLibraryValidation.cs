@@ -47,6 +47,8 @@ public sealed partial class KimiLibrary
                         >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex or KimiDeclarationId.ArraySwap => this.ValidArrayOperation(symbol, entry.Id),
                         KimiDeclarationId.ArrayWithCapacity => this.ValidArrayConstructor(symbol),
                         >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
+                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageSplitExclusive => this.ValidStorageOperation(symbol, entry.Id),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -150,6 +152,59 @@ public sealed partial class KimiLibrary
 
     private static bool BareName(Koto? node, string name) => BareType(node) is IdentifierNameKoto identifier ? identifier.IdentifierName == name :
         BareType(node) is TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null } type && type.Identifier == name;
+
+    // SPEC 14.6.2, 22.1.2.3: the Array clauses are its standard entry conformances and their iterator Types only.
+    private static bool ValidEntryConformances(StructKoto array)
+    {
+        for (var i = 0; i < array.ConstraintNodes.Count; i++)
+        {
+            var clause = array.ConstraintNodes[i];
+            if (clause.IsNegated || clause.FormationType is not null || clause.AttributeChain is not null ||
+                !(clause.IsAssociatedConstraint || (BareName(clause.Left, "Self") && (BareName(clause.Right, "Iterable") || BareName(clause.Right, "UniqIterable")))))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // The number of fields, or -1 when the record declares anything else; Binding may add a generated constructor.
+    private static int StorageFields(DeclarationContainerKoto declaration)
+    {
+        var count = 0;
+        for (var i = 0; i < declaration.Members.Count; i++)
+        {
+            if (declaration.Members[i] is VariableKoto)
+            {
+                count++;
+            }
+            else if (declaration.Members[i] is not FunctionKoto { IsGenerated: true })
+            {
+                return -1;
+            }
+        }
+
+        return count;
+    }
+
+    private static VariableKoto? StorageField(DeclarationContainerKoto declaration, int ordinal)
+    {
+        for (var i = 0; i < declaration.Members.Count; i++)
+        {
+            if (declaration.Members[i] is VariableKoto field && ordinal-- == 0)
+            {
+                return field;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool ValidStorageField(DeclarationContainerKoto declaration, int index, VariableKind kind, string name, string type)
+        => StorageField(declaration, index) is { Modifier: ModifierKind.NoModifier or ModifierKind.Private, InitializerKoto: null, AttributeChain: null } field && field.VariableKind == kind &&
+        field.NameKoto.IdentifierName == name &&
+        (name == "storage" ? field.TypeKoto is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe, SemanticsParameter: null, OriginName: null, OriginExpression: null } pointer && BareName(pointer.Type, type) : BareName(field.TypeKoto, type));
 
     // A public read-only field of the named Type at the member position.
     private static bool ValidField(DeclarationContainerKoto declaration, int index, string name, string type)
@@ -422,7 +477,7 @@ public sealed partial class KimiLibrary
     {
         if (symbol.Intrinsic != IntrinsicKind.None || !ReferenceEquals(symbol.Scope, this.Scope) ||
             symbol.Declaration is not StructKoto { HasIncompatibleBindingHeader: false, OriginNames.Count: 0, Bases.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } array ||
-            array.Name != (dictionary ? "Dictionary" : "Array") || array.GenericParameterNodes.Count != (dictionary ? 2 : 1) || array.ConstraintNodes.Count != (dictionary ? 1 : 0) ||
+            array.Name != (dictionary ? "Dictionary" : "Array") || array.GenericParameterNodes.Count != (dictionary ? 2 : 1) || (dictionary ? array.ConstraintNodes.Count != 1 : !ValidEntryConformances(array)) ||
             !ReferenceEquals(array.Parent, this.Kotonoha.RootKoto) ||
             array.GenericParameterNodes[0] is not GenericParameterKoto { SemanticsParameter: null, AttributeChain: null } first || first.Identifier != (dictionary ? "K" : "T") ||
             (dictionary && (array.GenericParameterNodes[1] is not GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null } ||
@@ -438,6 +493,11 @@ public sealed partial class KimiLibrary
                 continue; // A computed Property has accessors but no storage.
             }
 
+            if (!dictionary && array.Members[i] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, FormationType: null, AttributeChain: null })
+            {
+                continue; // SPEC 22.1.2.3: the iterator Types of the standard entry conformances.
+            }
+
             if (array.Members[i] is not FunctionKoto member)
             {
                 return false; // Array storage is compiler-managed; helpers cannot add fields.
@@ -450,6 +510,39 @@ public sealed partial class KimiLibrary
                 this.InvalidDeclaration ??= member;
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    // SPEC 22.1.2.5: an internal remainder record of the standard storage boundary. The compiler writes its fields.
+    private bool ValidRemainder(BindingSymbol symbol, KimiDeclarationId id)
+        => symbol.Intrinsic == IntrinsicKind.None &&
+        symbol.Declaration is StructKoto { HasIncompatibleBindingHeader: false, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Internal, AttributeChain: null, GenericParameterNodes: [GenericParameterKoto { Identifier: "S", SemanticsParameter: null, AttributeChain: null }] } declaration &&
+        declaration.Name == symbol.Name && ReferenceEquals(declaration.Parent, this.StorageScope.Owner) &&
+        declaration.OriginNames.Count == (id == KimiDeclarationId.OwnedRemainder ? 0 : 1) && (id == KimiDeclarationId.OwnedRemainder || declaration.OriginNames[0] == "source") &&
+        StorageFields(declaration) == (id == KimiDeclarationId.OwnedRemainder ? 4 : 3) &&
+        ValidStorageField(declaration, 0, VariableKind.Let, "storage", "u8") && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize") && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize") &&
+        (id != KimiDeclarationId.OwnedRemainder || ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize"));
+
+    // SPEC 22.1.2.5: a bodiless internal generic operation over Array<E>; the compiler implements it.
+    private bool ValidStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var kind = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function;
+        var exclusive = id is KimiDeclarationId.StorageBorrowExclusive or KimiDeclarationId.StorageSplitExclusive;
+        var borrow = id is KimiDeclarationId.StorageBorrowShared or KimiDeclarationId.StorageBorrowExclusive;
+        if (symbol.CompilerFunction != kind ||
+            symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||
+            function.Name != (borrow ? "borrowStorage" : "splitFirst") || function.Modifier != ModifierKind.Internal || function.AttributeChain is not null ||
+            function.GenericArguments is not [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] ||
+            function.Parameters.Count != 1 || function.TypeConstraints.Count != 0 || function.ReturnType is null ||
+            function.Body is not null || function.ExpressionBody is not null || function.IsRequirement || function.IsGenerated || function.IsSpecialization ||
+            function.Parameters[0] is not { DefaultValue: null, AttributeChain: null } parameter || parameter.InternalName != (borrow ? "value" : "state") || parameter.ExternalName != parameter.InternalName ||
+            BareType(parameter.Type) is not TypeSemanticsKoto { Type: GenericsKoto { TypeArguments.Count: 1 } argument } reference ||
+            reference.SemanticsKind != (borrow && !exclusive ? SemanticsKind.Ref : SemanticsKind.Uniq) ||
+            !BareName(argument.Identifier, borrow ? "Array" : exclusive ? "UniqRemainder" : "RefRemainder"))
+        {
+            return false;
         }
 
         return true;

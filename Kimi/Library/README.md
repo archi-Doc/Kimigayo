@@ -18,9 +18,9 @@ embedded, validated and implemented.
   user witnesses use ordinary calls with the same ownership and effect checks.
 - Dictionary algorithms belong in Kimigayo sources; see the implementation
   boundary below. Private storage functions are not public library APIs.
-- `Intrinsics.kimi`, `Console.kimi`, `Test.kimi` and `ArrayOperations.kimi` contain signatures without source bodies.
-  Their private loader supplies the owning container (a group, or the `Array` struct for its constructor and mutation operations; a struct
-  also admits bodiless `init` signatures). Only catalog-registered compiler
+- `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi` and `StorageOperations.kimi` contain signatures without source bodies.
+  Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, or the
+  internal `Storage` group of `Storage.kimi` for the standard storage boundary; a struct also admits bodiless `init` signatures). Only catalog-registered compiler
   implementations are allowed in these groups; this is not public syntax for
   declaring a user intrinsic or omitting a function body.
 - Register compiler-recognized identities in `KimiLibraryCatalog` and validate

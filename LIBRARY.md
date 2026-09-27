@@ -230,8 +230,10 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. |
 | `sort(self: uniq/Self) -> ()`, `T is Comparable` | Sorts in nondecreasing `compare` order; not stable, no allocation. |
 | `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | The same with `by` as the comparison. |
+| `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
+| `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once, so earlier items stay valid across later steps. |
 
-Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+`ArrayIterator<T> {source}` and `ArrayUniqIterator<T> {source}` are the standard Array iterators: each is an `Iterator` whose `Item` is `ref/T during source` or `uniq/T during source`, `next` returns the next untaken element and stays `None` once exhausted, and each keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 

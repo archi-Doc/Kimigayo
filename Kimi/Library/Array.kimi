@@ -1,6 +1,19 @@
 // Compiler-managed dynamic Array (SPEC 4.5, 4.7): storage, length/capacity metadata and the mutation
 // operations are supplied by the compiler; helpers may be added here as functions only.
 public struct Array<T>
+    Self is Iterable
+    associate Iterable.IteratorType(source) is ArrayIterator<T> during source
+    Self is UniqIterable
+    associate UniqIterable.IteratorType(source) is ArrayUniqIterator<T> during source
+
+    /// Starts a shared enumeration of the elements in index order.
+    public func iterate(self: ref/Self during source) -> ArrayIterator<T> during source
+        return ArrayIterator<T>.init(Storage.borrowStorage(self))
+
+    /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
+    public func iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source
+        return ArrayUniqIterator<T>.init(Storage.borrowStorage(self))
+
     /// Returns a shared reference to the element at `index`, or `None` when `index` is out of range.
     public func tryGet(self, index: isize) -> Option<ref/T during self>
         require index >= 0 and index < self.length else => return .None
@@ -117,3 +130,22 @@ public struct Array<T>
                 if by(self[parent], self[child]) >= 0 => exit
                 self.swap(first: parent, second: child)
                 parent = child
+
+/// The standard shared Array iterator: each `next` lends the next untaken element for shared access (SPEC 22.1.2.3).
+public struct ArrayIterator<T> {source}
+    Self is Iterator
+    associate Iterator.Item is ref/T during source
+    var state: Storage.RefRemainder<Array<T>> during source
+    internal init(state: Storage.RefRemainder<Array<T>> during source) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<ref/T during source>
+        return Storage.splitFirst(self.state@uniq)
+
+/// The standard exclusive Array iterator: each `next` splits the next untaken element off as a child Loan, so earlier
+/// items stay valid (SPEC 15.6.3, 22.1.2.5).
+public struct ArrayUniqIterator<T> {source}
+    Self is Iterator
+    associate Iterator.Item is uniq/T during source
+    var state: Storage.UniqRemainder<Array<T>> during source
+    internal init(state: Storage.UniqRemainder<Array<T>> during source) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<uniq/T during source>
+        return Storage.splitFirst(self.state@uniq)

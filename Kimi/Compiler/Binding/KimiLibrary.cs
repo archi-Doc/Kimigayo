@@ -56,6 +56,7 @@ public sealed partial class KimiLibrary
         // and indexing later gives their symbols the struct's ordinary member scope.
         this.ArrayScope = FindDeclaration(this.Kotonoha.RootKoto, "Array", false) is DeclarationContainerKoto array ? new(array) { Parent = this.Scope } : this.Scope;
         this.DictionaryScope = FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) is DeclarationContainerKoto dictionary ? new(dictionary) { Parent = this.Scope } : this.Scope;
+        this.StorageScope = FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) is DeclarationContainerKoto storage ? new(storage) { Parent = this.Scope } : this.Scope;
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
         var symbolCount = 4;
@@ -69,6 +70,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Test => this.TestScope,
                 KimiLibraryContainer.Array => this.ArrayScope,
                 KimiLibraryContainer.Dictionary => this.DictionaryScope,
+                KimiLibraryContainer.Storage => this.StorageScope,
                 _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
             };
             var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload);
@@ -216,6 +218,8 @@ public sealed partial class KimiLibrary
     internal BindingScope Scope { get; }
 
     internal BindingScope DictionaryScope { get; }
+
+    internal BindingScope StorageScope { get; }
 
     internal FunctionKoto DictionaryUnlink { get; }
 
