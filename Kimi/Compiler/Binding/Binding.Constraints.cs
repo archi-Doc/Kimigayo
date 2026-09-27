@@ -711,6 +711,13 @@ public sealed partial class Binding
         for (var i = 0; i < clauses.Count; i++)
         {
             var constraint = (IsKoto)clauses[i];
+            // A bound Contract reference supplies its parameters; its associated requirements
+            // are obligations of a conforming Self, not of forming the reference (SPEC 8.4.2).
+            if (binder is ContractKoto && constraint.IsAssociatedConstraint)
+            {
+                continue;
+            }
+
             if (binder is DeclarationContainerKoto && constraint.Left.BoundSymbol?.Kind is not (BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter) && constraint.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !IsDependentConstraint(constraint))
             {
                 continue;

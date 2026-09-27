@@ -633,19 +633,28 @@ public sealed partial class Binding
         return premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
     }
 
-    private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize = true)
+    private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize = true, BindingSymbol? reference = null)
     {
         if (constraint.Kind == ConstraintKind.Not)
         {
-            return this.NegateConstraint(this.ContractConstraint(constraint.Left!, scope, self, normalize));
+            return this.NegateConstraint(this.ContractConstraint(constraint.Left!, scope, self, normalize, reference));
         }
 
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            return this.InternConstraint(new(constraint.Kind, left: this.ContractConstraint(constraint.Left!, scope, self, normalize), right: this.ContractConstraint(constraint.Right!, scope, self, normalize)));
+            return this.InternConstraint(new(constraint.Kind, left: this.ContractConstraint(constraint.Left!, scope, self, normalize, reference), right: this.ContractConstraint(constraint.Right!, scope, self, normalize, reference)));
         }
 
-        return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, this.ContractType(constraint.Subject, scope, self, normalize), constraint.RequiredType is { } required ? this.ContractType(required, scope, self, normalize) : null, constraint.Contract, constraint.Mask));
+        var contract = constraint.Contract;
+        if (reference is not null && contract?.Type is { } contractType && !ReferenceEquals(contractType.Symbol, contract))
+        {
+            contract = this.BoundContractReference(this.SubstituteContractReference(contractType, reference));
+        }
+
+        return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, Instantiate(constraint.Subject), constraint.RequiredType is { } required ? Instantiate(required) : null, contract, constraint.Mask));
+
+        BoundType Instantiate(BoundType type)
+            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference), scope, self, normalize);
     }
 
     private void ExpandContractPremises()
@@ -715,7 +724,7 @@ public sealed partial class Binding
             {
                 if (declaration.ClauseStorage[i].BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true))
                 {
-                    this.AddConstraintFact(environment, this.ContractConstraint(constraint, scope, self, false), shape.Symbol);
+                    this.AddConstraintFact(environment, this.ContractConstraint(constraint, scope, self, false, declaration.Symbol), shape.Symbol);
                 }
             }
         }

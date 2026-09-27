@@ -161,6 +161,17 @@ public sealed partial class Binding
         }
 
         var symbol = this.TypeName(syntax.Right, scope, false);
+        var referenceSyntax = syntax.Right;
+        while (referenceSyntax is ParenthesizedTypeKoto groupedReference)
+        {
+            referenceSyntax = groupedReference.Type;
+        }
+
+        if (symbol?.Declaration is ContractKoto && UnwrapAssociatedHead(referenceSyntax) is GenericsKoto)
+        {
+            symbol = this.BindContractReference(referenceSyntax, symbol, scope);
+        }
+
         receiver = syntax.Left;
         if (symbol?.Kind == BindingSymbolKind.Container || symbol?.Declaration is ContractKoto)
         {
