@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 /// <summary>SPEC 4.7.2, 4.7.4, 4.7.6: the Array mutation operations lower to runtime capacity routines and per-element helpers over the {buffer, length, capacity} handle.</summary>
 internal sealed partial class BodyLowering
 {
-    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar), ArrayHelper> arrayHelpers = new();
-    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar), ArrayHelper> arrayHelperCache = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option), ArrayHelper> arrayHelpers = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option), ArrayHelper> arrayHelperCache = new();
     private bool arrayRuntimeUsed;
     private int[] arrayIterators = [];
     private int[] arrayIterationPlaces = [];
@@ -122,9 +122,10 @@ internal sealed partial class BodyLowering
 
     private ArrayHelper GetArrayHelper(ArrayHelperKind kind, in ArrayElement element, AggregateLayout? option = null, AggregateLayout? remainder = null)
     {
-        // A boundary helper also depends on its result and remainder records, so their layout ids join the key and name.
-        var records = remainder is null ? string.Empty : "_r" + remainder.Id.ToString(CultureInfo.InvariantCulture) + (option is null ? string.Empty : "_o" + option.Id.ToString(CultureInfo.InvariantCulture));
-        var key = (kind, element.Layout?.Id ?? -1, (element.IsString ? "string" : element.IsScalar ? element.Value.ComputationType : string.Empty) + records);
+        // A boundary helper also depends on its result and remainder records, so their layout ids join the key and name; the
+        // key holds only ids and constant spellings, so a warm lookup allocates nothing.
+        var key = (kind, element.Layout?.Id ?? -1, element.IsString ? "string" : element.IsScalar ? element.Value.ComputationType : string.Empty,
+            remainder?.Id ?? -1, remainder is null ? -1 : option?.Id ?? -1);
         if (this.arrayHelpers.TryGetValue(key, out var existing))
         {
             return existing;
@@ -158,6 +159,7 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.OwnedDrop => "__kimi_array_owned_drop_",
             _ => "__kimi_array_drop_",
         };
+        var records = remainder is null ? string.Empty : "_r" + remainder.Id.ToString(CultureInfo.InvariantCulture) + (option is null ? string.Empty : "_o" + option.Id.ToString(CultureInfo.InvariantCulture));
         var name = prefix + suffix + records;
         var valueType = element.IsScalar ? element.Value.ComputationType : "ptr";
         var handle = new AbiParameter("ptr", "handle");

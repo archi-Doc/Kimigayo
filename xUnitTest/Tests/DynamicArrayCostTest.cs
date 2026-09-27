@@ -54,6 +54,26 @@ public class DynamicArrayCostTest
         WriteCostFixture(fail ? "ShrinkFailure" : "ShrinkSuccess", source, 2, 0, failAllocation: fail ? 2 : 0);
     }
 
+    // The storage boundary helpers of the Kimigayo iterators are keyed by layout ids, so warm emission reuses them without
+    // building their names again.
+    [Theory]
+    [InlineData("var it = values.iterate()\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit")]
+    [InlineData("var it = values.iterateUniq()\nloop\n    match it.next()\n        .Some(let v) => v@follow += 1\n        .None => exit")]
+    [InlineData("var it = (values@move).intoIterator()\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit")]
+    public void WarmStorageIteratorEmissionAllocatesNothing(string loop)
+    {
+        var c = MinimalEmissionTest.Analyze("var values: Array<i32> = [1, 2]\nvar total: i32 = 0\n" + loop);
+        for (var i = 0; i < 32; i++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            c.Binding.CheckStartup(OutputKind.Application);
+            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Emission.WriteIr(TextWriter.Null, out _)));
+    }
+
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]
