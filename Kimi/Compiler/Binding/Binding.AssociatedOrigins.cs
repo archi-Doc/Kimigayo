@@ -49,7 +49,7 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
-            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed ||
+            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed ||
                 type.Components[0].Symbol?.Declaration is ContractKoto) &&
                 HasSupportedAssociatedFormation(type.Components[0]);
         }

@@ -1274,6 +1274,13 @@ public sealed partial class Binding
             return true;
         }
 
+        if (pattern.Kind == BoundTypeKind.AssociatedProjection)
+        {
+            // An associated Type is not an injective constructor: infer its receiver from
+            // other inputs, then check the substituted complete parameter in candidate fitting.
+            return true;
+        }
+
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
             ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length)
         {
