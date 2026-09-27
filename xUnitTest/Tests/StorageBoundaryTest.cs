@@ -48,6 +48,17 @@ public class StorageBoundaryTest
         ScalarEmissionTest.EmitFixture("StorageBoundaryExplicit", Source, "boundary\n");
     }
 
+    // The owning entry binds and verifies through the owning remainder; its lowering is a separate unit, so generation
+    // still rejects it with a diagnosis instead of leaking the unreturned elements.
+    [Fact]
+    public void TheOwningEntryBindsButIsNotLoweredYet()
+    {
+        var c = MinimalEmissionTest.Analyze(Values + "var it = (values@move).intoIterator()\nlet p = it.next()\nlet q = it.next()\nmatch p\n    .Some(_) => ()\n    .None => ()\nmatch q\n    .Some(_) => ()\n    .None => ()");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out var error));
+        Assert.Contains("owning storage boundary", error);
+    }
+
     // SPEC 9.3, 22.1.2.5: the boundary is internal to the Kimi Kotonoha; no user source reaches it.
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(values@ref)")]

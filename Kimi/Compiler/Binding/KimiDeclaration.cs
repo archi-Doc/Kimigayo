@@ -105,6 +105,8 @@ public enum KimiDeclarationId : byte
     StorageBorrowExclusive,
     StorageSplitShared,
     StorageSplitExclusive,
+    StorageOwn,
+    StorageTakeFirst,
 }
 
 public enum KimiDeclarationState : byte

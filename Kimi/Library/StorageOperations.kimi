@@ -5,3 +5,5 @@ internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<Arr
 internal func borrowStorage<E>(value: uniq/Array<E> during a) -> UniqRemainder<Array<E>> during a
 internal func splitFirst<E>(state: uniq/RefRemainder<Array<E>>) -> Option<ref/E during state.source>
 internal func splitFirst<E>(state: uniq/UniqRemainder<Array<E>>) -> Option<uniq/E during state.source>
+internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<Array<E>>
+internal func takeFirst<E>(state: uniq/OwnedRemainder<Array<E>>) -> Option<E>

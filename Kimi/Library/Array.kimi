@@ -5,6 +5,8 @@ public struct Array<T>
     associate Iterable.IteratorType(source) is ArrayIterator<T> during source
     Self is UniqIterable
     associate UniqIterable.IteratorType(source) is ArrayUniqIterator<T> during source
+    Self is IntoIterable
+    associate IntoIterable.IteratorType is ArrayOwningIterator<T>
 
     /// Starts a shared enumeration of the elements in index order.
     public func iterate(self: ref/Self during source) -> ArrayIterator<T> during source
@@ -13,6 +15,11 @@ public struct Array<T>
     /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
     public func iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source
         return ArrayUniqIterator<T>.init(Storage.borrowStorage(self))
+
+    /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
+    /// with the iterator in index order (SPEC 4.7.6).
+    public func intoIterator(self: Self) -> ArrayOwningIterator<T>
+        return ArrayOwningIterator<T>.init(Storage.ownStorage(self@move))
 
     /// Returns a shared reference to the element at `index`, or `None` when `index` is out of range.
     public func tryGet(self, index: isize) -> Option<ref/T during self>
@@ -149,3 +156,12 @@ public struct ArrayUniqIterator<T> {source}
     internal init(state: Storage.UniqRemainder<Array<T>> during source) => self.state = state@move
     public func next(self: uniq/Self) -> Option<uniq/T during source>
         return Storage.splitFirst(self.state@uniq)
+
+/// The standard owning Array iterator: each `next` transfers the next unreturned element out (SPEC 22.1.2.3).
+public struct ArrayOwningIterator<T>
+    Self is Iterator
+    associate Iterator.Item is T
+    var state: Storage.OwnedRemainder<Array<T>>
+    internal init(state: Storage.OwnedRemainder<Array<T>>) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<T>
+        return Storage.takeFirst(self.state@uniq)

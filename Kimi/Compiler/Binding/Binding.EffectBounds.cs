@@ -802,7 +802,8 @@ public sealed partial class Binding
                 >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
                 CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
                 CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryClear or CompilerFunctionKind.DictionaryShrinkToFit or
-                CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageSplitShared or CompilerFunctionKind.StorageSplitExclusive => true,
+                CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageSplitShared or CompilerFunctionKind.StorageSplitExclusive or
+                CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageTakeFirst => true,
             _ => false,
         };
 

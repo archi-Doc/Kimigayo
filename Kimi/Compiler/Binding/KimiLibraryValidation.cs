@@ -48,7 +48,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.ArrayWithCapacity => this.ValidArrayConstructor(symbol),
                         >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
                         >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
-                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageSplitExclusive => this.ValidStorageOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageTakeFirst => this.ValidStorageOperation(symbol, entry.Id),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -160,7 +160,7 @@ public sealed partial class KimiLibrary
         {
             var clause = array.ConstraintNodes[i];
             if (clause.IsNegated || clause.FormationType is not null || clause.AttributeChain is not null ||
-                !(clause.IsAssociatedConstraint || (BareName(clause.Left, "Self") && (BareName(clause.Right, "Iterable") || BareName(clause.Right, "UniqIterable")))))
+                !(clause.IsAssociatedConstraint || (BareName(clause.Left, "Self") && (BareName(clause.Right, "Iterable") || BareName(clause.Right, "UniqIterable") || BareName(clause.Right, "IntoIterable")))))
             {
                 return false;
             }
@@ -525,27 +525,34 @@ public sealed partial class KimiLibrary
         ValidStorageField(declaration, 0, VariableKind.Let, "storage", "u8") && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize") && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize") &&
         (id != KimiDeclarationId.OwnedRemainder || ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize"));
 
-    // SPEC 22.1.2.5: a bodiless internal generic operation over Array<E>; the compiler implements it.
+    // SPEC 22.1.2.5: a bodiless internal generic operation over Array<E>; the compiler implements it. The borrowing
+    // operations take a reference to the Array or remainder; ownStorage takes the Array by value.
     private bool ValidStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var kind = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function;
-        var exclusive = id is KimiDeclarationId.StorageBorrowExclusive or KimiDeclarationId.StorageSplitExclusive;
-        var borrow = id is KimiDeclarationId.StorageBorrowShared or KimiDeclarationId.StorageBorrowExclusive;
+        var (name, parameterName, semantics, argument) = id switch
+        {
+            KimiDeclarationId.StorageBorrowShared => ("borrowStorage", "value", SemanticsKind.Ref, "Array"),
+            KimiDeclarationId.StorageBorrowExclusive => ("borrowStorage", "value", SemanticsKind.Uniq, "Array"),
+            KimiDeclarationId.StorageSplitShared => ("splitFirst", "state", SemanticsKind.Uniq, "RefRemainder"),
+            KimiDeclarationId.StorageSplitExclusive => ("splitFirst", "state", SemanticsKind.Uniq, "UniqRemainder"),
+            KimiDeclarationId.StorageOwn => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
+            _ => ("takeFirst", "state", SemanticsKind.Uniq, "OwnedRemainder"),
+        };
         if (symbol.CompilerFunction != kind ||
             symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||
-            function.Name != (borrow ? "borrowStorage" : "splitFirst") || function.Modifier != ModifierKind.Internal || function.AttributeChain is not null ||
+            function.Name != name || function.Modifier != ModifierKind.Internal || function.AttributeChain is not null ||
             function.GenericArguments is not [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] ||
             function.Parameters.Count != 1 || function.TypeConstraints.Count != 0 || function.ReturnType is null ||
             function.Body is not null || function.ExpressionBody is not null || function.IsRequirement || function.IsGenerated || function.IsSpecialization ||
-            function.Parameters[0] is not { DefaultValue: null, AttributeChain: null } parameter || parameter.InternalName != (borrow ? "value" : "state") || parameter.ExternalName != parameter.InternalName ||
-            BareType(parameter.Type) is not TypeSemanticsKoto { Type: GenericsKoto { TypeArguments.Count: 1 } argument } reference ||
-            reference.SemanticsKind != (borrow && !exclusive ? SemanticsKind.Ref : SemanticsKind.Uniq) ||
-            !BareName(argument.Identifier, borrow ? "Array" : exclusive ? "UniqRemainder" : "RefRemainder"))
+            function.Parameters[0] is not { DefaultValue: null, AttributeChain: null } parameter || parameter.InternalName != parameterName || parameter.ExternalName != parameter.InternalName)
         {
             return false;
         }
 
-        return true;
+        return semantics == SemanticsKind.Owner
+            ? BareType(parameter.Type) is GenericsKoto { TypeArguments.Count: 1 } owned && BareName(owned.Identifier, argument)
+            : BareType(parameter.Type) is TypeSemanticsKoto { Type: GenericsKoto { TypeArguments.Count: 1 } borrowed } reference && reference.SemanticsKind == semantics && BareName(borrowed.Identifier, argument);
     }
 
     // Prefix ^ writes this ordinary Copy struct's two fields directly, so its shape is a compiler contract.

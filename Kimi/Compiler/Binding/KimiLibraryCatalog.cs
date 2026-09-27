@@ -122,6 +122,8 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 1),
         new(KimiDeclarationId.StorageSplitShared, "splitFirst", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplitShared, Overload: 0),
         new(KimiDeclarationId.StorageSplitExclusive, "splitFirst", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplitExclusive, Overload: 1),
+        new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn),
+        new(KimiDeclarationId.StorageTakeFirst, "takeFirst", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageTakeFirst),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -132,7 +134,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsDictionaryOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.DictionaryReserve and <= CompilerFunctionKind.DictionaryShrinkToFit;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageSplitExclusive;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageTakeFirst;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

@@ -337,6 +337,11 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         var borrow = plan.Target.CompilerFunction is CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive;
+        if (plan.Target.CompilerFunction is CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageTakeFirst)
+        {
+            return Fail("The owning storage boundary is not lowered yet.", out failure);
+        }
+
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1)
         {
