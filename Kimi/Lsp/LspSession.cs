@@ -26,6 +26,7 @@ internal sealed class LspSession : IDisposable
     private readonly Dictionary<UnitKey, UnitState> units = new();
     private readonly Dictionary<SourceIdentity, HashSet<UnitKey>> contributors = new();
     private readonly Dictionary<SourceIdentity, (LspDiagnostic[] Payload, int? Version)> sent = new();
+    private readonly List<LspDiagnostic> mergedDiagnostics = [];
     private readonly CancellationTokenSource shutdown = new();
     private readonly HashSet<SourceIdentity> undeterminedOwners = [];
     private DiscoveryRecord? discovery;
@@ -248,6 +249,12 @@ internal sealed class LspSession : IDisposable
                 this.sender.Error(message.Id, -32002, "The server is not initialized.");
             }
 
+            return;
+        }
+
+        if (isRequest && message.Method is "initialized" or "textDocument/didOpen" or "textDocument/didChange" or "textDocument/didClose" or "workspace/didChangeWatchedFiles")
+        {
+            this.sender.Error(message.Id, -32600, "The method must be a notification.");
             return;
         }
 
@@ -698,7 +705,8 @@ internal sealed class LspSession : IDisposable
 
         foreach (var uri in uris)
         {
-            var merged = new List<LspDiagnostic>();
+            var merged = this.mergedDiagnostics;
+            LspDiagnostic[] payload = [];
             var ready = true;
             if (this.contributors.TryGetValue(uri, out var set))
             {
@@ -710,17 +718,41 @@ internal sealed class LspSession : IDisposable
                         break;
                     }
 
-                    merged.AddRange(result.Reports[uri]);
+                    var contribution = result.Reports[uri];
+                    if (contribution.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    if (payload.Length == 0)
+                    {
+                        payload = contribution; // A single contributor is already sorted and distinct.
+                    }
+                    else
+                    {
+                        if (merged.Count == 0)
+                        {
+                            merged.AddRange(payload);
+                        }
+
+                        merged.AddRange(contribution);
+                    }
                 }
             }
 
             if (!ready)
             {
+                merged.Clear();
                 continue;
             }
 
-            merged.Sort(WorkspaceCheck.Compare);
-            var payload = WorkspaceCheck.Deduplicate(merged);
+            if (merged.Count != 0)
+            {
+                merged.Sort(WorkspaceCheck.Compare);
+                payload = WorkspaceCheck.Deduplicate(merged);
+                merged.Clear();
+            }
+
             var document = this.documents.GetValueOrDefault(uri);
             var version = document?.Version;
             if (payload.Length == 0)

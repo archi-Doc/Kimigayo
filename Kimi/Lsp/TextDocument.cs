@@ -47,6 +47,12 @@ internal sealed class TextDocument : IDisposable
     /// <param name="value">The new text.</param>
     public void Replace(string value)
     {
+        if (value.AsSpan().SequenceEqual(this.Span))
+        {
+            this.text = value;
+            return;
+        }
+
         this.EnsureCapacity(value.Length, false);
         value.AsSpan().CopyTo(this.buffer);
         this.length = value.Length;

@@ -244,6 +244,22 @@ public sealed class LspProtocolTest
         Assert.DoesNotContain(client.Received, static x => x.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Null);
     }
 
+    [Theory]
+    [InlineData("initialized")]
+    [InlineData("textDocument/didOpen")]
+    [InlineData("textDocument/didChange")]
+    [InlineData("textDocument/didClose")]
+    [InlineData("workspace/didChangeWatchedFiles")]
+    [InlineData("exit")]
+    public async Task NotificationMethodsRejectRequestIds(string method)
+    {
+        await using var client = new LspTestClient();
+        await client.InitializeAsync();
+        var response = await client.RequestAsync(method, "{}");
+        Assert.Equal(-32600, response.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.Equal(JsonValueKind.Null, (await client.RequestAsync("shutdown")).GetProperty("result").ValueKind);
+    }
+
     [Fact]
     public async Task InvalidSelectedProjectPathsAreLogged()
     {

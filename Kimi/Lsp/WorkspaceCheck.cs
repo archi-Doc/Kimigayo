@@ -102,12 +102,14 @@ internal sealed record CheckDone(Exception? Failure);
 internal sealed class WorkspaceCheck
 {
     private readonly CheckStart start;
+    private readonly Dictionary<string, List<string>> openByDirectory;
 
     /// <summary>Initializes a new instance of the <see cref="WorkspaceCheck"/> class.</summary>
     /// <param name="start">The captured start state.</param>
     public WorkspaceCheck(CheckStart start)
     {
         this.start = start;
+        this.openByDirectory = CheckInputs.GroupOpenPaths(start.Documents.Select(static x => x.Identity.Value));
     }
 
     /// <summary>Gets the host target for implicit projects, or empty when the host has none.</summary>
@@ -181,16 +183,17 @@ internal sealed class WorkspaceCheck
             return [];
         }
 
+        var values = CollectionsMarshal.AsSpan(sorted);
         var count = 1;
-        for (var i = 1; i < sorted.Count; i++)
+        for (var i = 1; i < values.Length; i++)
         {
-            if (!sorted[i].Equals(sorted[count - 1]))
+            if (!values[i].Equals(values[count - 1]))
             {
-                sorted[count++] = sorted[i];
+                values[count++] = values[i];
             }
         }
 
-        return sorted.GetRange(0, count).ToArray();
+        return values[..count].ToArray();
     }
 
     /// <summary>Checks one unit through the shared check entry.</summary>
@@ -248,27 +251,6 @@ internal sealed class WorkspaceCheck
 
     private static CheckOutput Blocked(DiagnosticCode code, SourceIdentity location, object? argument = null)
         => new(CheckOutcome.Blocked, false, TestPresence.Unknown, [CheckService.Create(code, location, argument)]);
-
-    private static InputState Merge(InputKey key, InputState disk, OpenDocumentView[] documents)
-    {
-        if (!disk.Established)
-        {
-            return disk;
-        }
-
-        var extension = key.Pattern[1..];
-        var merged = new SortedSet<string>(disk.DiskNames!, StringComparer.Ordinal);
-        foreach (var document in documents)
-        {
-            var path = document.Identity.Value;
-            if (path.EndsWith(extension, StringComparison.OrdinalIgnoreCase) && SourceIdentity.PathComparer.Equals(Path.GetDirectoryName(path), key.Identity.Value))
-            {
-                merged.Add(path);
-            }
-        }
-
-        return new() { Names = merged.ToArray(), DiskNames = disk.DiskNames, Stamp = disk.Stamp };
-    }
 
     private static LoadedProject CreateLoaded(SourceIdentity path, Project project, SnapshotInputSource source)
     {
@@ -389,7 +371,7 @@ internal sealed class WorkspaceCheck
             }
 
             var disk = reusable ? previous! : DiskReader.ReadListing(path, key.Pattern);
-            return Merge(key, disk, this.start.Documents);
+            return DiskReader.MergeListing(key, disk, CollectionsMarshal.AsSpan(this.openByDirectory.GetValueOrDefault(path)));
         }
 
         if (this.start.BaseTexts.TryGetValue(key.Identity, out var text))

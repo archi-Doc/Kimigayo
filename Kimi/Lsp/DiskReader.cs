@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Checking;
 
 namespace Kimi.Lsp;
@@ -7,6 +8,55 @@ namespace Kimi.Lsp;
 /// <summary>Reads disk inputs as observations (SPEC 23.3.4): absence, content or the failure kind and message.</summary>
 internal static class DiskReader
 {
+    /// <summary>Merges matching open documents into a retained disk listing, preserving canonical disk spellings.</summary>
+    /// <param name="key">The listing key.</param>
+    /// <param name="disk">The disk names, possibly with an earlier overlay in <see cref="InputState.Names"/>.</param>
+    /// <param name="openPaths">The open documents in this directory.</param>
+    /// <returns>The unchanged disk state when possible, or a sorted union without duplicate file identities.</returns>
+    public static InputState MergeListing(InputKey key, InputState disk, ReadOnlySpan<string> openPaths)
+    {
+        if (!disk.Established)
+        {
+            return disk;
+        }
+
+        var names = disk.DiskNames!;
+        List<string>? added = null;
+        foreach (var path in openPaths)
+        {
+            if (!path.AsSpan().EndsWith(key.Pattern.AsSpan(1), StringComparison.OrdinalIgnoreCase) ||
+                Array.BinarySearch(names, path, StringComparer.Ordinal) >= 0 ||
+                (OperatingSystem.IsWindows() && ContainsPath(names, path)) ||
+                (added is not null && ContainsPath(CollectionsMarshal.AsSpan(added), path)))
+            {
+                continue;
+            }
+
+            (added ??= []).Add(path);
+        }
+
+        if (added is null)
+        {
+            return ReferenceEquals(disk.Names, names) ? disk : new() { Names = names, DiskNames = names, Stamp = disk.Stamp };
+        }
+
+        added.Sort(StringComparer.Ordinal);
+        var merged = new string[names.Length + added.Count];
+        int source = 0, destination = 0;
+        foreach (var path in added)
+        {
+            while (source < names.Length && string.CompareOrdinal(names[source], path) < 0)
+            {
+                merged[destination++] = names[source++];
+            }
+
+            merged[destination++] = path;
+        }
+
+        names.AsSpan(source).CopyTo(merged.AsSpan(destination));
+        return new() { Names = merged, DiskNames = names, Stamp = disk.Stamp };
+    }
+
     /// <summary>Reads a file.</summary>
     /// <param name="path">The path.</param>
     /// <returns>The state.</returns>
@@ -98,5 +148,18 @@ internal static class DiskReader
         {
             return false;
         }
+    }
+
+    private static bool ContainsPath(ReadOnlySpan<string> names, string path)
+    {
+        foreach (var name in names)
+        {
+            if (SourceIdentity.PathComparer.Equals(name, path))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

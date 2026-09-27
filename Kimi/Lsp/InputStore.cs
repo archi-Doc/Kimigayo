@@ -351,6 +351,7 @@ internal sealed class InputStore
         }
 
         var inputs = item.Inputs;
+        var committed = inputs;
         for (var i = 0; i < inputs.Length; i++)
         {
             var entry = this.Get(inputs[i].Key);
@@ -360,7 +361,16 @@ internal sealed class InputStore
                 entry.State = first;
             }
 
-            inputs[i] = inputs[i] with { Revision = entry.Revision, FirstRead = null };
+            if (inputs[i].FirstRead is not null)
+            {
+                if (ReferenceEquals(committed, inputs))
+                {
+                    committed = (RecordedInput[])inputs.Clone();
+                }
+
+                committed[i] = inputs[i] with { Revision = entry.Revision, FirstRead = null };
+            }
+
             entry.Dependents.Add(item);
             if (entry.Marked)
             {
@@ -368,6 +378,7 @@ internal sealed class InputStore
             }
         }
 
+        item.Inputs = committed; // The worker may still be reading the original array.
         item.Registered = true;
         return true;
     }

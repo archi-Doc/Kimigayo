@@ -171,6 +171,43 @@ public sealed class CheckSchedulerTest : IDisposable
     }
 
     [Fact]
+    public async Task SharedDiagnosticsRemainDistinctWhenContributorsChangeAndRetire()
+    {
+        await using var harness = new SchedulerHarness();
+        var shared = this.PathOf("Shared.kimi");
+        var identity = SourceIdentity.FromPath(shared);
+        harness.Session.Runner = (_, _, plan, source, _) =>
+        {
+            var text = source.ReadSource(plan.Key.Owner.Value).Text!;
+            return new(
+                CheckOutcome.Completed,
+                false,
+                TestPresence.No,
+                [new("Fake_Kd", DiagnosticSeverity.Error, "common", identity, default), new("Fake_Kd", DiagnosticSeverity.Error, text, identity, default)]);
+        };
+        var first = this.PathOf("A.kimi");
+        var second = this.PathOf("B.kimi");
+        harness.At(0).Open(first, "A");
+        harness.At(1).Open(second, "B");
+        harness.At(251);
+        await harness.RunCheckAsync();
+        var published = await harness.PublishesAsync(shared);
+        Assert.Equal(["A", "B", "common"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
+
+        harness.At(300).Change(first, 2, "C");
+        harness.At(550);
+        await harness.RunCheckAsync();
+        published = await harness.PublishesAsync(shared);
+        Assert.Equal(["B", "C", "common"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
+
+        harness.At(600).Close(second);
+        harness.At(850);
+        await harness.RunCheckAsync();
+        published = await harness.PublishesAsync(shared);
+        Assert.Equal(["C", "common"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
+    }
+
+    [Fact]
     public async Task DesynchronizationSurvivesUnrelatedChecksAndDiskChanges()
     {
         await using var harness = new SchedulerHarness();
