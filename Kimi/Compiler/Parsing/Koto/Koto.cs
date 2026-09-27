@@ -613,17 +613,7 @@ public abstract class Koto
 
         oldKoto.Parent = default;
         newKoto.Parent = this;
-        for (var owner = this; owner is not null; owner = owner.Parent)
-        {
-            if (owner.Akind == KotoKind.AssociatedType || owner is IsKoto { IsAssociatedConstraint: true } or FunctionKoto or PropertyAccessorKoto)
-            {
-                // Associated definitions and callable bodies publish Type, Origin and effect conditions used outside
-                // this subtree. A body edit can revoke a caller's Iterator independence or reserve certificate.
-                this.CodeContext.Compilation.InvalidateSourceAnalysis();
-                break;
-            }
-        }
-
+        this.CodeContext.Compilation.NoteSyntaxEdit();
         return true;
     }
 
@@ -701,6 +691,7 @@ public abstract class Koto
         this.BoundMeaning = null;
         this.BoundSymbol = null;
         this.BindingFailure = BindingFailure.None;
+        this.CodeContext.Compilation.NoteSyntaxEdit();
     }
 
     /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>

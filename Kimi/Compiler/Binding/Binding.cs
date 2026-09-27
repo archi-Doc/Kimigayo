@@ -353,9 +353,12 @@ public sealed partial class Binding
         ? index == 0 && accessor.Receiver is not null ? accessor.SelfSymbol! : accessor.ValueSymbol!
         : this.symbols[function.Parameters[index]];
 
+    internal bool IsRunning => this.running;
+
     internal void Invalidate()
     {
-        if (this.Result == default)
+        // A Bind in progress rebuilds everything it published; clearing its state midway would lose its own issues.
+        if (this.Result == default || this.running)
         {
             return;
         }
@@ -367,6 +370,7 @@ public sealed partial class Binding
         this.diagnosticDependencies?.Clear();
         this.obligations.Clear();
         this.obligationSet.Clear();
+        this.associatedOrigins.Clear();
         this.ResetStartup();
         this.ResetCapabilities(BindingMode.Provisional);
         this.ResetContracts();

@@ -306,6 +306,19 @@ public partial class Compilation
         this.InvalidateOwnership();
     }
 
+    /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and
+    /// certificates published by one declaration are used everywhere; only Binding's own normalization of the syntax it
+    /// is binding, such as a try selection, is not an edit.</summary>
+    internal void NoteSyntaxEdit()
+    {
+        if (this.binding is { IsRunning: true })
+        {
+            return;
+        }
+
+        this.InvalidateSourceAnalysis();
+    }
+
     internal void BeginSourceParsing()
     {
         this.hasParsedSource = true;

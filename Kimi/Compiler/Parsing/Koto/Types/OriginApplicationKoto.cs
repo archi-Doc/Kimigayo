@@ -28,7 +28,6 @@ public sealed class OriginApplicationKoto : ApplicationKoto
         }
 
         base.ReplaceArgument(index, replacement);
-        this.CodeContext.Compilation.InvalidateSourceAnalysis();
     }
 
     /// <inheritdoc/>
@@ -40,13 +39,6 @@ public sealed class OriginApplicationKoto : ApplicationKoto
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
-        if (!base.ReplaceChildCore(oldKoto, newKoto))
-        {
-            return false;
-        }
-
-        // A changed Origin application invalidates result Types and their lifetime certificates.
-        this.CodeContext.Compilation.InvalidateSourceAnalysis();
-        return true;
+        return base.ReplaceChildCore(oldKoto, newKoto);
     }
 }
