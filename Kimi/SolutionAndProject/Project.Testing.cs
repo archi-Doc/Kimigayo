@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Checking;
 using Kimi.Compiler;
 
 namespace Kimi;
@@ -7,7 +8,16 @@ namespace Kimi;
 public partial class Project
 {
     internal Compilation? PrepareTests(CancellationToken cancellationToken)
+        => this.PrepareTests(cancellationToken, null);
+
+    /// <summary>Prepares and checks the test build through the shared check entry (SPEC 23.3.2).</summary>
+    /// <param name="cancellationToken">Cancels dependency resolution.</param>
+    /// <param name="context">The check context, or null for the command, which reads the disk.</param>
+    /// <returns>The accepted test compilation, or null.</returns>
+    /// <exception cref="InvalidDataException">The test configuration is invalid.</exception>
+    internal Compilation? PrepareTests(CancellationToken cancellationToken, CheckContext? context)
     {
+        var inputs = context?.Inputs ?? CheckInputSource.Disk;
         cancellationToken.ThrowIfCancellationRequested();
         if (DependencyConfiguration.Validate(this.ProjectFile) is { } invalid)
         {
@@ -31,7 +41,7 @@ public partial class Project
             throw new InvalidDataException("Testing requires a configured Windows x64 target.");
         }
 
-        var sources = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var sources = new HashSet<string>(SourceIdentity.PathComparer);
         foreach (var source in this.ProjectFile.TestSources)
         {
             if (!sources.Add(Path.GetFullPath(source, Path.GetFullPath(this.Directory))))
@@ -43,8 +53,8 @@ public partial class Project
         DependencyPartition? graph = null;
         if (this.FilePath is { } path)
         {
-            var resolution = DependencyResolver.Resolve(path, target, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, TinyhandSerializer.SerializeToUtf8(this.ProjectFile));
-            if (DependencyLock.Validate(DependencyLock.PathForProject(path), resolution, true) is { } failure)
+            var resolution = DependencyResolver.Resolve(path, target, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, TinyhandSerializer.SerializeToUtf8(this.ProjectFile), true, inputs);
+            if (DependencyLock.Validate(DependencyLock.PathForProject(path), resolution, true, inputs) is { } failure)
             {
                 throw new InvalidDataException(failure);
             }
@@ -53,6 +63,6 @@ public partial class Project
         }
 
         Compilation? result = null;
-        return this.BuildTarget(target, false, null, sources, graph, c => result = c) ? result : null;
+        return this.BuildTarget(target, false, null, sources, graph, c => result = c, context) ? result : null;
     }
 }

@@ -31,8 +31,9 @@ public partial class Compilation
     #region FieldAndProperty
 
     /// <summary>
-    /// Gets the compiler service that owns this compilation.
+    /// Gets this compilation's diagnostic scope of the owning compiler service.
     /// </summary>
+    /// <remarks>The scope shares the service's console and settings, and its diagnostic collections belong to this compilation alone.</remarks>
     public Kimigayo Kimigayo { get; }
 
     /// <summary>
@@ -146,7 +147,7 @@ public partial class Compilation
         ArgumentNullException.ThrowIfNull(kimigayo);
         ArgumentNullException.ThrowIfNull(project);
 
-        this.Kimigayo = kimigayo;
+        this.Kimigayo = kimigayo.CreateScope();
         this.Project = project;
         this.KotonohaArray = project.ProjectFile.KotonohaArray?.ToArray() ?? [];
         this.Kotonoha = new(this, this.Project.Name, string.Empty);

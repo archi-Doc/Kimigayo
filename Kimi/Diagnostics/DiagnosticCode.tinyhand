@@ -439,3 +439,21 @@
 
   + Name="GenerationResourceLimit_Kd"
     Message="Generic generation exceeds a mandatory resource limit: {0}"
+
+  + Name="ProjectPreparationFailed_Kd"
+    Message="Project preparation failed: {0}"
+
+  + Name="ProjectLoadFailed_Kd"
+    Message="{0}"
+
+  + Name="TargetSelectionRequired_Kd"
+    Message="Select a target in the session settings: this project configures several targets and none is the host target"
+
+  + Name="TestTargetUnavailable_Kd"
+    Message="The tests of this project are not checked: testing requires a configured Windows x64 target"
+
+  + Name="DocumentDesynchronized_Kd"
+    Message="The editor document is out of sync with the language server; close and reopen it"
+
+  + Name="CheckFaulted_Kd"
+    Message="The compiler failed internally while checking: {0}"

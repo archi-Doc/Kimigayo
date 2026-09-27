@@ -17,14 +17,27 @@ public class Kimigayo
 
     public DiagnosticCollection GlobalDiagnosticCollection { get; }
 
+    /// <summary>Gets a value indicating whether diagnostics are rendered to the console when they are added.</summary>
+    /// <remarks>The language server disables rendering: its standard output carries only protocol frames.</remarks>
+    internal bool RendersDiagnostics { get; }
+
     public Kimigayo(IConsoleService consoleService)
+        : this(consoleService, new(), true)
+    {
+    }
+
+    private Kimigayo(IConsoleService consoleService, KimiSettings settings, bool rendersDiagnostics)
     {
         this.consoleService = consoleService;
-        this.Settings = new();
+        this.Settings = settings;
+        this.RendersDiagnostics = rendersDiagnostics;
 
         this.diagnosticCollections = new();
         this.GlobalDiagnosticCollection = this.GetOrAddDiagnosticCollection(GlobalName);
     }
+
+    /// <summary>Gets the named diagnostic collections of this scope.</summary>
+    internal ICollection<DiagnosticCollection> DiagnosticCollections => this.diagnosticCollections.Values;
 
     public void ReportDiagnostic(string path, Diagnostic diagnostic)
     {
@@ -82,6 +95,16 @@ public class Kimigayo
 
     public void WriteLine(DiagnosticSeverity severity, ReadOnlySpan<char> message)
         => this.consoleService.WriteLine(message, this.SeverityToColor(severity));
+
+    /// <summary>Creates a service that writes nothing and renders no diagnostic.</summary>
+    /// <returns>A silent compiler service.</returns>
+    internal static Kimigayo CreateSilent()
+        => new(new EmptyConsoleService(), new(), false);
+
+    /// <summary>Creates a diagnostic scope that shares this service's console and settings but owns fresh collections.</summary>
+    /// <returns>The new scope. Each compilation owns one, so no diagnostic outlives or crosses its compilation.</returns>
+    internal Kimigayo CreateScope()
+        => new(this.consoleService, this.Settings, this.RendersDiagnostics);
 
     private static int GetDisplayWidth(ReadOnlySpan<char> sourceText)
     {

@@ -64,7 +64,7 @@ internal static class DependencyLock
         }
     }
 
-    internal static string? Validate(string path, DependencyResolution resolution, bool includeTests)
+    internal static string? Validate(string path, DependencyResolution resolution, bool includeTests, Checking.CheckInputSource? source = null)
     {
         if (!resolution.Product.IsResolved || (includeTests && !resolution.Test.IsResolved))
         {
@@ -73,7 +73,7 @@ internal static class DependencyLock
 
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            using var document = JsonDocument.Parse((source ?? Checking.CheckInputSource.Disk).ReadAllBytes(path));
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object || HasDuplicateProperties(root) || !root.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var version) || version != 1)
             {

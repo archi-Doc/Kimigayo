@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Checking;
 using Kimi.Compiler;
 
 namespace Kimi;
 
 #pragma warning disable SA1402, CS1591 // Internal graph records share one vocabulary.
 
-internal sealed record DependencySource(string LogicalPath, byte[] Bytes);
+internal sealed record DependencySource(string LogicalPath, SourceContent Content);
 
 internal sealed record DependencyInput(string Path, ProjectFile Configuration, byte[] ConfigurationBytes, DependencySource[] Sources);
 
@@ -33,23 +34,25 @@ internal sealed record DependencyResolution(DependencyPartition Product, Depende
 /// <summary>Resolves exact Project graphs from one attempt's fixed local input bytes.</summary>
 internal sealed class DependencyResolver
 {
-    private readonly Dictionary<string, DependencyInput> inputs = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private readonly Dictionary<string, DependencyInput> inputs = new(SourceIdentity.PathComparer);
     private readonly string languageVersion;
     private readonly CancellationToken cancellationToken;
+    private readonly CheckInputSource source;
     private string target;
     private string? rootPath;
     private byte[]? rootConfiguration;
 
-    private DependencyResolver(string target, string languageVersion, CancellationToken cancellationToken)
+    private DependencyResolver(string target, string languageVersion, CancellationToken cancellationToken, CheckInputSource source)
     {
         this.target = target;
         this.languageVersion = languageVersion;
         this.cancellationToken = cancellationToken;
+        this.source = source;
     }
 
-    internal static DependencyResolution Resolve(string projectPath, string target, string languageVersion, CancellationToken cancellationToken = default, byte[]? rootConfiguration = null, bool includeTests = true)
+    internal static DependencyResolution Resolve(string projectPath, string target, string languageVersion, CancellationToken cancellationToken = default, byte[]? rootConfiguration = null, bool includeTests = true, CheckInputSource? source = null)
     {
-        var resolver = new DependencyResolver(target, languageVersion, cancellationToken);
+        var resolver = new DependencyResolver(target, languageVersion, cancellationToken, source ?? CheckInputSource.Disk);
         if (rootConfiguration is not null)
         {
             resolver.rootPath = Path.GetFullPath(projectPath);
@@ -96,7 +99,7 @@ internal sealed class DependencyResolver
 
         for (var i = 0; i < a.Sources.Length; i++)
         {
-            if (a.Sources[i].LogicalPath != b.Sources[i].LogicalPath || !a.Sources[i].Bytes.AsSpan().SequenceEqual(b.Sources[i].Bytes))
+            if (a.Sources[i].LogicalPath != b.Sources[i].LogicalPath || !a.Sources[i].Content.SameBytes(b.Sources[i].Content))
             {
                 return false;
             }
@@ -328,7 +331,7 @@ internal sealed class DependencyResolver
             return input;
         }
 
-        var bytes = this.rootConfiguration is not null && this.inputs.Comparer.Equals(path, this.rootPath) ? this.rootConfiguration : File.ReadAllBytes(path);
+        var bytes = this.rootConfiguration is not null && this.inputs.Comparer.Equals(path, this.rootPath) ? this.rootConfiguration : this.source.ReadAllBytes(path);
         var file = ProjectFile.Load(bytes) ?? throw new ResolutionFailure("InvalidConfiguration", $"Empty Project configuration: '{path}'.");
         var directory = Path.GetDirectoryName(path)!;
         var tests = new HashSet<string>(this.inputs.Comparer);
@@ -340,15 +343,14 @@ internal sealed class DependencyResolver
             }
         }
 
-        var paths = Directory.GetFiles(directory, "*.kimi", SearchOption.TopDirectoryOnly);
-        Array.Sort(paths, StringComparer.Ordinal);
+        var paths = this.source.GetFiles(directory, "*.kimi");
         var sources = new List<DependencySource>(paths.Length);
         foreach (var source in paths)
         {
             this.cancellationToken.ThrowIfCancellationRequested();
             if (!tests.Contains(source))
             {
-                sources.Add(new(Path.GetFileName(source), File.ReadAllBytes(source)));
+                sources.Add(new(Path.GetFileName(source), this.source.ReadSource(source)));
             }
         }
 

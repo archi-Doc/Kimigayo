@@ -33,7 +33,15 @@ public record class DiagnosticCollection
         this.Name = name;
     }
 
-    public void Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null)
+    /// <summary>Adds a diagnostic unless one is already recorded at the same start offset.</summary>
+    /// <param name="range">The source span; ignored for placement when no source document applies.</param>
+    /// <param name="code">The diagnostic code.</param>
+    /// <param name="obj">The first message argument.</param>
+    /// <param name="obj2">The second message argument.</param>
+    /// <param name="sourceDocument">The source document; defaults to the collection's document.</param>
+    /// <param name="hint">An explanation appended to the message.</param>
+    /// <param name="location">The path of an input the diagnostic concerns when no source document exists, such as an unreadable file.</param>
+    public void Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null, string? location = null)
     {
         if (!DiagnosticEntries.TryGet(code, out var entry))
         {
@@ -70,14 +78,17 @@ public record class DiagnosticCollection
                 message = string.Concat(message, " ", hint);
             }
 
-            var diagnostic = new Diagnostic(range, entry, sourceDocument ?? this.SourceDocument) { Message = message };
+            var diagnostic = new Diagnostic(range, entry, sourceDocument ?? this.SourceDocument) { Message = message, Location = location };
             diagnostic.Goshujin = this.diagnostics;
             if (entry.Severity == DiagnosticSeverity.Error)
             {
                 this.errorCount++;
             }
 
-            this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
+            if (this.kimigayo.RendersDiagnostics)
+            {
+                this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
+            }
         }
     }
 

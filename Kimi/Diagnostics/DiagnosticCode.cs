@@ -163,6 +163,13 @@ public enum DiagnosticCode
 
     UnavailableFeature_Kd,
 
+    ProjectPreparationFailed_Kd,
+    ProjectLoadFailed_Kd,
+    TargetSelectionRequired_Kd,
+    TestTargetUnavailable_Kd,
+    DocumentDesynchronized_Kd,
+    CheckFaulted_Kd,
+
     Count, // Last sentinel
 }
 

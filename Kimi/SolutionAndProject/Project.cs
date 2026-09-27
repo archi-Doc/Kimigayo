@@ -3,8 +3,10 @@
 namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using Kimi.Checking;
 using Kimi.Command;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
@@ -33,35 +35,52 @@ public partial class Project
     /// <param name="project">The loaded project.</param>
     /// <returns><see langword="true"/> when the project was loaded.</returns>
     public static bool TryCreate(Kimigayo kimigayo, ILogger? logger, string path, [MaybeNullWhen(false)] out Project project)
+        => TryCreate(kimigayo, logger, path, CheckInputSource.Disk, out project, out _);
+
+    /// <summary>Attempts to load a project from a <c>.kimiproj</c> file through an input source.</summary>
+    /// <param name="kimigayo">The owning compiler service.</param>
+    /// <param name="logger">The load logger.</param>
+    /// <param name="path">The project-file path.</param>
+    /// <param name="inputs">The input source; the language server supplies open documents.</param>
+    /// <param name="project">The loaded project.</param>
+    /// <param name="failure">The reason the project did not load.</param>
+    /// <returns><see langword="true"/> when the project was loaded.</returns>
+    internal static bool TryCreate(Kimigayo kimigayo, ILogger? logger, string path, CheckInputSource inputs, [MaybeNullWhen(false)] out Project project, out string? failure)
     {
         project = default;
+        failure = null;
         try
         {
-            var utf8 = System.IO.File.ReadAllBytes(path);
-            var file = ProjectFile.Load(utf8);
+            var fullPath = Path.GetFullPath(path);
+            var file = ProjectFile.Load(inputs.ReadAllBytes(fullPath));
             if (file is null)
             {
+                failure = $"Empty project configuration '{path}'.";
                 logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
                 return false;
             }
 
             project = new(kimigayo, file);
-            project.FilePath = Path.GetFullPath(path);
-            project.Directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
+            project.FilePath = fullPath;
+            project.Directory = Path.GetDirectoryName(fullPath)!;
             project.Name = Path.GetFileNameWithoutExtension(path);
-            foreach (var source in System.IO.Directory.EnumerateFiles(project.Directory, "*.kimi", SearchOption.TopDirectoryOnly))
+            foreach (var source in inputs.GetFiles(project.Directory, "*.kimi"))
             {
                 project.AddKimiFile(source);
             }
         }
         catch (TinyhandException ex)
         {
-            kimigayo.WriteLine(DiagnosticSeverity.Error, $"Invalid project configuration '{path}': {ex.Message}");
+            failure = $"Invalid project configuration '{path}': {ex.Message}";
+            kimigayo.WriteLine(DiagnosticSeverity.Error, failure);
+            project = default;
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            failure = $"The project '{path}' could not be loaded: {ex.Message}";
             logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
+            project = default;
             return false;
         }
 
@@ -215,15 +234,42 @@ public partial class Project
     public Task<bool> Generate(CancellationToken cancellationToken = default)
         => this.BuildCore(true, cancellationToken);
 
+    /// <summary>Checks one unit through the shared check entry (SPEC 23.3.2), with inputs and failures carried by a context.</summary>
+    /// <param name="context">The check context.</param>
+    /// <param name="cancellationToken">Cancels between compilation targets.</param>
+    /// <returns>Whether every selected target passes front-end checks.</returns>
+    internal Task<bool> Check(CheckContext context, CancellationToken cancellationToken)
+        => this.BuildCore(false, cancellationToken, null, context);
+
+    // Test sources were read without a handler; a failure is rethrown where the read used to happen.
+    private static List<(string Path, SourceContent? Content, Exception? Failure)> ReadTestSources(CheckInputSource inputs, HashSet<string> testSources)
+    {
+        var reads = new List<(string Path, SourceContent? Content, Exception? Failure)>(testSources.Count);
+        foreach (var path in testSources.Order(StringComparer.Ordinal))
+        {
+            try
+            {
+                reads.Add((path, inputs.ReadSource(path), null));
+            }
+            catch (Exception ex)
+            {
+                reads.Add((path, null, ex));
+            }
+        }
+
+        return reads;
+    }
+
     // Retain the Task exception/cancellation contract at the public boundary. Each target
     // is synchronous; do not build another async state machine around every compilation.
-    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
+    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null, CheckContext? context = null)
     {
         this.buildMetadata.Clear();
         cancellationToken.ThrowIfCancellationRequested();
+        var inputs = context?.Inputs ?? CheckInputSource.Disk;
         if (DependencyConfiguration.Validate(this.ProjectFile) is { } configurationFailure)
         {
-            this.kimigayo.WriteLine(DiagnosticSeverity.Error, configurationFailure);
+            this.Fail(context, configurationFailure);
             return false;
         }
 
@@ -233,10 +279,10 @@ public partial class Project
             // Nonempty graphs still require the forthcoming semantic integration.
             var root = new DependencyNode("root", new(projectPath, this.ProjectFile, [], []), -1, string.Empty);
             var empty = new DependencyPartition([root]);
-            var failure = DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false);
+            var failure = DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs);
             if (failure is not null)
             {
-                this.kimigayo.WriteLine(DiagnosticSeverity.Error, failure);
+                this.Fail(context, failure);
                 return false;
             }
         }
@@ -244,7 +290,7 @@ public partial class Project
         HashSet<string>? testSources = null;
         if (this.ProjectFile.TestSources.Length != 0)
         {
-            testSources = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            testSources = new(SourceIdentity.PathComparer);
             try
             {
                 var baseDirectory = Path.GetFullPath(this.Directory.Length == 0 ? "." : this.Directory);
@@ -252,14 +298,14 @@ public partial class Project
                 {
                     if (!testSources.Add(Path.GetFullPath(source, baseDirectory)))
                     {
-                        this.kimigayo.WriteLine(DiagnosticSeverity.Error, $"Duplicate resolved TestSources path: {source}");
+                        this.Fail(context, $"Duplicate resolved TestSources path: {source}");
                         return false;
                     }
                 }
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
             {
-                this.kimigayo.WriteLine(DiagnosticSeverity.Error, $"Invalid TestSources path: {ex.Message}");
+                this.Fail(context, $"Invalid TestSources path: {ex.Message}");
                 return false;
             }
         }
@@ -267,7 +313,7 @@ public partial class Project
         var targets = this.ProjectFile.Targets;
         if (targets.Length == 0)
         {
-            this.kimigayo.WriteLine(DiagnosticSeverity.Error, "At least one compilation target must be configured.");
+            this.Fail(context, "At least one compilation target must be configured.");
             return false;
         }
 
@@ -275,7 +321,7 @@ public partial class Project
         {
             if (!targets.Contains(this.KimiOptions.Target, StringComparer.Ordinal))
             {
-                this.kimigayo.WriteLine(DiagnosticSeverity.Error, "The selected target is not configured in this project.");
+                this.Fail(context, "The selected target is not configured in this project.");
                 return false;
             }
 
@@ -284,7 +330,7 @@ public partial class Project
 
         if (emit && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
         {
-            this.kimigayo.WriteLine(DiagnosticSeverity.Error, "Emission currently requires exactly one configured Windows x64 target.");
+            this.Fail(context, "Emission currently requires exactly one configured Windows x64 target.");
             return false;
         }
 
@@ -296,11 +342,11 @@ public partial class Project
             DependencyPartition? graph = null;
             if (rootConfiguration is not null)
             {
-                var resolution = DependencyResolver.Resolve(this.FilePath!, x, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, rootConfiguration, includeTests: false);
-                var failure = DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false);
+                var resolution = DependencyResolver.Resolve(this.FilePath!, x, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, rootConfiguration, false, inputs);
+                var failure = DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs);
                 if (failure is not null)
                 {
-                    this.kimigayo.WriteLine(DiagnosticSeverity.Error, failure);
+                    this.Fail(context, failure);
                     success = false;
                     continue;
                 }
@@ -308,13 +354,13 @@ public partial class Project
                 graph = resolution.Product;
             }
 
-            success &= this.BuildTarget(x, emit, paths, testSources, graph);
+            success &= this.BuildTarget(x, emit, paths, testSources, graph, null, context);
         }
 
         return success;
     }
 
-    private bool BuildTarget(string target, bool emit, ArtifactPaths? paths, HashSet<string>? testSources, DependencyPartition? graph, Action<Compilation>? prepared = null)
+    private bool BuildTarget(string target, bool emit, ArtifactPaths? paths, HashSet<string>? testSources, DependencyPartition? graph, Action<Compilation>? prepared = null, CheckContext? context = null)
     {
         // Create & Prepare Compilation
         var project = graph is null ? this : new Project(this.kimigayo, graph.Nodes[0].Input.Configuration)
@@ -325,10 +371,14 @@ public partial class Project
             SolutionLanguageVersion = this.SolutionLanguageVersion,
             FilePath = this.FilePath,
         };
+
+        // Each compilation owns its diagnostic scope, so no earlier target's diagnostics can leak into it.
         var compilation = new Compilation(this.kimigayo, project) { IsTestBuild = prepared is not null };
-        // The service retains named diagnostic collections across attempts, but the new compilation
-        // must not inherit an earlier target's preparation/publication errors.
-        compilation.Kotonoha.DiagnosticCollection.ClearDiagnostic();
+        if (context is not null)
+        {
+            context.Compilation = compilation;
+        }
+
         if (!(graph is null ? compilation.Prepare(target) : compilation.Prepare(target, graph)))
         {
             return false;
@@ -337,6 +387,12 @@ public partial class Project
         this.buildMetadata.Add(compilation.BuildMetadata!);
 
         var projectKotonoha = compilation.Kotonoha;
+        var inputs = context?.Inputs ?? CheckInputSource.Disk;
+
+        // SPEC 23.3.2: every file input is read before parsing, and the reads are consumed in
+        // command order, so a failure is reported exactly where the command reported it.
+        var reads = graph is null ? this.ReadSources(inputs, testSources) : null;
+        var testReads = compilation.IsTestBuild && testSources is not null ? ReadTestSources(inputs, testSources) : null;
 
         if (graph is not null)
         {
@@ -348,11 +404,11 @@ public partial class Project
                     var path = Path.Combine(Path.GetDirectoryName(input.Path)!, source.LogicalPath);
                     try
                     {
-                        compilation.SourceModules[i].AddSource(SourceDocument.FromUtf8(path, source.Bytes));
+                        compilation.SourceModules[i].AddSource(source.Content.CreateDocument(path));
                     }
                     catch (DecoderFallbackException)
                     {
-                        this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd);
+                        compilation.Kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd, location: path);
                         return false;
                     }
                 }
@@ -360,43 +416,47 @@ public partial class Project
         }
         else
         {
-            foreach (var path in this.kimiFiles)
+            foreach (var (path, content, exception) in reads!)
             {
-                if (testSources?.Contains(Path.GetFullPath(path)) == true)
+                if (exception is not null)
                 {
-                    continue;
+                    compilation.Kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.GenerationFailed_Kd, exception.Message, location: path);
+                    return false;
                 }
 
                 try
                 {
-                    var sourceDocument = SourceDocument.FromUtf8(path, System.IO.File.ReadAllBytes(path));
-                    projectKotonoha.AddSource(sourceDocument);
+                    projectKotonoha.AddSource(content!.CreateDocument(path));
                 }
                 catch (DecoderFallbackException)
                 {
-                    this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd);
-                    return false;
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.GenerationFailed_Kd, ex.Message);
+                    compilation.Kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd, location: path);
                     return false;
                 }
             }
         }
 
-        if (compilation.IsTestBuild && testSources is not null)
+        if (testReads is not null)
         {
-            foreach (var path in testSources.Order(StringComparer.Ordinal))
+            foreach (var (path, content, exception) in testReads)
             {
-                var source = SourceDocument.FromUtf8(path, System.IO.File.ReadAllBytes(path), isTestOnly: true);
-                projectKotonoha.AddSource(source);
+                if (exception is not null)
+                {
+                    ExceptionDispatchInfo.Throw(exception);
+                }
+
+                projectKotonoha.AddSource(content!.CreateDocument(path, isTestOnly: true));
             }
         }
 
         foreach (var y in this.additionalSource)
         {
             projectKotonoha.AddSource(y);
+        }
+
+        if (context is not null)
+        {
+            context.FrontEndRan = true;
         }
 
         var binding = compilation.Bind();
@@ -435,5 +495,35 @@ public partial class Project
 
         this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {pathIr} and {Path.ChangeExtension(pathIr, ".link.json")}; native build has not yet been performed.");
         return true;
+    }
+
+    // Reads the product sources in command order before any parsing, keeping each read's content or failure.
+    private List<(string Path, SourceContent? Content, Exception? Failure)> ReadSources(CheckInputSource inputs, HashSet<string>? testSources)
+    {
+        var reads = new List<(string Path, SourceContent? Content, Exception? Failure)>(this.kimiFiles.Count);
+        foreach (var path in this.kimiFiles)
+        {
+            if (testSources?.Contains(Path.GetFullPath(path)) == true)
+            {
+                continue;
+            }
+
+            try
+            {
+                reads.Add((path, inputs.ReadSource(path), null));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                reads.Add((path, null, ex));
+            }
+        }
+
+        return reads;
+    }
+
+    private void Fail(CheckContext? context, string message)
+    {
+        this.kimigayo.WriteLine(DiagnosticSeverity.Error, message);
+        context?.Failures.Add(message);
     }
 }

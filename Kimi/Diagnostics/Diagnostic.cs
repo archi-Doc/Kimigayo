@@ -17,6 +17,10 @@ public sealed partial record class Diagnostic
 
     public string Message { get; init; } = string.Empty;
 
+    /// <summary>Gets the path of the input this diagnostic concerns when it has no source document, such as an unreadable file.</summary>
+    [JsonIgnore]
+    public string? Location { get; init; }
+
     [Link(Primary = true, Unique = true, Type = ChainType.Ordered)]
     [JsonIgnore]
     public int StartPosition => this.Span.Start;

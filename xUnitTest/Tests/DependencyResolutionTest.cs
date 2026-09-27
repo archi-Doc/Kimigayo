@@ -168,7 +168,7 @@ public sealed class DependencyResolutionTest : IDisposable
         Assert.True(result.Product.IsResolved, result.Product.Diagnostic);
         var source = Assert.Single(result.Product.Nodes[0].Input.Sources);
         File.WriteAllText(Path.Combine(this.directory, "Root", "main.kimi"), "changed");
-        Assert.Equal("original", System.Text.Encoding.UTF8.GetString(source.Bytes));
+        Assert.Equal("original", System.Text.Encoding.UTF8.GetString(source.Content.GetBytes()));
         Assert.Equal("main.kimi", source.LogicalPath);
     }
 

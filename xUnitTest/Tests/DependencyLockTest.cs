@@ -96,7 +96,7 @@ public sealed class DependencyLockTest : IDisposable
         var path = Path.Combine(this.directory, "Root.kimi.lock.json");
         DependencyLock.Update(path, this.Resolution(dependency: true), TestContext.Current.CancellationToken);
         var moved = this.Resolution(dependency: true);
-        moved.Product.Nodes[1].Input.Sources[0].Bytes[0] ^= 1;
+        moved.Product.Nodes[1].Input.Sources[0].Content.GetBytes()[0] ^= 1;
         Assert.Null(DependencyLock.Validate(path, moved, false));
         Assert.False(DependencyLock.Update(path, moved, TestContext.Current.CancellationToken));
     }
@@ -159,7 +159,7 @@ public sealed class DependencyLockTest : IDisposable
         var nodes = new[] { root };
         if (dependency)
         {
-            var input = new DependencyInput(Path.Combine(this.directory, Guid.NewGuid().ToString("N"), "Library.kimiproj"), new() { PackageId = "library", PackageVersion = version }, [], [new("main.kimi", Encoding.UTF8.GetBytes("SECRET_SOURCE_BYTES"))]);
+            var input = new DependencyInput(Path.Combine(this.directory, Guid.NewGuid().ToString("N"), "Library.kimiproj"), new() { PackageId = "library", PackageVersion = version }, [], [new("main.kimi", Kimi.Checking.SourceContent.FromBytes(Encoding.UTF8.GetBytes("SECRET_SOURCE_BYTES")))]);
             var child = new DependencyNode("library@" + version, input, 0, reference);
             root.Edges.Add(reference, child.Key);
             nodes = [root, child];
