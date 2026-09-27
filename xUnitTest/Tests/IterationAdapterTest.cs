@@ -89,7 +89,7 @@ public class IterationAdapterTest
     {
         var c = MinimalEmissionTest.Analyze(program);
         Assert.False(c.Binding.Result.IsComplete);
-        // A primitive's conformance to a user Contract is not refuted by declaration, so the Constraint stays unproven.
-        Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.UnprovenConstraint_Kd);
+        // SPEC 8.7: a primitive's conformances are fixed, so the only candidate is inapplicable.
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 }

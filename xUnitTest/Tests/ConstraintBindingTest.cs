@@ -189,6 +189,23 @@ public class ConstraintBindingTest
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].BoundConstraint!, s));
     }
 
+    // SPEC 8.7, 8.4.8.4: a primitive's conformances are fixed, so its absence from any other Contract is Refuted; a negative
+    // requirement holds, and a call whose only candidate needs the conformance has no applicable overload.
+    [Theory]
+    [InlineData("contract C\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(1)", true, null)]
+    [InlineData("contract C\nfunc present<T>(x: T)\n    T is C\n    ()\nfunc use() => present(1)", false, DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func present<T>(x: T)\n    T is Iterable\n    ()\nfunc use() => present(\"text\")", false, DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func absent<T>(x: T)\n    T is not LendingIterator\n    ()\nfunc use() => absent(true)", true, null)]
+    public void APrimitiveConformsOnlyToItsFixedContracts(string source, bool complete, DiagnosticCode? code)
+    {
+        var c = Parse(source);
+        Assert.Equal(complete, c.Bind().IsComplete);
+        if (code is { } expected)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == expected);
+        }
+    }
+
     [Fact]
     public void ANegatedSelfClauseOtherThanTheOptOutIsRejected()
     {

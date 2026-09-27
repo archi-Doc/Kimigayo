@@ -70,7 +70,8 @@ public class IntoIterableContractTest
     [Theory]
     [InlineData("struct Broken\n    Self is IntoIterable\n    public func intoIterator(self: Self) -> i32 => 0", DiagnosticCode.InvalidAssociatedType_Kd)]
     [InlineData(Counter + "struct Broken\n    Self is IntoIterable\n    associate IntoIterable.IteratorType is Counter", DiagnosticCode.MissingContractImplementation_Kd)]
-    [InlineData("struct Broken\n    Self is IntoIterable\n    associate IntoIterable.IteratorType is i32\n    public func intoIterator(self: Self) -> i32 => 0", DiagnosticCode.UnprovenConstraint_Kd)]
+    // SPEC 8.7: a primitive's conformances are fixed, so `i32 is LendingIterator` is refuted, not unknown.
+    [InlineData("struct Broken\n    Self is IntoIterable\n    associate IntoIterable.IteratorType is i32\n    public func intoIterator(self: Self) -> i32 => 0", DiagnosticCode.UnsatisfiedConstraint_Kd)]
     public void IncompleteConformancesAreRejected(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

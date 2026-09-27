@@ -281,6 +281,14 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false);
         }
 
+        // SPEC 8.7: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
+        // conformances above; no declaration can add another (SPEC 8.4.8.4), so its fixed environment refutes the rest.
+        if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never) &&
+            contract.Intrinsic == IntrinsicKind.None)
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Refuted;
+        }
+
         // SPEC 22.1: the standard collections declare their conformances in Kimigayo behind their compiler-managed kinds.
         if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary) || type.Symbol is not { } symbol)
         {
