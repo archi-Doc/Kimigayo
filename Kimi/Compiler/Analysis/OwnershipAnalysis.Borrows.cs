@@ -6,7 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    internal bool SupportsOriginObligations()
+    internal bool SupportsOriginObligations() => this.UnprovenOriginObligation() is null;
+
+    // The use of the first Origin obligation that Binding left unproven and this analysis cannot check, or null.
+    private Koto? UnprovenOriginObligation()
     {
         var obligations = this.compilation.Binding.Obligations;
         for (var i = 0; i < obligations.Count; i++)
@@ -32,11 +35,11 @@ public sealed partial class OwnershipAnalysis
                 !ReferenceEquals(input.Origin, outer) || !ReferenceEquals(input.Components[0], obligation.Type) ||
                 !(input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer)))
             {
-                return false;
+                return obligation.Use;
             }
         }
 
-        return true;
+        return null;
     }
 
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)

@@ -135,6 +135,9 @@ public enum OwnershipFailure : byte
 
     // SPEC 15.1.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
     TransferRequired,
+
+    // SPEC 15.4.4: an Origin obligation that neither Binding nor this analysis proves, such as an Origin nothing constrains.
+    UnprovenOrigin,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
@@ -184,6 +187,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
             this.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
         OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
         OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
+        OwnershipFailure.UnprovenOrigin => DiagnosticCode.UnprovenConstraint_Kd,
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         _ => DiagnosticCode.UnsupportedOwnership_Kd,
     };

@@ -354,6 +354,7 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let refs = Collection<ref/Node>.init([])\n    let n = refs.indices.length");
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(DiagnosticCode.UnprovenConstraint_Kd, Codes(c));
     }
 
     [Theory]
@@ -381,26 +382,31 @@ public class PairFollowTest
 
     // SPEC 7.3: an owning receiver is acquired through a pair layer only by the Scalar read; p@follow.m() Copies the Place.
     [Theory]
-    [InlineData("struct Token\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func consume(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Token, marker: s/T) -> i32\n    s is value or valueborrow\n    return item.consume()", false)]
-    [InlineData("struct Token\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func consume(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Token, marker: s/T) -> i32\n    s is value or valueborrow\n    return item@follow.consume()", false)]
-    [InlineData("struct Coin\n    Self is Copy\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func spend(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Coin, marker: s/T) -> i32\n    s is value or valueborrow\n    return item.spend()", false)]
-    [InlineData("struct Coin\n    Self is Copy\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func spend(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Coin, marker: s/T) -> i32\n    s is value or valueborrow\n    return item@follow.spend()", true)]
-    public void OwningReceivers(string source, bool valid)
+    [InlineData("struct Token\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func consume(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Token, marker: s/T) -> i32\n    s is value or valueborrow\n    return item.consume()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("struct Token\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func consume(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Token, marker: s/T) -> i32\n    s is value or valueborrow\n    return item@follow.consume()", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Coin\n    Self is Copy\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func spend(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Coin, marker: s/T) -> i32\n    s is value or valueborrow\n    return item.spend()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("struct Coin\n    Self is Copy\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func spend(self: Self) -> i32 => self.n\nfunc f<s/T>(item: s/Coin, marker: s/T) -> i32\n    s is value or valueborrow\n    return item@follow.spend()", null)]
+    public void OwningReceivers(string source, DiagnosticCode? code)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == (c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified), MinimalEmissionTest.Describe(c, null));
+        Assert.True((code is null) == (c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified), MinimalEmissionTest.Describe(c, null));
+        if (code is { } expected)
+        {
+            Assert.Contains(expected, Codes(c));
+        }
     }
 
     // SPEC 8.1.2: an s/U nested in a Type argument gains no omitted Origin; SPEC 13.5.5.1: a followed element Place is never
     // transferred by a bare initializer, and Write with owner admitted needs an exclusively writable operand.
     [Theory]
-    [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0")]
-    [InlineData("func pick<s/T>(c: ref/Collection<s/T>, i: isize) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let n = c[i]\n    return n.load()")]
-    [InlineData("func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is owner or uniq\n    values@follow.append(4)")]
-    public void PairPositionsReject(string source)
+    [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0", DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("func pick<s/T>(c: ref/Collection<s/T>, i: isize) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let n = c[i]\n    return n.load()", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is owner or uniq\n    values@follow.append(4)", DiagnosticCode.NoApplicableOverload_Kd)]
+    public void PairPositionsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(code, Codes(c));
     }
 
     // SPEC 10.2: s/U parameters are solved together with the other arguments, whatever their order, and must agree on s.
@@ -418,6 +424,7 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(Box + "func f<s/T>(item: s/T, factor: s/i32) -> i32\n    return factor * 2");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(DiagnosticCode.TypeMismatch_Kd, Codes(c));
     }
 
     [Fact]
@@ -425,5 +432,9 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze("let x: i32 = 1\nlet y = x@follow");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(DiagnosticCode.TypeMismatch_Kd, Codes(c));
     }
+
+    private static IEnumerable<DiagnosticCode> Codes(Kimi.Compiler.Compilation c)
+        => c.Binding.Issues.Select(x => x.Code).Concat(c.Ownership.Issues.Select(x => x.Code));
 }

@@ -20,6 +20,19 @@ public class ReferenceLayerAdaptationTest
     public void OneSharedReferenceThroughLayers(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ReferenceLayer" + name, source, stdout);
 
+    // SPEC 10.2, 15.6.4: a bare exclusive reference at an identical fixed expected uniq Type is Reborrowed, never moved out
+    // of its Place, so the original reference stays usable afterwards, for a local as for a stored field.
+    [Theory]
+    [InlineData("Local", "var n = 1\ndo\n    let r = n@uniq\n    let s: uniq/i32 = r\n    s@follow += 1\n    r@follow += 1\nrequire n == 3 else => $abort(\"local\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("Field", "struct Holder {a}\n    let value: uniq/i32 during a\n    public init(value: uniq/i32 during a) => self.value = value@move\n    public func bump(self: uniq/Self)\n        let alias: uniq/i32 during a = self.value\n        alias@follow += 1\n        self.value@follow += 1\nvar n = 1\ndo\n    var h = Holder.init(n@uniq)\n    h.bump()\nrequire n == 3 else => $abort(\"field\")\nConsole.writeLine(\"ok\")")]
+    public void AnExactExclusiveReferenceIsReborrowed(string name, string source)
+    {
+        ScalarEmissionTest.EmitFixture("ReferenceLayerExactUniq" + name, source, "ok\n");
+        var c = MinimalEmissionTest.Analyze(source);
+        var initializer = All(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FieldKoto>().First(x => x.NameKoto.IdentifierName is "s" or "alias").InitializerKoto!;
+        Assert.True(c.Binding.TryGetAdaptation(initializer, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.Reborrow);
+    }
+
     [Fact]
     public void TheInnerSharedReferenceKeepsOnlyItsOwnOrigin()
     {
@@ -64,5 +77,17 @@ public class ReferenceLayerAdaptationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd);
         Assert.Empty(c.AnalyzeControlFlow().Issues);
+    }
+
+    private static IEnumerable<Kimi.Compiler.Parsing.Koto> All(Kimi.Compiler.Parsing.Koto node)
+    {
+        yield return node;
+        foreach (var child in node.ChildNodes)
+        {
+            foreach (var nested in All(child))
+            {
+                yield return nested;
+            }
+        }
     }
 }

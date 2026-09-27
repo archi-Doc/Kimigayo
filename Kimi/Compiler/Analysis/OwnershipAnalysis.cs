@@ -76,9 +76,16 @@ public sealed partial class OwnershipAnalysis
             this.flow.Append(this.compilation.SourceModules[i].RootKoto);
         }
 
-        if (!binding.Result.IsComplete || !this.SupportsOriginObligations())
+        if (!binding.Result.IsComplete)
         {
             return this.Result;
+        }
+
+        if (this.UnprovenOriginObligation() is { } unproven)
+        {
+            // An unchecked Origin obligation rejects the program with a diagnostic at its use, never silently.
+            this.issues.Add(new(unproven, OwnershipFailure.UnprovenOrigin));
+            return this.Result = new(false, 0, 1, 0);
         }
 
         foreach (var module in this.compilation.SourceModules)
