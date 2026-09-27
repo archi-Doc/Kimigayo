@@ -96,6 +96,8 @@ public enum KimiDeclarationId : byte
     ArraySwap,
     ArrayWithCapacity,
     LendingIterator,
+    Iterable,
+    UniqIterable,
 }
 
 public enum KimiDeclarationState : byte

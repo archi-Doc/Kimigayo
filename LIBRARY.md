@@ -400,6 +400,8 @@ The source library currently has the following differences from the required API
 
 [LendingIterator.kimi](Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item`; complete verification of the specified independence effect bound and the general iteration-entry migration remain P28 work.
 
+[Iterable.kimi](Kimi/Library/Iterable.kimi) and [UniqIterable.kimi](Kimi/Library/UniqIterable.kimi) declare the borrowing entries of §2: `IteratorType(source)` requires LendingIterator and publishes the shared or exclusive Self formation domain. Direct and generic entry calls preserve the source borrow; general `for` dispatch through these entries remains P28 work.
+
 | Source interface | Difference and intended treatment |
 | --- | --- |
 | [IntoIterable.kimi](Kimi/Library/IntoIterable.kimi) | The source binds IntoIterable.IteratorType to Iterator; the required declaration accepts any LendingIterator as shown in §2. |

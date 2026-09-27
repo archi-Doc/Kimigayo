@@ -101,6 +101,8 @@ public sealed partial class KimiLibrary
         this.Result = this.GetSymbol(KimiDeclarationId.Result)!;
         this.Iterator = this.GetSymbol(KimiDeclarationId.Iterator)!;
         this.LendingIterator = this.GetSymbol(KimiDeclarationId.LendingIterator)!;
+        this.Iterable = this.GetSymbol(KimiDeclarationId.Iterable)!;
+        this.UniqIterable = this.GetSymbol(KimiDeclarationId.UniqIterable)!;
         this.IntoIterable = this.GetSymbol(KimiDeclarationId.IntoIterable)!;
         this.Indexable = this.GetSymbol(KimiDeclarationId.Indexable)!;
         this.UniqIndexable = this.GetSymbol(KimiDeclarationId.UniqIndexable)!;
@@ -177,6 +179,10 @@ public sealed partial class KimiLibrary
     public BindingSymbol Iterator { get; }
 
     public BindingSymbol LendingIterator { get; }
+
+    public BindingSymbol Iterable { get; }
+
+    public BindingSymbol UniqIterable { get; }
 
     /// <summary>Gets the recognized Indexable Contract declaration (SPEC 4.6.9).</summary>
     public BindingSymbol Indexable { get; }

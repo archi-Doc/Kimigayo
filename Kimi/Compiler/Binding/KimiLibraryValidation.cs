@@ -34,6 +34,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.MakeObj => this.ValidMakeObj(),
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.LendingIterator => this.ValidLendingIterator(symbol),
+                        KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable => this.ValidBorrowingIterable(symbol, entry.Id == KimiDeclarationId.UniqIterable),
                         KimiDeclarationId.IntoIterable => this.ValidIntoIterable(symbol),
                         KimiDeclarationId.Equatable or KimiDeclarationId.Comparable => this.ValidComparisonContract(symbol, entry.Id),
                         KimiDeclarationId.Indexable or KimiDeclarationId.UniqIndexable => this.ValidIndexableContract(symbol, entry.Id),
@@ -101,6 +102,12 @@ public sealed partial class KimiLibrary
                 // The associated IteratorType must require the recognized Kimi.Iterator, not a same-named Contract.
                 var iterator = ((ContractKoto)symbol.Declaration).ConstraintNodes[0];
                 matches = iterator.BoundConstraint is { Contract: { } required } && ReferenceEquals(required, this.GetSymbol(KimiDeclarationId.Iterator));
+            }
+
+            if (matches && entry.Id is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable)
+            {
+                var iterator = ((ContractKoto)symbol.Declaration).ConstraintNodes[0];
+                matches = iterator.BoundConstraint is { Contract: { } required } && ReferenceEquals(required, this.LendingIterator);
             }
 
             if (matches && entry.Id == KimiDeclarationId.Comparable)
@@ -357,6 +364,22 @@ public sealed partial class KimiLibrary
         declaration.ConstraintNodes[0] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, FormationType: null, AttributeChain: null } refinement && OriginClauses.Get(refinement).Count == 0 &&
         BareType(refinement.Left) is OriginApplicationKoto { ArgumentNodes.Count: 1 } family && BareName(family.ArgumentNodes[0], "step") &&
         BareType(family.Type) is MemberAccessKoto parent && BareName(parent.Left, "LendingIterator") && BareName(parent.Right, "LentItem") && BareName(refinement.Right, "Item");
+
+    private bool ValidBorrowingIterable(BindingSymbol symbol, bool exclusive)
+        => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
+        symbol.Declaration is ContractKoto { HasIncompatibleBindingHeader: false, Members.Count: 1, ConstraintNodes.Count: 1, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        declaration.Name == (exclusive ? "UniqIterable" : "Iterable") &&
+        ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) && OriginClauses.Get(declaration).Count == 0 &&
+        declaration.ConstraintNodes[0] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, AttributeChain: null, FormationType: TypeSemanticsKoto formation } associated && OriginClauses.Get(associated).Count == 0 &&
+        BareType(associated.Left) is OriginApplicationKoto { ArgumentNodes.Count: 1 } family && BareName(family.Type, "IteratorType") && BareName(family.ArgumentNodes[0], "source") &&
+        formation.SemanticsKind == (exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref) && formation.SemanticsParameter is null && formation.OriginName == "source" && formation.OriginArguments is null && BareName(formation.Type, "Self") &&
+        declaration.Members[0] is FunctionKoto { IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function && OriginClauses.Get(function).Count == 0 &&
+        function.Name == (exclusive ? "iterateUniq" : "iterate") &&
+        (function.Origins.Count == 0 || (function.Origins.Count == 1 && function.Origins[0] == "source")) &&
+        function.Parameters[0] is { InternalName: "self", ExternalName: "self", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto receiver } &&
+        receiver.SemanticsKind == formation.SemanticsKind && receiver.SemanticsParameter is null && receiver.OriginName == "source" && receiver.OriginArguments is null && BareName(receiver.Type, "Self") &&
+        BareType(function.ReturnType) is OriginApplicationKoto { ArgumentNodes.Count: 1 } result && BareName(result.ArgumentNodes[0], "source") &&
+        BareType(result.Type) is MemberAccessKoto element && BareName(element.Left, "Self") && BareName(element.Right, "IteratorType");
 
     // SPEC 22.1.2.2: associate IteratorType is ::Kimi.Iterator; func intoIterator(self: Self) -> Self.IteratorType.
     // The IteratorType requirement's identity is checked after Binding. Migration to LendingIterator

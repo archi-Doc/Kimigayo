@@ -39,6 +39,8 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Comparable, "Comparable"),
         new(KimiDeclarationId.Iterator, "Iterator"),
         new(KimiDeclarationId.LendingIterator, "LendingIterator"),
+        new(KimiDeclarationId.Iterable, "Iterable"),
+        new(KimiDeclarationId.UniqIterable, "UniqIterable"),
         new(KimiDeclarationId.IntoIterable, "IntoIterable"),
         new(KimiDeclarationId.Sealed, "Sealed", Intrinsic: IntrinsicKind.Sealed),
         new(KimiDeclarationId.ObjectPayload, "ObjectPayload", Intrinsic: IntrinsicKind.ObjectPayload),
