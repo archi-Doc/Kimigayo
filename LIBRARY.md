@@ -398,6 +398,8 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 
+[LendingIterator.kimi](Kimi/Library/LendingIterator.kimi) now declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. The Iterator refinement and general iteration-entry migration below remain incomplete.
+
 | Source interface | Difference and intended treatment |
 | --- | --- |
 | [Iterator.kimi](Kimi/Library/Iterator.kimi) and [IntoIterable.kimi](Kimi/Library/IntoIterable.kimi) | The source declares Iterator directly with Item and next, and binds IntoIterable.IteratorType to Iterator. The required declarations refine or refer to LendingIterator as shown in §2. |
