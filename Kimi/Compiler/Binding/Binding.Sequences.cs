@@ -104,6 +104,9 @@ public sealed partial class Binding
             element = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [key, value]);
         }
 
+        var userEntry = element is null && iterable is not null && source.Mode == SubjectMode.ByValue &&
+            this.BindUserIteration(source, scope, iterable, out element);
+
         // SPEC 14.6.2: a Tuple item reached through a reference decomposes into references of the same capability.
         var sharedTuple = source.IsTupleBinding && ReferenceTypes.IsTuple(element);
         var tuple = sharedTuple ? element!.Components[0] : element;
@@ -140,12 +143,48 @@ public sealed partial class Binding
             return Fail(source, BindingFailure.TypeMismatch);
         }
 
-        if (dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) &&
+        if (!userEntry && dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) &&
             !(exclusive && (ReferenceTypes.IsArray(view) || ReferenceTypes.IsDynamicArray(view))))
         {
             return Fail(source, BindingFailure.Unsupported);
         }
 
         return this.FinishResult(source, result);
+    }
+
+    private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, out BoundType? item)
+    {
+        item = null;
+        var entry = this.Library.IntoIterable;
+        if (subject.Symbol is not { Declaration: StructKoto or EnumKoto } owner ||
+            this.ConformanceByDeclaration(owner, entry, out _) is null)
+        {
+            return false;
+        }
+
+        // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. The ordinary call keeps
+        // receiver acquisition, substitutions and Origins; no method-name fallback grants conformance.
+        if (source.EntryCall is not { } call)
+        {
+            var member = new MemberAccessKoto(source, source.Iterable, new IdentifierNameKoto(source, "intoIterator"));
+            source.EntryCall = call = new InvocationKoto(source, member, []);
+        }
+        else
+        {
+            ResetSynthetic(call);
+            ResetSynthetic(call.Method);
+            ResetSynthetic(((MemberAccessKoto)call.Method).Right);
+        }
+
+        this.projectionUses.Add((source, subject, entry));
+        if (this.BindCall(call, scope, null) is not { } iterator ||
+            this.FindAssociated(iterator, scope, "Item", this.Library.Iterator, source) is not { } associated)
+        {
+            return false;
+        }
+
+        this.projectionUses.Add((source, iterator, this.Library.Iterator));
+        item = this.ContractType(this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [iterator]), scope);
+        return true;
     }
 }

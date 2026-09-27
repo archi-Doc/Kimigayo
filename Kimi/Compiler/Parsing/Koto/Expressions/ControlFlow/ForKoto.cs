@@ -35,6 +35,9 @@ public sealed class ForKoto : ExpressionKoto
     /// <summary>Gets or sets the Subject mode selected by the outermost operation of the iterable (SPEC 15.1.6).</summary>
     internal SubjectMode Mode { get; set; }
 
+    /// <summary>Gets or sets the owning user protocol entry, outside the source tree.</summary>
+    internal InvocationKoto? EntryCall { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="ForKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete expression span.</param>
