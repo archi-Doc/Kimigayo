@@ -173,6 +173,7 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | `trySplitAt(self: Self, index: isize or Index) -> Option<(Slice<T> during source, Slice<T> during source)>` | The same split, returning None for an invalid boundary. |
 | `contains(self: Self, value: ref/T) -> bool`, `T is Equatable` | Whether some element equals `value`; visits elements in index order and stops at the first match. |
 | `firstIndex(self: Self, of: ref/T) -> Option<isize>`, `T is Equatable` | The first index whose element equals the value, or None. |
+| `firstIndex<F>(self: Self, matching: F) -> Option<isize>`, `F is Callable<(ref/T) -> bool>` | The first index for which `matching` returns true, or None. |
 
 Split boundaries include zero and length. Both results retain the source dependency, including empty results. Indexable and the three iteration conformances follow §2.
 
@@ -207,6 +208,7 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | Member | Guarantee |
 | --- | --- |
 | `init(! capacity: isize)` | An empty Array with `capacity >= capacity`; a negative argument Aborts and zero allocates nothing. |
+| `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts. |
 | `indices: ResolvedRange` | The interval `[0, length)`. |
 | `values[i]`, where i is `isize or Index` | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
 | `values[r]`, where r is `Range or ResolvedRange` | A shared Slice; invalid bounds Abort. |
@@ -216,6 +218,7 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `remove(self: uniq/Self, index: isize or Index) -> T` | Returns the removed element, preserving order; invalid bounds Abort. O(1 + n). |
 | `clear(self: uniq/Self) -> ()` | Destroys elements in reverse index order and retains capacity. |
 | `isEmpty: bool` | Whether `length` is zero. |
+| `first`, `last: Option<ref/T during self>` | The first or last element, or None when empty. |
 | `tryGet(self, index: isize or Index) -> Option<ref/T during self>` | A shared element reference, or None for an invalid index. O(1). |
 | `tryGetUniq(self: uniq/Self, index: isize or Index) -> Option<uniq/T during self>` | An exclusive element reference, or None for an invalid index. O(1). |
 | `swap(self: uniq/Self, first: isize, second: isize) -> ()` | Exchanges two elements without Copy or destruction; equal indices change nothing; invalid indices Abort. O(1). |
@@ -224,10 +227,11 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `appendAll(self: uniq/Self, other: Array<T>) -> ()` | Moves every element of `other` to the end in order. |
 | `appendCopies(self: uniq/Self, values: Slice<T>) -> ()`, `T is Copy` | Copies each element of `values` to the end in order. |
 | `reverse(self: uniq/Self) -> ()` | Reverses the order. O(1 + n). |
-| `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. Callback arguments await P26. |
-| `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | Heapsort by `by`; not stable, no allocation. Callback arguments await P26. |
+| `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. |
+| `sort(self: uniq/Self) -> ()`, `T is Comparable` | Sorts in nondecreasing `compare` order; not stable, no allocation. |
+| `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | The same with `by` as the comparison. |
 
-Specified but not yet provided: `init(! repeating:count:)`, the `first`/`last` Properties (Origin-carrying getter results, P24), `sort()` (a Comparable heapsort) and the Slice `firstIndex(matching:)` operation (Callable arguments, P26). Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 

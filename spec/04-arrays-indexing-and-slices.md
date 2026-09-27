@@ -184,7 +184,7 @@ The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`.
 
 These names are not keywords; `::Kimi.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
 
-**Length metadata.** Fixed arrays, Array and Slice provide public read-only `length: isize` and `indices: ResolvedRange`; Slice also provides `isEmpty: bool`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
+**Length metadata.** Fixed arrays, Array and Slice provide public read-only `length: isize` and `indices: ResolvedRange`; Array and Slice also provide `isEmpty: bool`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
 
 | Receiver | Acquisition |
 | --- | --- |
@@ -382,8 +382,8 @@ For `s: Slice<T>`, members receive and Copy the handle by value. Element and par
 | `s.trySlice(range)` | `Option<Slice<T>>` retaining `s.source`; separate `Range` and `ResolvedRange` overloads |
 | `s.splitAt(index)` | `(Slice<T>, Slice<T>)`, both retaining `s.source`, covering `[0, p)` and `[p, length)` |
 | `s.trySplitAt(index)` | `Option` of that Tuple |
-| `s.contains(value)` | `bool`; whether some element equals `value: ref/T` under `T is Equatable` |
-| `s.firstIndex(of: value)` | `Option<isize>`; the first index whose element equals `value: ref/T` under `T is Equatable` |
+| `s.contains(value)`, `T is Equatable` | `bool`; whether some element equals `value: ref/T` |
+| `s.firstIndex(of: value)`, `T is Equatable` | `Option<isize>`; the first index whose element equals `value: ref/T` |
 | `s.firstIndex(matching: f)` | `Option<isize>`; the first index for which `f`, with `F is Callable<(ref/T) -> bool>`, returns `true` |
 
 The search operations visit elements in increasing index order, stop at the first match and neither Copy nor Move elements; each comparison or call receives a shared reference to the element. Both split operations have `isize` and `Index` overloads and accept the boundaries zero and length. Invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`; `tryGet` and `trySlice` likewise return `None` on their own invalid bounds. `tryGet` deliberately has a fixed reference result, independent of `T`'s Copy capability.

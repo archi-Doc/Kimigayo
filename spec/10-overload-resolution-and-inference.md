@@ -14,7 +14,7 @@ Each declaration in the committed function group is checked as follows, within t
 2. Match positional and named arguments and record omitted defaults.
 3. Infer Type arguments from the receiver and the explicit arguments.
 4. Use an independently known expected result Type to fill the remaining Type arguments, without changing those already fixed.
-5. After substitution and before Best Candidate comparison, check permitted argument adaptations, Function Types, Constraints and any conditional-member premises (§8.4.8).
+5. After substitution and before Best Candidate comparison, check permitted argument adaptations, Function Types, Constraints and any conditional-member premises (§7.4, §8.4.8).
 6. If an expected result exists, reject a candidate whose instantiated result the use position cannot admit (§10.3).
 
 Having no applicable candidate is an error. Candidate checking records plans; it neither executes nor commits runtime Copy/Move, Loans or defaults. Declaration errors, such as unknown Types, malformed Constraints or duplicate Signatures, remain errors even when another candidate succeeds.
@@ -277,7 +277,7 @@ apply((), func () => compute()) // U is Unit before checking the lambda; discard
 
 **Constraints after inference.** The [limited proof system](08-generics-constraints-and-contracts.md#87-constraint-proof-system) applies: Proven satisfies a requirement, Refuted rejects it, and Error diagnoses invalid or contradictory evidence. Unknown may keep only a legitimate dependency that resolves by its deadline; it proves neither applicability nor negation. Generic capabilities must be proven at definition acceptance (§8.10). Nondependent Names bind at the definition and use the declared Constraints; failing to prove `T is C` does not prove `T is not C`. Deferred members keep the [definition environment](18-modules-and-dependencies.md#18-modules-and-dependencies), never caller imports. All necessary Constraints are proven before concrete finalization. Arbitrary theorem proving, Type enumeration and constraint-strength ranking are not allowed.
 
-Environment-selected membership follows §19.4: excluded declarations neither merge nor enter candidate sets. Conditional-conformance members (§8.4.8) remain in ordinary lookup; their published conditions affect applicability, not lookup stopping or syntax selection. Each defining generic environment is preserved.
+Environment-selected membership follows §19.4: excluded declarations neither merge nor enter candidate sets. Conditional-conformance members (§8.4.8) and conditional members (§7.4) remain in ordinary lookup; their published conditions affect applicability, not lookup stopping or syntax selection. Each defining generic environment is preserved.
 
 ## 10.6. Usage legality and operators
 

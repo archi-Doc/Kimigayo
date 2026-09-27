@@ -274,9 +274,9 @@ A missing spelling at a position other than a Receiver Expression uses the exist
 
 ## 7.4. Function constraints
 
-A generic function, or a member function or constructor of a generic Type, with an indented body may begin that body with [Constraints](08-generics-constraints-and-contracts.md#82-constraints). Its Constraint Clauses must precede every executable body item; they are processed at compile time and are not executable expressions.
+Every function, constructor, destructor and accessor with an indented body may begin that body with [Constraints](08-generics-constraints-and-contracts.md#82-constraints). Its Constraint Clauses must precede every executable body item; they are processed at compile time and are not executable expressions.
 
-Before lookup, the longest leading sequence of unparenthesized `ConstraintSubject is IsRequirement` items is parsed as Constraint Clauses. A subject not permitted for the function is an error, never a fallback runtime test. Blank lines and comments do not end this prefix. Parenthesizing the whole test, as in `(value is Dog)`, makes it an executable expression item and ends the prefix, so later value tests are executable. A later clause rooted in a generic parameter is a misplaced-Constraint error. In a nongeneric function outside a generic Type the prefix rule does not apply, and `value is Dog` is an expression. Dedicated Type and Contract Constraint regions keep their own rules, even through parentheses.
+Before lookup, the longest leading sequence of unparenthesized `ConstraintSubject is IsRequirement` items is parsed as Constraint Clauses. A subject not permitted for the function is an error, never a fallback runtime test. Blank lines and comments do not end this prefix. Parenthesizing the whole test, as in `(value is Dog)`, makes it an executable expression item and ends the prefix, so later value tests are executable. A later clause rooted in a generic parameter is a misplaced-Constraint error. The prefix rule is purely syntactic and applies to every such body; a leading `value is Dog` is never an expression statement, which would have no effect, so a body that means the runtime test writes it inside its statement, as in `require value is Dog else => return`. Dedicated Type and Contract Constraint regions keep their own rules, even through parentheses.
 
 ```kimi
 func inspect<s/T>(value: s/T) -> ()
@@ -290,7 +290,7 @@ Each clause subject must name a generic parameter of the function, a generic par
 
 Every explicit or inferred generic argument at a call site must satisfy the clauses, and body Type checking and instantiation may rely on them. Constraints are not part of the function Signature, so declarations that differ only in their Constraints conflict.
 
-A member function or constructor whose clauses constrain a generic parameter of its declaring Type is a **conditional member**. It exists only for a receiver or constructed Type whose arguments satisfy those clauses: they are checked at the call with the parameters substituted by the receiver's or qualifier's Type arguments, and a member whose clauses are refuted is not a candidate, as if it were not declared. Inside a generic body, where the arguments are symbolic, the clauses must be proven from the body's own Constraints. The member's body may rely on the clauses. Unlike a [conditional conformance](08-generics-constraints-and-contracts.md#848-conditional-conformance), a conditional member needs no target Contract and grants no conformance.
+A member function or constructor whose clauses constrain a generic parameter of its declaring Type is a **conditional member**. Its premise is those clauses, together with any enclosing `when` condition, with the parameters substituted by the receiver's or qualifier's Type arguments. The premise decides applicability exactly as the [conditional-member table of §8.4.8.2](08-generics-constraints-and-contracts.md#8482-verification-and-use) does: a Refuted premise makes the member inapplicable without changing lookup, and a generic caller must prove it from its own Constraints. The member's body may rely on the clauses. Unlike a [conditional conformance](08-generics-constraints-and-contracts.md#848-conditional-conformance), a conditional member needs no target Contract and grants no conformance.
 
 ```kimi
 struct Box<E>
@@ -303,7 +303,7 @@ struct Box<E>
 
 let a = Box<i32>.init(1)
 let yes = a.same(Box<i32>.init(1))   // OK: i32 is Equatable.
-// Box<Point>.init(p).same(q) is an error when Point is not Equatable: same is not a member of Box<Point>.
+// Box<Point>.init(p).same(q) is an error when Point is not Equatable: same is inapplicable for Box<Point>.
 ```
 
 ## 7.5. Unsafe functions

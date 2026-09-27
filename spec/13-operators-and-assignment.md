@@ -399,6 +399,7 @@ A generic body combines the admitted cases:
 - **Capabilities and modes** are the weakest of the admitted cases. Write therefore needs `s is owner or uniq` and, when `owner` is admitted, an exclusively writable `P`.
 - **Dependencies** of each case are kept as a conditional dependency that is active only for that `s`, like the conditional Origin slots of §8.1.2; definition checking uses every dependency that can be active. Each case's dependencies come from applying the existing rules to its whole path, not from accumulating layers: the table shows the case in which the selected Place lies directly below the pair layer. Adapting `s/(ref/V during a)` to `ref/V` Copies the inner `ref` in every case (§10.2), so the result depends only on `a` and the actual Loans, while `p` and `o` need to be valid only when the path is read.
 - **The Access Effect** is symbolic (§8.9); each case is legal under the existing rules.
+- **Overload ranking** of an adaptation through a pair layer uses the worst class of its admitted cases (§10.2.1).
 - **Take** is never offered, even when the admitted set is `{owner}`, so a structural Pattern never binds by value past a pair layer. Ownership is obtained with `remove` or `Kimi.Intrinsics.exchange`.
 
 `o` is the conditional outer Origin of the followed occurrence: `W`'s outer Origin for the original `s/T`, and for another `s/U` the slot that the position rules or an explicit annotation give that occurrence (§8.1.2). It is independent of the Origins of other inputs that use the same `s`; internal Origins of `U` and the actual Loans are kept.
@@ -613,7 +614,7 @@ value.bark()
 // value is Dog or Cat parses as (value is Dog) or Cat, not a two-Type test.
 ```
 
-The syntax context determines the meaning of `is` before lookup: Constraint Clauses and associated-Type conditions keep the Requirement Test, while ordinary initializers, arguments and runtime conditions use this test. `T is Comparable` in an ordinary expression is not retried in the Type namespace, and parentheses preserve the surrounding context. Compile-time directives allow only environment conditions and reject every `is` test.
+The syntax context determines the meaning of `is` before lookup: Constraint Clauses, including the leading Constraint prefix of every function body (§7.4), and associated-Type conditions keep the Requirement Test, while ordinary initializers, arguments and runtime conditions use this test. `T is Comparable` in an ordinary expression is not retried in the Type namespace, and parentheses preserve the surrounding context. Compile-time directives allow only environment conditions and reject every `is` test.
 
 Well-typed tests are accepted even when static information proves them always true or always false; a warning is allowed. The left side's effects are not omitted, and no additional unreachable paths are derived from that knowledge. Conditional Type information follows [flow refinement](14-control-flow.md#1410-type-refinement). Ordinary owners, value borrows, pointers, numeric values, Tuples and enum variants are not test subjects. This syntax adds no optional or Pattern binding.
 
