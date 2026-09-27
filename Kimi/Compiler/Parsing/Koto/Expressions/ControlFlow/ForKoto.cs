@@ -161,21 +161,26 @@ public sealed class ForKoto : ExpressionKoto
     {
         if (oldKoto is IdentifierNameKoto && ReplaceInList(this.bindings, oldKoto, newKoto))
         {
-            return true;
+            // The replacement slot is adopted by ReplaceChild after the cached protocol is retired below.
         }
-
-        if (this.Iterable == oldKoto)
+        else if (this.Iterable == oldKoto)
         {
             this.Iterable = newKoto;
-            return true;
         }
-
-        if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
+        else if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
         {
             this.Body = block;
-            return true;
+        }
+        else
+        {
+            return false;
         }
 
-        return false;
+        // Synthetic calls and arms retain source children; a syntax edit must not reuse the old entry or body.
+        this.Iteration?.Decomposition.Reset(null);
+        this.EntryCall = null;
+        this.Iteration = null;
+
+        return true;
     }
 }

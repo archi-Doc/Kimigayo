@@ -34,6 +34,39 @@ public class UserIterationTest
     }
 
     [Fact]
+    public void ReplacingTheSubjectRebuildsTheEntryAndItemType()
+    {
+        var c = MinimalEmissionTest.Analyze(Counter + Three + Drain + "for item in Three.init() => ()");
+        var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
+        var replacement = MinimalEmissionTest.Analyze(Drain + "for item in Batch<bool>.init(true) => ()");
+        var changed = Assert.Single(KotoTree.Walk(replacement.Kotonoha.RootKoto).OfType<ForKoto>());
+        Assert.True(KotoHelper.Replace(loop, loop.Iterable, changed.Iterable));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Same(BoundType.Boolean, loop.Bindings[0].BoundType);
+        Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.EntryCall!.Method).Left);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        using var output = new StringWriter();
+        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+    }
+
+    [Fact]
+    public void ReplacingTheBodyRetiresItsSyntheticMatchArm()
+    {
+        var c = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init() => ()");
+        var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
+        var replacement = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init() => Console.writeLine(\"changed\")");
+        var changed = Assert.Single(KotoTree.Walk(replacement.Kotonoha.RootKoto).OfType<ForKoto>());
+        Assert.True(KotoHelper.Replace(loop, loop.Body, changed.Body));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Same(loop.Body, loop.Iteration!.Decomposition.Arms[0].Syntax.Body);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        using var output = new StringWriter();
+        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+    }
+
+    [Fact]
     public void ConcreteEntryExecutes()
         => ScalarEmissionTest.EmitFixture("UserIterationCounter", Counter + Three + "var total: i32 = 0\nfor item in Three.init()\n    total += item\nrequire total == 6 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n");
 
