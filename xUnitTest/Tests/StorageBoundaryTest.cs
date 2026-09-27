@@ -70,6 +70,16 @@ public class StorageBoundaryTest
         ScalarEmissionTest.EmitFixture("StorageBoundaryForReborrow", Source, "split\n");
     }
 
+    // The iterator over an exclusive parameter keeps that reference's Loan; the parameter is not a split child of it.
+    [Fact]
+    public void AnIteratorOverAParameterKeepsItsLoan()
+    {
+        var c = MinimalEmissionTest.Analyze("func total(values: uniq/Array<i32>) -> i32\n    var it = values.iterateUniq()\n    values.append(4)\n    match it.next()\n" +
+            "        .Some(let v) => return v@follow\n        .None => return 0\nvar values: Array<i32> = [1]\nlet t = total(values@uniq)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+    }
+
     [Fact]
     public void ASharedIteratorAllowsReads()
     {

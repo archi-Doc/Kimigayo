@@ -213,8 +213,7 @@ public sealed partial class OwnershipBody
                             var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
                             if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
-                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p) &&
-                                !this.CoversThroughSplit(sourcePlace, p, root, access, count))
+                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
                             {
                                 conflict = true;
                             }
@@ -520,6 +519,50 @@ public sealed partial class OwnershipBody
         return false;
     }
 
+    // Whether every Origin that `type` names is a slot of `owner` (the receiver's declaring Type), and whether it names one.
+    private static bool NamesOnlyReceiverOrigins(BoundType type, DeclarationContainerKoto owner, out bool named)
+    {
+        named = false;
+        return Visit(type, owner, ref named);
+
+        static bool Visit(BoundType type, DeclarationContainerKoto owner, ref bool named)
+        {
+            if (!Receiver(type.Origin, owner, ref named))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (!Receiver(type.OriginArguments[i], owner, ref named))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!Visit(type.Components[i], owner, ref named))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static bool Receiver(BoundOrigin? origin, DeclarationContainerKoto owner, ref bool named)
+        {
+            if (origin is null || origin.Kind == OriginKind.Static)
+            {
+                return true;
+            }
+
+            named = true;
+            return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, owner);
+        }
+    }
+
     private static int ValuePlaceForBorrow(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
 
     private static int Selector(BinaryKoto field) => ElementAccess.PathSelector(field, out _, out _);
@@ -567,14 +610,6 @@ public sealed partial class OwnershipBody
     // Origin equality preserves identity, not permission: a shared result can
     // still retain the exclusive authority acquired by an input. Transfer only
     // authority for roots already present in the result's declared dependencies.
-    // SPEC 15.6.3, 22.1.2.4: a Reborrow through a reference is authorized by that reference's own Loan. When the source
-    // already holds the access on the root while p holds a conflicting Loan of it, the two coexist only as split regions
-    // (an item and the Iterator it came from), so the Reborrow stays in the source's region; it still conflicts with a p
-    // whose one definition descends from the source, or whose ancestry is not a single definition.
-    private bool CoversThroughSplit(int source, int p, int root, LoanRequirement access, int count)
-        => source != p && this.borrowDependencies[(source * count) + root] >= access &&
-            this.borrowDefinitions[p] is >= 0 and var definition && !this.IsBorrowAncestor(definition, source);
-
     private void RetainBorrowAuthority(int count)
     {
         Grow(ref this.retainedBorrowAuthority, checked(count * count));
@@ -811,10 +846,12 @@ public sealed partial class OwnershipBody
                 return true;
             }
 
-            if (node.Kind == OwnershipValueKind.Call && operation.Kind == OwnershipOperationKind.Call)
+            if (operation.Kind == OwnershipOperationKind.Call)
             {
                 // A returned reference descends from the one acquired argument
-                // its public result Origin names; any other contract stops here.
+                // its public result Origin names, and a result naming only the
+                // receiver Type's Origins from the receiver; any other contract
+                // stops here.
                 value = this.ResultArgument(value);
                 continue;
             }
@@ -825,12 +862,12 @@ public sealed partial class OwnershipBody
                 // receiver value, or the owned receiver Place of a view such as the implicit Slice of a loop.
                 if (this.Sequences[(int)node.Constant].Receiver == place)
                 {
-                    return true;
+                return true;
                 }
 
                 if (node.Count != 1)
                 {
-                    return false;
+                return false;
                 }
 
                 value = this.ValueOperands[node.Start];
@@ -854,13 +891,20 @@ public sealed partial class OwnershipBody
                 {
                     OwnershipOperationKind.Read when operation.Place >= 0 &&
                         this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsBorrow(local.Type) => operation.Place,
-                    OwnershipOperationKind.AcquirePattern => operation.Place,
+                    OwnershipOperationKind.AcquirePattern => this.PayloadSubject(operation.Place),
                     OwnershipOperationKind.InitializeSubject => operation.Input,
+                    OwnershipOperationKind.Produce when operation.Place >= 0 => operation.Place,
                     _ => -1,
                 };
                 if (stored >= 0 && this.borrowDefinitions[stored] is >= 0 and var definition && definition < value)
                 {
                     value = definition;
+                    continue;
+                }
+
+                if (stored >= 0 && this.ProducingValue(stored, value) is >= 0 and var producer)
+                {
+                    value = producer; // A Subject or binding initialized by a call result or a Move continues at its source.
                     continue;
                 }
 
@@ -871,6 +915,47 @@ public sealed partial class OwnershipBody
         }
 
         return false;
+    }
+
+    // A Case payload Place continues at the Subject it was decomposed from (SPEC 15.1.6).
+    private int PayloadSubject(int place)
+    {
+        if (place < 0 || this.Places[place].Kind != OwnershipPlaceKind.Payload)
+        {
+            return place;
+        }
+
+        for (var i = 0; i < this.DecompositionStorage.Count; i++)
+        {
+            var decomposition = this.DecompositionStorage[i];
+            if (place >= decomposition.PayloadStart && place < decomposition.PayloadStart + decomposition.PayloadCount)
+            {
+                return decomposition.Place;
+            }
+        }
+
+        return place;
+    }
+
+    // The operation before `before` that produced `place`: the call whose result it is, or, for a Move of a local into it,
+    // that local's single definition.
+    private int ProducingValue(int place, int before)
+    {
+        for (var id = before - 1; id >= 0; id--)
+        {
+            var operation = this.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.Call && operation.Place == place)
+            {
+                return id;
+            }
+
+            if (operation.Kind == OwnershipOperationKind.Consume && operation.Input == place && operation.Place >= 0)
+            {
+                return this.borrowDefinitions[operation.Place] is >= 0 and var definition && definition < id ? definition : this.ProducingValue(operation.Place, id);
+            }
+        }
+
+        return -1;
     }
 
     private bool HasSingleBorrowDefinition(int place)
@@ -1064,12 +1149,31 @@ public sealed partial class OwnershipBody
         return -1;
     }
 
+    // The receiver's CallEntry, the first of the entries that immediately precede the Call.
+    private int ReceiverEntry(int call)
+    {
+        var entries = 0;
+        while (entries < call && this.Operations[call - entries - 1] is { Kind: OwnershipOperationKind.CallEntry } entry && ReferenceEquals(entry.Source, this.Operations[call].Source))
+        {
+            entries++;
+        }
+
+        return entries == 0 ? -1 : call - entries;
+    }
+
     private int ResultArgument(int call)
     {
-        if (this.Operations[call].Source is not InvocationKoto { BoundValueCall: null, BoundCall: { Target: { CompilerFunction: CompilerFunctionKind.None, Declaration: FunctionKoto target } } plan } ||
-            target.ReturnType?.BoundType is not { Kind: BoundTypeKind.Semantics, Origin: { Kind: OriginKind.Input } origin } || !ReferenceEquals(origin.Binder, target))
+        if (this.Operations[call].Source is not InvocationKoto { BoundValueCall: null, BoundCall: { Target: { CompilerFunction: CompilerFunctionKind.None, Declaration: FunctionKoto target } } plan })
         {
             return -1;
+        }
+
+        if (target.ReturnType?.BoundType is not { Kind: BoundTypeKind.Semantics, Origin: { Kind: OriginKind.Input } origin } || !ReferenceEquals(origin.Binder, target))
+        {
+            // SPEC 15.6.3, 22.1.2.4: a result that names only Origins of the receiver's own Type, such as an Iterator's item
+            // `Option<uniq/T during source>`, keeps Loans the receiver's value holds, so it descends from the receiver.
+            return plan.Receiver is not null && target.ReturnType?.BoundType is { } result && target.BoundSymbol?.Scope.Owner is DeclarationContainerKoto owner &&
+                NamesOnlyReceiverOrigins(result, owner, out var named) && named ? this.ReceiverEntry(call) : -1;
         }
 
         // CallEntry operations immediately precede Call: receiver, explicit
