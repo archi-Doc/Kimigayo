@@ -57,7 +57,18 @@ public sealed class LspDocumentTest
         Assert.False(document.TryApply(new(2, 0), new(2, 0), "X"));
         Assert.False(document.TryApply(new(1, 2), new(1, 1), "X"));
         Assert.False(document.TryApply(new(0, 1), new(0, 0), "X"));
+        Assert.False(document.TryApply(new(0, 99), new(0, 98), "X"));
         Assert.Equal("one\ntwo", document.ToString());
+    }
+
+    [Fact]
+    public void IdenticalReplacementsReuseTheTextSnapshot()
+    {
+        var text = "one\r\ntwo\n";
+        using var document = new TextDocument(text);
+        Assert.True(document.TryApply(new(0, 1), new(1, 2), "ne\r\ntw"));
+        Assert.Same(text, document.ToString());
+        Assert.Equal([0, 5, 9], document.LineStarts.ToArray());
     }
 
     [Fact]

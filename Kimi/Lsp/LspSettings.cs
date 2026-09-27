@@ -141,7 +141,14 @@ internal sealed class LspSettings
             return false;
         }
 
-        project = SourceIdentity.FromPath(text);
-        return true;
+        try
+        {
+            project = SourceIdentity.FromPath(text);
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
     }
 }

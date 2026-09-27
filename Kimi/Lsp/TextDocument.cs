@@ -61,12 +61,17 @@ internal sealed class TextDocument : IDisposable
     /// <returns><see langword="false"/> when the change cannot be applied: a reversed range, or a line beyond the document.</returns>
     public bool TryApply(SourcePosition start, SourcePosition end, ReadOnlySpan<char> replacement)
     {
-        if (!this.TryGetOffset(start, out var from) || !this.TryGetOffset(end, out var to) || to < from)
+        if (start.CompareTo(end) > 0 || !this.TryGetOffset(start, out var from) || !this.TryGetOffset(end, out var to) || to < from)
         {
             return false;
         }
 
         var removed = to - from;
+        if (replacement.SequenceEqual(this.buffer.AsSpan(from, removed)))
+        {
+            return true;
+        }
+
         var newLength = this.length - removed + replacement.Length;
         this.EnsureCapacity(newLength, true);
         var tail = this.length - to;
@@ -225,9 +230,12 @@ internal sealed class TextDocument : IDisposable
 
         var delta = inserted - (to - from);
         starts.Slice(suffix, suffixCount).CopyTo(target.AsSpan(kept + middle));
-        foreach (ref var start in target.AsSpan(kept + middle, suffixCount))
+        if (delta != 0)
         {
-            start += delta;
+            foreach (ref var start in target.AsSpan(kept + middle, suffixCount))
+            {
+                start += delta;
+            }
         }
 
         var index = kept;

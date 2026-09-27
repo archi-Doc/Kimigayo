@@ -20,11 +20,11 @@ internal sealed class LspTestClient : IAsyncDisposable
     private readonly CancellationTokenSource timeout;
     private int nextId;
 
-    public LspTestClient(Func<long>? clock = null)
+    public LspTestClient(Func<long>? clock = null, Action<LspSession>? configure = null)
     {
         this.timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         this.timeout.CancelAfter(TimeSpan.FromSeconds(120));
-        this.Server = LspServer.Run(this.toServer.Reader.AsStream(), this.fromServer.Writer.AsStream(), clock ?? (static () => Environment.TickCount64), null, this.timeout.Token);
+        this.Server = LspServer.Run(this.toServer.Reader.AsStream(), this.fromServer.Writer.AsStream(), clock ?? (static () => Environment.TickCount64), configure, this.timeout.Token);
         this.reader = new(this.fromServer.Reader.AsStream());
     }
 
@@ -131,6 +131,8 @@ internal sealed class LspTestClient : IAsyncDisposable
     }
 
     public void CloseInput() => this.toServer.Writer.Complete();
+
+    public void Cancel() => this.timeout.Cancel();
 
     public async ValueTask DisposeAsync()
     {

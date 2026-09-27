@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -236,6 +237,7 @@ public sealed class CheckSchedulerTest : IDisposable
             {
                 using var document = JsonDocument.Parse(frame.Buffer.AsMemory(0, frame.Length));
                 frames.Add(document.RootElement.Clone());
+                ArrayPool<byte>.Shared.Return(frame.Buffer);
             }
 
             return frames;
@@ -249,6 +251,7 @@ public sealed class CheckSchedulerTest : IDisposable
 
         public async ValueTask DisposeAsync()
         {
+            this.Session.Dispose();
             await this.Sender.DrainAsync();
             this.gate.Dispose();
         }

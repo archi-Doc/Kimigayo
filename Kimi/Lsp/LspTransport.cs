@@ -38,12 +38,15 @@ internal sealed class LspFrameReader
     public async ValueTask<(byte[] Buffer, int Length)?> ReadAsync(CancellationToken cancellationToken)
     {
         var contentLength = -1;
+        var headerBytes = 0;
+        var hasHeader = false;
         while (true)
         {
-            var (offset, line) = await this.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            var (offset, line, consumedBytes) = await this.ReadLineAsync(MaxHeaderBytes - headerBytes, cancellationToken).ConfigureAwait(false);
+            headerBytes += consumedBytes;
             if (line < 0)
             {
-                if (contentLength < 0)
+                if (!hasHeader)
                 {
                     return null;
                 }
@@ -58,14 +61,21 @@ internal sealed class LspFrameReader
                     break;
                 }
 
+                if (hasHeader)
+                {
+                    throw new InvalidDataException("Missing Content-Length header.");
+                }
+
                 continue; // Tolerate blank lines between frames.
             }
 
+            hasHeader = true;
             var text = this.header.AsSpan(offset, line);
             if (StartsWithIgnoreCase(text, ContentLength))
             {
                 var value = text[ContentLength.Length..].Trim((byte)' ');
-                if (!Utf8Parser.TryParse(value, out int parsed, out var consumed) || consumed != value.Length || parsed < 0 || parsed > MaxPayloadBytes)
+                if (contentLength >= 0 || value.IndexOfAnyExceptInRange((byte)'0', (byte)'9') >= 0 ||
+                    !Utf8Parser.TryParse(value, out int parsed, out var consumed) || consumed != value.Length || parsed < 0 || parsed > MaxPayloadBytes)
                 {
                     throw new InvalidDataException("Invalid Content-Length header.");
                 }
@@ -120,17 +130,22 @@ internal sealed class LspFrameReader
 
     // Returns the offset and length of the next header line without its terminator, advancing past it.
     // The line stays valid until the next call; the length is -1 at the end of the input.
-    private async ValueTask<(int Offset, int Length)> ReadLineAsync(CancellationToken cancellationToken)
+    private async ValueTask<(int Offset, int Length, int Consumed)> ReadLineAsync(int remaining, CancellationToken cancellationToken)
     {
         while (true)
         {
             var index = this.header.AsSpan(this.start, this.end - this.start).IndexOf((byte)'\n');
             if (index >= 0)
             {
+                if (index + 1 > remaining)
+                {
+                    throw new InvalidDataException("A frame header exceeds its bound.");
+                }
+
                 var offset = this.start;
                 var length = index > 0 && this.header[offset + index - 1] == (byte)'\r' ? index - 1 : index;
                 this.start += index + 1;
-                return (offset, length);
+                return (offset, length, index + 1);
             }
 
             if (this.start > 0)
@@ -140,7 +155,7 @@ internal sealed class LspFrameReader
                 this.start = 0;
             }
 
-            if (this.end == this.header.Length)
+            if (this.end >= remaining)
             {
                 throw new InvalidDataException("A frame header exceeds its bound.");
             }
@@ -148,7 +163,12 @@ internal sealed class LspFrameReader
             var read = await this.input.ReadAsync(this.header.AsMemory(this.end), cancellationToken).ConfigureAwait(false);
             if (read == 0)
             {
-                return (0, -1);
+                if (this.end != 0)
+                {
+                    throw new InvalidDataException("The input ended inside a frame header.");
+                }
+
+                return (0, -1, 0);
             }
 
             this.end += read;
@@ -215,8 +235,8 @@ internal sealed class LspSender
     public void Send<T>(T message, JsonTypeInfo<T> typeInfo)
         => this.queue.Writer.TryWrite(writer => JsonSerializer.Serialize(writer, message, typeInfo));
 
-    /// <summary>Waits until every frame queued so far is written.</summary>
-    /// <returns>A task that completes when the earlier frames are written.</returns>
+    /// <summary>Waits until every frame queued so far is written, or the output has closed.</summary>
+    /// <returns>A task that completes when the earlier frames are written or the sender stops.</returns>
     public Task FlushAsync()
     {
         var written = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -225,7 +245,7 @@ internal sealed class LspSender
             written.TrySetResult();
         }
 
-        return written.Task;
+        return Task.WhenAny(written.Task, this.pump);
     }
 
     /// <summary>Stops accepting messages and waits until every queued frame is written.</summary>
@@ -264,9 +284,9 @@ internal sealed class LspSender
     private async Task PumpAsync()
     {
         using var writer = new Utf8JsonWriter(this.body);
-        await foreach (var write in this.queue.Reader.ReadAllAsync().ConfigureAwait(false))
+        try
         {
-            try
+            await foreach (var write in this.queue.Reader.ReadAllAsync().ConfigureAwait(false))
             {
                 this.body.ResetWrittenCount();
                 writer.Reset(this.body);
@@ -282,13 +302,20 @@ internal sealed class LspSender
                 await this.output.WriteAsync(this.body.WrittenMemory).ConfigureAwait(false);
                 await this.output.FlushAsync().ConfigureAwait(false);
             }
-            catch (IOException)
+        }
+        catch (IOException)
+        {
+            // The client went away; there is nobody left to write to.
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        finally
+        {
+            this.queue.Writer.TryComplete();
+            while (this.queue.Reader.TryRead(out _))
             {
-                return; // The client went away; there is nobody left to write to.
-            }
-            catch (ObjectDisposedException)
-            {
-                return;
+                // Release messages that can no longer be sent.
             }
         }
     }

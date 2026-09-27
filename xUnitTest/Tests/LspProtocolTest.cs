@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
+using Kimi.Checking;
 using Kimi.Lsp;
 using Xunit;
 
@@ -52,6 +54,8 @@ public sealed class LspProtocolTest
         Assert.Equal("{\"a\":\"é\U0001F600\"}", Encoding.UTF8.GetString(one!.Value.Buffer, 0, one.Value.Length));
         var two = await reader.ReadAsync(token);
         Assert.Equal("{\"b\":1}", Encoding.UTF8.GetString(two!.Value.Buffer, 0, two.Value.Length));
+        ArrayPool<byte>.Shared.Return(one.Value.Buffer);
+        ArrayPool<byte>.Shared.Return(two.Value.Buffer);
         Assert.Null(await reader.ReadAsync(token));
     }
 
@@ -59,6 +63,11 @@ public sealed class LspProtocolTest
     [InlineData("Content-Length: x\r\n\r\n")]
     [InlineData("Content-Length: 99999999999\r\n\r\n")]
     [InlineData("Content-Length: 10\r\n")]
+    [InlineData("Content-Length: 0\r\nContent-Length: 1\r\n\r\nx")]
+    [InlineData("Content-Length: +1\r\n\r\nx")]
+    [InlineData("Content-Length: 1")]
+    [InlineData("Content-Type: application/json\r\n")]
+    [InlineData("Content-Type: application/json\r\n\r\n")]
     public async Task MalformedHeadersAreRejected(string header)
     {
         using var stream = new MemoryStream(Encoding.ASCII.GetBytes(header));
@@ -72,6 +81,54 @@ public sealed class LspProtocolTest
         using var stream = new MemoryStream(Encoding.ASCII.GetBytes("X-Filler: " + new string('a', LspFrameReader.MaxHeaderBytes) + "\r\n"));
         var reader = new LspFrameReader(stream);
         await Assert.ThrowsAsync<InvalidDataException>(async () => await reader.ReadAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task HeaderBoundAppliesToAllLinesTogether()
+    {
+        var header = string.Concat(Enumerable.Repeat("X: value\r\n", LspFrameReader.MaxHeaderBytes / 10)) + "Content-Length: 0\r\n\r\n";
+        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(header));
+        var reader = new LspFrameReader(stream);
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await reader.ReadAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SenderFlushFinishesWhenTheOutputIsClosed()
+    {
+        using var stream = new MemoryStream();
+        stream.Dispose();
+        var sender = new LspSender(stream);
+        sender.Error(null, -32600, "test");
+        await sender.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await sender.DrainAsync();
+        await sender.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task ExternalCancellationCancelsTheRunningCheck()
+    {
+        var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var client = new LspTestClient(configure: session => session.Runner = (_, _, _, _, token) =>
+        {
+            entered.SetResult(token);
+            try
+            {
+                Task.Delay(Timeout.Infinite, token).GetAwaiter().GetResult();
+                return new(CheckOutcome.Completed, true, TestPresence.No, []);
+            }
+            finally
+            {
+                finished.SetResult();
+            }
+        });
+        await client.InitializeAsync();
+        await client.OpenAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "Cancel.kimi"), "let x = 1");
+        var token = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        client.Cancel();
+        Assert.Equal(1, await client.Server.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.True(token.IsCancellationRequested);
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -144,6 +201,58 @@ public sealed class LspProtocolTest
         Assert.True(initialize.TryGetProperty("result", out _));
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("{}")]
+    [InlineData("{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"initialize\"}")]
+    [InlineData("{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"initialize\"}")]
+    [InlineData("{\"jsonrpc\":\"2.0\",\"method\":42}")]
+    public async Task InvalidMessagesAreNotParseErrors(string json)
+    {
+        await using var client = new LspTestClient();
+        await client.SendAsync(json);
+        var error = await client.ReceiveAsync(static x => x.TryGetProperty("error", out _));
+        Assert.Equal(-32600, error.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.True((await client.RequestAsync("initialize", "{}")).TryGetProperty("result", out _));
+    }
+
+    [Theory]
+    [InlineData("textDocument/didChange", "{\"contentChanges\":null}")]
+    [InlineData("textDocument/didChange", "{\"contentChanges\":[null]}")]
+    [InlineData("textDocument/didChange", "{\"contentChanges\":[{\"text\":null}]}")]
+    [InlineData("workspace/didChangeWatchedFiles", "{\"changes\":null}")]
+    [InlineData("workspace/didChangeWatchedFiles", "{\"changes\":[null]}")]
+    public async Task NullChangesAreLoggedWithoutEndingTheSession(string method, string parameters)
+    {
+        await using var client = new LspTestClient();
+        await client.InitializeAsync();
+        await client.NotifyAsync(method, parameters);
+        await client.ReceiveAsync(static x => LspTestClient.IsLog(x, "Invalid params"));
+        Assert.Equal(JsonValueKind.Null, (await client.RequestAsync("shutdown")).GetProperty("result").ValueKind);
+    }
+
+    [Fact]
+    public async Task LifecycleNotificationsNeverReceiveResponses()
+    {
+        await using var client = new LspTestClient();
+        await client.NotifyAsync("initialize", "{}");
+        Assert.True((await client.InitializeAsync()).TryGetProperty("result", out _));
+        await client.NotifyAsync("shutdown", "null");
+        var response = await client.RequestAsync("custom/request");
+        Assert.Equal(-32601, response.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.DoesNotContain(client.Received, static x => x.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task InvalidSelectedProjectPathsAreLogged()
+    {
+        await using var client = new LspTestClient();
+        var path = Path.Combine(Path.GetTempPath(), "invalid\0.kimiproj");
+        await client.InitializeAsync($"{{\"selectedProjects\":[{JsonSerializer.Serialize(path)}]}}");
+        Assert.Contains(client.Received, static x => LspTestClient.IsLog(x, "selectedProjects entries"));
+    }
+
     [Fact]
     public async Task InvalidSettingsAreLoggedAndReplacedByDefaults()
     {
@@ -164,5 +273,8 @@ public sealed class LspProtocolTest
         Assert.Equal("workspace/didChangeWatchedFiles", registration.GetProperty("method").GetString());
         var patterns = registration.GetProperty("registerOptions").GetProperty("watchers").EnumerateArray().Select(static x => x.GetProperty("globPattern").GetString()).ToArray();
         Assert.Equal(["**/*.kimi", "**/*.kimiproj", "**/*.kimi.lock.json"], patterns);
+        await client.NotifyAsync("initialized", "{}");
+        await client.RequestAsync("custom/barrier");
+        Assert.Single(client.Received, static x => x.TryGetProperty("method", out var method) && method.GetString() == "client/registerCapability");
     }
 }

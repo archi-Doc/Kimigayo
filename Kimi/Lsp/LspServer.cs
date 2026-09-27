@@ -33,13 +33,13 @@ public sealed class LspServer
         var queue = Channel.CreateUnbounded<object>(new() { SingleReader = true });
         var writer = queue.Writer;
         var sender = new LspSender(output);
-        var session = new LspSession(sender, static check => Task.Run(check.Run), item => writer.TryWrite(item));
-        configure?.Invoke(session);
+        using var session = new LspSession(sender, static check => Task.Run(check.Run), item => writer.TryWrite(item));
         using var timer = new Timer(static state => ((ChannelWriter<object>)state!).TryWrite(CheckTimer.Instance), writer, Timeout.Infinite, Timeout.Infinite);
         var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var receive = Receive(new(input), writer, stop.Token);
         try
         {
+            configure?.Invoke(session);
             await foreach (var item in queue.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 var now = clock();
@@ -56,12 +56,16 @@ public sealed class LspServer
         catch (OperationCanceledException)
         {
         }
+        finally
+        {
+            // Exit waits for neither a running check nor the receive loop: a console read ignores cancellation.
+            session.Dispose();
+            writer.TryComplete();
+            await stop.CancelAsync().ConfigureAwait(false);
+            _ = receive.ContinueWith(static (_, state) => ((CancellationTokenSource)state!).Dispose(), stop, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            await sender.DrainAsync().ConfigureAwait(false);
+        }
 
-        // Exit waits for neither a running check nor the receive loop: a console read ignores cancellation.
-        writer.TryComplete();
-        await stop.CancelAsync().ConfigureAwait(false);
-        _ = receive.ContinueWith(static (_, state) => ((CancellationTokenSource)state!).Dispose(), stop, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        await sender.DrainAsync().ConfigureAwait(false);
         return session.ExitCode;
     }
 
@@ -79,7 +83,17 @@ public sealed class LspServer
                 }
                 catch (JsonException ex)
                 {
-                    writer.TryWrite(new InvalidFrame(-32700, "Parse error: " + ex.Message));
+                    // Deserialization also rejects valid JSON with the wrong wire types.
+                    // Only malformed JSON is a parse error; do the extra parse on the error path.
+                    try
+                    {
+                        using var document = JsonDocument.Parse(buffer.AsMemory(0, length));
+                        writer.TryWrite(new InvalidFrame(-32600, "Invalid request."));
+                    }
+                    catch (JsonException)
+                    {
+                        writer.TryWrite(new InvalidFrame(-32700, "Parse error: " + ex.Message));
+                    }
                 }
                 finally
                 {

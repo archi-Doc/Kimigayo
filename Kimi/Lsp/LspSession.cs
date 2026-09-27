@@ -12,7 +12,7 @@ namespace Kimi.Lsp;
 /// changes shared state — documents, revisions, marks, event numbers, bases, adopted results, required units and
 /// publication decisions.
 /// </summary>
-internal sealed class LspSession
+internal sealed class LspSession : IDisposable
 {
     private const string WatchRegistration = "kimi-watched-files";
 
@@ -32,11 +32,11 @@ internal sealed class LspSession
     private bool derivationAdopted;
     private LspSettings settings = new();
     private bool initialized;
+    private bool clientInitialized;
     private bool shutdownRequested;
     private bool watchSupported;
     private long? eligibleAt;
     private long checkBase = -1;
-    private CommitRequest? pendingCommit;
     private int nextRequestId;
 
     /// <summary>Initializes a new instance of the <see cref="LspSession"/> class.</summary>
@@ -57,7 +57,7 @@ internal sealed class LspSession
     public int ExitCode => this.shutdownRequested ? 0 : 1;
 
     /// <summary>Gets the time at which the pending check becomes eligible, or null.</summary>
-    public long? Deadline => this.checkBase < 0 && !this.shutdownRequested ? this.eligibleAt : null;
+    public long? Deadline => this.checkBase < 0 && !this.shutdownRequested && !this.Exited ? this.eligibleAt : null;
 
     /// <summary>Gets a value indicating whether a workspace check is running.</summary>
     public bool Checking => this.checkBase >= 0;
@@ -76,6 +76,11 @@ internal sealed class LspSession
     /// <param name="now">The current time in milliseconds.</param>
     public void Process(object item, long now)
     {
+        if (this.Exited)
+        {
+            return;
+        }
+
         switch (item)
         {
             case LspMessage message:
@@ -87,8 +92,7 @@ internal sealed class LspSession
             case CheckTimer:
                 break;
             case EndOfInput:
-                this.Exited = true;
-                this.shutdown.Cancel();
+                this.Dispose();
                 break;
             case CommitRequest commit:
                 this.OnCommit(commit);
@@ -106,6 +110,25 @@ internal sealed class LspSession
                 this.OnCheckDone(done);
                 break;
         }
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        if (this.Exited)
+        {
+            return;
+        }
+
+        this.Exited = true;
+        this.shutdown.Cancel();
+        this.shutdown.Dispose();
+        foreach (var document in this.documents.Values)
+        {
+            document.Text.Dispose();
+        }
+
+        this.documents.Clear();
     }
 
     /// <summary>Starts the pending check when its deadline has passed and the worker is free (SPEC 23.4.6).</summary>
@@ -167,8 +190,21 @@ internal sealed class LspSession
 
     private void OnMessage(LspMessage message, long now)
     {
+        if (message.Jsonrpc != "2.0" || (message.Id is { } id &&
+            !(id.ValueKind == JsonValueKind.String || (id.ValueKind == JsonValueKind.Number && id.TryGetInt32(out _)))))
+        {
+            this.sender.Error(null, -32600, "Invalid request.");
+            return;
+        }
+
         if (message.Method is null)
         {
+            if (message.Id is null)
+            {
+                this.sender.Error(null, -32600, "Invalid request.");
+                return;
+            }
+
             if (message.Id is not null && message.Error is not null)
             {
                 this.Log(2, "The client rejected a server request: " + message.Error.Value.GetRawText());
@@ -178,10 +214,20 @@ internal sealed class LspSession
         }
 
         var isRequest = message.Id is not null;
+        if (!isRequest && message.Method is "initialize" or "shutdown")
+        {
+            return; // Lifecycle requests must carry an ID.
+        }
+
         if (message.Method == "exit")
         {
-            this.Exited = true;
-            this.shutdown.Cancel();
+            if (isRequest)
+            {
+                this.sender.Error(message.Id, -32600, "exit must be a notification.");
+                return;
+            }
+
+            this.Dispose();
             return;
         }
 
@@ -219,7 +265,6 @@ internal sealed class LspSession
                     this.shutdownRequested = true;
                     this.eligibleAt = null;
                     this.shutdown.Cancel();
-                    this.pendingCommit?.Committed.TrySetCanceled();
                     this.sender.Result<object>(message.Id, null, null);
                     break;
                 case "textDocument/didOpen":
@@ -278,6 +323,12 @@ internal sealed class LspSession
 
     private void OnInitialized(long now)
     {
+        if (this.clientInitialized)
+        {
+            return;
+        }
+
+        this.clientInitialized = true;
         if (this.watchSupported)
         {
             var registration = new Registration
@@ -304,7 +355,7 @@ internal sealed class LspSession
             return;
         }
 
-        var text = item.Text ?? string.Empty;
+        var text = item.Text ?? throw new JsonException("textDocument.text must be a string.");
         if (this.documents.TryGetValue(identity, out var existing))
         {
             existing.Text.Replace(text); // A repeated open is a full-text event and resynchronizes the document.
@@ -320,6 +371,11 @@ internal sealed class LspSession
 
     private void OnDidChange(DidChangeTextDocumentParams? parameters, long now)
     {
+        if (parameters is not null && (parameters.ContentChanges is null || parameters.ContentChanges.Exists(static change => change is null || change.Text is null)))
+        {
+            throw new JsonException("contentChanges must contain text changes with string text.");
+        }
+
         if (parameters?.TextDocument is not { } identifier || !SourceIdentity.TryFromUri(identifier.Uri, out var identity))
         {
             return;
@@ -368,6 +424,11 @@ internal sealed class LspSession
 
     private void OnWatchedFiles(DidChangeWatchedFilesParams? parameters, long now)
     {
+        if (parameters is not null && (parameters.Changes is null || parameters.Changes.Exists(static change => change is null)))
+        {
+            throw new JsonException("changes must contain file events.");
+        }
+
         foreach (var change in parameters?.Changes ?? [])
         {
             if (SourceIdentity.TryFromUri(change.Uri, out var identity))
@@ -405,7 +466,6 @@ internal sealed class LspSession
             this.store.Commit(key, state, this.checkBase, released, invalidated);
         }
 
-        this.pendingCommit = null;
         var items = new List<DerivedItem>(this.projects.Values);
         foreach (var unit in this.units.Values)
         {
@@ -588,7 +648,6 @@ internal sealed class LspSession
     private void OnCheckDone(CheckDone done)
     {
         this.checkBase = -1;
-        this.pendingCommit = null;
         if (done.Failure is { } failure && !this.shutdownRequested)
         {
             this.Log(1, "The workspace check failed: " + failure);
