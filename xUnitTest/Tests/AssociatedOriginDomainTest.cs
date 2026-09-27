@@ -40,4 +40,17 @@ public class AssociatedOriginDomainTest
         const string source = "contract C\n    associate Item(a, b)\nstruct S\n    Self is C\n    associate C.Item(a, b) is ref/i32 during b\n        origin a outlives b";
         Assert.False(MinimalEmissionTest.Analyze(source).Binding.Result.IsComplete);
     }
+
+    [Theory]
+    [InlineData("origin left outlives right", true)]
+    [InlineData("origin static outlives left", true)]
+    [InlineData("origin right outlives left", false)]
+    [InlineData("origin left == right", false)]
+    public void ImplementationConditionsMustFollowFromTheRequirement(string relation, bool valid)
+    {
+        var source = "contract C\n    associate Item(a, b)\n        origin a outlives b\nstruct S\n    Self is C\n    associate C.Item(left, right) is ref/i32 during right\n        " + relation;
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(valid, c.Bind().IsComplete);
+    }
 }

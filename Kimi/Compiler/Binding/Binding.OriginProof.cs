@@ -138,6 +138,11 @@ public sealed partial class Binding
 
             for (var node = use; node is not null; node = node.Parent)
             {
+                if (this.ProvesAssociatedRequirementRelation(node, longer, shorter, use))
+                {
+                    return true;
+                }
+
                 if (node is FunctionKoto or PropertyAccessorKoto)
                 {
                     for (var i = 0; i < InputCount(node); i++)
@@ -309,7 +314,7 @@ public sealed partial class Binding
 
                 this.CompleteOriginDeclaration(declaration);
             }
-            else if (IsAssociatedRequirement(this.nodes[i]))
+            else if (AssociatedHead(this.nodes[i]) is OriginApplicationKoto)
             {
                 var node = this.nodes[i];
                 this.CompleteOriginDeclaration(this.BeginOriginDeclaration(node, this.scopes[node]));

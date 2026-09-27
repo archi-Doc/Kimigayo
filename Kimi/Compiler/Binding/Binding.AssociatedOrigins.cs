@@ -173,7 +173,7 @@ public sealed partial class Binding
             }
 
             // Formation domains and their implementation implication checks are a separate unit.
-            if ((OriginClauses.Get(node).Count != 0 && !IsAssociatedRequirement(node)) || node is SyntaxFormKoto { Operands.Length: > 1 } || node is IsKoto { FormationType: not null })
+            if (node is SyntaxFormKoto { Operands.Length: > 1 } || node is IsKoto { FormationType: not null })
             {
                 Fail(node, BindingFailure.Unsupported);
             }
@@ -224,5 +224,28 @@ public sealed partial class Binding
                 Fail(use, BindingFailure.InvalidOrigin);
             }
         }
+    }
+
+    private bool ProvesAssociatedRequirementRelation(Koto node, BoundOrigin longer, BoundOrigin shorter, Koto use)
+    {
+        if (AssociatedHead(node) is not OriginApplicationKoto || node.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } associated ||
+            ReferenceEquals(associated.Declaration, node) || !this.originDeclarations.TryGetValue(associated.Declaration, out var requirement) || requirement.State != 3)
+        {
+            return false;
+        }
+
+        var arguments = this.AssociatedParameters(node);
+        foreach (var relation in requirement.Relations)
+        {
+            var a = this.SubstituteStoredOrigin(relation.Longer, associated.Declaration, arguments);
+            var b = this.SubstituteStoredOrigin(relation.Shorter, associated.Declaration, arguments);
+            if ((this.ProvesOriginOutlives(longer, a, use) && this.ProvesOriginOutlives(b, shorter, use)) ||
+                (relation.Equality && this.ProvesOriginOutlives(longer, b, use) && this.ProvesOriginOutlives(a, shorter, use)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
