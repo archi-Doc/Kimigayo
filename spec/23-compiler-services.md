@@ -22,7 +22,7 @@ future CSP adapter ─────► check foundation (§23.3)
 | Receive loop | Reads frames, parses JSON and enqueues each message. |
 | State owner | The single thread that processes the queue in order. It alone changes shared server state: documents and their buffers, revisions, marks, event numbers, bases, adopted results, required units and publication decisions. Each step is small, so receiving never stalls. |
 | Worker | Runs checks on immutable snapshots and enqueues their products. One worker runs at a time. |
-| Sender | Serializes and writes frames under the output lock. |
+| Sender | Serializes and writes frames in order, one at a time; the state owner never waits for output. |
 | Check entry | The one check path shared by the commands and the server (§23.3.2). |
 
 ## 23.2. Principle and terms
@@ -112,7 +112,7 @@ Every input has a globally monotonic **revision**, which changes exactly when a 
 ### 23.4.1. Transport and lifecycle
 
 - **Framing:** `Content-Length` headers and UTF-8 JSON bodies, with bounded headers and payloads.
-- **JSON-RPC:** requests keep their IDs and are distinguished from notifications. A success response carries `result`, including `null`; an error response carries `error` and no `result`. An unknown request receives `-32601`; an unknown notification is ignored.
+- **JSON-RPC:** requests keep their IDs and are distinguished from notifications. A success response carries `result`, including `null`; an error response carries `error` and no `result`. An unknown request receives `-32601`; an unknown notification is ignored. A request before `initialize` receives `-32002`, a request after `shutdown` receives `-32600`, and a body that is not JSON receives `-32700` with a `null` ID; a malformed header ends the input.
 - **Capabilities:** only implemented capabilities are advertised: incremental `textDocumentSync` with open and close notifications, and the UTF-16 position encoding.
 - **Lifecycle:** `shutdown` stops publication, answers and retires the pending check; `exit` ends the process with code 0 after `shutdown` and 1 otherwise, without waiting for a running check. The command host owns the exit.
 
@@ -121,7 +121,7 @@ Every input has a globally monotonic **revision**, which changes exactly when a 
 - A document's role comes from its extension: a **source document** (`.kimi`), a **project document** (`.kimiproj`), or ignored (anything else, including lock files). Documents with non-`file:` URIs are ignored.
 - A notification's changes apply in order, each to the result of the previous one, whatever their version; a non-increasing version is only logged. A character beyond its line end is clamped, as LSP specifies. Positions are UTF-16 code units, and line breaks follow the source rule (CR, LF and CRLF).
 - A change to a document that is not open is ignored until `didOpen`.
-- An inapplicable change (a reversed range, or a line beyond the document) makes the document **desynchronized**: it is then an unestablished input, so every check that reads it is Blocked. A full-text event (`didOpen`, or a change without a range) resynchronizes it. Both transitions change its identity, even when the text is unchanged.
+- An inapplicable change (a reversed range, or a line beyond the document) makes the document **desynchronized**: it is then an unestablished input, so every check that reads it is Blocked with `DocumentDesynchronized_Kd`. A full-text event (`didOpen`, or a change without a range) resynchronizes it. Both transitions change its identity, even when the text is unchanged.
 - Only checks are debounced; text changes apply as they arrive. `didSave` needs no handling, because an open document already overrides disk.
 
 ### 23.4.3. Discovery, membership and activity

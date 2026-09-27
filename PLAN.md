@@ -63,7 +63,7 @@ P22, P19, P20, P21, P29, P32, P30, P23, P27, P37 and P39 are done. P28 is the ac
 
 ### Toolchain track (after P38, or earlier when instructed)
 
-The user-requested [LSP diagnostics plan](LSP_PLAN.md) defines a separate tooling track (L1–L6, with L5 split into L5a/L5b): reuse the compiler front end, debounce editor input, and establish shared check inputs/results for a future CSP adapter. **Planning complete; implementation not started.** The compiler milestone order is unchanged.
+The language server and the check foundation for a future CSP adapter (SPEC Chapter 23) are **implemented** (L1–L6; plan archived as [draft/Design/2026-09-28 Language Server and Compiler Services.md](draft/Design/2026-09-28%20Language%20Server%20and%20Compiler%20Services.md)). The CSP adapter itself is not planned yet. The compiler milestone order is unchanged.
 
 | ID | Subject | Acceptance |
 | --- | --- | --- |
@@ -94,7 +94,7 @@ Features that a program's source does not use belong to the milestone that owns 
    - **(3) Kimigayo storage operations.** Parameterize the contiguous-storage remainders by their element (`RefRemainder<E>{source}`, `UniqRemainder<E>{source}`, `OwnedRemainder<E>`, field `storage: unsafe/E`), add internal unsafe primitives `lend`/`split` (element pointer to `ref`/`uniq E during state.source`) and `release` (free the region), and write `splitFirst`, `takeFirst` and the `OwnedRemainder` `deinit` in `Storage.kimi`; `borrowStorage`/`ownStorage` stay compiler primitives (they read the Array handle). Remove the split/take/owned-drop IR helpers and the `CollectionDrop` hook; update SPEC §22.1.2.5 (remainders over `E`; fixed-array owning and Dictionary get their own families with their boundaries) and §5.6, the catalog ids, `KimiLibraryValidation`, the effect summary's `Allows` list; recheck O2 parity and warm zero allocation.
    - **(6) Table-driven validation** of compiler-known library declarations (one canonical signature per catalog id, compared by the ordinary binder).
    - Then the fixed-array boundary overloads and `[N of E]` entries, and the Dictionary boundary.
-   - **Cautions:** another session may edit this checkout (`LSP_PLAN.md` holds its uncommitted edits); work in a separate worktree or stage only your own paths. `-Fixtures` takes several patterns. Library implementations reached only by generic dispatch are collected through `CollectWitnesses` (`93d84044`); keep that in mind when a library body "has no verified generic body".
+   - **Cautions:** another session may edit this checkout; work in a separate worktree or stage only your own paths. `-Fixtures` takes several patterns. Library implementations reached only by generic dispatch are collected through `CollectWitnesses` (`93d84044`); keep that in mind when a library body "has no verified generic body".
 1. **P28:** remaining Origin-bearing family forms and multiple bound-reference disambiguation; the §4.6.8 Slice cost evidence (G3); G28.
 2. **Then P31, P40, P26** in §4 order. Independent library work remains `sort()` using the existing heapsort and `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
 
