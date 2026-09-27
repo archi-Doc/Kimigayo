@@ -57,6 +57,44 @@ public sealed partial class Binding
         _ => false,
     };
 
+    // Synthesized calls and Places are reused across passes. Each pass rebinds the ones its syntax still needs, so one left
+    // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
+    private void ResetSyntheticCalls()
+    {
+        foreach (var call in this.propertyCalls.Values)
+        {
+            ResetSynthetic(call);
+        }
+
+        foreach (var call in this.indexerCalls.Values)
+        {
+            ResetSynthetic(call);
+        }
+
+        foreach (var call in this.rangeCalls.Values)
+        {
+            ResetSynthetic(call);
+        }
+
+        foreach (var call in this.resolvedKeys.Values)
+        {
+            ResetSynthetic(call);
+        }
+
+        foreach (var projection in this.storageProjections.Values)
+        {
+            ResetSynthetic(projection);
+        }
+
+        foreach (var storage in this.propertyUpdateStorage.Values)
+        {
+            ResetSynthetic(storage);
+        }
+
+        this.resolvedSlices.Clear();
+        this.exclusiveIndexers.Clear();
+    }
+
     private bool TryBindKeyedSelection(IndexKoto source, BindingScope scope, BoundType receiver, out BoundType? result)
     {
         result = null;

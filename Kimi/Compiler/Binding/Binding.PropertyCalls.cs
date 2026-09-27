@@ -16,7 +16,7 @@ public sealed partial class Binding
 
     internal MemberAccessKoto? PropertyUpdateStorage(Koto node)
         => KotoHelper.UnwrapParentheses(node) is { BindingState: BindingState.Resolved, BoundSymbol.Property: { } property } target &&
-            (!property.Getter.IsStandard || !property.Setter.IsStandard) ? this.propertyUpdateStorage.GetValueOrDefault(target) : null;
+            (!property.Getter.IsStandard || !property.Setter.IsStandard) && this.propertyUpdateStorage.GetValueOrDefault(target) is { BindingState: BindingState.Resolved } storage ? storage : null;
 
     internal FunctionKoto AccessorFunction(BoundAccessor accessor)
     {
@@ -38,12 +38,12 @@ public sealed partial class Binding
             return null;
         }
 
-        return (kind == PropertyAccessorKind.Get ? property.Getter : property.Setter).IsStandard
-            ? null : this.propertyCalls.GetValueOrDefault((node, kind));
+        return !(kind == PropertyAccessorKind.Get ? property.Getter : property.Setter).IsStandard &&
+            this.propertyCalls.GetValueOrDefault((node, kind)) is { BindingState: BindingState.Resolved } call ? call : null;
     }
 
     internal MemberAccessKoto? StorageProjection(Koto node)
-        => node.BoundSymbol?.Kind == BindingSymbolKind.Storage ? this.storageProjections.GetValueOrDefault(node) : null;
+        => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
 
     private bool ValidPropertyWritePath(Koto node, BindingScope scope)
     {

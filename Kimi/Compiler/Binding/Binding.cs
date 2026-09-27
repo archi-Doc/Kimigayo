@@ -99,6 +99,7 @@ public sealed partial class Binding
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
             this.adaptations.Clear();
+            this.ResetSyntheticCalls();
             this.pairFollows.Clear();
             this.implicitPairFollows.Clear();
             foreach (var construction in this.enumConstructions.Values)

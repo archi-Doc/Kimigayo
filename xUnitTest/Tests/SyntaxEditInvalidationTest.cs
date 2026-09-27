@@ -43,6 +43,29 @@ public class SyntaxEditInvalidationTest
         Assert.False(c.Ownership.Result.IsVerified);
     }
 
+    // A synthesized call bound by an earlier pass is not reused once an edit removes its role: after `var box` becomes
+    // `let box`, the read box[0] no longer binds indexUniq, and no stale exclusive call remains visible.
+    [Fact]
+    public void AnEditedRoleLeavesNoStaleSynthesizedCall()
+    {
+        const string Indexed = "struct Box\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n" +
+            "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/i32 during self => self.value\n" +
+            "var box = Box.init()\nlet n = box[0]\n";
+        var c = MinimalEmissionTest.Analyze(Indexed);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var index = Statements(c).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "n").InitializerKoto!;
+        Assert.NotNull(c.Binding.IndexerCall(index, true));
+        var declaration = Statements(c).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "box");
+        var donor = Statements(MinimalEmissionTest.Analyze(Indexed.Replace("var box", "let box", StringComparison.Ordinal))).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "box");
+        Assert.True(KotoHelper.Replace(declaration.Parent!, declaration, donor));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.NotNull(c.Binding.IndexerCall(index, false));
+        Assert.Null(c.Binding.IndexerCall(index, true));
+    }
+
+    private static IReadOnlyList<Koto> Statements(Compilation c) => c.Kotonoha.GeneratedFunction!.Body!.Items;
+
     private static VariableKoto Field(Compilation c)
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<VariableKoto>().Single();
 
