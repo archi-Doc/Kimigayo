@@ -2357,7 +2357,13 @@ CloseParameters:
                 }
                 else
                 {
-                    return ParseTypeOrigin(ref reader, name);
+                    name = ParseTypeOrigin(ref reader, name);
+                    if (name is not TypeSemanticsKoto && (reader.CurrentTokenKind == TokenKind.Question || reader.IsCurrentIdentifier("during") || reader.IsCurrentIdentifier("from")))
+                    {
+                        name = new TypeSemanticsKoto(ref reader, name.Span, name);
+                    }
+
+                    return ParseOptionalSuffix(ref reader, name, parseBorrowOrigin: true);
                 }
             }
         }

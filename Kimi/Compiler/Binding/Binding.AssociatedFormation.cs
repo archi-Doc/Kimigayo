@@ -46,6 +46,11 @@ public sealed partial class Binding
 
     private bool CheckAssociatedFormation(BoundType type, Koto use)
     {
+        if (this.CheckTypeOriginRelations(type, this.ConstraintScope(use)) != ConstraintProof.Proven)
+        {
+            return false;
+        }
+
         if (IsBorrow(type.Semantics) && type.Origin is { } outer)
         {
             if ((outer.Kind == OriginKind.Static && IsExclusive(type.Semantics)) ||
