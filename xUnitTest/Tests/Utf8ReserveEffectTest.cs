@@ -111,6 +111,19 @@ public class Utf8ReserveEffectTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // SPEC 8.4.5: synthesized calls are part of the summary: indexers, iteration steps, and key comparisons through a
+    // borrowed Dictionary.
+    [Theory]
+    [InlineData("struct Table\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> place ref/i32 during self\n        _ = State.value\n        return self.value\n", "let table = Table.init()\n        _ = table[0]")]
+    [InlineData("struct Numbers {source}\n    Self is Iterator\n    associate Iterator.Item is i32\n    let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\n    public func next(self: uniq/Self) -> Option<i32>\n        _ = State.value\n        return .None\nstruct Values\n    Self is Iterable\n    associate Iterable.IteratorType(source) is Numbers during source\n    var value: i32 = 7\n    public init() => ()\n    public func iterate(self: ref/Self during source) -> Numbers during source => Numbers.init(self.value@ref)\n", "let values = Values.init()\n        for n in values\n            _ = n")]
+    [InlineData("struct Key\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n", "var values: Dictionary<Key, i32> = [:]\n        let borrowed = values@ref\n        _ = borrowed[Key.init()]")]
+    public void SynthesizedCallEffectsAreChecked(string declarations, string operation)
+    {
+        var c = Analyze(State + declarations, operation);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     [Fact]
     public void BorrowingAFieldDoesNotExecuteItsDestructor()
     {

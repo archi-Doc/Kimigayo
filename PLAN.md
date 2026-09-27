@@ -94,7 +94,7 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-0. **P28 (resume here):** complete the Iterator independence bound with common root/Loan/effect summaries, including static/capture effects, abstract Item dependencies and generic callers; the current Origin/implicit-acquisition checks are not a general nonoverlap proof. Finish remaining Origin-bearing family forms and multiple bound-reference disambiguation.
+0. **P28 (resume here):** the Iterator and reserve bounds share one fail-closed effect summary; region splitting (`Kimi.Storage`) is the remaining nonoverlap proof. Finish remaining Origin-bearing family forms and multiple bound-reference disambiguation.
 1. **P28:** implement the `Kimi.Iteration` adapters and `Kimi.Storage` splitting; migrate standard iterators to Kimigayo and collect the §4.6.8 Slice cost evidence (G3).
 2. **Then P31, P40, P26** in §4 order. Independent library work remains `sort()` using the existing heapsort and `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
 

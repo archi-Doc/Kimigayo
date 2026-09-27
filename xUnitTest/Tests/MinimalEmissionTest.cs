@@ -206,14 +206,9 @@ public class MinimalEmissionTest
             Assert.True(c.Emission.Validate(out var error), Describe(c, error));
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
+        // The helper retires the thread's allocation context before measuring (see AllocationMeasurement).
         var valid = true;
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Emission.Validate(out _);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Emission.Validate(out _), 128);
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
