@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -32,5 +33,30 @@ public class AssociatedLendingStepTest
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
+    }
+
+    [Fact]
+    public void RepeatedLendingStepsReuseLoansAndAllocateNothing()
+    {
+        const string source = Declarations + "var iterator = Counter.init()\nvar count: i32 = 0\nvar total: i32 = 0\nwhile count < 100\n    let item = advance(iterator@uniq)\n    total += item\n    count += 1\nrequire total == 5050 else => $abort(\"lending total\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        for (var i = 0; i < 32; i++)
+        {
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+            c.Binding.CheckStartup(OutputKind.Application);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            {
+                throw new InvalidOperationException("Lending compilation failed.");
+            }
+        }));
+        NativeAllocationAudit.WriteFixture("AssociatedOriginLendingCost", source, 0, 0, 0);
     }
 }
