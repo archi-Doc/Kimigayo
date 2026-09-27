@@ -2493,7 +2493,7 @@ CloseParameters:
         return reader.PeekKind(offset) == TokenKind.Is;
     }
 
-    private static bool IsFunctionConstraintStart(ref TokenReader reader, FunctionKoto function)
+    private static bool IsFunctionConstraintStart(ref TokenReader reader, FunctionKoto? function)
     {
         if (IsTypeConstraintStart(ref reader))
         {
@@ -2501,7 +2501,7 @@ CloseParameters:
         }
 
         // Only a declared Type-parameter root selects the extended Type grammar here. Value calls remain expressions.
-        if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+        if (function is null || !reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
         {
             return false;
         }
@@ -2611,12 +2611,15 @@ CloseParameters:
                 continue;
             }
 
-            if (function is not null && (function.GenericArguments.Count > 0 || function.HasGenericDeclaringType) && IsFunctionConstraintStart(ref reader, function))
+            // SPEC 7.4: every function, constructor, destructor and accessor body begins with its Constraint prefix, whatever
+            // the declaration's generic parameters; a leading `value is Dog` is never an expression statement.
+            if ((function is not null || originOwner is PropertyAccessorKoto) && IsFunctionConstraintStart(ref reader, function))
             {
-                // A root-qualified subject is never a generic parameter; do not read "::" as an identifier.
+                // A root-qualified subject is never a generic parameter; do not read "::" as an identifier. A destructor or
+                // accessor is never a conditional member, so no subject is permitted in its body.
                 var rootQualified = reader.CurrentTokenKind == TokenKind.ColonColon;
                 var subject = rootQualified ? null : reader.GetIdentifier(reader.CurrentToken);
-                var isGenericParameter = subject is not null && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
+                var isGenericParameter = subject is not null && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
                 if (!seenExecutableItem || isGenericParameter)
                 {
                     if (seenExecutableItem || !isGenericParameter)
@@ -2625,7 +2628,7 @@ CloseParameters:
                     }
 
                     var constraint = ParseTypeConstraint(ref reader);
-                    if (constraint is not null)
+                    if (constraint is not null && function is { IsDestructor: false })
                     {
                         function.AddTypeConstraint(constraint);
                     }

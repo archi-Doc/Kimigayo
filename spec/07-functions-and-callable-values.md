@@ -286,7 +286,7 @@ func inspect<s/T>(value: s/T) -> ()
     return
 ```
 
-Each clause subject must name a generic parameter of the function, a generic parameter of the Type that declares the member, or an [associated-Type projection](08-generics-constraints-and-contracts.md#843-associated-types) rooted in one. Leading Constraints are collected before the projections in the signature, including the result Type, are resolved; they are still validated. Function requirements use the [same indented placement](08-generics-constraints-and-contracts.md#841-function-requirements), with a Constraints-only region instead of an executable body.
+Each clause subject must name a generic parameter of the function, a generic parameter of the Type that declares the member, or an [associated-Type projection](08-generics-constraints-and-contracts.md#843-associated-types) rooted in one. A destructor or accessor is never a conditional member, so no subject is permitted in its body. Leading Constraints are collected before the projections in the signature, including the result Type, are resolved; they are still validated. Function requirements use the [same indented placement](08-generics-constraints-and-contracts.md#841-function-requirements), with a Constraints-only region instead of an executable body.
 
 Every explicit or inferred generic argument at a call site must satisfy the clauses, and body Type checking and instantiation may rely on them. Constraints are not part of the function Signature, so declarations that differ only in their Constraints conflict.
 

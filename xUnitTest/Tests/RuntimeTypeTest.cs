@@ -296,18 +296,22 @@ public class RuntimeTypeTest
         Assert.False(flow.Nodes[Test(c)].CanCompleteNormally);
     }
 
-    [Fact]
-    public void GenericLeadingConstraintContextIsSelectedBeforeLookup()
+    // SPEC 7.4: the leading `is` items of every body are Constraints, selected before lookup whatever the function's
+    // generic parameters; `x` is not a permitted subject. Parentheses make the test executable.
+    [Theory]
+    [InlineData("f<T>")]
+    [InlineData("f")]
+    public void LeadingIsItemsAreConstraintsInEveryBody(string name)
     {
-        const string Source = "struct Dog\nfunc f<T>(x: objref/Dog)\n    x is Dog\n    ()";
+        var source = "struct Dog\nfunc " + name + "(x: objref/Dog)\n    x is Dog\n    ()";
         var c = Compilation.CreateForTest();
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Source);
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
         var clause = Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Single();
         Assert.False(clause.IsRuntimeTest);
-        var ordinary = Parse(Source.Replace("f<T>", "f", StringComparison.Ordinal));
-        Assert.True(Test(ordinary).IsRuntimeTest);
-        AssertBound(ordinary);
+        var parenthesized = Parse(source.Replace("    x is Dog", "    (x is Dog)", StringComparison.Ordinal));
+        Assert.True(Test(parenthesized).IsRuntimeTest);
+        AssertBound(parenthesized);
     }
 
     [Fact]

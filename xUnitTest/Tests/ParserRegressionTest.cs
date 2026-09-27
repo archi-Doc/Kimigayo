@@ -944,6 +944,24 @@ public class ParserRegressionTest
         Assert.Equal("replacement", change.Text);
     }
 
+    // SPEC 7.4: every function, constructor, destructor and accessor body begins with its Constraint prefix. A subject the
+    // declaration does not permit is diagnosed, never read as a runtime test; parentheses make the test executable.
+    [Theory]
+    [InlineData("func f(value: i32)\n    value is Dog\n    ()", 1)]
+    [InlineData("func f(value: i32)\n    (value is Dog)\n    ()", 0)]
+    [InlineData("func f(value: i32)\n    require value is Dog else => return\n    ()", 0)]
+    [InlineData("func f<T>(value: T)\n    T is Copy\n    ()", 0)]
+    [InlineData("struct Box<T>\n    var item: T\n    public init(item: T)\n        T is Copy\n        self.item = item\n", 0)]
+    [InlineData("struct Box<T>\n    var item: T\n    deinit\n        T is Copy\n        ()\n", 1)]
+    [InlineData("struct Box<T>\n    var item: T\n    public computed first: i32\n        get() -> i32\n            T is Copy\n            return 0\n", 1)]
+    [InlineData("struct Plain\n    var item: i32 = 0\n    public func f(self)\n        item is i32\n        ()\n", 1)]
+    public void EveryBodyBeginsWithItsConstraintPrefix(string source, int unexpected)
+    {
+        var (_, diagnostics) = Parse(source);
+        Assert.True(unexpected == diagnostics.Length, string.Join("; ", diagnostics.Select(x => x.ToString())));
+        Assert.Equal(unexpected, diagnostics.Count(x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd)));
+    }
+
     private static (GroupKoto Root, Diagnostic[] Diagnostics) Parse(string source)
     {
         var kotonoha = ParseTestHelper.Parse(source);
