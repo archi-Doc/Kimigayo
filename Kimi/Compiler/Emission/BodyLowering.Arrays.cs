@@ -111,16 +111,18 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private ArrayHelper GetArrayHelper(ArrayHelperKind kind, in ArrayElement element, AggregateLayout? option = null)
+    private ArrayHelper GetArrayHelper(ArrayHelperKind kind, in ArrayElement element, AggregateLayout? option = null, AggregateLayout? remainder = null)
     {
-        var key = (kind, element.Layout?.Id ?? -1, element.IsString ? "string" : element.IsScalar ? element.Value.ComputationType : string.Empty);
+        // A boundary helper also depends on its result and remainder records, so their layout ids join the key and name.
+        var records = remainder is null ? string.Empty : "_r" + remainder.Id.ToString(CultureInfo.InvariantCulture) + (option is null ? string.Empty : "_o" + option.Id.ToString(CultureInfo.InvariantCulture));
+        var key = (kind, element.Layout?.Id ?? -1, (element.IsString ? "string" : element.IsScalar ? element.Value.ComputationType : string.Empty) + records);
         if (this.arrayHelpers.TryGetValue(key, out var existing))
         {
             return existing;
         }
 
         // Keep syntax-free physical helpers across warm emission, but register only this module's used helpers.
-        if (this.arrayHelperCache.TryGetValue(key, out existing) && ReferenceEquals(existing.Option, option))
+        if (this.arrayHelperCache.TryGetValue(key, out existing) && ReferenceEquals(existing.Option, option) && ReferenceEquals(existing.Remainder, remainder))
         {
             this.arrayHelpers.Add(key, existing);
             return existing;
@@ -140,9 +142,11 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Take => "__kimi_array_take_",
             ArrayHelperKind.IteratorDrop => "__kimi_array_iterator_drop_",
             ArrayHelperKind.Swap => "__kimi_array_swap_",
+            ArrayHelperKind.BorrowStorage => "__kimi_array_borrow_",
+            ArrayHelperKind.SplitFirst => "__kimi_array_split_",
             _ => "__kimi_array_drop_",
         };
-        var name = prefix + suffix;
+        var name = prefix + suffix + records;
         var valueType = element.IsScalar ? element.Value.ComputationType : "ptr";
         var handle = new AbiParameter("ptr", "handle");
         var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
@@ -162,9 +166,11 @@ internal sealed partial class BodyLowering
                 ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
                 : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
+            ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.SplitFirst => new(name, unit, [new("ptr", "state"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             _ => new(name, unit, [handle, location, length]),
         };
-        var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option);
+        var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder);
         this.arrayHelperCache[key] = helper;
         this.arrayHelpers.Add(key, helper);
         return helper;
@@ -320,6 +326,69 @@ internal sealed partial class BodyLowering
         }
 
         function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands));
+        return true;
+    }
+
+    // SPEC 22.1.2.5: borrowStorage records the Array's buffer and length as the untaken range of a remainder; splitFirst
+    // lends or splits the first untaken element and advances, returning None once the range is empty. Neither allocates,
+    // aborts or runs a callback; the borrowed reference's Origin was checked by Binding.
+    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    {
+        failure = null;
+        var operation = body.Operations[id];
+        var borrow = plan.Target.CompilerFunction is CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive;
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1)
+        {
+            return Fail("Storage operation has an unsupported argument plan.", out failure);
+        }
+
+        // A reference parameter is Copied, Reborrowed or borrowed from its Place; every form supplies the pointer.
+        if (plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } argumentType)
+        {
+            return Fail("Storage operation has an unsupported argument acquisition.", out failure);
+        }
+
+        if ((borrow ? referent : referent.Components is [var collection] ? collection : null) is not { Kind: BoundTypeKind.Array, Components: [var elementType] } ||
+            !this.TryGetArrayElement(elementType, out var element))
+        {
+            return Fail("Storage operation has an unsupported collection or element Type.", out failure);
+        }
+
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
+        {
+            return false;
+        }
+
+        if (!complete)
+        {
+            return true;
+        }
+
+        if (!this.ScalarArrayArgument(body, id, 0, argumentType, out var pointer))
+        {
+            return Fail("Storage operation argument borrow is unavailable at the call.", out failure);
+        }
+
+        var returnType = SignatureType(this, plan.ReturnType);
+        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) || this.aggregateLayouts.Get(returnType) is not { } result ||
+            !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
+        {
+            return Fail(failure ?? "Storage operation result is not a stored record.", out failure);
+        }
+
+        var remainder = borrow ? result : this.aggregateLayouts.Get(referent);
+        if (remainder is not { Fields.Length: 3, IsArray: false } || (!borrow && result.Cases?.Length != 2))
+        {
+            return Fail("Storage operation records do not have the boundary's shape.", out failure);
+        }
+
+        var helper = this.GetArrayHelper(borrow ? ArrayHelperKind.BorrowStorage : ArrayHelperKind.SplitFirst, element, borrow ? null : result, remainder);
+        this.callOperands.Clear();
+        this.callOperands.Add(pointer);
+        this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
+        function.AddCall(id, helper.Abi, CollectionsMarshal.AsSpan(this.callOperands));
         return true;
     }
 

@@ -359,10 +359,14 @@ internal enum ArrayHelperKind : byte
     Take,
     IteratorDrop,
     Swap,
+
+    // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder record.
+    BorrowStorage,
+    SplitFirst,
 }
 
 /// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>
-internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option);
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null);
 
 internal enum DictionaryHelperKind : byte
 {

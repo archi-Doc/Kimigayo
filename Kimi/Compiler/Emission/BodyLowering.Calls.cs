@@ -81,6 +81,11 @@ internal sealed partial class BodyLowering
             return this.LowerDictionaryOperation(body, function, constants, directory, id, dictionaryCall, dictionaryPlan, out failure);
         }
 
+        if (operation.Source is InvocationKoto storageCall && resolved is { } storagePlan && KimiLibraryCatalog.IsStorageOperation(storagePlan.Target.CompilerFunction))
+        {
+            return this.LowerStorageOperation(body, function, id, storageCall, storagePlan, out failure);
+        }
+
         var formatting = resolved?.Target.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
         var comparison = resolved?.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare;
         var intrinsic = formatting || comparison;

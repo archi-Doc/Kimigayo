@@ -30,6 +30,24 @@ public class StorageBoundaryTest
         Assert.False(c.Ownership.Result.IsVerified);
     }
 
+    // The Kimigayo iterators execute natively over the boundary: shared items are read in index order, exclusive items
+    // are retained together and written through, and both iterators stay exhausted after None.
+    [Fact]
+    public void ExplicitIterationExecutes()
+    {
+        const string Source = "public func main()\n    var values: Array<i32> = [1, 2, 3]\n    var total: i32 = 0\n    var shared = values.iterate()\n" +
+            "    loop\n        match shared.next()\n            .Some(let v) => total += v\n            .None => exit\n    require total == 6 else => $abort(\"shared\")\n" +
+            "    match shared.next()\n        .Some(_) => $abort(\"shared exhausted\")\n        .None => ()\n" +
+            "    var exclusive = values.iterateUniq()\n    let first = exclusive.next()\n    let second = exclusive.next()\n" +
+            "    match first@move\n        .Some(let r) => r@follow += 10\n        .None => $abort(\"first\")\n" +
+            "    match second@move\n        .Some(let r) => r@follow += 20\n        .None => $abort(\"second\")\n" +
+            "    match exclusive.next()\n        .Some(let r) => r@follow += 30\n        .None => $abort(\"third\")\n" +
+            "    match exclusive.next()\n        .Some(_) => $abort(\"exhausted\")\n        .None => ()\n" +
+            "    require values[0] == 11 and values[1] == 22 and values[2] == 33 else => $abort(\"values\")\n" +
+            "    var empty: Array<i32> = []\n    var none = empty.iterateUniq()\n    match none.next()\n        .Some(_) => $abort(\"empty\")\n        .None => Console.writeLine(\"boundary\")";
+        ScalarEmissionTest.EmitFixture("StorageBoundaryExplicit", Source, "boundary\n");
+    }
+
     // SPEC 9.3, 22.1.2.5: the boundary is internal to the Kimi Kotonoha; no user source reaches it.
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(values@ref)")]
