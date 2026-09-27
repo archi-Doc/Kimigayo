@@ -133,6 +133,52 @@ public sealed partial class Binding
             };
         }
 
+        private static bool MaySelect(Specialization candidate, BoundCall call)
+        {
+            for (var i = 0; i < call.TypeArguments.Length; i++)
+            {
+                if (call.TypeArguments[i] is { } argument && candidate.Arguments[i] is { } closed && !MayMatch(argument, closed))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < call.LengthArguments.Length; i++)
+            {
+                if (call.LengthArguments[i] is { IsConstant: true } length && !SameLengthSignature(length, candidate.Lengths[i], null!, null!))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool MayMatch(BoundType pattern, BoundType closed)
+        {
+            if (ReferenceEquals(pattern, closed) || pattern.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            {
+                return true;
+            }
+
+            if (pattern.Kind == BoundTypeKind.Primitive || pattern.Kind != closed.Kind || pattern.Semantics != closed.Semantics ||
+                !ReferenceEquals(pattern.Symbol, closed.Symbol) || pattern.Components.Count != closed.Components.Count ||
+                (pattern.LengthExpression is null && pattern.Length != closed.Length))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < pattern.Components.Count; i++)
+            {
+                if (!MayMatch(pattern.Components[i], closed.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private void Access(BoundType? type, LoanRequirement mode, Koto use)
         {
             if (type is not null && this.Type(type)?.Origin is { } origin && this.Conflicts(this.result, origin, mode, use))
@@ -151,12 +197,7 @@ public sealed partial class Binding
 
             if (this.contexts[this.context] is { } outer)
             {
-                if (this.forwardedCount == this.forwarded.Count)
-                {
-                    this.forwarded.Add(new());
-                }
-
-                if (binding.InstantiateForwardedCall(call, outer, this.forwarded[this.forwardedCount++]) is not { } instantiated)
+                if (binding.InstantiateForwardedCall(call, outer, this.NextCall()) is not { } instantiated)
                 {
                     this.valid = false;
                     return;
@@ -180,16 +221,22 @@ public sealed partial class Binding
             }
             else if (call.Target.Declaration is FunctionKoto function)
             {
-                var selected = binding.SelectSpecialization(call) ?? function;
-                this.valid &= selected.Body is not null || selected.ExpressionBody is not null || (selected.IsConstructor && selected.IsGenerated);
-                this.Queue(selected.Body);
-                this.Queue(selected.ExpressionBody);
-                this.Queue(selected.BaseInitializer);
-                if (selected.IsConstructor && call.DeclaringType is { } owner)
+                if (binding.SelectSpecialization(call) is { } selected)
                 {
-                    for (var i = 0; i < StructStorage.Count(owner); i++)
+                    this.Specialization(selected, call);
+                }
+                else
+                {
+                    this.Function(function, call);
+                    if (binding.specializationsByOriginal.TryGetValue(call.Target, out var candidates))
                     {
-                        this.Queue(StructStorage.Field(owner, i).InitializerKoto);
+                        for (var i = 0; i < candidates.Count; i++)
+                        {
+                            if (MaySelect(binding.specializations[candidates[i]], call))
+                            {
+                                this.Specialization(candidates[i], call);
+                            }
+                        }
                     }
                 }
             }
@@ -199,6 +246,42 @@ public sealed partial class Binding
             }
 
             this.context = previous;
+        }
+
+        private BoundCall NextCall()
+        {
+            if (this.forwardedCount == this.forwarded.Count)
+            {
+                this.forwarded.Add(new());
+            }
+
+            return this.forwarded[this.forwardedCount++];
+        }
+
+        private void Specialization(FunctionKoto function, BoundCall call)
+        {
+            // The specialization has its own input/Origin binders but inherits their slots from the original.
+            var specialized = this.NextCall();
+            specialized.Set(function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], conformingType: call.ConformingType, declaringType: call.DeclaringType, origins: call.Origins, inputOrigins: call.InputOrigins);
+            var previous = this.context;
+            this.context = this.Context(specialized);
+            this.Function(function, specialized);
+            this.context = previous;
+        }
+
+        private void Function(FunctionKoto function, BoundCall call)
+        {
+            this.valid &= function.Body is not null || function.ExpressionBody is not null || (function.IsConstructor && function.IsGenerated);
+            this.Queue(function.Body);
+            this.Queue(function.ExpressionBody);
+            this.Queue(function.BaseInitializer);
+            if (function.IsConstructor && call.DeclaringType is { } owner)
+            {
+                for (var i = 0; i < StructStorage.Count(owner); i++)
+                {
+                    this.Queue(StructStorage.Field(owner, i).InitializerKoto);
+                }
+            }
         }
 
         private void Argument(BoundArgumentOperation argument, Koto use)

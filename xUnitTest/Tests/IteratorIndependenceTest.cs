@@ -71,4 +71,48 @@ public class IteratorIndependenceTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
+
+    [Theory]
+    [InlineData("T", "self.value@follow += 1", false)]
+    [InlineData("T", "self.count += 1", true)]
+    [InlineData("bool", "self.value@follow += 1", true)]
+    [InlineData("i32", "self.value@follow += 1", false)]
+    public void GenericCallsCheckEverySelectableSpecialization(string argument, string operation, bool valid)
+    {
+        var source = "struct Cursor<T> {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: uniq/i32 during source\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => " + operation + "\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        self.update<" + argument + ">()\n        return .Some(self.value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        }
+    }
+
+    [Theory]
+    [InlineData("2", true)]
+    [InlineData("3", false)]
+    public void LengthCallsCheckTheSelectedSpecialization(string argument, bool valid)
+    {
+        var source = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: uniq/i32 during source\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => self.value@follow += 1\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        self.update<" + argument + ">()\n        return .Some(self.value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        }
+    }
+
+    [Theory]
+    [InlineData("(T, bool)", false)]
+    [InlineData("(T, i32)", true)]
+    public void CompoundSpecializationKeysKeepTheirFixedParts(string argument, bool valid)
+    {
+        var source = "struct Cursor<T> {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: uniq/i32 during source\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => self.value@follow += 1\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        self.update<" + argument + ">()\n        return .Some(self.value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        }
+    }
 }
