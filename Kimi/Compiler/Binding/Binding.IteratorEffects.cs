@@ -41,6 +41,7 @@ public sealed partial class Binding
     private sealed class IteratorEffects(Binding binding) : KotoVisitor
     {
         private readonly HashSet<(Koto Node, int Context)> seen = new();
+        private readonly HashSet<BoundType> destroyed = new(ReferenceEqualityComparer.Instance);
         private readonly List<(Koto Node, int Context)> pending = new();
         private readonly List<BoundCall?> contexts = new();
         private readonly List<BoundCall> forwarded = new();
@@ -56,13 +57,26 @@ public sealed partial class Binding
                 return;
             }
 
+            if (node is FieldKoto local)
+            {
+                this.Queue(local.InitializerKoto);
+                this.Destruction(local.BoundSymbol?.Type is { } localType ? this.Type(localType) : null, local);
+                return;
+            }
+
             if (node is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals)
             {
                 this.Access(PlaceReference(assignment.Left), LoanRequirement.Uniq, node);
+                this.Setter(assignment.Left, node);
+                if (assignment.Akind == KotoKind.Equals && assignment.Left.BoundType is { } replaced)
+                {
+                    this.Destruction(this.Type(replaced), node);
+                }
             }
             else if (node is UnaryKoto update && ElementAccess.UpdateOperator(update.Akind) != KotoKind.Invalid)
             {
                 this.Access(PlaceReference(update.Operand), LoanRequirement.Uniq, node);
+                this.Setter(update.Operand, node);
             }
             else if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow)
             {
@@ -94,6 +108,16 @@ public sealed partial class Binding
                 this.Call(comparison, node);
             }
 
+            if (binding.PropertyCall(node, PropertyAccessorKind.Get)?.BoundCall is { } getter)
+            {
+                this.Call(getter, node);
+            }
+
+            if (node is InvocationKoto or ConversionKoto { ConversionBinding: ConversionBinding.Transfer } && node.BoundType is { } temporary)
+            {
+                this.Destruction(this.Type(temporary), node);
+            }
+
             node.VisitChildren(this);
         }
 
@@ -102,6 +126,7 @@ public sealed partial class Binding
             this.result = function.BoundSymbol!.Type!;
             this.valid = true;
             this.seen.Clear();
+            this.destroyed.Clear();
             this.pending.Clear();
             this.contexts.Clear();
             this.contexts.Add(null);
@@ -280,6 +305,92 @@ public sealed partial class Binding
                 for (var i = 0; i < StructStorage.Count(owner); i++)
                 {
                     this.Queue(StructStorage.Field(owner, i).InitializerKoto);
+                }
+            }
+
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (function.Parameters[i].Type.BoundType is { } parameter)
+                {
+                    this.Destruction(this.Type(parameter), function);
+                }
+            }
+        }
+
+        private void Setter(Koto target, Koto use)
+        {
+            if (binding.PropertyCall(target, PropertyAccessorKind.Set)?.BoundCall is { } setter)
+            {
+                this.Call(setter, use);
+            }
+        }
+
+        private void Destruction(BoundType? type, Koto use)
+        {
+            if (type is null)
+            {
+                this.valid = false;
+                return;
+            }
+
+            if (!this.destroyed.Add(type))
+            {
+                return;
+            }
+
+            if (ObjectTypes.IsOwner(type))
+            {
+                if (binding.ProveSealed(type.Components[0], use) == ConstraintProof.Proven)
+                {
+                    this.Destruction(type.Components[0], use);
+                }
+                else
+                {
+                    this.valid = false; // An open dynamic destructor has no complete effect bound.
+                }
+
+                return;
+            }
+
+            if (type.Semantics != SemanticsKind.Owner)
+            {
+                return;
+            }
+
+            if (type.Kind == BoundTypeKind.Parameter)
+            {
+                this.valid &= binding.ProveCopy(type, use) == ConstraintProof.Proven;
+            }
+            else if (StructStorage.IsStruct(type))
+            {
+                if (binding.DestructionCall(type) is { } destructor)
+                {
+                    this.Call(destructor, use);
+                }
+
+                for (var i = 0; i < StructStorage.Count(type); i++)
+                {
+                    this.Destruction(StructStorage.FieldType(type, i), use);
+                }
+
+                if (binding.StoredBase(type) is { } parent)
+                {
+                    this.Destruction(parent, use);
+                }
+            }
+            else
+            {
+                for (var i = 0; i < type.Components.Count; i++)
+                {
+                    this.Destruction(type.Components[i], use);
+                }
+
+                if (type.StoredCases is { } cases)
+                {
+                    for (var i = 0; i < cases.Length; i++)
+                    {
+                        this.Destruction(cases[i], use);
+                    }
                 }
             }
         }
