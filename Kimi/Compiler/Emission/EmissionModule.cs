@@ -360,9 +360,12 @@ internal enum ArrayHelperKind : byte
     IteratorDrop,
     Swap,
 
-    // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder record.
+    // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder records.
     BorrowStorage,
     SplitFirst,
+    OwnStorage,
+    TakeFirst,
+    OwnedDrop,
 }
 
 /// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>

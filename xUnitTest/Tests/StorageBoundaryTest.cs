@@ -48,15 +48,27 @@ public class StorageBoundaryTest
         ScalarEmissionTest.EmitFixture("StorageBoundaryExplicit", Source, "boundary\n");
     }
 
-    // The owning entry binds and verifies through the owning remainder; its lowering is a separate unit, so generation
-    // still rejects it with a diagnosis instead of leaking the unreturned elements.
+    // The owning entry transfers each element out once and stays exhausted; retained items are owned values.
     [Fact]
-    public void TheOwningEntryBindsButIsNotLoweredYet()
+    public void OwningIterationExecutes()
     {
-        var c = MinimalEmissionTest.Analyze(Values + "var it = (values@move).intoIterator()\nlet p = it.next()\nlet q = it.next()\nmatch p\n    .Some(_) => ()\n    .None => ()\nmatch q\n    .Some(_) => ()\n    .None => ()");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out var error));
-        Assert.Contains("owning storage boundary", error);
+        const string Source = "public func main()\n    var values: Array<i32> = [1, 2, 3]\n    var it = (values@move).intoIterator()\n    let first = it.next()\n    let second = it.next()\n    var total: i32 = 0\n" +
+            "    match first\n        .Some(let n) => total += n\n        .None => $abort(\"first\")\n    match second\n        .Some(let n) => total += n\n        .None => $abort(\"second\")\n" +
+            "    match it.next()\n        .Some(let n) => total += n\n        .None => $abort(\"third\")\n    match it.next()\n        .Some(_) => $abort(\"exhausted\")\n        .None => ()\n" +
+            "    require total == 6 else => $abort(\"total\")\n    var empty: Array<i32> = []\n    var none = (empty@move).intoIterator()\n    match none.next()\n        .Some(_) => $abort(\"empty\")\n        .None => Console.writeLine(\"owned\")";
+        ScalarEmissionTest.EmitFixture("StorageBoundaryOwned", Source, "owned\n");
+    }
+
+    // SPEC 4.7.6, 22.1.2.5: a taken element is destroyed by its owner; the unreturned elements are destroyed with the
+    // iterator in reverse index order, then the buffer is released.
+    [Fact]
+    public void OwningIteratorDestroysUnreturnedElements()
+    {
+        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped \\(self.id)\")\n" +
+            "public func main()\n    var items: Array<Tracked> = [Tracked.init(1), Tracked.init(2), Tracked.init(3), Tracked.init(4)]\n    var it = (items@move).intoIterator()\n" +
+            "    match it.next()\n        .Some(let t) => require t.id == 1 else => $abort(\"first\")\n        .None => $abort(\"empty\")\n" +
+            "    match it.next()\n        .Some(let t) => require t.id == 2 else => $abort(\"second\")\n        .None => $abort(\"empty\")\n    Console.writeLine(\"Stop.\")";
+        ScalarEmissionTest.EmitFixture("StorageBoundaryOwnedDrop", Source, "Dropped 1\nDropped 2\nStop.\nDropped 4\nDropped 3\n");
     }
 
     // SPEC 9.3, 22.1.2.5: the boundary is internal to the Kimi Kotonoha; no user source reaches it.

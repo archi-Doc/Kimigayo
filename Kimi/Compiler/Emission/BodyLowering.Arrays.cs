@@ -70,9 +70,18 @@ internal sealed partial class BodyLowering
              body.Places[body.Constructions[this.payloadOwners[place]].Place].Source is ArrayLiteralKoto { FillLength: not null });
 
     // SPEC 4.5, 16.3.2: the drop helper that destroys an Array field's elements and releases its buffer with the containing struct.
+    // An Array handle drops its elements and buffer; an owning remainder (SPEC 22.1.2.5) drops its unreturned range.
     private string? ArrayFieldDrop(BoundType array)
-        => array.Kind == BoundTypeKind.Array && array.Components.Count == 1 && this.TryGetArrayElement(array.Components[0], out var element)
+    {
+        if (array.Symbol?.LibraryDeclaration == KimiDeclarationId.OwnedRemainder)
+        {
+            return array.Components is [{ Kind: BoundTypeKind.Array, Components: [var owned] }] && this.TryGetArrayElement(owned, out var unreturned)
+                ? this.GetArrayHelper(ArrayHelperKind.OwnedDrop, unreturned).Abi.Name : null;
+        }
+
+        return array.Kind == BoundTypeKind.Array && array.Components.Count == 1 && this.TryGetArrayElement(array.Components[0], out var element)
             ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi.Name : null;
+    }
 
     private bool TryGetArrayElement(BoundType type, out ArrayElement element, bool allowEmpty = false)
     {
@@ -144,6 +153,9 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Swap => "__kimi_array_swap_",
             ArrayHelperKind.BorrowStorage => "__kimi_array_borrow_",
             ArrayHelperKind.SplitFirst => "__kimi_array_split_",
+            ArrayHelperKind.OwnStorage => "__kimi_array_own_",
+            ArrayHelperKind.TakeFirst => "__kimi_array_take_first_",
+            ArrayHelperKind.OwnedDrop => "__kimi_array_owned_drop_",
             _ => "__kimi_array_drop_",
         };
         var name = prefix + suffix + records;
@@ -167,7 +179,8 @@ internal sealed partial class BodyLowering
                 : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.SplitFirst => new(name, unit, [new("ptr", "state"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.SplitFirst or ArrayHelperKind.TakeFirst => new(name, unit, [new("ptr", "state"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             _ => new(name, unit, [handle, location, length]),
         };
         var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder);
@@ -336,21 +349,21 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
-        var borrow = plan.Target.CompilerFunction is CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive;
-        if (plan.Target.CompilerFunction is CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageTakeFirst)
-        {
-            return Fail("The owning storage boundary is not lowered yet.", out failure);
-        }
-
+        var kind = plan.Target.CompilerFunction;
+        var borrow = kind is CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageOwn;
+        var owning = kind is CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageTakeFirst;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1)
         {
             return Fail("Storage operation has an unsupported argument plan.", out failure);
         }
 
-        // A reference parameter is Copied, Reborrowed or borrowed from its Place; every form supplies the pointer.
-        if (plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } argumentType)
+        // A reference parameter is Copied, Reborrowed or borrowed from its Place, and every form supplies the pointer;
+        // ownStorage takes the Array's acquired slot.
+        var argumentType = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
+        var referent = kind == CompilerFunctionKind.StorageOwn ? argumentType : argumentType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var target0] } ? target0 : null;
+        if (referent is null || argumentType is null || plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
+            (kind == CompilerFunctionKind.StorageOwn && plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value))
         {
             return Fail("Storage operation has an unsupported argument acquisition.", out failure);
         }
@@ -371,7 +384,21 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (!this.ScalarArrayArgument(body, id, 0, argumentType, out var pointer))
+        EmissionOperand pointer;
+        if (kind == CompilerFunctionKind.StorageOwn)
+        {
+            // The Array's acquired slot is transferred into the remainder; the call consumes it (SPEC 22.1.2.5).
+            var entry = this.parameterArguments[0];
+            var place = entry < 0 ? -1 : body.Operations[entry].Place;
+            if (place < 0 || !ReferenceTypes.StorageMatches(argumentType, body.Places[place].Type) || !this.IsSlotValue(body.Places[place]) ||
+                (body.IsReachable(entry) && (body.GetInputState(entry, place) & PlaceState.MustInit) == 0))
+            {
+                return Fail("Storage operation argument is not an initialized acquired Array.", out failure);
+            }
+
+            pointer = new(EmissionOperandKind.SlotAddress, place);
+        }
+        else if (!this.ScalarArrayArgument(body, id, 0, argumentType, out pointer))
         {
             return Fail("Storage operation argument borrow is unavailable at the call.", out failure);
         }
@@ -383,13 +410,22 @@ internal sealed partial class BodyLowering
             return Fail(failure ?? "Storage operation result is not a stored record.", out failure);
         }
 
+        // The owning helpers and the remainder's drop share the record shape {storage, position, count, capacity}.
         var remainder = borrow ? result : this.aggregateLayouts.Get(referent);
-        if (remainder is not { Fields.Length: 3, IsArray: false } || (!borrow && result.Cases?.Length != 2))
+        if (remainder is not { IsArray: false } || remainder.Fields.Length != (owning ? 4 : 3) || (!borrow && result.Cases?.Length != 2) ||
+            (owning && (remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24)))
         {
             return Fail("Storage operation records do not have the boundary's shape.", out failure);
         }
 
-        var helper = this.GetArrayHelper(borrow ? ArrayHelperKind.BorrowStorage : ArrayHelperKind.SplitFirst, element, borrow ? null : result, remainder);
+        this.arrayRuntimeUsed |= owning;
+        var helperKind = kind switch
+        {
+            CompilerFunctionKind.StorageOwn => ArrayHelperKind.OwnStorage,
+            CompilerFunctionKind.StorageTakeFirst => ArrayHelperKind.TakeFirst,
+            _ => borrow ? ArrayHelperKind.BorrowStorage : ArrayHelperKind.SplitFirst,
+        };
+        var helper = this.GetArrayHelper(helperKind, element, borrow ? null : result, remainder);
         this.callOperands.Clear();
         this.callOperands.Add(pointer);
         this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
