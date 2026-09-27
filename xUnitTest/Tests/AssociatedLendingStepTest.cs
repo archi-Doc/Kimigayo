@@ -45,6 +45,21 @@ public class AssociatedLendingStepTest
         ScalarEmissionTest.EmitFixture("AssociatedOriginLendingTransfers" + (generic ? "Generic" : "Concrete"), source, "transfers\n");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LendingItemCannotEscapeItsLocalIterator(bool generic)
+    {
+        var next = generic ? "advance(iterator@uniq)" : "iterator.next()";
+        var source = Declarations + "func escape() -> ref/i32 during static\n    var iterator = Counter.init()\n    return " + next + "\nlet item = escape()\nlet observed: i32 = item";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.True(c.Binding.Issues.Count != 0 || c.Ownership.Issues.Count != 0, MinimalEmissionTest.Describe(c, null));
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+    }
+
     [Fact]
     public void RepeatedLendingStepsReuseLoansAndAllocateNothing()
     {
