@@ -71,6 +71,42 @@ public class UserIterationTest
         => ScalarEmissionTest.EmitFixture("UserIterationCounter", Counter + Three + "var total: i32 = 0\nfor item in Three.init()\n    total += item\nrequire total == 6 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n");
 
     [Fact]
+    public void WarmUserIterationCompilationReusesItsPlans()
+    {
+        const string Source = Counter + Three + "func count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Three.init()) == 3 else => $abort(\"count\")";
+        var c = MinimalEmissionTest.Analyze(Source);
+        for (var i = 0; i < 100; i++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            c.Binding.CheckStartup(OutputKind.Application);
+            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        }
+
+        var success = true;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 128; i++)
+        {
+            success &= c.Bind().IsComplete;
+        }
+
+        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        c.Binding.CheckStartup(OutputKind.Application);
+        before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 128; i++)
+        {
+            success &= c.Ownership.Analyze().IsVerified;
+            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+        }
+
+        var generationBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(success);
+        Assert.Equal(0, bindingBytes);
+        Assert.Equal(0, generationBytes);
+        NativeAllocationAudit.WriteFixture("UserIterationCost", Source, 0, 0, 0);
+    }
+
+    [Fact]
     public void EntryConstraintDispatchesInAGenericBody()
         => ScalarEmissionTest.EmitFixture("UserIterationConstraint", Counter + Three + "func count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Three.init()) == 3 else => $abort(\"count\")\nConsole.writeLine(\"ok\")", "ok\n");
 
