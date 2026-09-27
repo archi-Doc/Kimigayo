@@ -25,6 +25,25 @@ public sealed partial class Binding
             _ => null,
         };
 
+    // Whether `type` is the stored Type or one of the Type arguments stored in it, through nested value layers.
+    private static bool StoresTypeArgument(BoundType stored, BoundType type)
+    {
+        if (ReferenceEquals(stored, type))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < stored.Components.Count; i++)
+        {
+            if (StoresTypeArgument(stored.Components[i], type))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private BindingScope AssociatedFormationScope(BoundConformancePath path, BindingSymbol? associated, BindingScope scope)
     {
         if (associated is not { Kind: BindingSymbolKind.AssociatedType } || this.AssociatedParameters(associated.Declaration).Length == 0 ||
@@ -178,10 +197,12 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 8.1.2, 15.3.1: a well-formed borrow `s/X during o` needs every dependency of X to outlive o, so it proves that X and
+    // each Type argument stored in X outlive `outer` when o does (an input `uniq/W<I> during step` proves I during step).
     private bool ProvesBorrowedTypeLifetime(BoundType premise, BoundType type, BoundOrigin outer, Koto use)
     {
         if ((IsBorrow(premise.Semantics) || premise.Kind == BoundTypeKind.Slice) && premise.Origin is { } origin && premise.Components.Count != 0 &&
-            ReferenceEquals(premise.Components[0], type) && this.ProvesOriginOutlives(origin, outer, use))
+            StoresTypeArgument(premise.Components[0], type) && this.ProvesOriginOutlives(origin, outer, use))
         {
             return true;
         }

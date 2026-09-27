@@ -54,9 +54,11 @@ public sealed partial class Binding
                 HasSupportedAssociatedFormation(type.Components[0]);
         }
 
-        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice ||
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.AssociatedProjection ||
             (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto or EnumKoto))
         {
+            // A forwarded family, `I.(C).Item(a)`, applies the specification's own parameters to another family; its
+            // formation conditions are that family's, checked at each application (SPEC 8.4.3).
             for (var i = 0; i < type.Components.Count; i++)
             {
                 if (!HasSupportedAssociatedFormation(type.Components[i]))

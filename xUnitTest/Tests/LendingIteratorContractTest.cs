@@ -27,4 +27,16 @@ public class LendingIteratorContractTest
         Assert.False(c.Ownership.Result.IsVerified);
         Assert.NotEmpty(c.Ownership.Issues);
     }
+
+    // SPEC 8.1.2, 15.3.1: a wrapper stores its inner LendingIterator and forwards its lending family: the receiver borrow
+    // `uniq/Wrapper<I> during step` proves that I lives during step, so `I.(LendingIterator).LentItem(step)` is well formed.
+    [Fact]
+    public void AWrapperForwardsTheLendingFamilyOfItsParameter()
+    {
+        const string Wrapper = "struct Wrapper<I>\n    I is LendingIterator\n    Self is LendingIterator\n    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n    var inner: I\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self during step) -> Option<I.(LendingIterator).LentItem(step)>\n        return self.inner.next()\n";
+        var source = Counter + Wrapper + "var wrapper = Wrapper<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match wrapper.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 3 else => $abort(\"wrapper\")\nConsole.writeLine(\"forwarded\")";
+        ScalarEmissionTest.EmitFixture("LendingIteratorWrapper", source, "forwarded\n");
+    }
 }

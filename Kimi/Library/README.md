@@ -18,6 +18,7 @@ embedded, validated and implemented.
   user witnesses use ordinary calls with the same ownership and effect checks.
 - Dictionary algorithms belong in Kimigayo sources; see the implementation
   boundary below. Private storage functions are not public library APIs.
+- `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owned`, `borrowed`, `Owned<I>`, `Borrowed<I>`) as ordinary Kimigayo.
 - `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi` and `StorageOperations.kimi` contain signatures without source bodies.
   Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, or the
   internal `Storage` group of `Storage.kimi` for the standard storage boundary; a struct also admits bodiless `init` signatures). Only catalog-registered compiler
