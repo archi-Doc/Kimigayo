@@ -52,6 +52,24 @@ public class UserIterationTest
     public void GenericBorrowedItemKeepsItsExternalSource()
         => ScalarEmissionTest.EmitFixture("UserIterationBorrowed", Drain + "func inspect(n: ref/i32 during a)\n    for item in Batch<ref/i32 during a>.init(n)\n        require item == 7 else => $abort(\"borrow\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")", "ok\n");
 
+    [Fact]
+    public void SharedTupleItemBorrowsItsComponents()
+        => ScalarEmissionTest.EmitFixture("UserIterationSharedTuple", Drain + "func inspect(row: ref/(i32, bool) during a)\n    for (number, flag) in Batch<ref/(i32, bool) during a>.init(row)\n        require number == 7 and flag else => $abort(\"tuple\")\nlet row = (7, true)\ninspect(row@ref)\nConsole.writeLine(\"ok\")", "ok\n");
+
+    [Fact]
+    public void ExclusiveTupleItemLendsSeparateComponents()
+        => ScalarEmissionTest.EmitFixture("UserIterationExclusiveTuple", Drain + "func update(row: uniq/(i32, i32) during a)\n    for (first, second) in Batch<uniq/(i32, i32) during a>.init(row@move)\n        first@follow += 1\n        second@follow += first\nvar row = (7, 2)\nupdate(row@uniq)\nrequire row.0 == 8 and row.1 == 10 else => $abort(\"tuple\")\nConsole.writeLine(\"ok\")", "ok\n");
+
+    [Theory]
+    [InlineData("first@follow = 9", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("first = 9", DiagnosticCode.SharedBindingAssignment_Kd)]
+    public void SharedTupleComponentsKeepTheirCapabilities(string update, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(Drain + "func inspect(row: ref/(i32, i32) during a)\n    for (first, second) in Batch<ref/(i32, i32) during a>.init(row)\n        " + update);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
+    }
+
     [Theory]
     [InlineData("Fallthrough", "Console.writeLine(\"body\")", "body\nitem\niterator\ndone\n")]
     [InlineData("Continue", "Console.writeLine(\"body\")\n    continue", "body\nitem\niterator\ndone\n")]

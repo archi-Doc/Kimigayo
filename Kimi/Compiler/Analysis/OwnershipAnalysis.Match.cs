@@ -479,7 +479,7 @@ public sealed partial class OwnershipAnalysis
                     continue;
                 }
 
-                var local = this.LocalPlace(binding.BodySymbol, binding.Source, binding.BodySymbol!.Type, binding.Source is SyntaxFormKoto { IsMutablePattern: true }, AcquisitionKind.Copy);
+                var local = this.LocalPlace(binding.BodySymbol, binding.Source, binding.BodySymbol!.Type, Binding.IsMutableDeclaration(binding.Source), AcquisitionKind.Copy);
                 this.Emit(OwnershipOperationKind.Declare, binding.Source, local);
                 this.locals.Add(new(local, binding.Source, this.registrationSequence++));
                 var acquire = this.Emit(OwnershipOperationKind.AcquirePattern, binding.Source, input, local, AcquisitionKind.Copy);

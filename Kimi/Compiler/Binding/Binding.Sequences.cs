@@ -124,7 +124,7 @@ public sealed partial class Binding
             }
 
             name.BoundSymbol!.Type = slot;
-            name.BoundSymbol.BindsReference = source.Mode != SubjectMode.ByValue;
+            name.BoundSymbol.BindsReference = sharedTuple || source.Mode != SubjectMode.ByValue;
             Complete(name, slot);
         }
 
@@ -230,25 +230,28 @@ public sealed partial class Binding
         Complete(some, option);
         Complete(none, option);
         var end = source.IsTupleBinding ? source.Bindings.Count + 2 : 2;
+        var borrowedTuple = source.IsTupleBinding && ReferenceTypes.IsTuple(item);
+        var tuple = borrowedTuple ? item.Components[0] : item;
+        var access = borrowedTuple ? item.Semantics == SemanticsKind.Uniq ? PatternAccessMode.Exclusive : PatternAccessMode.Shared : PatternAccessMode.Owned;
         match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: Compiler.EnumStorage.Case(option, 0)));
         if (source.IsTupleBinding)
         {
-            if (item.Kind != BoundTypeKind.Tuple)
+            if (tuple.Kind != BoundTypeKind.Tuple || tuple.Components.Count != source.Bindings.Count)
             {
-                match.IsCurrent = false; // Reference Tuple decomposition is added with its selected access path.
+                match.IsCurrent = false;
                 return;
             }
 
-            match.PositionStorage.Add(new(plan.Item, item, BoundPatternKind.Tuple, 0, 0, end));
+            match.PositionStorage.Add(new(plan.Item, item, BoundPatternKind.Tuple, 0, 0, end, AccessMode: access, ImplicitFollows: borrowedTuple ? 1 : 0));
         }
 
         for (var i = 0; i < source.Bindings.Count; i++)
         {
             var name = source.Bindings[i];
-            var type = name.BoundType!;
+            var type = borrowedTuple ? tuple.Components[i] : name.BoundType!;
             var proof = this.ProveCopy(type, name);
-            var acquisition = proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.CopyOrMove;
-            match.PositionStorage.Add(new(name, type, BoundPatternKind.Binding, source.IsTupleBinding ? 1 : 0, source.IsTupleBinding ? i : 0, match.Positions.Count + 1, BodySymbol: name.BoundSymbol, Acquisition: acquisition, WholePosition: true));
+            var acquisition = borrowedTuple ? PatternAcquisition.Borrow : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.CopyOrMove;
+            match.PositionStorage.Add(new(name, type, BoundPatternKind.Binding, source.IsTupleBinding ? 1 : 0, source.IsTupleBinding ? i : 0, match.Positions.Count + 1, BodySymbol: name.BoundSymbol, Acquisition: acquisition, WholePosition: true, AccessMode: access));
         }
 
         match.PositionStorage.Add(new(none, option, BoundPatternKind.Case, -1, -1, end + 1, Case: Compiler.EnumStorage.Case(option, 1)));
