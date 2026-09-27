@@ -622,7 +622,7 @@ public sealed partial class Binding
 
         if (symbol.Kind == BindingSymbolKind.AssociatedType)
         {
-            if (!applyingOrigins && this.AssociatedParameters(symbol.Declaration).Length != 0)
+            if (this.UnappliedFamily(symbol.Declaration, applyingOrigins))
             {
                 return Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
@@ -642,7 +642,7 @@ public sealed partial class Binding
             syntax.BoundSymbol = symbol;
 
             var projected = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self]);
-            return this.bindingConstraintTypes || applyingOrigins ? projected : this.ContractType(projected, scope);
+            return this.NormalizedProjection(projected, scope, applyingOrigins);
         }
 
         if (symbol.Kind == BindingSymbolKind.SemanticsTarget && !IsDirectObjectTarget(syntax))

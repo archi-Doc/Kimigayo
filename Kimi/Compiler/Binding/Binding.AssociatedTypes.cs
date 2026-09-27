@@ -144,7 +144,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (!applyingOrigins && this.AssociatedParameters(associated.Declaration).Length != 0)
+        if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
         {
             return Fail(syntax, BindingFailure.InvalidAssociatedType);
         }
@@ -167,8 +167,16 @@ public sealed partial class Binding
             Complete(syntax.Left, type);
         }
 
-        return this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
+        return this.NormalizedProjection(projection, scope, applyingOrigins);
     }
+
+    // SPEC 8.4.3: a family with Origin parameters names a Type only once its Origin arguments are applied.
+    private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;
+
+    // A projection is normalized through the available Constraints, except while Constraint Types are bound or before the
+    // Origin arguments that the caller applies.
+    private BoundType NormalizedProjection(BoundType projection, BindingScope scope, bool applyingOrigins)
+        => this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
 
     private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope, out Koto? receiver)
     {
@@ -479,7 +487,7 @@ public sealed partial class Binding
 
                 foreach (var fact in environment.Facts)
                 {
-                    if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && fact.RequiredType is { Kind: not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) } required)
+                    if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && this.AvailableConstraintFact(environment, fact) && stated is { Kind: not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) } required)
                     {
                         return this.IsAssociatedCore(required, scope);
                     }
@@ -556,13 +564,8 @@ public sealed partial class Binding
 
                     foreach (var fact in environment.Facts)
                     {
-                        if (fact.Kind == ConstraintKind.TypeIdentity && AssociatedIdentityMatches(fact.Subject, result) && this.AvailableConstraintFact(environment, fact) && fact.RequiredType is { } required)
+                        if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, result, out var required) && this.AvailableConstraintFact(environment, fact) && required is not null)
                         {
-                            if (result.Kind == BoundTypeKind.AssociatedProjection && result.OriginArguments.Count != 0)
-                            {
-                                required = this.SubstituteStoredOrigins(required, result.Symbol!.Declaration, (BoundOrigin[])result.OriginArguments);
-                            }
-
                             return this.ContractType(required, scope, self);
                         }
                     }

@@ -121,6 +121,16 @@ public class AssociatedOriginBindingTest
         ScalarEmissionTest.EmitFixture("AssociatedOriginGeneric", source, "generic family\n");
     }
 
+    // SPEC 8.4.3: a universal family capability holds at every application, so a Copy of T.Item(b) is proven from it.
+    [Fact]
+    public void UniversalFamilyCapabilityHoldsAtEveryApplication()
+    {
+        const string source = "contract C\n    associate Item(step) is Copy\n    func get(self: ref/Self during step) -> Self.Item(step)\n" +
+            "func twice<T>(x: ref/T during b) -> (T.(C).Item(b), T.(C).Item(b))\n    T is C\n    let v = x.get()\n    return (v, v)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("\n    origin a outlives b")]

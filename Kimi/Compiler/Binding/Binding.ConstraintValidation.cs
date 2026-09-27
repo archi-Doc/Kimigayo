@@ -456,7 +456,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, type) && fact.RequiredType is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && required.Symbol.ObjectPayloadOptOut is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
+                if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && required.Symbol.ObjectPayloadOptOut is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
                 {
                     return true;
                 }

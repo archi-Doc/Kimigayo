@@ -7,6 +7,20 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 8.1: length slots belong only to functions; a nominal header with one is invalid, but its recovery Type is kept.
+    private static bool HasLengthParameter(DeclarationContainerKoto container)
+    {
+        for (var i = 0; i < container.GenericParameterNodes.Count; i++)
+        {
+            if (container.GenericParameterNodes[i] is LengthParameterKoto)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
 
     private static bool IsExclusive(SemanticsKind semantics) => semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
@@ -256,14 +270,9 @@ public sealed partial class Binding
                 }
 
                 parameters = container.GenericParameterNodes;
-                for (var i = 0; i < parameters.Count; i++)
+                if (HasLengthParameter(container))
                 {
-                    if (parameters[i] is LengthParameterKoto)
-                    {
-                        // SPEC 8.1: length slots belong only to functions. Keep the invalid header for recovery.
-                        Fail(node, BindingFailure.InvalidTypeFormation);
-                        break;
-                    }
+                    Fail(node, BindingFailure.InvalidTypeFormation); // The invalid header is kept for recovery.
                 }
 
                 origins = container.OriginNames;

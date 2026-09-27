@@ -474,13 +474,13 @@ public sealed partial class Binding
                 }
 
                 var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
-                if (!ReferenceEquals(fact.Subject, work.Type) && !appliedSemantics)
+                if (!this.FactStates(fact, work.Type, out var stated) && !appliedSemantics)
                 {
                     continue;
                 }
 
                 var evidence = ConstraintProof.Unknown;
-                if (fact.Kind == ConstraintKind.TypeIdentity && fact.RequiredType is { } required)
+                if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
                 {
                     evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, required, contract: work.Intrinsic)), work.Scope);
                 }

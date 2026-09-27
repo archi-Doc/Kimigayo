@@ -90,6 +90,29 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 8.4.3, 8.7: whether a fact states `type`: its own subject, or a universal family pattern that holds at every
+    // application, including the Origins of `type`. `required` is the fact's Type at those Origins.
+    private bool FactStates(BoundConstraint fact, BoundType type, out BoundType? required)
+    {
+        required = fact.RequiredType;
+        if (ReferenceEquals(fact.Subject, type))
+        {
+            return true;
+        }
+
+        if (!AssociatedIdentityMatches(fact.Subject, type))
+        {
+            return false;
+        }
+
+        if (required is not null)
+        {
+            required = this.SubstituteStoredOrigins(required, type.Symbol!.Declaration, (BoundOrigin[])type.OriginArguments);
+        }
+
+        return true;
+    }
+
     // A universal family capability is applied at the same Origins as its subject projection.
     private BindingSymbol AppliedAssociatedContract(BoundConstraint fact, BoundType subject)
     {
