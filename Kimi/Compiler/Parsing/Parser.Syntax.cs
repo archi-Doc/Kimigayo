@@ -235,7 +235,7 @@ public static partial class Parser
                 continue;
             }
 
-            if (!IsTypeConstraintStart(ref reader))
+            if (!IsTypeConstraintStart(ref reader, declarationContext: true))
             {
                 reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "constraint");
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);

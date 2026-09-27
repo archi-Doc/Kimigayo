@@ -93,4 +93,22 @@ public class AssociatedOriginBorrowTest
         ParseTestHelper.ParseSuccess(source);
         Assert.False(MinimalEmissionTest.Analyze(source).Binding.Result.IsComplete);
     }
+
+    [Fact]
+    public void EditingApplicationRevokesAndRestoresTheOriginCertificate()
+    {
+        var c = MinimalEmissionTest.Analyze(SharedFamily + "let value = 7\nlet result = f(value@ref)");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var application = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginApplicationKoto>().Single(x => x.Type is MemberAccessKoto);
+        var original = application.ArgumentNodes.Single();
+        var donor = ParseTestHelper.ParseSuccess(SharedFamily.Replace("Item(source)", "Item(static)", StringComparison.Ordinal));
+        var replacement = KotoTree.Walk(donor.RootKoto).OfType<OriginApplicationKoto>().Single(x => x.Type is MemberAccessKoto).ArgumentNodes.Single();
+        Assert.True(KotoHelper.Replace(application, original, replacement));
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+        Assert.False(c.Bind().IsComplete);
+        Assert.True(KotoHelper.Replace(application, replacement, original));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
 }

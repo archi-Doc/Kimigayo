@@ -25,4 +25,16 @@ public sealed class OriginApplicationKoto : ApplicationKoto
         this.Type.WriteTo(ref builder);
         this.WriteArgumentsTo(ref builder, '(', ')');
     }
+
+    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
+    {
+        if (!base.ReplaceChildCore(oldKoto, newKoto))
+        {
+            return false;
+        }
+
+        // A changed Origin application invalidates result Types and their lifetime certificates.
+        this.CodeContext.Compilation.InvalidateSourceAnalysis();
+        return true;
+    }
 }

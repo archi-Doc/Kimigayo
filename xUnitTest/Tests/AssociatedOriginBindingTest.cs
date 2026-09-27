@@ -26,6 +26,7 @@ public class AssociatedOriginBindingTest
     [InlineData("S.Item(missing)")]
     [InlineData("S.Item(_)")]
     [InlineData("S(source)")]
+    [InlineData("S.C.Item(source)")]
     public void InvalidApplicationsDoNotBind(string result)
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during source) -> " + result + " => 42");
@@ -120,5 +121,17 @@ public class AssociatedOriginBindingTest
     {
         const string source = "contract C\n    associate Item(a) is i32\n    func get(self: ref/Self during a) -> Self.Item(a)\nstruct S\n    Self is C\n    public init() => ()\n    public func get(self: ref/Self during b) -> i32 => 42\nfunc read<T>(x: ref/T during a) -> T.(C).Item(a)\n    T is C\n    return x.get()\nlet value = S.init()\nrequire read(value@ref) == 42 else => $abort(\"generic family\")\nConsole.writeLine(\"generic family\")";
         ScalarEmissionTest.EmitFixture("AssociatedOriginGeneric", source, "generic family\n");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("\n    origin a outlives b")]
+    [InlineData("\n    T.Item(a) is i32")]
+    public void UnknownFamilyDoesNotAssumeCovarianceOrUniversalIdentity(string condition)
+    {
+        var source = "contract C\n    associate Item(step)\nfunc f<T>(x: ref/i32 during a, y: ref/i32 during b, value: T.Item(a)) -> T.Item(b)\n    T is C" + condition + "\n    return value@move";
+        ParseTestHelper.ParseSuccess(source);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
     }
 }

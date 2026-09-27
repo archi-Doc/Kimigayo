@@ -2487,6 +2487,23 @@ CloseParameters:
         return reader.PeekKind(offset) == TokenKind.Is;
     }
 
+    private static bool IsFunctionConstraintStart(ref TokenReader reader, FunctionKoto function)
+    {
+        if (IsTypeConstraintStart(ref reader))
+        {
+            return true;
+        }
+
+        // Only a declared Type-parameter root selects the extended Type grammar here. Value calls remain expressions.
+        if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+        {
+            return false;
+        }
+
+        var name = reader.GetIdentifier(reader.CurrentToken);
+        return (function.IsGenericParameter(name) || function.IsDeclaringTypeParameter(name)) && IsTypeConstraintStart(ref reader, declarationContext: true);
+    }
+
     /// <summary>Parses an indentation-delimited expression block.</summary>
     /// <param name="reader">The token reader positioned at <see cref="TokenKind.StartBlock"/>.</param>
     /// <returns>The parsed block.</returns>
@@ -2588,7 +2605,7 @@ CloseParameters:
                 continue;
             }
 
-            if (function is not null && (function.GenericArguments.Count > 0 || function.HasGenericDeclaringType) && IsTypeConstraintStart(ref reader))
+            if (function is not null && (function.GenericArguments.Count > 0 || function.HasGenericDeclaringType) && IsFunctionConstraintStart(ref reader, function))
             {
                 // A root-qualified subject is never a generic parameter; do not read "::" as an identifier.
                 var rootQualified = reader.CurrentTokenKind == TokenKind.ColonColon;

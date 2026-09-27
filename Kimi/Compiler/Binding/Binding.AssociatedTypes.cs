@@ -95,6 +95,11 @@ public sealed partial class Binding
         BindingSymbol? qualifier = null;
         if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope, out var baseSyntax) is { Declaration: ContractKoto } contract)
         {
+            if (applyingOrigins && qualified.Right is not ParenthesizedTypeKoto)
+            {
+                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+            }
+
             qualifier = contract;
             receiver = baseSyntax!;
             qualified.Right.BoundSymbol = contract;
