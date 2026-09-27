@@ -81,6 +81,35 @@ public sealed class LspDocumentTest
     }
 
     [Fact]
+    public void IncrementalLineStartsMatchAFullRebuild()
+    {
+        var random = new Random(23);
+        var alphabet = new[] { 'a', 'b', '\r', '\n' };
+        using var document = new TextDocument("a\r\nb\rc\n");
+        for (var step = 0; step < 5000; step++)
+        {
+            var starts = document.LineStarts;
+            var startLine = random.Next(starts.Length);
+            var endLine = random.Next(startLine, starts.Length);
+            var startCharacter = random.Next(4);
+            var endCharacter = endLine == startLine ? random.Next(startCharacter, 5) : random.Next(5);
+            var inserted = new char[random.Next(4)];
+            for (var i = 0; i < inserted.Length; i++)
+            {
+                inserted[i] = alphabet[random.Next(alphabet.Length)];
+            }
+
+            if (document.TryApply(new(startLine, startCharacter), new(endLine, endCharacter), inserted) && document.Length > 200)
+            {
+                document.Replace(document.ToString()[..50]);
+            }
+
+            using var rebuilt = new TextDocument(document.ToString());
+            Assert.Equal(rebuilt.LineStarts.ToArray(), document.LineStarts.ToArray());
+        }
+    }
+
+    [Fact]
     public void ReplacementsSpanningLinesKeepLaterLines()
     {
         using var document = new TextDocument("first\nsecond\nthird\n");

@@ -36,7 +36,7 @@ public sealed class LspServer
         var session = new LspSession(sender, static check => Task.Run(check.Run), item => writer.TryWrite(item));
         configure?.Invoke(session);
         using var timer = new Timer(static state => ((ChannelWriter<object>)state!).TryWrite(CheckTimer.Instance), writer, Timeout.Infinite, Timeout.Infinite);
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var receive = Receive(new(input), writer, stop.Token);
         try
         {
@@ -57,9 +57,10 @@ public sealed class LspServer
         {
         }
 
+        // Exit waits for neither a running check nor the receive loop: a console read ignores cancellation.
         writer.TryComplete();
         await stop.CancelAsync().ConfigureAwait(false);
-        await receive.ConfigureAwait(false);
+        _ = receive.ContinueWith(static (_, state) => ((CancellationTokenSource)state!).Dispose(), stop, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         await sender.DrainAsync().ConfigureAwait(false);
         return session.ExitCode;
     }

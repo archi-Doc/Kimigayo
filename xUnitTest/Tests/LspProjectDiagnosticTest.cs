@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -142,14 +143,63 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Test {WindowsProfile.Target}): Completed"));
     }
 
+    [Fact]
+    public async Task SeveralTargetsWithoutTheHostAskForASelection()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), "Targets={\"x86_64-unknown-linux-gnu\", \"aarch64-unknown-linux-gnu\"}");
+        await using var client = new LspTestClient();
+        await client.InitializeAsync();
+        await client.OpenAsync(this.PathOf("App", "main.kimi"), Valid);
+        var diagnostics = await client.PublishAsync(project);
+        Assert.Equal("TargetSelectionRequired_Kd", diagnostics[0].GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task SessionTargetsSelectTheProductUnits()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), $"Targets={{\"{WindowsProfile.Target}\", \"x86_64-unknown-linux-gnu\"}}");
+        await using (var client = new LspTestClient())
+        {
+            await client.InitializeAsync("{\"checkQuietPeriodMs\":0,\"allTargets\":true}");
+            await client.OpenAsync(this.PathOf("App", "main.kimi"), Valid);
+            await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Product {WindowsProfile.Target}): Completed"));
+            await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Product x86_64-unknown-linux-gnu): Completed"));
+        }
+
+        await using (var client = new LspTestClient())
+        {
+            await client.InitializeAsync("{\"checkQuietPeriodMs\":0,\"target\":\"x86_64-unknown-linux-gnu\"}");
+            await client.OpenAsync(this.PathOf("App", "main.kimi"), Broken);
+            Assert.NotEqual(0, (await client.PublishAsync(this.PathOf("App", "main.kimi"))).GetArrayLength());
+            Assert.Contains(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product x86_64-unknown-linux-gnu)"));
+            Assert.DoesNotContain(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product {WindowsProfile.Target})"));
+        }
+    }
+
+    [Fact]
+    public async Task DependencyDiagnosticsAreReportedByTheirConsumers()
+    {
+        var library = this.WriteProject("Lib", ("main.kimi", "public func two() -> i32 => 2 +\n"), "PackageId=\"lib\" PackageVersion=\"1\"");
+        var project = this.WriteProject("App", ("main.kimi", Valid), string.Empty, "Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}");
+        var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        DependencyLock.Update(DependencyLock.PathForProject(project), resolution, TestContext.Current.CancellationToken); // A check never restores.
+        await using var client = new LspTestClient();
+        await client.InitializeAsync();
+        await client.OpenAsync(this.PathOf("App", "main.kimi"), Valid);
+        Assert.NotEqual(0, (await client.PublishAsync(this.PathOf("Lib", "main.kimi"))).GetArrayLength());
+        Assert.Contains(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product"));
+        Assert.DoesNotContain(client.Received, x => LspTestClient.IsLog(x, $"{library} (Product"));
+    }
+
     private string PathOf(params string[] parts) => Path.Combine([this.directory, .. parts]);
 
-    private string WriteProject(string name, (string File, string Text) source, string settings = "")
+    private string WriteProject(string name, (string File, string Text) source, string settings = "", string dependencies = "")
     {
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Library\" Targets={{\"{WindowsProfile.Target}\"}} Dependencies={{}} {settings}");
+        var targets = settings.Contains("Targets=", StringComparison.Ordinal) ? string.Empty : $"Targets={{\"{WindowsProfile.Target}\"}} ";
+        File.WriteAllText(path, $"OutputKind=\"Library\" {targets}Dependencies={{{dependencies}}} {settings}");
         File.WriteAllText(Path.Combine(folder, source.File), source.Text);
         return path;
     }

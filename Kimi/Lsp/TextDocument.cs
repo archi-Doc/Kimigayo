@@ -40,6 +40,9 @@ internal sealed class TextDocument : IDisposable
     /// <summary>Gets the current text.</summary>
     public ReadOnlySpan<char> Span => this.buffer.AsSpan(0, this.length);
 
+    /// <summary>Gets the offset at which each line starts.</summary>
+    public ReadOnlySpan<int> LineStarts => this.lineStarts.AsSpan(0, this.lineCount);
+
     /// <summary>Replaces the whole text.</summary>
     /// <param name="value">The new text.</param>
     public void Replace(string value)
@@ -75,7 +78,7 @@ internal sealed class TextDocument : IDisposable
         replacement.CopyTo(this.buffer.AsSpan(from));
         this.length = newLength;
         this.text = null;
-        this.RebuildLines();
+        this.UpdateLines(from, to, replacement.Length);
         return true;
     }
 
@@ -95,6 +98,51 @@ internal sealed class TextDocument : IDisposable
 
         this.length = 0;
         this.text = null;
+    }
+
+    // A position after a line break: an LF, or a CR that no LF follows.
+    private static bool IsLineStart(ReadOnlySpan<char> text, int position)
+    {
+        var previous = text[position - 1];
+        return previous == Constants.LfChar || (previous == Constants.CrChar && (position == text.Length || text[position] != Constants.LfChar));
+    }
+
+    // Advances a candidate position to the next one after a CR or LF, up to the end; false when none is left.
+    private static bool NextBreak(ReadOnlySpan<char> text, ref int position, int end)
+    {
+        if (position > end)
+        {
+            return false;
+        }
+
+        var next = text[(position - 1)..end].IndexOfAny(Constants.CrChar, Constants.LfChar);
+        if (next < 0)
+        {
+            return false;
+        }
+
+        position += next;
+        return true;
+    }
+
+    // Returns the index of the first of the sorted values that is greater than or equal to the key.
+    private static int LowerBound(ReadOnlySpan<int> values, int key)
+    {
+        int low = 0, high = values.Length;
+        while (low < high)
+        {
+            var middle = (low + high) >>> 1;
+            if (values[middle] < key)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
     }
 
     private bool TryGetOffset(SourcePosition position, out int offset)
@@ -145,4 +193,55 @@ internal sealed class TextDocument : IDisposable
 
     private void RebuildLines()
         => this.lineCount = SourceDocument.FillLineStarts(this.buffer.AsSpan(0, this.length), ref this.lineStarts, null);
+
+    // Updates the line starts after [from, to) was replaced by inserted characters. A start depends only on the
+    // character before it and the one at it, so the starts before the edit stay, the starts after the removed range
+    // shift by the length change, and only positions from max(from, 1) to from + inserted are scanned again.
+    private void UpdateLines(int from, int to, int inserted)
+    {
+        var text = this.buffer.AsSpan(0, this.length);
+        var starts = this.lineStarts.AsSpan(0, this.lineCount);
+        var scanStart = Math.Max(from, 1);
+        var scanEnd = Math.Min(from + inserted, text.Length);
+        var kept = LowerBound(starts, scanStart);
+        var suffix = LowerBound(starts, to + 1);
+        var suffixCount = starts.Length - suffix;
+        var middle = 0;
+        for (var position = scanStart; NextBreak(text, ref position, scanEnd);)
+        {
+            if (IsLineStart(text, position++))
+            {
+                middle++;
+            }
+        }
+
+        var count = kept + middle + suffixCount;
+        var target = this.lineStarts;
+        if (count > target.Length)
+        {
+            target = new int[Math.Max(count, target.Length * 2)];
+            starts[..kept].CopyTo(target);
+        }
+
+        var delta = inserted - (to - from);
+        starts.Slice(suffix, suffixCount).CopyTo(target.AsSpan(kept + middle));
+        foreach (ref var start in target.AsSpan(kept + middle, suffixCount))
+        {
+            start += delta;
+        }
+
+        var index = kept;
+        for (var position = scanStart; NextBreak(text, ref position, scanEnd);)
+        {
+            if (IsLineStart(text, position))
+            {
+                target[index++] = position;
+            }
+
+            position++;
+        }
+
+        this.lineStarts = target;
+        this.lineCount = count;
+    }
 }
