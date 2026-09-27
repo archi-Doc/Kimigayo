@@ -84,7 +84,10 @@ public sealed partial class Binding
                 var origin = parameters[i] = this.OriginAtom(node, OriginKind.Parameter, i, name.IdentifierName);
                 for (var enclosing = scope.Parent; enclosing is not null; enclosing = enclosing.Parent)
                 {
-                    if (enclosing.Origins?.ContainsKey(name.IdentifierName) == true || enclosing.Values.ContainsKey(name.IdentifierName))
+                    if (enclosing.Origins?.ContainsKey(name.IdentifierName) == true ||
+                        (enclosing.Values.TryGetValue(name.IdentifierName, out var value) && value.Kind is BindingSymbolKind.Parameter or BindingSymbolKind.Local or BindingSymbolKind.Capture) ||
+                        enclosing.OriginSets?.ContainsKey(name.IdentifierName) == true ||
+                        this.originDeclarations.GetValueOrDefault(enclosing.Owner)?.Sets.ContainsKey(name.IdentifierName) == true)
                     {
                         Fail(node, BindingFailure.Duplicate);
                     }

@@ -95,4 +95,30 @@ public class AssociatedOriginBindingTest
 
         Assert.Equal(0, AllocationMeasurement.Measure(() => restored.Bind()));
     }
+
+    [Theory]
+    [InlineData("contract C\n    associate Item(a)\n    func a(self: ref/Self)")]
+    [InlineData("contract C<a>\n    associate Item(a)")]
+    public void UnrelatedNamespacesDoNotHideOriginParameters(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Fact]
+    public void EnclosingOriginCannotBeHidden()
+    {
+        const string source = "struct Outer {a}\n    contract C\n        associate Item(a)";
+        ParseTestHelper.ParseSuccess(source);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == "DuplicateBinding_Kd");
+    }
+
+    [Fact]
+    public void EmitsGenericRequirementReturningAppliedFamily()
+    {
+        const string source = "contract C\n    associate Item(a) is i32\n    func get(self: ref/Self during a) -> Self.Item(a)\nstruct S\n    Self is C\n    public init() => ()\n    public func get(self: ref/Self during b) -> i32 => 42\nfunc read<T>(x: ref/T during a) -> T.(C).Item(a)\n    T is C\n    return x.get()\nlet value = S.init()\nrequire read(value@ref) == 42 else => $abort(\"generic family\")\nConsole.writeLine(\"generic family\")";
+        ScalarEmissionTest.EmitFixture("AssociatedOriginGeneric", source, "generic family\n");
+    }
 }
