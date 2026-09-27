@@ -8,6 +8,55 @@ namespace XunitTest;
 public class AssociatedContractParameterTest
 {
     [Theory]
+    [InlineData("ref", "U.(C<E>).Item(a)")]
+    [InlineData("uniq", "U.(C<E>).Item(a)")]
+    [InlineData("ref", "U.Item(a)")]
+    public void BorrowedParameterFormation(string semantics, string result)
+    {
+        var transfer = semantics == "uniq" ? "@move" : string.Empty;
+        var source = "contract C<E>\n    associate Item(a) is " + semantics + "/E during a\nstruct S\n    Self is C<i32>\n    public init() => ()\nfunc f<U, E>(source: ref/U, value: " + semantics + "/E during a) -> " + result + "\n    U is C<E>\n    return value" + transfer + "\nlet s = S.init()\nvar value = 42\nlet result = f(s@ref, value@" + semantics + ")\nrequire result == 42 else => $abort(\"borrow\")\nConsole.writeLine(\"borrow\")";
+        ScalarEmissionTest.EmitFixture("AssociatedContractParameterBorrow" + semantics + (result.Contains(".(") ? "Qualified" : "Short"), source, "borrow\n");
+    }
+
+    [Theory]
+    [InlineData(" for ref/E during a", true)]
+    [InlineData("", false)]
+    public void ImplementationUsesOnlyTheSubstitutedPublicDomain(string domain, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze("contract C<E>\n    associate Item(a)" + domain + "\nstruct S<T>\n    Self is C<T>\n    associate C.Item(b) is ref/T during b");
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Theory]
+    [InlineData("origin b outlives a", true)]
+    [InlineData("", false)]
+    [InlineData("origin a outlives b", false)]
+    public void BorrowedTypeArgumentKeepsItsFormationConditions(string relation, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze("contract C<E>\n    associate Item(step) for ref/E during step\nfunc f<U>(x: ref/i32 during a, y: ref/i32 during b) -> U.(C<ref/i32 during b>).Item(a)\n    U is C<ref/i32 during b>\n    " + relation + "\n    $abort(\"unused\")");
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Fact]
+    public void ParameterFamilyResultRetainsTheSourceLoan()
+    {
+        const string source = "contract C<E>\n    associate Item(a) is ref/E during a\nstruct S\n    Self is C<i32>\nfunc f(value: ref/i32 during a) -> S.Item(a) => value\nvar value = 7\nlet result = f(value@ref)\nvalue = 9\nrequire result == 7 else => $abort(\"loan\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+    }
+
+    [Theory]
+    [InlineData("ref/E during a", true)]
+    [InlineData("E", false)]
+    public void UnfixedFamilyChecksSubstitutedFormation(string input, bool valid)
+    {
+        var source = "contract C<E>\n    associate Item(a) for ref/E during a\nfunc f<U, E>(value: " + input + ", other: ref/i32 during a) -> U.(C<E>).Item(a)\n    U is C<E>\n    $abort(\"unused\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Theory]
     [InlineData("U.Item(a)")]
     [InlineData("U.(C<i32>).Item(a)")]
     public void FixedFamilySubstitutesBoundContractParameter(string result)

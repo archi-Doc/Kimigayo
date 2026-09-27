@@ -129,6 +129,23 @@ public sealed partial class Binding
         {
             if (enclosing.Owner is StructKoto or EnumKoto or ContractKoto && enclosing.Owner.BoundSymbol is { } self)
             {
+                var owner = associated.Scope.Owner.BoundSymbol!;
+                if (self.Contract is { } shape)
+                {
+                    for (var i = 0; i < shape.Ancestors.Count; i++)
+                    {
+                        if (ReferenceEquals(shape.Ancestors[i].Declaration, owner.Declaration))
+                        {
+                            formation = this.SubstituteContractReference(formation, shape.Ancestors[i]);
+                            break;
+                        }
+                    }
+                }
+                else if (this.ConformanceByDeclaration(self, owner, out _) is { } conformance)
+                {
+                    formation = this.SubstituteContractReference(formation, conformance.Contract);
+                }
+
                 return this.ContractType(formation, scope, this.SelfType(self));
             }
         }

@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundOrigin[]> associatedOrigins = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(Koto Use, BoundType Projection)> associatedApplications = new();
+    private readonly List<(Koto Use, BoundType Projection, BindingSymbol Contract)> associatedApplications = new();
 
     private static bool IsAssociatedRequirement(Koto node)
         => node.Parent is ContractKoto && AssociatedHead(node) is OriginApplicationKoto application &&
@@ -39,7 +39,7 @@ public sealed partial class Binding
         (constraint.Left is { } left && HasUnsupportedAssociatedIdentity(left)) ||
         (constraint.Right is { } right && HasUnsupportedAssociatedIdentity(right));
 
-    // Concrete borrow layers publish their formation premises; symbolic referents remain guarded.
+    // Borrow layers publish their formation premises, including complete Contract Type parameters.
     private static bool HasSupportedAssociatedFormation(BoundType type)
     {
         if (!type.CarriesOrigin)
@@ -49,7 +49,7 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
-            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed ||
+            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed ||
                 type.Components[0].Symbol?.Declaration is ContractKoto) &&
                 HasSupportedAssociatedFormation(type.Components[0]);
         }
@@ -201,7 +201,17 @@ public sealed partial class Binding
             }
 
             projection = this.WithOrigins(projection, null, arguments.AsSpan(0, application.ArgumentNodes.Count));
-            this.associatedApplications.Add((application, projection));
+            var contract = associated.Scope.Owner.BoundSymbol!;
+            for (var i = this.projectionUses.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(this.projectionUses[i].Use, target))
+                {
+                    contract = this.projectionUses[i].Contract;
+                    break;
+                }
+            }
+
+            this.associatedApplications.Add((application, projection, contract));
             application.BoundSymbol = target.BoundSymbol = associated;
             Complete(target, projection);
             return this.bindingConstraintTypes ? projection : this.ContractType(projection, scope);
@@ -227,13 +237,15 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var (use, projection) in this.associatedApplications)
+        foreach (var (use, projection, contract) in this.associatedApplications)
         {
             var declaration = projection.Symbol!.Declaration;
             var formation = AssociatedFormationType(declaration);
             if (formation is not null)
             {
                 formation = this.SubstituteStoredOrigins(formation, declaration, (BoundOrigin[])projection.OriginArguments);
+                formation = this.SubstituteContractReference(formation, contract);
+                formation = this.StoredType(formation, projection.Components[0]) ?? formation;
                 formation = this.ContractType(formation, this.ConstraintScope(use), projection.Components[0]);
             }
 

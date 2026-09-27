@@ -23,8 +23,12 @@ public sealed partial class Binding
     }
 
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use)
+        => this.FindAssociated(type, scope, name, qualifier, use, out _);
+
+    private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use, out BindingSymbol? reference)
     {
         BindingSymbol? found = null;
+        BindingSymbol? foundReference = null;
         var ambiguous = false;
         if (qualifier?.Contract is { } qualified)
         {
@@ -62,6 +66,7 @@ public sealed partial class Binding
             }
         }
 
+        reference = foundReference;
         if (ambiguous)
         {
             Fail(use, BindingFailure.Ambiguous);
@@ -77,8 +82,23 @@ public sealed partial class Binding
                 var associated = shape.AssociatedTypes[i];
                 if (associated.Name == name)
                 {
-                    ambiguous |= found is not null && !ReferenceEquals(found, associated);
+                    var owner = associated.Scope.Owner.BoundSymbol!;
+                    var candidate = shape.Symbol;
+                    if (!ReferenceEquals(candidate.Declaration, owner.Declaration))
+                    {
+                        for (var j = 0; j < shape.Ancestors.Count; j++)
+                        {
+                            if (ReferenceEquals(shape.Ancestors[j].Declaration, owner.Declaration))
+                            {
+                                candidate = shape.Ancestors[j];
+                                break;
+                            }
+                        }
+                    }
+
+                    ambiguous |= found is not null && (!ReferenceEquals(found, associated) || !ReferenceEquals(foundReference, candidate));
                     found = associated;
+                    foundReference = candidate;
                 }
             }
         }
@@ -118,7 +138,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var associated = this.FindAssociated(type, scope, name, qualifier, syntax);
+        var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
         if (associated is null)
         {
             return null;
@@ -129,7 +149,7 @@ public sealed partial class Binding
             return Fail(syntax, BindingFailure.InvalidAssociatedType);
         }
 
-        var evidence = qualifier ?? associated.Scope.Owner.BoundSymbol!;
+        var evidence = qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
         this.projectionUses.Add((syntax, type, evidence));
         if (!this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope) == ConstraintProof.Proven)
         {
