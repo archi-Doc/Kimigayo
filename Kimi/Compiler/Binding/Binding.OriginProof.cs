@@ -239,7 +239,7 @@ public sealed partial class Binding
         for (var i = 0; i < type.Components.Count; i++)
         {
             var inner = type.Components[i];
-            if (IsBorrow(type.Semantics) && type.Origin is { } outer && this.ProvesOriginOutlives(outer, shorter, use))
+            if ((IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer && this.ProvesOriginOutlives(outer, shorter, use))
             {
                 if (this.ProvesStoredOriginPremise(inner, longer, use))
                 {

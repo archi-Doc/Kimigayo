@@ -64,7 +64,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (IsBorrow(type.Semantics) && type.Origin is { } outer)
+        if ((IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer)
         {
             if ((outer.Kind == OriginKind.Static && IsExclusive(type.Semantics)) ||
                 (type.Components.Count != 0 && !this.AssociatedOriginsOutlive(type.Components[0], outer, use)))
@@ -180,7 +180,7 @@ public sealed partial class Binding
 
     private bool ProvesBorrowedTypeLifetime(BoundType premise, BoundType type, BoundOrigin outer, Koto use)
     {
-        if (IsBorrow(premise.Semantics) && premise.Origin is { } origin && premise.Components.Count != 0 &&
+        if ((IsBorrow(premise.Semantics) || premise.Kind == BoundTypeKind.Slice) && premise.Origin is { } origin && premise.Components.Count != 0 &&
             ReferenceEquals(premise.Components[0], type) && this.ProvesOriginOutlives(origin, outer, use))
         {
             return true;
