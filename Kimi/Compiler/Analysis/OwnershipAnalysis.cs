@@ -13,6 +13,8 @@ public sealed partial class OwnershipAnalysis
     private readonly List<OwnershipBody> bodyPool = new();
     private readonly List<OwnershipIssue> issues = new();
     private readonly List<FunctionKoto> libraryBodies = new();
+    private readonly HashSet<BindingSymbol> witnessTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly List<FunctionKoto> witnessScratch = new();
     private readonly Collector collector;
     private readonly List<Registration> locals = new();
     private readonly List<Registration> temporaries = new();
@@ -146,6 +148,7 @@ public sealed partial class OwnershipAnalysis
 
         this.bodies.Clear();
         this.libraryBodies.Clear();
+        this.witnessTypes.Clear();
         if (this.defaultBody is { } declaration)
         {
             declaration.IsVerified = false;
@@ -1158,6 +1161,16 @@ public sealed partial class OwnershipAnalysis
             this.CollectLibraryBody(libraryBody);
         }
 
+        for (var i = 0; i < plan.TypeArguments.Length; i++)
+        {
+            this.CollectLibraryWitnesses(plan.TypeArguments[i]);
+        }
+
+        for (var i = 0; plan.DeclaringType is { } declaring && i < declaring.Components.Count; i++)
+        {
+            this.CollectLibraryWitnesses(declaring.Components[i]);
+        }
+
         var mark = this.arguments.Count;
         var loanDepth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;
@@ -1246,6 +1259,31 @@ public sealed partial class OwnershipAnalysis
         this.comparisonDepth = loanDepth;
 
         return result;
+    }
+
+    // A library Type used as a Type argument is reached by generic dispatch; its witnesses are verified like called bodies.
+    private void CollectLibraryWitnesses(BoundType? type)
+    {
+        if (type is null)
+        {
+            return;
+        }
+
+        if (type.Symbol is { Declaration: StructKoto or EnumKoto } symbol && ReferenceEquals(symbol.Declaration.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
+            this.witnessTypes.Add(symbol))
+        {
+            this.witnessScratch.Clear();
+            this.compilation.Binding.CollectWitnesses(symbol, this.witnessScratch);
+            for (var i = 0; i < this.witnessScratch.Count; i++)
+            {
+                this.CollectLibraryBody(this.witnessScratch[i]);
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.CollectLibraryWitnesses(type.Components[i]);
+        }
     }
 
     private void CollectLibraryBody(FunctionKoto function)

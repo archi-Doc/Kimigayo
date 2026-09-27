@@ -93,8 +93,8 @@ The `Iteration` group provides the following adapters, where `I is LendingIterat
 
 | Declaration | Guarantee |
 | --- | --- |
-| `struct Owned<I>` | Owns and forwards to an iterator. |
-| `struct Borrowed<I> {source}` | Exclusively borrows and forwards to an iterator. |
+| `struct Owned<I>` | Owns and forwards to an iterator; an Iterator with `I`'s Item when `I` is an Iterator. |
+| `struct Borrowed<I> {source}` | Exclusively borrows and forwards to an iterator; an Iterator with `I`'s Item when `I` is an Iterator. |
 | `owned<I>(iterator: I) -> Owned<I>` | Transfers the iterator into an adapter. |
 | `borrowed<I>(iterator: uniq/I during source) -> Borrowed<I> during source` | Creates an adapter retaining the receiver Loan. |
 

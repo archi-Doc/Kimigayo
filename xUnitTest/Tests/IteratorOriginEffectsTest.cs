@@ -156,6 +156,8 @@ public class IteratorOriginEffectsTest
     [Theory]
     [InlineData("struct Wrapper<I> {a}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is uniq/i32 during a\n    var inner: I\n    var slot: Option<uniq/i32 during a>\n    public func next(self: uniq/Self) -> Option<uniq/i32 during a>\n        _ = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)")]
     [InlineData("struct Wrapper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var other: I\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        _ = self.other.next()\n        return self.inner.next()")]
+    [InlineData("struct Wrapper<I> {source}\n    I is LendingIterator\n    Self is LendingIterator\n    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n    var inner: uniq/I during source\n\n" +
+        "    Self is Iterator when I is Iterator\n        associate Iterator.Item is I.(Iterator).Item\n    public func next(self: uniq/Self during step) -> Option<I.(LendingIterator).LentItem(step)>\n        _ = self.inner.next()\n        return self.inner.next()")]
     public void AWrapperWithUnboundedInnerEffectsIsRejected(string wrapper)
     {
         var c = MinimalEmissionTest.Analyze(wrapper);

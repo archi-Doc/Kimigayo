@@ -39,7 +39,7 @@ public sealed partial class Binding
             {
                 var witness = path.WitnessStorage[w];
                 if ((reserve || ReferenceEquals(witness.Requirement.Scope.Owner, this.Library.LendingIterator.Declaration)) &&
-                    !(this.effectSummary ??= new(this)).Check(reserve ? EffectBound.Reserve : EffectBound.Iterator, witness.Implementation))
+                    !(this.effectSummary ??= new(this)).Check(reserve ? EffectBound.Reserve : EffectBound.Iterator, witness.Implementation, path.Scope))
                 {
                     path.Invalid = true;
                     path.IsVerified = false;
@@ -63,7 +63,9 @@ public sealed partial class Binding
         private readonly List<BoundCall?> contexts = new();
         private readonly Dictionary<BoundCall, int> contextIndex = new(CallInstanceComparer.Instance);
         private readonly List<BoundCall> calls = new();
+        private readonly List<(BoundType Iterator, BoundOrigin Storage)> storedIterators = new();
         private IReadOnlyList<BoundOrigin> selfOrigins = [];
+        private BindingScope? scope;
         private BoundType item = BoundType.Unit;
         private EffectBound bound;
         private int context;
@@ -142,9 +144,13 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
-        internal bool Check(EffectBound bound, BindingSymbol implementation)
+        // SPEC 8.4.8.2: the bound is judged in the conformance scope (D and the conditions P); the implementation's item
+        // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
+        // `I is Iterator`.
+        internal bool Check(EffectBound bound, BindingSymbol implementation, BindingScope scope)
         {
             this.bound = bound;
+            this.scope = scope;
             this.valid = true;
             this.seen.Clear();
             this.destroyed.Clear();
@@ -157,18 +163,20 @@ public sealed partial class Binding
             this.forwardedSteps = 0;
             if (bound == EffectBound.Iterator)
             {
-                if (implementation.Type is not { } item)
+                if (implementation.Type is not { } declared)
                 {
                     return false;
                 }
 
+                var item = binding.ContractType(declared, scope);
                 if (!item.CarriesOrigin && !HasAbstractPart(item))
                 {
                     return true; // An item that keeps no Loan conflicts with no effect.
                 }
 
                 this.item = item;
-                this.selfOrigins = SelfOrigins(implementation);
+                this.selfOrigins = SelfOrigins(implementation, out var receiver);
+                this.StoredIterators(receiver);
             }
 
             this.Function(implementation, null);
@@ -204,9 +212,9 @@ public sealed partial class Binding
         }
 
         // The Origins of the conforming Type as its receiver names them; an abstract item part may keep a Loan of any.
-        private static IReadOnlyList<BoundOrigin> SelfOrigins(BindingSymbol implementation)
+        private static IReadOnlyList<BoundOrigin> SelfOrigins(BindingSymbol implementation, out BoundType? receiver)
         {
-            var receiver = implementation.Declaration is FunctionKoto function && implementation.ReceiverIndex >= 0 && implementation.ReceiverIndex < function.Parameters.Count
+            receiver = implementation.Declaration is FunctionKoto function && implementation.ReceiverIndex >= 0 && implementation.ReceiverIndex < function.Parameters.Count
                 ? function.Parameters[implementation.ReceiverIndex].Type.BoundType : null;
             while (receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
             {
@@ -860,8 +868,9 @@ public sealed partial class Binding
                 return false;
             }
 
-            // The checked implementation's own result is the Option of its Item.
+            // The checked implementation's own result is the Option of its Item; both sides are compared in the conformance scope.
             var item = this.item is { Components: [var declared] } && ReferenceEquals(this.item.Symbol, binding.Library.Option) ? declared : this.item;
+            payload = binding.ContractType(payload, this.scope!);
             if (ReferenceEquals(payload, item))
             {
                 return true;
@@ -980,6 +989,48 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 22.1.2.4: an Iterator's Item keeps no Loan of that Iterator's own Storage. A Field `s/J during o` borrows the
+        // Storage of J, so the Item of J keeps no Loan of o even though o is an Origin of the conforming Type.
+        private void StoredIterators(BoundType? receiver)
+        {
+            this.storedIterators.Clear();
+            if (!StructStorage.IsStruct(receiver))
+            {
+                return;
+            }
+
+            for (var i = 0; i < StructStorage.Count(receiver!); i++)
+            {
+                if (StructStorage.FieldType(receiver!, i) is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var iterator], Origin: { } storage })
+                {
+                    this.storedIterators.Add((iterator, storage));
+                }
+            }
+        }
+
+        private bool IsIteratorItem(BoundType type)
+            => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 1 } && ReferenceEquals(type.Symbol?.Declaration?.Parent, binding.Library.Iterator.Declaration);
+
+        // Whether `origin` is the Loan of the Storage of the Iterator whose Item `type` is.
+        private bool IsIteratorStorage(BoundType type, BoundOrigin origin)
+        {
+            if (!this.IsIteratorItem(type))
+            {
+                return false;
+            }
+
+            var iterator = type.Components[0];
+            for (var i = 0; i < this.storedIterators.Count; i++)
+            {
+                if (ReferenceEquals(this.storedIterators[i].Iterator, iterator) && ReferenceEquals(this.storedIterators[i].Storage, origin))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         // Whether an access conflicts with a Loan the item may keep. Below a shared layer an item keeps shared Loans only,
         // so only an exclusive access conflicts there; an abstract part may keep any Loan of the conforming Type's Origins.
         private bool Conflicts(BoundType type, BoundOrigin accessed, LoanRequirement mode, bool shared, Koto use)
@@ -1009,7 +1060,7 @@ public sealed partial class Binding
 
                 for (var i = 0; i < this.selfOrigins.Count; i++)
                 {
-                    if (this.SharesDependency(accessed, this.selfOrigins[i], use))
+                    if (!this.IsIteratorStorage(type, this.selfOrigins[i]) && this.SharesDependency(accessed, this.selfOrigins[i], use))
                     {
                         return true;
                     }
@@ -1019,6 +1070,11 @@ public sealed partial class Binding
                 {
                     return true;
                 }
+            }
+
+            if (this.IsIteratorItem(type))
+            {
+                return false; // The receiver of an Item projection is not a part of the item; the checks above cover it.
             }
 
             shared |= type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef;

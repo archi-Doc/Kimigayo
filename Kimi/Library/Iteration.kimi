@@ -22,6 +22,9 @@ public group Iteration
         associate UniqIterable.IteratorType(source) is Borrowed<Self> during source
         var iterator: I
 
+        Self is Iterator when I is Iterator
+            associate Iterator.Item is I.(Iterator).Item
+
         internal init(iterator: I) => self.iterator = iterator@move
 
         /// Returns the next item of the owned iterator, or None; exhaustion follows `I`.
@@ -45,6 +48,9 @@ public group Iteration
         Self is UniqIterable
         associate UniqIterable.IteratorType(inner) is Borrowed<Self> during inner
         var iterator: uniq/I during source
+
+        Self is Iterator when I is Iterator
+            associate Iterator.Item is I.(Iterator).Item
 
         internal init(iterator: uniq/I during source) => self.iterator = iterator@move
 
