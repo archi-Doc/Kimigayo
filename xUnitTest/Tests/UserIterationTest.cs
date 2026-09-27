@@ -152,6 +152,42 @@ public class UserIterationTest
     }
 
     [Theory]
+    [InlineData("continue")]
+    [InlineData("exit")]
+    public void NestedTransfersCleanEachScopeInOrder(string transfer)
+    {
+        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
+        ScalarEmissionTest.EmitFixture("UserIterationNested" + transfer, declarations + item + "outer: for first in Batch<Tracked>.init(Tracked.init())\n    defer => Console.writeLine(\"outer defer\")\n    for second in Batch<Tracked>.init(Tracked.init())\n        defer => Console.writeLine(\"inner defer\")\n        " + transfer + " to outer\nConsole.writeLine(\"done\")", "inner defer\nitem\niterator\nouter defer\nitem\niterator\ndone\n");
+    }
+
+    [Fact]
+    public void OutwardResultSecuresTheItemBeforeDeferredCleanup()
+    {
+        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
+        ScalarEmissionTest.EmitFixture("UserIterationOutward", declarations + item + "let value = result: do\n    for item in Batch<Tracked>.init(Tracked.init())\n        defer => Console.writeLine(\"defer\")\n        exit to result: item@move\n    $abort(\"empty\")\nConsole.writeLine(\"done\")", "defer\niterator\ndone\nitem\n");
+    }
+
+    [Fact]
+    public void FirstNoneEndsIterationWithoutProbingAgain()
+    {
+        var iterator = Counter.Replace("        require self.n < 3 else => return .None", "        Console.writeLine(\"next\")\n        if self.n == 0\n            self.n = 1\n            return .None", StringComparison.Ordinal);
+        var entry = Three.Replace("=> Counter.init()", "\n        Console.writeLine(\"entry\")\n        return Counter.init()", StringComparison.Ordinal);
+        ScalarEmissionTest.EmitFixture("UserIterationFirstNone", iterator + entry + "for _ in Three.init() => Console.writeLine(\"unexpected\")\nConsole.writeLine(\"done\")", "entry\nnext\ndone\n");
+    }
+
+    [Fact]
+    public void AbortDoesNotRunLoopCleanup()
+    {
+        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
+        var source = declarations + item + "for item in Batch<Tracked>.init(Tracked.init())\n    defer => Console.writeLine(\"defer\")\n    Console.writeLine(\"body\")\n    var n = 2147483647\n    n += 1\nConsole.writeLine(\"done\")";
+        var line = source[..source.IndexOf("    n += 1", StringComparison.Ordinal)].Count(x => x == '\n') + 1;
+        ScalarEmissionTest.EmitFixture("UserIterationAbort", source, "body\n", 1, $"Hello.kimi:{line}:5: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+    }
+
+    [Theory]
     [InlineData("let values = Three.init()\nfor item in values@move => ()\nlet again = values@move")]
     [InlineData("var values = Three.init()\nlet view = values@ref\nfor item in values@move => ()\nlet again = view")]
     public void ConsumingEntryPreservesMoveAndLoanChecks(string source)
