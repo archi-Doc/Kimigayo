@@ -184,11 +184,6 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (receiver.Kind == BoundTypeKind.Dictionary && operation.Source is ForKoto)
-        {
-            return this.LowerDictionaryIteration(body, function, id, plan, receiver, borrowedArray, address, out failure);
-        }
-
         if (plan.Kind == SequenceOperation.Borrow)
         {
             var reference = ValueType(body, id);

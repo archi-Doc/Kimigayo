@@ -24,7 +24,7 @@ internal sealed partial class BodyLowering
         this.arrayIterationPlaces.AsSpan(0, body.Places.Count).Clear();
         foreach (var sequence in body.Sequences)
         {
-            if (sequence.Kind is SequenceOperation.ArrayMoveRead or SequenceOperation.DictionaryMoveRead && (uint)sequence.Operation < (uint)body.Operations.Count &&
+            if (sequence.Kind == SequenceOperation.ArrayMoveRead && (uint)sequence.Operation < (uint)body.Operations.Count &&
                 body.Operations[sequence.Operation] is { Kind: OwnershipOperationKind.Produce, Source: ForKoto loop } produce &&
                 (uint)produce.Place < (uint)body.Places.Count)
             {
