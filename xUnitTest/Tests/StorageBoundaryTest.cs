@@ -180,4 +180,34 @@ public class StorageBoundaryTest
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd && ReferenceEquals(x.Node, function));
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CapabilityArgumentsFollowTheirNames(bool exclusive)
+    {
+        var semantics = exclusive ? "uniq" : "ref";
+        var primitive = exclusive ? "split" : "lend";
+        var c = CompilationTestHelper.ParseSuccess($$"""
+            var values: Array<i32> = [7, 9]
+            require Kimi.StorageProbe.first(values@{{semantics}}) == 7 else => $abort("first")
+            Console.writeLine("named")
+            """);
+        var helper = $$"""
+            public group StorageProbe
+                public func first(values: {{semantics}}/Array<i32>) -> i32
+                    var state = Storage.borrowStorage(values)
+                    let element = state.storage
+                    state.position += 1
+                    state.count -= 1
+                    unsafe
+                        let item = Storage.{{primitive}}(element: element, state: state@{{semantics}})
+                        return item
+            """;
+        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, helper);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        ScalarEmissionTest.WriteFixture("StorageBoundaryNamed" + primitive, CompilationTestHelper.WriteIr(c), "named\n");
+    }
 }
