@@ -26,9 +26,16 @@ internal sealed class CheckInputs
     {
         this.Snapshot = snapshot;
         this.changedAfterBase = changedAfterBase;
-        this.openByDirectory = GroupOpenPaths(snapshot.Entries
-            .Where(static x => x.Key.Kind == InputKind.File && x.Value.State.Overlay)
-            .Select(static x => x.Key.Identity.Value));
+        var open = new List<string>();
+        foreach (var (key, entry) in snapshot.Entries)
+        {
+            if (key.Kind == InputKind.File && entry.State.Overlay)
+            {
+                open.Add(key.Identity.Value);
+            }
+        }
+
+        this.openByDirectory = GroupOpenPaths(open);
     }
 
     /// <summary>Gets the committed snapshot.</summary>
@@ -58,7 +65,11 @@ internal sealed class CheckInputs
     /// <summary>Gets a value indicating whether an input has an event after the base.</summary>
     /// <param name="key">The input.</param>
     /// <returns><see langword="true"/> when work that needs the input takes no effect.</returns>
-    public bool IsPending(InputKey key) => this.changedAfterBase().Contains(key);
+    public bool IsPending(InputKey key)
+    {
+        var changed = this.changedAfterBase();
+        return changed.Count != 0 && changed.Contains(key); // Usually nothing changed, and no path is hashed.
+    }
 
     /// <summary>Reads an input from the snapshot, or reads it for the first time.</summary>
     /// <param name="key">The input.</param>
@@ -138,13 +149,14 @@ internal sealed class SnapshotInputSource : CheckInputSource
 
     /// <inheritdoc/>
     public override byte[] ReadAllBytes(string path)
-        => this.ReadFile(path).Content!.GetBytes();
+        => this.ReadFile(InputKey.File(path), path).Content!.GetBytes();
 
     /// <inheritdoc/>
     public override SourceContent ReadSource(string path)
     {
-        var state = this.ReadFile(path);
-        this.sources.Add(SourceIdentity.FromPath(path));
+        var identity = SourceIdentity.FromPath(path);
+        var state = this.ReadFile(InputKey.File(identity), path);
+        this.sources.Add(identity);
         return state.Content!;
     }
 
@@ -163,9 +175,9 @@ internal sealed class SnapshotInputSource : CheckInputSource
     private static IOException Unreadable(InputState state)
         => state.Failure == DesynchronizedInputException.Failure ? new DesynchronizedInputException() : new IOException(state.Failure);
 
-    private InputState ReadFile(string path)
+    private InputState ReadFile(InputKey key, string path)
     {
-        var state = this.Read(InputKey.File(path));
+        var state = this.Read(key);
         if (!state.Established)
         {
             throw Unreadable(state);

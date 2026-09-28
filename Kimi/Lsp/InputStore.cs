@@ -198,11 +198,11 @@ internal sealed class InputEntry
     public List<DerivedItem> Dependents { get; } = [];
 }
 
-/// <summary>A committed, immutable view of the store that the worker reads (SPEC 23.4.6).</summary>
+/// <summary>A committed view of the store that the worker reads (SPEC 23.4.6); its collections are never changed after it is taken.</summary>
 /// <param name="Base">The base event number.</param>
 /// <param name="Entries">The committed state of every retained input.</param>
 /// <param name="Valid">The items that were valid when the comparisons were committed.</param>
-internal sealed record StoreSnapshot(long Base, ImmutableDictionary<InputKey, (long Revision, InputState State)> Entries, ImmutableHashSet<long> Valid);
+internal sealed record StoreSnapshot(long Base, Dictionary<InputKey, (long Revision, InputState State)> Entries, HashSet<long> Valid);
 
 /// <summary>The state owner's input store (SPEC 23.4.5): revisions, events, marks and the items that recorded each input.</summary>
 internal sealed class InputStore
@@ -406,16 +406,17 @@ internal sealed class InputStore
     /// <returns>The snapshot.</returns>
     public StoreSnapshot Snapshot(long checkBase, IEnumerable<DerivedItem> items)
     {
-        var builder = ImmutableDictionary.CreateBuilder<InputKey, (long, InputState)>();
+        // A copy the state owner never touches again is enough, and it costs far less than persistent collections.
+        var committed = new Dictionary<InputKey, (long, InputState)>(this.entries.Count);
         foreach (var (key, entry) in this.entries)
         {
             if (entry.State is { } state && entry.Revision > 0)
             {
-                builder.Add(key, (entry.Revision, state));
+                committed.Add(key, (entry.Revision, state));
             }
         }
 
-        var valid = ImmutableHashSet.CreateBuilder<long>();
+        var valid = new HashSet<long>();
         foreach (var item in items)
         {
             if (item.Valid)
@@ -424,23 +425,33 @@ internal sealed class InputStore
             }
         }
 
-        return new(checkBase, builder.ToImmutable(), valid.ToImmutable());
+        return new(checkBase, committed, valid);
     }
 
     /// <summary>Lists the entries re-validation must consider.</summary>
     /// <returns>The entries with a retained state, marked, or both.</returns>
     public RevalidationTarget[] RevalidationTargets()
     {
-        var targets = new List<RevalidationTarget>(this.entries.Count);
+        var count = 0;
+        foreach (var entry in this.entries.Values)
+        {
+            if (entry.Marked || entry.State is not null)
+            {
+                count++;
+            }
+        }
+
+        var targets = new RevalidationTarget[count];
+        var index = 0;
         foreach (var (key, entry) in this.entries)
         {
             if (entry.Marked || entry.State is not null)
             {
-                targets.Add(new(key, entry.State, entry.Marked, entry.Watched));
+                targets[index++] = new(key, entry.State, entry.Marked, entry.Watched);
             }
         }
 
-        return targets.ToArray();
+        return targets;
     }
 
     /// <summary>Releases entries that no item records and nothing else keeps (SPEC 23.4.6).</summary>

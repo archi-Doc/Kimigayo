@@ -122,15 +122,21 @@ internal sealed class WorkspaceCheck
     /// <returns>The diagnostics per report URI.</returns>
     public static Dictionary<SourceIdentity, LspDiagnostic[]> Place(CheckOutput output, IReadOnlyList<SourceIdentity> sources, SourceIdentity display)
     {
-        var lists = new Dictionary<SourceIdentity, List<LspDiagnostic>>();
+        var reports = new Dictionary<SourceIdentity, LspDiagnostic[]>(sources.Count);
         foreach (var source in sources)
         {
-            if (!source.IsBuiltIn && !lists.ContainsKey(source))
+            if (!source.IsBuiltIn)
             {
-                lists.Add(source, []);
+                reports.TryAdd(source, []); // Most checked sources have no diagnostics and share the empty array.
             }
         }
 
+        if (output.Diagnostics.Length == 0)
+        {
+            return reports;
+        }
+
+        var lists = new Dictionary<SourceIdentity, List<LspDiagnostic>>();
         foreach (var diagnostic in output.Diagnostics)
         {
             var (uri, range) = diagnostic.Location.IsEmpty || diagnostic.Location.IsBuiltIn ? (display, default) : (diagnostic.Location, diagnostic.Range ?? default);
@@ -143,11 +149,10 @@ internal sealed class WorkspaceCheck
             list.Add(new(range, (int)diagnostic.Severity, diagnostic.Code, "kimigayo", diagnostic.Message));
         }
 
-        var reports = new Dictionary<SourceIdentity, LspDiagnostic[]>(lists.Count);
         foreach (var (uri, list) in lists)
         {
             list.Sort(Compare);
-            reports.Add(uri, Deduplicate(list));
+            reports[uri] = Deduplicate(list);
         }
 
         return reports;
@@ -306,6 +311,29 @@ internal sealed class WorkspaceCheck
         return paths.ToArray();
     }
 
+    // Lists the project files in a directory and in every ancestor; false when a listing is pending or unreadable,
+    // which leaves membership undetermined, so it cannot establish an implicit project.
+    private static bool TryListCandidates(SnapshotInputSource record, string directory, List<SourceIdentity> list)
+    {
+        var determined = true;
+        for (string? current = directory; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
+        {
+            try
+            {
+                foreach (var path in record.GetFiles(current, InputKey.ProjectPattern))
+                {
+                    list.Add(SourceIdentity.FromPath(path));
+                }
+            }
+            catch (Exception ex) when (ex is PendingInputException or IOException)
+            {
+                determined = false;
+            }
+        }
+
+        return determined;
+    }
+
     private static bool IsPending(CheckInputs inputs, UnitPlan plan, UnitResult? previous)
     {
         foreach (var member in plan.Members)
@@ -426,29 +454,24 @@ internal sealed class WorkspaceCheck
         var selected = new HashSet<SourceIdentity>(settings.SelectedProjects);
         var candidates = new Dictionary<SourceIdentity, List<SourceIdentity>>();
         var undeterminedDocuments = new HashSet<SourceIdentity>();
+        var byDirectory = new Dictionary<string, (List<SourceIdentity> List, bool Undetermined)>(SourceIdentity.PathComparer);
         foreach (var document in openSources)
         {
-            var list = new List<SourceIdentity>();
-            for (var directory = Path.GetDirectoryName(document.Value); directory is not null; directory = Path.GetDirectoryName(directory))
+            // The documents of one directory share their candidates, which are read once.
+            var directory = Path.GetDirectoryName(document.Value) ?? string.Empty;
+            if (!byDirectory.TryGetValue(directory, out var found))
             {
-                try
-                {
-                    foreach (var path in record.GetFiles(directory, InputKey.ProjectPattern))
-                    {
-                        list.Add(SourceIdentity.FromPath(path));
-                    }
-                }
-                catch (PendingInputException)
-                {
-                    undeterminedDocuments.Add(document);
-                }
-                catch (IOException)
-                {
-                    undeterminedDocuments.Add(document); // Unreadable membership cannot establish an implicit project.
-                }
+                var list = new List<SourceIdentity>();
+                found = (list, !TryListCandidates(record, directory, list));
+                byDirectory.Add(directory, found);
             }
 
-            candidates.Add(document, list);
+            if (found.Undetermined)
+            {
+                undeterminedDocuments.Add(document);
+            }
+
+            candidates.Add(document, found.List);
         }
 
         foreach (var root in selected.Concat(openProjects).Concat(candidates.Values.SelectMany(static x => x)))

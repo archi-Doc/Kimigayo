@@ -27,6 +27,7 @@ internal sealed class LspSession : IDisposable
     private readonly Dictionary<SourceIdentity, HashSet<UnitKey>> contributors = new();
     private readonly Dictionary<SourceIdentity, (LspDiagnostic[] Payload, int? Version)> sent = new();
     private readonly List<LspDiagnostic> mergedDiagnostics = [];
+    private readonly HashSet<SourceIdentity> changedReports = [];
     private readonly CancellationTokenSource shutdown = new();
     private readonly HashSet<SourceIdentity> undeterminedOwners = [];
     private DiscoveryRecord? discovery;
@@ -677,12 +678,16 @@ internal sealed class LspSession : IDisposable
             this.Log(3, $"{result.Key.Owner} ({result.Key.Kind}{(result.Key.Target.Length == 0 ? string.Empty : " " + result.Key.Target)}): {result.Output.Outcome}");
         }
 
-        var uris = new HashSet<SourceIdentity>(result.Reports.Keys);
-        foreach (var uri in previous?.Reports.Keys ?? Enumerable.Empty<SourceIdentity>())
+        var uris = this.changedReports; // Reconsidering never adopts a result, so the set is free again afterwards.
+        uris.UnionWith(result.Reports.Keys);
+        if (previous is not null)
         {
-            if (uris.Add(uri))
+            foreach (var uri in previous.Reports.Keys)
             {
-                this.RemoveContributor(uri, result.Key);
+                if (uris.Add(uri))
+                {
+                    this.RemoveContributor(uri, result.Key);
+                }
             }
         }
 
@@ -698,6 +703,7 @@ internal sealed class LspSession : IDisposable
         }
 
         this.Reconsider(uris);
+        uris.Clear();
     }
 
     private void OnCheckDone(CheckDone done)

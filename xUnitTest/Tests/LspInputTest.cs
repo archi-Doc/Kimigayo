@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Checking;
+using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
 
@@ -59,6 +60,34 @@ public sealed class LspInputTest
         var closed = DiskReader.MergeListing(key, merged, []);
         Assert.Same(names, closed.Names);
         Assert.Equal(paths, merged.Names); // Earlier snapshots stay immutable.
+    }
+
+    [Fact]
+    public void PlacementSortsDeduplicatesAndKeepsCheckedSourcesWithoutDiagnostics()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-place");
+        var clean = SourceIdentity.FromPath(Path.Combine(directory, "Clean.kimi"));
+        var broken = SourceIdentity.FromPath(Path.Combine(directory, "Broken.kimi"));
+        var project = SourceIdentity.FromPath(Path.Combine(directory, "App.kimiproj"));
+        var builtIn = SourceIdentity.FromPath(SourceIdentity.BuiltInPrefix + "Kimi/Core.kimi");
+        var later = new SourceRange(new(2, 0), new(2, 1));
+        CheckDiagnostic[] diagnostics =
+        [
+            new("B_Kd", DiagnosticSeverity.Error, "second", broken, later),
+            new("A_Kd", DiagnosticSeverity.Error, "first", broken, new SourceRange(new(0, 0), new(0, 1))),
+            new("B_Kd", DiagnosticSeverity.Error, "second", broken, later),
+            new("D_Kd", DiagnosticSeverity.Warning, "built-in", builtIn, later),
+            new("C_Kd", DiagnosticSeverity.Error, "unlocated", default, null),
+        ];
+        var output = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, diagnostics);
+
+        var reports = WorkspaceCheck.Place(output, [clean, broken, clean, builtIn], project);
+        Assert.Equal(3, reports.Count);
+        Assert.Empty(reports[clean]);
+        Assert.Equal(["first", "second"], reports[broken].Select(static x => x.Message));
+        Assert.Equal(["unlocated", "built-in"], reports[project].Select(static x => x.Message));
+        Assert.All(reports[project], static x => Assert.Equal(default, x.Range));
+        Assert.Same(reports[clean], WorkspaceCheck.Place(new(CheckOutcome.Completed, true, TestPresence.No, []), [clean], project)[clean]);
     }
 
     [Fact]
