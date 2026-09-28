@@ -131,7 +131,10 @@ public sealed partial class Binding
 
                 if (outer.DeclaringType is { Symbol: { } symbol } container)
                 {
-                    origin = this.SubstituteStoredOrigin(origin, symbol.Declaration, container.Kind == BoundTypeKind.Slice && container.Origin is { } source2 ? [source2] : (BoundOrigin[])container.OriginArguments);
+                    // A Slice stores its source as its own Origin; substitute through a span over it, not a new array per use.
+                    origin = container.Kind == BoundTypeKind.Slice && container.Origin is { } sliceSource
+                        ? this.SubstituteStoredOrigin(origin, symbol.Declaration, new ReadOnlySpan<BoundOrigin>(ref sliceSource))
+                        : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments);
                 }
 
                 values[i] = this.SubstituteStoredOrigin(origin, outer.Target.Declaration, outer.Origins, outer.InputOrigins);

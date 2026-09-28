@@ -35,6 +35,7 @@ public class SliceCostTest
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]
+    [InlineData("Emission")]
     public void WarmSliceAnalysisAndEmissionAllocateNothing(string stage)
     {
         var c = MinimalEmissionTest.Analyze("let values: [4 of i32] = [10, 20, 30, 40]\n" + Operations);
