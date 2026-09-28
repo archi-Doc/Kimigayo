@@ -98,20 +98,12 @@ public sealed partial class KimiLibrary
 
             if (matches && entry.Id == KimiDeclarationId.Iterator)
             {
-                matches = ReferenceEquals(((ContractKoto)symbol.Declaration).Bases[0].BoundSymbol, this.LendingIterator);
+                matches = this.ValidBoundIterator(symbol);
             }
 
-            if (matches && entry.Id == KimiDeclarationId.IntoIterable)
+            if (matches && entry.Id is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable or KimiDeclarationId.IntoIterable)
             {
-                // The associated IteratorType must require the recognized Kimi.LendingIterator.
-                var iterator = ((ContractKoto)symbol.Declaration).ConstraintNodes[0];
-                matches = iterator.BoundConstraint is { Contract: { } required } && ReferenceEquals(required, this.LendingIterator);
-            }
-
-            if (matches && entry.Id is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable)
-            {
-                var iterator = ((ContractKoto)symbol.Declaration).ConstraintNodes[0];
-                matches = iterator.BoundConstraint is { Contract: { } required } && ReferenceEquals(required, this.LendingIterator);
+                matches = this.ValidBoundIterationEntry(symbol, entry.Id);
             }
 
             if (matches && entry.Id == KimiDeclarationId.Comparable)
